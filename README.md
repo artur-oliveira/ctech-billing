@@ -7,9 +7,16 @@ cycles, pro-rata, invoice generation, and dunning. It does not move money itself
 charge is collected by delegating to [`ctech-wallet`](../ctech-wallet), which owns the ledger
 and the PIX/Boleto payment rails.
 
-Status: **planning — no implementation yet.** See [OVERVIEW.md](OVERVIEW.md) for the product
-spec, [ARCHITECTURE.md](ARCHITECTURE.md) for the technical design, and [PLAN.md](PLAN.md) for
-the phased build plan.
+Status: **design-only — not built yet.** This repository contains **specification and design
+docs only** (`README.md`, `OVERVIEW.md`, `ARCHITECTURE.md`, `PLAN.md`). There is no source
+code: no `api/`, `ui/`, `cdk/`, `cmd/`, or `internal/`. Nothing here moves money or stores
+data. See [OVERVIEW.md](OVERVIEW.md) for the product spec, [ARCHITECTURE.md](ARCHITECTURE.md)
+for the technical design, and [PLAN.md](PLAN.md) for the phased build plan.
+
+> **Known spec inconsistencies & open decisions (backlog B37):** the spec docs below carry a
+> few unresolved tensions (datastore choice, `FIXED_MONTHLY` vs `billing_timing=ADVANCE`, and
+> an MVP that depends on an unconfirmed `ctech-wallet` contract). They are catalogued in
+> [OVERVIEW.md § 11](OVERVIEW.md) — read that before treating any single doc as final.
 
 ## Relationship to other CTech services
 

@@ -23,7 +23,7 @@ A sellable offer. Deliberately generic — a `Plan` is either **FIXED** or **MET
 | `fixed_price_cents` | required if `type=FIXED` |
 | `usage_unit` | e.g. `emissions` — required if `type=METERED` |
 | `usage_tiers` | ordered list of `{ up_to, unit_price_cents }`, last tier `up_to=null` — required if `type=METERED`. A flat per-unit price is just a single tier. |
-| `billing_timing` | `ADVANCE` \| `ARREARS` — see § 4. Default: `ADVANCE` for FIXED, `ARREARS` for METERED. |
+| `billing_timing` | `ADVANCE` \| `ARREARS` — see § 4. Default (on the `VARIABLE_ANCHOR` cycle): `ADVANCE` for FIXED, `ARREARS` for METERED. On `FIXED_MONTHLY` this field is **overridden to `ARREARS`** by the cycle rule (see § 4), so the default does not apply there. |
 | `trial_days` | optional |
 | `active` | plans are never deleted, only deactivated (existing subscriptions keep working) |
 | `version` | incremented on every price/tier change (see § 6 — Plan Versioning) |
@@ -94,6 +94,11 @@ component — **explicitly deferred to post-MVP**; call it out rather than bolt 
   arrears-style regardless of plan `billing_timing`, because the reference period must be
   fully closed before the invoice reflects it. (If a FIXED plan is on this cycle, it's billed
   for the month that already elapsed — arrears — not for the month ahead.)
+  - **Clarification (resolves the § 2 default conflict):** `billing_timing` only takes effect on
+    the `VARIABLE_ANCHOR` cycle. On `FIXED_MONTHLY` the stored `billing_timing` value is
+    ignored and the cycle is always `ARREARS`. So a FIXED plan's § 2 default of `ADVANCE` does
+    **not** apply here — `FIXED_MONTHLY` is the one cycle where the plan's `billing_timing`
+    field is overridden by the cycle rule.
 - **`VARIABLE_ANCHOR`** ("Ciclagem mensal variável"): invoice due date is the customer-chosen
   `anchor_day` every month. `billing_timing` decides direction:
   - `ADVANCE` (default for FIXED plans on this cycle): invoice for period `[anchor, anchor+1)`
@@ -194,3 +199,29 @@ retroactively corrupt every past invoice's math.
   their own).
 - Public self-serve plan changes/upgrades UI (admin-managed plans only, customer can view/cancel).
 - Base-fee-plus-overage hybrid plans (see § 3).
+
+## 11. Known spec inconsistencies & open decisions (backlog B37)
+
+This project is design-only (no implementation exists). The following tensions are **known** and
+must be resolved before the PLAN.md phases that depend on them are executed. They are not bugs in
+the prose — they are genuinely undecided. Do not treat any single doc as final.
+
+1. **Datastore: "default DynamoDB" vs relational recommendation.** ARCHITECTURE.md § 1 lists
+   DynamoDB as the *initial candidate* (matching `ctech-dfe`'s pattern) but recommends following
+   whatever ledger engine `ctech-wallet/api` actually uses (likely Postgres/Aurora). The two are
+   not reconciled — `ctech-billing`'s datastore is **undecided** until the `ctech-wallet` audit
+   lands. See PLAN.md Phase 0 ("Confirm datastore choice … before writing a single migration").
+2. **`FIXED_MONTHLY` vs `billing_timing=ADVANCE`.** A FIXED plan defaults to `ADVANCE` (§ 2),
+   but the `FIXED_MONTHLY` cycle is always `ARREARS` "regardless of plan billing_timing" (§ 4).
+   Resolved in-place above: `billing_timing` only applies to `VARIABLE_ANCHOR`; `FIXED_MONTHLY`
+   overrides it to `ARREARS`. The stored field is effectively meaningless on that cycle.
+3. **MVP depends on an unconfirmed `ctech-wallet` contract.** The entire wallet-debit path
+   (ARCHITECTURE.md § 3 charge/webhook API, PLAN.md Phase 3) is a *proposal* pending
+   confirmation of `ctech-wallet`'s real charge/webhook shape. Until that contract is settled,
+   Phase 3 and the MVP's "Wallet debit integration for collection" (§ 8) are **blocked**.
+
+### Other open decisions (from PLAN.md)
+- Roll-forward vs roll-backward for holiday/weekend due dates (§ 5). Spec assumes forward;
+  confirm with the business owner.
+- `ctech-wallet` datastore choice (drives `ctech-billing`'s own — see item 1 above).
+

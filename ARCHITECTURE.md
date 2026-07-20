@@ -5,15 +5,16 @@
 - **Backend**: Go, `cmd/` + `internal/` + `Dockerfile` + `Makefile` — identical layout to
   `ctech-account`, `ctech-dfe/api`, `ctech-wallet/api`. Do not introduce a second backend
   language into the company for this service.
-- **Storage**: DynamoDB (matches `ctech-dfe`'s documented `DynamoDB-Tables.md` pattern) is the
-  default candidate, **but** billing math (pro-rata, tiered usage aggregation, plan
-  versioning joins) is relational-shaped. Recommendation: confirm what `ctech-wallet/api`
-  actually uses for its ledger (pending audit) and follow suit — a ledger-adjacent service and
-  a billing service have very similar consistency needs (append-only records, strong
-  idempotency, occasional range queries for period aggregation). If `ctech-wallet` uses
-  Postgres/Aurora, `ctech-billing` should too, for the same reasons, and to keep the company's
-  operational surface (backup, migration, on-call knowledge) to one relational engine instead
-  of two.
+- **Storage**: DynamoDB is the *initial* candidate (it matches `ctech-dfe`'s documented
+  `DynamoDB-Tables.md` pattern), **but** billing math (pro-rata, tiered usage aggregation, plan
+  versioning joins) is relational-shaped. The choice is **not settled** — it is blocked on the
+  `ctech-wallet/api` datastore audit (see PLAN.md open decisions and OVERVIEW.md § 11, item 1).
+  Recommendation: once `ctech-wallet`'s ledger engine is confirmed, follow suit — a
+  ledger-adjacent service and a billing service have very similar consistency needs (append-only
+  records, strong idempotency, occasional range queries for period aggregation). If
+  `ctech-wallet` uses Postgres/Aurora, `ctech-billing` should too, for the same reasons, and to
+  keep the company's operational surface (backup, migration, on-call knowledge) to one
+  relational engine instead of two.
 - **Infra**: CDK, importing shared constructs from `ctech-cdk` rather than redefining VPC/IAM
   boundary policies per service (see the cross-stack report for what's actually shared today).
 - **Auth**: `ctech-account` OIDC for user-facing endpoints; `ctech-account` client-credentials
