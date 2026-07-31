@@ -9,8 +9,9 @@
 - CDK stack under `cdk/`, importing shared VPC/IAM/tagging constructs from `ctech-cdk`
   (do not redefine them — this is the #1 cross-stack duplication risk called out in the
   company-wide audit).
-- Confirm datastore choice against `ctech-wallet`'s actual choice (see ARCHITECTURE.md § 1)
-  before writing a single migration.
+- Model billing access patterns, compare DynamoDB with Postgres/Aurora, and record the datastore
+  decision in an ADR before writing a migration. Wallet's use of DynamoDB is context, not a
+  requirement.
 - CI pipeline (lint, unit tests, `cdk synth` on PR) — copy the existing pattern from
   `ctech-wallet` or `ctech-account`'s CI config rather than designing a new one.
 
@@ -34,9 +35,9 @@
 
 ## Phase 3 — Invoice generation + Wallet integration
 - Scheduled invoice-generation job (ARCHITECTURE.md § 5), idempotent by construction.
-- Wallet charge client + webhook receiver (ARCHITECTURE.md § 3) — **blocked on confirming the
-  real `ctech-wallet` charge API**, do this phase only after that contract is settled with
-  whoever owns `ctech-wallet`.
+- Wallet charge client + result receiver (ARCHITECTURE.md § 3) — **blocked on designing and
+  implementing a new versioned contract in `ctech-wallet`**. The proposed generic charge,
+  webhook, lookup, and Boleto capabilities do not exist in current source.
 - Reconciliation job for missed webhooks.
 - End-to-end test: subscribe → invoice generated on correct date → wallet charge → webhook →
   invoice marked PAID. This is the MVP's core demo.
@@ -61,6 +62,7 @@
 - Self-serve plan upgrade/downgrade UI.
 
 ## Open decisions that block Phase 3 and should be resolved before this plan is executed
-1. Confirm `ctech-wallet`'s actual charge/webhook API shape (this doc's § 3 is a proposal).
+1. Design and implement the new wallet charge lifecycle; the current API has only a synchronous
+   internal real-balance debit plus separate PIX-deposit/sandbox-purchase flows.
 2. Confirm roll-forward vs roll-backward for holiday/weekend due dates (OVERVIEW.md § 5).
-3. Confirm `ctech-wallet`'s datastore choice to decide `ctech-billing`'s own (ARCHITECTURE.md § 1).
+3. Decide billing's datastore from its own access patterns and record an ADR (ARCHITECTURE.md § 1).

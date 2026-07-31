@@ -5,16 +5,11 @@
 - **Backend**: Go, `cmd/` + `internal/` + `Dockerfile` + `Makefile` — identical layout to
   `ctech-account`, `ctech-dfe/api`, `ctech-wallet/api`. Do not introduce a second backend
   language into the company for this service.
-- **Storage**: DynamoDB is the *initial* candidate (it matches `ctech-dfe`'s documented
-  `DynamoDB-Tables.md` pattern), **but** billing math (pro-rata, tiered usage aggregation, plan
-  versioning joins) is relational-shaped. The choice is **not settled** — it is blocked on the
-  `ctech-wallet/api` datastore audit (see PLAN.md open decisions and OVERVIEW.md § 11, item 1).
-  Recommendation: once `ctech-wallet`'s ledger engine is confirmed, follow suit — a
-  ledger-adjacent service and a billing service have very similar consistency needs (append-only
-  records, strong idempotency, occasional range queries for period aggregation). If
-  `ctech-wallet` uses Postgres/Aurora, `ctech-billing` should too, for the same reasons, and to
-  keep the company's operational surface (backup, migration, on-call knowledge) to one
-  relational engine instead of two.
+- **Storage**: undecided, to be recorded in an ADR before implementation. The wallet source
+  code uses DynamoDB, but that does not decide billing's datastore: pro-rata, tiered usage
+  aggregation, immutable plan versions, and period queries are relational-shaped. Evaluate
+  DynamoDB against Postgres/Aurora on billing's own workload. Reusing a datastore solely because
+  another bounded context uses it is coupling, not an architectural requirement.
 - **Infra**: CDK, importing shared constructs from `ctech-cdk` rather than redefining VPC/IAM
   boundary policies per service (see the cross-stack report for what's actually shared today).
 - **Auth**: `ctech-account` OIDC for user-facing endpoints; `ctech-account` client-credentials
@@ -32,10 +27,10 @@
   ┌────────────────▶│  (OIDC/OAuth) │◀────────────────────────┐
   │                  └──────────────┘                          │
   │                                                             │
-┌─┴──────────┐   create invoice /      ┌───────────────┐   debit / PIX / Boleto  ┌──────────────┐
+┌─┴──────────┐   create invoice /      ┌───────────────┐   collection request*   ┌──────────────┐
 │  SPA (any   │   report usage         │ ctech-billing │────────────────────────▶│ ctech-wallet │
 │  product)   │────────────────────────▶│               │◀────────────────────────│              │
-└─────────────┘   view/cancel sub      └───────┬───────┘   charge result webhook  └──────────────┘
+└─────────────┘   view/cancel sub      └───────┬───────┘   charge result*         └──────────────┘
                                                 │
                                         invoice.paid webhook
                                                 │
@@ -45,18 +40,17 @@
                                         └───────────────┘
 ```
 
-`ctech-billing` **never** talks to a payment rail directly. It asks `ctech-wallet` to collect
-an amount against a `customer_ref`; `ctech-wallet` decides whether that's a balance debit or a
-new PIX/Boleto charge, and reports back success/failure asynchronously via webhook plus a
-synchronous "accepted" response. This mirrors how `ctech-wallet`'s own `pix-gateway` should be
-treating the actual bank rail — same pattern, one layer up.
+`ctech-billing` **never** talks to a payment rail directly. The intended boundary is for it to
+ask `ctech-wallet` to collect an amount and later reconcile the outcome. That contract does not
+exist in wallet source: wallet exposes an internal synchronous real-balance debit and separate
+PIX-deposit/sandbox-purchase flows, but no generic charge, Boleto, webhook, or charge lookup.
 
-## 3. Wallet integration contract (proposal — confirm against actual `ctech-wallet` API once its audit lands)
+## 3. Wallet integration contract (proposed new capability; not implemented)
 
 ```
 POST /v1/charges
 Headers: Idempotency-Key: <billing-invoice-id>
-Body: { customer_ref, amount_cents, currency, method: "wallet_balance" | "pix" | "boleto", metadata: { invoice_id } }
+Body: { customer_ref, amount_cents, currency, method: "wallet_balance" | "pix", metadata: { invoice_id } }
 → 202 Accepted { wallet_charge_id, status: "pending" }
 
 Webhook (ctech-wallet → ctech-billing):
@@ -75,6 +69,13 @@ Requirements this implies on the billing side:
   `GET /v1/charges/{id}` on `ctech-wallet` on a schedule (e.g. hourly for `OPEN` invoices past
   their expected settlement window) — never rely on webhooks as the only signal for something
   this important.
+
+Current source baseline: wallet's closest operation is
+`POST /v1.0/internal/wallet/real/debit`, authorized by the
+`internal:wallet:debit-real` scope and protected by an idempotency key. It is synchronous and
+not a substitute for the lifecycle above. Phase 3 therefore requires an explicit, versioned
+cross-service contract plus implementation in both repositories. Boleto is excluded until a
+Boleto rail actually exists.
 
 ## 4. Holiday calendar
 

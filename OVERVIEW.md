@@ -161,7 +161,8 @@ retroactively corrupt every past invoice's math.
   user token).
 - M2M invoice/usage-record creation for authorized external services.
 - Wallet debit integration for collection.
-- Invoice generation via Wallet (PIX/Boleto — Wallet-side, not duplicated here).
+- Invoice collection via a new Wallet charge contract (balance/PIX initially; the contract is
+  not implemented today and Boleto is out of scope until Wallet supports it).
 - Pro-rata, national holidays, weekend due-date rollforward.
 - Fixed and variable billing cycles as described above.
 
@@ -206,22 +207,20 @@ This project is design-only (no implementation exists). The following tensions a
 must be resolved before the PLAN.md phases that depend on them are executed. They are not bugs in
 the prose — they are genuinely undecided. Do not treat any single doc as final.
 
-1. **Datastore: "default DynamoDB" vs relational recommendation.** ARCHITECTURE.md § 1 lists
-   DynamoDB as the *initial candidate* (matching `ctech-dfe`'s pattern) but recommends following
-   whatever ledger engine `ctech-wallet/api` actually uses (likely Postgres/Aurora). The two are
-   not reconciled — `ctech-billing`'s datastore is **undecided** until the `ctech-wallet` audit
-   lands. See PLAN.md Phase 0 ("Confirm datastore choice … before writing a single migration").
+1. **Billing datastore is intentionally undecided.** Wallet source uses DynamoDB, but billing
+   has different query and transaction shapes. Phase 0 must decide from measured billing access
+   patterns and record the result in an ADR; Wallet's datastore is not a deciding dependency.
 2. **`FIXED_MONTHLY` vs `billing_timing=ADVANCE`.** A FIXED plan defaults to `ADVANCE` (§ 2),
    but the `FIXED_MONTHLY` cycle is always `ARREARS` "regardless of plan billing_timing" (§ 4).
    Resolved in-place above: `billing_timing` only applies to `VARIABLE_ANCHOR`; `FIXED_MONTHLY`
    overrides it to `ARREARS`. The stored field is effectively meaningless on that cycle.
-3. **MVP depends on an unconfirmed `ctech-wallet` contract.** The entire wallet-debit path
-   (ARCHITECTURE.md § 3 charge/webhook API, PLAN.md Phase 3) is a *proposal* pending
-   confirmation of `ctech-wallet`'s real charge/webhook shape. Until that contract is settled,
-   Phase 3 and the MVP's "Wallet debit integration for collection" (§ 8) are **blocked**.
+3. **MVP requires a new `ctech-wallet` contract.** Source inspection confirms the proposed
+   charge/webhook API does not exist. Wallet provides a scoped, synchronous real-balance debit
+   and separate PIX-deposit/sandbox-purchase flows. Phase 3 is blocked on designing, versioning,
+   implementing, and contract-testing the new lifecycle.
 
 ### Other open decisions (from PLAN.md)
 - Roll-forward vs roll-backward for holiday/weekend due dates (§ 5). Spec assumes forward;
   confirm with the business owner.
-- `ctech-wallet` datastore choice (drives `ctech-billing`'s own — see item 1 above).
+- Billing datastore ADR based on billing access patterns (see item 1 above).
 
