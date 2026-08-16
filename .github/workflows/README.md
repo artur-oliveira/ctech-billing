@@ -4,14 +4,39 @@ Two entry points and four reusable workflows.
 
 | File           | Trigger                                   | What it does                                                                         |
 |----------------|-------------------------------------------|--------------------------------------------------------------------------------------|
-| `ci.yml`       | every PR, and pushes to deploy branches   | gofmt, vet, Go unit + integration tests, UI lint/test/build. **No AWS credentials.** |
+| `ci.yml`       | every PR, and pushes to deploy branches   | Static analysis → API → UI, chained. **No AWS credentials.**                        |
 | `deploy.yml`   | push to `main`/`staging`/`dev`, or manual | Path filter and ordering. Calls the four below.                                      |
 | `infra.yml`    | called; **and PRs** for validate-only     | `terraform apply` on both roots.                                                     |
 | `api.yml`      | called                                    | Builds three arm64 binaries, uploads, rolling deploy via SSM.                        |
 | `frontend.yml` | called                                    | Static export, S3 sync, route manifest, invalidation.                                |
 | *(scopes)*     | called                                    | `ctech-account/.github/workflows/publish-resource-scopes.yml@main`.                  |
 
-## The order is a dependency chain
+Dependency bumps arrive weekly through [`dependabot.yml`](../dependabot.yml): the Go module, the
+UI's npm tree, the actions these workflows pin, and both Terraform roots. Every one of them is
+gated by `ci.yml` or `infra.yml`, which is what makes the pull requests quick to read — a bump that
+breaks something says so before anybody looks at it.
+
+## CI is a chain too
+
+```
+Static analysis → API → UI
+```
+
+Same `needs:` shape as the deploy pipeline below, for the same reason: the cheapest check that can
+fail should fail first. `gofmt` disagreeing costs seconds; finding out after a DynamoDB container
+has started and `npm ci` has resolved the front end costs minutes, on every push of the branch.
+
+The static stage is the one with no services and no build step — gofmt, `go vet`, **staticcheck**
+and **govulncheck**, each run twice where it matters: once plain and once under `-tags integration`,
+because `go vet ./...` never compiles a build-tagged file and the integration suite is the only
+place the payment path runs end to end. Left out, the least-checked code in the repository would be
+the code that moves money.
+
+`staticcheck` and `govulncheck` are invoked as `go run …@latest`, matching `ctech-poker`'s
+`api.yml`. The trade is real: a new release can turn CI red on a day nobody changed code. That is a
+morning's annoyance against running a vulnerability scanner a year out of date.
+
+## The deploy order is a dependency chain
 
 ```
 Terraform → OAuth scopes → API → Frontend

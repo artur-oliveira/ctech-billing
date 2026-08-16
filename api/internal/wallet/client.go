@@ -7,11 +7,18 @@
 // the spec's rather than a copy of wallet's structs — they were verified against
 // the shipped handler, and the spec is what both sides answer to if they drift.
 //
-// What is still not code, and blocks the first real payment: billing's entry in
-// wallet's `/ctech-wallet/{env}/m2m-clients` needs a `WebhookURL`, or wallet
-// confirms the charge and notifies nobody, leaving settlement to the hourly
-// reconcile sweep. A deployment without WALLET_BASE_URL has no checkout routes
-// at all rather than routes that fail at the last step.
+// The configuration this needs is in place as of 2026-08-16, and one detail of
+// it is worth carrying here because this package is what makes it true: wallet
+// looks its caller up as `m2mClients[claims.AZP]`, so the key of the entry in
+// `/ctech-wallet/{env}/m2m-clients` is the **OAuth client id** — `ctech-charge`,
+// which is what Config.ClientID below must hold. An entry filed under any other
+// name is not an error on either side. The map returns a zero M2MClient, whose
+// `webhook_url` is empty (wallet confirms the charge and notifies nobody, so
+// settlement waits for the hourly reconcile sweep) and whose `max_charge_cents`
+// falls back to R$ 1.000,00 rather than the configured ceiling.
+//
+// A deployment without WALLET_BASE_URL has no checkout routes at all rather than
+// routes that fail at the last step.
 //
 // Two things in here are not negotiable and are the reason this is a package
 // rather than three inline HTTP calls:
@@ -103,8 +110,13 @@ type Notification struct {
 
 // Config is what the client needs to reach wallet.
 type Config struct {
-	BaseURL       string
-	TokenURL      string
+	BaseURL  string
+	TokenURL string
+	// ClientID is `ctech-charge`. It is not merely which credentials to use: it
+	// becomes the `azp` of every token minted here, and wallet keys both the
+	// webhook registration and the charge ceiling on that claim. Point it at a
+	// different client and charges still open — under a registration wallet does
+	// not have (see the package doc).
 	ClientID      string
 	ClientSecret  string
 	WebhookSecret string

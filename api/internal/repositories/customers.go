@@ -294,5 +294,3 @@ func (r *CustomerRepository) RecordTaxIDAccess(ctx context.Context, c *billing.C
 	}
 	return r.audit.TransactWrite(ctx, txItems(r.audit.BuildPutTxItemIfAbsent(item)))
 }
-
-func strPtr(s string) *string { return &s }
