@@ -28,18 +28,18 @@ const (
 	ScopeProductsRead     = "billing:products:read"
 	ScopeOrganizationRead = "billing:organization:read"
 	// The portal's scopes are `me`, not a resource, and that is the point
-	// (ADR 0012): `billing:me:invoices:read` reads **my** invoices, while
+	// (ADR 0012): `billing:my-invoices:read` reads **my** invoices, while
 	// `billing:invoices:read` reads the organization's. A consumer token must not
 	// be one scope away from a merchant's customer list, and naming them apart is
 	// what makes that structural instead of careful.
-	ScopeMeInvoicesRead      = "billing:me:invoices:read"
-	ScopeMeSubscriptionsRead = "billing:me:subscriptions:read"
+	ScopeMyInvoicesRead      = "billing:my-invoices:read"
+	ScopeMySubscriptionsRead = "billing:my-subscriptions:read"
 	// The two portal writes a consumer can perform on their own account: pay a
 	// bill, and stop a subscription. Split from the reads for the same reason
 	// every other scope here is — a token that renders the screen should not be
 	// the token that can cancel from it.
-	ScopeMeInvoicesWrite      = "billing:me:invoices:write"
-	ScopeMeSubscriptionsWrite = "billing:me:subscriptions:write"
+	ScopeMyInvoicesWrite      = "billing:my-invoices:write"
+	ScopeMySubscriptionsWrite = "billing:my-subscriptions:write"
 )
 
 // AllScopes is the manifest ctech-account must know about. Keeping it in one
@@ -56,10 +56,10 @@ var AllScopes = []string{
 	ScopeEntitlementsRead,
 	ScopeProductsRead,
 	ScopeOrganizationRead,
-	ScopeMeInvoicesRead,
-	ScopeMeSubscriptionsRead,
-	ScopeMeInvoicesWrite,
-	ScopeMeSubscriptionsWrite,
+	ScopeMyInvoicesRead,
+	ScopeMySubscriptionsRead,
+	ScopeMyInvoicesWrite,
+	ScopeMySubscriptionsWrite,
 }
 
 // RequireM2MScope gates a route on a client_credentials token carrying the

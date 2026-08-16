@@ -238,7 +238,7 @@ func newPayEnv(t *testing.T) *payEnv {
 // the checkout is waiting on.
 func (e *payEnv) openCharge(t *testing.T, inv *billing.Invoice) string {
 	t.Helper()
-	token := e.portalToken(t, middleware.ScopeMeInvoicesWrite)
+	token := e.portalToken(t, middleware.ScopeMyInvoicesWrite)
 	var body paymentBody
 	e.post(t, "/v1.0/portal/invoices/"+inv.ID+"/pay", token, "").decode(t, &body)
 	charge := e.wallet.chargeFor(body.Payment.PixCode)
@@ -319,7 +319,7 @@ func TestPayingAnInvoiceEndToEnd(t *testing.T) {
 	ctx := ctxT(t)
 	e := newPayEnv(t)
 	inv := e.openInvoice(t)
-	token := e.portalToken(t, middleware.ScopeMeInvoicesWrite)
+	token := e.portalToken(t, middleware.ScopeMyInvoicesWrite)
 
 	res := e.post(t, "/v1.0/portal/invoices/"+inv.ID+"/pay", token, "")
 	if res.status != http.StatusOK {
@@ -387,7 +387,7 @@ func TestPayingAnInvoiceEndToEnd(t *testing.T) {
 func TestPayingTwiceReusesTheSameCharge(t *testing.T) {
 	e := newPayEnv(t)
 	inv := e.openInvoice(t)
-	token := e.portalToken(t, middleware.ScopeMeInvoicesWrite)
+	token := e.portalToken(t, middleware.ScopeMyInvoicesWrite)
 
 	var first, second paymentBody
 	e.post(t, "/v1.0/portal/invoices/"+inv.ID+"/pay", token, "").decode(t, &first)
@@ -408,7 +408,7 @@ func TestWebhookDoesNotSettleAnUnpaidCharge(t *testing.T) {
 	ctx := ctxT(t)
 	e := newPayEnv(t)
 	inv := e.openInvoice(t)
-	token := e.portalToken(t, middleware.ScopeMeInvoicesWrite)
+	token := e.portalToken(t, middleware.ScopeMyInvoicesWrite)
 
 	var body paymentBody
 	e.post(t, "/v1.0/portal/invoices/"+inv.ID+"/pay", token, "").decode(t, &body)
@@ -456,7 +456,7 @@ func TestWebhookRefusesAnAmountMismatch(t *testing.T) {
 	ctx := ctxT(t)
 	e := newPayEnv(t)
 	inv := e.openInvoice(t)
-	token := e.portalToken(t, middleware.ScopeMeInvoicesWrite)
+	token := e.portalToken(t, middleware.ScopeMyInvoicesWrite)
 
 	var body paymentBody
 	e.post(t, "/v1.0/portal/invoices/"+inv.ID+"/pay", token, "").decode(t, &body)
@@ -608,7 +608,7 @@ func TestChargesAreBlockedForAnUngatedOrganization(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	token := e.portalToken(t, middleware.ScopeMeInvoicesWrite)
+	token := e.portalToken(t, middleware.ScopeMyInvoicesWrite)
 	res := e.post(t, "/v1.0/portal/invoices/"+inv.ID+"/pay", token, "")
 	if res.status != http.StatusConflict {
 		t.Fatalf("status = %d, want 409: %s", res.status, res.body)
@@ -655,7 +655,7 @@ func TestChargesAreRefusedWithoutAPayerAccount(t *testing.T) {
 func TestPortalCancellationIsAtPeriodEnd(t *testing.T) {
 	ctx := ctxT(t)
 	e := newPayEnv(t)
-	token := e.portalToken(t, middleware.ScopeMeSubscriptionsWrite)
+	token := e.portalToken(t, middleware.ScopeMySubscriptionsWrite)
 
 	sub := newActiveSubscription(t, e.org, e.customer.ID, e.priceID)
 	res := e.post(t, "/v1.0/portal/subscriptions/"+sub.ID+"/cancel", token, "")
@@ -699,7 +699,7 @@ func TestPortalCancellationIsAtPeriodEnd(t *testing.T) {
 func TestPortalCancellationNeedsTheWriteScope(t *testing.T) {
 	e := newPayEnv(t)
 	sub := newActiveSubscription(t, e.org, e.customer.ID, e.priceID)
-	readOnly := e.portalToken(t, middleware.ScopeMeSubscriptionsRead)
+	readOnly := e.portalToken(t, middleware.ScopeMySubscriptionsRead)
 
 	if res := e.post(t, "/v1.0/portal/subscriptions/"+sub.ID+"/cancel", readOnly, ""); res.status != http.StatusForbidden {
 		t.Fatalf("status = %d, want 403: %s", res.status, res.body)

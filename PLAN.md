@@ -121,7 +121,7 @@
           own id lands in the audit row, because that is the whole reason this route exists rather
           than pointing the console at the M2M one.
     - [x] Portal: `POST /v1.0/portal/subscriptions/:id/cancel`, scope
-          `billing:me:subscriptions:write`, filtered to the caller's own subscription and
+          `billing:my-subscriptions:write`, filtered to the caller's own subscription and
           **at-period-end only** — enforced in the handler, not left to a request field.
     - [x] Both: repeating a cancellation is not an error and writes no second audit row.
     - [x] **Defect found and fixed on the way:** `ScheduleCancellation` hard-coded

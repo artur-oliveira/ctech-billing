@@ -94,7 +94,7 @@
       "status": "active"
     },
     {
-      "name": "billing:me:invoices:read",
+      "name": "billing:my-invoices:read",
       "descriptions": {
         "pt-BR": "Ver suas próprias faturas.",
         "en": "View your own invoices."
@@ -103,7 +103,7 @@
       "status": "active"
     },
     {
-      "name": "billing:me:invoices:write",
+      "name": "billing:my-invoices:write",
       "descriptions": {
         "pt-BR": "Pagar suas próprias faturas.",
         "en": "Pay your own invoices."
@@ -112,7 +112,7 @@
       "status": "active"
     },
     {
-      "name": "billing:me:subscriptions:read",
+      "name": "billing:my-subscriptions:read",
       "descriptions": {
         "pt-BR": "Ver suas próprias assinaturas.",
         "en": "View your own subscriptions."
@@ -121,7 +121,7 @@
       "status": "active"
     },
     {
-      "name": "billing:me:subscriptions:write",
+      "name": "billing:my-subscriptions:write",
       "descriptions": {
         "pt-BR": "Cancelar suas próprias assinaturas.",
         "en": "Cancel your own subscriptions."

@@ -99,7 +99,7 @@ func (e *portalEnv) portalToken(t *testing.T, scopes ...string) string {
 func TestPortalResolvesTheCustomerFromTheAccount(t *testing.T) {
 	e := newPortal(t)
 	e.withPortal(t)
-	token := e.portalToken(t, middleware.ScopeMeSubscriptionsRead)
+	token := e.portalToken(t, middleware.ScopeMySubscriptionsRead)
 
 	res := e.console(t, "/v1.0/portal/session", token, "")
 	if res.status != http.StatusOK {
@@ -120,7 +120,7 @@ func TestPortalResolvesTheCustomerFromTheAccount(t *testing.T) {
 func TestPortalRejectsANonCustomer(t *testing.T) {
 	e := newPortal(t)
 	e.withPortal(t)
-	stranger := e.token(t, "usr_"+id.New(), "sess_"+id.New(), middleware.ScopeMeSubscriptionsRead)
+	stranger := e.token(t, "usr_"+id.New(), "sess_"+id.New(), middleware.ScopeMySubscriptionsRead)
 
 	res := e.console(t, "/v1.0/portal/session", stranger, "")
 	if res.status != http.StatusForbidden {
@@ -132,7 +132,7 @@ func TestPortalRejectsANonCustomer(t *testing.T) {
 // fallback to whichever organization happens to be first.
 func TestPortalIsAbsentWithoutTenantZero(t *testing.T) {
 	e := newPortal(t) // built by newAPI, which sets no PORTAL_ORGANIZATION_ID
-	token := e.portalToken(t, middleware.ScopeMeSubscriptionsRead)
+	token := e.portalToken(t, middleware.ScopeMySubscriptionsRead)
 
 	res := e.console(t, "/v1.0/portal/session", token, "")
 	if res.status != http.StatusNotFound {
@@ -143,7 +143,7 @@ func TestPortalIsAbsentWithoutTenantZero(t *testing.T) {
 func TestServiceTokensAreRejectedOnPortalRoutes(t *testing.T) {
 	e := newPortal(t)
 	e.withPortal(t)
-	m2m := e.token(t, e.client, "", middleware.ScopeMeSubscriptionsRead)
+	m2m := e.token(t, e.client, "", middleware.ScopeMySubscriptionsRead)
 
 	res := e.console(t, "/v1.0/portal/session", m2m, "")
 	if res.status != http.StatusForbidden {
@@ -162,7 +162,7 @@ func TestPortalAndConsoleScopesDoNotOverlap(t *testing.T) {
 		t.Fatalf("console scopes opened the portal: %d %s", res.status, res.body)
 	}
 
-	portalScoped := e.token(t, e.org.OwnerUserID, "sess_"+id.New(), middleware.ScopeMeInvoicesRead)
+	portalScoped := e.token(t, e.org.OwnerUserID, "sess_"+id.New(), middleware.ScopeMyInvoicesRead)
 	if res := e.console(t, "/v1.0/console/invoices", portalScoped, "live"); res.status != http.StatusForbidden {
 		t.Fatalf("portal scopes opened the console: %d %s", res.status, res.body)
 	}
@@ -174,7 +174,7 @@ func TestPortalShowsOnlyTheSignedInCustomersInvoices(t *testing.T) {
 	ctx := ctxT(t)
 	e := newPortal(t)
 	e.withPortal(t)
-	token := e.portalToken(t, middleware.ScopeMeInvoicesRead)
+	token := e.portalToken(t, middleware.ScopeMyInvoicesRead)
 
 	invoices := repositories.NewInvoiceRepository(testDB, testCfg)
 	mine := newInvoiceFor(t, e.org, e.customer.ID)
@@ -222,7 +222,7 @@ func TestPortalHidesAnotherCustomersInvoice(t *testing.T) {
 	ctx := ctxT(t)
 	e := newPortal(t)
 	e.withPortal(t)
-	token := e.portalToken(t, middleware.ScopeMeInvoicesRead)
+	token := e.portalToken(t, middleware.ScopeMyInvoicesRead)
 
 	theirs := newInvoiceFor(t, e.org, "cus_someone_else")
 	due := brcal.New(2026, time.March, 10)
@@ -243,7 +243,7 @@ func TestPortalPayloadCarriesNoInternalVocabulary(t *testing.T) {
 	ctx := ctxT(t)
 	e := newPortal(t)
 	e.withPortal(t)
-	token := e.portalToken(t, middleware.ScopeMeInvoicesRead)
+	token := e.portalToken(t, middleware.ScopeMyInvoicesRead)
 
 	inv := newInvoiceFor(t, e.org, e.customer.ID)
 	due := brcal.New(2026, time.March, 10)

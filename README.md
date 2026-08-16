@@ -165,12 +165,12 @@ would show each of them all of the others.
 | Route | Scope |
 |---|---|
 | `GET /v1.0/me` | — (identity only; says which shells this person can open) |
-| `GET /v1.0/portal/session` · `/portal/subscriptions` · `/portal/subscriptions/:id` | `billing:me:subscriptions:read` |
-| `GET /v1.0/portal/invoices` · `/portal/invoices/:id` | `billing:me:invoices:read` |
-| `POST /v1.0/portal/invoices/:id/pay` | `billing:me:invoices:write` |
-| `POST /v1.0/portal/subscriptions/:id/cancel` | `billing:me:subscriptions:write` |
+| `GET /v1.0/portal/session` · `/portal/subscriptions` · `/portal/subscriptions/:id` | `billing:my-subscriptions:read` |
+| `GET /v1.0/portal/invoices` · `/portal/invoices/:id` | `billing:my-invoices:read` |
+| `POST /v1.0/portal/invoices/:id/pay` | `billing:my-invoices:write` |
+| `POST /v1.0/portal/subscriptions/:id/cancel` | `billing:my-subscriptions:write` |
 
-The `me` scopes are deliberately not the console's: `billing:me:invoices:read`
+The `me` scopes are deliberately not the console's: `billing:my-invoices:read`
 reads *my* invoices, `billing:invoices:read` reads the organization's, and a
 consumer token is never one scope away from a merchant's customer list. Portal
 payloads carry no internal status, metadata or audit trail — "Vence em 3 dias",

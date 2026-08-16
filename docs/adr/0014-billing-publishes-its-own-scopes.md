@@ -6,7 +6,7 @@ PLAN.md Phase 0 carried
 ## Context
 
 Every route in this service is gated on a scope (`billing:invoices:read`,
-`billing:me:subscriptions:write`, and twelve more). A scope only works if two systems agree on it:
+`billing:my-subscriptions:write`, and twelve more). A scope only works if two systems agree on it:
 this service, which **verifies** it on the request, and ctech-account, which **issues** it in the
 token. Nothing verifies a scope ctech-account never learned to issue — the token simply arrives
 without it and every call 403s.

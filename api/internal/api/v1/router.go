@@ -252,33 +252,33 @@ func registerPortal(v1 fiber.Router, d Deps, h *handlers, auth fiber.Handler) {
 	portal := v1.Group("/portal", auth, identity)
 
 	portal.Get("/session",
-		middleware.RequireUserScope(middleware.ScopeMeSubscriptionsRead), ph.session)
+		middleware.RequireUserScope(middleware.ScopeMySubscriptionsRead), ph.session)
 
 	portal.Get("/subscriptions",
-		middleware.RequireUserScope(middleware.ScopeMeSubscriptionsRead), ph.listSubscriptions)
+		middleware.RequireUserScope(middleware.ScopeMySubscriptionsRead), ph.listSubscriptions)
 	portal.Get("/subscriptions/:id",
-		middleware.RequireUserScope(middleware.ScopeMeSubscriptionsRead), ph.getSubscription)
+		middleware.RequireUserScope(middleware.ScopeMySubscriptionsRead), ph.getSubscription)
 
 	// At-period-end only, and that is enforced in the handler rather than left to
 	// a request field: a consumer cancelling mid-period is asking for money back,
 	// which is a credit note and a different decision.
 	portal.Post("/subscriptions/:id/cancel",
-		middleware.RequireUserScope(middleware.ScopeMeSubscriptionsWrite), ph.cancelSubscription)
+		middleware.RequireUserScope(middleware.ScopeMySubscriptionsWrite), ph.cancelSubscription)
 
 	portal.Get("/invoices",
-		middleware.RequireUserScope(middleware.ScopeMeInvoicesRead), ph.listInvoices)
+		middleware.RequireUserScope(middleware.ScopeMyInvoicesRead), ph.listInvoices)
 	portal.Get("/invoices/:id",
-		middleware.RequireUserScope(middleware.ScopeMeInvoicesRead), ph.getInvoice)
+		middleware.RequireUserScope(middleware.ScopeMyInvoicesRead), ph.getInvoice)
 
 	if d.Collector != nil {
 		portal.Post("/invoices/:id/pay",
-			middleware.RequireUserScope(middleware.ScopeMeInvoicesWrite), ph.payInvoice)
+			middleware.RequireUserScope(middleware.ScopeMyInvoicesWrite), ph.payInvoice)
 
 		// The read side of the same screen: an SSE stream that says when the
 		// charge settled. Mounted with the pay route because it exists only to
 		// answer it — a deployment with no wallet has nothing to wait for. It
 		// takes the *read* scope: watching an invoice is reading it.
 		portal.Get("/invoices/:id/events",
-			middleware.RequireUserScope(middleware.ScopeMeInvoicesRead), ph.invoiceEvents)
+			middleware.RequireUserScope(middleware.ScopeMyInvoicesRead), ph.invoiceEvents)
 	}
 }
