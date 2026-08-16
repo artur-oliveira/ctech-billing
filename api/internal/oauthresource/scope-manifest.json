@@ -1,0 +1,133 @@
+{
+  "schema_version": 1,
+  "resource_server_id": "billing",
+  "display_name": "CTech Cobranças",
+  "scopes": [
+    {
+      "name": "billing:subscriptions:read",
+      "descriptions": {
+        "pt-BR": "Consultar assinaturas da organização.",
+        "en": "Read the organization's subscriptions."
+      },
+      "visibility": "public",
+      "status": "active"
+    },
+    {
+      "name": "billing:subscriptions:write",
+      "descriptions": {
+        "pt-BR": "Criar, alterar e cancelar assinaturas da organização.",
+        "en": "Create, change, and cancel the organization's subscriptions."
+      },
+      "visibility": "public",
+      "status": "active"
+    },
+    {
+      "name": "billing:invoices:read",
+      "descriptions": {
+        "pt-BR": "Consultar faturas da organização.",
+        "en": "Read the organization's invoices."
+      },
+      "visibility": "public",
+      "status": "active"
+    },
+    {
+      "name": "billing:invoices:write",
+      "descriptions": {
+        "pt-BR": "Emitir, finalizar e cancelar faturas da organização.",
+        "en": "Issue, finalize, and void the organization's invoices."
+      },
+      "visibility": "public",
+      "status": "active"
+    },
+    {
+      "name": "billing:usage:write",
+      "descriptions": {
+        "pt-BR": "Reportar uso medido para assinaturas por consumo.",
+        "en": "Report metered usage for consumption-based subscriptions."
+      },
+      "visibility": "public",
+      "status": "active"
+    },
+    {
+      "name": "billing:customers:read",
+      "descriptions": {
+        "pt-BR": "Consultar clientes da organização.",
+        "en": "Read the organization's customers."
+      },
+      "visibility": "public",
+      "status": "active"
+    },
+    {
+      "name": "billing:customers:write",
+      "descriptions": {
+        "pt-BR": "Criar e alterar clientes da organização.",
+        "en": "Create and change the organization's customers."
+      },
+      "visibility": "public",
+      "status": "active"
+    },
+    {
+      "name": "billing:entitlements:read",
+      "descriptions": {
+        "pt-BR": "Consultar o que um cliente tem direito a usar.",
+        "en": "Read what a customer is entitled to use."
+      },
+      "visibility": "public",
+      "status": "active"
+    },
+    {
+      "name": "billing:products:read",
+      "descriptions": {
+        "pt-BR": "Consultar produtos e preços do catálogo.",
+        "en": "Read catalog products and prices."
+      },
+      "visibility": "public",
+      "status": "active"
+    },
+    {
+      "name": "billing:organization:read",
+      "descriptions": {
+        "pt-BR": "Consultar dados de cobrança da organização.",
+        "en": "Read the organization's billing settings."
+      },
+      "visibility": "public",
+      "status": "active"
+    },
+    {
+      "name": "billing:me:invoices:read",
+      "descriptions": {
+        "pt-BR": "Ver suas próprias faturas.",
+        "en": "View your own invoices."
+      },
+      "visibility": "public",
+      "status": "active"
+    },
+    {
+      "name": "billing:me:invoices:write",
+      "descriptions": {
+        "pt-BR": "Pagar suas próprias faturas.",
+        "en": "Pay your own invoices."
+      },
+      "visibility": "public",
+      "status": "active"
+    },
+    {
+      "name": "billing:me:subscriptions:read",
+      "descriptions": {
+        "pt-BR": "Ver suas próprias assinaturas.",
+        "en": "View your own subscriptions."
+      },
+      "visibility": "public",
+      "status": "active"
+    },
+    {
+      "name": "billing:me:subscriptions:write",
+      "descriptions": {
+        "pt-BR": "Cancelar suas próprias assinaturas.",
+        "en": "Cancel your own subscriptions."
+      },
+      "visibility": "public",
+      "status": "active"
+    }
+  ]
+}

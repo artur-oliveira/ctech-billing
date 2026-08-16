@@ -1,0 +1,147 @@
+name: Deploy
+
+# The single entry point for every deploy. It owns the trigger, the path filter
+# and the ordering; infra/scopes/api/frontend are reusable workflows with no
+# push trigger of their own, so a push touching several still deploys strictly
+# in order:
+#
+#   Terraform → OAuth scopes → API → Frontend
+#
+# The order is a dependency chain, not a preference:
+#
+#   - Terraform first because it creates the bucket the frontend syncs into and
+#     the ASG the API deploys onto. Both later jobs read their targets from SSM
+#     parameters this job writes.
+#   - Scopes before the API, because the API rejects a token whose scope
+#     ctech-account never learned to issue. Publishing after would leave a
+#     window where the new route is live and nothing can call it.
+#   - Frontend last because it is the only one a customer sees. A portal that
+#     ships before the API that answers it is a portal that renders errors.
+#
+# A stage whose paths did not change is skipped, and a skipped stage does NOT
+# block the ones after it (`!contains(needs.*.result, 'failure')`). A stage that
+# FAILS does block them.
+
+on:
+  push:
+    branches: [main, staging, dev]
+    paths:
+      - 'api/**'
+      - 'ui/**'
+      - 'terraform/**'
+      - '.github/workflows/**'
+  workflow_dispatch:
+    inputs:
+      infra:
+        description: 'Apply Terraform'
+        type: boolean
+        default: false
+      scopes:
+        description: 'Publish OAuth scope manifest'
+        type: boolean
+        default: false
+      api:
+        description: 'Deploy API'
+        type: boolean
+        default: false
+      frontend:
+        description: 'Deploy Frontend'
+        type: boolean
+        default: false
+
+permissions:
+  id-token: write
+  contents: read
+
+# One deploy per branch at a time. Two concurrent applies against the same
+# Terraform state is the failure this prevents; the lock would catch it, but as
+# a mid-apply error rather than a queued run.
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-24.04-arm
+    outputs:
+      infra: ${{ steps.decide.outputs.infra }}
+      scopes: ${{ steps.decide.outputs.scopes }}
+      api: ${{ steps.decide.outputs.api }}
+      frontend: ${{ steps.decide.outputs.frontend }}
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          filters: |
+            infra:
+              - 'terraform/**'
+              - '.github/workflows/infra.yml'
+            scopes:
+              - 'api/internal/oauthresource/scope-manifest.json'
+              - '.github/workflows/deploy.yml'
+            api:
+              - 'api/**'
+              - '.github/workflows/api.yml'
+            frontend:
+              - 'ui/**'
+              - '.github/workflows/frontend.yml'
+
+      # On workflow_dispatch the checkboxes decide; on push, the path filter does.
+      - name: Decide
+        id: decide
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "infra=${{ inputs.infra }}"       >> "$GITHUB_OUTPUT"
+            echo "scopes=${{ inputs.scopes }}"     >> "$GITHUB_OUTPUT"
+            echo "api=${{ inputs.api }}"           >> "$GITHUB_OUTPUT"
+            echo "frontend=${{ inputs.frontend }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "infra=${{ steps.filter.outputs.infra }}"       >> "$GITHUB_OUTPUT"
+            echo "scopes=${{ steps.filter.outputs.scopes }}"     >> "$GITHUB_OUTPUT"
+            echo "api=${{ steps.filter.outputs.api }}"           >> "$GITHUB_OUTPUT"
+            echo "frontend=${{ steps.filter.outputs.frontend }}" >> "$GITHUB_OUTPUT"
+          fi
+
+  infra:
+    name: Terraform
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.infra == 'true' }}
+    uses: ./.github/workflows/infra.yml
+    permissions:
+      id-token: write
+      contents: read
+
+  scopes:
+    name: OAuth scopes
+    needs: [changes, infra]
+    if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && needs.changes.outputs.scopes == 'true' }}
+    uses: artur-oliveira/ctech-account/.github/workflows/publish-resource-scopes.yml@main
+    with:
+      resource_server_id: billing
+      manifest_path: api/internal/oauthresource/scope-manifest.json
+      aws_role_arn: arn:aws:iam::868899309401:role/ctech-billing-gha-scopes
+    permissions:
+      id-token: write
+      contents: read
+
+  api:
+    name: API
+    needs: [changes, infra, scopes]
+    if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && needs.changes.outputs.api == 'true' }}
+    uses: ./.github/workflows/api.yml
+    permissions:
+      id-token: write
+      contents: read
+
+  frontend:
+    name: Frontend
+    needs: [changes, infra, api]
+    if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && needs.changes.outputs.frontend == 'true' }}
+    uses: ./.github/workflows/frontend.yml
+    permissions:
+      id-token: write
+      contents: read

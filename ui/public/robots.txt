@@ -1,0 +1,19 @@
+# Only the landing page is public. Everything below it is one customer's
+# billing data, and the meta robots tag in src/app/layout.tsx says the same for
+# every route except "/" (src/app/page.tsx overrides it).
+#
+# Both, because they fail differently: a crawler that reads robots.txt never
+# requests the page, while one that only reads the meta tag has already fetched
+# somebody's invoice by the time it finds out.
+#
+# Link-preview scrapers (WhatsApp, Slack, iMessage) ignore both and still unfurl
+# a shared checkout link. That is the behaviour we want — see the Open Graph
+# block in src/app/layout.tsx.
+#
+# A static file and not app/robots.ts: the route handler needs
+# `export const dynamic = "force-static"` under `output: "export"`, which is
+# three lines of ceremony to emit four lines of text.
+
+User-agent: *
+Allow: /$
+Disallow: /

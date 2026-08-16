@@ -1,0 +1,42 @@
+version: 2
+
+# One entry per manifest, weekly, matching every other CTech repository
+# (ctech-wallet, ctech-dfe, ctech-account, ctech-poker, ctech-go-common).
+#
+# Every ecosystem here is already gated by ci.yml, which is what makes these
+# pull requests safe to look at quickly: a bump that breaks the build says so
+# before anybody reads it, and govulncheck in the static stage is what turns a
+# dependency advisory into a failing check rather than an email.
+updates:
+  - package-ecosystem: "gomod"
+    directory: "/api"
+    schedule:
+      interval: "weekly"
+
+  - package-ecosystem: "npm"
+    directory: "/ui"
+    schedule:
+      interval: "weekly"
+
+  # The actions this repository pins by major version. They still move, and a
+  # deploy pipeline running an action a year old is the one place where "it
+  # worked last time" stops being true without anybody changing a line.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+
+  # No sibling has this one, because no sibling uses Terraform — they are all on
+  # CDK, which Dependabot sees through the npm entry. Both roots pin
+  # `hashicorp/aws` to `~> 6.60` in their `backend.tf`, and nothing else would
+  # ever say the constraint had gone stale. infra.yml validates both roots on a
+  # pull request, so a bump arrives already checked.
+  - package-ecosystem: "terraform"
+    directory: "/terraform/billing"
+    schedule:
+      interval: "weekly"
+
+  - package-ecosystem: "terraform"
+    directory: "/terraform/github"
+    schedule:
+      interval: "weekly"

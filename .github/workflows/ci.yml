@@ -1,0 +1,170 @@
+name: CI
+
+# What gates a merge. Nothing here deploys and nothing here holds AWS
+# credentials — a pull request from a fork runs this, and the deploy roles'
+# trust policies exclude pull requests entirely (terraform/github/variables.tf).
+#
+# Terraform's own validation lives in infra.yml, which already runs on pull
+# requests for the same reason.
+on:
+  pull_request:
+  push:
+    branches: [ main, staging, dev ]
+
+# Matches deploy.yml and the ci.yml in ctech-account and ctech-go-common.
+# `cancel-in-progress: false` on purpose: a superseded CI run still tells you
+# whether the commit it was started for was good, and that is the commit
+# somebody may have already branched from.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+# The stages run in order — static → api → ui — the same `needs:` chain the
+# deploy pipelines use, and for the same reason: the cheapest check that can
+# fail should fail before anything expensive starts. gofmt disagreeing costs
+# seconds; discovering it after a DynamoDB container has come up and `npm ci`
+# has resolved four hundred packages costs minutes, three times over, on every
+# push of the branch.
+#
+# The cost is wall-clock on a green run, and it is the right trade at this size:
+# these three stages together are a few minutes, and a red build that reports in
+# thirty seconds is worth more than a green one that reports slightly sooner.
+jobs:
+  # No services, no npm, no build tags. Just the checks that need nothing but
+  # the source, which is what makes this the right first gate.
+  static:
+    name: Static analysis
+    runs-on: ubuntu-24.04-arm
+    defaults:
+      run:
+        working-directory: api
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: api/go.mod
+          cache-dependency-path: api/go.sum
+
+      - name: Check formatting
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "::error::These files are not gofmt-formatted:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Vet
+        run: go vet ./...
+
+      # Also under the integration tag. `go vet ./...` never compiles a
+      # build-tagged file, so without this line the integration suite — which is
+      # the only place the payment path is exercised end to end — is the least
+      # checked code in the repository.
+      - name: Vet (integration tag)
+        run: go vet -tags integration ./tests/...
+
+      # `@latest` rather than a pinned version, matching ctech-poker's api.yml.
+      # The trade is deliberate and worth naming: a new release can turn CI red
+      # on a day nobody changed code. That is a morning's annoyance; running a
+      # linter a year out of date is a class of bug nobody is looking for.
+      - name: Staticcheck
+        run: go run honnef.co/go/tools/cmd/staticcheck@latest ./...
+
+      - name: Staticcheck (integration tag)
+        run: go run honnef.co/go/tools/cmd/staticcheck@latest -tags integration ./...
+
+      # govulncheck reports only vulnerabilities this code can actually reach,
+      # not every advisory touching the dependency tree. That is what makes it
+      # safe to fail the build on: the finding is a call path, so there is
+      # always something concrete to do about it.
+      - name: Vulnerability scan
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
+  api:
+    name: API
+    needs: static
+    runs-on: ubuntu-24.04-arm
+    defaults:
+      run:
+        working-directory: api
+
+    services:
+      dynamodb-local:
+        image: amazon/dynamodb-local:latest
+        ports:
+          - 8124:8000
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: api/go.mod
+          cache-dependency-path: api/go.sum
+
+      # arm64 with CGO off, which is what the ASG actually runs. A build that
+      # only ever succeeds for the runner's own target is not a check that the
+      # artifact links.
+      - name: Build (arm64 — matches prod)
+        run: GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build ./cmd/...
+
+      - name: Unit tests
+        run: go test ./... -race -count=1
+
+      - name: Integration tests
+        env:
+          DYNAMODB_ENDPOINT: http://localhost:8124
+          AWS_ACCESS_KEY_ID: local
+          AWS_SECRET_ACCESS_KEY: local
+          AWS_REGION: us-east-1
+        run: go test -tags integration -race -count=1 ./tests/integration/
+
+  ui:
+    name: UI
+    needs: api
+    runs-on: ubuntu-24.04-arm
+    defaults:
+      run:
+        working-directory: ui
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
+      # `npm ci`, never `npm install`: it installs the lockfile exactly and
+      # fails when package.json and the lockfile disagree, which is the check —
+      # a CI that quietly resolves a different tree than a developer has is a CI
+      # that tests something nobody is running.
+      - name: Install
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Tests
+        run: npm test
+
+      # Also the type check: `next build` runs tsc. The environment variables are
+      # the deployed shape rather than real values — the build only needs them to
+      # exist, and a missing NEXT_PUBLIC_* is an `undefined` baked into the
+      # bundle rather than a build failure, which is exactly the class of bug
+      # this step is here to catch.
+      - name: Build
+        env:
+          NEXT_PUBLIC_API_URL: https://billing-api.aoctech.app
+          NEXT_PUBLIC_SITE_URL: https://billing.aoctech.app
+          NEXT_PUBLIC_CTECH_URL: https://accounts-api.aoctech.app
+          NEXT_PUBLIC_CTECH_CLIENT_URL: https://accounts.aoctech.app
+          NEXT_PUBLIC_CTECH_CLIENT_ID: billing
+        run: npm run build

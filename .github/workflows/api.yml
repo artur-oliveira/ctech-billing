@@ -1,0 +1,172 @@
+name: API
+
+# Called by deploy.yml, which owns the trigger, the path filter and the
+# Terraform → scopes → API → frontend ordering. Never triggered on push.
+#
+# The tests that gate a merge live in ci.yml and run on pull requests; this
+# workflow re-runs them before deploying because the thing being deployed is the
+# merge commit, which no pull request ever built.
+on:
+  workflow_call:
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+  ROLE_ARN: arn:aws:iam::868899309401:role/ctech-billing-gha-api
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-24.04-arm
+
+    services:
+      dynamodb-local:
+        image: amazon/dynamodb-local:latest
+        ports:
+          - 8124:8000
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: api/go.mod
+          cache-dependency-path: api/go.sum
+
+      - name: Unit tests
+        working-directory: api
+        run: go test ./... -race -count=1
+
+      - name: Integration tests
+        working-directory: api
+        env:
+          DYNAMODB_ENDPOINT: http://localhost:8124
+          AWS_ACCESS_KEY_ID: local
+          AWS_SECRET_ACCESS_KEY: local
+          AWS_REGION: us-east-1
+        run: go test -tags integration -race -count=1 ./tests/integration/
+
+  deploy:
+    name: Build & Deploy
+    runs-on: ubuntu-24.04-arm
+    needs: test
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: api/go.mod
+          cache-dependency-path: api/go.sum
+
+      - name: Resolve environment
+        id: env
+        env:
+          REF: ${{ github.ref_name }}
+        run: |
+          case "$REF" in
+            main)    echo "name=prod"  >> "$GITHUB_OUTPUT" ;;
+            staging) echo "name=stage" >> "$GITHUB_OUTPUT" ;;
+            *)       echo "name=dev"   >> "$GITHUB_OUTPUT" ;;
+          esac
+
+      # Three binaries, not one. The API serves HTTP; `sweep` generates the day's
+      # invoices and `reconcile` chases charges with no answer, and both run as
+      # systemd timers on the leader instance (terraform/assets/bootstrap.sh.tftpl).
+      # They ship in the same artifact because they are the same code at the same
+      # commit — a sweep built from a different revision than the API is a job
+      # writing rows the API cannot read.
+      - name: Build binaries
+        working-directory: api
+        env:
+          SHA: ${{ github.sha }}
+        run: |
+          # YYMMDDHHMM:<7-char commit>, consumed by the app as APP_VERSION.
+          VERSION="$(date -u '+%y%m%d%H%M'):${SHA:0:7}"
+          echo "ARTIFACT_VERSION=$(date -u '+%y%m%d%H%M')-${SHA:0:7}" >> "$GITHUB_ENV"
+
+          for cmd in server sweep reconcile deliver dunning; do
+            out="$cmd"
+            [ "$cmd" = "server" ] && out="app"
+            CGO_ENABLED=0 GOOS=linux GOARCH=arm64 \
+              go build -ldflags="-s -w" -o "dist/$out" "./cmd/$cmd"
+          done
+
+          # start.sh and job.sh source this, so the running process reports the
+          # version the health endpoint returns.
+          echo "APP_VERSION=${VERSION}" > dist/release.env
+
+      - name: Package
+        working-directory: api
+        run: |
+          ARCHIVE="api-${ARTIFACT_VERSION}.zip"
+          zip -j "$ARCHIVE" dist/app dist/sweep dist/reconcile dist/deliver dist/dunning dist/release.env
+          echo "ARCHIVE_FILE=$ARCHIVE" >> "$GITHUB_ENV"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ env.ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Read deployment targets
+        env:
+          ENVIRONMENT: ${{ steps.env.outputs.name }}
+        run: |
+          BUCKET=$(aws ssm get-parameter --name "/ctech/$ENVIRONMENT/s3/deployments-bucket" \
+            --query Parameter.Value --output text)
+          echo "DEPLOYMENTS_BUCKET=$BUCKET" >> "$GITHUB_ENV"
+          echo "ASG_NAME=${ENVIRONMENT}-ctech-billing" >> "$GITHUB_ENV"
+
+      # current.zip is overwritten last. A new instance bootstrapping between the
+      # two copies gets the previous release rather than a half-written object.
+      - name: Upload
+        working-directory: api
+        run: |
+          aws s3 cp "$ARCHIVE_FILE" "s3://${DEPLOYMENTS_BUCKET}/ctech-billing/api/${ARCHIVE_FILE}"
+          aws s3 cp "$ARCHIVE_FILE" "s3://${DEPLOYMENTS_BUCKET}/ctech-billing/api/current.zip"
+
+      # /opt/app/deploy.sh is written by the instance's userdata. It unpacks into
+      # a timestamped release directory, flips the `current` symlink, restarts the
+      # unit and then polls the health endpoint through nginx — so a build that
+      # starts and immediately dies fails this step instead of being reported as
+      # deployed.
+      - name: Rolling deploy
+        run: |
+          INSTANCE_IDS=$(aws autoscaling describe-auto-scaling-groups \
+            --auto-scaling-group-names "$ASG_NAME" \
+            --query 'AutoScalingGroups[0].Instances[?LifecycleState==`InService`].InstanceId' \
+            --output text | tr '\t' ',')
+
+          if [ -z "$INSTANCE_IDS" ] || [ "$INSTANCE_IDS" = "None" ]; then
+            echo "No in-service instances in $ASG_NAME — new instances will bootstrap from current.zip"
+            exit 0
+          fi
+
+          COMMAND_ID=$(aws ssm send-command \
+            --document-name "AWS-RunShellScript" \
+            --targets "Key=instanceids,Values=$INSTANCE_IDS" \
+            --parameters "commands=['/opt/app/deploy.sh ctech-billing/api/current.zip']" \
+            --timeout-seconds 300 \
+            --query "Command.CommandId" --output text)
+
+          FAILED=0
+          for INSTANCE_ID in $(echo "$INSTANCE_IDS" | tr ',' ' '); do
+            aws ssm wait command-executed --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" || true
+            STATUS=$(aws ssm get-command-invocation \
+              --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" \
+              --query "Status" --output text)
+            if [ "$STATUS" != "Success" ]; then
+              echo "::error::Deploy failed on $INSTANCE_ID ($STATUS)"
+              aws ssm get-command-invocation \
+                --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" \
+                --query "StandardErrorContent" --output text
+              FAILED=1
+            else
+              echo "✓ $INSTANCE_ID"
+            fi
+          done
+          exit $FAILED

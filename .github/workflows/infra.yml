@@ -1,0 +1,143 @@
+name: Infrastructure
+
+# Called by deploy.yml, which owns the trigger, the path filter and the
+# Terraform → scopes → API → frontend ordering. The plan job runs on its own for
+# pull requests and applies nothing.
+on:
+  workflow_call:
+  pull_request:
+    branches: [main, staging, dev]
+    paths:
+      - 'terraform/**'
+      - '.github/workflows/infra.yml'
+
+# Read the source, and nothing else. Each job adds what it needs on top.
+#
+# `pull-requests: write` used to be here and was never used by any step —
+# nothing in this workflow comments on a PR, and the apply job's output goes to
+# $GITHUB_STEP_SUMMARY, which needs no permission at all. It also broke the
+# `workflow_call` path outright: a called workflow's permissions are capped by
+# the calling job's, deploy.yml grants only id-token and contents, and GitHub
+# rejects the whole workflow rather than quietly narrowing it —
+# "is requesting 'pull-requests: write', but is only allowed 'pull-requests:
+# none'". An unused permission is not free; this one cost the entire deploy.
+permissions:
+  contents: read
+
+env:
+  TF_VERSION: 1.15.8
+  AWS_REGION: us-east-1
+  # One role for both roots. It is the only one here with rights beyond a
+  # bucket, which is why it is also the only one whose trust policy excludes
+  # pull requests — see terraform/github/variables.tf.
+  ROLE_ARN: arn:aws:iam::868899309401:role/ctech-billing-gha-infra
+
+jobs:
+  # Validation with no credentials at all. `-backend=false` is the point: a CI
+  # job that can read production state is a CI job that can corrupt it, and
+  # nothing about checking whether the HCL parses needs to know what is deployed.
+  validate:
+    name: Validate
+    runs-on: ubuntu-24.04-arm
+    if: github.event_name == 'pull_request'
+    # No id-token: this job assumes no role and reaches no AWS API. Withholding
+    # it is what makes "credential-free" a property of the job rather than a
+    # claim in a comment.
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Format
+        run: terraform fmt -recursive -check -diff terraform/
+
+      - name: Validate roots
+        run: |
+          for root in terraform/billing terraform/github; do
+            echo "── $root"
+            terraform -chdir="$root" init -backend=false -input=false
+            terraform -chdir="$root" validate
+          done
+
+  apply:
+    name: Apply
+    runs-on: ubuntu-24.04-arm
+    if: github.event_name != 'pull_request'
+    # The only job here that assumes a role, so the only one that needs an OIDC
+    # token. Must stay within what deploy.yml's calling job grants — a called
+    # workflow cannot ask for more than its caller allows.
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Resolve environment
+        id: env
+        env:
+          REF: ${{ github.ref_name }}
+        run: |
+          case "$REF" in
+            main)    echo "name=prod"  >> "$GITHUB_OUTPUT" ;;
+            staging) echo "name=stage" >> "$GITHUB_OUTPUT" ;;
+            *)       echo "name=dev"   >> "$GITHUB_OUTPUT" ;;
+          esac
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ env.ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # Nothing between the role and Terraform. configure-aws-credentials exports
+      # AWS_ACCESS_KEY_ID / SECRET / SESSION_TOKEN, and neither root names a
+      # profile any more, so the standard credential chain finds them.
+      #
+      # There used to be a step here writing a `[profile ctech]` into
+      # ~/.aws/config, because both roots hardcoded `profile = "ctech"` and a
+      # backend block cannot take a variable. It wrote
+      # `credential_source = Environment` with no `role_arn`, which is not a
+      # valid profile — that setting means "use these credentials to assume
+      # role_arn" — and `terraform init` refused it. The fix was to stop naming
+      # the profile in source rather than to write a better shim.
+
+      # The OIDC roles the *other* jobs assume live in this root, and it has one
+      # workspace rather than three: the roles are global and the branch decides
+      # the environment inside each workflow. Applied first so a role added here
+      # exists before the job that needs it runs.
+      - name: Apply — GitHub OIDC roles
+        working-directory: terraform/github
+        run: |
+          terraform init -input=false
+          terraform apply -auto-approve -input=false
+
+      - name: Apply — billing
+        working-directory: terraform/billing
+        env:
+          ENVIRONMENT: ${{ steps.env.outputs.name }}
+        run: |
+          terraform init -input=false
+          terraform workspace select -or-create "$ENVIRONMENT"
+          terraform apply -auto-approve -input=false \
+            -var-file="environments/${ENVIRONMENT}.tfvars" \
+            -var="environment=${ENVIRONMENT}"
+
+      - name: Summarise
+        working-directory: terraform/billing
+        run: |
+          {
+            echo "### Terraform (${{ steps.env.outputs.name }})"
+            echo '```'
+            terraform output -json | jq -r 'to_entries[] | "\(.key) = \(.value.value)"'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

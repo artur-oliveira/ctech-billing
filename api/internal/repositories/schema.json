@@ -1,0 +1,181 @@
+{
+  "organizations": {
+    "hash_key": "pk",
+    "range_key": "sk",
+    "attributes": {
+      "pk": "S",
+      "sk": "S",
+      "lookup_pk": "S"
+    },
+    "indexes": [
+      {
+        "name": "lookup-index",
+        "hash_key": "lookup_pk",
+        "range_key": "sk"
+      }
+    ]
+  },
+  "credentials": {
+    "hash_key": "pk",
+    "range_key": "sk",
+    "attributes": {
+      "pk": "S",
+      "sk": "S",
+      "lookup_pk": "S"
+    },
+    "indexes": [
+      {
+        "name": "lookup-index",
+        "hash_key": "lookup_pk",
+        "range_key": "sk"
+      }
+    ]
+  },
+  "customers": {
+    "hash_key": "pk",
+    "range_key": "sk",
+    "attributes": {
+      "pk": "S",
+      "sk": "S",
+      "period_pk": "S",
+      "period_sk": "S",
+      "lookup_pk": "S"
+    },
+    "indexes": [
+      {
+        "name": "period-index",
+        "hash_key": "period_pk",
+        "range_key": "period_sk"
+      },
+      {
+        "name": "lookup-index",
+        "hash_key": "lookup_pk",
+        "range_key": "sk"
+      }
+    ]
+  },
+  "products": {
+    "hash_key": "pk",
+    "range_key": "sk",
+    "attributes": {
+      "pk": "S",
+      "sk": "S"
+    },
+    "indexes": []
+  },
+  "prices": {
+    "hash_key": "pk",
+    "range_key": "sk",
+    "attributes": {
+      "pk": "S",
+      "sk": "S"
+    },
+    "indexes": []
+  },
+  "subscriptions": {
+    "hash_key": "pk",
+    "range_key": "sk",
+    "attributes": {
+      "pk": "S",
+      "sk": "S",
+      "period_pk": "S",
+      "period_sk": "S",
+      "schedule_pk": "S",
+      "schedule_sk": "S"
+    },
+    "indexes": [
+      {
+        "name": "period-index",
+        "hash_key": "period_pk",
+        "range_key": "period_sk"
+      },
+      {
+        "name": "schedule-index",
+        "hash_key": "schedule_pk",
+        "range_key": "schedule_sk"
+      }
+    ]
+  },
+  "invoices": {
+    "hash_key": "pk",
+    "range_key": "sk",
+    "attributes": {
+      "pk": "S",
+      "sk": "S",
+      "period_pk": "S",
+      "period_sk": "S",
+      "schedule_pk": "S",
+      "schedule_sk": "S",
+      "lookup_pk": "S"
+    },
+    "indexes": [
+      {
+        "name": "period-index",
+        "hash_key": "period_pk",
+        "range_key": "period_sk"
+      },
+      {
+        "name": "schedule-index",
+        "hash_key": "schedule_pk",
+        "range_key": "schedule_sk"
+      },
+      {
+        "name": "lookup-index",
+        "hash_key": "lookup_pk",
+        "range_key": "sk"
+      }
+    ]
+  },
+  "usage": {
+    "hash_key": "pk",
+    "range_key": "sk",
+    "attributes": {
+      "pk": "S",
+      "sk": "S"
+    },
+    "indexes": []
+  },
+  "webhooks": {
+    "hash_key": "pk",
+    "range_key": "sk",
+    "attributes": {
+      "pk": "S",
+      "sk": "S",
+      "schedule_pk": "S",
+      "schedule_sk": "S"
+    },
+    "indexes": [
+      {
+        "name": "schedule-index",
+        "hash_key": "schedule_pk",
+        "range_key": "schedule_sk"
+      }
+    ]
+  },
+  "audit": {
+    "hash_key": "pk",
+    "range_key": "sk",
+    "attributes": {
+      "pk": "S",
+      "sk": "S",
+      "period_pk": "S",
+      "period_sk": "S"
+    },
+    "indexes": [
+      {
+        "name": "period-index",
+        "hash_key": "period_pk",
+        "range_key": "period_sk"
+      }
+    ]
+  },
+  "idempotency": {
+    "hash_key": "pk",
+    "range_key": "sk",
+    "attributes": {
+      "pk": "S",
+      "sk": "S"
+    },
+    "indexes": []
+  }
+}
