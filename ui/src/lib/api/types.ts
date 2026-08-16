@@ -86,6 +86,10 @@ export interface Session {
   customer_id: string
   name: string
   email?: string
+  /** Whether this person agreed to the billing terms addendum **in force**.
+   *  The server compares versions and publishes only the answer, so a stale
+   *  acceptance reads as `false` here and re-gates on the next visit. */
+  terms_accepted: boolean
 }
 
 export interface ListResponse<T> {

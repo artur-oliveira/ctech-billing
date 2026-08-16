@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 )
 
@@ -62,13 +63,28 @@ func (p *PayLink) Sign(organizationID string, livemode bool, invoiceID string) s
 	return enc + "." + base64.RawURLEncoding.EncodeToString(p.mac(enc))
 }
 
+// TokenParam is the query parameter the hosted checkout page reads the token
+// from. It is a constant because two places have to agree on it and they are in
+// different languages: this file, and `ui/src/app/checkout/page.tsx`.
+const TokenParam = "token"
+
 // URL renders the full link, or "" when no base URL is configured.
+//
+// **The token goes in the query string, not in the path.** It used to be
+// `{base}/{token}`, and every link that shape produced was a 404: the portal
+// ships as a static export (ADR 0013), so the only object at `/checkout` is one
+// page — there is no `/checkout/[token]` route for the CloudFront route manifest
+// to resolve, and the page reads `?token=` regardless. The bug was invisible in
+// tests because Sign and Parse round-trip perfectly on their own; nothing
+// checked that the URL built around the token addressed a page that exists.
 func (p *PayLink) URL(organizationID string, livemode bool, invoiceID string) string {
 	token := p.Sign(organizationID, livemode, invoiceID)
 	if token == "" || p.baseURL == "" {
 		return ""
 	}
-	return p.baseURL + "/" + token
+	// Escaped even though the alphabet is already URL-safe (base64url plus a
+	// dot). Relying on that is relying on Sign never changing its encoding.
+	return p.baseURL + "?" + TokenParam + "=" + url.QueryEscape(token)
 }
 
 // Parse verifies a token and returns what it addresses.

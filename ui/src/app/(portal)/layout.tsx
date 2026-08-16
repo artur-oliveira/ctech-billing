@@ -7,6 +7,7 @@ import Link from "next/link"
 import {usePathname, useRouter} from "next/navigation"
 import {useEffect} from "react"
 
+import {TermsGate} from "@/components/portal/TermsGate"
 import {getSession, portalKeys} from "@/lib/api/portal"
 import {useAuth} from "@/lib/auth/AuthContext"
 
@@ -116,7 +117,17 @@ export default function PortalLayout({children}: LayoutProps<"/">) {
       </header>
 
       <main className="mx-auto max-w-2xl px-4 py-8 pb-20">
-        {loading || !authenticated ? <GateSkeleton/> : children}
+        {/* Three states, in this order. The terms gate comes last because it
+            needs the session to have answered — before that, `terms_accepted`
+            is merely unknown, and rendering the gate on `undefined` would ask
+            somebody who already agreed to agree again on every refresh. */}
+        {loading || !authenticated ? (
+          <GateSkeleton/>
+        ) : session && !session.terms_accepted ? (
+          <TermsGate/>
+        ) : (
+          children
+        )}
       </main>
     </div>
   )

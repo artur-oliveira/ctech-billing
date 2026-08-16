@@ -2,6 +2,12 @@
 
 Recurring subscription and metered billing service for the CTech ecosystem.
 
+**Documentação jurídica vigente:** os Termos do CTech Billing publicados pela
+Central Jurídica estão na versão **1.1**, em
+`https://accounts.aoctech.app/products/billing`. Billing ainda não possui um
+registro próprio de aceite/versionamento no serviço; até que esse fluxo exista,
+a versão é uma referência documental e não um gate de acesso.
+
 `ctech-billing` owns the **subscription and invoice domain**: plans, subscriptions, billing
 cycles, pro-rata, invoice generation, and dunning. It does not move money itself — every
 charge is collected by delegating to [`ctech-wallet`](../ctech-wallet), which owns the
@@ -194,6 +200,11 @@ bill, and a bill is not the moment to ask somebody to create an account.
 | `POST /v1.0/internal/webhooks/wallet` | wallet's `X-Wallet-Signature` HMAC |
 | `GET /.well-known/oauth-protected-resource` | nothing — it is metadata about what this API accepts (RFC 9728, [ADR 0014](docs/adr/0014-billing-publishes-its-own-scopes.md)) |
 
+The token travels in the **query string** — `{CHECKOUT_BASE_URL}?token=…`. The page is one object
+in a static export ([ADR 0013](docs/adr/0013-static-portal-same-origin-api.md)), so there is no
+route below `/checkout` for the CloudFront manifest to resolve; a link shaped `/checkout/{token}`
+is a 404, which is what every dunning email pointed at until 2026-08-16.
+
 The link token is derived, never stored: `{organization}\|{mode}\|{invoice}` plus
 an HMAC over it, so there is no token row, no lookup index and no expiry job, and
 rotating `CHECKOUT_LINK_SECRET` invalidates every outstanding link at once. It
@@ -223,6 +234,26 @@ a test call to. `Collector.Pay` refuses a test-mode invoice outright, and no
 `payable` flag or `checkout_url` is published for one. Everything before
 collection works in test mode; rehearsing a payment would rehearse it with real
 money ([ADR 0004](docs/adr/0004-pix-on-invoice-via-wallet.md), second amendment).
+
+### Terms and privacy
+
+The billing terms addendum lives in **ctech-account's legal centre**
+(`accounts.aoctech.app/products/billing`), not here. One company, one place a person reads what
+they agreed to; a service hosting its own copy is a service whose copy is eventually the stale one.
+`ui/src/lib/legal.ts` is the same module `ctech-dfe` and `ctech-wallet` carry.
+
+`billing.CurrentTermsVersion` is what the portal gates on and `Customer.TermsVersion` is what it
+compares against — a **version, never a boolean**, because a boolean cannot be re-asked: the day
+the terms change, every stored `true` would claim consent to a document nobody read. Bumping the
+constant re-gates everybody on their next visit, which is the intended cost of changing the terms.
+
+`GET /v1.0/portal/session` publishes `terms_accepted` — the comparison, not the version — and
+`POST /v1.0/portal/terms/accept` records agreement with an audit row. It takes no body: the version
+is the server's, and a client that could name one could accept a document it chose.
+
+**The gate stops at the portal.** The public checkout carries the same links in its footer and no
+wall: the person there has no session to record an answer against, and a consent screen in front of
+a payment refuses money over a document nobody needs to have read in order to owe the bill.
 
 ### Telling other services what happened
 

@@ -253,6 +253,55 @@ func (r *CustomerRepository) Anonymize(ctx context.Context, c *billing.Customer,
 	return nil
 }
 
+// AcceptTerms stamps the terms version in force as agreed to, now.
+//
+// Audited, and that is the point of the method rather than a detail of it:
+// consent whose time and actor were never written down is consent nobody can
+// evidence later, which is the only situation where it matters.
+//
+// Idempotent by construction — the same version written twice is the same row.
+// A second audit entry is not, so a repeat is refused early rather than
+// producing a trail that suggests somebody accepted twice.
+func (r *CustomerRepository) AcceptTerms(ctx context.Context, c *billing.Customer, actor, requestID string, now time.Time) error {
+	if c.AcceptedCurrentTerms() {
+		return nil
+	}
+	updates := map[string]any{
+		"terms_version": billing.CurrentTermsVersion,
+		"updated_at":    now.UTC().Format(time.RFC3339Nano),
+	}
+	if _, err := r.base.UpdateItem(ctx, TenantPK(c.OrganizationID, c.Livemode), new(CustomerSK(c.ID)), updates); err != nil {
+		return err
+	}
+	if err := r.appendTermsAudit(ctx, c, actor, requestID, now); err != nil {
+		return err
+	}
+	c.TermsVersion = billing.CurrentTermsVersion
+	return nil
+}
+
+// appendTermsAudit records who agreed to what, and when.
+func (r *CustomerRepository) appendTermsAudit(ctx context.Context, c *billing.Customer, actor, requestID string, now time.Time) error {
+	before := c.TermsVersion
+	if before == "" {
+		before = "none"
+	}
+	item, err := buildAuditItem(c.OrganizationID, c.Livemode, AuditEntry{
+		Entity:    EntityCustomer,
+		EntityID:  c.ID,
+		Action:    "customer.terms_accepted",
+		Cause:     billing.CauseCustomer,
+		Actor:     actor,
+		RequestID: requestID,
+		Before:    before,
+		After:     billing.CurrentTermsVersion,
+	}, before, billing.CurrentTermsVersion, now)
+	if err != nil {
+		return err
+	}
+	return r.audit.TransactWrite(ctx, txItems(r.audit.BuildPutTxItemIfAbsent(item)))
+}
+
 // appendAudit records the erasure. It is a separate write rather than part of a
 // transaction because the update above is a multi-attribute REMOVE that the
 // shared transaction builder does not express — and losing the audit row here

@@ -11,7 +11,15 @@ export const MOCK_CUSTOMER = {
   customer_id: "cus_mock_ana",
   name: "Ana Ribeiro",
   email: "ana@exemplo.com.br",
+  // Already accepted, so the fixtures below render the screens they exist to
+  // render. The gate itself has its own scenario — see `termos_pendentes`.
+  terms_accepted: true,
 }
+
+/** The same person before they have agreed to the terms addendum. It is a
+ *  separate constant rather than a flag because the gate replaces the whole
+ *  portal, so it is a state every fixture would otherwise have to opt out of. */
+export const MOCK_CUSTOMER_PENDING_TERMS = {...MOCK_CUSTOMER, terms_accepted: false}
 
 /**
  * The states the portal has to render correctly, as named fixtures.
@@ -32,6 +40,7 @@ export type MockScenario =
   | "pix_expirado"
   | "paga"
   | "pendente_de_acordo"
+  | "termos_pendentes"
   | "erro_de_rede"
   | "manutencao"
 
@@ -45,6 +54,7 @@ export const MOCK_SCENARIOS: { id: MockScenario; label: string }[] = [
   {id: "paga", label: "Fatura paga"},
   {id: "pendente_de_acordo", label: "Pendente de acordo"},
   {id: "sem_assinatura", label: "Cliente sem assinatura"},
+  {id: "termos_pendentes", label: "Termos pendentes"},
   {id: "erro_de_rede", label: "Erro de rede"},
   {id: "manutencao", label: "Manutenção (503)"},
 ]

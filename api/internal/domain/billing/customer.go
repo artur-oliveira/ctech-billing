@@ -54,7 +54,39 @@ type Customer struct {
 	// and cannot vanish because someone asked to be forgotten.
 	Anonymized bool `dynamodbav:"anonymized" json:"anonymized"`
 
+	// TermsVersion is the billing terms addendum this person accepted, as a
+	// version string rather than a boolean. A boolean cannot be re-asked: the day
+	// the terms change, every stored `true` would claim consent to a document
+	// nobody read. Storing the version means bumping CurrentTermsVersion re-gates
+	// everybody, which is the only way a new version means anything.
+	//
+	// Never published on the wire. `terms_accepted` is, and it is the comparison
+	// rather than the value — which version somebody is on is billing's business.
+	TermsVersion string `dynamodbav:"terms_version,omitempty" json:"-"`
+
 	Metadata Metadata `dynamodbav:"metadata,omitempty" json:"metadata,omitempty"`
+}
+
+// CurrentTermsVersion is the billing-specific ToS/Privacy addendum in force.
+//
+// The document lives in ctech-account's legal centre
+// (accounts.aoctech.app/products/billing), not here: one company, one place a
+// person reads what they agreed to, and a service that hosts its own copy is a
+// service whose copy eventually disagrees. This constant is only the version
+// billing gates on.
+//
+// **Bump it and every customer is asked again on their next portal visit.** That
+// is the intended cost of changing the terms, and it is why it is a constant a
+// reviewer sees rather than a row an operator edits.
+//
+// Same shape as ctech-dfe's `CurrentTermsAddendumVersion`.
+const CurrentTermsVersion = "1.0"
+
+// AcceptedCurrentTerms reports whether this person has agreed to the terms in
+// force. Exact match, never a comparison: "accepted something older" is exactly
+// the case the gate exists to catch, and a >= would silently pass it.
+func (c *Customer) AcceptedCurrentTerms() bool {
+	return c.TermsVersion == CurrentTermsVersion
 }
 
 // MaskedTaxID renders the tax id with only its last digits visible, which is what

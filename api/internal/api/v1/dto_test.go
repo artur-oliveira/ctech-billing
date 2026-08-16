@@ -1,7 +1,7 @@
 package v1
 
 import (
-	"strings"
+	"net/url"
 	"testing"
 	"time"
 
@@ -73,12 +73,18 @@ func TestThePublishedCheckoutURLParsesBackToItsInvoice(t *testing.T) {
 		t.Fatal("no checkout_url on a payable invoice")
 	}
 
-	prefix := testLinkBaseURL + "/"
-	if !strings.HasPrefix(out.CheckoutURL, prefix) {
-		t.Fatalf("checkout_url = %q, want it under %q", out.CheckoutURL, prefix)
+	// The token is a query parameter, not a path segment: the checkout is one
+	// page in a static export, so anything below /checkout is a 404
+	// (services.PayLink.URL).
+	parsed, err := url.Parse(out.CheckoutURL)
+	if err != nil {
+		t.Fatalf("checkout_url is not a URL: %v", err)
+	}
+	if got := parsed.Scheme + "://" + parsed.Host + parsed.Path; got != testLinkBaseURL {
+		t.Fatalf("checkout_url addresses %q, want exactly %q", got, testLinkBaseURL)
 	}
 
-	org, livemode, invoiceID, err := links.Parse(strings.TrimPrefix(out.CheckoutURL, prefix))
+	org, livemode, invoiceID, err := links.Parse(parsed.Query().Get(services.TokenParam))
 	if err != nil {
 		t.Fatalf("the URL we published does not verify: %v", err)
 	}

@@ -335,3 +335,93 @@ func TestOneAccountCannotBeTwoCustomers(t *testing.T) {
 		t.Errorf("the error must name the subject that was taken: %v", err)
 	}
 }
+
+// The terms gate, server side.
+//
+// The gate is a screen, not a security control — the routes behind it stay
+// scoped and reachable, because refusing to show somebody a bill until they
+// re-read a document is withholding a bill they still owe. What the server owes
+// is an honest answer about whether they have agreed, and a record of when.
+func TestPortalReportsAndRecordsTermsAcceptance(t *testing.T) {
+	e := newPortal(t)
+	e.withPortal(t)
+	token := e.portalToken(t, middleware.ScopeMySubscriptionsRead)
+
+	var before struct {
+		TermsAccepted bool `json:"terms_accepted"`
+	}
+	e.console(t, "/v1.0/portal/session", token, "").decode(t, &before)
+	if before.TermsAccepted {
+		t.Fatal("a new customer must not read as having accepted anything")
+	}
+
+	var after struct {
+		TermsAccepted bool `json:"terms_accepted"`
+	}
+	res := e.do(t, http.MethodPost, "/v1.0/portal/terms/accept", token, "", "")
+	if res.status != http.StatusOK {
+		t.Fatalf("accept: %d %s", res.status, res.body)
+	}
+	res.decode(t, &after)
+	if !after.TermsAccepted {
+		t.Fatal("accepting did not change the answer")
+	}
+
+	// Persisted, not merely echoed. The response could be right and the row
+	// wrong, and the row is what the next visit reads.
+	var reread struct {
+		TermsAccepted bool `json:"terms_accepted"`
+	}
+	e.console(t, "/v1.0/portal/session", token, "").decode(t, &reread)
+	if !reread.TermsAccepted {
+		t.Error("the acceptance did not survive the request that recorded it")
+	}
+
+	// Consent nobody can evidence later is the only kind that matters.
+	trail, err := repositories.NewAuditRepository(testDB, testCfg).
+		ListForEntity(ctxT(t), e.org.ID, true, e.customer.ID, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var found bool
+	for _, entry := range trail {
+		if entry.Action == "customer.terms_accepted" {
+			found = true
+			if entry.After != billing.CurrentTermsVersion {
+				t.Errorf("audit records version %q, want %q", entry.After, billing.CurrentTermsVersion)
+			}
+		}
+	}
+	if !found {
+		t.Errorf("no audit entry for the acceptance: %+v", trail)
+	}
+}
+
+// Accepting twice is a double-click, not two agreements. A second audit row
+// would suggest somebody was asked twice and answered twice.
+func TestAcceptingTermsTwiceRecordsOneAgreement(t *testing.T) {
+	e := newPortal(t)
+	e.withPortal(t)
+	token := e.portalToken(t, middleware.ScopeMySubscriptionsRead)
+
+	for range 2 {
+		if res := e.do(t, http.MethodPost, "/v1.0/portal/terms/accept", token, "", ""); res.status != http.StatusOK {
+			t.Fatalf("accept: %d %s", res.status, res.body)
+		}
+	}
+
+	trail, err := repositories.NewAuditRepository(testDB, testCfg).
+		ListForEntity(ctxT(t), e.org.ID, true, e.customer.ID, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := 0
+	for _, entry := range trail {
+		if entry.Action == "customer.terms_accepted" {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Errorf("%d acceptance entries, want 1", n)
+	}
+}

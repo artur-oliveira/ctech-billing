@@ -16,6 +16,7 @@ import {checkoutKeys, getCheckout, payCheckout} from "@/lib/api/checkout"
 import {messageFor, statusOf} from "@/lib/api/client"
 import type {PixPayment} from "@/lib/api/types"
 import {longDate, money} from "@/lib/format"
+import {BILLING_TERMS_URL, PRIVACY_POLICY_URL} from "@/lib/legal"
 
 /**
  * X1 — the payment link. The only screen here a stranger can pay from.
@@ -199,6 +200,34 @@ function Shell({merchant, children}: { merchant: string; children: React.ReactNo
           </p>
         )}
         {children}
+
+        {/* Links, never a gate. The person here has no session to record an
+            answer against, and a consent wall in front of a payment refuses
+            money over a document nobody needs to have read in order to owe the
+            bill. Saying whose terms and whose privacy policy apply is a
+            different obligation, and this is where it is met. */}
+        <footer className="border-t border-border pt-6 text-xs text-muted-foreground">
+          <p className="text-pretty">
+            Pagamento processado pela CTech.{" "}
+            <a
+              href={BILLING_TERMS_URL}
+              target="_blank"
+              rel="noreferrer"
+              className="underline underline-offset-4 hover:text-foreground"
+            >
+              Termos
+            </a>{" "}
+            ·{" "}
+            <a
+              href={PRIVACY_POLICY_URL}
+              target="_blank"
+              rel="noreferrer"
+              className="underline underline-offset-4 hover:text-foreground"
+            >
+              Privacidade
+            </a>
+          </p>
+        </footer>
       </main>
     </div>
   )

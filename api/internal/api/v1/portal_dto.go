@@ -20,6 +20,16 @@ type portalSessionResponse struct {
 	CustomerID string `json:"customer_id"`
 	Name       string `json:"name"`
 	Email      string `json:"email,omitempty"`
+	// TermsAccepted is the server's answer to whether this person has agreed to
+	// the billing terms addendum **in force**, not to any version of it. The
+	// comparison is made here and only the result is published: which version
+	// somebody is on is billing's business, and a client that could see it would
+	// eventually decide for itself whether it was recent enough.
+	//
+	// The gate it drives is a screen, not a security control — the routes behind
+	// it are already scoped, and refusing to serve an invoice to somebody who has
+	// not re-read a document would be withholding a bill they still owe.
+	TermsAccepted bool `json:"terms_accepted"`
 }
 
 // portalInvoiceResponse describes one invoice in the words a person uses.

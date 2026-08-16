@@ -1,7 +1,12 @@
 import type {AxiosAdapter, AxiosRequestConfig, AxiosResponse} from "axios"
 
 import type {Invoice} from "@/lib/api/types"
-import {DEFAULT_SCENARIO, MOCK_CUSTOMER, type MockScenario} from "@/lib/mockConfig"
+import {
+  DEFAULT_SCENARIO,
+  MOCK_CUSTOMER,
+  MOCK_CUSTOMER_PENDING_TERMS,
+  type MockScenario,
+} from "@/lib/mockConfig"
 import {FIXTURES, MOCK_PIX_CODE} from "./mockData"
 
 const STORAGE_KEY = "ctech-billing-mock-scenario"
@@ -27,6 +32,10 @@ export function setScenario(scenario: MockScenario) {
 
 /** Invoices the mock has mutated this session (a payment settling, say),
  *  keyed by id. Cleared whenever the scenario changes. */
+/** Set once the mocked accept succeeds, so the gate does not come back on
+ *  every navigation within the tab. */
+let termsAccepted = false
+
 const overrides = new Map<string, Invoice>()
 let overridesFor: MockScenario | null = null
 
@@ -149,7 +158,17 @@ export const mockAdapter: AxiosAdapter = async config => {
   // is what makes it fail.
   if (url.endsWith("/v1.0/health")) return ok(config, {status: "pass"})
 
-  if (url.endsWith("/v1.0/portal/session")) return ok(config, MOCK_CUSTOMER)
+  if (url.endsWith("/v1.0/portal/session")) {
+    return ok(config, scenario === "termos_pendentes" && !termsAccepted ? MOCK_CUSTOMER_PENDING_TERMS : MOCK_CUSTOMER)
+  }
+
+  // Accepting flips the session for the rest of the tab, so the gate dismisses
+  // and the portal behind it renders — which is the half of this flow that a
+  // static fixture cannot show.
+  if (url.endsWith("/v1.0/portal/terms/accept") && method === "post") {
+    termsAccepted = true
+    return ok(config, MOCK_CUSTOMER)
+  }
 
   if (url.endsWith("/v1.0/portal/subscriptions")) {
     return ok(config, {data: fixture().subscriptions, has_more: false})

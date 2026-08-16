@@ -252,7 +252,18 @@ func registerPortal(v1 fiber.Router, d Deps, h *handlers, auth fiber.Handler) {
 	portal := v1.Group("/portal", auth, identity)
 
 	portal.Get("/session",
-		middleware.RequireUserScope(middleware.ScopeMySubscriptionsRead), ph.session)
+		middleware.RequireUserScope(middleware.ScopeMySubscriptionsRead), ph.session,
+	)
+
+	// Accepting the terms is behind the *read* scope, which is the one exception
+	// on this surface and is deliberate. Every other write here moves money or a
+	// subscription; this one records that a person read a document, and it has to
+	// be reachable by exactly the token that rendered the screen asking them to.
+	// Requiring a write scope would gate the consent screen behind a permission a
+	// read-only session does not hold, and leave that session stuck on a modal it
+	// cannot dismiss.
+	portal.Post("/terms/accept",
+		middleware.RequireUserScope(middleware.ScopeMySubscriptionsRead), ph.acceptTerms)
 
 	portal.Get("/subscriptions",
 		middleware.RequireUserScope(middleware.ScopeMySubscriptionsRead), ph.listSubscriptions)

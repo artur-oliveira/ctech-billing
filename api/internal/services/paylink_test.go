@@ -2,6 +2,7 @@ package services
 
 import (
 	"errors"
+	"net/url"
 	"strings"
 	"testing"
 )
@@ -20,7 +21,10 @@ func TestPayLinkRoundTrips(t *testing.T) {
 	if org != "org_1" || !livemode || invoice != "in_42" {
 		t.Fatalf("got %q %v %q", org, livemode, invoice)
 	}
-	if want := "https://pay.test/c/" + token; l.URL("org_1", true, "in_42") != want {
+	// Query string, not a path segment: the page is a static export and there is
+	// no route below /checkout. TestURLPutsTheTokenWhereThePageReadsIt is where
+	// that is argued.
+	if want := "https://pay.test/c?token=" + token; l.URL("org_1", true, "in_42") != want {
 		t.Fatalf("URL = %q, want %q", l.URL("org_1", true, "in_42"), want)
 	}
 }
@@ -75,5 +79,54 @@ func TestPayLinkWithoutASecretIsDisabled(t *testing.T) {
 	}
 	if _, _, _, err := l.Parse("anything.at-all"); !errors.Is(err, ErrBadLink) {
 		t.Fatalf("accepted a token with no secret: %v", err)
+	}
+}
+
+// The URL has to address a page that exists, which is a different property from
+// the token verifying — and the one nothing checked while every dunning email
+// pointed at a 404.
+//
+// The portal is a static export (ADR 0013): `/checkout` is one object and there
+// is no `/checkout/[token]` route, so the token belongs in the query string that
+// `ui/src/app/checkout/page.tsx` reads.
+func TestURLPutsTheTokenWhereThePageReadsIt(t *testing.T) {
+	const base = "https://billing.aoctech.app/checkout"
+	links := NewPayLink("secret", base)
+
+	raw := links.URL("ctech", true, "in_abc")
+	if raw == "" {
+		t.Fatal("no URL from a configured signer")
+	}
+
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		t.Fatalf("the URL we email is not a URL: %v", err)
+	}
+	if got := parsed.Scheme + "://" + parsed.Host + parsed.Path; got != base {
+		t.Errorf("path = %q, want exactly %q — anything deeper is a 404 on a static export", got, base)
+	}
+
+	token := parsed.Query().Get(TokenParam)
+	if token == "" {
+		t.Fatalf("no %q parameter in %q", TokenParam, raw)
+	}
+	org, livemode, invoiceID, err := links.Parse(token)
+	if err != nil {
+		t.Fatalf("the token we emailed does not verify: %v", err)
+	}
+	if org != "ctech" || !livemode || invoiceID != "in_abc" {
+		t.Errorf("token addresses (%s, %v, %s)", org, livemode, invoiceID)
+	}
+}
+
+// A trailing slash on CHECKOUT_BASE_URL must not change the shape. It is the
+// kind of thing that differs between an SSM value someone typed and one a
+// template produced.
+func TestURLIsUnaffectedByATrailingSlashInTheBase(t *testing.T) {
+	with := NewPayLink("secret", "https://billing.aoctech.app/checkout/")
+	without := NewPayLink("secret", "https://billing.aoctech.app/checkout")
+
+	if a, b := with.URL("ctech", true, "in_abc"), without.URL("ctech", true, "in_abc"); a != b {
+		t.Errorf("trailing slash changed the link:\n  %s\n  %s", a, b)
 	}
 }

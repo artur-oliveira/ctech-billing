@@ -66,6 +66,22 @@ export async function getSession(): Promise<Session> {
   return data
 }
 
+/**
+ * Records agreement to the billing terms addendum.
+ *
+ * No body: the version is the server's. A client that could name one could
+ * accept a document it chose rather than the one in force.
+ *
+ * It returns the session so the caller writes the fresh one straight into the
+ * query cache instead of refetching — the gate is dismissed by that value
+ * changing, and a round trip between the click and the dismissal is a modal
+ * that visibly hesitates.
+ */
+export async function acceptTerms(): Promise<Session> {
+  const {data} = await apiClient.post<Session>("/v1.0/portal/terms/accept")
+  return data
+}
+
 export async function listInvoices(cursor?: string): Promise<ListResponse<Invoice>> {
   const {data} = await apiClient.get<ListResponse<Invoice>>("/v1.0/portal/invoices", {
     params: cursor ? {cursor} : undefined,

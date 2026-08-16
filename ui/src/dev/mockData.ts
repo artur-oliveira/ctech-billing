@@ -228,6 +228,14 @@ export const FIXTURES: Record<MockScenario, Fixture> = {
     settleAfterSeconds: null,
     pixTtlSeconds: 1800,
   },
+  // The portal behind the gate, so accepting reveals a real screen rather than
+  // an empty one — the half of the flow a static fixture cannot show.
+  termos_pendentes: {
+    invoices: PAID_HISTORY,
+    subscriptions: [ACTIVE_SUB, METERED_SUB],
+    settleAfterSeconds: null,
+    pixTtlSeconds: 1800,
+  },
 }
 
 /** A copy-and-paste PIX payload of realistic length, so the screen is laid out

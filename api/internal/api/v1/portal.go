@@ -44,9 +44,30 @@ type portalHandlers struct {
 func (h *portalHandlers) session(c fiber.Ctx) error {
 	customer := middleware.GetCustomer(c)
 	return c.JSON(portalSessionResponse{
-		CustomerID: customer.ID,
-		Name:       customer.Name,
-		Email:      customer.Email,
+		CustomerID:    customer.ID,
+		Name:          customer.Name,
+		Email:         customer.Email,
+		TermsAccepted: customer.AcceptedCurrentTerms(),
+	})
+}
+
+// acceptTerms records agreement to the billing terms addendum.
+//
+// It takes no body. The version is the server's — a client that could name one
+// could accept a document it chose, which is the whole failure mode this guards
+// against, and there is only ever one version in force to accept.
+func (h *portalHandlers) acceptTerms(c fiber.Ctx) error {
+	customer := middleware.GetCustomer(c)
+	if err := h.customers.AcceptTerms(
+		c.Context(), customer, actorOfUser(c), middleware.GetRequestID(c), h.now(),
+	); err != nil {
+		return fail(c, err)
+	}
+	return c.JSON(portalSessionResponse{
+		CustomerID:    customer.ID,
+		Name:          customer.Name,
+		Email:         customer.Email,
+		TermsAccepted: customer.AcceptedCurrentTerms(),
 	})
 }
 
