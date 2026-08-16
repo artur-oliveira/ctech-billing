@@ -244,10 +244,17 @@ nothing to patch, scale, or roll back beyond objects.
 
 Two things follow, and both are load-bearing:
 
-- **`/v1.0/*` and `/.well-known/*` are ordered cache behaviours on the same distribution**, pointed
-  at the HAProxy origin the API already sits behind. The browser is same-origin with its API, so
-  there is no CORS configuration to maintain, no preflight, and `connect-src 'self'` plus
-  ctech-account is a sufficient CSP. `NEXT_PUBLIC_API_URL` is empty in a deployed build.
+- **The browser calls the API directly**, at `billing-api[-env].aoctech.app`.
+  `NEXT_PUBLIC_API_URL` carries that hostname and the CSP's `connect-src` allows it. It used to be
+  empty, with `/v1.0/*` forwarded from this distribution so the two were same-origin — which read
+  as one fewer thing to configure and was three more hops at run time: CloudFront, then Cloudflare,
+  then HAProxy, on every request ([ADR 0013](docs/adr/0013-static-portal-same-origin-api.md)'s
+  amendment). The cost of the reversal is CORS: exact origins, credentials on, and a production
+  boot that refuses without them.
+- **`/v1.0/*` and `/.well-known/*` remain ordered cache behaviours on the same distribution**,
+  pointed at that same HAProxy origin. `/v1.0/*` is now the rollback rather than the path — going
+  back to same-origin is one environment variable. `/.well-known/*` is neither: a client
+  discovering billing from the portal's hostname still resolves it there.
 - **Pretty URLs come from a CloudFront Function reading a KeyValueStore route manifest**, written
   by the deploy from the export's own output. `custom_error_response` was rejected: it is
   distribution-wide, so mapping 404 to `/404.html` would also replace the API's RFC 7807 problem

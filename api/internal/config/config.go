@@ -33,6 +33,20 @@ type Config struct {
 	WriteTimeout int64 `env:"WRITE_TIMEOUT" envDefault:"10"`
 	IdleTimeout  int64 `env:"IDLE_TIMEOUT"  envDefault:"60"`
 
+	// CorsAllowedOrigins are the exact browser origins the portal and the
+	// checkout are served from — same name and same env var as ctech-wallet and
+	// ctech-poker.
+	//
+	// The portal stopped being same-origin with this API on 2026-08-16
+	// (ADR 0013's amendment): the pages call `billing-api[-env].aoctech.app`
+	// directly instead of being proxied back through their own CloudFront
+	// distribution to Cloudflare and on to HAProxy.
+	//
+	// Exact origins, never patterns — scheme, host and port, no trailing slash.
+	// Empty is allowed outside production and means wildcard-without-credentials
+	// (see newFiber); in production Load refuses to boot without it.
+	CorsAllowedOrigins []string `env:"CORS_ALLOWED_ORIGINS" envSeparator:","`
+
 	// Auth (ctech-account). ServiceAudience is the `aud` this service accepts;
 	// a token minted for another CTech service must not be usable here.
 	CtechIssuerURL  string `env:"CTECH_ISSUER_URL"`
@@ -109,6 +123,13 @@ func Load() (*Config, error) {
 	// process at boot — not surface on the first customer somebody creates.
 	if !crypto.NewSealer(cfg.FieldEncryptionKey).Enabled() {
 		return nil, fmt.Errorf("config: FIELD_ENCRYPTION_KEY must decode to exactly 32 bytes (base64 or hex)")
+	}
+	// Fail closed, mirroring ctech-wallet's guard. Empty origins mean a wildcard
+	// with no credentials — a reasonable default on a laptop and the wrong one in
+	// front of customers, where it would let any page on the internet read every
+	// unauthenticated response this API serves.
+	if len(cfg.CorsAllowedOrigins) == 0 && cfg.Env == "prod" {
+		return nil, fmt.Errorf("config: CORS_ALLOWED_ORIGINS must be set in production")
 	}
 	return &cfg, nil
 }

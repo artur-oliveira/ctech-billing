@@ -99,10 +99,22 @@ locals {
   frontend_oac_name  = "${var.environment}-ctech-billing-oac"
   frontend_func_name = "${var.environment}-ctech-billing-url-rewrite"
 
-  # Everything the API serves, forwarded to the edge instead of the bucket. The
-  # browser is therefore same-origin with the API and CORS never applies —
-  # which is also why the portal's NEXT_PUBLIC_API_URL is empty in a deployed
-  # build.
+  # The browser origins the API answers cross-origin. Exactly the portal's own
+  # domain and nothing else: the checkout and the portal are the same origin,
+  # and no other page has a reason to read a billing response.
+  #
+  # It reaches the instances as CORS_ALLOWED_ORIGINS, which config.Load requires
+  # in production — a prod deployment without it refuses to boot rather than
+  # serving a wildcard.
+  cors_allowed_origins = [local.app_domain_url]
+
+  # Kept, and no longer the path the app takes. The portal now calls
+  # `${local.api_domain}` directly, because going back through this
+  # distribution meant CloudFront → Cloudflare → HAProxy for a request with one
+  # destination (ADR 0013's amendment). These behaviours stay as the rollback:
+  # setting NEXT_PUBLIC_API_URL back to empty restores same-origin without a
+  # Terraform change. `/.well-known/*` is not a rollback — a client discovering
+  # billing from the portal's own hostname still resolves it here.
   frontend_api_patterns = ["/v1.0/*", "/.well-known/*"]
 
   private_hosted_zone_id_parameter = "/ctech/global/dns/private-hosted-zone-id"

@@ -2,7 +2,7 @@
 
 import {useEffect, useRef, useState} from "react"
 
-import {getAccessToken} from "@/lib/api/client"
+import {API_BASE_URL, getAccessToken} from "@/lib/api/client"
 import {USE_MOCK} from "@/lib/mockConfig"
 
 export type StreamStatus = "connecting" | "waiting" | "paid" | "lost"
@@ -70,7 +70,7 @@ export function usePaymentStream(invoiceId: string, enabled: boolean): StreamSta
     void (async () => {
       try {
         const token = getAccessToken()
-        const response = await fetch(`/v1.0/portal/invoices/${invoiceId}/events`, {
+        const response = await fetch(`${API_BASE_URL}/v1.0/portal/invoices/${invoiceId}/events`, {
           headers: {
             Accept: "text/event-stream",
             ...(token ? {Authorization: `Bearer ${token}`} : {}),

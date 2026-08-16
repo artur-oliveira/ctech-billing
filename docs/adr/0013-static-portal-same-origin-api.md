@@ -1,7 +1,11 @@
 # ADR 0013 — The portal is a static export, and the API is same-origin behind it
 
-Status: Accepted (2026-08-16) · Implements the front end proposed in ARCHITECTURE.md § 1 ·
-Screens P1–P4, X1
+Status: Accepted (2026-08-16) · **Half amended 2026-08-16 — the API is no longer same-origin** ·
+Implements the front end proposed in ARCHITECTURE.md § 1 · Screens P1–P4, X1
+
+> The static-export half of this decision stands. The same-origin half was reversed the same day;
+> see the amendment at the end. Everything below is left as written — it is the record of why the
+> decision was made, not a description of the system today.
 
 ## Context
 
@@ -86,3 +90,42 @@ A screen genuinely needs to be rendered before it reaches the browser — a publ
 must unfurl its own content to a scraper, or an SEO surface where client-side rendering measurably
 costs ranking. That is an argument for one prerendered surface, not for putting the whole portal
 behind a server.
+
+
+## Amendment (2026-08-16) — the portal calls the API directly
+
+The same-origin half is reversed. `NEXT_PUBLIC_API_URL` is the API's own hostname in every deployed
+environment, and the browser goes to `billing-api[-env].aoctech.app` rather than through the
+portal's distribution.
+
+**What the Context above underweighted is what same-origin actually cost at run time.** The
+`/v1.0/*` behaviour does not shorten the path to the API — it lengthens it. A request from the
+portal went to CloudFront, which forwarded to the origin, which is Cloudflare in front of HAProxy,
+which finally reached the instance: three hops and three TLS terminations, on every call, for a
+request that had one destination the whole time. The price of cross-origin is a preflight per
+(method, header-set), cached for an hour, and an allowlist. That is one round trip amortised over
+a session against two extra ones on every request.
+
+**The CORS posture, and why it is safe:**
+
+- Exact origins, never a wildcard and never a suffix match.
+  `strings.HasSuffix(origin, ".aoctech.app")` is the shape that looks careful and admits
+  `evil-aoctech.app`.
+- `AllowCredentials` is on, paired with those explicit origins — the same configuration
+  `ctech-wallet` and `ctech-poker` ship. The spec forbids credentials alongside a wildcard and
+  Fiber refuses the combination, so the two settings can only move together.
+- `config.Load` refuses to boot production without `CORS_ALLOWED_ORIGINS`. Outside production an
+  empty list means wildcard *without* credentials, which is the siblings' laptop default and cannot
+  reach a customer because of that guard.
+- The origin list is `terraform/billing/locals.tf`'s `cors_allowed_origins`, and it holds the
+  portal's domain and nothing else. The checkout is the same origin as the portal.
+
+**What did not change:** the static export, the route manifest, the bucket, the CSP. The
+`/v1.0/*` behaviour is kept rather than deleted — it is the rollback, and taking it takes a
+Terraform apply while restoring same-origin otherwise takes one environment variable. `/.well-known/*`
+is not a rollback at all: a client discovering billing from the portal's hostname still resolves it
+there.
+
+**Reopen if** the preflight cost turns out to matter — it is one request per unique (method,
+header) combination per hour per origin, and if that is ever measurable the answer is a longer
+`MaxAge`, not a return to three hops.

@@ -12,6 +12,7 @@ import (
 	awscfg "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/middleware/cors"
 	"github.com/gofiber/fiber/v3/middleware/recover"
 	"gopkg.aoctech.app/api-commons/cache"
 
@@ -275,6 +276,50 @@ func newFiber(cfg *config.Config) *fiber.App {
 			return c.SendStatus(fiber.StatusNoContent)
 		},
 	})
+
+	// CORS, in ctech-wallet's and ctech-poker's exact shape.
+	//
+	// The portal is no longer same-origin with this API: its pages are served
+	// from `billing[-env].aoctech.app` and call `billing-api[-env].aoctech.app`
+	// directly, rather than being proxied back through their own CloudFront
+	// distribution to Cloudflare and on to HAProxy — three hops and three TLS
+	// terminations for a request with one destination (ADR 0013's amendment).
+	//
+	// **AllowCredentials only alongside explicit origins**, which is not a style
+	// choice: the spec forbids credentials with a wildcard and Fiber rejects the
+	// combination outright. Empty origins therefore mean wildcard *without*
+	// credentials — the laptop default the siblings ship — and config.Load
+	// refuses to boot production in that state, so the permissive branch cannot
+	// reach a customer.
+	//
+	// Mounted before everything, and before authentication in particular: a
+	// browser sends no Authorization on a preflight, so a preflight behind auth
+	// answers 401 and the page reports it as a CORS failure, pointing every
+	// investigation at the wrong layer.
+	corsCfg := cors.Config{
+		AllowMethods: []string{fiber.MethodGet, fiber.MethodPost, fiber.MethodOptions},
+		AllowHeaders: []string{
+			fiber.HeaderOrigin,
+			fiber.HeaderContentType,
+			fiber.HeaderAuthorization,
+			fiber.HeaderAccept,
+			middleware.RequestIDHeader,
+			middleware.IdempotencyHeader,
+			// The console names its own mode in a header (ADR 0011). Omitted, every
+			// console request fails preflight and nowhere else.
+			middleware.ModeHeader,
+		},
+		// What a script may read cross-origin. Both are acted on: the request id
+		// is what a support conversation is keyed on, and the replay flag tells an
+		// integrator their retry was the duplicate.
+		ExposeHeaders: []string{middleware.RequestIDHeader, "Idempotent-Replay"},
+		MaxAge:        3600,
+	}
+	if len(cfg.CorsAllowedOrigins) > 0 {
+		corsCfg.AllowOrigins = cfg.CorsAllowedOrigins
+		corsCfg.AllowCredentials = true
+	}
+	app.Use(cors.New(corsCfg))
 	app.Use(recover.New())
 	return app
 }

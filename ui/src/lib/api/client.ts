@@ -19,8 +19,25 @@ export const setAccessToken = (t: string | null) => {
 }
 export const getAccessToken = () => accessToken
 
+/**
+ * Where the API lives.
+ *
+ * Absolute in every deployed environment: the pages are served from
+ * `billing[-env].aoctech.app` and call `billing-api[-env].aoctech.app`
+ * directly, rather than being proxied back through their own CloudFront
+ * distribution to Cloudflare and on to HAProxy — three hops and three TLS
+ * terminations for a request with one destination.
+ *
+ * Empty falls back to same-origin, which is what `next dev` uses (its rewrite
+ * proxies /v1.0/* to the local API) and what a rollback sets.
+ *
+ * Exported because `fetch` cannot read axios' baseURL, and the settlement
+ * stream is a `fetch` — EventSource cannot send an Authorization header.
+ */
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || ""
+
 export const apiClient = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || "",
+  baseURL: API_BASE_URL,
   timeout: 10_000,
   // Mock mode replaces the transport, not the calling code. Every screen,
   // hook and query key is identical in both modes, so what gets exercised

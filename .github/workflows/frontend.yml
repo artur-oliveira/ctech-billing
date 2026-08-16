@@ -49,16 +49,19 @@ jobs:
             *)       echo "name=dev"   >> "$GITHUB_OUTPUT" ;;
           esac
 
-      # NEXT_PUBLIC_API_URL is deliberately empty. CloudFront forwards /v1.0/* to
-      # the API from the same distribution (terraform/billing/frontend.tf), so
-      # the browser is same-origin with the API and CORS never applies. Setting
-      # it to the API hostname would work and would cost a preflight on every
-      # request plus an Access-Control-Allow-Origin the API would have to
-      # maintain.
+      # NEXT_PUBLIC_API_URL is the API's own hostname, not empty.
       #
-      # The accounts URLs are not same-origin and cannot be: the OAuth client
-      # talks to ctech-account directly. They are also what the CSP's connect-src
-      # allows, and the two lists have to agree.
+      # It used to be empty so the browser stayed same-origin through this
+      # distribution's /v1.0/* behaviour, which cost CloudFront → Cloudflare →
+      # HAProxy — three hops and three TLS terminations for a request with one
+      # destination. Calling the API directly costs one preflight per method and
+      # header set, cached for an hour, and an origin allowlist the API already
+      # maintains (ADR 0013's amendment).
+      #
+      # Every hostname here must also be in the CSP's connect-src
+      # (terraform/billing/frontend.tf) — including this one now. The two lists
+      # have to agree or the browser blocks a request the server would have
+      # answered.
       - name: Set environment
         env:
           ENVIRONMENT: ${{ steps.env.outputs.name }}
