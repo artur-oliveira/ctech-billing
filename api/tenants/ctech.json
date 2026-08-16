@@ -6,7 +6,7 @@
   },
   "credentials": [
     {
-      "client_id": "ctech-dfe",
+      "client_id": "dfe-billing",
       "description": "CTech DF-e — creates subscriptions and reports usage for DF-e plans"
     }
   ],
@@ -59,8 +59,10 @@
       "metadata": {
         "plan": "free",
         "quota_companies": "1",
+        "quota_users": "1",
         "quota_nfe": "3",
         "quota_nfce": "15",
+        "quota_nfse": "3",
         "quota_cte": "0",
         "quota_mdfe": "3",
         "mdfe_scope": "frota_propria"
@@ -79,8 +81,10 @@
       "metadata": {
         "plan": "unlimited",
         "quota_companies": "-1",
+        "quota_users": "-1",
         "quota_nfe": "-1",
         "quota_nfce": "-1",
+        "quota_nfse": "-1",
         "quota_cte": "-1",
         "quota_mdfe": "-1"
       }
@@ -98,8 +102,10 @@
       "metadata": {
         "plan": "pro",
         "quota_companies": "10",
+        "quota_users": "25",
         "quota_nfe": "1200",
         "quota_nfce": "6000",
+        "quota_nfse": "1200",
         "quota_cte": "1200",
         "quota_mdfe": "1200"
       }
@@ -117,8 +123,10 @@
       "metadata": {
         "plan": "unlimited",
         "quota_companies": "-1",
+        "quota_users": "-1",
         "quota_nfe": "-1",
         "quota_nfce": "-1",
+        "quota_nfse": "-1",
         "quota_cte": "-1",
         "quota_mdfe": "-1"
       }
@@ -166,6 +174,21 @@
       "metadata": {
         "plan": "ondemand",
         "meter": "nfce"
+      }
+    },
+    {
+      "id": "price_dfe_ondemand_nfse",
+      "product_id": "prod_dfe_ondemand",
+      "type": "metered",
+      "unit_amount": 5,
+      "recurrence": {
+        "interval": "month",
+        "count": 1
+      },
+      "billing_timing": "arrears",
+      "metadata": {
+        "plan": "ondemand",
+        "meter": "nfse"
       }
     },
     {

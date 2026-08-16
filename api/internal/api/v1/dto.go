@@ -48,6 +48,21 @@ type createSubscriptionItem struct {
 	Quantity int64  `json:"quantity"`
 }
 
+// effectiveNow is the only value `effective` accepts today.
+//
+// The field exists rather than being implied because the other answer —
+// "at the end of the period" — is a real product decision that will arrive, and
+// a body that never said which one it meant cannot be told apart from one that
+// meant the new default.
+const effectiveNow = "now"
+
+type changeSubscriptionRequest struct {
+	// Items is the complete new price set, not a delta.
+	Items []createSubscriptionItem `json:"items"`
+	// Effective may be omitted, which means "now".
+	Effective string `json:"effective"`
+}
+
 type cancelSubscriptionRequest struct {
 	// AtPeriodEnd distinguishes the two cancellations, which are different
 	// operations rather than a shade of one.
@@ -237,6 +252,52 @@ type entitlementSubscription struct {
 	Entitled bool                       `json:"entitled"`
 	PriceID  string                     `json:"price_id,omitempty"`
 	Period   billing.Period             `json:"current_period"`
+
+	// Plan is the plan key from the first item's price metadata — "free", "pro",
+	// "unlimited", "ondemand". Published so a consumer can name the plan without
+	// keeping its own map of price ids, which is the copy that goes stale on the
+	// day a price is superseded.
+	Plan string `json:"plan,omitempty"`
+	// Items is what this subscription bills for, prices and all. The quotas a
+	// product enforces are in each price's metadata.
+	Items []entitlementItem `json:"items,omitempty"`
+	// CancelAtPeriodEnd is the notice that entitlement ends at the period
+	// boundary. `entitled` is still true today, and a UI that shows only that
+	// tells the customer nothing is happening right up until it does.
+	CancelAtPeriodEnd bool `json:"cancel_at_period_end"`
+	// OpenInvoice is the bill waiting to be paid, when there is one. Its presence
+	// is what turns "your subscription is past due" into a button.
+	OpenInvoice *entitlementInvoice `json:"open_invoice,omitempty"`
+}
+
+// entitlementInvoiceScan is how far back to look for an open invoice.
+//
+// Small on purpose: the newest few is where an outstanding bill is, and a
+// subscription with more than a handful of open invoices behind it is a dunning
+// problem, not a rendering one.
+const entitlementInvoiceScan = 10
+
+// metadataKeyPlan is the price-metadata key naming the plan. It is a constant
+// because two places read it — this response and the DF-e side that branches on
+// it — and a string literal in each is how they come to disagree by a typo.
+const metadataKeyPlan = "plan"
+
+type entitlementItem struct {
+	PriceID    string            `json:"price_id"`
+	ProductID  string            `json:"product_id"`
+	Type       billing.PriceType `json:"type"`
+	UnitAmount billing.Cents     `json:"unit_amount"`
+	Quantity   int64             `json:"quantity"`
+	Metadata   billing.Metadata  `json:"metadata,omitempty"`
+}
+
+type entitlementInvoice struct {
+	ID         string        `json:"id"`
+	TotalCents billing.Cents `json:"total_cents"`
+	DueDate    brcal.Date    `json:"due_date"`
+	// CheckoutURL follows the same rule as everywhere else: present only when the
+	// invoice is actually payable and the deployment signs links.
+	CheckoutURL string `json:"checkout_url,omitempty"`
 }
 
 type listResponse[T any] struct {

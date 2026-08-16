@@ -78,6 +78,7 @@ func Register(app *fiber.App, d Deps) {
 		invoices:   d.Invoices,
 		usage:      d.Usage,
 		subscriber: d.Subscriber,
+		cat:        d.Catalog,
 		clock:      clock,
 
 		db:            d.DB,
@@ -128,6 +129,22 @@ func Register(app *fiber.App, d Deps) {
 		middleware.RequireM2MScope(middleware.ScopeSubscriptionsRead), h.getSubscription)
 	subscriptions.Post("/:id/cancel",
 		middleware.RequireM2MScope(middleware.ScopeSubscriptionsWrite), idem, h.cancelSubscription)
+	// Behind the idempotency middleware and not merely idempotent by design: this
+	// route issues an invoice, and the change invoice deliberately carries no
+	// generation key (see Subscriber.invoiceChange), so a retried request with no
+	// key would bill the proration twice.
+	subscriptions.Post("/:id/change",
+		middleware.RequireM2MScope(middleware.ScopeSubscriptionsWrite), idem, h.changeSubscription)
+
+	// The catalogue, readable by an integration. It is the same handler the
+	// console reads through: an integration rendering a plan picker and an
+	// operator looking at the catalogue must see the same prices and the same
+	// quota metadata, and one handler is what makes that structural.
+	products := m2m("/products")
+	products.Get("",
+		middleware.RequireM2MScope(middleware.ScopeProductsRead), h.listProducts)
+	products.Get("/:id",
+		middleware.RequireM2MScope(middleware.ScopeProductsRead), h.getProduct)
 
 	m2m("/usage").Post("",
 		middleware.RequireM2MScope(middleware.ScopeUsageWrite), idem, h.reportUsage)
@@ -199,7 +216,6 @@ func registerConsole(v1 fiber.Router, d Deps, h *handlers, auth fiber.Handler) {
 		handlers:             h,
 		orgs:                 d.Organizations,
 		audit:                d.Audit,
-		cat:                  d.Catalog,
 		portalOrganizationID: d.PortalOrganizationID,
 	}
 
@@ -227,6 +243,8 @@ func registerConsole(v1 fiber.Router, d Deps, h *handlers, auth fiber.Handler) {
 	// from it.
 	console.Post("/subscriptions/:id/cancel",
 		middleware.RequireUserScope(middleware.ScopeSubscriptionsWrite), ch.cancelSubscription)
+	console.Post("/subscriptions/:id/change",
+		middleware.RequireUserScope(middleware.ScopeSubscriptionsWrite), ch.changeSubscription)
 
 	console.Get("/customers",
 		middleware.RequireUserScope(middleware.ScopeCustomersRead), ch.listCustomers)
@@ -247,7 +265,7 @@ func registerConsole(v1 fiber.Router, d Deps, h *handlers, auth fiber.Handler) {
 // every user shares one tenant, so tenant scoping alone would show each of them
 // all of the others.
 func registerPortal(v1 fiber.Router, d Deps, h *handlers, auth fiber.Handler) {
-	ph := &portalHandlers{handlers: h, cat: d.Catalog, collector: d.Collector, bus: d.SettlementBus}
+	ph := &portalHandlers{handlers: h, collector: d.Collector, bus: d.SettlementBus}
 	identity := middleware.ResolvePortalIdentity(d.Customers, d.PortalOrganizationID)
 	portal := v1.Group("/portal", auth, identity)
 

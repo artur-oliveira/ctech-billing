@@ -26,6 +26,11 @@ type handlers struct {
 	invoices   *repositories.InvoiceRepository
 	usage      *repositories.UsageRepository
 	subscriber *services.Subscriber
+	// cat is the catalogue. It sits on the shared struct rather than on one
+	// surface's because all three read it and they must read it identically: a
+	// quota an integration sees in a price's metadata and a quota the console
+	// shows an operator are the same number or they are a support call.
+	cat *repositories.CatalogRepository
 	// links signs the public checkout URL published on every invoice payload. It
 	// lives here rather than on one of the embedding structs because all three
 	// surfaces render invoices, and a link an integrator gets from the M2M API
@@ -225,6 +230,83 @@ func (h *handlers) cancelSubscription(c fiber.Ctx) error {
 	return c.JSON(newSubscriptionResponse(sub))
 }
 
+// changeSubscription is the M2M upgrade/downgrade.
+func (h *handlers) changeSubscription(c fiber.Ctx) error {
+	return h.changePlan(c, actorOf(c))
+}
+
+// changePlan moves a subscription onto a different price set and returns it with
+// the proration invoice, when the change produced one.
+//
+// The actor is a parameter rather than read from the context, because this one
+// body serves two surfaces and they name their actor differently: an integration
+// is "client:dfe-billing" and an operator is "user:01J…". A single actorOf here
+// would record every console change as if an integration had made it, which is
+// exactly the distinction the audit trail exists to keep.
+func (h *handlers) changePlan(c fiber.Ctx, actor string) error {
+	t := middleware.GetTenant(c)
+	var req changeSubscriptionRequest
+	if err := c.Bind().Body(&req); err != nil {
+		return problem.BadRequest("corpo inválido").Send(c)
+	}
+
+	var fieldErrs []problem.FieldError
+	if len(req.Items) == 0 {
+		fieldErrs = append(fieldErrs, problem.FieldError{Field: "items", Message: "informe ao menos um preço", Tag: "required"})
+	}
+	for i, it := range req.Items {
+		if it.PriceID == "" {
+			fieldErrs = append(fieldErrs, problem.FieldError{
+				Field:   fmt.Sprintf("items[%d].price_id", i),
+				Message: "obrigatório",
+				Tag:     "required",
+			})
+		}
+	}
+	if req.Effective != "" && req.Effective != effectiveNow {
+		fieldErrs = append(fieldErrs, problem.FieldError{
+			Field: "effective", Message: `no momento só "now" é aceito`, Tag: "oneof",
+		})
+	}
+	if len(fieldErrs) > 0 {
+		return problem.Validation(fieldErrs).Send(c)
+	}
+
+	sub, err := h.subs.Get(c.Context(), t.OrganizationID, t.Livemode, c.Params("id"))
+	if err != nil {
+		return fail(c, err)
+	}
+
+	items := make([]services.SubscribeItem, len(req.Items))
+	for i, it := range req.Items {
+		items[i] = services.SubscribeItem{PriceID: it.PriceID, Quantity: it.Quantity}
+	}
+
+	inv, err := h.subscriber.ChangePlan(c.Context(), sub, services.ChangeInput{
+		Items: items,
+		// CauseManual on both surfaces this mounts on: an integration acting for
+		// the merchant and an operator in the console are both "somebody decided
+		// this", as opposed to the customer doing it themselves in the portal,
+		// which would carry CauseCustomer.
+		Cause:     billing.CauseManual,
+		Actor:     actor,
+		RequestID: middleware.GetRequestID(c),
+	}, h.now())
+	if err != nil {
+		return fail(c, err)
+	}
+
+	// No invoice is a real, common outcome — a downgrade, or a swap that costs
+	// nothing for the remainder of the period. The field is absent rather than
+	// null-with-a-zero-total so a caller branches on the same shape they already
+	// branch on when subscribing to a free plan.
+	body := fiber.Map{"subscription": newSubscriptionResponse(sub)}
+	if inv != nil {
+		body["invoice"] = newInvoiceResponse(inv, nil, h.today(), h.links)
+	}
+	return c.JSON(body)
+}
+
 func (h *handlers) reportUsage(c fiber.Ctx) error {
 	t := middleware.GetTenant(c)
 	var req reportUsageRequest
@@ -375,6 +457,59 @@ func (h *handlers) listInvoices(c fiber.Ctx) error {
 	return c.JSON(listResponse[invoiceResponse]{Data: out, HasMore: page.LastEvaluatedKey != nil})
 }
 
+// pageLimit bounds every page. It is not a client parameter: nobody scrolling a
+// table has a reason to ask for a different page size, and a parameter that
+// reaches DynamoDB's limit is a parameter that can be used to make one request
+// expensive.
+const pageLimit = 100
+
+// listProducts is the catalogue, on every surface (console C8, and the M2M read
+// an integration needs to render a plan picker).
+//
+// It is one handler rather than one per surface because the only thing that
+// differs between them is which resolver filled the tenant, and that has already
+// happened by the time this runs. Two copies would be two answers to "what does
+// this plan include" — and the quotas an integration enforces come out of the
+// price metadata published here, so a divergence is a customer allowed past a
+// limit the invoice says they have.
+func (h *handlers) listProducts(c fiber.Ctx) error {
+	t := middleware.GetTenant(c)
+	products, err := h.cat.ListProducts(c.Context(), t.OrganizationID, t.Livemode, pageLimit)
+	if err != nil {
+		return fail(c, err)
+	}
+	out := make([]productResponse, 0, len(products))
+	for i := range products {
+		out = append(out, newProductResponse(&products[i], nil))
+	}
+	return c.JSON(listResponse[productResponse]{Data: out})
+}
+
+// getProduct is a product and its prices, active and archived together
+// (console C9).
+//
+// Archived prices are returned rather than filtered out because a subscription
+// created under one keeps billing at it — a price list that hides them makes an
+// invoice look like it came from nowhere (OVERVIEW.md § 7).
+func (h *handlers) getProduct(c fiber.Ctx) error {
+	t := middleware.GetTenant(c)
+	product, err := h.cat.GetProduct(c.Context(), t.OrganizationID, t.Livemode, c.Params("id"))
+	if err != nil {
+		return fail(c, err)
+	}
+	prices, err := h.cat.ListPrices(c.Context(), t.OrganizationID, t.Livemode, pageLimit)
+	if err != nil {
+		return fail(c, err)
+	}
+	mine := make([]billing.Price, 0, len(prices))
+	for _, p := range prices {
+		if p.ProductID == product.ID {
+			mine = append(mine, p)
+		}
+	}
+	return c.JSON(newProductResponse(product, mine))
+}
+
 func (h *handlers) getEntitlements(c fiber.Ctx) error {
 	t := middleware.GetTenant(c)
 
@@ -400,14 +535,95 @@ func (h *handlers) getEntitlements(c fiber.Ctx) error {
 		sub := &subs[i]
 		entitled := sub.IsEntitled()
 		resp.Entitled = resp.Entitled || entitled
-		resp.Subscriptions = append(resp.Subscriptions, entitlementSubscription{
-			ID:       sub.ID,
-			Status:   sub.Status,
-			Entitled: entitled,
-			Period:   sub.CurrentPeriod(),
-		})
+
+		out := entitlementSubscription{
+			ID:                sub.ID,
+			Status:            sub.Status,
+			Entitled:          entitled,
+			CancelAtPeriodEnd: sub.CancelAtPeriodEnd,
+			Period:            sub.CurrentPeriod(),
+		}
+		if err := h.describeEntitlement(c, sub, &out); err != nil {
+			return fail(c, err)
+		}
+		resp.Subscriptions = append(resp.Subscriptions, out)
 	}
 	return c.JSON(resp)
+}
+
+// describeEntitlement fills in what the consuming product needs beyond
+// "entitled: true": which plan this is, what it includes, and whether there is a
+// bill waiting to be paid.
+//
+// Those three arrive together because a consumer asks them together. Without the
+// plan and its quotas, a product that gates on a limit has to hold its own copy
+// of the catalogue and the two drift; without the open invoice, a customer whose
+// subscription is PAST_DUE sees "pagamento pendente" and no way to pay it.
+//
+// It costs one read per item plus one invoice query per subscription. That is
+// acceptable **because of who calls it**: a product checks entitlement for one
+// customer at a time, and caches the answer. It would not be acceptable in a
+// list endpoint, and there is deliberately not one.
+func (h *handlers) describeEntitlement(c fiber.Ctx, sub *billing.Subscription, out *entitlementSubscription) error {
+	t := middleware.GetTenant(c)
+
+	items, err := h.subs.ListItems(c.Context(), t.OrganizationID, t.Livemode, sub.ID)
+	if err != nil {
+		return err
+	}
+	for _, it := range items {
+		price, err := h.cat.GetPrice(c.Context(), t.OrganizationID, t.Livemode, it.PriceID)
+		if err != nil {
+			return err
+		}
+		out.Items = append(out.Items, entitlementItem{
+			PriceID:    price.ID,
+			ProductID:  price.ProductID,
+			Type:       price.Type,
+			UnitAmount: price.UnitAmount,
+			Quantity:   it.Quantity,
+			// The quotas live here. Billing does not read them (ADR 0008 — metadata
+			// is opaque to this service), it only carries them; what a quota means
+			// is the consuming product's business rule, and this is the one place
+			// both sides agree on the number.
+			Metadata: price.Metadata,
+		})
+		// The plan name comes from the first item, which is well defined rather
+		// than arbitrary: every item of one subscription belongs to one plan, and
+		// Subscriber.resolveItemPrices refuses a set that mixes owners or cycles.
+		if out.Plan == "" {
+			out.Plan = price.Metadata[metadataKeyPlan]
+		}
+		if out.PriceID == "" {
+			out.PriceID = price.ID
+		}
+	}
+
+	// Newest first, so the first OPEN one is the bill the customer is looking at.
+	// Capped rather than paginated: a consumer needs the outstanding invoice, and
+	// the full history is what the invoice list is for.
+	invoices, err := h.invoices.ListBySubscription(c.Context(), t.OrganizationID, t.Livemode, sub.ID, entitlementInvoiceScan)
+	if err != nil {
+		return err
+	}
+	for i := range invoices {
+		if invoices[i].Status != billing.InvoiceOpen {
+			continue
+		}
+		// Rendered through newInvoiceResponse rather than field by field, so
+		// `checkout_url` obeys exactly the same Payable-and-links rule here as it
+		// does everywhere else. A second copy of that rule is how the M2M surface
+		// comes to publish a link the console does not, or one that 404s.
+		rendered := newInvoiceResponse(&invoices[i], nil, h.today(), h.links)
+		out.OpenInvoice = &entitlementInvoice{
+			ID:          rendered.ID,
+			TotalCents:  rendered.Total,
+			DueDate:     rendered.DueDate,
+			CheckoutURL: rendered.CheckoutURL,
+		}
+		break
+	}
+	return nil
 }
 
 // actorOf names who performed an action, for the audit trail. For an M2M call it

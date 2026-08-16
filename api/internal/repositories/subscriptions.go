@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
@@ -230,6 +231,116 @@ func (r *SubscriptionRepository) Transition(
 	}
 	*s = updated
 	return events, nil
+}
+
+// ChangeItems replaces a subscription's items, in the same transaction as the
+// audit row and the subscription.updated event.
+//
+// One transaction and not three writes, for the reason every other change here
+// is one: a subscription whose items were swapped without the audit row cannot
+// answer "what were they paying before this invoice", and that is the question
+// asked during the argument about the invoice. The old rows are deleted rather
+// than left archived — an item is what the sweep bills from, and a stale one is
+// a second line on next month's invoice.
+//
+// `timing` and `ownerKey` come from the new prices. OwnerKey especially: it is
+// copied onto the subscription at creation and routes every event it emits
+// (ADR 0016), and this is the code the Subscription.OwnerKey comment names as
+// the place that must recompute it.
+//
+// The move itself is a self-edge on the current status, so the domain decides
+// whether this subscription may be changed at all: ACTIVE has the edge, and
+// INCOMPLETE, PAST_DUE, PAUSED and CANCELED do not — a plan change on a
+// subscription that never activated, or one being dunned, is a decision with
+// consequences for money already owed, and it is refused here rather than
+// half-handled.
+func (r *SubscriptionRepository) ChangeItems(
+	ctx context.Context,
+	s *billing.Subscription,
+	oldItems, newItems []billing.SubscriptionItem,
+	timing billing.BillingTiming,
+	ownerKey string,
+	cause billing.Cause,
+	actor, requestID string,
+	now time.Time,
+) error {
+	if len(newItems) == 0 {
+		return fmt.Errorf("%w: a subscription needs at least one item", billing.ErrInvalidSubscriptionItem)
+	}
+
+	updated := *s
+	updated.Timing = timing
+	updated.OwnerKey = ownerKey
+	events, err := updated.Transition(s.Status, cause)
+	if err != nil {
+		return err
+	}
+
+	pk := TenantPK(s.OrganizationID, s.Livemode)
+	extra := make([]types.TransactWriteItem, 0, len(oldItems)+len(newItems))
+	for _, it := range oldItems {
+		extra = append(extra, r.base.BuildDeleteTxItem(pk, SubscriptionItemSK(s.ID, it.ID)))
+	}
+	for _, it := range newItems {
+		if err := it.Validate(); err != nil {
+			return err
+		}
+		encoded, err := Encode(subscriptionItemRow{
+			keys:             newKeys(pk, SubscriptionItemSK(s.ID, it.ID), RetentionSubscription, now),
+			SubscriptionItem: it,
+		})
+		if err != nil {
+			return err
+		}
+		extra = append(extra, r.base.BuildPutTxItemIfAbsent(encoded))
+	}
+
+	change := StatusChange{
+		OrganizationID: s.OrganizationID,
+		Livemode:       s.Livemode,
+		PK:             pk,
+		SK:             SubscriptionSK(s.ID),
+		From:           string(s.Status),
+		To:             string(updated.Status),
+		Set: map[string]types.AttributeValue{
+			"billing_timing": &types.AttributeValueMemberS{Value: string(timing)},
+			"owner_key":      &types.AttributeValueMemberS{Value: ownerKey},
+			// Recomputed even though the period is unchanged: the timing may have
+			// moved, and the sweep date is derived from the row rather than stored
+			// independently of it.
+			"schedule_pk": &types.AttributeValueMemberS{Value: SchedulePK(updated.Livemode, JobSubscriptionDue, nextSweepDate(&updated))},
+			"schedule_sk": &types.AttributeValueMemberS{Value: updated.ID},
+		},
+		Audit: AuditEntry{
+			Entity:    EntitySubscription,
+			EntityID:  s.ID,
+			Action:    string(events[0]),
+			Cause:     cause,
+			Actor:     actor,
+			RequestID: requestID,
+			// The status did not change, so the default before/after would record
+			// "ACTIVE -> ACTIVE" and say nothing. What changed is the price set, and
+			// that is what the trail has to carry.
+			Before: "prices=" + strings.Join(priceIDsOf(oldItems), ","),
+			After:  "prices=" + strings.Join(priceIDsOf(newItems), ","),
+		},
+		Emit:    events,
+		Subject: subscriptionSubject(&updated),
+	}
+	if err := commitWithExtraWrites(ctx, r.tables(), change, now, extra...); err != nil {
+		return err
+	}
+	*s = updated
+	return nil
+}
+
+// priceIDsOf renders an item set for the audit trail.
+func priceIDsOf(items []billing.SubscriptionItem) []string {
+	out := make([]string, 0, len(items))
+	for _, it := range items {
+		out = append(out, it.PriceID)
+	}
+	return out
 }
 
 // ListByCustomer returns a customer's subscriptions.

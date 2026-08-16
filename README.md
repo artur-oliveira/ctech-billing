@@ -65,9 +65,10 @@ parameter and no `livemode` flag anywhere, deliberately (ADR 0003).
 |---|---|
 | `GET /v1.0/health` | — |
 | `POST /v1.0/customers` · `GET /v1.0/customers/:id` | `billing:customers:write` / `:read` |
-| `POST /v1.0/subscriptions` · `GET /v1.0/subscriptions/:id` · `POST /v1.0/subscriptions/:id/cancel` | `billing:subscriptions:write` / `:read` |
+| `POST /v1.0/subscriptions` · `GET /v1.0/subscriptions/:id` · `POST /v1.0/subscriptions/:id/cancel` · `POST /v1.0/subscriptions/:id/change` | `billing:subscriptions:write` / `:read` |
 | `POST /v1.0/usage` | `billing:usage:write` |
 | `GET /v1.0/invoices` · `GET /v1.0/invoices/:id` | `billing:invoices:read` |
+| `GET /v1.0/products` · `GET /v1.0/products/:id` | `billing:products:read` |
 | `GET /v1.0/entitlements?customer_ref=` | `billing:entitlements:read` |
 
 Every `POST` requires an `Idempotency-Key`. A repeat returns the first response
@@ -96,6 +97,31 @@ CT-e price.
 ([ADR 0019](docs/adr/0019-zero-total-invoices.md)). That is the Free plan: a real
 subscription, a real numbered document, `invoice.paid` emitted the same as any
 other, no charge opened and no reminder scheduled.
+
+### Changing plan mid-period
+
+```json
+POST /v1.0/subscriptions/sub_…/change
+{"items": [{"price_id": "price_…", "quantity": 1}], "effective": "now"}
+```
+
+`items` is the **complete** new set, not a delta — otherwise "remove the CT-e
+meter" and "forgot to send the CT-e meter" are the same request. The anchor and
+the period index do not move: changing plan does not change the day the customer
+is billed on. The recurrence may not change; a monthly plan becoming annual is a
+new subscription, not a swap.
+
+The difference for the remainder of the current period is billed on **one invoice
+with two separate lines** — a credit for the unused part of the old price and a
+charge for the new one — never a single net figure a customer cannot reconstruct.
+Metered prices are never prorated: usage is billed for what was used, and the
+closed period's consumption still arrives on the normal sweep.
+
+**A downgrade issues no invoice.** A change that nets zero or negative is money
+owed back, which is a `CreditNote` — a different document, and one this service
+does not yet issue. So the plan changes, nothing is billed, and the unused
+remainder of the period already paid for is forfeited. That is the branch to
+revisit when credit notes exist.
 
 ### Where to send the customer to pay
 
@@ -129,6 +155,35 @@ So the flow for contracting a plan is: create the customer **with `user_id`**
 `GET /v1.0/entitlements`, and settlement from the `invoice.paid` webhook — not from
 the browser coming back, which for PIX it may never do.
 
+### One call renders the whole billing screen
+
+`GET /v1.0/entitlements` answers more than "can this customer use the product":
+
+```json
+{"customer_id": "cus_…", "entitled": false, "subscriptions": [{
+  "id": "sub_…", "status": "INCOMPLETE", "entitled": false, "plan": "pro",
+  "cancel_at_period_end": false,
+  "current_period": {"start": "2026-03-10", "end": "2026-04-10"},
+  "items": [{"price_id": "price_dfe_pro_monthly", "product_id": "prod_dfe_pro",
+             "type": "fixed", "unit_amount": 35000, "quantity": 1,
+             "metadata": {"plan": "pro", "quota_nfe": "1200"}}],
+  "open_invoice": {"id": "in_…", "total_cents": 35000, "due_date": "2026-03-10",
+                   "checkout_url": "https://billing.aoctech.app/checkout?token=…"}
+}]}
+```
+
+Three of those fields exist so a consuming product does **not** keep its own copy
+of something billing already knows. `plan` and the per-item `metadata` are where
+the quotas live, so a limit a product enforces and the limit the invoice says was
+sold are the same number. `cancel_at_period_end` is the notice that entitlement
+ends at the boundary — `entitled` is still true today, and a screen showing only
+that tells the customer nothing is happening right up until it does.
+`open_invoice` is what turns "pagamento pendente" into a button.
+
+Billing does not read the quota keys. Metadata is opaque to this service by
+decision ([ADR 0008](docs/adr/0008-opaque-metadata.md)); it carries them, and
+what a quota *means* is the consuming product's rule.
+
 ### API surface (v1, console)
 
 The browser surface for the merchant console (screens C1–C9 and C17). It is
@@ -145,7 +200,7 @@ request states its own mode, and why that is safe is
 | `GET /v1.0/console/subscriptions?cursor=` · `GET /v1.0/console/subscriptions/:id` | `billing:subscriptions:read` |
 | `GET /v1.0/console/customers?cursor=` · `GET /v1.0/console/customers/:id` | `billing:customers:read` |
 | `GET /v1.0/console/products` · `GET /v1.0/console/products/:id` | `billing:products:read` |
-| `POST /v1.0/console/subscriptions/:id/cancel` | `billing:subscriptions:write` |
+| `POST /v1.0/console/subscriptions/:id/cancel` · `POST /v1.0/console/subscriptions/:id/change` | `billing:subscriptions:write` |
 
 Detail routes return the entity plus its audit timeline, which is what makes
 "who changed this, and why" answerable on the screen where it is asked. The

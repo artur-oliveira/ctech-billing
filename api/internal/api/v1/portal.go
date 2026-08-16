@@ -9,7 +9,6 @@ import (
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
 	"gopkg.aoctech.app/billing/api/internal/middleware"
 	"gopkg.aoctech.app/billing/api/internal/problem"
-	"gopkg.aoctech.app/billing/api/internal/repositories"
 	"gopkg.aoctech.app/billing/api/internal/services"
 	"gopkg.aoctech.app/billing/api/internal/settlement"
 )
@@ -28,7 +27,6 @@ const portalLimit = 50
 
 type portalHandlers struct {
 	*handlers
-	cat *repositories.CatalogRepository
 	// collector is nil when the deployment has no wallet configuration. The pay
 	// route is then not mounted at all, rather than mounted and failing at the
 	// last step in front of somebody holding a bill.

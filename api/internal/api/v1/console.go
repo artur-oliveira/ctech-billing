@@ -20,17 +20,10 @@ import (
 // resolver filled from the signed-in owner — the same shape the M2M handlers
 // read, so neither can reach data the other cannot.
 
-// consoleLimit bounds every page. It is not a client parameter: an operator
-// scrolling a table has no reason to ask for a different page size, and a
-// parameter that reaches DynamoDB's limit is a parameter that can be used to
-// make one request expensive.
-const consoleLimit = 100
-
 type consoleHandlers struct {
 	*handlers
 	orgs  *repositories.OrganizationRepository
 	audit *repositories.AuditRepository
-	cat   *repositories.CatalogRepository
 	// portalOrganizationID is tenant zero, needed only by the /v1/me route, which
 	// answers for both shells and therefore belongs to neither.
 	portalOrganizationID string
@@ -71,6 +64,17 @@ func (h *consoleHandlers) cancelSubscription(c fiber.Ctx) error {
 	return c.JSON(newSubscriptionResponse(sub))
 }
 
+// changeSubscription is the console's mirror of the M2M plan change (C5).
+//
+// Same body, same service, same cause — only the actor differs, and that is the
+// whole reason it is a separate route rather than an operator being told to use
+// the integration's credentials. A change made in the console must read as
+// "user:01J…" in the trail, not as the integration that happens to serve the
+// same tenant.
+func (h *consoleHandlers) changeSubscription(c fiber.Ctx) error {
+	return h.changePlan(c, actorOfUser(c))
+}
+
 // session answers "who am I, where am I, and what can I do here" in one call, so
 // the console's shell renders without three round trips (C17).
 func (h *consoleHandlers) session(c fiber.Ctx) error {
@@ -104,7 +108,7 @@ func (h *consoleHandlers) listInvoices(c fiber.Ctx) error {
 		return problem.BadRequest("cursor inválido").Send(c)
 	}
 
-	page, err := h.invoices.ListByMonth(c.Context(), t.OrganizationID, t.Livemode, year, month, consoleLimit, start)
+	page, err := h.invoices.ListByMonth(c.Context(), t.OrganizationID, t.Livemode, year, month, pageLimit, start)
 	if err != nil {
 		return fail(c, err)
 	}
@@ -144,7 +148,7 @@ func (h *consoleHandlers) listSubscriptions(c fiber.Ctx) error {
 	if err != nil {
 		return problem.BadRequest("cursor inválido").Send(c)
 	}
-	page, err := h.subs.List(c.Context(), t.OrganizationID, t.Livemode, consoleLimit, start)
+	page, err := h.subs.List(c.Context(), t.OrganizationID, t.Livemode, pageLimit, start)
 	if err != nil {
 		return fail(c, err)
 	}
@@ -197,7 +201,7 @@ func (h *consoleHandlers) listCustomers(c fiber.Ctx) error {
 	if err != nil {
 		return problem.BadRequest("cursor inválido").Send(c)
 	}
-	page, err := h.customers.List(c.Context(), t.OrganizationID, t.Livemode, consoleLimit, start)
+	page, err := h.customers.List(c.Context(), t.OrganizationID, t.Livemode, pageLimit, start)
 	if err != nil {
 		return fail(c, err)
 	}
@@ -217,7 +221,7 @@ func (h *consoleHandlers) getCustomer(c fiber.Ctx) error {
 	if err != nil {
 		return fail(c, err)
 	}
-	subs, err := h.subs.ListByCustomer(c.Context(), t.OrganizationID, t.Livemode, customer.ID, consoleLimit)
+	subs, err := h.subs.ListByCustomer(c.Context(), t.OrganizationID, t.Livemode, customer.ID, pageLimit)
 	if err != nil {
 		return fail(c, err)
 	}
@@ -235,50 +239,12 @@ func (h *consoleHandlers) getCustomer(c fiber.Ctx) error {
 	return c.JSON(out)
 }
 
-// listProducts is C8.
-func (h *consoleHandlers) listProducts(c fiber.Ctx) error {
-	t := middleware.GetTenant(c)
-	products, err := h.cat.ListProducts(c.Context(), t.OrganizationID, t.Livemode, consoleLimit)
-	if err != nil {
-		return fail(c, err)
-	}
-	out := make([]productResponse, 0, len(products))
-	for i := range products {
-		out = append(out, newProductResponse(&products[i], nil))
-	}
-	return c.JSON(listResponse[productResponse]{Data: out})
-}
-
-// getProduct is C9: a product and its prices, active and archived together.
-//
-// Archived prices are returned rather than filtered out because a subscription
-// created under one keeps billing at it — a price list that hides them makes an
-// invoice look like it came from nowhere (OVERVIEW.md § 7).
-func (h *consoleHandlers) getProduct(c fiber.Ctx) error {
-	t := middleware.GetTenant(c)
-	product, err := h.cat.GetProduct(c.Context(), t.OrganizationID, t.Livemode, c.Params("id"))
-	if err != nil {
-		return fail(c, err)
-	}
-	prices, err := h.cat.ListPrices(c.Context(), t.OrganizationID, t.Livemode, consoleLimit)
-	if err != nil {
-		return fail(c, err)
-	}
-	mine := make([]billing.Price, 0, len(prices))
-	for _, p := range prices {
-		if p.ProductID == product.ID {
-			mine = append(mine, p)
-		}
-	}
-	return c.JSON(newProductResponse(product, mine))
-}
-
 // timeline reads the audit trail for one entity — the panel every detail screen
 // carries, and the reason audit is written inside the transaction of the change
 // it records rather than alongside it.
 func (h *consoleHandlers) timeline(c fiber.Ctx, entityID string) ([]auditResponse, error) {
 	t := middleware.GetTenant(c)
-	entries, err := h.audit.ListForEntity(c.Context(), t.OrganizationID, t.Livemode, entityID, consoleLimit)
+	entries, err := h.audit.ListForEntity(c.Context(), t.OrganizationID, t.Livemode, entityID, pageLimit)
 	if err != nil {
 		return nil, err
 	}

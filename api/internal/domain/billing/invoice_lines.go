@@ -69,24 +69,56 @@ func MeteredLine(p *Price, productName string, period Period, units int64) Invoi
 // this function's signature — there is no way to call it and get a single
 // collapsed amount, which is the point.
 func SwapLines(oldPrice, newPrice *Price, oldName, newName string, period Period, at brcal.Date) (credit, charge InvoiceItem) {
-	s := ProrateSwap(oldPrice.UnitAmount, newPrice.UnitAmount, period, at)
+	return SwapSideLines(
+		SwapSide{Total: oldPrice.UnitAmount, Name: oldName, PriceID: oldPrice.ID},
+		SwapSide{Total: newPrice.UnitAmount, Name: newName, PriceID: newPrice.ID},
+		period, at,
+	)
+}
+
+// SwapSide is one half of a mid-period change: what the customer was paying, or
+// what they are moving to.
+//
+// It exists because a plan is not always one price. A subscription can bill
+// several fixed items as one agreement, and the proration owed is a property of
+// the **agreement**, not of each item — prorating item by item rounds several
+// times and produces a total that does not match the plan's own arithmetic.
+type SwapSide struct {
+	// Total is the full-period cost of this side's fixed items. Metered items
+	// contribute nothing: usage is billed for what was actually consumed, so
+	// there is no unearned remainder to credit and nothing to charge in advance.
+	Total Cents
+	// Name is what the customer reads on the line.
+	Name string
+	// PriceID is set only when this side is a single price. Empty for an
+	// aggregate, because a line pointing at one of several prices would be a
+	// worse answer than pointing at none.
+	PriceID string
+}
+
+// SwapSideLines is SwapLines for whole item sets rather than single prices.
+//
+// It returns two lines and there is no way to call it and get one collapsed
+// amount, which is the point — see SwapLines.
+func SwapSideLines(old, updated SwapSide, period Period, at brcal.Date) (credit, charge InvoiceItem) {
+	s := ProrateSwap(old.Total, updated.Total, period, at)
 	remainder := Period{Start: at, End: period.End}
 
 	credit = InvoiceItem{
-		Description: fmt.Sprintf("Crédito proporcional — %s (%d de %d dias)", oldName, s.RemainingDays, s.PeriodDays),
-		PriceID:     oldPrice.ID,
+		Description: fmt.Sprintf("Crédito proporcional — %s (%d de %d dias)", old.Name, s.RemainingDays, s.PeriodDays),
+		PriceID:     old.PriceID,
 		Period:      remainder,
 		Quantity:    1,
-		UnitAmount:  oldPrice.UnitAmount,
+		UnitAmount:  old.Total,
 		Amount:      -s.Credit,
 		Proration:   true,
 	}
 	charge = InvoiceItem{
-		Description: fmt.Sprintf("%s (%d de %d dias)", newName, s.RemainingDays, s.PeriodDays),
-		PriceID:     newPrice.ID,
+		Description: fmt.Sprintf("%s (%d de %d dias)", updated.Name, s.RemainingDays, s.PeriodDays),
+		PriceID:     updated.PriceID,
 		Period:      remainder,
 		Quantity:    1,
-		UnitAmount:  newPrice.UnitAmount,
+		UnitAmount:  updated.Total,
 		Amount:      s.Charge,
 		Proration:   true,
 	}
