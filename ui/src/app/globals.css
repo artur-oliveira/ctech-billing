@@ -1,0 +1,92 @@
+@import "tailwindcss";
+
+/* Tailwind only emits classes it can see, and it does not scan node_modules.
+   Without this line every @aoctech/ui component renders unstyled. */
+@source "../../node_modules/@aoctech/ui/dist";
+
+@theme {
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+
+  /* ── Brand ────────────────────────────────────────────────────────────────
+     Terracotta queimada — sienna, hue 45. One of the three hue bands no other
+     CTech app occupies: dfe holds 150-180, account 258, wallet 296, poker 27.
+     It appears on exactly three things — the primary button, the active nav
+     item, the selected row — and never on a status badge.
+
+     The chroma is 0.095 and not the 0.145 this started at, and that is the
+     whole decision. At full saturation a hue-36 terracotta is simply a red:
+     rendered next to the `urgent` badge on an overdue invoice, the pay button
+     and the alarm were two reds arguing, and the screen read as an error
+     rather than a bill. Pulling the chroma down leaves the brand unmistakably
+     warm while making `danger` the only saturated colour on any screen — which
+     is what a Restrained palette is supposed to mean.
+
+     Every value below is verified against white; see DESIGN.md. */
+  --color-brand-50: oklch(0.965 0.014 45);
+  --color-brand-100: oklch(0.930 0.028 45);
+  --color-brand-600: oklch(0.440 0.095 45);
+  --color-brand-700: oklch(0.380 0.085 45);
+
+  /* ── Surfaces and ink ─────────────────────────────────────────────────────
+     The page is pure white, not a warm near-white. With a brand this warm and
+     this saturated, tinting the canvas as well is what turns "warm" into the
+     beige every generated interface of 2026 shares. Warmth lives in the
+     brand and in the ink, which carries 0.015 chroma toward the brand's hue;
+     the canvas stays out of it. */
+  --color-background: oklch(1 0 0);
+  --color-surface: oklch(0.976 0.004 45);
+  --color-foreground: oklch(0.220 0.014 45);
+  --color-muted-foreground: oklch(0.540 0.018 45);
+  --color-border: oklch(0.910 0.006 45);
+  --color-ring: oklch(0.440 0.095 45);
+
+  /* ── Status ───────────────────────────────────────────────────────────────
+     Fixed across the CTech family and never recoloured by the brand accent.
+     `danger` sits at hue 22 rather than the family's 27 to open the gap to the
+     brand, because on the invoice screen an urgent badge and the pay button
+     share a viewport. Hue distance turned out to be the smaller half of that
+     problem — see the chroma note under Brand — but the gap is kept. */
+  --color-success: oklch(0.500 0.130 150);
+  --color-warning: oklch(0.500 0.120 58);
+  --color-danger: oklch(0.500 0.190 22);
+  --color-danger-strong: oklch(0.440 0.175 22);
+
+  /* ── Depth ────────────────────────────────────────────────────────────────
+     Structure comes from hairlines. Shadow marks the two things that are
+     genuinely above the page: a raised card and a modal. */
+  --shadow-card: 0 1px 2px oklch(0.22 0.014 45 / 0.04), 0 1px 3px oklch(0.22 0.014 45 / 0.06);
+  --shadow-card-hover: 0 2px 4px oklch(0.22 0.014 45 / 0.05), 0 4px 12px oklch(0.22 0.014 45 / 0.08);
+  --shadow-modal: 0 16px 48px -12px oklch(0.22 0.014 45 / 0.28);
+
+  /* Semantic z-index. Never a bare 9999. */
+  --z-sticky: 30;
+  --z-backdrop: 40;
+  --z-modal: 50;
+  --z-toast: 60;
+}
+
+@layer base {
+  html {
+    color-scheme: light;
+  }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Tabular figures wherever money is compared down a column. Proportional
+     digits make R$ 1.199,00 and R$ 89,90 impossible to scan against each
+     other, which is the one thing an invoice list exists to let you do. */
+  [data-numeric] {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-ring);
+    outline-offset: 2px;
+  }
+}

@@ -1,0 +1,100 @@
+name: CI
+
+# What gates a merge. Nothing here deploys and nothing here holds AWS
+# credentials — a pull request from a fork runs this, and the deploy roles'
+# trust policies exclude pull requests entirely (terraform/github/variables.tf).
+#
+# Terraform's own validation lives in infra.yml, which already runs on pull
+# requests for the same reason.
+on:
+  pull_request:
+  push:
+    branches: [main, staging, dev]
+
+permissions:
+  contents: read
+
+jobs:
+  api:
+    name: API
+    runs-on: ubuntu-24.04-arm
+
+    services:
+      dynamodb-local:
+        image: amazon/dynamodb-local:latest
+        ports:
+          - 8124:8000
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: api/go.mod
+          cache-dependency-path: api/go.sum
+
+      - name: Check formatting
+        working-directory: api
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "::error::These files are not gofmt-formatted:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Vet
+        working-directory: api
+        run: go vet ./...
+
+      - name: Unit tests
+        working-directory: api
+        run: go test ./... -race -count=1
+
+      - name: Integration tests
+        working-directory: api
+        env:
+          DYNAMODB_ENDPOINT: http://localhost:8124
+          AWS_ACCESS_KEY_ID: local
+          AWS_SECRET_ACCESS_KEY: local
+          AWS_REGION: us-east-1
+        run: go test -tags integration -race -count=1 ./tests/integration/
+
+  ui:
+    name: UI
+    runs-on: ubuntu-24.04-arm
+    defaults:
+      run:
+        working-directory: ui
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Tests
+        run: npm test
+
+      # Also the type check: `next build` runs tsc. The environment variables are
+      # the deployed shape rather than real values — the build only needs them to
+      # exist, and a missing NEXT_PUBLIC_* is an `undefined` baked into the
+      # bundle rather than a build failure, which is exactly the class of bug
+      # this step is here to catch.
+      - name: Build
+        env:
+          NEXT_PUBLIC_API_URL: ''
+          NEXT_PUBLIC_SITE_URL: https://billing.aoctech.app
+          NEXT_PUBLIC_CTECH_URL: https://accounts-api.aoctech.app
+          NEXT_PUBLIC_CTECH_CLIENT_URL: https://accounts.aoctech.app
+          NEXT_PUBLIC_CTECH_CLIENT_ID: billing
+        run: npm run build

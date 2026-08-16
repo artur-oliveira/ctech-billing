@@ -1,0 +1,154 @@
+{
+  "organization": {
+    "id": "ctech",
+    "display_name": "CTech",
+    "payout_status": "enabled"
+  },
+  "credentials": [
+    {
+      "client_id": "ctech-dfe",
+      "description": "CTech DF-e — creates subscriptions and reports usage for DF-e plans"
+    }
+  ],
+  "products": [
+    {
+      "id": "prod_dfe_free",
+      "name": "DF-e Free",
+      "owner_key": "dfe"
+    },
+    {
+      "id": "prod_dfe_pro",
+      "name": "DF-e Pro",
+      "owner_key": "dfe"
+    },
+    {
+      "id": "prod_dfe_ondemand",
+      "name": "DF-e Sob Demanda",
+      "owner_key": "dfe"
+    }
+  ],
+  "webhook_endpoints": [
+    {
+      "id": "whe_dfe",
+      "url": "https://dfe.aoctech.internal.app/v1/internal/webhooks/billing",
+      "owner_key": "dfe",
+      "secret_env": "WEBHOOK_SECRET_DFE"
+    }
+  ],
+  "prices": [
+    {
+      "id": "price_dfe_free_monthly",
+      "product_id": "prod_dfe_free",
+      "type": "fixed",
+      "unit_amount": 0,
+      "recurrence": {
+        "interval": "month",
+        "count": 1
+      },
+      "billing_timing": "advance",
+      "metadata": {
+        "plan": "free",
+        "quota_companies": "1",
+        "quota_nfe": "3",
+        "quota_nfce": "15",
+        "quota_cte": "0",
+        "quota_mdfe": "3",
+        "mdfe_scope": "frota_propria"
+      }
+    },
+    {
+      "id": "price_dfe_pro_monthly",
+      "product_id": "prod_dfe_pro",
+      "type": "fixed",
+      "unit_amount": 35000,
+      "recurrence": {
+        "interval": "month",
+        "count": 1
+      },
+      "billing_timing": "advance",
+      "metadata": {
+        "plan": "pro",
+        "quota_companies": "10",
+        "quota_nfe": "1200",
+        "quota_nfce": "6000",
+        "quota_cte": "1200",
+        "quota_mdfe": "1200"
+      }
+    },
+    {
+      "id": "price_dfe_ondemand_company",
+      "product_id": "prod_dfe_ondemand",
+      "type": "metered",
+      "unit_amount": 500,
+      "recurrence": {
+        "interval": "month",
+        "count": 1
+      },
+      "billing_timing": "arrears",
+      "metadata": {
+        "plan": "ondemand",
+        "meter": "company"
+      }
+    },
+    {
+      "id": "price_dfe_ondemand_nfe",
+      "product_id": "prod_dfe_ondemand",
+      "type": "metered",
+      "unit_amount": 5,
+      "recurrence": {
+        "interval": "month",
+        "count": 1
+      },
+      "billing_timing": "arrears",
+      "metadata": {
+        "plan": "ondemand",
+        "meter": "nfe"
+      }
+    },
+    {
+      "id": "price_dfe_ondemand_nfce",
+      "product_id": "prod_dfe_ondemand",
+      "type": "metered",
+      "unit_amount": 1,
+      "recurrence": {
+        "interval": "month",
+        "count": 1
+      },
+      "billing_timing": "arrears",
+      "metadata": {
+        "plan": "ondemand",
+        "meter": "nfce"
+      }
+    },
+    {
+      "id": "price_dfe_ondemand_cte",
+      "product_id": "prod_dfe_ondemand",
+      "type": "metered",
+      "unit_amount": 50,
+      "recurrence": {
+        "interval": "month",
+        "count": 1
+      },
+      "billing_timing": "arrears",
+      "metadata": {
+        "plan": "ondemand",
+        "meter": "cte"
+      }
+    },
+    {
+      "id": "price_dfe_ondemand_mdfe",
+      "product_id": "prod_dfe_ondemand",
+      "type": "metered",
+      "unit_amount": 10,
+      "recurrence": {
+        "interval": "month",
+        "count": 1
+      },
+      "billing_timing": "arrears",
+      "metadata": {
+        "plan": "ondemand",
+        "meter": "mdfe"
+      }
+    }
+  ]
+}

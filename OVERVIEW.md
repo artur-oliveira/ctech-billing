@@ -11,63 +11,68 @@ rebuildable from zero by replaying `ctech-wallet`'s transaction history plus its
 ## 2. Core entities
 
 ### Plan
+
 A sellable offer. Deliberately generic — a `Plan` is either **FIXED** or **METERED**, never both.
 
-| Field | Notes |
-|---|---|
-| `id` | ULID |
-| `product_key` | e.g. `dfe`, `poker` — which CTech product owns this plan |
-| `name` | e.g. "DF-e Basic", "DF-e Sob Demanda" |
-| `type` | `FIXED` \| `METERED` |
-| `currency` | `BRL` only for MVP |
-| `fixed_price_cents` | required if `type=FIXED` |
-| `usage_unit` | e.g. `emissions` — required if `type=METERED` |
-| `usage_tiers` | ordered list of `{ up_to, unit_price_cents }`, last tier `up_to=null` — required if `type=METERED`. A flat per-unit price is just a single tier. |
-| `billing_timing` | `ADVANCE` \| `ARREARS` — see § 4. Default (on the `VARIABLE_ANCHOR` cycle): `ADVANCE` for FIXED, `ARREARS` for METERED. On `FIXED_MONTHLY` this field is **overridden to `ARREARS`** by the cycle rule (see § 4), so the default does not apply there. |
-| `trial_days` | optional |
-| `active` | plans are never deleted, only deactivated (existing subscriptions keep working) |
-| `version` | incremented on every price/tier change (see § 6 — Plan Versioning) |
+| Field               | Notes                                                                                                                                                                                                                                                  |
+|---------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `id`                | ULID                                                                                                                                                                                                                                                   |
+| `product_key`       | e.g. `dfe`, `poker` — which CTech product owns this plan                                                                                                                                                                                               |
+| `name`              | e.g. "DF-e Basic", "DF-e Sob Demanda"                                                                                                                                                                                                                  |
+| `type`              | `FIXED` \| `METERED`                                                                                                                                                                                                                                   |
+| `currency`          | `BRL` only for MVP                                                                                                                                                                                                                                     |
+| `fixed_price_cents` | required if `type=FIXED`                                                                                                                                                                                                                               |
+| `usage_unit`        | e.g. `emissions` — required if `type=METERED`                                                                                                                                                                                                          |
+| `usage_tiers`       | ordered list of `{ up_to, unit_price_cents }`, last tier `up_to=null` — required if `type=METERED`. A flat per-unit price is just a single tier.                                                                                                       |
+| `billing_timing`    | `ADVANCE` \| `ARREARS` — see § 4. Default (on the `VARIABLE_ANCHOR` cycle): `ADVANCE` for FIXED, `ARREARS` for METERED. On `FIXED_MONTHLY` this field is **overridden to `ARREARS`** by the cycle rule (see § 4), so the default does not apply there. |
+| `trial_days`        | optional                                                                                                                                                                                                                                               |
+| `active`            | plans are never deleted, only deactivated (existing subscriptions keep working)                                                                                                                                                                        |
+| `version`           | incremented on every price/tier change (see § 6 — Plan Versioning)                                                                                                                                                                                     |
 
 ### Subscription
-| Field | Notes |
-|---|---|
-| `id` | ULID |
-| `customer_ref` | opaque tenant/customer id, owned by the consuming product (not by `ctech-billing`) — we never store PII about the customer beyond this reference |
-| `plan_id` + `plan_version` | pinned at subscribe time (and at every renewal, re-pinned to current plan version unless the customer is grandfathered — configurable per plan) |
-| `status` | `TRIALING` \| `ACTIVE` \| `PAST_DUE` \| `PAUSED` \| `CANCELED` |
-| `cycle_type` | `FIXED_MONTHLY` \| `VARIABLE_ANCHOR` — see § 4 |
-| `anchor_day` | 1–28, or `null` for `FIXED_MONTHLY` (which is always "1st business day of month, referencing the prior month") |
-| `current_period_start` / `current_period_end` | |
-| `cancel_at_period_end` | bool — "cancel but let the paid period run out" |
-| `canceled_at` | |
-| `created_at` | |
+
+| Field                                         | Notes                                                                                                                                            |
+|-----------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------|
+| `id`                                          | ULID                                                                                                                                             |
+| `customer_ref`                                | opaque tenant/customer id, owned by the consuming product (not by `ctech-billing`) — we never store PII about the customer beyond this reference |
+| `plan_id` + `plan_version`                    | pinned at subscribe time (and at every renewal, re-pinned to current plan version unless the customer is grandfathered — configurable per plan)  |
+| `status`                                      | `TRIALING` \| `ACTIVE` \| `PAST_DUE` \| `PAUSED` \| `CANCELED`                                                                                   |
+| `cycle_type`                                  | `FIXED_MONTHLY` \| `VARIABLE_ANCHOR` — see § 4                                                                                                   |
+| `anchor_day`                                  | 1–28, or `null` for `FIXED_MONTHLY` (which is always "1st business day of month, referencing the prior month")                                   |
+| `current_period_start` / `current_period_end` |                                                                                                                                                  |
+| `cancel_at_period_end`                        | bool — "cancel but let the paid period run out"                                                                                                  |
+| `canceled_at`                                 |                                                                                                                                                  |
+| `created_at`                                  |                                                                                                                                                  |
 
 ### Invoice ("Fatura")
-| Field | Notes |
-|---|---|
-| `id` | ULID |
-| `subscription_id` | |
-| `period_start` / `period_end` | the period this invoice bills for |
-| `due_date` | computed per § 5 (holiday/weekend rollforward) |
-| `line_items` | `[{ description, quantity, unit_price_cents, amount_cents, usage_record_ids? }]` |
-| `subtotal_cents` / `discount_cents` / `total_cents` | |
-| `status` | `DRAFT` \| `OPEN` \| `PAID` \| `VOID` \| `UNCOLLECTIBLE` |
-| `wallet_charge_id` | set once `ctech-wallet` accepts the charge request (see ARCHITECTURE.md § Wallet Integration) |
-| `paid_at` | |
-| `idempotency_key` | `{subscription_id}:{period_start}:{plan_version}` — invoice generation is idempotent; re-running the scheduler never double-bills |
+
+| Field                                               | Notes                                                                                                                             |
+|-----------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------|
+| `id`                                                | ULID                                                                                                                              |
+| `subscription_id`                                   |                                                                                                                                   |
+| `period_start` / `period_end`                       | the period this invoice bills for                                                                                                 |
+| `due_date`                                          | computed per § 5 (holiday/weekend rollforward)                                                                                    |
+| `line_items`                                        | `[{ description, quantity, unit_price_cents, amount_cents, usage_record_ids? }]`                                                  |
+| `subtotal_cents` / `discount_cents` / `total_cents` |                                                                                                                                   |
+| `status`                                            | `DRAFT` \| `OPEN` \| `PAID` \| `VOID` \| `UNCOLLECTIBLE`                                                                          |
+| `wallet_charge_id`                                  | set once `ctech-wallet` accepts the charge request (see ARCHITECTURE.md § Wallet Integration)                                     |
+| `paid_at`                                           |                                                                                                                                   |
+| `idempotency_key`                                   | `{subscription_id}:{period_start}:{plan_version}` — invoice generation is idempotent; re-running the scheduler never double-bills |
 
 ### UsageRecord
+
 Reported by the owning product for `METERED` plans.
 
-| Field | Notes |
-|---|---|
-| `id` | |
-| `subscription_id` | |
-| `quantity` | |
-| `occurred_at` | |
+| Field             | Notes                                                                                                                                    |
+|-------------------|------------------------------------------------------------------------------------------------------------------------------------------|
+| `id`              |                                                                                                                                          |
+| `subscription_id` |                                                                                                                                          |
+| `quantity`        |                                                                                                                                          |
+| `occurred_at`     |                                                                                                                                          |
 | `idempotency_key` | caller-supplied — required. `ctech-dfe` reporting "1 emission" for the same fiscal document twice (e.g. on retry) must not double-count. |
 
 ### CreditNote
+
 Adjustments/refunds against an already-issued invoice. Never mutate a `PAID` invoice's
 line items directly — every correction is a new `CreditNote` referencing the original invoice.
 This is non-negotiable for auditability (and because `ctech-dfe` will need it to cancel/adjust
@@ -94,18 +99,18 @@ component — **explicitly deferred to post-MVP**; call it out rather than bolt 
   arrears-style regardless of plan `billing_timing`, because the reference period must be
   fully closed before the invoice reflects it. (If a FIXED plan is on this cycle, it's billed
   for the month that already elapsed — arrears — not for the month ahead.)
-  - **Clarification (resolves the § 2 default conflict):** `billing_timing` only takes effect on
-    the `VARIABLE_ANCHOR` cycle. On `FIXED_MONTHLY` the stored `billing_timing` value is
-    ignored and the cycle is always `ARREARS`. So a FIXED plan's § 2 default of `ADVANCE` does
-    **not** apply here — `FIXED_MONTHLY` is the one cycle where the plan's `billing_timing`
-    field is overridden by the cycle rule.
+    - **Clarification (resolves the § 2 default conflict):** `billing_timing` only takes effect on
+      the `VARIABLE_ANCHOR` cycle. On `FIXED_MONTHLY` the stored `billing_timing` value is
+      ignored and the cycle is always `ARREARS`. So a FIXED plan's § 2 default of `ADVANCE` does
+      **not** apply here — `FIXED_MONTHLY` is the one cycle where the plan's `billing_timing`
+      field is overridden by the cycle rule.
 - **`VARIABLE_ANCHOR`** ("Ciclagem mensal variável"): invoice due date is the customer-chosen
   `anchor_day` every month. `billing_timing` decides direction:
-  - `ADVANCE` (default for FIXED plans on this cycle): invoice for period `[anchor, anchor+1)`
-    is generated and due **at the start** of that period — i.e., generated `grace_days` before
-    `anchor_day` (default 0 — due exactly on `anchor_day`).
-  - `ARREARS` (default for METERED plans on this cycle): invoice for period
-    `[anchor-1, anchor)` is generated **on** `anchor_day`, once usage for that period is closed.
+    - `ADVANCE` (default for FIXED plans on this cycle): invoice for period `[anchor, anchor+1)`
+      is generated and due **at the start** of that period — i.e., generated `grace_days` before
+      `anchor_day` (default 0 — due exactly on `anchor_day`).
+    - `ARREARS` (default for METERED plans on this cycle): invoice for period
+      `[anchor-1, anchor)` is generated **on** `anchor_day`, once usage for that period is closed.
 - `anchor_day` > days-in-month clamps to the last day of that month (e.g. anchor=31 in
   February → Feb 28/29).
 
@@ -162,7 +167,8 @@ retroactively corrupt every past invoice's math.
 - M2M invoice/usage-record creation for authorized external services.
 - Wallet debit integration for collection.
 - Invoice collection via a new Wallet charge contract (balance/PIX initially; the contract is
-  not implemented today and Boleto is out of scope until Wallet supports it).
+  now [specified](docs/specs/2026-08-15-wallet-invoice-charge.md) and implemented in both
+  repositories, and Boleto is out of scope until Wallet supports it).
 - Pro-rata, national holidays, weekend due-date rollforward.
 - Fixed and variable billing cycles as described above.
 
@@ -220,6 +226,7 @@ the prose — they are genuinely undecided. Do not treat any single doc as final
    implementing, and contract-testing the new lifecycle.
 
 ### Other open decisions (from PLAN.md)
+
 - Roll-forward vs roll-backward for holiday/weekend due dates (§ 5). Spec assumes forward;
   confirm with the business owner.
 - Billing datastore ADR based on billing access patterns (see item 1 above).

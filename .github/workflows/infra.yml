@@ -1,0 +1,123 @@
+name: Infrastructure
+
+# Called by deploy.yml, which owns the trigger, the path filter and the
+# Terraform → scopes → API → frontend ordering. The plan job runs on its own for
+# pull requests and applies nothing.
+on:
+  workflow_call:
+  pull_request:
+    branches: [main, staging, dev]
+    paths:
+      - 'terraform/**'
+      - '.github/workflows/infra.yml'
+
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+
+env:
+  TF_VERSION: 1.15.8
+  AWS_REGION: us-east-1
+  # One role for both roots. It is the only one here with rights beyond a
+  # bucket, which is why it is also the only one whose trust policy excludes
+  # pull requests — see terraform/github/variables.tf.
+  ROLE_ARN: arn:aws:iam::868899309401:role/ctech-billing-gha-infra
+
+jobs:
+  # Validation with no credentials at all. `-backend=false` is the point: a CI
+  # job that can read production state is a CI job that can corrupt it, and
+  # nothing about checking whether the HCL parses needs to know what is deployed.
+  validate:
+    name: Validate
+    runs-on: ubuntu-24.04-arm
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Format
+        run: terraform fmt -recursive -check -diff terraform/
+
+      - name: Validate roots
+        run: |
+          for root in terraform/billing terraform/github; do
+            echo "── $root"
+            terraform -chdir="$root" init -backend=false -input=false
+            terraform -chdir="$root" validate
+          done
+
+  apply:
+    name: Apply
+    runs-on: ubuntu-24.04-arm
+    if: github.event_name != 'pull_request'
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Resolve environment
+        id: env
+        env:
+          REF: ${{ github.ref_name }}
+        run: |
+          case "$REF" in
+            main)    echo "name=prod"  >> "$GITHUB_OUTPUT" ;;
+            staging) echo "name=stage" >> "$GITHUB_OUTPUT" ;;
+            *)       echo "name=dev"   >> "$GITHUB_OUTPUT" ;;
+          esac
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ env.ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # Both roots name `profile = "ctech"` in their backend and provider blocks,
+      # which is what makes them work unchanged on a laptop. A backend block
+      # cannot take a variable, so rather than strip the profile from the source
+      # for CI's benefit, CI supplies the profile — pointing it at the
+      # environment credentials the assumed role already exported.
+      - name: Provide the ctech profile
+        run: |
+          mkdir -p ~/.aws
+          printf '[profile ctech]\ncredential_source = Environment\nregion = %s\n' \
+            "$AWS_REGION" >> ~/.aws/config
+
+      # The OIDC roles the *other* jobs assume live in this root, and it has one
+      # workspace rather than three: the roles are global and the branch decides
+      # the environment inside each workflow. Applied first so a role added here
+      # exists before the job that needs it runs.
+      - name: Apply — GitHub OIDC roles
+        working-directory: terraform/github
+        run: |
+          terraform init -input=false
+          terraform apply -auto-approve -input=false
+
+      - name: Apply — billing
+        working-directory: terraform/billing
+        env:
+          ENVIRONMENT: ${{ steps.env.outputs.name }}
+        run: |
+          terraform init -input=false
+          terraform workspace select -or-create "$ENVIRONMENT"
+          terraform apply -auto-approve -input=false \
+            -var-file="environments/${ENVIRONMENT}.tfvars" \
+            -var="environment=${ENVIRONMENT}"
+
+      - name: Summarise
+        working-directory: terraform/billing
+        run: |
+          {
+            echo "### Terraform (${{ steps.env.outputs.name }})"
+            echo '```'
+            terraform output -json | jq -r 'to_entries[] | "\(.key) = \(.value.value)"'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
