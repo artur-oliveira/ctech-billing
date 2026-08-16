@@ -62,11 +62,27 @@ func newDunner(t *testing.T, box *mailbox) *services.Dunner {
 	)
 }
 
-// dunnableInvoice produces a real OPEN invoice through the real path — a
-// subscription billed in advance, whose first invoice is created and finalized
-// by the subscriber. Hand-writing an invoice row would also pass, and would not
-// prove the settlement queue is armed by the code that issues bills.
+// dunnableInvoice is an overdue bill belonging to an **ongoing** subscriber:
+// somebody who had the service and is about to lose it, which is what the
+// escalation half of the policy is about.
+//
+// The activation stands in for the earlier periods this subscriber already paid
+// for. Without it the fixture is a subscription on its very first invoice —
+// INCOMPLETE, never activated — which is a different story with a different
+// ending, covered by TestDunningNeverRestrictsAServiceNobodyHad.
 func dunnableInvoice(t *testing.T, org *billing.Organization) (*billing.Invoice, *billing.Subscription, string) {
+	t.Helper()
+	inv, sub, address := unactivatedDunnableInvoice(t, org)
+	activateSubscription(t, org, sub.ID)
+	sub.Status = billing.SubscriptionActive
+	return inv, sub, address
+}
+
+// unactivatedDunnableInvoice produces a real OPEN invoice through the real path
+// — a subscription billed in advance, whose first invoice is created and
+// finalized by the subscriber. Hand-writing an invoice row would also pass, and
+// would not prove the settlement queue is armed by the code that issues bills.
+func unactivatedDunnableInvoice(t *testing.T, org *billing.Organization) (*billing.Invoice, *billing.Subscription, string) {
 	t.Helper()
 	ctx := ctxT(t)
 
@@ -216,5 +232,102 @@ func TestDunningAbandonsAtTheEndOfThePolicy(t *testing.T) {
 	// the row rather than from the run's totals, which are cross-tenant.
 	if freshInv.DunningStep < len(billing.DunningPolicy) {
 		t.Fatalf("dunning step = %d, want the policy exhausted (%d)", freshInv.DunningStep, len(billing.DunningPolicy))
+	}
+}
+
+// activateSubscription applies a first payment's effect without a wallet.
+//
+// It is the same edge Collector.activateSubscription walks (CauseInvoicePaid),
+// used by tests whose subject is what happens *after* activation and which have
+// no payment rail wired. Tests about the payment itself use the real one.
+func activateSubscription(t *testing.T, org *billing.Organization, subscriptionID string) {
+	t.Helper()
+	subs := repositories.NewSubscriptionRepository(testDB, testCfg)
+	sub, err := subs.Get(ctxT(t), org.ID, org.Livemode, subscriptionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sub.Status == billing.SubscriptionActive {
+		return
+	}
+	if _, err := subs.Transition(ctxT(t), sub, billing.SubscriptionActive,
+		billing.CauseInvoicePaid, "test", "", now()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A subscription that never activated walks the same reminder policy — the bill
+// is real and owed — and none of the escalation, because there is no service to
+// restrict. It ends as CauseActivationExpired, not CauseDunningExhausted: the
+// customer never became a subscriber, so dunning did not give up on one.
+//
+// This is also the test that says there is no separate activation-expiry job.
+func TestDunningNeverRestrictsAServiceNobodyHad(t *testing.T) {
+	org := newOrg(t, true)
+	inv, sub, address := unactivatedDunnableInvoice(t, org)
+
+	box := &mailbox{}
+	dunner := newDunner(t, box)
+	ctx := context.Background()
+	subs := repositories.NewSubscriptionRepository(testDB, testCfg)
+
+	// Every reminder still goes out, including the pre-due note.
+	for step := range billing.DunningPolicy {
+		day, ok := billing.DunningDate(inv.DueDate, step)
+		if !ok {
+			t.Fatalf("policy step %d has no date", step)
+		}
+		if res := dunner.Run(ctx, true, day, now()); len(res.Errors) > 0 {
+			t.Fatalf("dunning step %d: %v", step, res.Errors)
+		}
+		// Through the escalation step the subscription must not move: PAST_DUE
+		// would claim something was taken away.
+		if step < len(billing.DunningPolicy)-1 {
+			fresh, err := subs.Get(ctxT(t), org.ID, true, sub.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if fresh.Status != billing.SubscriptionIncomplete {
+				t.Fatalf("after step %d the subscription is %s, want it still INCOMPLETE", step, fresh.Status)
+			}
+		}
+	}
+	if len(box.to(address)) == 0 {
+		t.Fatal("an unpaid first invoice must still be chased — the reminders are what get it paid")
+	}
+
+	fresh, err := subs.Get(ctxT(t), org.ID, true, sub.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fresh.Status != billing.SubscriptionCanceled {
+		t.Fatalf("subscription = %s, want CANCELED at the end of the policy", fresh.Status)
+	}
+	freshInv, err := repositories.NewInvoiceRepository(testDB, testCfg).Get(ctxT(t), org.ID, true, inv.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if freshInv.Status != billing.InvoiceUncollectible {
+		t.Fatalf("invoice = %s, want UNCOLLECTIBLE", freshInv.Status)
+	}
+
+	trail, err := repositories.NewAuditRepository(testDB, testCfg).
+		ListForEntity(ctxT(t), org.ID, true, sub.ID, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range trail {
+		if entry.Cause == billing.CauseDunningExhausted {
+			t.Fatalf("a subscription that never activated was ended as if it had: %+v", entry)
+		}
+	}
+	var expired bool
+	for _, entry := range trail {
+		if entry.Cause == billing.CauseActivationExpired {
+			expired = true
+		}
+	}
+	if !expired {
+		t.Fatalf("nothing records that activation never happened: %+v", trail)
 	}
 }

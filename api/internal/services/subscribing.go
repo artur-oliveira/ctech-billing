@@ -34,6 +34,19 @@ type SubscribeItem struct {
 	Quantity int64
 }
 
+// quantity applies the "below 1 reads as 1" rule.
+//
+// A method rather than an inline clamp because two things now need the answer —
+// the item that gets written and the cost that decides the starting status — and
+// two copies of a normalization rule is how they come to disagree about what a
+// zero means.
+func (it SubscribeItem) quantity() int64 {
+	if it.Quantity < 1 {
+		return 1
+	}
+	return it.Quantity
+}
+
 // SubscribeInput is what a caller must supply to start a subscription.
 type SubscribeInput struct {
 	OrganizationID string
@@ -57,13 +70,16 @@ type SubscribeInput struct {
 // boundaries, and the first period has none behind it (see
 // billing.PeriodToInvoice). So it is created here or never.
 //
-// **Known interim behaviour, to change with the payment leg (Phase 3):** the
-// subscription is created ACTIVE, so service is granted before the first invoice
-// is paid. The designed behaviour is INCOMPLETE until that payment lands
-// (assessment § 6.2) — but INCOMPLETE has no way out until something can
-// actually collect money, and shipping a state nothing can leave would be worse
-// than shipping this. It is acceptable only while the sole tenant is CTech's own
-// products; it must not survive the first external merchant.
+// **A paid plan starts INCOMPLETE**, not ACTIVE (assessment § 6.2). Service the
+// customer has not paid for is not service they have, and INCOMPLETE is the state
+// that says so — it is not PAST_DUE, because nothing is being taken away from
+// somebody who never had it, and its expiry is therefore silent.
+//
+// This was deliberately deferred while nothing could collect money: shipping a
+// state with no way out would have been worse than granting service early. Both
+// halves of the way out now exist — Collector.activateSubscription walks
+// INCOMPLETE -> ACTIVE when the first payment lands, and the activation-expiry
+// sweep cancels the ones where it never does.
 func (s *Subscriber) Subscribe(ctx context.Context, in SubscribeInput, now time.Time) (*billing.Subscription, *billing.Invoice, error) {
 	if len(in.Items) == 0 {
 		return nil, nil, fmt.Errorf("%w: a subscription needs at least one item", billing.ErrInvalidSubscriptionItem)
@@ -83,12 +99,27 @@ func (s *Subscriber) Subscribe(ctx context.Context, in SubscribeInput, now time.
 	// for all of them.
 	cycle := prices[0]
 
+	// Decided before the row is written rather than corrected after it. A
+	// subscription that exists as ACTIVE for even an instant is one an entitlement
+	// check can see, and the whole point of INCOMPLETE is that the window does not
+	// exist.
+	//
+	// Two ways to start ACTIVE, and they are different facts rather than one rule
+	// with an exception. A **free** plan's first period costs nothing, so there is
+	// no payment to wait for. An **arrears** plan has not yet served the period it
+	// will bill for, so nothing is owed yet either — its first invoice comes from
+	// the sweep when that period closes.
+	status := billing.SubscriptionActive
+	if cycle.Timing == billing.BillAdvance && firstPeriodCost(prices, in.Items) > 0 {
+		status = billing.SubscriptionIncomplete
+	}
+
 	sub := &billing.Subscription{
 		ID:             id.NewWithPrefix(id.PrefixSubscription),
 		OrganizationID: in.OrganizationID,
 		Livemode:       in.Livemode,
 		CustomerID:     in.CustomerID,
-		Status:         billing.SubscriptionActive,
+		Status:         status,
 		// The recurrence comes from the prices, not from the request: a
 		// subscription whose cycle disagrees with the prices it is on would bill
 		// the wrong amount for the wrong window, and nothing would flag it.
@@ -102,10 +133,7 @@ func (s *Subscriber) Subscribe(ctx context.Context, in SubscribeInput, now time.
 
 	items := make([]billing.SubscriptionItem, len(in.Items))
 	for i, want := range in.Items {
-		quantity := want.Quantity
-		if quantity < 1 {
-			quantity = 1
-		}
+		quantity := want.quantity()
 		items[i] = billing.SubscriptionItem{
 			ID:             id.NewWithPrefix(id.PrefixSubscriptionItm),
 			OrganizationID: in.OrganizationID,
@@ -133,6 +161,36 @@ func (s *Subscriber) Subscribe(ctx context.Context, in SubscribeInput, now time.
 		return sub, nil, err
 	}
 	return sub, inv, nil
+}
+
+// firstPeriodCost is what the first advance period will cost, computed from the
+// prices alone.
+//
+// It has to be answered before the invoice exists, because the invoice is
+// written against a subscription whose status is already decided. That makes it
+// the same arithmetic as billing.FixedLine — the one GenerateForPeriod runs a
+// moment later — in a second place, which is normally the thing to avoid.
+//
+// What keeps the two honest is a test rather than a comment:
+// TestSubscribingToAPaidPlanStartsIncomplete asserts the status Subscribe chose
+// against the invoice Subscribe produced, so they cannot silently disagree. A
+// discount, a trial or a mid-period proration would land in the invoice and not
+// here — that test is what fails first, and it is the thing to fix rather than
+// delete when one of those arrives.
+//
+// Metered prices contribute nothing, and that is correct rather than a rounding
+// of the problem: a metered price cannot be billed in advance at all
+// (Price.Validate), so one cannot reach this path — and usage for a period that
+// has not started is genuinely zero.
+func firstPeriodCost(prices []*billing.Price, items []SubscribeItem) billing.Cents {
+	total := billing.Cents(0)
+	for i, price := range prices {
+		if price.Type != billing.PriceFixed {
+			continue
+		}
+		total += price.UnitAmount * billing.Cents(items[i].quantity())
+	}
+	return total
 }
 
 // resolveItemPrices reads the requested prices and rejects a set that cannot be
@@ -209,7 +267,13 @@ func (s *Subscriber) resolveItemPrices(ctx context.Context, in SubscribeInput) (
 // changes nothing today. Collapsing them into one call with a flag is how a
 // customer loses access on the day they meant to keep it until.
 func (s *Subscriber) Cancel(ctx context.Context, sub *billing.Subscription, atPeriodEnd bool, cause billing.Cause, actor, requestID string, now time.Time) error {
-	if atPeriodEnd {
+	// "At the end of the period" means "keep what you already paid for until it
+	// runs out", and a subscription that never activated has no such thing: no
+	// payment landed and no service was granted, so there is nothing for the
+	// deferral to protect. Honouring the flag would leave a row alive for a month
+	// guarding an entitlement that does not exist — and the domain would refuse
+	// it anyway, since INCOMPLETE has no self-edge to schedule against.
+	if atPeriodEnd && sub.Status != billing.SubscriptionIncomplete {
 		return s.subs.ScheduleCancellation(ctx, sub, cause, actor, requestID, now)
 	}
 	_, err := s.subs.Transition(ctx, sub, billing.SubscriptionCanceled, cause, actor, requestID, now)

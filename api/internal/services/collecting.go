@@ -70,6 +70,7 @@ type Collector struct {
 	payments  *repositories.PaymentRepository
 	customers *repositories.CustomerRepository
 	orgs      *repositories.OrganizationRepository
+	subs      *repositories.SubscriptionRepository
 	charges   ChargeOpener
 	// bus announces a settlement to whichever instance is holding the payer's
 	// screen. Optional: without Valkey the screen falls back to re-reading the
@@ -87,14 +88,29 @@ func (c *Collector) WithSettlementBus(bus settlement.Bus) *Collector {
 	return c
 }
 
+// NewCollector wires collection.
+//
+// `subs` is a required argument and not an optional setter like the settlement
+// bus, deliberately: a nil bus degrades a screen, while a nil subscription
+// repository would silently stop paid invoices from restoring service — which is
+// the exact failure this dependency exists to prevent. A missing one should be a
+// compile error, not a quiet skip.
 func NewCollector(
 	invoices *repositories.InvoiceRepository,
 	payments *repositories.PaymentRepository,
 	customers *repositories.CustomerRepository,
 	orgs *repositories.OrganizationRepository,
+	subs *repositories.SubscriptionRepository,
 	charges ChargeOpener,
 ) *Collector {
-	return &Collector{invoices: invoices, payments: payments, customers: customers, orgs: orgs, charges: charges}
+	return &Collector{
+		invoices:  invoices,
+		payments:  payments,
+		customers: customers,
+		orgs:      orgs,
+		subs:      subs,
+		charges:   charges,
+	}
 }
 
 // VerifyWebhook authenticates a notify-back. It proves the sender, and nothing
@@ -298,32 +314,34 @@ func settledBy(cause billing.Cause) string {
 	return actorWallet
 }
 
-// settleInvoice moves the invoice to PAID and completes the session.
+// settleInvoice moves the invoice to PAID, restores the service it pays for, and
+// completes the session.
 //
 // Split out because Confirm reaches it from two places — a fresh confirmation
 // and a repeated one whose attempt already succeeded. The second happens
 // whenever the invoice write failed after the attempt write, and without this
 // path the retry would find a succeeded attempt, do nothing, and leave the
 // invoice open forever.
+//
+// Everything after the invoice write runs on **both** paths, and that is the
+// point of the shape rather than an early return: each of the three steps below
+// is a separate write that can fail on its own, and the retry that follows has
+// to be able to finish the ones that did not happen. A repeat that stopped at
+// "already PAID" would leave a subscription permanently unactivated by a payment
+// that went through.
 func (c *Collector) settleInvoice(ctx context.Context, attempt *billing.PaymentAttempt, cause billing.Cause, actor, requestID string, now time.Time) error {
 	inv, err := c.invoices.Get(ctx, attempt.OrganizationID, attempt.Livemode, attempt.InvoiceID)
 	if err != nil {
 		return err
 	}
-	if inv.Status == billing.InvoicePaid {
-		c.completeSession(ctx, attempt, cause, actor, requestID, now)
-		// Also announced on the repeat path: this is the retry after a write that
-		// half-succeeded, and the browser waiting on it never heard the first one.
-		if c.bus != nil {
-			c.bus.Settled(ctx, inv.ID)
+	if inv.Status != billing.InvoicePaid {
+		if _, err := c.invoices.Transition(
+			ctx, inv, billing.InvoicePaid, cause, actor, requestID, now,
+		); err != nil {
+			return err
 		}
-		return nil
 	}
-	if _, err := c.invoices.Transition(
-		ctx, inv, billing.InvoicePaid, cause, actor, requestID, now,
-	); err != nil {
-		return err
-	}
+	c.activateSubscription(ctx, inv, cause, actor, requestID, now)
 	c.completeSession(ctx, attempt, cause, actor, requestID, now)
 	// Told after the write, never before. A screen that celebrates a payment the
 	// database has not recorded is a screen that lies when the write then fails.
@@ -331,6 +349,55 @@ func (c *Collector) settleInvoice(ctx context.Context, attempt *billing.PaymentA
 		c.bus.Settled(ctx, inv.ID)
 	}
 	return nil
+}
+
+// activateSubscription is the subscription's half of a payment landing.
+//
+// Two edges, one call, and the domain already had both: INCOMPLETE -> ACTIVE is
+// a first payment arriving and service being granted for the first time;
+// PAST_DUE -> ACTIVE is a customer catching up after dunning already restricted
+// them (EventSubscriptionRecovered). Nothing in the service walked either of
+// them, so a customer who fell past due on D+10 and paid on D+12 stayed
+// PAST_DUE forever — the invoice went PAID and the service never came back.
+//
+// It never fails the settlement, and that asymmetry is deliberate. The money
+// arrived and the invoice is PAID; refusing that because the subscription would
+// not move would make wallet retry a payment that has fully happened, and there
+// is no "unpay" to retry into. A subscription left behind is visible on a screen
+// and fixable by hand. A payment recorded nowhere is neither.
+func (c *Collector) activateSubscription(ctx context.Context, inv *billing.Invoice, cause billing.Cause, actor, requestID string, now time.Time) {
+	if inv.SubscriptionID == "" {
+		return // a one-off invoice gates no service
+	}
+	sub, err := c.subs.Get(ctx, inv.OrganizationID, inv.Livemode, inv.SubscriptionID)
+	if err != nil {
+		slog.ErrorContext(ctx, "invoice paid but its subscription could not be read",
+			"invoice_id", inv.ID, "subscription_id", inv.SubscriptionID, "error", err)
+		return
+	}
+	if sub.Status != billing.SubscriptionIncomplete && sub.Status != billing.SubscriptionPastDue {
+		// ACTIVE already — the ordinary renewal, which is most of them — or paused
+		// or canceled, neither of which a payment decides on its own. Checked here
+		// rather than left to the domain to refuse, because ACTIVE -> ACTIVE is a
+		// legal edge under other causes and an ErrInvalidTransition logged on every
+		// renewal is a log nobody reads.
+		return
+	}
+	from := sub.Status
+	// CauseInvoicePaid, never the cause that settled the charge: the webhook and
+	// the reconciler are two ways of learning the same fact, and what moved the
+	// subscription is the payment, not which of them noticed it. The actor still
+	// names the messenger, which is where that distinction belongs.
+	if _, err := c.subs.Transition(
+		ctx, sub, billing.SubscriptionActive, billing.CauseInvoicePaid, actor, requestID, now,
+	); err != nil {
+		slog.ErrorContext(ctx, "invoice paid but its subscription did not activate",
+			"invoice_id", inv.ID, "subscription_id", sub.ID,
+			"from", from, "settled_by", cause, "error", err)
+		return
+	}
+	slog.InfoContext(ctx, "subscription activated by payment",
+		"invoice_id", inv.ID, "subscription_id", sub.ID, "from", from, "actor", actor)
 }
 
 // completeSession closes the page's own state. Failures are logged and swallowed

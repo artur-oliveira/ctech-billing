@@ -251,6 +251,51 @@ gate.** Both sides of the payment path are now built — billing's, and wallet's
   short payment, a gated organization, and a payer with no CTech account. The fake wallet
   implements the spec, so these tests fail the day the real route disagrees with what billing was
   built against.
+- [x] **A paid plan starts INCOMPLETE** (`Subscriber.Subscribe`). The interim behaviour Phase 1
+  shipped — ACTIVE on create, service granted before the first invoice is paid — was deferred on
+  the argument that a state with no way out is worse. Both halves of the way out now exist, so
+  it is gone. Free plans (`unit_amount` 0) and arrears plans still start ACTIVE, and for
+  different reasons: the first period costs nothing, or has not been served yet.
+
+  The status is decided **before** the row is written, from the prices, rather than corrected
+  after the invoice exists — a subscription that is ACTIVE for even an instant is one an
+  entitlement check can see. That means the same arithmetic as `billing.FixedLine` in a second
+  place, and what keeps the two honest is a test rather than a comment:
+  `TestSubscribingToAPaidPlanStartsIncomplete` asserts the status Subscribe chose against the
+  invoice Subscribe produced.
+
+  Two consequences fell out, both of them real questions this change forced rather than scope:
+    - **Dunning no longer escalates a subscription that never activated.** The reminders still
+      go out — the bill is owed and they are what gets it paid — but D+10 does nothing, because
+      there is no service to restrict, and the end of the policy cancels under
+      `CauseActivationExpired`. Before this it hard-failed on `ErrCauseNotAllowed` and left the
+      invoice OPEN forever. **This removes the need for a separate activation-expiry job**: one
+      policy already owns the whole life of an unpaid first invoice.
+    - **Cancelling an INCOMPLETE subscription at period end ends it now.** There is no paid
+      period to protect, and the domain has no self-edge to schedule against.
+- [x] **A payment restores the service it pays for** (`Collector.activateSubscription`).
+  Found while planning ctech-dfe's integration, and it was live: `CauseInvoicePaid` appeared
+  nowhere outside the domain package, so `invoice.paid` moved the invoice and nothing else.
+  Dunning could take a subscription to `PAST_DUE` on D+10 and there was **no edge back** — a
+  customer who paid on D+12 kept their service restricted by a bill they had settled. The
+  transitions existed (`PastDue → Active` as `subscription.recovered`, `Incomplete → Active` as
+  `subscription.activated`); only the caller was missing.
+
+  Three properties, each of which is why it sits in `settleInvoice` rather than beside it:
+  it runs on the **repeat** path as well as the fresh one, because a retry after a
+  half-succeeded write has to finish the steps that did not happen; it is a **no-op on an
+  already-ACTIVE** subscription, checked here rather than left to the domain to refuse,
+  because `ACTIVE → ACTIVE` is legal under other causes and an `ErrInvalidTransition` logged on
+  every renewal is a log nobody reads; and it **never fails the settlement**, because the money
+  arrived and there is no "unpay" to retry into.
+
+  The cause is `CauseInvoicePaid` and not the cause that settled the charge: the webhook and the
+  reconciler are two ways of learning one fact, and what moved the subscription is the payment.
+  The actor still names the messenger, which is where that distinction belongs.
+
+  `subs` is a required argument to `NewCollector` rather than an optional setter like the
+  settlement bus — a nil bus degrades a screen, a nil subscription repository silently
+  reintroduces exactly this bug, so it should be a compile error.
 - [x] **Reconciliation** (`services/reconciling.go`, `api/cmd/reconcile`) for charges whose webhook
   never arrived. It never asks "did the webhook arrive?" — it asks wallet what happened, which is
   the only question with an authoritative answer, and settles through the same `Confirm` the webhook

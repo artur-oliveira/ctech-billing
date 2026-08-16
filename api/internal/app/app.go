@@ -81,7 +81,7 @@ func Build(ctx context.Context, cfg *config.Config, clock func() time.Time) (*fi
 		Cache:         cacheBackend,
 	}
 	if walletCfg.Enabled() {
-		collector = services.NewCollector(invoices, payments, customers, orgs, wallet.New(walletCfg)).
+		collector = services.NewCollector(invoices, payments, customers, orgs, subs, wallet.New(walletCfg)).
 			WithSettlementBus(bus)
 	} else {
 		slog.Warn("wallet not configured — checkout and payment routes are not mounted")
@@ -240,6 +240,7 @@ func BuildCollector(ctx context.Context, cfg *config.Config) (*services.Collecto
 		repositories.NewPaymentRepository(db, cfg),
 		repositories.NewCustomerRepository(db, cfg),
 		repositories.NewOrganizationRepository(db, cfg),
+		repositories.NewSubscriptionRepository(db, cfg),
 		wallet.New(walletCfg),
 	)
 	// The reconciler settles invoices too — that is its whole job — and somebody

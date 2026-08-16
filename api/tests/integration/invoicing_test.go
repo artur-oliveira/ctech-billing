@@ -329,3 +329,113 @@ func TestSweepRespectsModePartitions(t *testing.T) {
 		}
 	}
 }
+
+// --- What status a new subscription starts in -------------------------------
+
+// subscribeTo runs the real Subscriber against a seeded price.
+func subscribeTo(t *testing.T, org *billing.Organization, price *billing.Price) (*billing.Subscription, *billing.Invoice) {
+	t.Helper()
+	customer := &billing.Customer{
+		ID: id.NewWithPrefix(id.PrefixCustomer), OrganizationID: org.ID, Livemode: org.Livemode,
+		Name: "Ana Ribeiro", Email: id.New() + "@example.com",
+	}
+	if err := repositories.NewCustomerRepository(testDB, testCfg).Create(ctxT(t), customer, now()); err != nil {
+		t.Fatal(err)
+	}
+	subs := repositories.NewSubscriptionRepository(testDB, testCfg)
+	invoices := repositories.NewInvoiceRepository(testDB, testCfg)
+	catalog := repositories.NewCatalogRepository(testDB, testCfg)
+	usage := repositories.NewUsageRepository(testDB, testCfg)
+
+	sub, inv, err := services.NewSubscriber(subs, catalog, services.NewInvoicer(subs, invoices, catalog, usage)).
+		Subscribe(ctxT(t), services.SubscribeInput{
+			OrganizationID: org.ID, Livemode: org.Livemode,
+			CustomerID: customer.ID, Actor: "test",
+			Items: []services.SubscribeItem{{PriceID: price.ID, Quantity: 1}},
+		}, now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return sub, inv
+}
+
+// The property that keeps Subscribe's status honest: it decides INCOMPLETE from
+// the prices, before any invoice exists, and this asserts that decision against
+// the invoice it then produced. A discount, a trial or a mid-period proration
+// would land in the invoice and not in firstPeriodCost — this is the test that
+// fails first, and the one to fix rather than delete when that happens.
+func TestSubscribingToAPaidPlanStartsIncomplete(t *testing.T) {
+	org := newOrg(t, true)
+	sub, inv := subscribeTo(t, org, seedProduct(t, org, "prod_"+id.New(), ""))
+
+	if inv == nil {
+		t.Fatal("an advance-billed subscription must produce its first invoice")
+	}
+	if inv.Total <= 0 {
+		t.Fatalf("fixture is not a paid plan: invoice total = %d", inv.Total)
+	}
+	if sub.Status != billing.SubscriptionIncomplete {
+		t.Fatalf("subscription = %s, want INCOMPLETE: %d is owed and nothing has paid it", sub.Status, inv.Total)
+	}
+	if sub.IsEntitled() {
+		t.Fatal("a subscription whose first invoice is unpaid must not grant service")
+	}
+	if inv.Status != billing.InvoiceOpen {
+		t.Fatalf("first invoice = %s, want OPEN and payable", inv.Status)
+	}
+}
+
+// The other half of the same property. A free plan's first period costs nothing,
+// so there is no payment to wait for and INCOMPLETE would be a state nothing
+// could ever leave — the customer would sit locked out of a plan that is free.
+func TestSubscribingToAFreePlanIsActiveAtOnce(t *testing.T) {
+	org := newOrg(t, true)
+	price := seedProduct(t, org, "prod_"+id.New(), "")
+	free := *price
+	free.ID = id.NewWithPrefix(id.PrefixPrice)
+	free.UnitAmount = 0
+	if err := repositories.NewCatalogRepository(testDB, testCfg).CreatePrice(ctxT(t), &free, now()); err != nil {
+		t.Fatal(err)
+	}
+
+	sub, inv := subscribeTo(t, org, &free)
+	if inv == nil || inv.Total != 0 {
+		t.Fatalf("fixture is not a free plan: invoice = %+v", inv)
+	}
+	if sub.Status != billing.SubscriptionActive || !sub.IsEntitled() {
+		t.Fatalf("subscription = %s, want ACTIVE: nothing is owed, so there is nothing to wait for", sub.Status)
+	}
+	// ADR 0019: nothing due is settled on issue, never chased.
+	if inv.Status != billing.InvoicePaid {
+		t.Fatalf("zero-total invoice = %s, want PAID on issue", inv.Status)
+	}
+}
+
+// Cancelling a subscription that never activated ends it now, whatever the
+// caller asked for. "At the end of the period" protects a period the customer
+// paid for, and there is no such period here.
+func TestCancellingAnIncompleteSubscriptionEndsItNow(t *testing.T) {
+	org := newOrg(t, true)
+	sub, _ := subscribeTo(t, org, seedProduct(t, org, "prod_"+id.New(), ""))
+	if sub.Status != billing.SubscriptionIncomplete {
+		t.Fatalf("fixture is %s, want INCOMPLETE", sub.Status)
+	}
+
+	subs := repositories.NewSubscriptionRepository(testDB, testCfg)
+	catalog := repositories.NewCatalogRepository(testDB, testCfg)
+	subscriber := services.NewSubscriber(subs, catalog, services.NewInvoicer(
+		subs, repositories.NewInvoiceRepository(testDB, testCfg), catalog,
+		repositories.NewUsageRepository(testDB, testCfg)))
+
+	if err := subscriber.Cancel(ctxT(t), sub, true, billing.CauseCustomer, "test", "", now()); err != nil {
+		t.Fatal(err)
+	}
+	fresh, err := subs.Get(ctxT(t), org.ID, true, sub.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fresh.Status != billing.SubscriptionCanceled || fresh.CancelAtPeriodEnd {
+		t.Fatalf("subscription = %s, cancel_at_period_end = %v; want CANCELED now",
+			fresh.Status, fresh.CancelAtPeriodEnd)
+	}
+}

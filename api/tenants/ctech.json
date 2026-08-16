@@ -40,7 +40,7 @@
   "webhook_endpoints": [
     {
       "id": "whe_dfe",
-      "url": "https://dfe.aoctech.internal.app/v1/internal/webhooks/billing",
+      "url": "https://dfe.internal.aoctech.app/v1/internal/webhooks/billing",
       "owner_key": "dfe",
       "secret_env": "WEBHOOK_SECRET_DFE"
     }

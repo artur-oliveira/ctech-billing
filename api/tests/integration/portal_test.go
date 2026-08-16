@@ -69,11 +69,28 @@ func (e *portalEnv) withPortal(t *testing.T) {
 	e.app = server
 }
 
-// newInvoiceFor is newDraftInvoice with the addressee named, which is what the
-// portal filters on and therefore the only thing these tests need to vary.
+// newInvoiceFor is a draft with the addressee named, which is what the portal
+// filters on and therefore the only thing these tests need to vary.
 func newInvoiceFor(t *testing.T, org *billing.Organization, customerID string) *billing.Invoice {
 	t.Helper()
+	return newDraftInvoiceFor(t, org, customerID, "")
+}
+
+// newSubscriptionInvoice is the same draft bound to a subscription.
+//
+// Anything testing what a payment does to *service* needs this one rather than
+// newInvoiceFor: a one-off invoice gates nothing, so it can never show a
+// subscription being activated or recovered — and a test written on one would
+// pass whether or not that code exists.
+func newSubscriptionInvoice(t *testing.T, org *billing.Organization, sub *billing.Subscription) *billing.Invoice {
+	t.Helper()
+	return newDraftInvoiceFor(t, org, sub.CustomerID, sub.ID)
+}
+
+func newDraftInvoiceFor(t *testing.T, org *billing.Organization, customerID, subscriptionID string) *billing.Invoice {
+	t.Helper()
 	inv := &billing.Invoice{
+		SubscriptionID: subscriptionID,
 		ID:             id.NewWithPrefix(id.PrefixInvoice),
 		OrganizationID: org.ID,
 		Livemode:       org.Livemode,

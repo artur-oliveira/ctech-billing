@@ -222,6 +222,7 @@ func newPayEnv(t *testing.T) *payEnv {
 			repositories.NewPaymentRepository(testDB, testCfg),
 			repositories.NewCustomerRepository(testDB, testCfg),
 			repositories.NewOrganizationRepository(testDB, testCfg),
+			repositories.NewSubscriptionRepository(testDB, testCfg),
 			wallet.New(wallet.Config{
 				BaseURL:       cfg.WalletBaseURL,
 				TokenURL:      cfg.WalletTokenURL,
@@ -753,10 +754,15 @@ func TestConsoleCancellationIsAttributedToTheOperator(t *testing.T) {
 // newActiveSubscription creates a subscription the cancellation tests can end.
 func newActiveSubscription(t *testing.T, org *billing.Organization, customerID, priceID string) *billing.Subscription {
 	t.Helper()
+	return newSubscriptionIn(t, org, customerID, priceID, billing.SubscriptionActive)
+}
+
+func newSubscriptionIn(t *testing.T, org *billing.Organization, customerID, priceID string, status billing.SubscriptionStatus) *billing.Subscription {
+	t.Helper()
 	sub := &billing.Subscription{
 		ID: id.NewWithPrefix(id.PrefixSubscription), OrganizationID: org.ID, Livemode: org.Livemode,
 		CustomerID: customerID,
-		Status:     billing.SubscriptionActive,
+		Status:     status,
 		Recurrence: billing.Recurrence{Interval: billing.IntervalMonth, Count: 1},
 		Timing:     billing.BillAdvance,
 		Anchor:     brcal.New(2026, time.March, 1),
@@ -770,4 +776,140 @@ func newActiveSubscription(t *testing.T, org *billing.Organization, customerID, 
 		t.Fatal(err)
 	}
 	return sub
+}
+
+// --- What a payment does to the service it pays for -------------------------
+//
+// An invoice reaching PAID is only half of a settlement. The other half is the
+// subscription: a first payment grants service, and a late payment gives it
+// back. Neither happened before Collector.activateSubscription — the money
+// landed, the invoice went PAID, and the subscription stayed exactly where
+// dunning had left it.
+
+// payInFull takes a subscription's invoice all the way through the rail.
+func (e *payEnv) payInFull(t *testing.T, inv *billing.Invoice) {
+	t.Helper()
+	charge := e.openCharge(t, inv)
+	e.wallet.settle(charge, int64(inv.Total))
+	if res := e.notify(t, charge); res.status != http.StatusOK {
+		t.Fatalf("webhook: %d", res.status)
+	}
+	if got := e.invoiceStatus(t, inv.ID); got != billing.InvoicePaid {
+		t.Fatalf("invoice is %s, want PAID", got)
+	}
+}
+
+// openSubscriptionInvoice finalizes a bill for sub, addressed to the portal
+// customer so the portal's own pay route can reach it.
+func (e *payEnv) openSubscriptionInvoice(t *testing.T, sub *billing.Subscription) *billing.Invoice {
+	t.Helper()
+	inv := newSubscriptionInvoice(t, e.org, sub)
+	due := brcal.New(2026, time.March, 20)
+	if _, err := repositories.NewInvoiceRepository(testDB, testCfg).
+		Finalize(ctxT(t), inv, due, due, "test", "req_setup", now()); err != nil {
+		t.Fatal(err)
+	}
+	return inv
+}
+
+func (e *payEnv) subscriptionStatus(t *testing.T, subID string) billing.SubscriptionStatus {
+	t.Helper()
+	sub, err := repositories.NewSubscriptionRepository(testDB, testCfg).Get(ctxT(t), e.org.ID, true, subID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return sub.Status
+}
+
+// The regression that matters most, and the one that was live: dunning
+// restricts a subscriber on D+10, the subscriber pays on D+12, and the service
+// has to come back. Before the fix the invoice went PAID and the subscription
+// stayed PAST_DUE forever — permanently gated by a bill they had settled.
+func TestPaymentRecoversAPastDueSubscription(t *testing.T) {
+	ctx := ctxT(t)
+	e := newPayEnv(t)
+
+	sub := newActiveSubscription(t, e.org, e.customer.ID, e.priceID)
+	subs := repositories.NewSubscriptionRepository(testDB, testCfg)
+	if _, err := subs.Transition(ctx, sub, billing.SubscriptionPastDue,
+		billing.CausePaymentFailed, "service:dunning", "", now()); err != nil {
+		t.Fatal(err)
+	}
+
+	e.payInFull(t, e.openSubscriptionInvoice(t, sub))
+
+	if got := e.subscriptionStatus(t, sub.ID); got != billing.SubscriptionActive {
+		t.Fatalf("subscription is %s after payment, want ACTIVE", got)
+	}
+
+	// The trail has to say the payment did it. CauseInvoicePaid rather than the
+	// cause that settled the charge, because what restored the service is the
+	// money arriving — not which of the webhook or the reconciler noticed.
+	trail, err := repositories.NewAuditRepository(testDB, testCfg).
+		ListForEntity(ctx, e.org.ID, true, sub.ID, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var recovered bool
+	for _, entry := range trail {
+		if entry.Cause == billing.CauseInvoicePaid &&
+			entry.Action == string(billing.EventSubscriptionRecovered) &&
+			entry.Actor == "service:ctech-wallet" {
+			recovered = true
+		}
+	}
+	if !recovered {
+		t.Fatalf("no recovery attributed to the payment: %+v", trail)
+	}
+}
+
+// The other edge: a subscription that never had service in the first place.
+// INCOMPLETE exists precisely so a paid plan is not granted before it is paid,
+// and it is only worth creating if something can leave it.
+func TestPaymentActivatesAnIncompleteSubscription(t *testing.T) {
+	e := newPayEnv(t)
+	sub := newSubscriptionIn(t, e.org, e.customer.ID, e.priceID, billing.SubscriptionIncomplete)
+
+	e.payInFull(t, e.openSubscriptionInvoice(t, sub))
+
+	if got := e.subscriptionStatus(t, sub.ID); got != billing.SubscriptionActive {
+		t.Fatalf("subscription is %s after its first payment, want ACTIVE", got)
+	}
+}
+
+// The ordinary case, which is most of them: a renewal being paid changes
+// nothing about an already-ACTIVE subscription, and must leave no audit row
+// claiming it did. A timeline that records a state change on every renewal is a
+// timeline nobody can read during an incident.
+func TestPaymentLeavesAnActiveSubscriptionAlone(t *testing.T) {
+	ctx := ctxT(t)
+	e := newPayEnv(t)
+	sub := newActiveSubscription(t, e.org, e.customer.ID, e.priceID)
+
+	e.payInFull(t, e.openSubscriptionInvoice(t, sub))
+
+	if got := e.subscriptionStatus(t, sub.ID); got != billing.SubscriptionActive {
+		t.Fatalf("subscription is %s, want ACTIVE", got)
+	}
+	trail, err := repositories.NewAuditRepository(testDB, testCfg).
+		ListForEntity(ctx, e.org.ID, true, sub.ID, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range trail {
+		if entry.Cause == billing.CauseInvoicePaid {
+			t.Fatalf("payment wrote a state change on an already-active subscription: %+v", entry)
+		}
+	}
+}
+
+// A one-off invoice — no subscription behind it — settles normally and gates
+// nothing. The guard is a return, not a lookup that fails.
+func TestPayingAOneOffInvoiceTouchesNoSubscription(t *testing.T) {
+	e := newPayEnv(t)
+	inv := e.openInvoice(t)
+	if inv.SubscriptionID != "" {
+		t.Fatal("fixture is not a one-off invoice")
+	}
+	e.payInFull(t, inv)
 }

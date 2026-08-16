@@ -196,6 +196,29 @@ func (d *Dunner) escalate(ctx context.Context, inv *billing.Invoice, to billing.
 	if to == billing.SubscriptionCanceled {
 		cause = billing.CauseDunningExhausted
 	}
+
+	// And on where it is coming *from*, for the one case where the same policy
+	// step means something different: a subscription that never activated.
+	//
+	// Its first invoice is real and owed, so the reminders are exactly right —
+	// they are the messages most likely to get it paid. The escalation steps are
+	// not. Restricting a service is a statement about something the customer had,
+	// and an INCOMPLETE subscriber never had it, so there is nothing to take away
+	// at D+10 and that step does nothing at all. The end of the policy still ends
+	// the subscription, but under the reason that is true — activation never
+	// happened — rather than "dunning gave up on a subscriber", which they never
+	// became.
+	//
+	// This is also why there is no separate activation-expiry sweep. One policy
+	// covers the whole life of an unpaid first invoice, and it covers it with
+	// reminders a second job would not have sent.
+	if sub.Status == billing.SubscriptionIncomplete {
+		if to != billing.SubscriptionCanceled {
+			return nil
+		}
+		cause = billing.CauseActivationExpired
+	}
+
 	if _, err := d.subs.Transition(ctx, sub, to, cause, dunningActor, "", now); err != nil {
 		// A subscription the domain refuses to move — already canceled, say — is
 		// not this job's problem to force.

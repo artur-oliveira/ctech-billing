@@ -280,7 +280,10 @@ func TestSubscribeThroughTheAPI(t *testing.T) {
 		} `json:"invoice"`
 	}
 	res.decode(t, &created)
-	if created.Subscription.Status != "ACTIVE" || !created.Subscription.Entitled {
+	// INCOMPLETE, not ACTIVE: a paid plan billed in advance does not grant service
+	// before its first invoice is paid. What the integration gets back is an
+	// invoice to send the customer to, and no entitlement until they use it.
+	if created.Subscription.Status != "INCOMPLETE" || created.Subscription.Entitled {
 		t.Fatalf("subscription = %+v", created.Subscription)
 	}
 	if created.Invoice.ID == "" || created.Invoice.Total != 4990 || created.Invoice.Status != "OPEN" {
@@ -326,9 +329,18 @@ func TestSubscribeThroughTheAPI(t *testing.T) {
 		} `json:"subscriptions"`
 	}
 	res.decode(t, &ent)
-	if !ent.Entitled || len(ent.Subscriptions) != 1 {
+	// Not entitled yet, and that is the point of INCOMPLETE: the consuming
+	// product asks this before letting anyone in, and the answer before the first
+	// payment is no.
+	if ent.Entitled || len(ent.Subscriptions) != 1 || ent.Subscriptions[0].Entitled {
 		t.Fatalf("entitlements = %+v", ent)
 	}
+
+	// The first payment, applied directly. This walk has no wallet — the settled
+	// path is TestPaymentActivatesAnIncompleteSubscription — and what step 5 is
+	// about is scheduling a cancellation, which is a thing only an active
+	// subscriber can do.
+	activateSubscription(t, e.org, created.Subscription.ID)
 
 	// 5. Cancel at period end changes nothing about the status.
 	res = e.do(t, http.MethodPost, "/v1.0/subscriptions/"+created.Subscription.ID+"/cancel",

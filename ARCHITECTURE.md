@@ -181,6 +181,33 @@ at D+10, `UNCOLLECTIBLE` and cancellation at D+30
 The invoice stays payable throughout, escalation included. Each invoice stores
 the step it is on, which is what makes `cmd/dunning -date=…` replayable.
 
+**A subscription that never activated walks the reminders and none of the
+escalation.** Its first invoice is real and owed, so the messages are exactly
+right — they are the ones most likely to get it paid. Restricting a service is
+not: `PAST_DUE` is a statement about something the customer had, and an
+`INCOMPLETE` subscriber never had it, so D+10 does nothing at all. The end of the
+policy still ends the subscription, under `CauseActivationExpired` rather than
+`CauseDunningExhausted`. This is why there is **no separate activation-expiry
+job**: one policy covers the whole life of an unpaid first invoice, with
+reminders a second job would not have sent.
+
+**The way back is the collection path, not the dunning job.** Escalation and
+recovery are not symmetric and should not live together: dunning runs on a
+schedule and asks "what is late?", while recovery is caused by a payment landing
+and belongs where the payment lands. `Collector.activateSubscription` walks the
+two edges the domain already had and nothing walked —
+`PAST_DUE → ACTIVE` (`subscription.recovered`) and `INCOMPLETE → ACTIVE`
+(`subscription.activated`), both under `CauseInvoicePaid`. Without it the invoice
+reached PAID and the subscription stayed exactly where dunning left it, so a
+customer restricted on D+10 who paid on D+12 was gated forever by a bill they had
+settled.
+
+It runs on the repeat path too — a webhook retried after a half-succeeded write
+has to be able to finish the steps that did not happen — and it never fails the
+settlement. The money arrived and there is no "unpay" to retry into, so a
+subscription that refuses to move is logged and alarmed rather than allowed to
+reject the payment.
+
 A zero-total invoice never enters the queue at all — `Finalize` writes no
 schedule keys for it, so "no reminders about R$ 0,00" is a property of the sparse
 index rather than a filter somebody has to remember
