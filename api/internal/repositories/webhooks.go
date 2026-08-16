@@ -144,7 +144,7 @@ func (r *WebhookRepository) RecordEndpointHealth(ctx context.Context, e *billing
 	}
 	_, err := r.base.UpdateItem(ctx,
 		TenantPK(e.OrganizationID, e.Livemode),
-		strPtr(EndpointSK(e.ID)),
+		new(EndpointSK(e.ID)),
 		updates,
 	)
 	return err
@@ -240,9 +240,8 @@ func (r *WebhookRepository) FanOut(ctx context.Context, ev *billing.Event, endpo
 		writes = append(writes, r.base.BuildPutTxItemIfAbsent(item))
 	}
 
-	sk := EventSK(ev.ID)
 	writes = append(writes, r.base.BuildRawUpdateTxItem(
-		pk, &sk,
+		pk, new(EventSK(ev.ID)),
 		"SET #ua = :now REMOVE #spk, #ssk",
 		// Conditional on the event still being queued. Two delivery jobs running
 		// at once — which is what a second instance is — would otherwise both fan
@@ -339,7 +338,7 @@ func (r *WebhookRepository) MarkDelivered(ctx context.Context, d *billing.Delive
 	}
 	_, err := r.base.UpdateItem(ctx,
 		TenantPK(d.OrganizationID, d.Livemode),
-		strPtr(DeliverySK(d.EventID, d.EndpointID)),
+		new(DeliverySK(d.EventID, d.EndpointID)),
 		updates,
 	)
 	return err
@@ -378,7 +377,7 @@ func (r *WebhookRepository) MarkAttemptFailed(ctx context.Context, d *billing.De
 
 	_, err := r.base.UpdateItem(ctx,
 		TenantPK(d.OrganizationID, d.Livemode),
-		strPtr(DeliverySK(d.EventID, d.EndpointID)),
+		new(DeliverySK(d.EventID, d.EndpointID)),
 		updates,
 	)
 	return err

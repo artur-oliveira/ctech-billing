@@ -115,10 +115,10 @@ function fail(config: AxiosRequestConfig, status: number, title: string, detail:
 }
 
 function networkDown(config: AxiosRequestConfig): never {
-  const error = new Error("Network Error") as Error & {isAxiosError: boolean; code: string}
+  const error = new Error("Network Error") as Error & { isAxiosError: boolean; code: string }
   error.isAxiosError = true
   error.code = "ERR_NETWORK"
-  ;(error as unknown as {config: AxiosRequestConfig}).config = config
+  ;(error as unknown as { config: AxiosRequestConfig }).config = config
   throw error
 }
 

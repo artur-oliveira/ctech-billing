@@ -11,14 +11,12 @@ current DynamoDB ledger and the PIX integrations. That contract
 Status: **the MVP is built and unreleased.** Domain, persistence, the four API surfaces, the
 collection path, reconciliation, dunning, outbound webhooks, the consumer portal, the public
 checkout, the infrastructure they run on and the pipeline that deploys them are implemented and
-green locally. What is left
-before real money can move is **configuration in other repositories, not code here** — the
-prerequisites table in [`.github/workflows/README.md`](.github/workflows/README.md). Wallet's
-`m2m-clients` entry for billing is set; a `ctech-account` client holding
-`internal:wallet:charge-amount` is the remaining one that gates payments. CI is still blocked, but
-by a different thing than it was: `@aoctech/ui` is on npm and consumed from there, and `0.1.0`
-does not build under a static export — `ctech-ui` holds the one-line fix and needs publishing as
-`0.1.1`. Nothing is deployed, nothing is committed, and nothing has moved real money.
+green locally. The prerequisites in
+[`.github/workflows/README.md`](.github/workflows/README.md) that gate payments are now in place:
+wallet's `m2m-clients` entry, keyed by the OAuth client id `ctech-charge`, and that client holding
+`internal:wallet:charge-amount`. `@aoctech/ui` is on npm at `0.1.1` and the front end builds from
+the registry. What is left is **the first deploy, which has never run**, and the `email-from` SSM
+parameter. Nothing is deployed, nothing is committed, and nothing has moved real money.
 [PLAN.md § What is actually left](PLAN.md) is the ordered list.
 
 | Path | What is there |

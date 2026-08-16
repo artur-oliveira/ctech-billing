@@ -65,8 +65,8 @@ rather than silently degrading:
 | `/ctech-billing/{env}/billing/field-encryption-key` — 32 bytes, base64 or hex                                                | set out of band, backed up outside SSM               | **every binary refuses to start without it** |
 | `/ctech-billing/{env}/billing/email-from`, matching a verified SES identity and `var.email_from`                             | set out of band + SES                                | dunning reminders                            |
 | A tenant plan applied with `cmd/seed`                                                                                        | this repo, run by an operator                        | everything — see below                       |
-| A `billing` entry in `/ctech-wallet/{env}/m2m-clients` carrying `webhook_url` **and** `"max_charge_cents": 1000000` — **set 2026-08-16** | ctech-wallet, set out of band            | every settlement; any invoice above R$ 1.000,00 |
-| An OAuth client for billing holding `internal:wallet:charge-amount`                                                          | ctech-account                                        | opening any charge at all                    |
+| An entry in `/ctech-wallet/{env}/m2m-clients` **keyed by the OAuth client id** (`ctech-charge`), carrying `webhook_url` and `"max_charge_cents": 1000000` — set 2026-08-16 | ctech-wallet, set out of band | every settlement; any invoice above R$ 1.000,00 |
+| The OAuth client `ctech-charge` holding `internal:wallet:charge-amount`, and `wallet-client-id` in SSM set to the same string | ctech-account (exists) + this repo's SSM             | opening any charge at all                    |
 
 ## The pipeline does not seed
 
@@ -93,6 +93,13 @@ create-or-skip, so re-running it is safe and adding a price to the file creates 
 The charge route itself ships (`ctech-wallet/api/internal/services/charge_amount.go`). What does
 not ship with it is billing's entry in `/ctech-wallet/{env}/m2m-clients`, and it carries two
 settings that fail in opposite ways:
+
+**The blob is keyed by the OAuth client id, not by the service name.** Wallet reads
+`s.m2mClients[claims.AZP]` — the `azp` of the token that opened the charge. Billing's client is
+`ctech-charge`, so the key is `ctech-charge`; an entry filed under `billing` is an entry wallet
+never finds. It does not error, it returns the zero value, and the zero value is both failures
+below at once. `WALLET_CLIENT_ID` in this repo's SSM must be that same string, because it is what
+mints the token the `azp` comes from.
 
 - **`webhook_url`.** Without it `dispatchM2MWebhookProduct` logs `no registered webhook for client`
   and marks delivery failed. The customer pays, wallet records it, and billing hears nothing until

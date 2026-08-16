@@ -27,15 +27,15 @@ import {usePaymentStream} from "@/lib/hooks/usePaymentStream"
  * crash the first time a caller switches.
  */
 export function PixPanel({
-  invoiceId,
-  settled = false,
-  payment,
-  amount,
-  currency,
-  onPaid,
-  onRegenerate,
-  regenerating,
-}: {
+                           invoiceId,
+                           settled = false,
+                           payment,
+                           amount,
+                           currency,
+                           onPaid,
+                           onRegenerate,
+                           regenerating,
+                         }: {
   /** Portal only. Absent on the checkout link, which has no invoice id to
    *  stream and no session to stream it with. */
   invoiceId?: string
@@ -61,10 +61,10 @@ export function PixPanel({
   if (paid) {
     return (
       <div className="rounded-xl border border-success/20 bg-success/5 px-5 py-6 text-center">
-        <Check aria-hidden className="mx-auto size-6 text-success" />
+        <Check aria-hidden className="mx-auto size-6 text-success"/>
         <p className="mt-3 font-medium text-foreground">Pagamento confirmado</p>
         <p className="mt-1 text-sm text-muted-foreground">
-          Recebemos <Money cents={amount} currency={currency} className="text-sm" />. Nada mais a
+          Recebemos <Money cents={amount} currency={currency} className="text-sm"/>. Nada mais a
           fazer.
         </p>
       </div>
@@ -111,13 +111,13 @@ export function PixPanel({
         />
       </div>
 
-      <Separator />
+      <Separator/>
 
       <div className="space-y-2">
         <p className="text-sm text-muted-foreground">
           Ou copie o código e cole no app do seu banco:
         </p>
-        <CopyCode code={payment.pix_code} />
+        <CopyCode code={payment.pix_code}/>
       </div>
 
       <p
@@ -133,7 +133,7 @@ export function PixPanel({
   )
 }
 
-function CopyCode({code}: {code: string}) {
+function CopyCode({code}: { code: string }) {
   const [copied, setCopied] = useState(false)
 
   async function copy() {
@@ -150,11 +150,12 @@ function CopyCode({code}: {code: string}) {
 
   return (
     <div className="flex items-stretch gap-2">
-      <code className="min-w-0 flex-1 truncate rounded-lg bg-surface px-3 py-2.5 font-mono text-xs text-muted-foreground">
+      <code
+        className="min-w-0 flex-1 truncate rounded-lg bg-surface px-3 py-2.5 font-mono text-xs text-muted-foreground">
         {code}
       </code>
       <Button variant="outline" onClick={copy} className="shrink-0">
-        {copied ? <Check aria-hidden /> : <Copy aria-hidden />}
+        {copied ? <Check aria-hidden/> : <Copy aria-hidden/>}
         {copied ? "Copiado" : "Copiar"}
       </Button>
     </div>

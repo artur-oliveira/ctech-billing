@@ -19,10 +19,10 @@ import {StatusScreen} from "@/components/StatusScreen"
  * development and a redacted string in production.
  */
 export default function Error({
-  error,
-  reset,
-}: {
-  error: Error & {digest?: string}
+                                error,
+                                reset,
+                              }: {
+  error: Error & { digest?: string }
   reset: () => void
 }) {
   useEffect(() => {

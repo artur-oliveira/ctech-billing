@@ -9,7 +9,7 @@ import {mockAdapter, setScenario, settleInvoice} from "./mockRuntime"
 
 type Req = Parameters<typeof mockAdapter>[0]
 const call = <T>(url: string, method: "get" | "post") =>
-  mockAdapter({url, method, headers: {}} as unknown as Req) as Promise<{data: T}>
+  mockAdapter({url, method, headers: {}} as unknown as Req) as Promise<{ data: T }>
 const get = <T>(url: string) => call<T>(url, "get")
 const post = <T>(url: string) => call<T>(url, "post")
 

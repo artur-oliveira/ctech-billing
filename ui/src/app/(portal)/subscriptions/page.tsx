@@ -34,14 +34,14 @@ export default function SubscriptionsPage() {
 
   return (
     <div className="space-y-8">
-      <PageHeader title="Assinaturas" />
+      <PageHeader title="Assinaturas"/>
 
-      {query.isPending && <SubscriptionsSkeleton />}
-      {query.isError && <ErrorBlock error={query.error} onRetry={query.refetch} />}
+      {query.isPending && <SubscriptionsSkeleton/>}
+      {query.isError && <ErrorBlock error={query.error} onRetry={query.refetch}/>}
 
       {!query.isPending && !query.isError && subscriptions.length === 0 && (
         <EmptyState
-          icon={<Repeat />}
+          icon={<Repeat/>}
           title="Você não tem assinaturas"
           description="Planos contratados com a CTech aparecem aqui, com o valor e a data da próxima cobrança."
         />
@@ -58,12 +58,12 @@ export default function SubscriptionsPage() {
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div className="space-y-2">
                   <p className="font-medium text-foreground">{s.description}</p>
-                  <StatusBadge state={s.state} tone={s.tone} />
+                  <StatusBadge state={s.state} tone={s.tone}/>
                 </div>
                 {s.metered ? (
                   <span className="text-sm text-muted-foreground">Valor conforme o uso</span>
                 ) : (
-                  s.amount != null && <Money cents={s.amount} currency={s.currency} />
+                  s.amount != null && <Money cents={s.amount} currency={s.currency}/>
                 )}
               </div>
 
@@ -124,12 +124,12 @@ function SubscriptionsSkeleton() {
         <li key={i} className="space-y-4 py-5">
           <div className="flex items-start justify-between gap-4">
             <div className="space-y-2">
-              <Skeleton className="h-5 w-40" />
-              <Skeleton className="h-5 w-24 rounded-full" />
+              <Skeleton className="h-5 w-40"/>
+              <Skeleton className="h-5 w-24 rounded-full"/>
             </div>
-            <Skeleton className="h-5 w-20" />
+            <Skeleton className="h-5 w-20"/>
           </div>
-          <Skeleton className="h-4 w-56" />
+          <Skeleton className="h-4 w-56"/>
         </li>
       ))}
     </ul>

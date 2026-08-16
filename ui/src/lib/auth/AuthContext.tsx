@@ -32,7 +32,7 @@ export function useAuth(): Auth {
   return ctx
 }
 
-export function AuthProvider({children}: {children: ReactNode}) {
+export function AuthProvider({children}: { children: ReactNode }) {
   // Seeded during the first render rather than corrected by an effect. The
   // cached name is what stops the header flashing empty on every load, and
   // writing it from an effect would paint the empty frame first — which is the

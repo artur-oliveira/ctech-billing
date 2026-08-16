@@ -12,10 +12,10 @@ import type {ReactNode} from "react"
  * the reader still knows whose page failed.
  */
 export function StatusScreen({
-  title,
-  description,
-  action,
-}: {
+                               title,
+                               description,
+                               action,
+                             }: {
   title: string
   description: string
   action?: ReactNode

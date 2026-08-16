@@ -11,10 +11,18 @@ on:
       - 'terraform/**'
       - '.github/workflows/infra.yml'
 
+# Read the source, and nothing else. Each job adds what it needs on top.
+#
+# `pull-requests: write` used to be here and was never used by any step —
+# nothing in this workflow comments on a PR, and the apply job's output goes to
+# $GITHUB_STEP_SUMMARY, which needs no permission at all. It also broke the
+# `workflow_call` path outright: a called workflow's permissions are capped by
+# the calling job's, deploy.yml grants only id-token and contents, and GitHub
+# rejects the whole workflow rather than quietly narrowing it —
+# "is requesting 'pull-requests: write', but is only allowed 'pull-requests:
+# none'". An unused permission is not free; this one cost the entire deploy.
 permissions:
-  id-token: write
   contents: read
-  pull-requests: write
 
 env:
   TF_VERSION: 1.15.8
@@ -32,6 +40,11 @@ jobs:
     name: Validate
     runs-on: ubuntu-24.04-arm
     if: github.event_name == 'pull_request'
+    # No id-token: this job assumes no role and reaches no AWS API. Withholding
+    # it is what makes "credential-free" a property of the job rather than a
+    # claim in a comment.
+    permissions:
+      contents: read
 
     steps:
       - uses: actions/checkout@v7
@@ -55,6 +68,12 @@ jobs:
     name: Apply
     runs-on: ubuntu-24.04-arm
     if: github.event_name != 'pull_request'
+    # The only job here that assumes a role, so the only one that needs an OIDC
+    # token. Must stay within what deploy.yml's calling job grants — a called
+    # workflow cannot ask for more than its caller allows.
+    permissions:
+      id-token: write
+      contents: read
 
     steps:
       - uses: actions/checkout@v7

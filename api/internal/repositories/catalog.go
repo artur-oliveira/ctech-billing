@@ -141,7 +141,7 @@ func (r *CatalogRepository) ArchivePrice(ctx context.Context, p *billing.Price, 
 		"archived":   true,
 		"updated_at": now.UTC().Format(time.RFC3339Nano),
 	}
-	if _, err := r.prices.UpdateItem(ctx, TenantPK(p.OrganizationID, p.Livemode), strPtr(PriceSK(p.ID)), updates); err != nil {
+	if _, err := r.prices.UpdateItem(ctx, TenantPK(p.OrganizationID, p.Livemode), new(PriceSK(p.ID)), updates); err != nil {
 		return err
 	}
 	p.Archived = true

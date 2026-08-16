@@ -242,7 +242,7 @@ func (r *CustomerRepository) Anonymize(ctx context.Context, c *billing.Customer,
 		"lookup_pk":    nil,
 		"updated_at":   now.UTC().Format(time.RFC3339Nano),
 	}
-	if _, err := r.base.UpdateItem(ctx, TenantPK(c.OrganizationID, c.Livemode), strPtr(CustomerSK(c.ID)), updates); err != nil {
+	if _, err := r.base.UpdateItem(ctx, TenantPK(c.OrganizationID, c.Livemode), new(CustomerSK(c.ID)), updates); err != nil {
 		return err
 	}
 

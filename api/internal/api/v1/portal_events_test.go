@@ -56,8 +56,7 @@ func TestBeatStaysQuietUntilTheHeartbeatIsDue(t *testing.T) {
 	var buf bytes.Buffer
 	w := bufio.NewWriter(&buf)
 
-	recent := time.Now()
-	if !beat(w, &recent) {
+	if !beat(w, new(time.Now())) {
 		t.Fatal("beat reported the client gone on a healthy writer")
 	}
 	if buf.Len() != 0 {

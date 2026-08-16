@@ -81,8 +81,20 @@ variable "portal_organization_id" {
 # It is a variable and not just the SSM value because the IAM condition needs it
 # at plan time: a policy that read the parameter would grant whatever the
 # parameter said at apply time, which is the opposite of pinning it.
+#
+# **A domain identity does not widen this.** Verifying `aoctech.app` in SES does
+# let the account send as any address on the domain — but the role's policy
+# pins `ses:FromAddress` to exactly this string, deliberately, so that a bug in
+# dunning cannot send as ctech-account's address, which is the one customers are
+# told to trust for password resets. The domain identity is what makes the
+# address sendable; this variable is what makes it the only one.
+#
+# It must equal the SSM `email-from` parameter, which is set out of band. They
+# are two copies of one fact and nothing checks that they agree: if the
+# parameter is the address and this is not, every reminder is refused by IAM at
+# send time rather than at deploy time.
 variable "email_from" {
-  description = "Verified SES sender address for dunning reminders"
+  description = "Verified SES sender address for dunning reminders; must match the email-from SSM parameter"
   type        = string
-  default     = "cobranca@aoctech.app"
+  default     = "billing@aoctech.app"
 }

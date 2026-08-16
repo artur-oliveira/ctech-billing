@@ -35,7 +35,7 @@ export type MockScenario =
   | "erro_de_rede"
   | "manutencao"
 
-export const MOCK_SCENARIOS: {id: MockScenario; label: string}[] = [
+export const MOCK_SCENARIOS: { id: MockScenario; label: string }[] = [
   {id: "em_dia", label: "Em dia"},
   {id: "vence_em_3_dias", label: "Vence em 3 dias"},
   {id: "vencida", label: "Vencida"},

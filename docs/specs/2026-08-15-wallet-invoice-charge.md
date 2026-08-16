@@ -13,9 +13,15 @@ This was the one cross-repo dependency in the billing plan. Both sides are now b
 | Acceptance (§5) | `ctech-wallet/api/internal/services/charge_amount_test.go` |
 | Consumer | `ctech-billing/api/internal/wallet/client.go`, `internal/services/collecting.go` |
 
-Two things remain, and neither is code: the SSM `m2m-clients` blob needs a `billing` entry (webhook
-URL, HMAC secret, and optionally `max_charge_cents`), and `ctech-account` has to issue billing a
-client holding `internal:wallet:charge-amount`.
+**Both configuration steps are done (2026-08-16).** The client is `ctech-charge`, holding
+`internal:wallet:charge-amount`, and the SSM `m2m-clients` blob has its entry.
+
+The entry is keyed **`ctech-charge`, not `billing`** — wallet reads `s.m2mClients[claims.AZP]`, so
+the key is the OAuth client id of whoever opened the charge, and the service's own name never
+appears. A misfiled entry is not an error: the map returns a zero `M2MClient`, whose `WebhookURL`
+is empty (settlement falls back to the reconcile sweep) and whose `MaxCharge()` is the R$ 1.000,00
+default rather than the configured ceiling. The fields are `webhook_url`, `hmac_secret` and
+`max_charge_cents`, per `services.M2MClient`'s struct tags.
 
 **Deliberately reused, not rebuilt.** The charge lands in `wallet_product_purchases` with the same
 `prdp` prefix, so `/pix/confirm-product-purchase`, the pending sweep, the notify-back and the refund

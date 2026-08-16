@@ -266,9 +266,8 @@ func buildStatusChangeWrites(base, audit Base, c StatusChange, now time.Time) ([
 		expr += " REMOVE " + strings.Join(removes, ", ")
 	}
 
-	sk := c.SK
 	update := base.BuildRawUpdateTxItem(
-		c.PK, &sk, expr,
+		c.PK, new(c.SK), expr,
 		"attribute_exists(pk) AND #st = :from",
 		names, values,
 	)

@@ -34,8 +34,8 @@ export default function InvoicePage() {
   // useSearchParams suspends during prerender, and a static export prerenders
   // everything. Without the boundary the build fails rather than the page.
   return (
-    <Suspense fallback={<DetailSkeleton />}>
-      <Invoice />
+    <Suspense fallback={<DetailSkeleton/>}>
+      <Invoice/>
     </Suspense>
   )
 }
@@ -69,15 +69,15 @@ function Invoice() {
 
   // A bare /invoice with no id is the same dead end as an invoice that does not
   // exist, and saying so beats a query that never fires under a spinner.
-  if (id === "" || (query.isError && statusOf(query.error) === 404)) return <NotFound />
+  if (id === "" || (query.isError && statusOf(query.error) === 404)) return <NotFound/>
 
-  if (query.isPending) return <DetailSkeleton />
+  if (query.isPending) return <DetailSkeleton/>
 
   if (query.isError) {
     return (
       <div className="space-y-6">
-        <BackLink />
-        <ErrorBlock error={query.error} onRetry={query.refetch} />
+        <BackLink/>
+        <ErrorBlock error={query.error} onRetry={query.refetch}/>
       </div>
     )
   }
@@ -92,7 +92,7 @@ function Invoice() {
           figure — puts the page's largest type on the one fact nobody came
           here to read. */}
       <header className="space-y-3">
-        <BackLink />
+        <BackLink/>
         <p className="text-sm text-muted-foreground">
           {invoice.number ? `Fatura nº ${invoice.number}` : "Fatura"}
         </p>
@@ -103,7 +103,7 @@ function Invoice() {
             size="hero"
           />
         </h1>
-        <StatusBadge state={invoice.state} tone={invoice.tone} />
+        <StatusBadge state={invoice.state} tone={invoice.tone}/>
         {/* Once it is settled the due date stops being the useful fact, and
             labelling it "Pago em" would be a lie: the portal payload carries
             no payment date, only the due date. Say what is true instead. */}
@@ -115,7 +115,7 @@ function Invoice() {
       </header>
 
       {settled ? (
-        <Receipt invoice={invoice} />
+        <Receipt invoice={invoice}/>
       ) : payment ? (
         <PixPanel
           invoiceId={invoice.id}
@@ -139,13 +139,13 @@ function Invoice() {
             : `Pagar ${money(invoice.amount_due, invoice.currency)} com PIX`}
         </Button>
       ) : (
-        <NotPayable invoice={invoice} />
+        <NotPayable invoice={invoice}/>
       )}
 
       {/* Below the action, not above it. The breakdown is what somebody reads
           when the amount surprised them; the pay button is what everybody
           else came for, and it should not be under a table. */}
-      <Lines invoice={invoice} />
+      <Lines invoice={invoice}/>
     </div>
   )
 }
@@ -153,7 +153,7 @@ function Invoice() {
 function NotFound() {
   return (
     <div className="space-y-6">
-      <BackLink />
+      <BackLink/>
       <div className="space-y-2">
         <h1 className="text-xl font-semibold tracking-[-0.01em] text-foreground">
           Fatura não encontrada
@@ -162,7 +162,7 @@ function NotFound() {
           Ela pode ter sido cancelada, ou o endereço pode estar incompleto.
         </p>
       </div>
-      <Button variant="outline" render={<Link href="/invoices" />}>
+      <Button variant="outline" render={<Link href="/invoices"/>}>
         Ver todas as faturas
       </Button>
     </div>
@@ -175,7 +175,7 @@ function BackLink() {
       href="/invoices"
       className="inline-flex items-center gap-1.5 text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
     >
-      <ArrowLeft aria-hidden className="size-3.5" />
+      <ArrowLeft aria-hidden className="size-3.5"/>
       Faturas
     </Link>
   )
@@ -188,7 +188,7 @@ function BackLink() {
  * charge?" message a billing system receives, and the answer is always the
  * same sentence — so the screen says it instead of a person saying it later.
  */
-function Lines({invoice}: {invoice: Invoice}) {
+function Lines({invoice}: { invoice: Invoice }) {
   if (!invoice.lines?.length) return null
 
   return (
@@ -207,14 +207,14 @@ function Lines({invoice}: {invoice: Invoice}) {
                 </p>
               )}
             </div>
-            <Money cents={line.amount} currency={invoice.currency} className="text-sm" />
+            <Money cents={line.amount} currency={invoice.currency} className="text-sm"/>
           </li>
         ))}
       </ul>
-      <Separator />
+      <Separator/>
       <div className="flex items-baseline justify-between gap-4">
         <span className="text-sm font-medium text-foreground">Total</span>
-        <Money cents={invoice.total} currency={invoice.currency} />
+        <Money cents={invoice.total} currency={invoice.currency}/>
       </div>
       {(invoice.amount_paid ?? 0) > 0 && invoice.amount_due > 0 && (
         <div className="flex items-baseline justify-between gap-4">
@@ -234,10 +234,10 @@ function Lines({invoice}: {invoice: Invoice}) {
  * hairline note it started as — a person who has just transferred money should
  * not have to look twice to be sure it landed.
  */
-function Receipt({invoice}: {invoice: Invoice}) {
+function Receipt({invoice}: { invoice: Invoice }) {
   return (
     <div className="flex items-start gap-3 rounded-xl bg-success px-5 py-4 text-background">
-      <Check aria-hidden className="mt-0.5 size-5 shrink-0" />
+      <Check aria-hidden className="mt-0.5 size-5 shrink-0"/>
       <div className="space-y-1">
         <p className="font-medium">Pagamento recebido</p>
         <p data-numeric className="text-sm opacity-90">
@@ -254,7 +254,7 @@ function Receipt({invoice}: {invoice: Invoice}) {
  * sentences. "Pendente de acordo" in particular must never read as a dead end:
  * it is the one state whose resolution is a conversation with a person.
  */
-function NotPayable({invoice}: {invoice: Invoice}) {
+function NotPayable({invoice}: { invoice: Invoice }) {
   const message = invoice.state.startsWith("Pendente")
     ? "Esta fatura está em negociação. Fale com a gente para combinar como quitar — não há nada a pagar por aqui enquanto isso."
     : invoice.state === "Cancelada"
@@ -272,17 +272,17 @@ function DetailSkeleton() {
   return (
     <div className="space-y-10" aria-busy>
       <div className="space-y-3">
-        <Skeleton className="h-4 w-24" />
-        <Skeleton className="h-4 w-28" />
-        <Skeleton className="h-9 w-52" />
-        <Skeleton className="h-5 w-32 rounded-full" />
-        <Skeleton className="h-4 w-72" />
+        <Skeleton className="h-4 w-24"/>
+        <Skeleton className="h-4 w-28"/>
+        <Skeleton className="h-9 w-52"/>
+        <Skeleton className="h-5 w-32 rounded-full"/>
+        <Skeleton className="h-4 w-72"/>
       </div>
-      <Skeleton className="h-11 w-full rounded-lg" />
+      <Skeleton className="h-11 w-full rounded-lg"/>
       <div className="space-y-3">
-        <Skeleton className="h-4 w-40" />
-        <Skeleton className="h-4 w-full" />
-        <Skeleton className="h-4 w-5/6" />
+        <Skeleton className="h-4 w-40"/>
+        <Skeleton className="h-4 w-full"/>
+        <Skeleton className="h-4 w-5/6"/>
       </div>
     </div>
   )

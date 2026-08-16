@@ -16,7 +16,7 @@ export default function NotFound() {
     <StatusScreen
       title="Esta página não existe"
       description="O endereço pode estar incompleto, ou o link que você seguiu pode ter expirado. Nada foi cobrado e nenhuma fatura foi alterada."
-      action={<Button render={<Link href="/" />}>Ir para o início</Button>}
+      action={<Button render={<Link href="/"/>}>Ir para o início</Button>}
     />
   )
 }

@@ -93,7 +93,7 @@ func (r *CredentialRepository) Deactivate(ctx context.Context, cred *billing.API
 	}
 	_, err := r.base.UpdateItem(ctx,
 		TenantPK(cred.OrganizationID, cred.Livemode),
-		strPtr(CredentialSK(cred.ClientID)),
+		new(CredentialSK(cred.ClientID)),
 		updates,
 	)
 	if err == nil {

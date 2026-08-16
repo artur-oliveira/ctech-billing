@@ -34,8 +34,8 @@ import {longDate, money} from "@/lib/format"
  */
 export default function CheckoutPage() {
   return (
-    <Suspense fallback={<CheckoutSkeleton />}>
-      <CheckoutScreen />
+    <Suspense fallback={<CheckoutSkeleton/>}>
+      <CheckoutScreen/>
     </Suspense>
   )
 }
@@ -74,12 +74,12 @@ function CheckoutScreen() {
     onError: error => toast.error(messageFor(error)),
   })
 
-  if (token === "" || (query.isError && statusOf(query.error) === 404)) return <Invalid />
-  if (query.isPending) return <CheckoutSkeleton />
+  if (token === "" || (query.isError && statusOf(query.error) === 404)) return <Invalid/>
+  if (query.isPending) return <CheckoutSkeleton/>
   if (query.isError) {
     return (
       <Shell merchant="">
-        <ErrorBlock error={query.error} onRetry={query.refetch} />
+        <ErrorBlock error={query.error} onRetry={query.refetch}/>
       </Shell>
     )
   }
@@ -94,9 +94,9 @@ function CheckoutScreen() {
           {invoice.number ? `Fatura nº ${invoice.number}` : "Fatura"}
         </p>
         <h1>
-          <Money cents={invoice.amount_due} currency={invoice.currency} size="hero" />
+          <Money cents={invoice.amount_due} currency={invoice.currency} size="hero"/>
         </h1>
-        <StatusBadge state={invoice.state} tone={invoice.tone} />
+        <StatusBadge state={invoice.state} tone={invoice.tone}/>
         <p className="text-pretty text-sm text-muted-foreground">
           {invoice.description} · vence em {longDate(invoice.due_date)}
         </p>
@@ -152,14 +152,14 @@ function CheckoutScreen() {
                     </p>
                   )}
                 </div>
-                <Money cents={line.amount} currency={invoice.currency} className="text-sm" />
+                <Money cents={line.amount} currency={invoice.currency} className="text-sm"/>
               </li>
             ))}
           </ul>
-          <Separator />
+          <Separator/>
           <div className="flex items-baseline justify-between gap-4">
             <span className="text-sm font-medium text-foreground">Total</span>
-            <Money cents={invoice.amount_due} currency={invoice.currency} />
+            <Money cents={invoice.amount_due} currency={invoice.currency}/>
           </div>
         </section>
       )}
@@ -173,7 +173,7 @@ function CheckoutScreen() {
  * because they need to know who the money goes to. Those are two different
  * facts and the page says both.
  */
-function Shell({merchant, children}: {merchant: string; children: React.ReactNode}) {
+function Shell({merchant, children}: { merchant: string; children: React.ReactNode }) {
   return (
     <div data-density="comfortable" className="min-h-dvh">
       <header className="border-b border-border">
@@ -223,12 +223,12 @@ function CheckoutSkeleton() {
     <Shell merchant="">
       <div className="space-y-8" aria-busy>
         <div className="space-y-3">
-          <Skeleton className="h-4 w-28" />
-          <Skeleton className="h-9 w-52" />
-          <Skeleton className="h-5 w-32 rounded-full" />
-          <Skeleton className="h-4 w-64" />
+          <Skeleton className="h-4 w-28"/>
+          <Skeleton className="h-9 w-52"/>
+          <Skeleton className="h-5 w-32 rounded-full"/>
+          <Skeleton className="h-4 w-64"/>
         </div>
-        <Skeleton className="h-11 w-full rounded-lg" />
+        <Skeleton className="h-11 w-full rounded-lg"/>
       </div>
     </Shell>
   )

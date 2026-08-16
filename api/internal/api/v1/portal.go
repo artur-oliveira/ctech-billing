@@ -284,8 +284,7 @@ func (h *portalHandlers) describeSubscription(c fiber.Ctx, sub *billing.Subscrip
 		Cancelable: sub.Status != billing.SubscriptionCanceled,
 	}
 	if sub.Status != billing.SubscriptionCanceled && !sub.CancelAtPeriodEnd {
-		renewal := period.End
-		out.Renewal = &renewal
+		out.Renewal = new(period.End)
 	}
 
 	items, err := h.subs.ListItems(c.Context(), t.OrganizationID, t.Livemode, sub.ID)

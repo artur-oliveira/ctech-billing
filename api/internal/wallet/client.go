@@ -241,9 +241,9 @@ func (c *Client) VerifySignature(body []byte, header string) bool {
 }
 
 func truncate(b []byte) string {
-	const max = 200
-	if len(b) > max {
-		return string(b[:max])
+	const mx = 200
+	if len(b) > mx {
+		return string(b[:mx])
 	}
 	return string(b)
 }

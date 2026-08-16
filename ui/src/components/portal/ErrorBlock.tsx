@@ -13,7 +13,7 @@ import {messageFor} from "@/lib/api/client"
  * boundary would hide the one thing they came for because a different
  * request timed out.
  */
-export function ErrorBlock({error, onRetry}: {error: unknown; onRetry?: () => void}) {
+export function ErrorBlock({error, onRetry}: { error: unknown; onRetry?: () => void }) {
   return (
     <div
       role="alert"
@@ -22,7 +22,7 @@ export function ErrorBlock({error, onRetry}: {error: unknown; onRetry?: () => vo
       <p className="text-sm text-foreground">{messageFor(error)}</p>
       {onRetry && (
         <Button variant="outline" size="sm" onClick={onRetry}>
-          <RotateCw aria-hidden />
+          <RotateCw aria-hidden/>
           Tentar de novo
         </Button>
       )}

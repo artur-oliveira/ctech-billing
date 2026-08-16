@@ -84,8 +84,9 @@ raising the ceiling after the fact.
 **Billing's per-charge ceiling is 1000000 centavos (R$ 10.000,00).** Two things carry it and both
 must move together:
 
-- `max_charge_cents` for the billing client in `/ctech-wallet/{env}/m2m-clients`, which is the
-  enforcement.
+- `max_charge_cents` in `/ctech-wallet/{env}/m2m-clients`, under the key `ctech-charge` — wallet
+  looks the client up by the token's `azp`, so the key is the OAuth client id and not the service
+  name. This is the enforcement.
 - `billing.MaxChargeCents`, which is the mirror billing uses to reject a price at creation time
   with a clear message. It is a mirror, so it is only right while it agrees.
 

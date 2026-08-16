@@ -59,7 +59,7 @@ export default function Landing() {
           </p>
 
           <div className="mt-8">
-            <LandingCta />
+            <LandingCta/>
           </div>
 
           <p className="mt-4 text-sm text-muted-foreground">
@@ -68,7 +68,8 @@ export default function Landing() {
         </section>
       </main>
 
-      <footer className="mx-auto flex w-full max-w-3xl flex-col gap-3 px-6 py-8 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+      <footer
+        className="mx-auto flex w-full max-w-3xl flex-col gap-3 px-6 py-8 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
         <p>© {new Date().getFullYear()} A O CARVALHO TECH</p>
         {/* Plain anchors: these leave the app for ctech-account, and next/link
             would prefetch a cross-origin document it cannot use. */}

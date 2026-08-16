@@ -24,11 +24,11 @@ const GLYPH = {
  * came from is not in the payload at all. Any formatting here would be the UI
  * inventing a second vocabulary for the same fact.
  */
-export function StatusBadge({state, tone}: {state: string; tone: Tone}) {
+export function StatusBadge({state, tone}: { state: string; tone: Tone }) {
   const Glyph = GLYPH[tone] ?? Circle
   return (
     <Badge tone={tone}>
-      <Glyph aria-hidden />
+      <Glyph aria-hidden/>
       {state}
     </Badge>
   )

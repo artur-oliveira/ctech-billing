@@ -16,7 +16,7 @@ func TestMetadataValidate(t *testing.T) {
 
 	tooMany := Metadata{}
 	for i := range MetadataMaxKeys + 1 {
-		tooMany[string(rune('a'+i%26))+strings.Repeat("x", i)] = "v"
+		tooMany[string('a'+i%26)+strings.Repeat("x", i)] = "v"
 	}
 	if err := tooMany.Validate(); !errors.Is(err, ErrMetadataInvalid) {
 		t.Fatalf("too many keys must be rejected, got %v", err)

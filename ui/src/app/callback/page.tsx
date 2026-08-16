@@ -19,8 +19,8 @@ import {exchangeCode} from "@/lib/auth/oauth"
  */
 export default function CallbackPage() {
   return (
-    <Suspense fallback={<Working />}>
-      <Callback />
+    <Suspense fallback={<Working/>}>
+      <Callback/>
     </Suspense>
   )
 }
@@ -86,7 +86,7 @@ function Callback() {
         title="Não deu para entrar"
         description={error}
         action={
-          <Button variant="outline" render={<Link href="/login" />}>
+          <Button variant="outline" render={<Link href="/login"/>}>
             Tentar de novo
           </Button>
         }
@@ -94,7 +94,7 @@ function Callback() {
     )
   }
 
-  return <Working />
+  return <Working/>
 }
 
 function Working() {

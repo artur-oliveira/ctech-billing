@@ -49,13 +49,13 @@ export default function HomePage() {
     owed.length === 0 &&
     active.length === 0
 
-  if (loading) return <HomeSkeleton />
+  if (loading) return <HomeSkeleton/>
 
   return (
     <div className="space-y-12">
       {empty && (
         <EmptyState
-          icon={<Receipt />}
+          icon={<Receipt/>}
           title="Nada para pagar por aqui"
           description="Quando você assinar um plano da CTech, a próxima cobrança e todas as faturas aparecem nesta tela."
         />
@@ -76,21 +76,21 @@ export default function HomePage() {
         />
       ) : (
         <>
-          {invoices.isError && <ErrorBlock error={invoices.error} onRetry={invoices.refetch} />}
+          {invoices.isError && <ErrorBlock error={invoices.error} onRetry={invoices.refetch}/>}
 
-          {owed.length > 0 && <Pendencia invoices={owed} />}
+          {owed.length > 0 && <Pendencia invoices={owed}/>}
 
           {!invoices.isError && !subscriptions.isError && owed.length === 0 && !empty && (
-            <EmDia subscription={next} />
+            <EmDia subscription={next}/>
           )}
 
           {subscriptions.isError && (
-            <ErrorBlock error={subscriptions.error} onRetry={subscriptions.refetch} />
+            <ErrorBlock error={subscriptions.error} onRetry={subscriptions.refetch}/>
           )}
         </>
       )}
 
-      {active.length > 0 && <ActiveList subscriptions={active} />}
+      {active.length > 0 && <ActiveList subscriptions={active}/>}
     </div>
   )
 }
@@ -106,7 +106,7 @@ function nextCharge(subscriptions: Subscription[]): Subscription | undefined {
  * What is owed. The amount is the heading of the whole screen, because the
  * screen exists to answer "do I owe anything and how much".
  */
-function Pendencia({invoices}: {invoices: Invoice[]}) {
+function Pendencia({invoices}: { invoices: Invoice[] }) {
   const [first, ...rest] = invoices
   const total = invoices.reduce((sum, i) => sum + i.amount_due, 0)
 
@@ -117,14 +117,14 @@ function Pendencia({invoices}: {invoices: Invoice[]}) {
           {invoices.length === 1 ? "Você tem uma fatura em aberto" : "Você tem faturas em aberto"}
         </p>
         <h1>
-          <Money cents={first.amount_due} currency={first.currency} size="hero" />
+          <Money cents={first.amount_due} currency={first.currency} size="hero"/>
         </h1>
-        <StatusBadge state={first.state} tone={first.tone} />
+        <StatusBadge state={first.state} tone={first.tone}/>
         <p className="text-pretty text-sm text-muted-foreground">{first.description}</p>
       </div>
 
       <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
-        <Button render={<Link href={`/invoice?id=${first.id}`} />}>
+        <Button render={<Link href={`/invoice?id=${first.id}`}/>}>
           Pagar {money(first.amount_due, first.currency)}
         </Button>
         {rest.length > 0 && (
@@ -147,7 +147,7 @@ function Pendencia({invoices}: {invoices: Invoice[]}) {
  * A metered subscription says its amount is not known yet instead of showing a
  * confident zero.
  */
-function EmDia({subscription}: {subscription?: Subscription}) {
+function EmDia({subscription}: { subscription?: Subscription }) {
   return (
     <section className="space-y-3">
       <h1 className="text-3xl font-semibold tracking-[-0.02em] text-foreground">Tudo em dia</h1>
@@ -166,7 +166,7 @@ function EmDia({subscription}: {subscription?: Subscription}) {
   )
 }
 
-function ActiveList({subscriptions}: {subscriptions: Subscription[]}) {
+function ActiveList({subscriptions}: { subscriptions: Subscription[] }) {
   return (
     <section aria-labelledby="assinaturas" className="space-y-4">
       <div className="flex items-center justify-between">
@@ -178,7 +178,7 @@ function ActiveList({subscriptions}: {subscriptions: Subscription[]}) {
           className="inline-flex items-center gap-1 text-sm text-brand-600 underline-offset-4 hover:underline"
         >
           Ver todas
-          <ArrowRight aria-hidden className="size-3.5" />
+          <ArrowRight aria-hidden className="size-3.5"/>
         </Link>
       </div>
       <ul className="divide-y divide-border border-y border-border">
@@ -186,7 +186,7 @@ function ActiveList({subscriptions}: {subscriptions: Subscription[]}) {
           <li key={s.id} className="flex items-center justify-between gap-4 py-4">
             <div className="min-w-0 space-y-1.5">
               <p className="truncate text-sm font-medium text-foreground">{s.description}</p>
-              <StatusBadge state={s.state} tone={s.tone} />
+              <StatusBadge state={s.state} tone={s.tone}/>
             </div>
             {/* A metered line says so. Left blank it reads as a row that
                 failed to load rather than a price that is not knowable yet. */}
@@ -194,7 +194,7 @@ function ActiveList({subscriptions}: {subscriptions: Subscription[]}) {
               <span className="shrink-0 text-sm text-muted-foreground">Conforme o uso</span>
             ) : (
               s.amount != null && (
-                <Money cents={s.amount} currency={s.currency} className="text-sm" />
+                <Money cents={s.amount} currency={s.currency} className="text-sm"/>
               )
             )}
           </li>
@@ -209,18 +209,18 @@ function HomeSkeleton() {
     <div className="space-y-12" aria-busy>
       <div className="space-y-6">
         <div className="space-y-3">
-          <Skeleton className="h-4 w-52" />
-          <Skeleton className="h-9 w-48" />
-          <Skeleton className="h-5 w-36 rounded-full" />
-          <Skeleton className="h-4 w-64" />
+          <Skeleton className="h-4 w-52"/>
+          <Skeleton className="h-9 w-48"/>
+          <Skeleton className="h-5 w-36 rounded-full"/>
+          <Skeleton className="h-4 w-64"/>
         </div>
-        <Skeleton className="h-11 w-44 rounded-lg" />
+        <Skeleton className="h-11 w-44 rounded-lg"/>
       </div>
       <div className="space-y-4">
-        <Skeleton className="h-4 w-32" />
+        <Skeleton className="h-4 w-32"/>
         <div className="space-y-3 border-y border-border py-4">
-          <Skeleton className="h-4 w-40" />
-          <Skeleton className="h-5 w-24 rounded-full" />
+          <Skeleton className="h-4 w-40"/>
+          <Skeleton className="h-5 w-24 rounded-full"/>
         </div>
       </div>
     </div>

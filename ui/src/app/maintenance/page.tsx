@@ -21,8 +21,8 @@ import {safeReturn} from "@/lib/returnTo"
  */
 export default function Maintenance() {
   return (
-    <Suspense fallback={<Screen />}>
-      <MaintenanceScreen />
+    <Suspense fallback={<Screen/>}>
+      <MaintenanceScreen/>
     </Suspense>
   )
 }
@@ -60,7 +60,7 @@ function MaintenanceScreen() {
   )
 }
 
-function Screen({action}: {action?: React.ReactNode}) {
+function Screen({action}: { action?: React.ReactNode }) {
   return (
     <StatusScreen
       title="Estamos em manutenção"

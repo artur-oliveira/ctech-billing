@@ -38,8 +38,6 @@ var (
 	// IsConditionFailed reports a conditional-check failure, whether it came
 	// from a single write or from inside a cancelled transaction.
 	IsConditionFailed = dynamo.IsConditionFailed
-	// NowStr is the current UTC time as ISO 8601.
-	NowStr = dynamo.NowStr
 )
 
 // txItems is sugar for composing a transaction, so call sites read as a list of

@@ -67,9 +67,9 @@ export const viewport: Viewport = {
 export default function RootLayout({children}: LayoutProps<"/">) {
   return (
     <html lang="pt-BR" className={`${geist.variable} h-full`} suppressHydrationWarning>
-      <body className="min-h-full">
-        <Providers>{children}</Providers>
-      </body>
+    <body className="min-h-full">
+    <Providers>{children}</Providers>
+    </body>
     </html>
   )
 }

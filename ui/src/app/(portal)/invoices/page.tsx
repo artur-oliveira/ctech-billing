@@ -30,15 +30,15 @@ export default function InvoicesPage() {
 
   return (
     <div className="space-y-8">
-      <PageHeader title="Faturas" />
+      <PageHeader title="Faturas"/>
 
-      {query.isPending && <ListSkeleton />}
+      {query.isPending && <ListSkeleton/>}
 
-      {query.isError && <ErrorBlock error={query.error} onRetry={query.refetch} />}
+      {query.isError && <ErrorBlock error={query.error} onRetry={query.refetch}/>}
 
       {!query.isPending && !query.isError && invoices.length === 0 && (
         <EmptyState
-          icon={<Receipt />}
+          icon={<Receipt/>}
           title="Nenhuma fatura ainda"
           description="Assim que sua primeira cobrança for emitida, ela aparece aqui — com o que foi cobrado, quando vence e como pagar."
         />
@@ -47,7 +47,7 @@ export default function InvoicesPage() {
       {invoices.length > 0 && (
         <ul className="divide-y divide-border border-y border-border">
           {invoices.map(invoice => (
-            <InvoiceRow key={invoice.id} invoice={invoice} />
+            <InvoiceRow key={invoice.id} invoice={invoice}/>
           ))}
         </ul>
       )}
@@ -72,10 +72,10 @@ function ListSkeleton() {
       {[0, 1, 2, 3].map(i => (
         <li key={i} className="flex items-center gap-4 px-3 py-4">
           <div className="flex-1 space-y-2">
-            <Skeleton className="h-4 w-2/3" />
-            <Skeleton className="h-5 w-32 rounded-full" />
+            <Skeleton className="h-4 w-2/3"/>
+            <Skeleton className="h-5 w-32 rounded-full"/>
           </div>
-          <Skeleton className="h-5 w-20" />
+          <Skeleton className="h-5 w-20"/>
         </li>
       ))}
     </ul>

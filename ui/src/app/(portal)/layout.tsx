@@ -116,7 +116,7 @@ export default function PortalLayout({children}: LayoutProps<"/">) {
       </header>
 
       <main className="mx-auto max-w-2xl px-4 py-8 pb-20">
-        {loading || !authenticated ? <GateSkeleton /> : children}
+        {loading || !authenticated ? <GateSkeleton/> : children}
       </main>
     </div>
   )
@@ -128,9 +128,9 @@ export default function PortalLayout({children}: LayoutProps<"/">) {
 function GateSkeleton() {
   return (
     <div className="space-y-6" aria-busy>
-      <Skeleton className="h-4 w-52" />
-      <Skeleton className="h-9 w-48" />
-      <Skeleton className="h-4 w-64" />
+      <Skeleton className="h-4 w-52"/>
+      <Skeleton className="h-9 w-48"/>
+      <Skeleton className="h-4 w-64"/>
     </div>
   )
 }

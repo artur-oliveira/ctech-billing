@@ -85,7 +85,7 @@ export function usePaymentStream(invoiceId: string, enabled: boolean): StreamSta
 
         const reader = response.body.pipeThrough(new TextDecoderStream()).getReader()
         let buffer = ""
-        for (;;) {
+        for (; ;) {
           const {done, value} = await reader.read()
           if (done) break
           buffer += value

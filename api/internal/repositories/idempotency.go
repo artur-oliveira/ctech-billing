@@ -83,12 +83,11 @@ func (r *IdempotencyRepository) Lookup(ctx context.Context, organizationID strin
 // last. Real mutual exclusion belongs in the operation's own conditional write,
 // which is where it already is for invoices and usage.
 func (r *IdempotencyRepository) Store(ctx context.Context, organizationID string, livemode bool, rec IdempotencyRecord, now time.Time) error {
-	expires := now.Add(IdempotencyTTL).Unix()
 	item, err := Encode(idempotencyRow{
 		keys: keys{
 			PK:        TenantPK(organizationID, livemode),
 			SK:        IdempotencySK(rec.Key),
-			TTL:       &expires,
+			TTL:       new(now.Add(IdempotencyTTL).Unix()),
 			CreatedAt: now.UTC().Format(time.RFC3339Nano),
 			UpdatedAt: now.UTC().Format(time.RFC3339Nano),
 		},

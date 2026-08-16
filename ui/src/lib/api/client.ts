@@ -10,7 +10,7 @@ export interface Problem {
   title: string
   status: number
   detail?: string
-  errors?: {field: string; message: string; tag?: string}[]
+  errors?: { field: string; message: string; tag?: string }[]
 }
 
 let accessToken: string | null = null
@@ -51,7 +51,7 @@ export const registerRefresh = (fn: () => Promise<string | null>) => {
 
 /** Marks a request that has already been retried once, so a 401 answered by a
  *  refreshed token that is *also* rejected ends instead of looping. */
-type Retriable = InternalAxiosRequestConfig & {_retried?: boolean}
+type Retriable = InternalAxiosRequestConfig & { _retried?: boolean }
 
 /**
  * The two statuses that are about the session or the service rather than the

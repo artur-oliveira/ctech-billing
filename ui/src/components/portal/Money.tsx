@@ -9,11 +9,11 @@ import {money} from "@/lib/format"
  * which is the one thing a list of invoices exists to let you do.
  */
 export function Money({
-  cents,
-  currency = "BRL",
-  className,
-  size = "body",
-}: {
+                        cents,
+                        currency = "BRL",
+                        className,
+                        size = "body",
+                      }: {
   cents: Cents
   currency?: string
   className?: string

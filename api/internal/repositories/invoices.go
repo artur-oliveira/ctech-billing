@@ -300,9 +300,8 @@ func (r *InvoiceRepository) currentNumber(ctx context.Context, pk, counterSK str
 // buildCounterAdvance moves the counter from current to next, but only if it is
 // still at current.
 func (r *InvoiceRepository) buildCounterAdvance(pk, counterSK string, current, next int64, now time.Time) types.TransactWriteItem {
-	sk := counterSK
 	return r.base.BuildRawUpdateTxItem(
-		pk, &sk,
+		pk, new(counterSK),
 		"SET #seq = :next, #ua = :now",
 		"attribute_not_exists(#seq) OR #seq = :current",
 		map[string]string{"#seq": "last_number", "#ua": "updated_at"},
@@ -559,9 +558,8 @@ func (r *InvoiceRepository) AdvanceDunning(ctx context.Context, inv *billing.Inv
 	condition := "(attribute_not_exists(#ds) AND :cur = :zero) OR #ds = :cur"
 	values[":zero"] = &types.AttributeValueMemberN{Value: "0"}
 
-	sk := InvoiceSK(inv.ID)
 	err := r.base.TransactWrite(ctx, txItems(r.base.BuildRawUpdateTxItem(
-		TenantPK(inv.OrganizationID, inv.Livemode), &sk,
+		TenantPK(inv.OrganizationID, inv.Livemode), new(InvoiceSK(inv.ID)),
 		expr, condition, names, values,
 	)))
 	if IsConditionFailed(err) {

@@ -81,6 +81,5 @@ func (r Retention) ExpiresAt(now time.Time) *int64 {
 }
 
 func unixPtr(t time.Time) *int64 {
-	v := t.Unix()
-	return &v
+	return new(t.Unix())
 }
