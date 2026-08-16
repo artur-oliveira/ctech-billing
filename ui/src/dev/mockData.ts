@@ -212,6 +212,17 @@ export const FIXTURES: Record<MockScenario, Fixture> = {
     pixTtlSeconds: 1800,
   },
 
+  // Signed in, never bought anything. Every portal route answers 403 with
+  // `/problems/no-billing-account`, so the fixture is empty by necessity rather
+  // than by choice — the refusal happens in the identity middleware, above all
+  // of them, and the screen under test is the one the portal shows instead.
+  sem_conta: {
+    invoices: [],
+    subscriptions: [],
+    settleAfterSeconds: null,
+    pixTtlSeconds: 1800,
+  },
+
   // Every request fails. The fixture is empty because nothing is ever served.
   erro_de_rede: {
     invoices: [],

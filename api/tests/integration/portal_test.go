@@ -14,6 +14,7 @@ import (
 	"gopkg.aoctech.app/billing/api/internal/domain/brcal"
 	"gopkg.aoctech.app/billing/api/internal/domain/id"
 	"gopkg.aoctech.app/billing/api/internal/middleware"
+	"gopkg.aoctech.app/billing/api/internal/problem"
 	"gopkg.aoctech.app/billing/api/internal/repositories"
 )
 
@@ -126,6 +127,24 @@ func TestPortalRejectsANonCustomer(t *testing.T) {
 	if res.status != http.StatusForbidden {
 		t.Fatalf("status = %d: %s", res.status, res.body)
 	}
+	// Typed, because the portal renders this one as an empty state rather than
+	// an error — somebody who has bought nothing yet did nothing wrong. The type
+	// is the contract; `detail` is prose and gets rewritten.
+	if got := problemType(t, res.body); got != problem.TypeNoBillingAccount {
+		t.Errorf("type = %q, want %q", got, problem.TypeNoBillingAccount)
+	}
+}
+
+// problemType reads the `type` out of an RFC 7807 body.
+func problemType(t *testing.T, body []byte) string {
+	t.Helper()
+	var p struct {
+		Type string `json:"type"`
+	}
+	if err := json.Unmarshal(body, &p); err != nil {
+		t.Fatalf("body is not a problem document: %v\n%s", err, body)
+	}
+	return p.Type
 }
 
 // An unconfigured portal is a portal that does not exist here — 404, not a
@@ -148,6 +167,12 @@ func TestServiceTokensAreRejectedOnPortalRoutes(t *testing.T) {
 	res := e.console(t, "/v1.0/portal/session", m2m, "")
 	if res.status != http.StatusForbidden {
 		t.Fatalf("status = %d: %s", res.status, res.body)
+	}
+	// **Not** the empty-account type. That one is rendered as a welcome, and a
+	// service token arriving on a person's route is the opposite of a welcome —
+	// it is a caller in the wrong place, and it has to keep looking like one.
+	if got := problemType(t, res.body); got == problem.TypeNoBillingAccount {
+		t.Error("a machine token was told it merely has no billing account yet")
 	}
 }
 

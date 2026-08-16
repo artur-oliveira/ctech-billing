@@ -3,6 +3,7 @@ package v1
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
@@ -51,11 +52,31 @@ type handlers struct {
 func (h *handlers) now() time.Time    { return h.clock() }
 func (h *handlers) today() brcal.Date { return brcal.FromTime(h.clock()) }
 
-// fail maps an error to its RFC 7807 response.
+// fail maps an error to its RFC 7807 response, and logs the ones the response
+// deliberately hides.
+//
+// A 5xx body says "erro interno" and nothing else, which is right — the client
+// must not learn that a DynamoDB table is throttling or which field failed to
+// decrypt. But that makes this the **only** place the real error still exists,
+// and until it was written down here it existed nowhere: handlers return
+// `fail(c, err)`, which sends the response and returns nil, so Fiber's
+// ErrorHandler — the one thing that did log — never ran for a handler error.
+// Every 500 this service has ever served was silent on the instance.
+//
+// 4xx are not logged: they are the caller being told no, they are already in
+// the access log with their status, and logging them at error level trains
+// whoever reads the group to ignore the level.
 func fail(c fiber.Ctx, err error) error {
 	p := problem.FromError(err)
 	if p == nil {
 		return c.SendStatus(fiber.StatusNoContent)
+	}
+	if p.Status >= 500 {
+		slog.ErrorContext(c.Context(), "request failed",
+			"error", err,
+			"request_id", middleware.GetRequestID(c),
+			"method", c.Method(),
+			"path", c.Path())
 	}
 	return p.Send(c)
 }

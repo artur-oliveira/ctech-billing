@@ -104,7 +104,13 @@ function ok<T>(config: AxiosRequestConfig, data: T): AxiosResponse<T> {
   return {data, status: 200, statusText: "OK", headers: {}, config: config as never}
 }
 
-function fail(config: AxiosRequestConfig, status: number, title: string, detail: string): never {
+function fail(
+  config: AxiosRequestConfig,
+  status: number,
+  title: string,
+  detail: string,
+  type = "about:blank"
+): never {
   const error = new Error(title) as Error & {
     isAxiosError: boolean
     response: AxiosResponse
@@ -114,7 +120,7 @@ function fail(config: AxiosRequestConfig, status: number, title: string, detail:
   error.isAxiosError = true
   error.config = config
   error.response = {
-    data: {type: "about:blank", title, status, detail},
+    data: {type, title, status, detail},
     status,
     statusText: title,
     headers: {},
@@ -157,6 +163,18 @@ export const mockAdapter: AxiosAdapter = async config => {
   // find out whether the service is back, and the `manutencao` scenario above
   // is what makes it fail.
   if (url.endsWith("/v1.0/health")) return ok(config, {status: "pass"})
+
+  // Above every portal route, which is where the real refusal is: identity is
+  // resolved in middleware, so no handler below it is reachable.
+  if (scenario === "sem_conta" && url.includes("/v1.0/portal/")) {
+    fail(
+      config,
+      403,
+      "Forbidden",
+      "nenhuma conta de cobrança para este usuário",
+      "/problems/no-billing-account"
+    )
+  }
 
   if (url.endsWith("/v1.0/portal/session")) {
     return ok(config, scenario === "termos_pendentes" && !termsAccepted ? MOCK_CUSTOMER_PENDING_TERMS : MOCK_CUSTOMER)

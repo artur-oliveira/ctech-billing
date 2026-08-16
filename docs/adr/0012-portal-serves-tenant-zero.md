@@ -64,6 +64,27 @@ probe a route and read a 403 as information.
   the organization from the request (a subdomain, a path), and that is a different decision with a
   different threat model. It is not a config change, and it should not be made to look like one.
 
+## Amendment, 2026-08-16 — the no-account 403 is typed
+
+A person who signs in with a valid CTech account and has never bought anything gets 403 from
+`ResolvePortalIdentity`, alongside a closed account and a service token on a person's route. That
+much stands: there is no customer behind the session, nothing below can serve them, and the three
+cases must stay indistinguishable to anybody probing from outside.
+
+What did not stand was the portal rendering all three the same way. The first is somebody at the
+beginning, and they were met with a red error block quoting a sentence written for a log —
+"nenhuma conta de cobrança para este usuário" — with no way to tell whether the portal was broken
+or they were.
+
+So that one refusal now carries `type: "/problems/no-billing-account"` and the portal renders it as
+an empty state, in the same shape P1 already shows a customer who owes nothing. The type rather
+than the status or the message, because the other 403s must keep looking like refusals and `detail`
+is prose that gets rewritten.
+
+This discloses nothing new. The body already said it, and it says it about the reader themselves —
+that *this* account has no billing record is a fact they hold already. Nothing here reveals whether
+some *other* account exists, which is what the paragraph above is protecting.
+
 ## Reopen if
 
 A merchant is admitted whose customers genuinely have no other place to see their invoices, and the

@@ -7,7 +7,9 @@ import Link from "next/link"
 import {usePathname, useRouter} from "next/navigation"
 import {useEffect} from "react"
 
+import {NoBillingAccount} from "@/components/portal/NoBillingAccount"
 import {TermsGate} from "@/components/portal/TermsGate"
+import {isNoBillingAccount} from "@/lib/api/client"
 import {getSession, portalKeys} from "@/lib/api/portal"
 import {useAuth} from "@/lib/auth/AuthContext"
 
@@ -41,11 +43,16 @@ export default function PortalLayout({children}: LayoutProps<"/">) {
   const router = useRouter()
   const {authenticated, loading, logout} = useAuth()
 
-  const {data: session} = useQuery({
+  const {data: session, error: sessionError} = useQuery({
     queryKey: portalKeys.session,
     queryFn: getSession,
     enabled: authenticated,
   })
+
+  // Signed in, nothing bought yet. Decided from the session alone rather than
+  // per screen: every route below answers the same 403, so the alternative is
+  // the same message three times under a nav whose every tab leads back to it.
+  const noAccount = isNoBillingAccount(sessionError)
 
   useEffect(() => {
     if (!loading && !authenticated) router.replace("/login")
@@ -74,9 +81,15 @@ export default function PortalLayout({children}: LayoutProps<"/">) {
             </span>
           </Link>
 
-          {session && (
+          {/* Also when there is no billing account: that reader has no name to
+              show, and "Sair" is the only thing they can do here. A screen with
+              no way out is how somebody signed into the wrong account gets
+              stuck. */}
+          {(session || noAccount) && (
             <div className="flex min-w-0 items-center gap-3">
-              <span className="truncate text-sm text-muted-foreground">{session.name}</span>
+              {session && (
+                <span className="truncate text-sm text-muted-foreground">{session.name}</span>
+              )}
               {/* Plain text, not a menu. One item behind a chevron is a menu
                   that exists to hide its only entry. */}
               <button
@@ -89,7 +102,9 @@ export default function PortalLayout({children}: LayoutProps<"/">) {
             </div>
           )}
         </div>
-        <nav className="mx-auto max-w-2xl px-4" aria-label="Seções">
+        {/* Hidden with no billing account. Three tabs that all lead to the same
+            empty state read as three broken screens. */}
+        <nav hidden={noAccount} className="mx-auto max-w-2xl px-4" aria-label="Seções">
           <ul className="-mb-px flex gap-1">
             {NAV.map(item => {
               const active =
@@ -117,12 +132,15 @@ export default function PortalLayout({children}: LayoutProps<"/">) {
       </header>
 
       <main className="mx-auto max-w-2xl px-4 py-8 pb-20">
-        {/* Three states, in this order. The terms gate comes last because it
-            needs the session to have answered — before that, `terms_accepted`
-            is merely unknown, and rendering the gate on `undefined` would ask
+        {/* Four states, in this order. The empty account comes before the terms
+            gate because there is no session to read `terms_accepted` from when
+            it applies, and the gate comes before the children because it needs
+            the session to have answered — rendering it on `undefined` would ask
             somebody who already agreed to agree again on every refresh. */}
         {loading || !authenticated ? (
           <GateSkeleton/>
+        ) : noAccount ? (
+          <NoBillingAccount/>
         ) : session && !session.terms_accepted ? (
           <TermsGate/>
         ) : (

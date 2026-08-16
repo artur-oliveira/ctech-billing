@@ -22,8 +22,18 @@
       "owner_key": "dfe"
     },
     {
+      "id": "prod_dfe_unlimited",
+      "name": "DF-e Ilimitado",
+      "owner_key": "dfe"
+    },
+    {
       "id": "prod_dfe_ondemand",
       "name": "DF-e Sob Demanda",
+      "owner_key": "dfe"
+    },
+    {
+      "id": "prod_dfe_unlimited_internal",
+      "name": "DF-e Ilimitado - Interno",
       "owner_key": "dfe"
     }
   ],
@@ -57,6 +67,25 @@
       }
     },
     {
+      "id": "price_dfe_unlimited_internal_monthly",
+      "product_id": "prod_dfe_unlimited_internal",
+      "type": "fixed",
+      "unit_amount": 0,
+      "recurrence": {
+        "interval": "month",
+        "count": 1
+      },
+      "billing_timing": "advance",
+      "metadata": {
+        "plan": "unlimited",
+        "quota_companies": "-1",
+        "quota_nfe": "-1",
+        "quota_nfce": "-1",
+        "quota_cte": "-1",
+        "quota_mdfe": "-1"
+      }
+    },
+    {
       "id": "price_dfe_pro_monthly",
       "product_id": "prod_dfe_pro",
       "type": "fixed",
@@ -73,6 +102,25 @@
         "quota_nfce": "6000",
         "quota_cte": "1200",
         "quota_mdfe": "1200"
+      }
+    },
+    {
+      "id": "price_dfe_unlimited_monthly",
+      "product_id": "prod_dfe_unlimited",
+      "type": "fixed",
+      "unit_amount": 250000,
+      "recurrence": {
+        "interval": "month",
+        "count": 1
+      },
+      "billing_timing": "advance",
+      "metadata": {
+        "plan": "unlimited",
+        "quota_companies": "-1",
+        "quota_nfe": "-1",
+        "quota_nfce": "-1",
+        "quota_cte": "-1",
+        "quota_mdfe": "-1"
       }
     },
     {

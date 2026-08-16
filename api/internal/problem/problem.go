@@ -23,6 +23,16 @@ const (
 	TypeInvalidTransition   = "/problems/invalid-transition"
 	TypeConcurrentUpdate    = "/problems/concurrent-update"
 	TypeAlreadyGenerated    = "/problems/already-generated"
+	// TypeNoBillingAccount is a signed-in person who has no customer record in
+	// tenant zero. It stays a 403 — the refusal is real and the portal has
+	// nothing to show them — but it is the one 403 the portal renders as an
+	// empty state rather than a failure, so it needs a name a client can branch
+	// on. `detail` is prose and prose gets rewritten.
+	//
+	// It discloses nothing the body did not already say, and nothing about
+	// anybody else: that this reader has no billing account is a fact they
+	// already hold.
+	TypeNoBillingAccount = "/problems/no-billing-account"
 )
 
 // FieldError is a single field-level validation failure.

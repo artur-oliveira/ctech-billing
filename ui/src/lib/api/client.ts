@@ -136,3 +136,24 @@ export function messageFor(error: unknown): string {
 export function statusOf(error: unknown): number | undefined {
   return (error as AxiosError)?.response?.status
 }
+
+/** A signed-in person with no customer record in tenant zero. */
+const NO_BILLING_ACCOUNT = "/problems/no-billing-account"
+
+/**
+ * Not every refusal is a failure.
+ *
+ * The portal answers 403 to somebody who has bought nothing yet, and it has to:
+ * there is no customer behind the session, so no route below can serve them.
+ * But that is a beginning, not a fault, and rendering it as one greets a new
+ * reader with a red block quoting an internal sentence about "conta de
+ * cobrança".
+ *
+ * Branching on `type` rather than on the status or the message: the other 403s
+ * here (a closed account, a machine token on a person's route) are genuine
+ * refusals that must keep looking like refusals, and `detail` is prose that
+ * gets rewritten.
+ */
+export function isNoBillingAccount(error: unknown): boolean {
+  return (error as AxiosError<Problem>)?.response?.data?.type === NO_BILLING_ACCOUNT
+}

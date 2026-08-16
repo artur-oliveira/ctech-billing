@@ -32,6 +32,7 @@ export const MOCK_CUSTOMER_PENDING_TERMS = {...MOCK_CUSTOMER, terms_accepted: fa
  */
 export type MockScenario =
   | "sem_assinatura"
+  | "sem_conta"
   | "em_dia"
   | "vence_em_3_dias"
   | "vencida"
@@ -54,6 +55,7 @@ export const MOCK_SCENARIOS: { id: MockScenario; label: string }[] = [
   {id: "paga", label: "Fatura paga"},
   {id: "pendente_de_acordo", label: "Pendente de acordo"},
   {id: "sem_assinatura", label: "Cliente sem assinatura"},
+  {id: "sem_conta", label: "Sem conta de cobrança (403)"},
   {id: "termos_pendentes", label: "Termos pendentes"},
   {id: "erro_de_rede", label: "Erro de rede"},
   {id: "manutencao", label: "Manutenção (503)"},

@@ -13,6 +13,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/cors"
+	"github.com/gofiber/fiber/v3/middleware/logger"
 	"github.com/gofiber/fiber/v3/middleware/recover"
 	"gopkg.aoctech.app/api-commons/cache"
 
@@ -320,8 +321,52 @@ func newFiber(cfg *config.Config) *fiber.App {
 		corsCfg.AllowCredentials = true
 	}
 	app.Use(cors.New(corsCfg))
-	app.Use(recover.New())
+	// A panic with no stack is a log line that says a request died and nothing
+	// about where. Fiber's default leaves the trace off; the cost of turning it
+	// on is paid only when something already went wrong.
+	app.Use(recover.New(recover.Config{EnableStackTrace: true}))
+
+	// The access log, in ctech-wallet's, ctech-poker's and ctech-dfe's shape —
+	// one JSON object per request, parsed straight by the CloudWatch metric
+	// filters in terraform/billing/logging.tf.
+	//
+	// **`${respHeader:X-Request-Id}`, not `${request-id}`.** The siblings all
+	// write the latter and it is not a tag Fiber has (middleware/logger/tags.go);
+	// an unknown tag does not fail loudly, it renders as an empty string, so the
+	// one field that correlates a support ticket to a request is blank in every
+	// one of those services. Reading the header back is what actually works, and
+	// it works even though this middleware is mounted before
+	// middleware.RequestID: the line is formatted after the chain returns, by
+	// which time the header is set.
+	//
+	// Health is skipped. HAProxy probes it every few seconds forever, nginx
+	// already excludes it from its own access log (`access_log off` in
+	// assets/bootstrap.sh.tftpl), and a log group where the liveness probe
+	// outnumbers the traffic is one nobody reads.
+	app.Use(logger.New(accessLog()))
 	return app
+}
+
+// accessLog is the request line. A function rather than a literal inline so a
+// test can point its Stream somewhere readable: Fiber captures os.Stdout into
+// the package default at import time, so there is no way to intercept it from
+// outside afterwards.
+func accessLog() logger.Config {
+	return logger.Config{
+		Format: `{"time":"${time}","status":${status},"latency":"${latency}","method":"${method}",` +
+			`"path":"${path}","request_id":"${respHeader:X-Request-Id}"}` + "\n",
+		// **Required, not cosmetic.** Fiber colourises whenever the stream is the
+		// default stdout, and it colours the values — `"status":\x1b[92m200\x1b[0m`.
+		// systemd appends stdout to /var/log/app/app.log and the CloudWatch agent
+		// ships it verbatim, so the escape codes end up inside the JSON and every
+		// numeric filter over it silently matches nothing. The siblings all leave
+		// this at the default; it is the reason billing's HTTP status metrics are
+		// derived from nginx's log rather than the app's.
+		DisableColors: true,
+		Skip: func(c fiber.Ctx) bool {
+			return c.Path() == "/v1.0/health" || c.Path() == "/v1.0/health-check"
+		},
+	}
 }
 
 func newDynamoDB(ctx context.Context, cfg *config.Config) (*dynamodb.Client, error) {

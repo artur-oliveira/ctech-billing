@@ -2,6 +2,7 @@ package v1
 
 import (
 	"errors"
+	"log/slog"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
@@ -241,7 +242,15 @@ func failCheckout(c fiber.Ctx, err error) error {
 		// One message for three refusals, deliberately. Each has a reason that is
 		// CTech's business — no linked account, a test-mode document, a merchant
 		// still behind the payout gate — and none of them is something the person
-		// holding the bill can act on. The specific reason is in the log.
+		// holding the bill can act on. The specific reason is in the log, which is
+		// the whole reason the masking is acceptable: a public page that refuses a
+		// payment and records nothing is a support call with no evidence behind it.
+		//
+		// Warn, not Error: these are the gate working, not the service failing.
+		slog.WarnContext(c.Context(), "checkout refused",
+			"error", err,
+			"request_id", middleware.GetRequestID(c),
+			"path", c.Path())
 		return problem.Conflict("pagamento indisponível para esta fatura").Send(c)
 	case errors.Is(err, wallet.ErrChargeRejected):
 		return problem.Unprocessable("não foi possível abrir a cobrança para este valor").Send(c)

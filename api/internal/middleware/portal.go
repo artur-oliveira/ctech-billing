@@ -43,7 +43,16 @@ func ResolvePortalIdentity(customers *repositories.CustomerRepository, organizat
 		customer, err := customers.GetByUser(c.Context(), organizationID, true, cl.Sub)
 		if err != nil {
 			if errors.Is(err, repositories.ErrNotFound) {
-				return problem.Forbidden("nenhuma conta de cobrança para este usuário").Send(c)
+				// Typed, and the only 403 here that is: this is somebody who signed
+				// in and simply has not bought anything yet, which is a beginning
+				// rather than a failure. The portal renders it as an empty state, and
+				// it can only tell it apart from "conta encerrada" by the type.
+				//
+				// Still a 403, and still the same refusal for all three cases the
+				// doc comment lists — owning nothing, owning an organization, and
+				// buying from somebody else are indistinguishable from out here.
+				return problem.New(fiber.StatusForbidden, problem.TypeNoBillingAccount, "Forbidden",
+					"nenhuma conta de cobrança para este usuário").Send(c)
 			}
 			return problem.Internal("erro ao resolver conta").Send(c)
 		}

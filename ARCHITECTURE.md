@@ -194,7 +194,21 @@ convention is that a service sends what it is responsible for saying.
 ## 8. Observability & audit
 
 - Structured logs (same logger/format as the rest of the company's Go services — reuse,
-  don't reinvent).
+  don't reinvent). One JSON access line per request from Fiber's `logger`, plus `slog` for
+  everything the service says on its own; both go to stdout, which systemd appends to
+  `/var/log/app/app.log` and the CloudWatch agent ships to the app log group.
+  - The liveness probe is skipped — HAProxy polls it forever, and nginx already drops it from
+    its own access log.
+  - Two departures from the siblings' copy of the format, both because the shared version is
+    wrong rather than because billing wants something different (`internal/app/app.go`,
+    `accessLog`): the correlation id is read from `${respHeader:X-Request-Id}` because
+    `${request-id}` is not a tag Fiber has and renders empty, and `DisableColors` is set
+    because Fiber colourises values when the stream is stdout, putting ANSI escapes inside the
+    JSON. Both are worth carrying back to ctech-wallet, ctech-poker and ctech-dfe.
+- A 5xx answers `"erro interno"` and nothing else, so the real error is written on the
+  instance instead — in `fail` (`internal/api/v1/handlers.go`), which is the choke point every
+  handler error goes through. 4xx are not: they are the caller being told no, they are already
+  in the access line, and logging them at error level is how a level stops meaning anything.
 - Every state transition on `Subscription`/`Invoice` written to an append-only audit table,
   keyed by entity id, independent of application logs (logs rotate/expire; this shouldn't).
 - Metrics: invoices generated/day, charge success rate, dunning-triggered cancellations,
