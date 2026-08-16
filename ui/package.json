@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "@aoctech/auth-client": "^1.1.0",
-    "@aoctech/ui": "file:../../ctech-ui",
+    "@aoctech/ui": "^0.1.1",
     "@base-ui/react": "^1.7.0",
     "@tanstack/react-query": "^5.101.4",
     "axios": "^1.19.0",

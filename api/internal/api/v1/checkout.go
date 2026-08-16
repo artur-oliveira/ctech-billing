@@ -36,7 +36,6 @@ type checkoutHandlers struct {
 	*handlers
 	orgs      *repositories.OrganizationRepository
 	collector *services.Collector
-	links     *services.PayLink
 }
 
 // checkoutResponse is the public page's whole payload.
@@ -171,7 +170,7 @@ func newCheckoutInvoice(inv *billing.Invoice, lines []billing.InvoiceItem, today
 		DueDate:     inv.DueDate,
 		AmountDue:   inv.AmountDue(),
 		Currency:    inv.Currency,
-		Payable:     inv.Status == billing.InvoiceOpen && inv.AmountDue() > 0,
+		Payable:     inv.Payable(),
 	}
 	for _, l := range lines {
 		out.Lines = append(out.Lines, portalLine{
@@ -203,9 +202,11 @@ func (h *checkoutHandlers) webhook(c fiber.Ctx) error {
 		return problem.BadRequest("corpo inválido").Send(c)
 	}
 
-	// Live only. A test-mode charge is opened by a different wallet client with a
-	// different secret; accepting either mode on one route would let a test
-	// notification settle a live invoice.
+	// Live only, and that is now true by construction rather than by assumption:
+	// Collector.Pay refuses a test-mode invoice outright
+	// (services.ErrTestModeNotPayable), so no test-mode attempt can exist to
+	// resolve. Passing the mode through from the body instead would be the hole
+	// this closes — a test notification settling a live invoice.
 	if err := h.collector.Confirm(c.Context(), true, note.ChargeID, billing.CauseWalletWebhook, middleware.GetRequestID(c), h.now()); err != nil {
 		if errors.Is(err, repositories.ErrNotFound) {
 			// Not ours. Wallet notifies its client, and billing is one of several.
@@ -235,7 +236,12 @@ func failCheckout(c fiber.Ctx, err error) error {
 	case errors.Is(err, services.ErrInvoiceNotPayable):
 		return problem.Conflict("esta fatura não está aberta para pagamento").Send(c)
 	case errors.Is(err, services.ErrNoPayerAccount),
+		errors.Is(err, services.ErrTestModeNotPayable),
 		errors.Is(err, billing.ErrPayoutNotEnabled):
+		// One message for three refusals, deliberately. Each has a reason that is
+		// CTech's business — no linked account, a test-mode document, a merchant
+		// still behind the payout gate — and none of them is something the person
+		// holding the bill can act on. The specific reason is in the log.
 		return problem.Conflict("pagamento indisponível para esta fatura").Send(c)
 	case errors.Is(err, wallet.ErrChargeRejected):
 		return problem.Unprocessable("não foi possível abrir a cobrança para este valor").Send(c)

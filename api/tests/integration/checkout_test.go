@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -30,12 +31,13 @@ import (
 
 // The payment path, end to end, against a fake wallet.
 //
-// Fake wallet rather than a fake client: the route these tests exercise does not
-// exist in ctech-wallet yet (docs/specs/2026-08-15-wallet-invoice-charge.md), so
-// the fake **is** the contract. It answers exactly what the spec says wallet will
-// answer, which means these tests fail the day the real implementation disagrees
-// with what billing was built against — which is the only thing a fake is
-// actually good for.
+// Fake wallet rather than a fake client, and now that the real route ships
+// (ctech-wallet `services/charge_amount.go`) that choice matters more, not less:
+// the fake answers exactly what docs/specs/2026-08-15-wallet-invoice-charge.md
+// says, so it is the contract test between the two repositories. Nothing else
+// checks that they still agree — there is no shared package and no consumer-
+// driven test running in wallet's CI — so these tests are the only thing that
+// fails if wallet renames a field.
 
 const (
 	testWalletSecret = "wallet-hmac-secret"
@@ -508,6 +510,64 @@ func TestPaymentLinkOpensOneInvoiceWithoutSigningIn(t *testing.T) {
 	}
 	if e.wallet.opens != 1 {
 		t.Fatalf("wallet opened %d charges, want 1", e.wallet.opens)
+	}
+}
+
+// Test mode has no rail, so it collects nothing (ADR 0004, second amendment).
+//
+// The failure this prevents is the expensive one, and it is quiet: wallet has no
+// sandbox charge kind and billing holds one set of wallet credentials, so a
+// test-mode invoice taken through checkout would open a **real** PIX charge for
+// real money — and then never settle, because the notify-back route resolves the
+// attempt in live mode only and correctly reports the charge as not billing's.
+//
+// So the assertion that matters is not the error. It is `opens == 0`: the guard
+// has to fire before wallet is reached, because after that the money has already
+// been asked for.
+func TestATestModeInvoiceIsNeverCollected(t *testing.T) {
+	e := newPayEnv(t)
+
+	testOrg := newOrg(t, false)
+	customer := &billing.Customer{
+		ID: id.NewWithPrefix(id.PrefixCustomer), OrganizationID: testOrg.ID, Livemode: false,
+		Name: "Sandbox Ltda", UserID: "usr_sandbox",
+	}
+	if err := repositories.NewCustomerRepository(testDB, testCfg).
+		Create(ctxT(t), customer, now()); err != nil {
+		t.Fatal(err)
+	}
+	inv := newInvoiceFor(t, testOrg, customer.ID)
+	due := brcal.New(2026, time.March, 20)
+	if _, err := repositories.NewInvoiceRepository(testDB, testCfg).
+		Finalize(ctxT(t), inv, due, due, "test", "req_setup", now()); err != nil {
+		t.Fatal(err)
+	}
+
+	_, _, err := e.collector.Pay(ctxT(t), testOrg.ID, false, inv.ID, "test", "req_pay", now())
+	if !errors.Is(err, services.ErrTestModeNotPayable) {
+		t.Fatalf("Pay() error = %v, want ErrTestModeNotPayable", err)
+	}
+	if e.wallet.opens != 0 {
+		t.Fatalf("a test-mode invoice opened %d real charges", e.wallet.opens)
+	}
+
+	// And the public link offers nothing to press, so nobody reaches the refusal
+	// by clicking. The page still renders — the invoice is real and a reader may
+	// legitimately look at it — it simply cannot be paid.
+	link := e.links.Sign(testOrg.ID, false, inv.ID)
+	res := e.do(t, http.MethodGet, "/v1/checkout/"+link, "", "", "")
+	if res.status != http.StatusOK {
+		t.Fatalf("view: %d %s", res.status, res.body)
+	}
+	if strings.Contains(string(res.body), `"payable":true`) {
+		t.Errorf("the checkout offered to collect a test-mode invoice:\n%s", res.body)
+	}
+
+	if res := e.post(t, "/v1/checkout/"+link+"/pay", "", ""); res.status != http.StatusConflict {
+		t.Fatalf("pay: %d %s, want 409", res.status, res.body)
+	}
+	if e.wallet.opens != 0 {
+		t.Fatalf("the pay route opened %d real charges in test mode", e.wallet.opens)
 	}
 }
 

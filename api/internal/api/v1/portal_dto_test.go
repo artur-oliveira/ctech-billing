@@ -132,10 +132,15 @@ func TestPayableIsDecidedByTheServer(t *testing.T) {
 		inv  billing.Invoice
 		want bool
 	}{
-		{"aberta com saldo", billing.Invoice{Status: billing.InvoiceOpen, Total: 4990, DueDate: today}, true},
-		{"paga", billing.Invoice{Status: billing.InvoicePaid, Total: 4990, AmountPaid: 4990, DueDate: today}, false},
-		{"anulada", billing.Invoice{Status: billing.InvoiceVoid, Total: 4990, DueDate: today}, false},
-		{"rascunho", billing.Invoice{Status: billing.InvoiceDraft, Total: 4990, DueDate: today}, false},
+		{"aberta com saldo", billing.Invoice{Livemode: true, Status: billing.InvoiceOpen, Total: 4990, DueDate: today}, true},
+		{"paga", billing.Invoice{Livemode: true, Status: billing.InvoicePaid, Total: 4990, AmountPaid: 4990, DueDate: today}, false},
+		{"anulada", billing.Invoice{Livemode: true, Status: billing.InvoiceVoid, Total: 4990, DueDate: today}, false},
+		{"rascunho", billing.Invoice{Livemode: true, Status: billing.InvoiceDraft, Total: 4990, DueDate: today}, false},
+		// The portal only ever serves live mode (ADR 0012), so this case is
+		// defensive rather than reachable — which is the reason to keep it. The day
+		// somebody makes the portal mode-aware, this is what stops the pay button
+		// from appearing over a rail that does not exist.
+		{"modo de teste", billing.Invoice{Status: billing.InvoiceOpen, Total: 4990, DueDate: today}, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -199,7 +199,7 @@ func newPortalInvoiceResponse(inv *billing.Invoice, lines []billing.InvoiceItem,
 		AmountDue:   inv.AmountDue(),
 		Currency:    inv.Currency,
 		Period:      portalPeriod{Start: inv.Period.Start, End: inv.Period.End},
-		Payable:     inv.Status == billing.InvoiceOpen && inv.AmountDue() > 0,
+		Payable:     inv.Payable(),
 	}
 	for _, l := range lines {
 		out.Lines = append(out.Lines, portalLine{

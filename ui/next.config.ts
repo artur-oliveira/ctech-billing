@@ -1,4 +1,3 @@
-import path from "path"
 import type {NextConfig} from "next"
 
 const isProduction = process.env.NODE_ENV === "production"
@@ -6,11 +5,12 @@ const isProduction = process.env.NODE_ENV === "production"
 const nextConfig: NextConfig = {
   devIndicators: false,
   turbopack: {
-    // The repository's parent, not this directory. @aoctech/ui is installed as
-    // a `file:` link to a sibling checkout while it is unpublished, and
-    // Turbopack refuses to resolve a module outside its root. Narrow this back
-    // to `path.join(__dirname)` the day the package comes from npm.
-    root: path.join(__dirname, "..", ".."),
+    // This directory, and nothing above it. It was widened to the repository's
+    // parent while @aoctech/ui was installed as a `file:` link to a sibling
+    // checkout — Turbopack refuses to resolve a module outside its root. The
+    // package comes from npm now, so the root is back where it belongs and a
+    // build no longer depends on what happens to sit next to this repository.
+    root: __dirname,
 
     // In a production build the mock is not merely disabled, it is not built.
     // `USE_MOCK` already guards at runtime, but a guard still ships the

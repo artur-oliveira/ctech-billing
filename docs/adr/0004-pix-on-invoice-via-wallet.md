@@ -1,6 +1,11 @@
 # ADR 0004 — Collection rail: PIX on the invoice, through wallet
 
-Status: Accepted (2026-08-15) · Records decisions **D2** and **D11**
+Status: Accepted (2026-08-15) · **Implemented on both sides 2026-08-16** · Records decisions **D2**
+and **D11**
+
+> The Context below describes what existed on 2026-08-15 and is left as written — it is the record
+> of why the decision was made, not a description of the system today. Wallet now has the route
+> ([spec](../specs/2026-08-15-wallet-invoice-charge.md)). See the two amendments at the end.
 
 ## Context
 
@@ -92,3 +97,26 @@ forged or wrong request, and it is still per charge rather than per period.
 The metered limit named above stays open: `Price.ExceedsChargeCeiling` answers only for fixed
 prices, so a metered total is still discovered at the charge. [ADR 0018](0018-subscriptions-bill-several-prices.md)
 makes that more likely by putting several meters on one invoice, not less.
+
+## Amendment (2026-08-16) — collection is live-mode only
+
+Implementing the contract surfaced a mode problem the decision did not consider. Billing has test
+and live modes; wallet does not, and this charge kind has no sandbox rail — `OpenCharge` reaches
+`pix.CreateCharge` whatever billing thinks its mode is. Billing also holds **one** set of wallet
+credentials (`WALLET_CLIENT_*`), so there is no second client a test-mode call could route to.
+
+Left alone, a test-mode invoice taken through checkout opens a real PIX charge for real money, and
+then never settles: the notify-back route resolves the attempt in live mode only, finds nothing,
+and correctly answers "not ours". Real money in, test invoice open, nothing tying the two together.
+
+**`Collector.Pay` refuses a test-mode invoice** (`services.ErrTestModeNotPayable`), and
+`Invoice.Payable` carries the same condition so no `payable` flag and no `checkout_url` is published
+for one either. The webhook's live-only lookup stops being an assumption and becomes true by
+construction.
+
+The cost is real and accepted: an integrator cannot rehearse a payment. Everything before
+collection — catalogue, customers, subscriptions, usage, invoicing, dunning — still works in test
+mode, and the alternative on offer was rehearsing with the customer's money.
+
+**Reopen if** wallet gains a sandbox charge kind, at which point this is one condition on
+`Invoice.Payable`, one guard in `Collector.Pay`, and a second set of credentials in config.

@@ -340,18 +340,29 @@ gate.** Both sides of the payment path are now built — billing's, and wallet's
 
 The MVP is built and unreleased. In the order it blocks things:
 
-1. **Configuration in other repositories.** Nothing here can proceed without it and none of it is
-   code in this repo — Phase 0's last item, and the table in
-   [`.github/workflows/README.md`](.github/workflows/README.md).
+1. **`@aoctech/ui@0.1.1` has to be published.** The package went to npm at `0.1.0` on 2026-08-16
+   and `ui/` now installs it from the registry, with `next.config.ts`'s Turbopack root narrowed
+   back to this directory. But `0.1.0` does not build: `theme-provider.tsx` calls `createContext`
+   at module scope with no `"use client"`, and the package's entry point is a barrel, so any React
+   Server Component importing any primitive evaluates it. `ctech-ui` carries the one-line fix and a
+   version bump; **`npm publish` there, then `npm install` here** to regenerate the lockfile, which
+   still pins `0.1.0`. Until then `npm ci` fails loudly on the version range, which is the right
+   failure.
 2. **The first deploy.** Never run. `terraform/github` has to be applied once from a workstation
    before any workflow has an identity to assume, and the whole pipeline is untested against real
    AWS — it is verified by `terraform validate`, `fmt`, and reading, which is not the same thing.
-3. **`@aoctech/ui` is unpublished.** `ui/` consumes it through a `file:` link to a sibling checkout,
-   which is why `next.config.ts` widens the Turbopack root. CI cannot build the front end until the
-   package exists on npm. Narrow the root back in the same change.
-4. **A verified SES identity** and `EMAIL_FROM` set to it, or dunning will not start. The IAM
+3. **A verified SES identity** and `EMAIL_FROM` set to it, or dunning will not start. The IAM
    policy pins the sender address, so the Terraform variable and the SSM value have to agree.
-5. **Console writes, then the console** (Phase 2). In that order, for the reason each item gives.
+4. **Console writes, then the console** (Phase 2). In that order, for the reason each item gives.
+
+Cleared on 2026-08-16, recorded so the cost of re-deriving them is not paid twice:
+
+- ~~**Billing's entry in `/ctech-wallet/{env}/m2m-clients`**~~ — set. The keys are `webhook_url`,
+  `hmac_secret` and `max_charge_cents`, matching `services.M2MClient`'s struct tags. Worth naming
+  because wallet's own older spec document shows them as `WebhookURL` / `HMACSecret`, which do not
+  unmarshal — Go's case-insensitive fallback does not bridge the underscores, so those keys parse
+  to empty and the failure is a webhook that silently never fires.
+- ~~**`@aoctech/ui` unpublished**~~ — published; what replaced it is item 1.
 
 Not blockers, worth naming so they are not rediscovered as surprises:
 
@@ -376,11 +387,12 @@ Not blockers, worth naming so they are not rediscovered as surprises:
 
 ## Open decisions — resolved
 1. ~~Wallet charge lifecycle~~ — resolved as scope
-   ([ADR 0004](docs/adr/0004-pix-on-invoice-via-wallet.md)) and now as a written contract
-   ([spec](docs/specs/2026-08-15-wallet-invoice-charge.md)), verified line by line against wallet's
-   real source rather than against its docs. **Still the one cross-repo dependency and the only
-   item that does not depend on this repository alone** — what remains is implementing it in
-   `ctech-wallet`.
+   ([ADR 0004](docs/adr/0004-pix-on-invoice-via-wallet.md)), written as a contract
+   ([spec](docs/specs/2026-08-15-wallet-invoice-charge.md)), and **implemented on both sides as of
+   2026-08-16**: `ctech-wallet/api/internal/services/charge_amount.go` behind
+   `internal:wallet:charge-amount`, consumed by `api/internal/wallet/client.go`. Field names and
+   the `confirmed` status were checked against wallet's shipped handler, not against its docs.
+   What is left is configuration, not code — see item 1 below.
 2. ~~Roll-forward vs roll-backward~~ — roll-forward
    ([ADR 0006](docs/adr/0006-due-date-roll-forward.md)), implemented and tested.
 3. ~~Datastore~~ — DynamoDB ([ADR 0002](docs/adr/0002-datastore-dynamodb.md)).

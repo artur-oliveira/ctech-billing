@@ -65,7 +65,8 @@ rather than silently degrading:
 | `/ctech-billing/{env}/billing/field-encryption-key` — 32 bytes, base64 or hex                                                | set out of band, backed up outside SSM               | **every binary refuses to start without it** |
 | `/ctech-billing/{env}/billing/email-from`, matching a verified SES identity and `var.email_from`                             | set out of band + SES                                | dunning reminders                            |
 | A tenant plan applied with `cmd/seed`                                                                                        | this repo, run by an operator                        | everything — see below                       |
-| `"max_charge_cents": 1000000` on billing's entry in `/ctech-wallet/{env}/m2m-clients`                                       | ctech-wallet, set out of band                        | any invoice above R$ 1.000,00                |
+| A `billing` entry in `/ctech-wallet/{env}/m2m-clients` carrying `webhook_url` **and** `"max_charge_cents": 1000000` — **set 2026-08-16** | ctech-wallet, set out of band            | every settlement; any invoice above R$ 1.000,00 |
+| An OAuth client for billing holding `internal:wallet:charge-amount`                                                          | ctech-account                                        | opening any charge at all                    |
 
 ## The pipeline does not seed
 
@@ -87,12 +88,28 @@ It is deliberately not a pipeline stage. Creating a tenant is an admission decis
 that quietly provisions one is a deploy that can quietly provision the wrong one. It is
 create-or-skip, so re-running it is safe and adding a price to the file creates only the price.
 
-## The charge ceiling is set in the other repository
+## Collection is configured in the other repository
 
-Wallet defaults an M2M client to R$ 1.000,00 per charge. The DF-e sob-demanda plan bills per
-document, so a high-volume month passes that on its own — and the refusal arrives when the customer
-tries to pay an invoice that was already issued and numbered. Billing's entry in
-`/ctech-wallet/{env}/m2m-clients` must carry `"max_charge_cents": 1000000`, which is the
-[ADR 0004 amendment](../../docs/adr/0004-pix-on-invoice-via-wallet.md). `billing.MaxChargeCents`
-mirrors it so a price can be rejected at creation; the mirror is only right while the two agree,
-and nothing checks that across repositories.
+The charge route itself ships (`ctech-wallet/api/internal/services/charge_amount.go`). What does
+not ship with it is billing's entry in `/ctech-wallet/{env}/m2m-clients`, and it carries two
+settings that fail in opposite ways:
+
+- **`webhook_url`.** Without it `dispatchM2MWebhookProduct` logs `no registered webhook for client`
+  and marks delivery failed. The customer pays, wallet records it, and billing hears nothing until
+  `cmd/reconcile` runs — so the failure looks like an hour of latency rather than a
+  misconfiguration, which is exactly why it is worth naming here. The keys are `webhook_url`,
+  `hmac_secret` and `max_charge_cents`, exactly as `services.M2MClient` tags them; wallet's
+  `2026-07-30` spec shows `WebhookURL` / `HMACSecret`, which do **not** unmarshal — the
+  case-insensitive fallback in `encoding/json` does not bridge the underscores, so those keys parse
+  to empty and produce precisely the silent failure above.
+- **`"max_charge_cents": 1000000`.** Wallet defaults an M2M client to R$ 1.000,00 per charge. The
+  DF-e sob-demanda plan bills per document, so a high-volume month passes that on its own — and the
+  refusal arrives when the customer tries to pay an invoice that was already issued and numbered.
+  This is the [ADR 0004 amendment](../../docs/adr/0004-pix-on-invoice-via-wallet.md).
+  `billing.MaxChargeCents` mirrors it so a price can be rejected at creation; the mirror is only
+  right while the two agree, and nothing checks that across repositories.
+
+**There is no test-mode rail.** Wallet opens a real PIX charge whatever mode billing is in, so
+`Collector.Pay` refuses a test-mode invoice outright (`services.ErrTestModeNotPayable`) and no
+`checkout_url` is published for one. Integrators exercise the catalogue, subscriptions, usage and
+invoicing in test mode; collection is live-only until wallet has a sandbox charge kind.

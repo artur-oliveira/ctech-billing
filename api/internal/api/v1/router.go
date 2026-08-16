@@ -68,6 +68,13 @@ func Register(app *fiber.App, d Deps) {
 		subscriber: d.Subscriber,
 		clock:      clock,
 	}
+	// Only when the routes the links point at are actually mounted. A signed URL
+	// for a checkout this deployment does not serve is a 404 published to a paying
+	// customer, which is worse than the absent field a consumer already has to
+	// handle.
+	if checkoutMounted(d) {
+		h.links = d.Links
+	}
 
 	app.Use(middleware.RequestID())
 
@@ -132,15 +139,29 @@ func registerCheckout(v1 fiber.Router, d Deps, h *handlers) {
 	if d.Collector == nil {
 		return
 	}
-	ch := &checkoutHandlers{handlers: h, orgs: d.Organizations, collector: d.Collector, links: d.Links}
+	ch := &checkoutHandlers{handlers: h, orgs: d.Organizations, collector: d.Collector}
 
+	// The webhook is mounted whenever there is a collector, links or not: a
+	// deployment can collect through the portal alone, and a settlement wallet has
+	// no route to report is money received that billing never records.
 	v1.Post("/internal/webhooks/wallet", ch.webhook)
 
-	if d.Links == nil || !d.Links.Enabled() {
+	if !checkoutMounted(d) {
 		return
 	}
 	v1.Get("/checkout/:token", ch.view)
 	v1.Post("/checkout/:token/pay", ch.pay)
+}
+
+// checkoutMounted reports a deployment that serves the public payment link.
+//
+// Both halves are needed and they fail for different reasons: no collector means
+// no wallet configuration and so nothing to pay with, and no enabled links means
+// no CHECKOUT_LINK_SECRET to sign a token nobody can forge. It is one predicate
+// rather than two checks so the routes and the published `checkout_url` cannot
+// disagree about whether the checkout exists.
+func checkoutMounted(d Deps) bool {
+	return d.Collector != nil && d.Links != nil && d.Links.Enabled()
 }
 
 // registerConsole mounts the browser surface (ADR 0011).
@@ -157,7 +178,6 @@ func registerConsole(v1 fiber.Router, d Deps, h *handlers, auth fiber.Handler) {
 		audit:                d.Audit,
 		cat:                  d.Catalog,
 		portalOrganizationID: d.PortalOrganizationID,
-		links:                d.Links,
 	}
 
 	// /v1/me carries authentication and nothing else: which tenant this person

@@ -33,13 +33,30 @@ var (
 	// ErrAmountMismatch reports a settled charge whose amount is not the amount
 	// billing opened it for. It is an alarm, never a partial payment.
 	ErrAmountMismatch = errors.New("charge amount does not match the attempt")
+	// ErrTestModeNotPayable refuses collection on a test-mode invoice.
+	//
+	// There is one set of wallet credentials (config.WALLET_CLIENT_*), and wallet
+	// has no test rail for this charge kind: OpenCharge goes straight to
+	// pix.CreateCharge whatever mode billing thinks it is in. So a test-mode
+	// invoice taken through this path opens a **real** PIX charge for real money
+	// — and then the settlement never arrives, because the notify-back route
+	// resolves the attempt in live mode only. Real money in, test invoice stays
+	// open, nothing reconciles the two.
+	//
+	// Refusing here is not a limitation being papered over, it is the limitation
+	// stated at the only place that can act on it. It becomes unnecessary the day
+	// wallet has a sandbox charge rail and billing has a second set of
+	// credentials to reach it with; until then, silence would be the bug.
+	ErrTestModeNotPayable = errors.New("test-mode invoices cannot be collected")
 )
 
 // ChargeOpener is the slice of ctech-wallet that collection uses.
 //
-// It exists so the whole payment path is testable without a wallet — which
-// matters more than usual here, because the route behind it does not exist yet
-// (docs/specs/2026-08-15-wallet-invoice-charge.md).
+// It exists so the whole payment path is testable without a wallet. The route
+// behind it now ships (docs/specs/2026-08-15-wallet-invoice-charge.md, marked
+// Implemented), so the fake in tests/integration is no longer a stand-in for
+// something absent — it is the contract test, and it fails the day either side
+// drifts from the spec.
 type ChargeOpener interface {
 	OpenCharge(ctx context.Context, in wallet.OpenChargeInput) (*wallet.Charge, error)
 	GetCharge(ctx context.Context, chargeID string) (*wallet.Charge, error)
@@ -104,6 +121,12 @@ func (c *Collector) Pay(
 	actor, requestID string,
 	now time.Time,
 ) (*billing.CheckoutSession, *billing.Invoice, error) {
+	// Before the read, because it needs nothing from it and because this is the
+	// choke point both callers pass through — the public link and the portal. A
+	// guard in each of them is a guard the third caller forgets.
+	if !livemode {
+		return nil, nil, fmt.Errorf("%w: invoice %s", ErrTestModeNotPayable, invoiceID)
+	}
 	inv, err := c.invoices.Get(ctx, organizationID, livemode, invoiceID)
 	if err != nil {
 		return nil, nil, err

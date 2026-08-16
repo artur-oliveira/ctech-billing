@@ -153,6 +153,32 @@ func (i *Invoice) AmountDue() Cents { return i.Total - i.AmountPaid }
 // and no reminder is scheduled, because both would be about an amount of zero.
 func (i *Invoice) NothingDue() bool { return i.Total == 0 }
 
+// Payable reports an invoice a customer can actually pay right now. It is the
+// one answer behind every "pagar" button, every `payable` flag on the wire, and
+// every checkout link handed out — four places that were computing it
+// separately and would eventually have disagreed.
+//
+// Three conditions, and the third is the surprising one:
+//
+//   - OPEN. A draft is not a bill yet and a paid or void one is not a bill any
+//     more.
+//   - Something is still owed. A zero-total invoice is closed on issue
+//     (NothingDue), and a page offering to collect R$ 0,00 is a dead end.
+//   - **Livemode.** Collection runs through ctech-wallet, and wallet has no test
+//     rail for this charge kind — `POST /v1.0/internal/wallet/charge` opens a
+//     real PIX charge against a real provider whatever billing's mode is. So a
+//     test-mode invoice offered for payment collects real money against a
+//     document that, by design, is not real. Until a sandbox rail exists this
+//     is the honest answer, and it is one line to relax when it does.
+//
+// Collector.Pay checks the same three separately rather than calling this,
+// because it must say *which* one failed: "not open" and "test mode" are
+// different problems with different fixes, and one error for both makes an
+// operator guess.
+func (i *Invoice) Payable() bool {
+	return i.Livemode && i.Status == InvoiceOpen && i.AmountDue() > 0
+}
+
 // IsOverdue reports whether the invoice is OPEN past its due date, as of today.
 // This is the derived attribute that "overdue" would otherwise be a state for.
 func (i *Invoice) IsOverdue(today brcal.Date) bool {

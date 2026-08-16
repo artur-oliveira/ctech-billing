@@ -220,10 +220,13 @@ the prose — they are genuinely undecided. Do not treat any single doc as final
    but the `FIXED_MONTHLY` cycle is always `ARREARS` "regardless of plan billing_timing" (§ 4).
    Resolved in-place above: `billing_timing` only applies to `VARIABLE_ANCHOR`; `FIXED_MONTHLY`
    overrides it to `ARREARS`. The stored field is effectively meaningless on that cycle.
-3. **MVP requires a new `ctech-wallet` contract.** Source inspection confirms the proposed
-   charge/webhook API does not exist. Wallet provides a scoped, synchronous real-balance debit
-   and separate PIX-deposit/sandbox-purchase flows. Phase 3 is blocked on designing, versioning,
-   implementing, and contract-testing the new lifecycle.
+3. ~~**MVP requires a new `ctech-wallet` contract.**~~ **Resolved 2026-08-16.** Source inspection
+   was right that the proposed generic charge/webhook API did not exist. What shipped instead is
+   narrower and is the better answer: a caller-supplied *amount* on the existing product-purchase
+   machinery, rather than a new lifecycle
+   ([ADR 0004](docs/adr/0004-pix-on-invoice-via-wallet.md),
+   [spec](docs/specs/2026-08-15-wallet-invoice-charge.md)). Both sides are built. Phase 3 is no
+   longer blocked; what remains is the `m2m-clients` entry, which is configuration.
 
 ### Other open decisions (from PLAN.md)
 

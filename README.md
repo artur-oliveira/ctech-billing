@@ -13,11 +13,12 @@ collection path, reconciliation, dunning, outbound webhooks, the consumer portal
 checkout, the infrastructure they run on and the pipeline that deploys them are implemented and
 green locally. What is left
 before real money can move is **configuration in other repositories, not code here** — the
-prerequisites table in [`.github/workflows/README.md`](.github/workflows/README.md), of which
-the two that gate payments are an SSM `m2m-clients` entry for billing in wallet and a
-`ctech-account` client holding `internal:wallet:charge-amount`. One thing here does block CI:
-`@aoctech/ui` is still consumed through a `file:` link and has to be published before a runner can
-build the front end. Nothing is deployed, nothing is committed, and nothing has moved real money.
+prerequisites table in [`.github/workflows/README.md`](.github/workflows/README.md). Wallet's
+`m2m-clients` entry for billing is set; a `ctech-account` client holding
+`internal:wallet:charge-amount` is the remaining one that gates payments. CI is still blocked, but
+by a different thing than it was: `@aoctech/ui` is on npm and consumed from there, and `0.1.0`
+does not build under a static export — `ctech-ui` holds the one-line fix and needs publishing as
+`0.1.1`. Nothing is deployed, nothing is committed, and nothing has moved real money.
 [PLAN.md § What is actually left](PLAN.md) is the ordered list.
 
 | Path | What is there |
@@ -45,7 +46,7 @@ build the front end. Nothing is deployed, nothing is committed, and nothing has 
 | `terraform/billing/frontend.tf` | The portal's hosting: a private bucket behind CloudFront with an Origin Access Control, a KeyValueStore route manifest read by a CloudFront Function for pretty URLs, a response-headers policy (HSTS, frame-deny, CSP), and `/v1/*` forwarded to the same HAProxy origin the API already sits behind — so the browser is same-origin with its API and CORS never applies ([ADR 0013](docs/adr/0013-static-portal-same-origin-api.md)). An HCL port of `ctech-cdk`'s `nextjs-static-frontend`, not a new pattern. |
 | `terraform/github/` | The four GitHub OIDC roles the pipeline assumes — `infra`, `api`, `frontend`, `scopes` — each scoped to what one stage does, none trusting a pull request ([ADR 0015](docs/adr/0015-four-deploy-identities.md)). Its own root, one workspace: the roles are one set for all three environments. |
 | `.github/workflows/` | The pipeline. `ci.yml` (every PR, no AWS credentials at all), `deploy.yml` (path filters and the ordering), and the three called workflows for infra, API and frontend, plus the scopes stage that calls ctech-account's reusable publisher. The order — Terraform → scopes → API → frontend — is a dependency chain and [its README](.github/workflows/README.md) says why each link is where it is. |
-| `ui/` | The Next 16 portal, built and passing: the public landing, the OAuth round trip, the four signed-in screens (P1–P4), and the public checkout (X1). A production build is `output: "export"` — a directory of files, no server ([ADR 0013](docs/adr/0013-static-portal-same-origin-api.md)). Primitives come from `@aoctech/ui` (sibling repo `ctech-ui`); `DESIGN.md` records the token system and what was rejected, `PRODUCT.md` the users and the screen list. |
+| `ui/` | The Next 16 portal, built and passing: the public landing, the OAuth round trip, the four signed-in screens (P1–P4), and the public checkout (X1). A production build is `output: "export"` — a directory of files, no server ([ADR 0013](docs/adr/0013-static-portal-same-origin-api.md)). Primitives come from `@aoctech/ui` on npm, built in the sibling repo `ctech-ui`; `DESIGN.md` records the token system and what was rejected, `PRODUCT.md` the users and the screen list. |
 | `docs/adr/` | The 15 architecture decisions that shape all of the above. |
 | `docs/analysis/` | The product/architecture assessment those decisions came out of. |
 | `docs/specs/` | Cross-repository contracts — currently the [`ctech-wallet` charge contract](docs/specs/2026-08-15-wallet-invoice-charge.md), now implemented on both sides. |
@@ -92,6 +93,38 @@ CT-e price.
 subscription, a real numbered document, `invoice.paid` emitted the same as any
 other, no charge opened and no reminder scheduled.
 
+### Where to send the customer to pay
+
+Every invoice payload — `POST /v1/subscriptions`, `GET /v1/invoices/:id`, the
+console's, the list — carries `checkout_url` when there is something to collect:
+
+```json
+{"invoice": {"id": "in_…", "amount_due": 35000,
+             "checkout_url": "https://billing.aoctech.app/checkout?token=…"}}
+```
+
+It is the signed public link, not a portal URL. A consumer who has just signed in
+to the DF-e should not have to consent to a second OAuth client to pay their first
+bill, and the link needs no session at all.
+
+**Branch on the field being present, never build the URL.** It is absent exactly
+when the invoice cannot be paid, and the three cases are ordinary rather than
+exceptional:
+
+| Situation | `checkout_url` | Why |
+|---|---|---|
+| Pro, R$ 350,00 due | present | there is a bill |
+| Free plan | absent | the invoice closed on issue owing nothing |
+| Sob demanda, first period | absent | metered arrears — the period has not been billed yet |
+| Draft, paid or void | absent | a link to a draft 404s by design |
+| Test mode | absent | collection is live-only, [ADR 0004](docs/adr/0004-pix-on-invoice-via-wallet.md) |
+
+So the flow for contracting a plan is: create the customer **with `user_id`**
+(without it there is nobody to charge), create the subscription, and redirect to
+`invoice.checkout_url` **if it is there**. Entitlement comes from
+`GET /v1/entitlements`, and settlement from the `invoice.paid` webhook — not from
+the browser coming back, which for PIX it may never do.
+
 ### API surface (v1, console)
 
 The browser surface for the merchant console (screens C1–C9 and C17). It is
@@ -112,9 +145,10 @@ request states its own mode, and why that is safe is
 
 Detail routes return the entity plus its audit timeline, which is what makes
 "who changed this, and why" answerable on the screen where it is asked. The
-invoice detail also carries `payment_link` — the public checkout URL for that
-invoice — so the answer to "can you send it again?" is on the screen where it is
-asked.
+payment link an operator sends when a customer asks "can you send it again?" is
+`invoice.checkout_url`, the same field the M2M surface publishes and under the
+same rule — a link one surface hands out that the other refuses is a support
+call.
 
 Cancellation is the one write here, and it takes both modes: an operator ending
 a subscription immediately is a deliberate decision, and refusing it would push
@@ -180,7 +214,17 @@ get weaker one layer up.
 
 All of these routes are unmounted entirely unless the deployment is fully
 configured. A checkout that 404s is a deployment somebody notices; one that fails
-after showing a QR code is a customer who thinks they paid.
+after showing a QR code is a customer who thinks they paid. The same predicate
+decides whether `checkout_url` appears on an invoice, so the field never points
+at a route this deployment does not serve.
+
+**Collection is live-mode only.** ctech-wallet has no sandbox rail for this charge
+kind — `OpenCharge` reaches a real PIX provider whatever mode billing is in — and
+billing holds one set of wallet credentials, so there is no second client to route
+a test call to. `Collector.Pay` refuses a test-mode invoice outright, and no
+`payable` flag or `checkout_url` is published for one. Everything before
+collection works in test mode; rehearsing a payment would rehearse it with real
+money ([ADR 0004](docs/adr/0004-pix-on-invoice-via-wallet.md), second amendment).
 
 ### Telling other services what happened
 

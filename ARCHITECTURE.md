@@ -56,10 +56,17 @@
                                         └───────────────┘
 ```
 
-`ctech-billing` **never** talks to a payment rail directly. The intended boundary is for it to
-ask `ctech-wallet` to collect an amount and later reconcile the outcome. That contract does not
-exist in wallet source: wallet exposes an internal synchronous real-balance debit and separate
-PIX-deposit/sandbox-purchase flows, but no generic charge, Boleto, webhook, or charge lookup.
+`ctech-billing` **never** talks to a payment rail directly. It asks `ctech-wallet` to collect an
+amount and later reconciles the outcome. When this was written that contract did not exist —
+wallet had an internal synchronous real-balance debit and separate PIX-deposit/sandbox-purchase
+flows, and no generic charge, webhook or charge lookup. It exists now, in the narrower shape § 3
+describes: a caller-supplied *amount* on wallet's existing purchase machinery rather than a new
+lifecycle.
+
+One consequence of reusing that machinery rather than building a lifecycle: **it has no test
+mode.** A charge opened in billing's test mode would be a real PIX charge, so collection is
+live-only and billing refuses it before wallet is reached
+([ADR 0004](docs/adr/0004-pix-on-invoice-via-wallet.md), second amendment).
 
 ## 3. Wallet integration contract (implemented in both repositories)
 

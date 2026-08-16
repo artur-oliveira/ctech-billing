@@ -1,11 +1,17 @@
 // Package wallet is billing's client for ctech-wallet's charge contract.
 //
-// **The route it calls does not exist in wallet yet.** It is specified in
-// docs/specs/2026-08-15-wallet-invoice-charge.md and this package is written
-// against that spec, so the billing side can be built and tested before the
-// wallet side ships. Until it does, Collector is wired only where a fake stands
-// in for it, and a deployment without WALLET_BASE_URL has no checkout routes at
-// all rather than routes that fail at the last step.
+// **The route exists in wallet as of 2026-08-16**
+// (`ctech-wallet/api/internal/services/charge_amount.go`, mounted at
+// `api/internal/api/v1/router.go`). This package was written first, against
+// docs/specs/2026-08-15-wallet-invoice-charge.md, so the field names below are
+// the spec's rather than a copy of wallet's structs — they were verified against
+// the shipped handler, and the spec is what both sides answer to if they drift.
+//
+// What is still not code, and blocks the first real payment: billing's entry in
+// wallet's `/ctech-wallet/{env}/m2m-clients` needs a `WebhookURL`, or wallet
+// confirms the charge and notifies nobody, leaving settlement to the hourly
+// reconcile sweep. A deployment without WALLET_BASE_URL has no checkout routes
+// at all rather than routes that fail at the last step.
 //
 // Two things in here are not negotiable and are the reason this is a package
 // rather than three inline HTTP calls:

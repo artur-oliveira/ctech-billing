@@ -45,17 +45,17 @@ type auditResponse struct {
 	CreatedAt time.Time     `json:"created_at"`
 }
 
+// invoiceDetailResponse is C3.
+//
+// The payment link an operator sends when a customer asks "can you send it
+// again?" is `invoice.checkout_url`, not a field of its own. It used to be one,
+// and the two disagreed the moment the rule grew a second condition: this
+// surface published a link for any OPEN invoice, which included a zero-total one
+// and a test-mode one — both of which open a page that cannot be paid. One
+// field, one rule (Invoice.Payable).
 type invoiceDetailResponse struct {
-	Invoice invoiceResponse `json:"invoice"`
-	// PaymentLink is the public URL that opens this invoice's checkout with no
-	// sign-in. It is published on the detail screen because that is where an
-	// operator is standing when a customer asks "can you send it again?" — and
-	// without it the link exists but has no way of reaching anybody.
-	//
-	// Absent for an invoice nobody can pay (a draft, a paid one, a void one), so
-	// the screen cannot offer to send a link to a bill that is settled.
-	PaymentLink string          `json:"payment_link,omitempty"`
-	Timeline    []auditResponse `json:"timeline"`
+	Invoice  invoiceResponse `json:"invoice"`
+	Timeline []auditResponse `json:"timeline"`
 }
 
 type subscriptionItemResponse struct {

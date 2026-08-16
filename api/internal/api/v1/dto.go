@@ -8,6 +8,7 @@ package v1
 import (
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
 	"gopkg.aoctech.app/billing/api/internal/domain/brcal"
+	"gopkg.aoctech.app/billing/api/internal/services"
 )
 
 // Request bodies never carry organization_id. It comes from the credential (see
@@ -158,10 +159,31 @@ type invoiceResponse struct {
 	Attempts   int                   `json:"attempt_count"`
 	Lines      []invoiceLineResponse `json:"lines,omitempty"`
 	Metadata   billing.Metadata      `json:"metadata,omitempty"`
-	Livemode   bool                  `json:"livemode"`
+	// CheckoutURL is where to send the customer to pay this invoice. It is the
+	// signed public link (services.PayLink) and not a portal URL, because the
+	// integration's customer has just finished signing in *there* — asking them
+	// to consent to a second OAuth client to pay their first bill is friction at
+	// the exact moment of conversion.
+	//
+	// Absent unless the invoice is Payable, and that omission is the contract: a
+	// link to a draft 404s by design, and one to a paid or zero-total invoice
+	// opens a page whose only message is that there is nothing to do. An
+	// integrator who branches on the field's presence is right; one who builds
+	// the URL themselves is one invoice state away from a broken button.
+	//
+	// Also absent when the deployment has no CHECKOUT_LINK_SECRET or no
+	// CHECKOUT_BASE_URL — the same configuration that disables the public
+	// checkout routes entirely.
+	CheckoutURL string `json:"checkout_url,omitempty"`
+	Livemode    bool   `json:"livemode"`
 }
 
-func newInvoiceResponse(inv *billing.Invoice, lines []billing.InvoiceItem, today brcal.Date) invoiceResponse {
+// newInvoiceResponse renders an invoice for the M2M and console surfaces.
+//
+// links may be nil, and nil is a real deployment rather than a test convenience:
+// without wallet configuration the checkout routes are never mounted, so a URL
+// pointing at them would be a link to a 404.
+func newInvoiceResponse(inv *billing.Invoice, lines []billing.InvoiceItem, today brcal.Date, links *services.PayLink) invoiceResponse {
 	out := invoiceResponse{
 		ID:             inv.ID,
 		Number:         inv.Number,
@@ -180,6 +202,12 @@ func newInvoiceResponse(inv *billing.Invoice, lines []billing.InvoiceItem, today
 		Attempts:       inv.AttemptCount,
 		Metadata:       inv.Metadata,
 		Livemode:       inv.Livemode,
+	}
+	if links != nil && inv.Payable() {
+		// URL answers "" when links are configured off, which omitempty drops. So
+		// the disabled deployment and the unpayable invoice produce the same
+		// absent field, which is what a consumer should branch on either way.
+		out.CheckoutURL = links.URL(inv.OrganizationID, inv.Livemode, inv.ID)
 	}
 	for _, l := range lines {
 		out.Lines = append(out.Lines, invoiceLineResponse{

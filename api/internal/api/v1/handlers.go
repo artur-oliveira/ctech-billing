@@ -23,6 +23,14 @@ type handlers struct {
 	invoices   *repositories.InvoiceRepository
 	usage      *repositories.UsageRepository
 	subscriber *services.Subscriber
+	// links signs the public checkout URL published on every invoice payload. It
+	// lives here rather than on one of the embedding structs because all three
+	// surfaces render invoices, and a link an integrator gets from the M2M API
+	// that an operator cannot get from the console is a support call.
+	//
+	// Nil when payment links are not configured, which is a real deployment: the
+	// checkout routes are then not mounted at all.
+	links *services.PayLink
 	// clock is injected so tests are not at the mercy of the wall clock, and so
 	// "today" is always decided in one place.
 	clock func() time.Time
@@ -144,9 +152,13 @@ func (h *handlers) createSubscription(c fiber.Ctx) error {
 		return fail(c, err)
 	}
 
+	// The invoice is what makes this response actionable. A caller subscribing
+	// somebody to a paid plan needs to know there is a bill and where to send them
+	// to pay it, and `invoice.checkout_url` is that — absent on the free and the
+	// arrears plans, where the first period genuinely costs nothing yet.
 	body := fiber.Map{"subscription": newSubscriptionResponse(sub)}
 	if inv != nil {
-		body["invoice"] = newInvoiceResponse(inv, nil, h.today())
+		body["invoice"] = newInvoiceResponse(inv, nil, h.today(), h.links)
 	}
 	return c.Status(fiber.StatusCreated).JSON(body)
 }
@@ -305,7 +317,7 @@ func (h *handlers) getInvoice(c fiber.Ctx) error {
 	if err != nil {
 		return fail(c, err)
 	}
-	return c.JSON(newInvoiceResponse(inv, lines, h.today()))
+	return c.JSON(newInvoiceResponse(inv, lines, h.today(), h.links))
 }
 
 func (h *handlers) listInvoices(c fiber.Ctx) error {
@@ -325,7 +337,7 @@ func (h *handlers) listInvoices(c fiber.Ctx) error {
 	}
 	out := make([]invoiceResponse, 0, len(page.Items))
 	for i := range page.Items {
-		out = append(out, newInvoiceResponse(&page.Items[i], nil, today))
+		out = append(out, newInvoiceResponse(&page.Items[i], nil, today, h.links))
 	}
 	return c.JSON(listResponse[invoiceResponse]{Data: out, HasMore: page.LastEvaluatedKey != nil})
 }

@@ -7,7 +7,6 @@ import (
 	"gopkg.aoctech.app/billing/api/internal/middleware"
 	"gopkg.aoctech.app/billing/api/internal/problem"
 	"gopkg.aoctech.app/billing/api/internal/repositories"
-	"gopkg.aoctech.app/billing/api/internal/services"
 )
 
 // The console surface (assessment § 15, screens C1–C9 and C17).
@@ -35,10 +34,6 @@ type consoleHandlers struct {
 	// portalOrganizationID is tenant zero, needed only by the /v1/me route, which
 	// answers for both shells and therefore belongs to neither.
 	portalOrganizationID string
-	// links renders an invoice's payment link so an operator can send it. Nil
-	// when payment links are not configured, in which case the field is simply
-	// absent from the payload.
-	links *services.PayLink
 }
 
 // cancelSubscription is the console's cancellation, and the **first write on
@@ -115,7 +110,7 @@ func (h *consoleHandlers) listInvoices(c fiber.Ctx) error {
 	}
 	out := make([]invoiceResponse, 0, len(page.Items))
 	for i := range page.Items {
-		out = append(out, newInvoiceResponse(&page.Items[i], nil, today))
+		out = append(out, newInvoiceResponse(&page.Items[i], nil, today, h.links))
 	}
 	return c.JSON(pageOf(out, page.LastEvaluatedKey))
 }
@@ -136,14 +131,10 @@ func (h *consoleHandlers) getInvoice(c fiber.Ctx) error {
 	if err != nil {
 		return fail(c, err)
 	}
-	out := invoiceDetailResponse{
-		Invoice:  newInvoiceResponse(inv, lines, h.today()),
+	return c.JSON(invoiceDetailResponse{
+		Invoice:  newInvoiceResponse(inv, lines, h.today(), h.links),
 		Timeline: trail,
-	}
-	if h.links != nil && inv.Status == billing.InvoiceOpen {
-		out.PaymentLink = h.links.URL(t.OrganizationID, t.Livemode, inv.ID)
-	}
-	return c.JSON(out)
+	})
 }
 
 // listSubscriptions is C4.
