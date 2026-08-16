@@ -188,7 +188,7 @@ resource "aws_cloudfront_response_headers_policy" "frontend" {
         # a static export has nowhere to set.
         "style-src 'self' 'unsafe-inline'",
         "script-src 'self' 'unsafe-inline'",
-        "connect-src 'self' https://${local.accounts_api_domain} https://${local.accounts_app_domain}",
+        "connect-src 'self' https://${local.api_domain}  https://${local.accounts_api_domain} https://${local.accounts_app_domain}",
       ])
     }
   }

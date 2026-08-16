@@ -78,6 +78,9 @@ func FromError(err error) *Problem {
 	case err == nil:
 		return nil
 
+	case errors.Is(err, fiber.ErrNotFound):
+		return NotFound("recurso não encontrado")
+
 	case errors.Is(err, repositories.ErrNotFound):
 		return NotFound("recurso não encontrado")
 
