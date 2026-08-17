@@ -80,6 +80,7 @@
       "billing_timing": "advance",
       "metadata": {
         "plan": "unlimited",
+        "visibility": "internal",
         "quota_companies": "-1",
         "quota_users": "-1",
         "quota_nfe": "-1",
@@ -143,7 +144,9 @@
       "billing_timing": "arrears",
       "metadata": {
         "plan": "ondemand",
-        "meter": "company"
+        "meter": "companies",
+        "quota_companies": "-1",
+        "quota_users": "-1"
       }
     },
     {
@@ -158,7 +161,8 @@
       "billing_timing": "arrears",
       "metadata": {
         "plan": "ondemand",
-        "meter": "nfe"
+        "meter": "nfe",
+        "quota_nfe": "-1"
       }
     },
     {
@@ -173,7 +177,8 @@
       "billing_timing": "arrears",
       "metadata": {
         "plan": "ondemand",
-        "meter": "nfce"
+        "meter": "nfce",
+        "quota_nfce": "-1"
       }
     },
     {
@@ -188,7 +193,8 @@
       "billing_timing": "arrears",
       "metadata": {
         "plan": "ondemand",
-        "meter": "nfse"
+        "meter": "nfse",
+        "quota_nfse": "-1"
       }
     },
     {
@@ -203,7 +209,8 @@
       "billing_timing": "arrears",
       "metadata": {
         "plan": "ondemand",
-        "meter": "cte"
+        "meter": "cte",
+        "quota_cte": "-1"
       }
     },
     {
@@ -218,7 +225,8 @@
       "billing_timing": "arrears",
       "metadata": {
         "plan": "ondemand",
-        "meter": "mdfe"
+        "meter": "mdfe",
+        "quota_mdfe": "-1"
       }
     }
   ]
