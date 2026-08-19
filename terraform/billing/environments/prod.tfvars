@@ -7,4 +7,4 @@ environment = "prod"
 # usuário", which reads like missing customer data rather than a typo here.
 portal_organization_id = "ctech"
 
-max_size = 3
+max_size = 1
