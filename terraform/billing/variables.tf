@@ -43,7 +43,7 @@ variable "point_in_time_recovery" {
 
 variable "instance_type" {
   type    = string
-  default = "t4g.micro"
+  default = "t4g.nano"
 }
 
 # One instance, deliberately, until there is traffic to size against.
