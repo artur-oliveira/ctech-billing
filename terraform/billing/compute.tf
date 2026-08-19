@@ -73,8 +73,23 @@ resource "aws_security_group" "instances" {
   }
 }
 
+# The shared bootstrap scripts, published by ctech-cdk's Ec2ScriptsStack. The
+# version is the content hash of its assets/ec2 directory and is also the S3 key
+# prefix: reading it here puts the hash literally in user_data, so editing a
+# shared script versions this launch template and rolls the instances.
+data "aws_ssm_parameter" "ec2_scripts_bucket" {
+  name = local.shared_ssm.ec2_scripts_bucket
+}
+
+data "aws_ssm_parameter" "ec2_scripts_version" {
+  name = local.shared_ssm.ec2_scripts_version
+}
+
 locals {
   bootstrap_sh = templatefile("${path.module}/../assets/bootstrap.sh.tftpl", {
+    ec2_scripts_bucket  = data.aws_ssm_parameter.ec2_scripts_bucket.value
+    ec2_scripts_version = data.aws_ssm_parameter.ec2_scripts_version.value
+
     aws_region  = var.aws_region
     environment = var.environment
 
@@ -114,17 +129,10 @@ locals {
     ssm_email_from            = local.ssm_paths.email_from
   })
 
-  # gzip + base64 keeps the payload under EC2's 16 KiB user_data limit — the
-  # bootstrap script alone is well past it uncompressed.
-  user_data = base64encode(<<-EOF
-    #!/bin/bash
-    set -euxo pipefail
-    mkdir -p /opt/app
-    echo '${base64gzip(local.bootstrap_sh)}' | base64 -d | gzip -d > /opt/app/bootstrap.sh
-    chmod 0750 /opt/app/bootstrap.sh
-    /opt/app/bootstrap.sh
-    EOF
-  )
+  # No gzip+base64 wrapper any more: the bulk it was compressing now lives in S3
+  # and is fetched at boot, so what is left fits in user_data uncompressed and
+  # can be read straight from the launch template.
+  user_data = base64encode(local.bootstrap_sh)
 }
 
 resource "aws_launch_template" "this" {

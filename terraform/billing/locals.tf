@@ -130,6 +130,8 @@ locals {
     deployments_bucket     = "/ctech/${var.environment}/s3/deployments-bucket"
     logs_bucket            = "/ctech/${var.environment}/s3/logs-bucket"
     routes                 = "/ctech/${var.environment}/lbalancer/routes"
+    ec2_scripts_bucket     = "/ctech/${var.environment}/ec2-scripts/bucket"
+    ec2_scripts_version    = "/ctech/${var.environment}/ec2-scripts/version"
   }
 
   account_ssm = {

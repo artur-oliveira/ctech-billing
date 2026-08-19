@@ -1,274 +1,88 @@
 #!/bin/bash
-# Port of ctech-wallet/cdk/lib/api-stack.ts's UserData and the @aoctech/cdk
-# fragments it composes (addSwapCommands, addDualStackSsmAgentCommands,
-# addCloudflareOriginCaCommands, addRealipRefreshCommands,
-# addCloudWatchAgentDualStackOverride, buildCloudWatchAgentConfig).
+# Billing's remainder after the shared bootstrap moved to ctech-cdk's assets/ec2.
 #
-# Written as one script rather than assembled from string arrays because
-# Terraform has no equivalent of ec2.UserData: a file that can be read as a
-# shell script is the whole advantage of the port, and it is worth more than
-# the composition the CDK version needed.
+# Everything every CTech service does the same way — packages, swap, dual-stack
+# endpoints, the Cloudflare Origin CA, realip, nginx, the systemd unit, deploy,
+# log shipping — is now a script in ${"$"}{env}-ctech-ec2-scripts, fetched at boot
+# under the content hash recorded in SSM. What stays here is billing's: the
+# static env file, its SSM parameter list, the CloudWatch agent config (its log
+# groups and process pattern are Terraform values), and the leader-elected
+# scheduled jobs.
 #
 # Names in ${"$"}{...} are substituted by templatefile(); anything written as
 # $${...} is left alone for bash. Heredocs use quoted delimiters so the scripts
-# they write are not expanded at install time, and the values that have to reach
-# inside one are patched in with sed afterwards.
+# they write are not expanded at install time.
 set -euxo pipefail
 
-# ── Packages, user, directories ──────────────────────────────────────────────
-dnf install -y nginx amazon-cloudwatch-agent amazon-ssm-agent cronie unzip jq
-useradd --system --no-create-home --shell /sbin/nologin webapp || true
-mkdir -p /opt/app/releases /var/log/app /etc/nginx/conf.d
-chown -R webapp:webapp /opt/app /var/log/app
-# AL2023 does not enable crond by default (unlike AL2) — without it
-# /etc/cron.daily/logrotate never fires and rotated logs never reach S3.
-systemctl enable crond
-systemctl start crond
+CTECH_SCRIPTS="s3://${ec2_scripts_bucket}/${ec2_scripts_version}"
+ctech_run(){ s="$1"; shift; aws s3 cp "$CTECH_SCRIPTS/$s" "/tmp/$s" >/dev/null; bash "/tmp/$s" "$@"; }
 
-# ── Swap ─────────────────────────────────────────────────────────────────────
-# t4g.micro has 1 GB of RAM. The sweep and the reconciler run on the same
-# instance as the API, so the peak is not the steady state.
-if [ ! -f /var/swapfile ]; then
-  dd if=/dev/zero of=/var/swapfile bs=1M count=256
-  chmod 600 /var/swapfile
-  mkswap /var/swapfile
-  swapon /var/swapfile
-  echo "/var/swapfile swap swap defaults 0 0" >> /etc/fstab
-fi
+ctech_run setup-base.sh ctech-billing nginx
+ctech_run setup-swap.sh 256
+ctech_run setup-dualstack.sh
+ctech_run setup-cloudflare-ca.sh
 
-# ── Dual-stack AWS endpoints ─────────────────────────────────────────────────
-# These instances have no public IPv4. Without the dual-stack opt-in the SSM and
-# CloudWatch agents simply cannot reach their endpoints, and the failure looks
-# like an instance that booted fine and is unreachable.
-echo "AWS_USE_DUALSTACK_ENDPOINT=true" >> /etc/environment
-mkdir -p /etc/amazon/ssm
-cat > /etc/amazon/ssm/amazon-ssm-agent.json << 'SSMCFG'
-{ "Agent": { "UseDualStackEndpoint": true } }
-SSMCFG
-systemctl enable amazon-ssm-agent
-systemctl restart amazon-ssm-agent
+# ── Static environment (non-secret) ──────────────────────────────────────────
+cat > /etc/app-static.env << 'STATICENV'
+ENVIRONMENT=${environment}
+TABLE_PREFIX=${table_prefix}
+AWS_REGION=${aws_region}
+AWS_USE_DUALSTACK_ENDPOINT=true
+PORT=${app_port}
+SERVICE_AUDIENCE=${service_audience}
+CHECKOUT_BASE_URL=${checkout_base_url}
+PORTAL_ORGANIZATION_ID=${portal_organization_id}
+CORS_ALLOWED_ORIGINS=${cors_allowed_origins}
+STATICENV
 
-mkdir -p /etc/systemd/system/amazon-cloudwatch-agent.service.d
-cat > /etc/systemd/system/amazon-cloudwatch-agent.service.d/override.conf << 'CWAENV'
-[Service]
-Environment=AWS_USE_DUALSTACK_ENDPOINT=true
-CWAENV
+# ── Secrets, read from SSM at every start ────────────────────────────────────
+# The generated /opt/app/load-ssm-env.sh holds the aws calls, not their results,
+# and is sourced by both the API unit and the job units. That is what keeps the
+# sweep and the reconciler configured identically to the service they share a
+# database with: a job that reads a different wallet client than the API settles
+# charges the API cannot see.
+#
+# Nothing is written to disk. A missing parameter yields an empty value on
+# purpose — internal/app refuses to mount the payment routes rather than
+# starting half-configured, and that refusal is the signal. FIELD_ENCRYPTION_KEY
+# empty is what keeps a stored CPF from being readable by table access alone.
+ctech_run setup-ssm-env.sh \
+  VALKEY_BASE=${ssm_valkey_url} \
+  CTECH_INTERNAL_URL=${ssm_account_internal_url} \
+  CTECH_ISSUER_URL=${ssm_account_app_url} \
+  CTECH_JWKS_URL=${ssm_account_jwks_url} \
+  WALLET_BASE_URL=${ssm_wallet_internal_url} \
+  WALLET_CLIENT_ID=${ssm_wallet_client_id} \
+  WALLET_CLIENT_SECRET=${ssm_wallet_client_secret} \
+  WALLET_WEBHOOK_SECRET=${ssm_wallet_webhook_secret} \
+  CHECKOUT_LINK_SECRET=${ssm_checkout_link_secret} \
+  FIELD_ENCRYPTION_KEY=${ssm_field_encryption_key} \
+  EMAIL_FROM=${ssm_email_from}
 
-# ── Cloudflare Origin CA ─────────────────────────────────────────────────────
-# Private clients reach HAProxy directly over *.internal.aoctech.app and are
-# served its Cloudflare Origin CA certificate, with Cloudflare not in the path
-# to vouch for it. Pinned by SHA-256: a root fetched over the network and
-# trusted unconditionally is not a trust anchor.
-(
-  set -euo pipefail
-  command -v curl >/dev/null || dnf install -y curl-minimal
-  command -v openssl >/dev/null || dnf install -y openssl
-  install -d -m 0755 /etc/pki/ca-trust/source/anchors
-  CF_TMP="$(mktemp /tmp/cloudflare-origin-ca-rsa.XXXXXX.pem)"
-  trap 'rm -f "$CF_TMP"' EXIT
-  curl --fail --silent --show-error --location --retry 5 --retry-all-errors \
-    --connect-timeout 10 --max-time 60 \
-    "https://developers.cloudflare.com/ssl/static/origin_ca_rsa_root.pem" --output "$CF_TMP"
-  echo "91a8a5567efa6bf941162aa806b3ba476aaddf7867640e53053b35fb225a5dae  $CF_TMP" | sha256sum --check --strict
-  openssl x509 -in "$CF_TMP" -noout -checkend 86400
-  install -m 0644 "$CF_TMP" /etc/pki/ca-trust/source/anchors/cloudflare-origin-ca-rsa.pem
-) || { echo "Cloudflare Origin CA RSA installation failed" >&2; exit 1; }
-update-ca-trust extract
+# Derived, not fetched: sourced after load-ssm-env.sh by start.sh and job.sh.
+# Each service appends the logical DB it owns; billing's JWKS cache must not
+# share a keyspace with another service's locks. Empty falls back to the
+# in-process cache rather than crashing. Billing calls wallet over the private
+# hostname, never the public one: the charge request carries a client secret and
+# has no business leaving the VPC.
+cat > /opt/app/service-env.sh << 'SERVICEENV'
+if [ -n "$VALKEY_BASE" ]; then VALKEY_URL="$${VALKEY_BASE%/}/${valkey_db}"; else VALKEY_URL=""; fi
+WALLET_TOKEN_URL="$CTECH_INTERNAL_URL/v1.0/token"
+export VALKEY_URL WALLET_TOKEN_URL
+SERVICEENV
+chmod 0755 /opt/app/service-env.sh
 
-# ── nginx: listens :${nginx_port}, proxies to the app on :${app_port} ────────
-cat > /etc/nginx/nginx.conf << 'NGINX'
-user nginx;
-pid /run/nginx.pid;
-worker_processes auto;
-worker_rlimit_nofile 65535;
-error_log /var/log/nginx/error.log warn;
-
-events {
-    worker_connections 8192;
-    use epoll;
-    multi_accept on;
-}
-
-http {
-    include /etc/nginx/mime.types;
-    default_type application/octet-stream;
-
-    # Written by /opt/app/update-realip.sh. The glob keeps nginx bootable if the
-    # file is absent.
-    include /etc/nginx/conf.d/realip*.conf;
-
-    log_format json_log escape=json '{"remote_addr":"$remote_addr","status":$status,"request":"$request","body_bytes_sent":$body_bytes_sent,"request_time":$request_time,"upstream_response_time":"$upstream_response_time"}';
-
-    include /usr/share/nginx/modules/*.conf;
-
-    sendfile on;
-    tcp_nopush on;
-    tcp_nodelay on;
-    keepalive_timeout 30;
-    keepalive_requests 10000;
-    reset_timedout_connection on;
-
-    types_hash_max_size 2048;
-    types_hash_bucket_size 128;
-
-    client_header_timeout 15s;
-    client_body_timeout 30s;
-    send_timeout 30s;
-
-    client_max_body_size 1m;
-    client_body_buffer_size 128k;
-
-    gzip on;
-    gzip_vary on;
-    gzip_proxied any;
-    gzip_comp_level 5;
-    gzip_min_length 1024;
-    gzip_types application/json application/problem+json application/javascript text/plain text/css;
-
-    server_tokens off;
-    proxy_hide_header X-Powered-By;
-    add_header X-Content-Type-Options nosniff always;
-    add_header X-Frame-Options DENY always;
-    add_header Referrer-Policy strict-origin-when-cross-origin always;
-
-    # $binary_remote_addr is the viewer's IP and not HAProxy's only because the
-    # realip module rewrote it. Without the include above every client collapses
-    # into one bucket and the rate becomes a shared ceiling.
-    limit_req_zone $binary_remote_addr zone=req_by_ip:10m rate=100r/s;
-    limit_conn_zone $binary_remote_addr zone=conn_by_ip:10m;
-    limit_req_status  429;
-    limit_conn_status 429;
-
-    upstream app {
-        server 127.0.0.1:APP_PORT_PLACEHOLDER;
-        keepalive 256;
-        keepalive_requests 10000;
-        keepalive_timeout 60s;
-    }
-
-    server {
-        listen NGINX_PORT_PLACEHOLDER default_server reuseport;
-        server_name _;
-        access_log /var/log/nginx/access.log json_log;
-        error_log /var/log/nginx/error.log;
-
-        # The health path is exempt from the rate limit on purpose: HAProxy
-        # probes it continuously, and a health check that can be rate-limited
-        # turns a traffic spike into an instance the balancer takes out.
-        location = HEALTH_PATH_PLACEHOLDER {
-            proxy_pass http://app;
-            proxy_http_version 1.1;
-            proxy_set_header Connection "";
-            proxy_set_header Host $host;
-            access_log off;
-        }
-
-        location / {
-            limit_req zone=req_by_ip burst=200 nodelay;
-            limit_conn conn_by_ip 100;
-            proxy_pass http://app;
-            proxy_http_version 1.1;
-            proxy_set_header Connection "";
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-            proxy_connect_timeout 5s;
-            proxy_send_timeout 30s;
-            proxy_read_timeout 30s;
-        }
-    }
-}
-NGINX
-sed -i \
-  -e 's|APP_PORT_PLACEHOLDER|${app_port}|g' \
-  -e 's|NGINX_PORT_PLACEHOLDER|${nginx_port}|g' \
-  -e 's|HEALTH_PATH_PLACEHOLDER|${health_path}|g' \
-  /etc/nginx/nginx.conf
-
-# ── realip: trust HAProxy and CloudFront, nobody else ────────────────────────
-# X-Forwarded-For is walked right-to-left discarding only trusted hops, so the
-# resolved address cannot be forged by a client that sets the header itself.
-# CloudFront's ranges change and have no AAAA record, so they come from the
-# AWS-managed prefix list rather than being pinned here.
-cat > /opt/app/update-realip.sh << 'REALIP'
-#!/bin/bash
-set -euo pipefail
-CONF=/etc/nginx/conf.d/realip.conf
-TMP=$(mktemp)
-# systemd units do not inherit /etc/environment.
-export AWS_USE_DUALSTACK_ENDPOINT=true
-PL_ID=$(aws ec2 describe-managed-prefix-lists --filters Name=prefix-list-name,Values=com.amazonaws.global.cloudfront.origin-facing --query 'PrefixLists[0].PrefixListId' --output text --region us-east-1)
-if [ -z "$PL_ID" ] || [ "$PL_ID" = "None" ]; then
-  echo "CloudFront origin-facing managed prefix list not found" >&2
-  exit 1
-fi
-PREFIXES=$(aws ec2 get-managed-prefix-list-entries --prefix-list-id "$PL_ID" --query 'Entries[].Cidr' --output text --region us-east-1 | tr '\t' '\n')
-# A partial list is worse than the previous file: an unlisted edge would be
-# treated as the client and become the rate-limit key.
-if [ "$(echo "$PREFIXES" | grep -c .)" -lt 10 ]; then
-  echo "Refusing to write realip.conf: only $(echo "$PREFIXES" | grep -c .) CloudFront prefixes returned" >&2
-  exit 1
-fi
-{
-  echo "# Generated by /opt/app/update-realip.sh — do not edit."
-  echo "set_real_ip_from __VPC_CIDR__;"
-  echo "$PREFIXES" | sed -e 's|^|set_real_ip_from |' -e 's|$|;|'
-  echo "real_ip_header X-Forwarded-For;"
-  echo "real_ip_recursive on;"
-} > "$TMP"
-install -m 644 "$TMP" "$CONF"
-rm -f "$TMP"
-if ! nginx -t 2>/dev/null; then
-  echo "nginx rejected the generated realip.conf — reverting" >&2
-  rm -f "$CONF"
-  exit 1
-fi
-if systemctl is-active --quiet nginx; then
-  systemctl reload nginx
-fi
-REALIP
-sed -i 's|__VPC_CIDR__|${vpc_cidr}|g' /opt/app/update-realip.sh
-chmod +x /opt/app/update-realip.sh
-
-cat > /etc/systemd/system/update-realip.service << 'REALIPSVC'
-[Unit]
-Description=Refresh nginx realip trusted proxy ranges
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=oneshot
-ExecStart=/opt/app/update-realip.sh
-REALIPSVC
-
-cat > /etc/systemd/system/update-realip.timer << 'REALIPTIMER'
-[Unit]
-Description=Daily refresh of nginx realip trusted proxy ranges
-
-[Timer]
-OnCalendar=daily
-RandomizedDelaySec=1h
-Persistent=true
-
-[Install]
-WantedBy=timers.target
-REALIPTIMER
-
-# Generated before nginx first starts, so no request is ever served with
-# HAProxy as the rate-limit key.
-/opt/app/update-realip.sh || echo "realip bootstrap failed — rate limiting will key on HAProxy until the timer succeeds"
-systemctl daemon-reload
-systemctl enable --now update-realip.timer
-
-systemctl enable nginx
-systemctl start nginx
+ctech_run setup-realip.sh ${vpc_cidr}
+ctech_run setup-nginx.sh ${nginx_port} ${app_port} ${health_path}
+ctech_run setup-app-service.sh "CTech Billing API" app "network.target nginx.service"
+ctech_run setup-deploy.sh ${deployments_bucket} app "http://127.0.0.1:${nginx_port}${health_path}" sweep reconcile deliver dunning
+ctech_run setup-logs.sh ${logs_bucket} ${s3_prefix} ctech-billing /var/log/app /var/log/nginx
 
 # ── CloudWatch agent ─────────────────────────────────────────────────────────
 # Four series per instance, deliberately. EC2 already publishes CPUUtilization
 # and CPUCreditBalance; republishing them as custom metrics costs money and
 # says nothing new.
-cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json << 'CWA'
+cat > /tmp/cwagent.json << 'CWA'
 {
   "agent": { "metrics_collection_interval": 60 },
   "metrics": {
@@ -301,117 +115,8 @@ sed -i \
   -e 's|HOST_NAMESPACE_PLACEHOLDER|${host_metric_namespace}|g' \
   -e 's|APP_LOG_GROUP_PLACEHOLDER|${log_group_app}|g' \
   -e 's|NGINX_LOG_GROUP_PLACEHOLDER|${log_group_nginx}|g' \
-  /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json
-/opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
-  -a fetch-config -m ec2 -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json -s
-
-# ── Static environment (non-secret) ──────────────────────────────────────────
-cat > /etc/app-static.env << 'STATICENV'
-ENVIRONMENT=${environment}
-TABLE_PREFIX=${table_prefix}
-AWS_REGION=${aws_region}
-AWS_USE_DUALSTACK_ENDPOINT=true
-PORT=${app_port}
-SERVICE_AUDIENCE=${service_audience}
-CHECKOUT_BASE_URL=${checkout_base_url}
-PORTAL_ORGANIZATION_ID=${portal_organization_id}
-CORS_ALLOWED_ORIGINS=${cors_allowed_origins}
-STATICENV
-
-# ── Secrets, fetched from SSM at start ───────────────────────────────────────
-# One file sourced by both the API unit and the job units. Splitting it out is
-# what keeps the sweep and the reconciler configured identically to the service
-# they share a database with: a job that reads a different wallet client than
-# the API settles charges the API cannot see.
-#
-# Nothing here is written to disk. A missing parameter yields an empty value on
-# purpose — internal/app refuses to mount the payment routes rather than
-# starting half-configured, and that refusal is the signal.
-cat > /opt/app/env.sh << 'ENVSH'
-#!/bin/bash
-export AWS_USE_DUALSTACK_ENDPOINT=true
-ssm() { aws ssm get-parameter --name "$1" --with-decryption --query Parameter.Value --output text --region REGION_PLACEHOLDER 2>/dev/null || echo ""; }
-
-VALKEY_BASE=$(ssm "VALKEY_URL_PATH_PLACEHOLDER")
-# Each service appends the logical DB it owns; billing's JWKS cache must not
-# share a keyspace with another service's locks. Empty falls back to the
-# in-process cache rather than crashing.
-if [ -n "$VALKEY_BASE" ]; then VALKEY_URL="$${VALKEY_BASE%/}/VALKEY_DB_PLACEHOLDER"; else VALKEY_URL=""; fi
-
-CTECH_INTERNAL_URL=$(ssm "ACCOUNT_INTERNAL_URL_PLACEHOLDER")
-CTECH_ISSUER_URL=$(ssm "ACCOUNT_APP_URL_PLACEHOLDER")
-CTECH_JWKS_URL=$(ssm "ACCOUNT_JWKS_URL_PLACEHOLDER")
-
-# Billing calls wallet over the private hostname, never the public one: the
-# charge request carries a client secret and has no business leaving the VPC.
-WALLET_BASE_URL=$(ssm "WALLET_INTERNAL_URL_PLACEHOLDER")
-WALLET_TOKEN_URL="$CTECH_INTERNAL_URL/v1.0/token"
-
-WALLET_CLIENT_ID=$(ssm "WALLET_CLIENT_ID_PLACEHOLDER")
-WALLET_CLIENT_SECRET=$(ssm "WALLET_CLIENT_SECRET_PLACEHOLDER")
-WALLET_WEBHOOK_SECRET=$(ssm "WALLET_WEBHOOK_SECRET_PLACEHOLDER")
-CHECKOUT_LINK_SECRET=$(ssm "CHECKOUT_LINK_SECRET_PLACEHOLDER")
-
-# Without this the service refuses to boot. That is the point: it is what keeps
-# a stored CPF from being readable by anything holding table access.
-FIELD_ENCRYPTION_KEY=$(ssm "FIELD_ENCRYPTION_KEY_PLACEHOLDER")
-
-export VALKEY_URL CTECH_ISSUER_URL CTECH_JWKS_URL
-export WALLET_BASE_URL WALLET_TOKEN_URL WALLET_CLIENT_ID WALLET_CLIENT_SECRET WALLET_WEBHOOK_SECRET
-EMAIL_FROM=$(ssm "EMAIL_FROM_PLACEHOLDER")
-
-export CHECKOUT_LINK_SECRET FIELD_ENCRYPTION_KEY EMAIL_FROM
-ENVSH
-sed -i \
-  -e 's|REGION_PLACEHOLDER|${aws_region}|g' \
-  -e 's|VALKEY_URL_PATH_PLACEHOLDER|${ssm_valkey_url}|g' \
-  -e 's|VALKEY_DB_PLACEHOLDER|${valkey_db}|g' \
-  -e 's|ACCOUNT_INTERNAL_URL_PLACEHOLDER|${ssm_account_internal_url}|g' \
-  -e 's|ACCOUNT_APP_URL_PLACEHOLDER|${ssm_account_app_url}|g' \
-  -e 's|ACCOUNT_JWKS_URL_PLACEHOLDER|${ssm_account_jwks_url}|g' \
-  -e 's|WALLET_INTERNAL_URL_PLACEHOLDER|${ssm_wallet_internal_url}|g' \
-  -e 's|WALLET_CLIENT_ID_PLACEHOLDER|${ssm_wallet_client_id}|g' \
-  -e 's|WALLET_CLIENT_SECRET_PLACEHOLDER|${ssm_wallet_client_secret}|g' \
-  -e 's|WALLET_WEBHOOK_SECRET_PLACEHOLDER|${ssm_wallet_webhook_secret}|g' \
-  -e 's|CHECKOUT_LINK_SECRET_PLACEHOLDER|${ssm_checkout_link_secret}|g' \
-  -e 's|FIELD_ENCRYPTION_KEY_PLACEHOLDER|${ssm_field_encryption_key}|g' \
-  -e 's|EMAIL_FROM_PLACEHOLDER|${ssm_email_from}|g' \
-  /opt/app/env.sh
-chmod 0755 /opt/app/env.sh
-
-# ── The API ──────────────────────────────────────────────────────────────────
-cat > /opt/app/start.sh << 'START'
-#!/bin/bash
-# APP_VERSION ships inside the release artifact (release.env), written by CI.
-if [ -f /opt/app/current/release.env ]; then set -a; . /opt/app/current/release.env; set +a; fi
-. /opt/app/env.sh
-exec /opt/app/current/app
-START
-chmod +x /opt/app/start.sh
-
-cat > /etc/systemd/system/app.service << 'SVC'
-[Unit]
-Description=CTech Billing API
-After=network.target nginx.service
-StartLimitIntervalSec=300
-StartLimitBurst=5
-
-[Service]
-User=webapp
-Group=webapp
-WorkingDirectory=/opt/app/current
-Environment=HOME=/opt/app
-EnvironmentFile=/etc/app-static.env
-ExecStartPre=/bin/test -x /opt/app/current/app
-ExecStart=/opt/app/start.sh
-StandardOutput=append:/var/log/app/app.log
-StandardError=append:/var/log/app/app.log
-Restart=on-failure
-RestartSec=30
-
-[Install]
-WantedBy=multi-user.target
-SVC
+  /tmp/cwagent.json
+ctech_run setup-cloudwatch-agent.sh /tmp/cwagent.json
 
 # ── The scheduled jobs ───────────────────────────────────────────────────────
 # systemd timers, not EventBridge. Both binaries are one-shot processes that
@@ -452,7 +157,8 @@ set -a
 . /etc/app-static.env
 if [ -f /opt/app/current/release.env ]; then . /opt/app/current/release.env; fi
 set +a
-. /opt/app/env.sh
+. /opt/app/load-ssm-env.sh
+. /opt/app/service-env.sh
 exec /opt/app/current/"$JOB_BIN" "$@"
 JOB
 sed -i \
@@ -608,94 +314,11 @@ WantedBy=timers.target
 DUNTIMER
 
 systemctl daemon-reload
+# `app` is already enabled by setup-app-service.sh; repeating it is harmless and
+# keeps this line readable as "everything this instance runs".
 systemctl enable app
 systemctl enable billing-sweep.timer billing-reconcile.timer billing-deliver.timer billing-dunning.timer
 
-# ── Deploy ───────────────────────────────────────────────────────────────────
-# Called by SSM RunCommand from GitHub Actions with the S3 key of a zip holding
-# the five linux/arm64 binaries (app, sweep, reconcile, deliver, dunning).
-cat > /opt/app/deploy.sh << 'DEPLOY'
-#!/bin/bash
-set -euo pipefail
-S3_KEY="$1"
-RELEASE_DIR="/opt/app/releases/$(date +%Y%m%d_%H%M%S)"
-mkdir -p "$RELEASE_DIR"
-echo "Downloading release: $S3_KEY"
-aws s3 cp "s3://__BUCKET__/$S3_KEY" /tmp/release.zip
-unzip -o /tmp/release.zip -d "$RELEASE_DIR"
-chmod +x "$RELEASE_DIR/app" "$RELEASE_DIR/sweep" "$RELEASE_DIR/reconcile" "$RELEASE_DIR/deliver" "$RELEASE_DIR/dunning"
-chown -R webapp:webapp "$RELEASE_DIR"
-ln -sfT "$RELEASE_DIR" /opt/app/current
-systemctl restart app 2>/dev/null || systemctl start app
-for i in {1..60}; do
-  if curl -sf http://127.0.0.1:__NGINX_PORT____HEALTH_PATH__ >/dev/null; then
-    echo "Health check passed"
-    break
-  fi
-  if systemctl is-failed --quiet app; then
-    echo "Application failed to start"
-    journalctl -u app --no-pager -n 100 || true
-    exit 1
-  fi
-  sleep 2
-done
-curl -sf http://127.0.0.1:__NGINX_PORT____HEALTH_PATH__ >/dev/null || {
-  echo "Timed out waiting for health check"
-  exit 1
-}
-ls -dt /opt/app/releases/*/ 2>/dev/null | tail -n +2 | xargs rm -rf 2>/dev/null || true
-echo "Deployment successful"
-DEPLOY
-sed -i \
-  -e 's|__BUCKET__|${deployments_bucket}|g' \
-  -e 's|__NGINX_PORT__|${nginx_port}|g' \
-  -e 's|__HEALTH_PATH__|${health_path}|g' \
-  /opt/app/deploy.sh
-chmod +x /opt/app/deploy.sh
-
-# ── Log shipping ─────────────────────────────────────────────────────────────
-cat > /opt/app/upload-logs.sh << 'UPLOAD'
-#!/bin/bash
-TOKEN=$(curl -sf -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 60")
-INSTANCE_ID=$(curl -sf -H "X-aws-ec2-metadata-token: $TOKEN" "http://169.254.169.254/latest/meta-data/instance-id" || echo "unknown")
-DATE=$(date +%Y%m%d)
-ARCHIVE="/tmp/$DATE-$INSTANCE_ID.tar.gz"
-ROTATED=$(find /var/log/app /var/log/nginx -name "*-$DATE.gz" 2>/dev/null)
-[ -z "$ROTATED" ] && exit 0
-tar czf "$ARCHIVE" $ROTATED 2>/dev/null || exit 0
-aws s3 cp "$ARCHIVE" "s3://__LOG_BUCKET__/__S3_PREFIX__/$DATE-$INSTANCE_ID.tar.gz" --region __REGION__ || exit 0
-find /var/log/app /var/log/nginx -name "*-$DATE.gz" -delete
-rm -f "$ARCHIVE"
-UPLOAD
-sed -i \
-  -e 's|__LOG_BUCKET__|${logs_bucket}|g' \
-  -e 's|__S3_PREFIX__|${s3_prefix}|g' \
-  -e 's|__REGION__|${aws_region}|g' \
-  /opt/app/upload-logs.sh
-chmod +x /opt/app/upload-logs.sh
-
-cat > /etc/logrotate.d/ctech-billing << 'LOGROTATE'
-/var/log/app/app.log
-/var/log/app/jobs.log
-/var/log/nginx/access.log
-/var/log/nginx/error.log {
-    daily
-    compress
-    copytruncate
-    missingok
-    notifempty
-    dateext
-    dateformat -%Y%m%d
-    rotate 1
-    sharedscripts
-    postrotate
-        /opt/app/upload-logs.sh
-    endscript
-}
-LOGROTATE
-
 # ── First boot ───────────────────────────────────────────────────────────────
 # A brand-new environment has no artifact yet; that is a wait, not a failure.
-aws s3api head-object --bucket "${deployments_bucket}" --key "${current_artifact_key}" >/dev/null 2>&1 \
-  && /opt/app/deploy.sh "${current_artifact_key}" \
-  || echo "No bootstrap artifact, waiting for first deploy"
+ctech_run bootstrap-deploy.sh ${deployments_bucket} ${current_artifact_key}

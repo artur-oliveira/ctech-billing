@@ -174,6 +174,15 @@ data "aws_iam_policy_document" "instance" {
     resources = ["arn:aws:s3:::${data.aws_ssm_parameter.deployments_bucket.value}/${local.s3_prefix}/*"]
   }
 
+  # The shared bootstrap scripts published by ctech-cdk's Ec2ScriptsStack. Read
+  # on every boot, before anything else runs.
+  statement {
+    sid       = "ReadSharedEc2BootstrapScripts"
+    effect    = "Allow"
+    actions   = ["s3:GetObject"]
+    resources = ["arn:aws:s3:::${var.environment}-ctech-ec2-scripts/*"]
+  }
+
   statement {
     sid       = "ListOwnReleasePrefix"
     effect    = "Allow"
