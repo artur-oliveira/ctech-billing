@@ -105,9 +105,10 @@ locals {
     s3_prefix            = local.s3_prefix
     current_artifact_key = local.current_artifact_key
 
-    log_group_app         = local.log_group_app
-    log_group_nginx       = local.log_group_nginx
-    host_metric_namespace = "${local.metric_namespace}/Host"
+    log_group_app   = local.log_group_app
+    log_group_nginx = local.log_group_nginx
+
+    enable_ssm_agent = tostring(var.enable_ssm_agent)
 
     service_audience       = local.app_domain_url
     checkout_base_url      = "${local.app_domain_url}/checkout"

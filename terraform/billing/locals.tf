@@ -56,10 +56,8 @@ locals {
   s3_prefix            = "ctech-billing"
   current_artifact_key = "${local.s3_prefix}/api/current.zip"
 
-  log_group_app            = "/ctech-billing/${var.environment}/app"
-  log_group_nginx          = "/ctech-billing/${var.environment}/nginx"
-  metric_namespace         = "CtechBilling/${var.environment}"
-  metric_payment_integrity = "PaymentIntegrityAlarms"
+  log_group_app   = "/ctech-billing/${var.environment}/app"
+  log_group_nginx = "/ctech-billing/${var.environment}/nginx"
 
   # Valkey logical DB. ctech-cdk's convention: /0 ctech-dfe cache, /1 ws pub/sub,
   # /2 ctech-wallet. Billing owns /3 — it caches ctech-account's JWKS, and a

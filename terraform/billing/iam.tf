@@ -146,8 +146,12 @@ resource "aws_iam_role_policy" "ssm_read" {
 }
 
 # Managed by AWS: SSM Session Manager access, which is how the other CTech
-# services are reached for deploys and debugging instead of SSH.
+# services are reached for deploys and debugging instead of SSH. Conditional,
+# like ctech-lbalancer's: with the agent off this policy grants nothing, and
+# nothing in bootstrap reads Parameter Store through it (that is the inline
+# ssm_read policy above).
 resource "aws_iam_role_policy_attachment" "ssm_managed" {
+  count      = var.enable_ssm_agent ? 1 : 0
   role       = aws_iam_role.billing.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
 }
@@ -205,7 +209,7 @@ data "aws_iam_policy_document" "instance" {
     resources = ["arn:aws:s3:::${data.aws_ssm_parameter.logs_bucket.value}/${local.s3_prefix}/*"]
   }
 
-  # The CloudWatch agent.
+  # The CloudWatch agent, log streams only — the agent publishes no metrics.
   statement {
     sid    = "CloudWatchAgent"
     effect = "Allow"
@@ -219,20 +223,6 @@ data "aws_iam_policy_document" "instance" {
       "${aws_cloudwatch_log_group.app.arn}:*",
       "${aws_cloudwatch_log_group.nginx.arn}:*",
     ]
-  }
-
-  # PutMetricData takes no resource ARN; the namespace condition is the only
-  # scoping AWS offers, and without it the role can write to anybody's metrics.
-  statement {
-    sid       = "CloudWatchAgentMetrics"
-    effect    = "Allow"
-    actions   = ["cloudwatch:PutMetricData"]
-    resources = ["*"]
-    condition {
-      test     = "StringEquals"
-      variable = "cloudwatch:namespace"
-      values   = ["${local.metric_namespace}/Host"]
-    }
   }
 
   # update-realip.sh reads the CloudFront origin-facing managed prefix list.

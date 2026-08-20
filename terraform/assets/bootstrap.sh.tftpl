@@ -6,8 +6,7 @@
 # log shipping — is now a script in ${"$"}{env}-ctech-ec2-scripts, fetched at boot
 # under the content hash recorded in SSM. What stays here is billing's: the
 # static env file, its SSM parameter list, the CloudWatch agent config (its log
-# groups and process pattern are Terraform values), and the leader-elected
-# scheduled jobs.
+# groups are Terraform values), and the leader-elected scheduled jobs.
 #
 # Names in ${"$"}{...} are substituted by templatefile(); anything written as
 # $${...} is left alone for bash. Heredocs use quoted delimiters so the scripts
@@ -21,6 +20,16 @@ ctech_run setup-base.sh ctech-billing nginx
 ctech_run setup-swap.sh 256
 ctech_run setup-dualstack.sh
 ctech_run setup-cloudflare-ca.sh
+
+# ── SSM Agent (conditional) ──────────────────────────────────────────────────
+# setup-base.sh installs the agent and setup-dualstack.sh starts it, so `false`
+# here is what stops it again. Off means no Session Manager: no shell onto the
+# box, and CI's RunCommand deploy has nowhere to land — which is why the default
+# is on. Same knob as ctech-lbalancer, where the box builds HAProxy on 512 MiB
+# and the trade goes the other way.
+if [ '${enable_ssm_agent}' != 'true' ]; then
+  systemctl disable --now amazon-ssm-agent 2>/dev/null || true
+fi
 
 # ── Static environment (non-secret) ──────────────────────────────────────────
 cat > /etc/app-static.env << 'STATICENV'
@@ -79,24 +88,12 @@ ctech_run setup-deploy.sh ${deployments_bucket} app "http://127.0.0.1:${nginx_po
 ctech_run setup-logs.sh ${logs_bucket} ${s3_prefix} ctech-billing /var/log/app /var/log/nginx
 
 # ── CloudWatch agent ─────────────────────────────────────────────────────────
-# Four series per instance, deliberately. EC2 already publishes CPUUtilization
-# and CPUCreditBalance; republishing them as custom metrics costs money and
-# says nothing new.
+# Logs only. No `metrics` block: EC2 already publishes CPUUtilization and
+# CPUCreditBalance for free, and every custom series billing used to publish was
+# either that again or a number nobody alarmed on.
 cat > /tmp/cwagent.json << 'CWA'
 {
   "agent": { "metrics_collection_interval": 60 },
-  "metrics": {
-    "namespace": "HOST_NAMESPACE_PLACEHOLDER",
-    "append_dimensions": { "InstanceId": "$${aws:InstanceId}" },
-    "metrics_collected": {
-      "mem":  { "measurement": ["used_percent"], "metrics_collection_interval": 60 },
-      "swap": { "measurement": ["used_percent"], "metrics_collection_interval": 60 },
-      "disk": { "measurement": ["used_percent"], "resources": ["/"], "drop_device": true, "metrics_collection_interval": 60 },
-      "procstat": [
-        { "pattern": "/opt/app/current/(app|sweep|reconcile|deliver|dunning)", "measurement": ["memory_rss"], "metrics_collection_interval": 60 }
-      ]
-    }
-  },
   "logs": {
     "logs_collected": {
       "files": {
@@ -112,7 +109,6 @@ cat > /tmp/cwagent.json << 'CWA'
 }
 CWA
 sed -i \
-  -e 's|HOST_NAMESPACE_PLACEHOLDER|${host_metric_namespace}|g' \
   -e 's|APP_LOG_GROUP_PLACEHOLDER|${log_group_app}|g' \
   -e 's|NGINX_LOG_GROUP_PLACEHOLDER|${log_group_nginx}|g' \
   /tmp/cwagent.json

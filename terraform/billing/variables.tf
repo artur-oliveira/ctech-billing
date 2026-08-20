@@ -98,3 +98,12 @@ variable "email_from" {
   type        = string
   default     = "billing@aoctech.app"
 }
+
+# Session Manager. Same knob as ctech-lbalancer's: the agent costs ~70 MiB of
+# RSS on a t4g.nano, so it is a switch rather than a given. Default on, because
+# it is the only way onto these instances — they have no public IPv4 and no SSH
+# — and because CI deploys through SSM RunCommand.
+variable "enable_ssm_agent" {
+  type    = bool
+  default = true
+}
