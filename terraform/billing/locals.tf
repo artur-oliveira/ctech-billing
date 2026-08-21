@@ -35,12 +35,6 @@ locals {
     # is an address, printed on every email it sends.
     email_from = "${local.ssm_prefix}/email-from"
 
-    # Where the front-end deploy job finds what to write to. CI cannot run
-    # `terraform output` — it holds a role that may sync a bucket and nothing
-    # more, deliberately — so the three values it needs are published here.
-    frontend_bucket          = "${local.ssm_prefix}/frontend-bucket"
-    frontend_distribution_id = "${local.ssm_prefix}/frontend-distribution-id"
-    frontend_route_store_arn = "${local.ssm_prefix}/frontend-route-store-arn"
   }
 
   # ── Compute ────────────────────────────────────────────────────────────────
@@ -85,18 +79,6 @@ locals {
   accounts_api_domain = var.environment == "prod" ? "accounts-api.${local.base_domain}" : "accounts-${var.environment}-api.${local.base_domain}"
   accounts_app_domain = var.environment == "prod" ? "accounts.${local.base_domain}" : "accounts-${var.environment}.${local.base_domain}"
 
-  # ── Front end ──────────────────────────────────────────────────────────────
-  # The portal is a Next.js static export in S3 behind CloudFront, the same
-  # shape as every other CTech front end (@aoctech/cdk's
-  # createNextjsStaticFrontend). This root is Terraform rather than CDK, so the
-  # construct is ported here; the resource set and the naming are deliberately
-  # identical so the two can be read against each other.
-
-  frontend_bucket    = "${var.environment}-ctech-billing-frontend"
-  frontend_kvs_name  = "${var.environment}-ctech-billing-routes"
-  frontend_oac_name  = "${var.environment}-ctech-billing-oac"
-  frontend_func_name = "${var.environment}-ctech-billing-url-rewrite"
-
   # The browser origins the API answers cross-origin. Exactly the portal's own
   # domain and nothing else: the checkout and the portal are the same origin,
   # and no other page has a reason to read a billing response.
@@ -105,15 +87,6 @@ locals {
   # in production — a prod deployment without it refuses to boot rather than
   # serving a wildcard.
   cors_allowed_origins = [local.app_domain_url]
-
-  # Kept, and no longer the path the app takes. The portal now calls
-  # `${local.api_domain}` directly, because going back through this
-  # distribution meant CloudFront → Cloudflare → HAProxy for a request with one
-  # destination (ADR 0013's amendment). These behaviours stay as the rollback:
-  # setting NEXT_PUBLIC_API_URL back to empty restores same-origin without a
-  # Terraform change. `/.well-known/*` is not a rollback — a client discovering
-  # billing from the portal's own hostname still resolves it here.
-  frontend_api_patterns = ["/v1.0/*", "/.well-known/*"]
 
   private_hosted_zone_id_parameter = "/ctech/global/dns/private-hosted-zone-id"
 

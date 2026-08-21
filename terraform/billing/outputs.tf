@@ -41,26 +41,6 @@ output "app_domain" {
   value       = local.app_domain
 }
 
-output "frontend_bucket" {
-  description = "Bucket the static export syncs into."
-  value       = aws_s3_bucket.frontend.id
-}
-
-output "frontend_distribution_id" {
-  description = "CloudFront distribution CI invalidates after a sync."
-  value       = aws_cloudfront_distribution.frontend.id
-}
-
-output "frontend_distribution_domain" {
-  description = "What app_domain must CNAME to."
-  value       = aws_cloudfront_distribution.frontend.domain_name
-}
-
-output "frontend_route_store_arn" {
-  description = "KeyValueStore the url-rewrite function reads. ui/scripts/publish-routes.sh writes it after every sync."
-  value       = aws_cloudfront_key_value_store.routes.arn
-}
-
 output "release_artifact_key" {
   description = "S3 key inside the shared deployments bucket that a new instance bootstraps from."
   value       = local.current_artifact_key

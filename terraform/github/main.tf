@@ -1,10 +1,10 @@
-# The four roles GitHub Actions assumes, one per thing a deploy does.
+# The three roles GitHub Actions assumes, one per thing a deploy does.
 #
-# Four and not one, because they are four different blast radii. `-gha-infra`
+# Three and not one, because they are three different blast radii. `-gha-infra`
 # runs Terraform and therefore has to be able to change anything; `-gha-api`
-# uploads a zip and restarts a service; `-gha-frontend` writes static files;
-# `-gha-scopes` reads three parameters. A single role would give the job that
-# syncs HTML the rights of the job that can destroy the DynamoDB tables.
+# uploads a zip and restarts a service; `-gha-scopes` reads three parameters.
+# A single role would give the job that reads scopes the rights of the job
+# that can destroy the DynamoDB tables.
 #
 # The OIDC provider itself is not created here. It is one per account and
 # ctech-cdk's global stack owns it, published at /ctech/global/oidc/provider-arn.
@@ -45,10 +45,9 @@ locals {
   ])
 
   roles = {
-    infra    = "Terraform for ctech-billing"
-    api      = "API artifact upload and rolling deploy for ctech-billing"
-    frontend = "Static portal deploy for ctech-billing"
-    scopes   = "OAuth scope manifest publishing for ctech-billing"
+    infra  = "Terraform for ctech-billing"
+    api    = "API artifact upload and rolling deploy for ctech-billing"
+    scopes = "OAuth scope manifest publishing for ctech-billing"
   }
 }
 
@@ -170,64 +169,6 @@ resource "aws_iam_role_policy" "api" {
   name   = "deploy"
   role   = aws_iam_role.gha["api"].id
   policy = data.aws_iam_policy_document.api.json
-}
-
-# ── frontend ─────────────────────────────────────────────────────────────────
-# Sync the export, publish the route manifest, invalidate the cache. Read-only
-# everywhere else, including on the distribution it invalidates.
-data "aws_iam_policy_document" "frontend" {
-  statement {
-    sid     = "SyncExport"
-    actions = ["s3:PutObject", "s3:GetObject", "s3:DeleteObject", "s3:AbortMultipartUpload"]
-    resources = [
-      for env in var.environments : "arn:aws:s3:::${env}-ctech-billing-frontend/*"
-    ]
-  }
-
-  statement {
-    sid     = "ListExportBucket"
-    actions = ["s3:ListBucket", "s3:ListBucketVersions"]
-    resources = [
-      for env in var.environments : "arn:aws:s3:::${env}-ctech-billing-frontend"
-    ]
-  }
-
-  # The workflow reads the bucket name, distribution id and route-store ARN from
-  # the Terraform outputs it cannot run, so it reads them from CloudFormation-
-  # free sources: SSM parameters written by the billing root.
-  statement {
-    sid       = "ReadDeployTargets"
-    actions   = ["ssm:GetParameter", "ssm:GetParameters"]
-    resources = ["arn:aws:ssm:${var.aws_region}:${var.aws_account}:parameter/ctech-billing/*"]
-  }
-
-  statement {
-    sid       = "InvalidateCache"
-    actions   = ["cloudfront:CreateInvalidation", "cloudfront:GetInvalidation"]
-    resources = ["arn:aws:cloudfront::${var.aws_account}:distribution/*"]
-  }
-
-  # The KeyValueStore API is not resource-scoped for DescribeKeyValueStore, and
-  # the write calls take the store's ARN in the request rather than in the
-  # policy. Scoped to the account's stores, which is as tight as the service
-  # allows.
-  statement {
-    sid = "PublishRoutes"
-    actions = [
-      "cloudfront-keyvaluestore:DescribeKeyValueStore",
-      "cloudfront-keyvaluestore:ListKeys",
-      "cloudfront-keyvaluestore:PutKey",
-      "cloudfront-keyvaluestore:DeleteKey",
-      "cloudfront-keyvaluestore:UpdateKeys",
-    ]
-    resources = ["arn:aws:cloudfront::${var.aws_account}:key-value-store/*"]
-  }
-}
-
-resource "aws_iam_role_policy" "frontend" {
-  name   = "deploy"
-  role   = aws_iam_role.gha["frontend"].id
-  policy = data.aws_iam_policy_document.frontend.json
 }
 
 # ── scopes ───────────────────────────────────────────────────────────────────

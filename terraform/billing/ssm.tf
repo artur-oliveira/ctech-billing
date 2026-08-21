@@ -79,27 +79,3 @@ resource "aws_ssm_parameter" "email_from" {
     ignore_changes = [value]
   }
 }
-
-# ── Front end ────────────────────────────────────────────────────────────────
-# The three values the frontend deploy job needs, published where a role with
-# no Terraform access can read them. See terraform/github: that job may sync one
-# bucket, publish routes and invalidate a distribution — it cannot read state,
-# and it should not have to in order to find out which bucket.
-
-resource "aws_ssm_parameter" "frontend_bucket" {
-  name  = local.ssm_paths.frontend_bucket
-  type  = "String"
-  value = aws_s3_bucket.frontend.id
-}
-
-resource "aws_ssm_parameter" "frontend_distribution_id" {
-  name  = local.ssm_paths.frontend_distribution_id
-  type  = "String"
-  value = aws_cloudfront_distribution.frontend.id
-}
-
-resource "aws_ssm_parameter" "frontend_route_store_arn" {
-  name  = local.ssm_paths.frontend_route_store_arn
-  type  = "String"
-  value = aws_cloudfront_key_value_store.routes.arn
-}
