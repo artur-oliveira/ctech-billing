@@ -8,7 +8,7 @@ Two entry points and four reusable workflows.
 | `deploy.yml`   | push to `main`/`staging`/`dev`, or manual | Path filter and ordering. Calls the four below.                                      |
 | `infra.yml`    | called; **and PRs** for validate-only     | `terraform apply` on both roots.                                                     |
 | `api.yml`      | called                                    | Builds three arm64 binaries, uploads, rolling deploy via SSM.                        |
-| `frontend.yml` | called                                    | Static export, S3 sync, route manifest, invalidation.                                |
+| `frontend.yml` | called                                    | Thin caller of `ctech-cdk`'s `frontend-cloudflare.yml@main`: static export, generated `_headers`, deploy to Cloudflare Workers Static Assets. |
 | *(scopes)*     | called                                    | `ctech-account/.github/workflows/publish-resource-scopes.yml@main`.                  |
 
 Dependency bumps arrive weekly through [`dependabot.yml`](../dependabot.yml): the Go module, the
@@ -49,9 +49,11 @@ run the scanner, pin the same way.
 Terraform → OAuth scopes → API → Frontend
 ```
 
-- **Terraform first** because it creates the bucket the frontend syncs into and
-  the ASG the API deploys onto, and writes the SSM parameters both later jobs
-  read their targets from.
+- **Terraform first** because it creates the ASG the API deploys onto and writes
+  the SSM parameters the later jobs read their targets from. It no longer creates
+  anything the frontend needs — the portal is deployed to Cloudflare, not to a
+  bucket ([ADR 0020](../../docs/adr/0020-portal-on-cloudflare-workers.md)) — but
+  the ordering stands for the API's sake.
 - **Scopes before the API** because the API rejects a token carrying a scope
   ctech-account never learned to issue. Publishing afterwards leaves a window in
   which a new route is live and nothing can call it.
@@ -71,9 +73,11 @@ use.
 
 `terraform/github` creates `ctech-billing-gha-{infra,api,frontend,scopes}`.
 They are four different blast radii: infra runs Terraform and must be able to
-change anything, api uploads a zip and restarts a service, frontend writes
+change anything, api uploads a zip and restarts a service, frontend wrote
 static files, scopes reads three SSM parameters. One role would give the job
 that syncs HTML the rights of the job that can destroy the DynamoDB tables.
+The `frontend` role is now unused — the portal deploys with a Cloudflare API
+token, not an AWS identity — and is removed with the rest of the teardown.
 
 **No deploy role trusts a pull request.** The trust policies name
 `repo:artur-oliveira/ctech-billing:ref:refs/heads/<branch>` for exactly three
@@ -112,11 +116,11 @@ rather than silently degrading:
 | What                                                                                                                         | Owner                                                | Used by                                      |
 |------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------|----------------------------------------------|
 | `/ctech/global/oidc/provider-arn`                                                                                            | ctech-cdk                                            | every role's trust policy                    |
-| `/ctech/global/acm/cert-arn`                                                                                                 | ctech-cdk                                            | the CloudFront distribution                  |
+| `/ctech/global/acm/cert-arn`                                                                                                 | ctech-cdk                                            | the retired CloudFront distribution          |
 | `/ctech/{env}/s3/deployments-bucket`                                                                                         | ctech-cdk                                            | `api.yml`                                    |
 | `/ctech-account/{env}/scope-publishers/billing/{client-id,client-secret}`                                                    | ctech-account                                        | the scopes job                               |
 | OAuth client `billing` with the four `billing:me:*` scopes and `https://billing*.aoctech.app/callback` as a redirect URI     | ctech-account                                        | the portal's login                           |
-| A DNS record pointing `billing[-env].aoctech.app` at the distribution                                                        | DNS, outside Terraform — same as `billing-api` today | everything                                   |
+| A DNS record pointing `billing[-env].aoctech.app` at the Cloudflare Worker                                                   | Cloudflare, outside Terraform                        | everything                                   |
 | The four billing SecureStrings (`wallet-client-id`, `wallet-client-secret`, `wallet-webhook-secret`, `checkout-link-secret`) | set out of band                                      | payments and checkout links                  |
 | `/ctech-billing/{env}/billing/field-encryption-key` — 32 bytes, base64 or hex                                                | set out of band, backed up outside SSM               | **every binary refuses to start without it** |
 | `/ctech-billing/{env}/billing/email-from`, matching a verified SES identity and `var.email_from`                             | set out of band + SES                                | dunning reminders                            |

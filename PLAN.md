@@ -163,9 +163,10 @@
           so the page never let anybody off it.
     - [x] **Static export, and the rule that follows from it.** A production build is
           `output: "export"` ([ADR 0013](docs/adr/0013-static-portal-same-origin-api.md)), so there
-          are no dynamic route segments: an invoice is `/invoice?id=…`. `/v1.0/*` is forwarded by the
-          same CloudFront distribution, which is why `NEXT_PUBLIC_API_URL` is empty in a deployed
-          build and CORS never applies.
+          are no dynamic route segments: an invoice is `/invoice?id=…`. The export is served by
+          Cloudflare Workers Static Assets ([ADR 0020](docs/adr/0020-portal-on-cloudflare-workers.md))
+          and `NEXT_PUBLIC_API_URL` names the API host, so the browser calls it cross-origin and CORS
+          applies.
     - [x] **Metadata and titles.** A `layout.tsx` per route for the static ones; `useDocumentTitle`
           for the invoice number, which is not knowable at build time because one file serves every
           invoice. Open Graph everywhere despite `noindex` — preview scrapers ignore robots, and

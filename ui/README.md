@@ -29,7 +29,7 @@ of them, because mock mode never authenticates and never leaves the process.
 
 | Variable | Deployed value | Why |
 |---|---|---|
-| `NEXT_PUBLIC_API_URL` | **empty** | CloudFront forwards `/v1.0/*` to the API from the same distribution, so the browser is same-origin and CORS never applies. |
+| `NEXT_PUBLIC_API_URL` | `https://billing-api.aoctech.app` | The API host. Nothing proxies `/v1.0/*` at the edge, so the browser calls it **cross-origin** and CORS applies. Empty means same-origin and is a `next dev` value only. |
 | `NEXT_PUBLIC_SITE_URL` | `https://billing.aoctech.app` | `metadataBase`. Without it every Open Graph image resolves to localhost. |
 | `NEXT_PUBLIC_CTECH_URL` | `https://accounts-api.aoctech.app` | ctech-account's API. The OAuth client talks to it directly, so it is also in the CSP's `connect-src`. |
 | `NEXT_PUBLIC_CTECH_CLIENT_ID` | `billing` | The OAuth client registered at ctech-account. |
@@ -70,7 +70,7 @@ a module outside its root. Narrow it back when the package comes from npm.
 screen is what a customer reads.
 
 **There are no dynamic segments, and there cannot be.** A production build is `output: "export"`
-and ships as objects in S3 behind CloudFront, so every route is one prerendered file. An invoice is
+and ships as static assets on Cloudflare Workers, so every route is one prerendered file. An invoice is
 `/invoice?id=inv_…`, not `/invoices/[id]` — the latter would need `generateStaticParams` to
 enumerate every invoice that will ever exist. Anything that needs a subject reads it from the query
 string, inside a `<Suspense>` boundary because `useSearchParams` suspends during prerender.

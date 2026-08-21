@@ -1,11 +1,14 @@
 # ADR 0013 — The portal is a static export, and the API is same-origin behind it
 
 Status: Accepted (2026-08-16) · **Half amended 2026-08-16 — the API is no longer same-origin** ·
+**Hosting superseded by [0020](0020-portal-on-cloudflare-workers.md) (2026-08-20)** ·
 Implements the front end proposed in ARCHITECTURE.md § 1 · Screens P1–P4, X1
 
-> The static-export half of this decision stands. The same-origin half was reversed the same day;
-> see the amendment at the end. Everything below is left as written — it is the record of why the
-> decision was made, not a description of the system today.
+> Only the static-export half of this decision still stands. The same-origin half was reversed the
+> same day (see the amendment at the end), and the S3 + CloudFront hosting it described was replaced
+> by Cloudflare Workers Static Assets in [0020](0020-portal-on-cloudflare-workers.md). Everything
+> below is left as written — it is the record of why the decision was made, not a description of the
+> system today.
 
 ## Context
 

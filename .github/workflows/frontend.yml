@@ -18,6 +18,10 @@ jobs:
     secrets: inherit
     with:
       service: ctech-billing
+      # false because the route on the real hostname is the only public origin this
+      # app should have. `wrangler triggers deploy` already disabled workers.dev at
+      # cutover; this is what stops the next CI deploy from turning it back on.
+      prod-workers-dev: false
       # NEXT_PUBLIC_SITE_URL is the app's own origin. It lands in connect-src too,
       # which is harmless — 'self' already covers it.
       build-env-dev: |

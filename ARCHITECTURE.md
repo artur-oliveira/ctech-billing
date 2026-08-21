@@ -279,30 +279,31 @@ convention is that a service sends what it is responsible for saying.
 ## 10. Front-end delivery
 
 The portal is a **static export** ([ADR 0013](docs/adr/0013-static-portal-same-origin-api.md)):
-`output: "export"` produces a directory of files, and CloudFront serves them from a private S3
-bucket through an Origin Access Control. There is no Node process in production, so there is
-nothing to patch, scale, or roll back beyond objects.
+`output: "export"` produces a directory of files, served by **Cloudflare Workers Static Assets**
+([ADR 0020](docs/adr/0020-portal-on-cloudflare-workers.md)). There is no Node process in production,
+so there is nothing to patch, scale, or roll back beyond files.
 
-Two things follow, and both are load-bearing:
+Three things follow, and all three are load-bearing:
 
 - **The browser calls the API directly**, at `billing-api[-env].aoctech.app`.
   `NEXT_PUBLIC_API_URL` carries that hostname and the CSP's `connect-src` allows it. It used to be
-  empty, with `/v1.0/*` forwarded from this distribution so the two were same-origin — which read
-  as one fewer thing to configure and was three more hops at run time: CloudFront, then Cloudflare,
-  then HAProxy, on every request ([ADR 0013](docs/adr/0013-static-portal-same-origin-api.md)'s
+  empty, with `/v1.0/*` forwarded from a CloudFront distribution so the two were same-origin — which
+  read as one fewer thing to configure and was three more hops at run time: CloudFront, then
+  Cloudflare, then HAProxy, on every request ([ADR 0013](docs/adr/0013-static-portal-same-origin-api.md)'s
   amendment). The cost of the reversal is CORS: exact origins, credentials on, and a production
   boot that refuses without them.
-- **`/v1.0/*` and `/.well-known/*` remain ordered cache behaviours on the same distribution**,
-  pointed at that same HAProxy origin. `/v1.0/*` is now the rollback rather than the path — going
-  back to same-origin is one environment variable. `/.well-known/*` is neither: a client
-  discovering billing from the portal's hostname still resolves it there.
-- **Pretty URLs come from a CloudFront Function reading a KeyValueStore route manifest**, written
-  by the deploy from the export's own output. `custom_error_response` was rejected: it is
-  distribution-wide, so mapping 404 to `/404.html` would also replace the API's RFC 7807 problem
-  bodies on the `/v1.0/*` behaviour.
+- **The CSP's `connect-src` is generated from the build environment**, not written by hand: every
+  `https://`/`wss://` literal in `.github/workflows/frontend.yml`'s `build-env-*` becomes an allowed
+  origin, plus `extra-connect-src`. An origin the portal talks to but the workflow does not name is
+  an origin the browser refuses — and the match is scheme-exact, so `https://host` does not permit
+  `wss://host`.
+- **Pretty URLs need no manifest and no edge function.** Workers Static Assets resolves `/invoices`
+  to `invoices.html` itself; the CloudFront Function and its KeyValueStore existed to hand-roll
+  exactly that.
 
-`terraform/billing/frontend.tf` is an HCL port of `ctech-cdk`'s `nextjs-static-frontend`, not a new
-pattern — same bucket posture, same OAC, same function, same header policy.
+The deploy is `ctech-cdk`'s reusable workflow `.github/workflows/frontend-cloudflare.yml`, shared by
+all five CTech front ends, so the headers, the export guards and the CSP are written once rather
+than ported per repository.
 
 ## 11. Delivery pipeline
 

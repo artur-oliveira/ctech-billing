@@ -28,6 +28,7 @@ re-litigate settled questions. Every ADR here is already decided — the analysi
 | [0017](0017-field-level-encryption.md) | Field-level encryption for stored personal data | extends 0009 |
 | [0018](0018-subscriptions-bill-several-prices.md) | A subscription bills one or more prices | replaces the one-item MVP rule |
 | [0019](0019-zero-total-invoices.md) | A zero-total invoice is issued, then settled on issue | — (2026-08-16) |
+| [0020](0020-portal-on-cloudflare-workers.md) | The portal is served by Cloudflare Workers Static Assets, not S3 + CloudFront | supersedes the hosting half of 0013 (2026-08-20) |
 
 ## Status of the record itself
 

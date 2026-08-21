@@ -31,13 +31,14 @@ const nextConfig: NextConfig = {
       : {}),
   },
   experimental: {optimizePackageImports: ["lucide-react"]},
-  // There is no image optimizer behind a static export — the bucket serves
+  // There is no image optimizer behind a static export — the edge serves
   // bytes. The two images this app has are the logo, already sized.
   images: {unoptimized: true},
-  // The portal ships as objects in S3 behind CloudFront, like every other
-  // CTech front end. `rewrites()` is unsupported under `export` and only ever
-  // runs in `next dev`, so the two branches below are mutually exclusive by
-  // construction rather than by remembering.
+  // The portal ships as static assets on Cloudflare Workers, like every other
+  // CTech front end, and calls the API cross-origin. `rewrites()` is
+  // unsupported under `export` and only ever runs in `next dev`, so the two
+  // branches below are mutually exclusive by construction rather than by
+  // remembering — and the dev rewrite is the only same-origin path left.
   ...(isProduction
     ? {output: "export" as const}
     : {
