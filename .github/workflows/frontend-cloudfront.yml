@@ -1,0 +1,138 @@
+name: Frontend
+
+# Called by deploy.yml, which owns the trigger, the path filter and the
+# Terraform → scopes → API → frontend ordering. Never triggered on push.
+on:
+  workflow_call:
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+  ROLE_ARN: arn:aws:iam::868899309401:role/ctech-billing-gha-frontend
+
+jobs:
+  deploy:
+    name: Build & Deploy
+    runs-on: ubuntu-24.04-arm
+    defaults:
+      run:
+        working-directory: ui
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Checks
+        run: |
+          npm run lint
+          npm test
+
+      - name: Resolve environment
+        id: env
+        env:
+          REF: ${{ github.ref_name }}
+        run: |
+          case "$REF" in
+            main)    echo "name=prod"  >> "$GITHUB_OUTPUT" ;;
+            staging) echo "name=stage" >> "$GITHUB_OUTPUT" ;;
+            *)       echo "name=dev"   >> "$GITHUB_OUTPUT" ;;
+          esac
+
+      # NEXT_PUBLIC_API_URL is the API's own hostname, not empty.
+      #
+      # It used to be empty so the browser stayed same-origin through this
+      # distribution's /v1.0/* behaviour, which cost CloudFront → Cloudflare →
+      # HAProxy — three hops and three TLS terminations for a request with one
+      # destination. Calling the API directly costs one preflight per method and
+      # header set, cached for an hour, and an origin allowlist the API already
+      # maintains (ADR 0013's amendment).
+      #
+      # Every hostname here must also be in the CSP's connect-src
+      # (terraform/billing/frontend.tf) — including this one now. The two lists
+      # have to agree or the browser blocks a request the server would have
+      # answered.
+      - name: Set environment
+        env:
+          ENVIRONMENT: ${{ steps.env.outputs.name }}
+        run: |
+          if [ "$ENVIRONMENT" = "prod" ]; then
+            SUFFIX=""
+            ACCOUNTS_API="accounts-api"
+            ACCOUNTS_APP="accounts"
+          else
+            SUFFIX="-${ENVIRONMENT}"
+            ACCOUNTS_API="accounts-${ENVIRONMENT}-api"
+            ACCOUNTS_APP="accounts-${ENVIRONMENT}"
+          fi
+          {
+            echo "NEXT_PUBLIC_API_URL=https://billing-api${SUFFIX}.aoctech.app"
+            echo "NEXT_PUBLIC_SITE_URL=https://billing${SUFFIX}.aoctech.app"
+            echo "NEXT_PUBLIC_CTECH_URL=https://${ACCOUNTS_API}.aoctech.app"
+            echo "NEXT_PUBLIC_CTECH_CLIENT_URL=https://${ACCOUNTS_APP}.aoctech.app"
+            echo "NEXT_PUBLIC_CTECH_CLIENT_ID=billing"
+          } >> "$GITHUB_ENV"
+
+      - name: Build (static export)
+        run: npm run build
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ env.ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # Written by terraform/billing/ssm.tf. This role can sync one bucket and
+      # invalidate one distribution; it deliberately cannot read Terraform state
+      # to find out which.
+      - name: Read deploy targets
+        env:
+          ENVIRONMENT: ${{ steps.env.outputs.name }}
+        run: |
+          p() { aws ssm get-parameter --name "/ctech-billing/$ENVIRONMENT/billing/$1" \
+            --query Parameter.Value --output text; }
+          echo "S3_BUCKET=$(p frontend-bucket)"                 >> "$GITHUB_ENV"
+          echo "DISTRIBUTION_ID=$(p frontend-distribution-id)"  >> "$GITHUB_ENV"
+          echo "ROUTE_STORE_ARN=$(p frontend-route-store-arn)"  >> "$GITHUB_ENV"
+
+      # Two passes, because the right cache header depends on the file. Hashed
+      # assets under _next/ never change content for a given name and are
+      # immutable for a year; HTML and JSON are the deploy itself and must not be
+      # cached, or a reader keeps last week's page until CloudFront's TTL
+      # expires. `--delete` on the second pass only, so the first does not remove
+      # HTML it was told to exclude.
+      - name: Sync to S3
+        run: |
+          MUTABLE=(--include "*.html" --include "*.json" --include "*.txt" --include "*.webmanifest")
+
+          aws s3 sync out/ "s3://${S3_BUCKET}/" \
+            --cache-control "public, max-age=31536000, immutable" \
+            --exclude "*.html" --exclude "*.json" --exclude "*.txt" --exclude "*.webmanifest"
+
+          aws s3 sync out/ "s3://${S3_BUCKET}/" --delete \
+            --cache-control "no-cache" \
+            --exclude "*" "${MUTABLE[@]}"
+
+      # After the sync, so the route store can never advertise a page the bucket
+      # does not have. The url-rewrite CloudFront Function reads it to decide
+      # between "<route>.html" and "/404.html".
+      - name: Publish route manifest
+        run: ./scripts/publish-routes.sh "$ROUTE_STORE_ARN" out
+
+      - name: Invalidate cache
+        run: |
+          ID=$(aws cloudfront create-invalidation \
+            --distribution-id "$DISTRIBUTION_ID" --paths "/*" \
+            --query Invalidation.Id --output text)
+          aws cloudfront wait invalidation-completed \
+            --distribution-id "$DISTRIBUTION_ID" --id "$ID"

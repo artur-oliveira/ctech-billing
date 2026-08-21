@@ -142,6 +142,9 @@ jobs:
     needs: [changes, infra, api]
     if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && needs.changes.outputs.frontend == 'true' }}
     uses: ./.github/workflows/frontend.yml
+    # No id-token: the frontend deploys to Cloudflare with an API token now, not
+    # an assumed AWS role. inherit carries CLOUDFLARE_* down to ctech-cdk's
+    # reusable workflow.
     permissions:
-      id-token: write
       contents: read
+    secrets: inherit
