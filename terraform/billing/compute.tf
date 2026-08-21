@@ -258,22 +258,22 @@ resource "aws_autoscaling_group" "this" {
 #
 # `enable` restores the configured capacity; a scheduled action that leaves
 # min/max at 0 is a one-way switch, not a schedule.
-resource "aws_autoscaling_schedule" "disable" {
-  scheduled_action_name  = "${local.asg_name}-nightly-disable"
-  autoscaling_group_name = aws_autoscaling_group.this.name
-  recurrence             = "0 22 * * *"
-  time_zone              = "America/Sao_Paulo"
-  min_size               = 0
-  max_size               = 0
-  desired_capacity       = 0
-}
-
-resource "aws_autoscaling_schedule" "enable" {
-  scheduled_action_name  = "${local.asg_name}-nightly-enable"
-  autoscaling_group_name = aws_autoscaling_group.this.name
-  recurrence             = "0 10 * * *"
-  time_zone              = "America/Sao_Paulo"
-  min_size               = var.min_size
-  max_size               = var.max_size
-  desired_capacity       = var.min_size
-}
+# resource "aws_autoscaling_schedule" "disable" {
+#   scheduled_action_name  = "${local.asg_name}-nightly-disable"
+#   autoscaling_group_name = aws_autoscaling_group.this.name
+#   recurrence             = "0 22 * * *"
+#   time_zone              = "America/Sao_Paulo"
+#   min_size               = 0
+#   max_size               = 0
+#   desired_capacity       = 0
+# }
+#
+# resource "aws_autoscaling_schedule" "enable" {
+#   scheduled_action_name  = "${local.asg_name}-nightly-enable"
+#   autoscaling_group_name = aws_autoscaling_group.this.name
+#   recurrence             = "0 10 * * *"
+#   time_zone              = "America/Sao_Paulo"
+#   min_size               = var.min_size
+#   max_size               = var.max_size
+#   desired_capacity       = var.min_size
+# }
