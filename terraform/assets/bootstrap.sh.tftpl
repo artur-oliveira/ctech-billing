@@ -82,8 +82,14 @@ SERVICEENV
 chmod 0755 /opt/app/service-env.sh
 
 ctech_run setup-realip.sh ${vpc_cidr}
-ctech_run setup-nginx.sh ${nginx_port} ${app_port} ${health_path}
-ctech_run setup-app-service.sh "CTech Billing API" app "network.target nginx.service"
+
+# Two app processes, loopback-only (app_port and app_port_alt), so nginx
+# round-robins between them and deploy.sh rolls one at a time instead of
+# restarting the only process — a t4g.nano deploy no longer drops the health
+# check for the few seconds `systemctl restart app` takes. Trade-off is a
+# second Go process resident on a 512 MiB box; watch memory if it becomes tight.
+ctech_run setup-nginx.sh ${nginx_port} ${app_port} ${health_path} 100 1m ${app_port_alt}
+ctech_run setup-app-service.sh "CTech Billing API" app "network.target nginx.service" ${app_port_alt}
 ctech_run setup-deploy.sh ${deployments_bucket} app "http://127.0.0.1:${nginx_port}${health_path}" sweep reconcile deliver dunning
 ctech_run setup-logs.sh ${logs_bucket} ${s3_prefix} ctech-billing /var/log/app /var/log/nginx
 

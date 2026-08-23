@@ -94,6 +94,7 @@ locals {
     environment = var.environment
 
     app_port     = local.app_port
+    app_port_alt = local.app_port_alt
     nginx_port   = local.nginx_port
     health_path  = local.health_path
     table_prefix = local.table_prefix

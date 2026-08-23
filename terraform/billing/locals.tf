@@ -47,6 +47,12 @@ locals {
   nginx_port  = 8080 # what HAProxy connects to
   health_path = "/v1.0/health-check"
 
+  # Second app process, loopback-only, so nginx can round-robin across both
+  # and deploy.sh can roll them one at a time instead of restarting the only
+  # process (see ctech-cdk's assets/ec2/setup-deploy.sh). Never touches the
+  # security group: HAProxy only ever reaches nginx_port.
+  app_port_alt = 8005
+
   s3_prefix            = "ctech-billing"
   current_artifact_key = "${local.s3_prefix}/api/current.zip"
 
