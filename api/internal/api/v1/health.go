@@ -294,7 +294,11 @@ func cpuPercent() float64 {
 	if err != nil {
 		return healthUnavailableV
 	}
-	defer func() { _ = f.Close() }()
+	defer func() {
+		if closeErr := f.Close(); closeErr != nil {
+			slog.Warn("health cpu file close failed", "err", closeErr)
+		}
+	}()
 	scanner := bufio.NewScanner(f)
 	if !scanner.Scan() {
 		return healthUnavailableV
@@ -335,7 +339,11 @@ func memoryPercent() float64 {
 	if err != nil {
 		return healthUnavailableV
 	}
-	defer func() { _ = f.Close() }()
+	defer func() {
+		if closeErr := f.Close(); closeErr != nil {
+			slog.Warn("health memory file close failed", "err", closeErr)
+		}
+	}()
 	info := map[string]int64{}
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {

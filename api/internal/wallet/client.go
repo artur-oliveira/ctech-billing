@@ -46,6 +46,8 @@ import (
 	"strings"
 	"time"
 
+	"gopkg.aoctech.app/api-commons/observability"
+
 	"gopkg.aoctech.app/api-commons/cache"
 	"gopkg.aoctech.app/api-commons/oauth2client"
 )
@@ -211,8 +213,15 @@ func (c *Client) do(ctx context.Context, method, path string, body []byte) (*Cha
 	if err != nil {
 		return nil, fmt.Errorf("wallet: %s %s: %w", method, path, err)
 	}
-	defer func() { _ = resp.Body.Close() }()
-	raw, _ := io.ReadAll(resp.Body)
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			observability.Warn(ctx, "wallet response body close failed", closeErr, "method", method, "path", path)
+		}
+	}()
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("wallet: read %s %s response: %w", method, path, err)
+	}
 
 	switch {
 	case resp.StatusCode == http.StatusNotFound:

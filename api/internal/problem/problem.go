@@ -7,6 +7,7 @@ import (
 	"errors"
 
 	"github.com/gofiber/fiber/v3"
+	fiberobs "gopkg.aoctech.app/api-commons/observability/fiber"
 	commonproblem "gopkg.aoctech.app/api-commons/problem"
 
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
@@ -45,6 +46,10 @@ type Problem struct {
 }
 
 func wrap(p *commonproblem.Problem) *Problem { return &Problem{Problem: *p} }
+func (p *Problem) WithCause(err error) *Problem {
+	p.Problem.WithCause(err)
+	return p
+}
 
 // Send writes the problem with the correct content type.
 //
@@ -53,6 +58,7 @@ func wrap(p *commonproblem.Problem) *Problem { return &Problem{Problem: *p} }
 // every error goes out as plain application/json. A client that branches on the
 // problem content type would never see one.
 func (p *Problem) Send(c fiber.Ctx) error {
+	fiberobs.LogHTTPError(c, p.Status, p.Type, p.Cause())
 	return c.Status(p.Status).JSON(p, ContentType)
 }
 

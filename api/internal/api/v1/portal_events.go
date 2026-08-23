@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"gopkg.aoctech.app/api-commons/observability"
 
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
 	"gopkg.aoctech.app/billing/api/internal/middleware"
@@ -95,10 +96,11 @@ func (h *portalHandlers) invoiceEvents(c fiber.Ctx) error {
 	c.Set("X-Accel-Buffering", "no")
 
 	bus := h.bus
+	logCtx := observability.WithRequestID(context.Background(), middleware.GetRequestID(c))
 
 	return c.SendStreamWriter(func(w *bufio.Writer) {
 		if settled {
-			writeEvent(w, "paid")
+			writeEvent(logCtx, w, "paid")
 			return
 		}
 
@@ -129,7 +131,7 @@ func (h *portalHandlers) invoiceEvents(c fiber.Ctx) error {
 			case <-ctx.Done():
 				// The cap, not the answer. Say so rather than closing silently, so
 				// the client can stop waiting instead of assuming it lost the event.
-				writeEvent(w, "timeout")
+				writeEvent(logCtx, w, "timeout")
 				return
 			case <-settledCh:
 				// The notification arrived. Fall through to the re-read below rather
@@ -144,14 +146,15 @@ func (h *portalHandlers) invoiceEvents(c fiber.Ctx) error {
 				// invoice. Keep waiting; the heartbeat below still proves the
 				// connection is alive, and a transient DynamoDB error must not tell
 				// somebody mid-payment that their charge went wrong.
-				if !beat(w, &lastBeat) {
+				observability.Warn(logCtx, "portal events invoice refresh failed", err, "invoice_id", invoiceID)
+				if !beat(logCtx, w, &lastBeat) {
 					return
 				}
 				continue
 			}
 
 			if isSettled(current) {
-				writeEvent(w, "paid")
+				writeEvent(logCtx, w, "paid")
 				return
 			}
 			// A charge that can no longer be paid ends the wait too: staying open
@@ -160,10 +163,10 @@ func (h *portalHandlers) invoiceEvents(c fiber.Ctx) error {
 			// the payload cannot disagree about whether there is still something
 			// to wait for.
 			if current.Status != billing.InvoiceOpen {
-				writeEvent(w, "closed")
+				writeEvent(logCtx, w, "closed")
 				return
 			}
-			if !beat(w, &lastBeat) {
+			if !beat(logCtx, w, &lastBeat) {
 				return
 			}
 		}
@@ -177,23 +180,28 @@ func isSettled(inv *billing.Invoice) bool {
 // beat flushes a comment frame when the connection has been quiet, and reports
 // whether the client is still there. A failed flush is the only signal fasthttp
 // gives that the reader hung up.
-func beat(w *bufio.Writer, last *time.Time) bool {
+func beat(ctx context.Context, w *bufio.Writer, last *time.Time) bool {
 	if time.Since(*last) < eventsHeartbeat {
 		return true
 	}
 	if _, err := w.WriteString(": ping\n\n"); err != nil {
+		observability.Warn(ctx, "portal events heartbeat write failed", err)
 		return false
 	}
 	if err := w.Flush(); err != nil {
+		observability.Warn(ctx, "portal events heartbeat flush failed", err)
 		return false
 	}
 	*last = time.Now()
 	return true
 }
 
-func writeEvent(w *bufio.Writer, name string) {
+func writeEvent(ctx context.Context, w *bufio.Writer, name string) {
 	if _, err := w.WriteString("event: " + name + "\ndata: {}\n\n"); err != nil {
+		observability.Warn(ctx, "portal event write failed", err, "event", name)
 		return
 	}
-	_ = w.Flush()
+	if err := w.Flush(); err != nil {
+		observability.Warn(ctx, "portal event flush failed", err, "event", name)
+	}
 }

@@ -25,6 +25,14 @@ the registry. What is left is **the first deploy, which has never run**, and the
 parameter. Nothing is deployed, nothing is committed, and nothing has moved real money.
 [PLAN.md § What is actually left](PLAN.md) is the ordered list.
 
+## Error observability
+
+The API uses `api-commons/observability` and `api-commons/observability/fiber`. Every RFC 7807 response is logged once
+at the HTTP boundary (`WARN` for 4xx, `ERROR` for 5xx) with `request_id`, method, path, problem type and the internal
+cause when available. `X-Request-ID` is preserved or generated before panic recovery, returned to callers and exposed
+through CORS. Internal causes are never serialized. Logs exclude tokens, HMAC values, tax IDs, invoice/customer
+payloads and other unnecessary PII. This adds no OpenTelemetry exporter or custom metric.
+
 | Path | What is there |
 |---|---|
 | `api/internal/domain/brcal` | Civil dates, Brazilian national holiday calendar, business-day roll-forward. Tested. |

@@ -48,7 +48,11 @@ func main() {
 		slog.Error("opening plan", "file", *file, "error", err)
 		os.Exit(2)
 	}
-	defer func() { _ = f.Close() }()
+	defer func() {
+		if closeErr := f.Close(); closeErr != nil {
+			slog.Warn("closing plan failed", "file", *file, "err", closeErr)
+		}
+	}()
 
 	plan, err := provision.Parse(f)
 	if err != nil {

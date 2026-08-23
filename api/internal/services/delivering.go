@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"time"
 
+	"gopkg.aoctech.app/api-commons/observability"
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
 	"gopkg.aoctech.app/billing/api/internal/repositories"
 )
@@ -220,10 +221,16 @@ func (d *Deliverer) post(ctx context.Context, e *billing.WebhookEndpoint, ev *bi
 	if err != nil {
 		return 0, err
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			observability.Warn(ctx, "webhook response body close failed", closeErr, "event_id", ev.ID)
+		}
+	}()
 	// Drained so the connection can be reused. An undrained body is a new TCP
 	// handshake per delivery, which for a job that retries is a lot of them.
-	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+	if _, err := io.Copy(io.Discard, io.LimitReader(resp.Body, 4096)); err != nil {
+		return resp.StatusCode, fmt.Errorf("draining endpoint response: %w", err)
+	}
 
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		return resp.StatusCode, fmt.Errorf("endpoint answered %d", resp.StatusCode)

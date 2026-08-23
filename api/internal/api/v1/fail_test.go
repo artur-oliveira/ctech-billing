@@ -61,7 +61,7 @@ func TestInternalErrorsAreLoggedAndNotDisclosed(t *testing.T) {
 	var line struct {
 		Level     string `json:"level"`
 		Msg       string `json:"msg"`
-		Error     string `json:"error"`
+		Error     string `json:"err"`
 		RequestID string `json:"request_id"`
 		Path      string `json:"path"`
 	}
@@ -82,10 +82,9 @@ func TestInternalErrorsAreLoggedAndNotDisclosed(t *testing.T) {
 	}
 }
 
-// A 4xx is the caller being told no. It is already in the access log with its
-// status, and logging it at error level teaches whoever reads the group that
-// the level means nothing.
-func TestClientErrorsAreNotLoggedAsFailures(t *testing.T) {
+// A 4xx is observable as a warning, not as an operational failure. This keeps
+// every rejected request correlated without polluting the ERROR level.
+func TestClientErrorsAreLoggedAsWarnings(t *testing.T) {
 	for _, err := range []error{
 		repositories.ErrNotFound,
 		repositories.ErrConcurrentModification,
@@ -94,8 +93,15 @@ func TestClientErrorsAreNotLoggedAsFailures(t *testing.T) {
 		if status >= 500 {
 			t.Fatalf("%v mapped to %d", err, status)
 		}
-		if logged != "" {
-			t.Errorf("%v was logged: %s", err, logged)
+		var line struct {
+			Level     string `json:"level"`
+			RequestID string `json:"request_id"`
+		}
+		if e := json.Unmarshal([]byte(logged), &line); e != nil {
+			t.Fatalf("log line is not JSON: %v\n%s", e, logged)
+		}
+		if line.Level != "WARN" || line.RequestID == "" {
+			t.Errorf("%v log = level %q request_id %q", err, line.Level, line.RequestID)
 		}
 	}
 }

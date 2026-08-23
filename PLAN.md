@@ -328,6 +328,8 @@ gate.** Both sides of the payment path are now built — billing's, and wallet's
   that would file a stranger's purchase in somebody's wallet history.
 
 ## Phase 4 — Dunning, audit, observability
+- [x] Shared error observability via `ctech-go-common`: correlated Request ID, one structured boundary log for every
+      RFC 7807 response, and non-serialized internal causes.
 - [x] **Dunning** (`internal/domain/billing/dunning.go`, `services/dunning.go`, `cmd/dunning`).
       The premise in OVERVIEW.md § 9.2 needed correcting first: "retry policy" is a card-rail
       idea, and PIX is a pull — billing cannot debit anybody, so there is no charge to retry.

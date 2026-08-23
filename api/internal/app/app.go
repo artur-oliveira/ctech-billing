@@ -267,13 +267,7 @@ func newFiber(cfg *config.Config) *fiber.App {
 		// whatever the error string happened to say.
 		ErrorHandler: func(c fiber.Ctx, err error) error {
 			if p := problem.FromError(err); p != nil {
-				if p.Status >= 500 {
-					slog.Error("request failed",
-						"error", err,
-						"request_id", middleware.GetRequestID(c),
-						"path", c.Path())
-				}
-				return p.Send(c)
+				return p.WithCause(err).Send(c)
 			}
 			return c.SendStatus(fiber.StatusNoContent)
 		},
@@ -321,11 +315,12 @@ func newFiber(cfg *config.Config) *fiber.App {
 		corsCfg.AllowOrigins = cfg.CorsAllowedOrigins
 		corsCfg.AllowCredentials = true
 	}
-	app.Use(cors.New(corsCfg))
+	app.Use(middleware.RequestID())
 	// A panic with no stack is a log line that says a request died and nothing
 	// about where. Fiber's default leaves the trace off; the cost of turning it
 	// on is paid only when something already went wrong.
 	app.Use(recover.New(recover.Config{EnableStackTrace: true}))
+	app.Use(cors.New(corsCfg))
 
 	// The access log, in ctech-wallet's, ctech-poker's and ctech-dfe's shape —
 	// one JSON object per request, parsed straight by the CloudWatch metric

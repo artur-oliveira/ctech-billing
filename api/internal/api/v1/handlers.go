@@ -3,7 +3,6 @@ package v1
 import (
 	"errors"
 	"fmt"
-	"log/slog"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
@@ -76,14 +75,7 @@ func fail(c fiber.Ctx, err error) error {
 	if p == nil {
 		return c.SendStatus(fiber.StatusNoContent)
 	}
-	if p.Status >= 500 {
-		slog.ErrorContext(c.Context(), "request failed",
-			"error", err,
-			"request_id", middleware.GetRequestID(c),
-			"method", c.Method(),
-			"path", c.Path())
-	}
-	return p.Send(c)
+	return p.WithCause(err).Send(c)
 }
 
 func (h *handlers) createCustomer(c fiber.Ctx) error {

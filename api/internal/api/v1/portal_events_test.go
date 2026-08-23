@@ -3,6 +3,7 @@ package v1
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"strings"
 	"testing"
 	"time"
@@ -39,7 +40,7 @@ func TestIsSettledEndsTheWaitOnEveryPaidShape(t *testing.T) {
 func TestWriteEventIsWellFormedSSE(t *testing.T) {
 	var buf bytes.Buffer
 	w := bufio.NewWriter(&buf)
-	writeEvent(w, "paid")
+	writeEvent(context.Background(), w, "paid")
 
 	got := buf.String()
 	// A frame the browser will not parse is worse than no frame: the connection
@@ -56,7 +57,7 @@ func TestBeatStaysQuietUntilTheHeartbeatIsDue(t *testing.T) {
 	var buf bytes.Buffer
 	w := bufio.NewWriter(&buf)
 
-	if !beat(w, new(time.Now())) {
+	if !beat(context.Background(), w, new(time.Now())) {
 		t.Fatal("beat reported the client gone on a healthy writer")
 	}
 	if buf.Len() != 0 {
@@ -65,7 +66,7 @@ func TestBeatStaysQuietUntilTheHeartbeatIsDue(t *testing.T) {
 
 	stale := time.Now().Add(-2 * eventsHeartbeat)
 	before := stale
-	if !beat(w, &stale) {
+	if !beat(context.Background(), w, &stale) {
 		t.Fatal("beat reported the client gone on a healthy writer")
 	}
 	if !strings.HasPrefix(buf.String(), ":") {

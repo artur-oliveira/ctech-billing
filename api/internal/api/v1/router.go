@@ -94,8 +94,6 @@ func Register(app *fiber.App, d Deps) {
 		h.links = d.Links
 	}
 
-	app.Use(middleware.RequestID())
-
 	v1 := app.Group("/v1.0")
 	// Both unauthenticated, and neither behind the tenant resolver: a probe has
 	// no credential, and the balancer that runs one is not a tenant. What that
