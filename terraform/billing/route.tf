@@ -17,6 +17,10 @@ resource "aws_ssm_parameter" "route" {
   value = jsonencode({
     hostname         = local.api_domain
     internalHostname = local.internal_domain
+    # HAProxy's own 503 page (backend down) has no CORS headers otherwise,
+    # which breaks the SPA's error handling on outage. Same-origin allow,
+    # matching ctech-lbalancer's default_routes convention for this host.
+    corsOrigin       = local.app_domain
     asg              = aws_autoscaling_group.this.name
     port             = local.nginx_port
     healthPath       = local.health_path

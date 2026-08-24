@@ -8,3 +8,4 @@ environment = "prod"
 portal_organization_id = "ctech"
 
 max_size = 1
+os_family = "alpine"
