@@ -63,7 +63,7 @@ concurrency:
 jobs:
   changes:
     name: Detect changes
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-26.04-arm
     outputs:
       infra: ${{ steps.decide.outputs.infra }}
       scopes: ${{ steps.decide.outputs.scopes }}

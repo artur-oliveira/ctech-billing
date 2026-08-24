@@ -37,7 +37,7 @@ jobs:
   # the source, which is what makes this the right first gate.
   static:
     name: Static analysis
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-26.04-arm
     defaults:
       run:
         working-directory: api
@@ -89,7 +89,7 @@ jobs:
   api:
     name: API
     needs: static
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-26.04-arm
     defaults:
       run:
         working-directory: api
@@ -128,7 +128,7 @@ jobs:
   ui:
     name: UI
     needs: api
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-26.04-arm
     defaults:
       run:
         working-directory: ui
