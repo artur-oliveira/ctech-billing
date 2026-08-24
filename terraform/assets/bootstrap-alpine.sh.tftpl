@@ -1,0 +1,190 @@
+#!/bin/bash
+# Alpine/OpenRC equivalent of terraform/assets/bootstrap.sh.tftpl. Same
+# division of labor: everything every CTech service does the same way is a
+# script in ${"$"}{env}-ctech-ec2-scripts-alpine, fetched at boot under the
+# content hash recorded in SSM; what stays here is billing's own static env,
+# SSM parameter list, log shipping config, and the leader-elected scheduled
+# jobs.
+#
+# Names in ${"$"}{...} are substituted by templatefile(); anything written as
+# $${...} is left alone for bash. Heredocs use quoted delimiters so the
+# scripts they write are not expanded at install time.
+set -euxo pipefail
+
+CTECH_SCRIPTS_ALPINE_BUCKET='${ec2_scripts_alpine_bucket}'
+CTECH_SCRIPTS_ALPINE_VERSION='${ec2_scripts_alpine_version}'
+ctech_run(){ s="$1"; shift; ctech-ec2-agent s3-cp -bucket "$CTECH_SCRIPTS_ALPINE_BUCKET" -key "$CTECH_SCRIPTS_ALPINE_VERSION/$s" -dest "/tmp/$s" >/dev/null; bash "/tmp/$s" "$@"; }
+
+ctech_run setup-base.sh ctech-billing nginx
+ctech_run setup-swap.sh 256
+ctech_run setup-dualstack.sh
+ctech_run setup-cloudflare-ca.sh
+
+# ── SSM Agent (conditional) ──────────────────────────────────────────────────
+# amazon-ssm-agent is baked into every Alpine AMI unconditionally by
+# ctech-cdk's Packer pipeline, unlike AL2023's conditional dnf install —
+# disabling it here stops the already-installed agent rather than skipping
+# its installation. Same trade-off knob as ctech-lbalancer's alpine bootstrap.
+if [ '${enable_ssm_agent}' != 'true' ]; then
+  rc-update del amazon-ssm-agent default 2>/dev/null || true
+  rc-service amazon-ssm-agent stop 2>/dev/null || true
+fi
+
+# ── Static environment (non-secret) ──────────────────────────────────────────
+cat > /etc/app-static.env << 'STATICENV'
+ENVIRONMENT=${environment}
+TABLE_PREFIX=${table_prefix}
+AWS_REGION=${aws_region}
+AWS_USE_DUALSTACK_ENDPOINT=true
+PORT=${app_port}
+SERVICE_AUDIENCE=${service_audience}
+CHECKOUT_BASE_URL=${checkout_base_url}
+PORTAL_ORGANIZATION_ID=${portal_organization_id}
+CORS_ALLOWED_ORIGINS=${cors_allowed_origins}
+STATICENV
+
+# ── Secrets, read from SSM at every start ────────────────────────────────────
+# Same read-at-start contract as the AL2023 script: nothing is written to
+# disk, a missing parameter yields an empty value on purpose.
+ctech_run setup-ssm-env.sh \
+  VALKEY_BASE=${ssm_valkey_url} \
+  CTECH_INTERNAL_URL=${ssm_account_internal_url} \
+  CTECH_ISSUER_URL=${ssm_account_app_url} \
+  CTECH_JWKS_URL=${ssm_account_jwks_url} \
+  WALLET_BASE_URL=${ssm_wallet_internal_url} \
+  WALLET_CLIENT_ID=${ssm_wallet_client_id} \
+  WALLET_CLIENT_SECRET=${ssm_wallet_client_secret} \
+  WALLET_WEBHOOK_SECRET=${ssm_wallet_webhook_secret} \
+  CHECKOUT_LINK_SECRET=${ssm_checkout_link_secret} \
+  FIELD_ENCRYPTION_KEY=${ssm_field_encryption_key} \
+  EMAIL_FROM=${ssm_email_from}
+
+cat > /opt/app/service-env.sh << 'SERVICEENV'
+if [ -n "$VALKEY_BASE" ]; then VALKEY_URL="$${VALKEY_BASE%/}/${valkey_db}"; else VALKEY_URL=""; fi
+WALLET_TOKEN_URL="$CTECH_INTERNAL_URL/v1.0/token"
+export VALKEY_URL WALLET_TOKEN_URL
+SERVICEENV
+chmod 0755 /opt/app/service-env.sh
+
+ctech_run setup-realip.sh ${vpc_cidr}
+
+# Two app processes, loopback-only (app_port and app_port_alt), so nginx
+# round-robins between them and deploy.sh rolls one at a time instead of
+# restarting the only process. Same trade-off note as AL2023: watch memory
+# on a t4g.nano if it becomes tight.
+ctech_run setup-nginx.sh ${nginx_port} ${app_port} ${health_path} 100 1m ${app_port_alt}
+ctech_run setup-app-service.sh "CTech Billing API" app ${app_port_alt}
+ctech_run setup-deploy.sh ${deployments_bucket} app "http://127.0.0.1:${nginx_port}${health_path}" sweep reconcile deliver dunning
+ctech_run setup-logs.sh ${logs_bucket} ${s3_prefix} ctech-billing /var/log/app /var/log/nginx
+
+# ── ctech-ec2-agent logs-tail ────────────────────────────────────────────────
+# Replaces the AL2023 CloudWatch Agent (musl has no working build of it).
+# Two log groups need two independent logs-tail daemons — logsTailConfig
+# holds exactly one logGroup per config file — so setup-ctech-ec2-agent.sh is
+# called twice with distinct service-name suffixes.
+#
+# Stream names come out shaped {prefix}/{instanceID} (ctech-ec2-agent's
+# streamName(), prefix first), not AL2023's {instance_id}/{suffix} with the
+# bare app.log stream left suffix-less — a one-time, cosmetic change to any
+# saved CloudWatch Logs Insights query or dashboard filter built against the
+# old shape.
+cat > /tmp/ctech-logs-app.json << 'LOGSAPP'
+{
+  "logGroup": "${log_group_app}",
+  "files": [
+    { "path": "/var/log/app/app.log",  "streamPrefix": "app" },
+    { "path": "/var/log/app/app2.log", "streamPrefix": "app2" },
+    { "path": "/var/log/app/jobs.log", "streamPrefix": "jobs" }
+  ]
+}
+LOGSAPP
+ctech_run setup-ctech-ec2-agent.sh /tmp/ctech-logs-app.json app
+
+cat > /tmp/ctech-logs-nginx.json << 'LOGSNGINX'
+{
+  "logGroup": "${log_group_nginx}",
+  "files": [
+    { "path": "/var/log/nginx/access.log", "streamPrefix": "access" },
+    { "path": "/var/log/nginx/error.log",  "streamPrefix": "error" }
+  ]
+}
+LOGSNGINX
+ctech_run setup-ctech-ec2-agent.sh /tmp/ctech-logs-nginx.json nginx
+
+# ── The scheduled jobs ───────────────────────────────────────────────────────
+# job.sh is unchanged in shape from AL2023's: leader-election, env sourcing,
+# binary-exists check, then exec. Only the leader-election call itself
+# changes — ctech-ec2-agent asg-describe + jq instead of the AWS CLI.
+#
+# Only the leader instance runs a job. Both daily jobs are idempotent, so a
+# double run is safe rather than wrong.
+cat > /opt/app/job.sh << 'JOB'
+#!/bin/bash
+set -euo pipefail
+JOB_BIN="$1"; shift
+export AWS_USE_DUALSTACK_ENDPOINT=true
+
+TOKEN=$(curl -sf -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 60")
+SELF=$(curl -sf -H "X-aws-ec2-metadata-token: $TOKEN" "http://169.254.169.254/latest/meta-data/instance-id")
+LEADER=$(ctech-ec2-agent asg-describe -names "ASG_NAME_PLACEHOLDER" \
+  | jq -r '.AutoScalingGroups[0].Instances[] | select(.LifecycleState=="InService") | .InstanceId' \
+  | sort | head -n1)
+# An empty answer means the ASG could not be described. Running is the safe
+# side of that ambiguity: every job here is idempotent, and skipping means an
+# invoice that is never generated or a customer never reminded.
+if [ -n "$LEADER" ] && [ "$SELF" != "$LEADER" ]; then
+  echo "{\"msg\":\"not the leader, skipping\",\"job\":\"$JOB_BIN\",\"leader\":\"$LEADER\",\"self\":\"$SELF\"}"
+  exit 0
+fi
+
+set -a
+. /etc/app-static.env
+if [ -f /opt/app/current/release.env ]; then . /opt/app/current/release.env; fi
+set +a
+. /opt/app/load-ssm-env.sh
+. /opt/app/service-env.sh
+exec /opt/app/current/"$JOB_BIN" "$@"
+JOB
+sed -i "s|ASG_NAME_PLACEHOLDER|${asg_name}|g" /opt/app/job.sh
+chmod +x /opt/app/job.sh
+chown webapp:webapp /var/log/app
+
+# busybox crond's finest granularity is one minute. Every AL2023 timer maps
+# cleanly onto that floor here — billing-deliver's 60s interval is exactly
+# cron's minimum, unlike ctech-lbalancer's 30s reconcile, which needed a
+# supervised while-loop instead.
+#
+# Persistent=true (sweep, dunning: a missed daily tick is caught up on next
+# boot) has no busybox cron equivalent and is NOT replicated — accepted risk,
+# see docs/specs/2026-08-23-alpine-billing-migration.md decision 3. A missed
+# tick means that day's invoices/reminders wait for tomorrow's tick; each job
+# is idempotent so a normal run the next day is not itself a duplicate risk.
+# RandomizedDelaySec has no equivalent either and is dropped — its purpose
+# (avoiding a fleet-wide thundering herd) does not apply to a min_size=1 ASG.
+
+# 07:10 UTC is 04:10 in America/Sao_Paulo, the civil day the sweep bills.
+(crontab -l 2>/dev/null; echo "10 7 * * * /opt/app/job.sh sweep >> /var/log/app/jobs.log 2>&1") | crontab -
+
+# Every minute — a consumer waiting to hear that an invoice was paid is a
+# customer waiting to be let back into a product.
+(crontab -l 2>/dev/null; echo "* * * * * /opt/app/job.sh deliver >> /var/log/app/jobs.log 2>&1") | crontab -
+
+# 08:10 UTC — 05:10 in Sao Paulo, an hour after the sweep. Ordering matters:
+# an invoice generated this morning must exist before the pass that decides
+# whether to remind anybody about it.
+(crontab -l 2>/dev/null; echo "10 8 * * * /opt/app/job.sh dunning >> /var/log/app/jobs.log 2>&1") | crontab -
+
+mkdir -p /etc/periodic/hourly
+cat > /etc/periodic/hourly/billing-reconcile << 'RECONCILE'
+#!/bin/bash
+/opt/app/job.sh reconcile >> /var/log/app/jobs.log 2>&1
+RECONCILE
+chmod +x /etc/periodic/hourly/billing-reconcile
+
+# crond is already enabled on the default runlevel by the Alpine AMI itself
+# (same assumption setup-realip.sh's /etc/periodic/daily drop already makes
+# elsewhere) — no rc-update/rc-service call needed here.
+
+# ── First boot ───────────────────────────────────────────────────────────────
+# A brand-new environment has no artifact yet; that is a wait, not a failure.
+ctech_run bootstrap-deploy.sh ${deployments_bucket} ${current_artifact_key}

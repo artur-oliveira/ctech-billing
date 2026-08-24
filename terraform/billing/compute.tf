@@ -44,6 +44,21 @@ data "aws_ssm_parameter" "al2023_arm64_ami" {
   name = "/aws/service/ami-amazon-linux-latest/al2023-ami-minimal-kernel-default-arm64"
 }
 
+data "aws_ssm_parameter" "alpine_arm64_ami" {
+  count = var.os_family == "alpine" ? 1 : 0
+  name  = "/ctech/${var.environment}/ami/alpine/arm64"
+}
+
+data "aws_ssm_parameter" "ec2_scripts_alpine_bucket" {
+  count = var.os_family == "alpine" ? 1 : 0
+  name  = "/ctech/${var.environment}/ec2-scripts-alpine/bucket"
+}
+
+data "aws_ssm_parameter" "ec2_scripts_alpine_version" {
+  count = var.os_family == "alpine" ? 1 : 0
+  name  = "/ctech/${var.environment}/ec2-scripts-alpine/version"
+}
+
 # Egress is open; ingress is only the edge. These instances have no public IPv4,
 # so "open egress" means IPv6 and the VPC — there is no inbound path that does
 # not come through HAProxy.
@@ -86,9 +101,12 @@ data "aws_ssm_parameter" "ec2_scripts_version" {
 }
 
 locals {
-  bootstrap_sh = templatefile("${path.module}/../assets/bootstrap.sh.tftpl", {
+  bootstrap_vars = {
     ec2_scripts_bucket  = data.aws_ssm_parameter.ec2_scripts_bucket.value
     ec2_scripts_version = data.aws_ssm_parameter.ec2_scripts_version.value
+
+    ec2_scripts_alpine_bucket  = var.os_family == "alpine" ? data.aws_ssm_parameter.ec2_scripts_alpine_bucket[0].value : ""
+    ec2_scripts_alpine_version = var.os_family == "alpine" ? data.aws_ssm_parameter.ec2_scripts_alpine_version[0].value : ""
 
     aws_region  = var.aws_region
     environment = var.environment
@@ -129,7 +147,9 @@ locals {
     ssm_checkout_link_secret  = local.ssm_paths.checkout_link_secret
     ssm_field_encryption_key  = local.ssm_paths.field_encryption_key
     ssm_email_from            = local.ssm_paths.email_from
-  })
+  }
+
+  bootstrap_sh = var.os_family == "alpine" ? templatefile("${path.module}/../assets/bootstrap-alpine.sh.tftpl", local.bootstrap_vars) : templatefile("${path.module}/../assets/bootstrap.sh.tftpl", local.bootstrap_vars)
 
   # No gzip+base64 wrapper any more: the bulk it was compressing now lives in S3
   # and is fetched at boot, so what is left fits in user_data uncompressed and
@@ -140,7 +160,7 @@ locals {
 resource "aws_launch_template" "this" {
   name          = "${local.asg_name}-lt"
   instance_type = var.instance_type
-  image_id      = data.aws_ssm_parameter.al2023_arm64_ami.value
+  image_id      = var.os_family == "alpine" ? data.aws_ssm_parameter.alpine_arm64_ami[0].value : data.aws_ssm_parameter.al2023_arm64_ami.value
 
   # T4g has no launch credits; "standard" matches ec2.CpuCredits.STANDARD.
   credit_specification {
@@ -150,7 +170,7 @@ resource "aws_launch_template" "this" {
   block_device_mappings {
     device_name = "/dev/xvda"
     ebs {
-      volume_size           = 4
+      volume_size           = var.os_family == "alpine" ? 1 : 4
       volume_type           = "gp3"
       delete_on_termination = true
       encrypted             = true
@@ -207,7 +227,7 @@ resource "aws_autoscaling_group" "this" {
   health_check_type         = "EC2"
   health_check_grace_period = 180
 
-  capacity_rebalance        = true
+  capacity_rebalance = true
 
   mixed_instances_policy {
     launch_template {
