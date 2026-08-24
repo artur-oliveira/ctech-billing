@@ -140,8 +140,8 @@ fi
 set -a
 . /etc/app-static.env
 if [ -f /opt/app/current/release.env ]; then . /opt/app/current/release.env; fi
-set +a
 . /opt/app/load-ssm-env.sh
+set +a
 . /opt/app/service-env.sh
 exec /opt/app/current/"$JOB_BIN" "$@"
 JOB
