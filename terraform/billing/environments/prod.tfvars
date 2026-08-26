@@ -7,5 +7,5 @@ environment = "prod"
 # usuário", which reads like missing customer data rather than a typo here.
 portal_organization_id = "ctech"
 
-max_size = 1
+max_size = 2
 os_family = "alpine"
