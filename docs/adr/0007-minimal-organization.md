@@ -1,6 +1,9 @@
 # ADR 0007 — Minimal `Organization`, no company registry, no CNPJ
 
-Status: Accepted (2026-08-15) · Records decisions **D10** and **D4**
+Status: Accepted (2026-08-15) · **Superseded in part by
+[ADR 0021](0021-platform-organizations-and-companies.md) (2026-08-29)** — the trigger below fired.
+The minimal organization described here is what billing ships today; ADR 0021 records what replaces
+it and why the issuer fields this ADR forbade were later accepted. · Records decisions **D10** and **D4**
 
 ## Context
 

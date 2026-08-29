@@ -15,7 +15,7 @@ re-litigate settled questions. Every ADR here is already decided — the analysi
 | [0004](0004-pix-on-invoice-via-wallet.md) | Collection rail: PIX on the invoice, through wallet | D2, D11 |
 | [0005](0005-payout-gate.md) | External merchants built but gated by `payout_status` | D3, D9 |
 | [0006](0006-due-date-roll-forward.md) | Weekend/holiday due dates roll **forward** | D5 |
-| [0007](0007-minimal-organization.md) | Minimal `Organization`, no company registry, no CNPJ | D10, D4 |
+| [0007](0007-minimal-organization.md) | Minimal `Organization`, no company registry, no CNPJ | superseded in part by 0021 (2026-08-29) |
 | [0008](0008-opaque-metadata.md) | `metadata` is an opaque key/value map | D8 |
 | [0009](0009-retention-and-ttl.md) | Retention periods and DynamoDB TTL | D12 |
 | [0010](0010-infrastructure-as-terraform.md) | Infrastructure as Terraform, not CDK | — (2026-08-15) |
@@ -29,6 +29,7 @@ re-litigate settled questions. Every ADR here is already decided — the analysi
 | [0018](0018-subscriptions-bill-several-prices.md) | A subscription bills one or more prices | replaces the one-item MVP rule |
 | [0019](0019-zero-total-invoices.md) | A zero-total invoice is issued, then settled on issue | — (2026-08-16) |
 | [0020](0020-portal-on-cloudflare-workers.md) | The portal is served by Cloudflare Workers Static Assets, not S3 + CloudFront | supersedes the hosting half of 0013 (2026-08-20) |
+| [0021](0021-platform-organizations-and-companies.md) | Organization is a workspace and Company is a CNPJ; both move out of billing, into ctech-account and ctech-dfe | reopens 0007, whose trigger fired (2026-08-29) |
 
 ## Status of the record itself
 
