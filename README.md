@@ -50,7 +50,7 @@ payloads and other unnecessary PII. This adds no OpenTelemetry exporter or custo
 | `api/cmd/server` | The service entry point. |
 | `api/cmd/sweep` | The daily invoice sweep, as a one-shot binary. Deliberately not a route: the sweep is the one cross-tenant read path, so it has no HTTP surface to mis-scope. `sweep -date=YYYY-MM-DD` re-runs a missed day, which is safe because a period already billed is skipped, not billed twice. |
 | `api/cmd/seed` | Applies a tenant plan (`api/tenants/*.json`) to one mode. Create-or-skip on every row, so it is safe to re-run and safe to extend. A binary and not a route, for the same reason the sweep is one. |
-| `api/cmd/dunning` | The daily pass over invoices nobody has paid: a reminder before the due date and three after it, then PAST_DUE, then UNCOLLECTIBLE. It is **not** charge retry — PIX is a pull, so there is nothing to retry — which is why the policy is a schedule of messages and state changes rather than a backoff. `-date` re-runs a missed day, safely: each invoice stores the step it is on. |
+| `api/cmd/dunning` | The daily pass over invoices nobody has paid, on **the schedule each invoice was issued under** — copied onto it at finalization from the product's policy, the organization's, or the built-in default, so editing a policy never rewrites what happens to a bill already being chased. By default: a reminder before the due date and three after it, then PAST_DUE, then UNCOLLECTIBLE. It is **not** charge retry — PIX is a pull, so there is nothing to retry — which is why the policy is a schedule of messages and state changes rather than a backoff. `-date` re-runs a missed day, safely: each invoice stores the step it is on. |
 | `api/cmd/deliver` | Outbound webhooks, on a one-minute timer. Two passes: match queued events to endpoints, then make one signed HTTP attempt each, with exponential backoff. |
 | `api/cmd/reconcile` | Asks wallet about every charge billing is still waiting on, hourly. A webhook is a delivery and deliveries fail; without this, a lost notification is a customer who paid looking at an invoice that says they did not. Separate from `sweep` because it runs on a different clock — invoicing is a daily fact about a calendar, an unanswered charge is an hourly fact about an integration. |
 | `api/tests/integration` | Repository, API and payment tests against a real DynamoDB (`make test-integration`): subscribe → invoice on the right date with a holiday-adjusted due date, invoice → QR code → webhook → `PAID` against a fake wallet that implements the spec, the four reconciliation outcomes, a tax id proven encrypted by reading the raw item, the dunning policy walked one step per day, and two CTech services in one tenant proven to receive only their own webhooks. |
@@ -89,6 +89,17 @@ parameter and no `livemode` flag anywhere, deliberately (ADR 0003).
 | `POST /v1.0/console/invoices/:id/finalize` · `/void` · `/credit-notes` | `billing:invoices:write` |
 | `POST /v1.0/console/customers` | `billing:customers:write` |
 | `POST /v1.0/console/products` · `POST /v1.0/console/prices` · `POST /v1.0/console/prices/:id/archive` | `billing:products:write` |
+| `POST /v1.0/console/customers/:id/tax-id` | `billing:customers:write` |
+| `PUT /v1.0/console/settings/dunning` · `PUT /v1.0/console/products/:id/dunning` | `billing:invoices:write` |
+
+Revealing a tax id is a `POST` because it has an effect — it writes the audit row
+naming who looked — and the row is written **before** the value is returned: the
+other order loses the record exactly when the response fails to arrive.
+
+The dunning schedule is behind the invoice write scope rather than the catalogue
+one on both routes: what it changes is how unpaid bills are chased, and somebody
+who may set a price is not thereby somebody who may decide when a customer loses
+access.
 
 Each is a no-op when the invoice is already in the state it asks for — a second
 click must not spend a second invoice number or write a second audit row — and

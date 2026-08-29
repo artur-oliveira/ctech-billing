@@ -554,7 +554,9 @@ func (r *InvoiceRepository) AdvanceDunning(ctx context.Context, inv *billing.Inv
 		sets = append(sets, "#lr = :now")
 	}
 
-	if date, ok := billing.DunningDate(inv.DueDate, next); ok {
+	// The invoice's own schedule, not a global one: an invoice is chased on the
+	// policy it was issued under, whatever the product's policy has become since.
+	if date, ok := inv.Schedule().DunningDate(inv.DueDate, next); ok {
 		names["#spk"], names["#ssk"] = "schedule_pk", "schedule_sk"
 		values[":spk"] = &types.AttributeValueMemberS{Value: SchedulePK(inv.Livemode, JobInvoiceSettlement, date)}
 		values[":ssk"] = &types.AttributeValueMemberS{Value: inv.ID}

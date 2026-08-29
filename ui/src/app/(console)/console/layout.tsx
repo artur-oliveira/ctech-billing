@@ -15,10 +15,12 @@ import {useAuth} from "@/lib/auth/AuthContext"
 import {useMode} from "@/lib/console/useMode"
 
 const NAV = [
+  {href: "/console/overview", label: "Visão geral"},
   {href: "/console/invoices", label: "Faturas"},
   {href: "/console/subscriptions", label: "Assinaturas"},
   {href: "/console/customers", label: "Clientes"},
   {href: "/console/catalog", label: "Catálogo"},
+  {href: "/console/settings", label: "Configurações"},
 ] as const
 
 /**
@@ -67,7 +69,7 @@ export default function ConsoleLayout({children}: LayoutProps<"/console">) {
       <header className="border-b border-border">
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-4 px-4">
           <div className="flex min-w-0 items-center gap-4">
-            <Link href="/console/invoices" className="flex shrink-0 items-center gap-2.5">
+            <Link href="/console/overview" className="flex shrink-0 items-center gap-2.5">
               <Image
                 src="/android-chrome-192x192.png"
                 alt=""

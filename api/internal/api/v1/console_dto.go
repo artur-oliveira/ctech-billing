@@ -227,9 +227,15 @@ type productResponse struct {
 	ID       string           `json:"id"`
 	Name     string           `json:"name"`
 	Active   bool             `json:"active"`
+	OwnerKey string           `json:"owner_key,omitempty"`
 	Metadata billing.Metadata `json:"metadata,omitempty"`
 	Prices   []priceResponse  `json:"prices,omitempty"`
-	Livemode bool             `json:"livemode"`
+	// Dunning is the schedule invoices billing this product follow, always
+	// populated and flagged as inherited or overridden. An empty override is
+	// not "no policy" — it is the organization's, and the screen has to be able
+	// to say which.
+	Dunning  dunningPolicyResponse `json:"dunning"`
+	Livemode bool                  `json:"livemode"`
 }
 
 func newProductResponse(p *billing.Product, prices []billing.Price) productResponse {
@@ -237,7 +243,9 @@ func newProductResponse(p *billing.Product, prices []billing.Price) productRespo
 		ID:       p.ID,
 		Name:     p.Name,
 		Active:   p.Active,
+		OwnerKey: p.OwnerKey,
 		Metadata: p.Metadata,
+		Dunning:  newDunningPolicyResponse(p.DunningPolicy),
 		Livemode: p.Livemode,
 	}
 	for i := range prices {

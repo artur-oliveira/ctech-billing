@@ -4,9 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 
 	"gopkg.aoctech.app/billing/api/internal/config"
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
@@ -151,6 +154,87 @@ func (r *OrganizationRepository) SetPayoutStatus(
 	}
 	org.PayoutStatus = to
 	return nil
+}
+
+// SetDunningPolicy replaces the organization's default dunning schedule, with
+// the audit row that says who changed it.
+//
+// It does not touch a single invoice, and that absence is the design: the
+// schedule is copied onto an invoice when it is finalized, so this changes what
+// happens to invoices issued afterwards and nothing about the ones already
+// being chased. An operator who shortened the policy has not just moved
+// everybody's write-off date forward by three weeks.
+//
+// An empty schedule restores the built-in default rather than disabling dunning:
+// there is no "never chase this" state, because an invoice that is never chased
+// and never written off sits OPEN forever looking like revenue.
+func (r *OrganizationRepository) SetDunningPolicy(
+	ctx context.Context,
+	org *billing.Organization,
+	policy billing.DunningSchedule,
+	actor, requestID string,
+	now time.Time,
+) error {
+	if err := policy.Validate(); err != nil {
+		return err
+	}
+	if actor == "" {
+		return fmt.Errorf("repositories: changing the dunning policy of %s needs an actor", org.ID)
+	}
+
+	names := map[string]string{"#dp": "dunning_policy", "#ua": "updated_at"}
+	values := map[string]types.AttributeValue{
+		":now": &types.AttributeValueMemberS{Value: now.UTC().Format(time.RFC3339Nano)},
+	}
+	expr := "SET #ua = :now REMOVE #dp"
+	if len(policy) > 0 {
+		encoded, err := attributevalue.Marshal(policy)
+		if err != nil {
+			return err
+		}
+		values[":dp"] = encoded
+		expr = "SET #dp = :dp, #ua = :now"
+	}
+
+	auditItem, err := buildAuditItem(org.ID, org.Livemode, AuditEntry{
+		Entity:    EntityOrganization,
+		EntityID:  org.ID,
+		Action:    "organization.dunning_policy_changed",
+		Cause:     billing.CauseManual,
+		Actor:     actor,
+		RequestID: requestID,
+		Before:    describeSchedule(org.DunningPolicy),
+		After:     describeSchedule(policy),
+	}, "", "", now)
+	if err != nil {
+		return err
+	}
+
+	update := r.base.BuildRawUpdateTxItem(
+		TenantPK(org.ID, org.Livemode), new(OrganizationSK()),
+		expr, "attribute_exists(pk)", names, values,
+	)
+	if err := r.base.TransactWrite(ctx, txItems(update, r.audit.BuildPutTxItemIfAbsent(auditItem))); err != nil {
+		return err
+	}
+	org.DunningPolicy = policy.Clone()
+	return nil
+}
+
+// describeSchedule renders a policy for the audit trail.
+//
+// The steps themselves, not a count: "who changed the policy" is only half the
+// question, and the other half — what it was before — is unanswerable from a
+// row that says "6 steps" became "5 steps".
+func describeSchedule(p billing.DunningSchedule) string {
+	if len(p) == 0 {
+		return "padrão"
+	}
+	parts := make([]string, 0, len(p))
+	for _, step := range p {
+		parts = append(parts, fmt.Sprintf("%+d:%s", step.Offset, step.Action))
+	}
+	return strings.Join(parts, " ")
 }
 
 // tables is the set every transition in this repository writes across.

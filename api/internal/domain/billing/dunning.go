@@ -1,6 +1,11 @@
 package billing
 
-import "gopkg.aoctech.app/billing/api/internal/domain/brcal"
+import (
+	"fmt"
+	"slices"
+
+	"gopkg.aoctech.app/billing/api/internal/domain/brcal"
+)
 
 // Dunning: what happens to an invoice nobody pays.
 //
@@ -36,13 +41,18 @@ type DunningStep struct {
 	Action DunningAction
 }
 
-// DunningPolicy is the schedule every unpaid invoice follows.
+// DefaultDunningPolicy is the schedule an invoice follows when nothing
+// overrides it — which is most of them, and deliberately: a merchant who has not
+// thought about dunning gets one that works rather than none.
 //
-// One policy, not one per plan. Per-plan dunning is a real feature and this is
-// deliberately not it: a configurable schedule needs a place to configure it, a
-// migration for existing plans, and a console screen — and none of that changes
-// the outcome for the only tenant that exists. When a merchant needs their own,
-// this slice becomes a field on the plan and the shape does not change.
+// A product may carry its own (Product.DunningPolicy) and an organization may
+// change its default (Organization.DunningPolicy). What an invoice actually
+// follows is **copied onto it when it is finalized**, never looked up while it
+// is being chased — see Invoice.Policy. Editing a policy therefore changes what
+// happens to invoices issued afterwards and nothing about the ones already in
+// flight, which is the only version of this feature that is safe: the invoice
+// stores the step it has reached, and a step index means nothing if the schedule
+// under it can be rewritten.
 //
 // The offsets:
 //
@@ -58,7 +68,7 @@ type DunningStep struct {
 //   - **+30**: give up. UNCOLLECTIBLE, subscription canceled. A month is long
 //     enough that nobody can say they were not told, and short enough that the
 //     books are not carrying a receivable that will never arrive.
-var DunningPolicy = []DunningStep{
+var DefaultDunningPolicy = DunningSchedule{
 	{Offset: -3, Action: DunningRemind},
 	{Offset: 1, Action: DunningRemind},
 	{Offset: 3, Action: DunningRemind},
@@ -67,35 +77,120 @@ var DunningPolicy = []DunningStep{
 	{Offset: 30, Action: DunningAbandon},
 }
 
+// DunningSchedule is an ordered policy. It is a named type rather than a bare
+// slice so the rules that make a schedule valid live with it, and so an empty
+// one is a meaningful value: "use the default".
+type DunningSchedule []DunningStep
+
+// ErrInvalidDunningPolicy reports a schedule that cannot be followed.
+var ErrInvalidDunningPolicy = fmt.Errorf("invalid dunning policy")
+
+// maxDunningSteps bounds a stored policy. It is a guard against a schedule
+// pasted in by mistake, not a product limit: eight reminders is already more
+// mail than anybody reads, and the row is copied onto every invoice.
+const maxDunningSteps = 12
+
+// Validate reports whether this schedule can be followed.
+//
+// Three rules, each of which prevents a specific way of hurting a customer:
+// ordered offsets (a policy that goes backwards performs steps in a sequence
+// nobody wrote), at most one abandon and it last (there is nothing after giving
+// up), and no escalation before the due date (restricting service over a bill
+// that is not yet late).
+func (p DunningSchedule) Validate() error {
+	if len(p) == 0 {
+		return nil // empty means "inherit", and inheriting is always valid
+	}
+	if len(p) > maxDunningSteps {
+		return fmt.Errorf("%w: %d steps is more than %d", ErrInvalidDunningPolicy, len(p), maxDunningSteps)
+	}
+	for i, step := range p {
+		switch step.Action {
+		case DunningRemind, DunningEscalate, DunningAbandon:
+		default:
+			return fmt.Errorf("%w: unknown action %q", ErrInvalidDunningPolicy, step.Action)
+		}
+		if i > 0 && step.Offset <= p[i-1].Offset {
+			return fmt.Errorf("%w: step %d is at day %d, which is not after day %d",
+				ErrInvalidDunningPolicy, i, step.Offset, p[i-1].Offset)
+		}
+		if step.Action == DunningAbandon && i != len(p)-1 {
+			return fmt.Errorf("%w: giving up is the last step, not step %d", ErrInvalidDunningPolicy, i)
+		}
+		if step.Action != DunningRemind && step.Offset < 0 {
+			return fmt.Errorf("%w: %s at day %d would act before the invoice is even late",
+				ErrInvalidDunningPolicy, step.Action, step.Offset)
+		}
+	}
+	return nil
+}
+
+// Clone copies the schedule. Policies are copied onto invoices and must never
+// be shared with the row they came from — the same rule metadata follows
+// (ADR 0008), and for the same reason.
+func (p DunningSchedule) Clone() DunningSchedule {
+	if len(p) == 0 {
+		return nil
+	}
+	return slices.Clone(p)
+}
+
+// ResolveDunningPolicy decides which schedule an invoice is issued under.
+//
+// The order is product, then organization, then the built-in default: the most
+// specific answer somebody actually wrote. Products whose policies **disagree**
+// fall back to the organization's, rather than picking one of them — a
+// subscription that bills two plans with different schedules has no defensible
+// "the" policy, and silently choosing the first item's would make the answer
+// depend on the order somebody added them.
+func ResolveDunningPolicy(org DunningSchedule, products []DunningSchedule) DunningSchedule {
+	var chosen DunningSchedule
+	for _, p := range products {
+		if len(p) == 0 {
+			continue
+		}
+		if chosen == nil {
+			chosen = p
+			continue
+		}
+		if !slices.Equal(chosen, p) {
+			chosen = nil
+			break
+		}
+	}
+	if len(chosen) > 0 {
+		return chosen.Clone()
+	}
+	if len(org) > 0 {
+		return org.Clone()
+	}
+	return DefaultDunningPolicy.Clone()
+}
+
 // DunningDate returns the day step n falls on for an invoice due on dueDate.
-func DunningDate(dueDate brcal.Date, step int) (brcal.Date, bool) {
-	if step < 0 || step >= len(DunningPolicy) {
+func (p DunningSchedule) DunningDate(dueDate brcal.Date, step int) (brcal.Date, bool) {
+	if step < 0 || step >= len(p) {
 		return brcal.Date{}, false
 	}
-	return dueDate.AddDays(DunningPolicy[step].Offset), true
+	return dueDate.AddDays(p[step].Offset), true
 }
 
-// NextDunningStep returns the step after the one just performed, and whether
-// there is one.
-//
-// The step index is stored on the invoice rather than derived from the date,
-// and that is what makes the job re-runnable: running a missed day twice
-// performs each step once, because the invoice has already moved past it.
-func NextDunningStep(current int) (int, bool) {
-	next := current + 1
-	return next, next < len(DunningPolicy)
-}
-
-// DunningActionAt returns what step n does.
-func DunningActionAt(step int) (DunningAction, bool) {
-	if step < 0 || step >= len(DunningPolicy) {
+// ActionAt returns what step n does.
+func (p DunningSchedule) ActionAt(step int) (DunningAction, bool) {
+	if step < 0 || step >= len(p) {
 		return "", false
 	}
-	return DunningPolicy[step].Action, true
+	return p[step].Action, true
 }
 
-// FirstDunningDate is when an invoice first enters the dunning queue.
-func FirstDunningDate(dueDate brcal.Date) brcal.Date {
-	d, _ := DunningDate(dueDate, 0)
+// IsOverdueStep reports whether step n falls after the due date, which is what
+// decides the tone of the message rather than its content.
+func (p DunningSchedule) IsOverdueStep(step int) bool {
+	return step >= 0 && step < len(p) && p[step].Offset > 0
+}
+
+// FirstDunningDate is when an invoice on this schedule first enters the queue.
+func (p DunningSchedule) FirstDunningDate(dueDate brcal.Date) brcal.Date {
+	d, _ := p.DunningDate(dueDate, 0)
 	return d
 }

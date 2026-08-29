@@ -107,7 +107,20 @@ type Invoice struct {
 	// only reaches endpoints that asked for everything.
 	OwnerKey string `dynamodbav:"owner_key,omitempty" json:"-"`
 
-	// DunningStep is which entry of DunningPolicy this invoice has reached. It
+	// Policy is the dunning schedule this invoice was issued under, copied at
+	// finalization and never shared with the product or organization it came
+	// from (the same rule Metadata follows — ADR 0008).
+	//
+	// Copied rather than looked up because DunningStep is an **index into it**.
+	// If the schedule could be edited underneath an invoice in flight, a stored
+	// step would silently come to mean a different day and a different action —
+	// an invoice at step 4 could jump from "third reminder" to "give up".
+	//
+	// Empty on an invoice finalized before per-plan policies existed, which
+	// Schedule() reads as the default.
+	Policy DunningSchedule `dynamodbav:"dunning_policy,omitempty" json:"-"`
+
+	// DunningStep is which entry of Policy this invoice has reached. It
 	// is stored rather than derived from today's date, which is what makes the
 	// job re-runnable: a missed day replayed twice performs each step once,
 	// because the invoice has already moved past it.
@@ -149,6 +162,17 @@ type Invoice struct {
 	// Metadata is copied from the Subscription at generation time, never shared
 	// with it (ADR 0008).
 	Metadata Metadata `dynamodbav:"metadata,omitempty" json:"metadata,omitempty"`
+}
+
+// Schedule is the policy this invoice follows.
+//
+// An invoice with none stored follows the default, which is what every invoice
+// finalized before this field existed does — and is why no backfill is needed.
+func (i *Invoice) Schedule() DunningSchedule {
+	if len(i.Policy) > 0 {
+		return i.Policy
+	}
+	return DefaultDunningPolicy
 }
 
 // AmountDue is what is still owed. Derived, never stored — a stored copy is one

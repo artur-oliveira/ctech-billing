@@ -267,13 +267,30 @@
           is no edit anywhere; the screen says why, and archiving is a second, separate decision.
           An edit button would create a new price behind the operator's back and leave them
           believing they had changed what existing customers pay.
-    - [ ] **C1 (visão geral) and C17 (configurações)** are not built. C1 needs aggregates no
-          endpoint computes, and building it out of four list calls would be a dashboard that
-          lies at page size. C17 has nothing to configure yet: the dunning policy is one policy,
-          numbering has no options, and retention is a constant.
-    - [ ] **Revealing a tax id** is masked everywhere and never revealed. `RecordTaxIDAccess`
-          exists in the repository and no route calls it — a button that showed the whole CPF
-          without writing that row would be worse than not having one.
+    - [x] **C1 (visão geral)**, computed from **one month of invoices** — the same page C2 reads
+          and nothing else. That bound is the design: an overview assembled from four unbounded
+          queries is a screen whose numbers quietly become wrong at the page size nobody tests.
+          Every figure says "this month", the response carries `counted` and `complete`, and the
+          screen states when it could not count the whole month rather than presenting a partial
+          sum as a total. Three amounts (recebido / em aberto no prazo / vencido) rather than one
+          "faturado", because the first question is which of the three is unusual — and below
+          them only counts that are a call to action, including the drafts a half-failed sweep
+          left that nothing will ever pick up.
+    - [x] **C17 (configurações)** with the one thing that is actually configurable. Numbering,
+          retention and the sender address are published as **facts, not fields**: rendering them
+          as disabled inputs would be a settings screen lying about what it controls.
+    - [x] **Revealing a tax id**, audited. `POST /console/customers/:id/tax-id` — a POST because
+          it has an effect, and behind the *write* scope because reading a customer is not being
+          trusted with their CPF. The audit row is written **before** the value is returned: the
+          other order loses the record exactly when the response fails to arrive, which is the
+          case somebody would later dispute. The revealed value lives in component state and
+          never in the query cache, so leaving and coming back re-asks — and re-asking writes
+          another row, which is the correct cost of looking twice.
+    - [x] **The way into the console from the portal.** A "Console" link in the portal header
+          that renders only for somebody who actually holds an organization, decided by probing
+          the console's own session route. A permanent link would send the majority of readers to
+          a screen explaining that the product they clicked is not theirs — which is the "which
+          one are you?" question this app is built not to ask.
 
 ## Phase 3 — Invoice generation + payment
 - [x] Invoice-generation sweep (ARCHITECTURE.md § 5), idempotent by construction and proven by a
@@ -440,9 +457,26 @@ gate.** Both sides of the payment path are now built — billing's, and wallet's
     - [x] `cmd/dunning` refuses to start without `EMAIL_FROM` or `CHECKOUT_LINK_SECRET`.
           Running the escalation half of the policy without the reminders that precede it is
           how a customer who was never contacted loses access.
-    - [ ] **Per-plan dunning.** One policy today, deliberately: a configurable schedule needs a
-          place to configure it, a migration, and a console screen, and none of that changes
-          the outcome for the only tenant that exists.
+    - [x] **Per-plan dunning.** A schedule is now `DunningSchedule` — a validated, ordered list
+          — configurable on the **organization** (its default) and overridable on a **product**.
+          Resolution is product, then organization, then the built-in; products that *disagree*
+          fall back to the organization's rather than picking one, because a subscription
+          billing two plans with different schedules has no defensible "the" policy and choosing
+          the first item's would make the answer depend on insertion order.
+
+          **The schedule is copied onto the invoice when it is issued** (`Invoice.Policy`), the
+          same rule metadata follows (ADR 0008), and that is what makes the feature safe rather
+          than merely present: `DunningStep` is an *index into* the policy, so a schedule that
+          could be edited underneath an invoice in flight would silently turn "third reminder"
+          into "give up". Editing a policy changes what happens to invoices issued afterwards and
+          nothing about the ones already being chased — asserted by a test.
+
+          An invoice with no stored policy follows the default, so nothing needed a backfill.
+          Validation refuses the three ways a schedule hurts somebody invisibly: unordered days,
+          an abandon that is not last, and an escalation before the invoice is even late.
+          On the price rather than the product was rejected: a price is immutable and a dunning
+          schedule is an operational decision that should be changeable without re-pricing
+          anybody.
 - ~~Append-only audit log for state transitions~~ — **moved to Phase 1**: audit cannot be applied
   retroactively, and history that was not recorded cannot be reconstructed. The record type and
   the transition causes that feed it already exist.

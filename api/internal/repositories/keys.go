@@ -93,6 +93,7 @@ const (
 	EntityCreditNote     Entity = "CREDIT_NOTE"
 	EntityProduct        Entity = "PRODUCT"
 	EntityPrice          Entity = "PRICE"
+	EntityOrganization   Entity = "ORGANIZATION"
 	EntityAudit          Entity = "AUDIT"
 )
 

@@ -232,6 +232,19 @@ func registerConsole(v1 fiber.Router, d Deps, h *handlers, auth fiber.Handler) {
 
 	console.Get("/session",
 		middleware.RequireUserScope(middleware.ScopeOrganizationRead), ch.session)
+	// C1. Behind the invoices read scope rather than the organization one: every
+	// figure on it is an invoice figure, and a token that may not read invoices
+	// must not read their totals either.
+	console.Get("/overview",
+		middleware.RequireUserScope(middleware.ScopeInvoicesRead), ch.overview)
+
+	// C17. The read is behind the organization scope; changing the dunning
+	// policy is behind the *invoice write* scope, because what it changes is
+	// what happens to unpaid invoices — not what the organization is.
+	console.Get("/settings",
+		middleware.RequireUserScope(middleware.ScopeOrganizationRead), ch.settings)
+	console.Put("/settings/dunning",
+		middleware.RequireUserScope(middleware.ScopeInvoicesWrite), ch.setDunningPolicy)
 
 	console.Get("/invoices",
 		middleware.RequireUserScope(middleware.ScopeInvoicesRead), ch.listInvoices)
@@ -271,6 +284,11 @@ func registerConsole(v1 fiber.Router, d Deps, h *handlers, auth fiber.Handler) {
 		middleware.RequireUserScope(middleware.ScopeCustomersRead), ch.listCustomers)
 	console.Get("/customers/:id",
 		middleware.RequireUserScope(middleware.ScopeCustomersRead), ch.getCustomer)
+	// Revealing a tax id is a POST because it has an effect — it records who
+	// looked — and it is behind the *write* scope for the same reason: reading a
+	// customer is not being trusted with their CPF.
+	console.Post("/customers/:id/tax-id",
+		middleware.RequireUserScope(middleware.ScopeCustomersWrite), ch.revealTaxID)
 
 	// The catalogue writes (C8–C9). Behind a write scope that the read-only
 	// console session does not hold, and behind `billing:products:write` rather
@@ -284,6 +302,12 @@ func registerConsole(v1 fiber.Router, d Deps, h *handlers, auth fiber.Handler) {
 	// the model, and archiving is the only mutation it accepts.
 	console.Post("/prices/:id/archive",
 		middleware.RequireUserScope(middleware.ScopeProductsWrite), ch.archivePrice)
+	// A product's dunning override. Behind the invoice write scope, not the
+	// catalogue one: it changes how unpaid bills are chased, and somebody who
+	// may set a price is not thereby somebody who may decide when a customer
+	// loses access.
+	console.Put("/products/:id/dunning",
+		middleware.RequireUserScope(middleware.ScopeInvoicesWrite), ch.setProductDunningPolicy)
 
 	console.Get("/products",
 		middleware.RequireUserScope(middleware.ScopeProductsRead), ch.listProducts)

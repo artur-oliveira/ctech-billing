@@ -44,6 +44,17 @@ type Product struct {
 	// who can redirect somebody else's events.
 	OwnerKey string `dynamodbav:"owner_key,omitempty" json:"owner_key,omitempty"`
 
+	// DunningPolicy overrides the organization's schedule for invoices that bill
+	// this product. Empty inherits, which is the normal case.
+	//
+	// On the product and not on the price, deliberately: a price is immutable
+	// and a dunning schedule is an operational decision that should be
+	// changeable without re-pricing anybody. A subscription whose items span
+	// products with **different** policies falls back to the organization's,
+	// because there is no defensible way to pick one of them and choosing the
+	// first item's would make the answer depend on insertion order.
+	DunningPolicy DunningSchedule `dynamodbav:"dunning_policy,omitempty" json:"dunning_policy,omitempty"`
+
 	Metadata Metadata `dynamodbav:"metadata,omitempty" json:"metadata,omitempty"`
 }
 

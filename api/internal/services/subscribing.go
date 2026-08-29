@@ -386,7 +386,7 @@ func (s *Subscriber) invoiceChange(
 	// the same way the sweep arms it, because an unpaid upgrade is an unpaid bill.
 	dueDate := billing.DueDate(inv.Period, billing.BillAdvance, sub.NetDays)
 	if _, err := s.invoicer.invoices.Finalize(
-		ctx, inv, dueDate, billing.FirstDunningDate(dueDate), billing.CauseScheduler, actor, "", now,
+		ctx, inv, dueDate, inv.Schedule().FirstDunningDate(dueDate), billing.CauseScheduler, actor, "", now,
 	); err != nil {
 		return nil, err
 	}

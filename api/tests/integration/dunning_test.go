@@ -130,7 +130,7 @@ func TestDunningWalksThePolicyOneStepPerDay(t *testing.T) {
 
 	// Step 0 is three days before the due date: the note that can still prevent
 	// the invoice being late at all.
-	day, _ := billing.DunningDate(inv.DueDate, 0)
+	day, _ := inv.Schedule().DunningDate(inv.DueDate, 0)
 	if res := dunner.Run(ctx, true, day, now()); len(res.Errors) > 0 {
 		t.Fatalf("dunning: %v", res.Errors)
 	}
@@ -151,7 +151,7 @@ func TestDunningWalksThePolicyOneStepPerDay(t *testing.T) {
 
 	// Escalation: the subscription is gated, the invoice stays payable.
 	for step := 1; step <= 4; step++ {
-		d, _ := billing.DunningDate(inv.DueDate, step)
+		d, _ := inv.Schedule().DunningDate(inv.DueDate, step)
 		dunner.Run(ctx, true, d, now())
 	}
 
@@ -187,7 +187,7 @@ func TestDunningStopsWhenTheInvoiceIsPaid(t *testing.T) {
 	}
 
 	box := &mailbox{}
-	day, _ := billing.DunningDate(inv.DueDate, 0)
+	day, _ := inv.Schedule().DunningDate(inv.DueDate, 0)
 	newDunner(t, box).Run(context.Background(), true, day, now())
 
 	if got := box.to(address); len(got) != 0 {
@@ -204,8 +204,8 @@ func TestDunningAbandonsAtTheEndOfThePolicy(t *testing.T) {
 
 	dunner := newDunner(t, &mailbox{})
 	ctx := context.Background()
-	for step := range billing.DunningPolicy {
-		day, ok := billing.DunningDate(inv.DueDate, step)
+	for step := range billing.DefaultDunningPolicy {
+		day, ok := inv.Schedule().DunningDate(inv.DueDate, step)
 		if !ok {
 			t.Fatalf("policy step %d has no date", step)
 		}
@@ -230,8 +230,8 @@ func TestDunningAbandonsAtTheEndOfThePolicy(t *testing.T) {
 
 	// And it is out of the queue: nothing is scheduled for it any more. Read from
 	// the row rather than from the run's totals, which are cross-tenant.
-	if freshInv.DunningStep < len(billing.DunningPolicy) {
-		t.Fatalf("dunning step = %d, want the policy exhausted (%d)", freshInv.DunningStep, len(billing.DunningPolicy))
+	if freshInv.DunningStep < len(billing.DefaultDunningPolicy) {
+		t.Fatalf("dunning step = %d, want the policy exhausted (%d)", freshInv.DunningStep, len(billing.DefaultDunningPolicy))
 	}
 }
 
@@ -272,8 +272,8 @@ func TestDunningNeverRestrictsAServiceNobodyHad(t *testing.T) {
 	subs := repositories.NewSubscriptionRepository(testDB, testCfg)
 
 	// Every reminder still goes out, including the pre-due note.
-	for step := range billing.DunningPolicy {
-		day, ok := billing.DunningDate(inv.DueDate, step)
+	for step := range billing.DefaultDunningPolicy {
+		day, ok := inv.Schedule().DunningDate(inv.DueDate, step)
 		if !ok {
 			t.Fatalf("policy step %d has no date", step)
 		}
@@ -282,7 +282,7 @@ func TestDunningNeverRestrictsAServiceNobodyHad(t *testing.T) {
 		}
 		// Through the escalation step the subscription must not move: PAST_DUE
 		// would claim something was taken away.
-		if step < len(billing.DunningPolicy)-1 {
+		if step < len(billing.DefaultDunningPolicy)-1 {
 			fresh, err := subs.Get(ctxT(t), org.ID, true, sub.ID)
 			if err != nil {
 				t.Fatal(err)

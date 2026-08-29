@@ -45,6 +45,17 @@ type Organization struct {
 	// OwnerUserID references ctech-account's user. Billing stores the reference,
 	// never a copy of the person.
 	OwnerUserID string `dynamodbav:"owner_user_id" json:"owner_user_id"`
+
+	// DunningPolicy is this organization's default schedule for chasing an
+	// unpaid invoice. Empty means the built-in one, which is the state every
+	// organization starts in — a merchant who has not thought about dunning gets
+	// a policy that works rather than none.
+	//
+	// A product may override it (Product.DunningPolicy). Neither is read while
+	// an invoice is being chased: the schedule is copied onto the invoice when
+	// it is finalized, so editing this changes what happens to invoices issued
+	// afterwards and nothing about the ones already in flight.
+	DunningPolicy DunningSchedule `dynamodbav:"dunning_policy,omitempty" json:"dunning_policy,omitempty"`
 }
 
 // AuthorizeCharge is the **single** gate deciding whether an organization may

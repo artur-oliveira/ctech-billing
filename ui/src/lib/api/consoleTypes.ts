@@ -153,10 +153,53 @@ export interface ConsolePrice {
   metadata?: Record<string, string>
 }
 
+export type DunningAction = "remind" | "escalate" | "abandon"
+
+export interface DunningStep {
+  /** Days from the due date. Negative is before it. */
+  offset: number
+  action: DunningAction
+}
+
+export interface DunningPolicy {
+  steps: DunningStep[]
+  /** Whether this was written here or inherited. The steps are the same either
+   *  way — an inherited policy is in force, not absent — and only the label
+   *  differs. */
+  custom: boolean
+}
+
+export interface ConsoleSettings {
+  organization: ConsoleSession
+  dunning: DunningPolicy
+  /** Facts, not fields: numbering has no options and retention is a constant.
+   *  Published so the screen can state them rather than leave an operator
+   *  guessing what it controls. */
+  numbering: string
+  retention: string
+}
+
+export interface ConsoleOverview {
+  year: number
+  month: number
+  received: Cents
+  open: Cents
+  overdue: Cents
+  drafts: number
+  uncollectible: number
+  overdue_count: number
+  counted: number
+  /** False when the month has more invoices than one page. The screen must say
+   *  so rather than present a partial sum as a total. */
+  complete: boolean
+}
+
 export interface ConsoleProduct {
   id: string
   name: string
   active: boolean
+  owner_key?: string
+  dunning?: DunningPolicy
   metadata?: Record<string, string>
   /** Archived prices are returned too: a subscription created under one keeps
    *  billing at it, and hiding it makes that invoice look like it came from

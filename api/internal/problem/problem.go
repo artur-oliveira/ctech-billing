@@ -135,6 +135,7 @@ func FromError(err error) *Problem {
 		errors.Is(err, billing.ErrInvalidUsage),
 		errors.Is(err, billing.ErrInvalidSubscriptionItem),
 		errors.Is(err, billing.ErrInvalidCreditNote),
+		errors.Is(err, billing.ErrInvalidDunningPolicy),
 		errors.Is(err, billing.ErrInvoiceItems):
 		return Unprocessable(err.Error())
 

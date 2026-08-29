@@ -7,6 +7,7 @@ import Link from "next/link"
 import {usePathname, useRouter} from "next/navigation"
 import {useEffect} from "react"
 
+import {ConsoleLink} from "@/components/portal/ConsoleLink"
 import {NoBillingAccount} from "@/components/portal/NoBillingAccount"
 import {TermsGate} from "@/components/portal/TermsGate"
 import {isNoBillingAccount} from "@/lib/api/client"
@@ -87,6 +88,11 @@ export default function PortalLayout({children}: LayoutProps<"/">) {
               stuck. */}
           {(session || noAccount) && (
             <div className="flex min-w-0 items-center gap-3">
+              {/* The way into the console, and only for somebody who has one.
+                  The same person holds both hats and nothing on screen asks
+                  which they are — but a link that led every customer to a 403
+                  would be asking exactly that. */}
+              <ConsoleLink/>
               {session && (
                 <span className="truncate text-sm text-muted-foreground">{session.name}</span>
               )}

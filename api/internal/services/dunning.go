@@ -95,7 +95,7 @@ func (d *Dunner) step(ctx context.Context, inv *billing.Invoice, res *DunningRes
 		return nil
 	}
 
-	action, ok := billing.DunningActionAt(inv.DunningStep)
+	action, ok := inv.Schedule().ActionAt(inv.DunningStep)
 	if !ok {
 		// The policy ran out but the row is still armed. Advancing disarms it.
 		res.Skipped++
@@ -156,7 +156,7 @@ func (d *Dunner) remind(ctx context.Context, inv *billing.Invoice, now time.Time
 		return fmt.Errorf("payment links are not configured")
 	}
 
-	overdue := billing.DunningPolicy[inv.DunningStep].Offset > 0
+	overdue := inv.Schedule().IsOverdueStep(inv.DunningStep)
 	due := "Vence em " + inv.DueDate.String()
 	if overdue {
 		due = "Venceu em " + inv.DueDate.String()

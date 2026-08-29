@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 
@@ -79,6 +80,66 @@ func (r *CatalogRepository) CreateProduct(ctx context.Context, p *billing.Produc
 		return fmt.Errorf("product %s already exists", p.ID)
 	}
 	return err
+}
+
+// SetProductDunningPolicy overrides (or clears) a product's dunning schedule.
+//
+// The one mutation a product accepts besides existing, and deliberately not
+// modelled as "editing the product": what changes is an operational decision
+// about chasing unpaid invoices, not what the thing is or what it costs. Like
+// the organization's, it touches no invoice — the schedule is copied onto an
+// invoice at finalization.
+func (r *CatalogRepository) SetProductDunningPolicy(
+	ctx context.Context,
+	p *billing.Product,
+	policy billing.DunningSchedule,
+	actor, requestID string,
+	now time.Time,
+) error {
+	if err := policy.Validate(); err != nil {
+		return err
+	}
+	if actor == "" {
+		return fmt.Errorf("repositories: changing the dunning policy of product %s needs an actor", p.ID)
+	}
+
+	names := map[string]string{"#dp": "dunning_policy", "#ua": "updated_at"}
+	values := map[string]types.AttributeValue{
+		":now": &types.AttributeValueMemberS{Value: now.UTC().Format(time.RFC3339Nano)},
+	}
+	expr := "SET #ua = :now REMOVE #dp"
+	if len(policy) > 0 {
+		encoded, err := attributevalue.Marshal(policy)
+		if err != nil {
+			return err
+		}
+		values[":dp"] = encoded
+		expr = "SET #dp = :dp, #ua = :now"
+	}
+
+	auditItem, err := buildAuditItem(p.OrganizationID, p.Livemode, AuditEntry{
+		Entity:    EntityProduct,
+		EntityID:  p.ID,
+		Action:    "product.dunning_policy_changed",
+		Cause:     billing.CauseManual,
+		Actor:     actor,
+		RequestID: requestID,
+		Before:    describeSchedule(p.DunningPolicy),
+		After:     describeSchedule(policy),
+	}, "", "", now)
+	if err != nil {
+		return err
+	}
+
+	update := r.products.BuildRawUpdateTxItem(
+		TenantPK(p.OrganizationID, p.Livemode), new(ProductSK(p.ID)),
+		expr, "attribute_exists(pk)", names, values,
+	)
+	if err := r.products.TransactWrite(ctx, txItems(update, r.audit.BuildPutTxItemIfAbsent(auditItem))); err != nil {
+		return err
+	}
+	p.DunningPolicy = policy.Clone()
+	return nil
 }
 
 // GetProduct reads a product.

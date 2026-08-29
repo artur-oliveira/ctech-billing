@@ -10,6 +10,8 @@ import type {
   ConsoleSession,
   ConsoleSubscription,
   ConsoleSubscriptionDetail,
+  DunningPolicy,
+  DunningStep,
 } from "@/lib/api/consoleTypes"
 
 /**
@@ -355,12 +357,24 @@ const PRICES: ConsolePrice[] = [
   },
 ]
 
+// Declared before PRODUCTS because a product's inherited policy is the same
+// list the settings screen shows.
+const DEFAULT_DUNNING_SEED: DunningStep[] = [
+  {offset: -3, action: "remind"},
+  {offset: 1, action: "remind"},
+  {offset: 3, action: "remind"},
+  {offset: 7, action: "remind"},
+  {offset: 10, action: "escalate"},
+  {offset: 30, action: "abandon"},
+]
+
 const PRODUCTS: ConsoleProduct[] = [
   {
     id: "prod_mock_essencial",
     name: "Plano Essencial",
     active: true,
     livemode: true,
+    dunning: {steps: DEFAULT_DUNNING_SEED, custom: false},
     prices: PRICES.filter(price => price.product_id === "prod_mock_essencial"),
   },
   {
@@ -368,6 +382,14 @@ const PRODUCTS: ConsoleProduct[] = [
     name: "Emissões adicionais",
     active: true,
     livemode: true,
+    dunning: {
+      steps: [
+        {offset: -1, action: "remind"},
+        {offset: 5, action: "escalate"},
+        {offset: 20, action: "abandon"},
+      ],
+      custom: true,
+    },
     prices: PRICES.filter(price => price.product_id === "prod_mock_emissoes"),
   },
 ]
@@ -422,4 +444,81 @@ export function consoleProducts(): ConsoleProduct[] {
 
 export function consoleProduct(id: string): ConsoleProduct | undefined {
   return PRODUCTS.find(product => product.id === id)
+}
+
+
+// ── Dunning, settings and the overview ───────────────────────────────────────
+
+const DEFAULT_DUNNING = DEFAULT_DUNNING_SEED
+
+// Mutable, so the editor's save is visible without a reload — the half of that
+// flow a static fixture cannot show.
+let orgDunning: DunningStep[] | null = null
+
+export function consoleDunning(): DunningPolicy {
+  return orgDunning
+    ? {steps: orgDunning, custom: true}
+    : {steps: DEFAULT_DUNNING, custom: false}
+}
+
+export function setConsoleDunning(steps: DunningStep[]): DunningPolicy {
+  orgDunning = steps.length > 0 ? steps : null
+  return consoleDunning()
+}
+
+export function consoleSettings(mode: "live" | "test") {
+  return {
+    organization: MOCK_CONSOLE_SESSION[mode],
+    dunning: consoleDunning(),
+    numbering: "sequencial por ano, sem lacunas",
+    retention: "faturas e notas de crédito permanentes; auditoria por 5 anos",
+  }
+}
+
+// Derived from the invoice fixtures rather than hardcoded: the overview and the
+// list must agree, and two hand-written sets of numbers are two sets that drift.
+export function consoleOverview(mode: "live" | "test", year: number, month: number) {
+  const invoices = consoleInvoices(mode)
+  const today = new Date()
+  let received = 0
+  let open = 0
+  let overdue = 0
+  let drafts = 0
+  let uncollectible = 0
+  let overdueCount = 0
+
+  for (const inv of invoices) {
+    switch (inv.status) {
+      case "PAID":
+        received += inv.amount_paid
+        break
+      case "DRAFT":
+        drafts++
+        break
+      case "UNCOLLECTIBLE":
+        uncollectible++
+        break
+      case "OPEN":
+        if (new Date(inv.due_date) < today) {
+          overdue += inv.amount_due
+          overdueCount++
+        } else {
+          open += inv.amount_due
+        }
+        break
+    }
+  }
+
+  return {
+    year,
+    month,
+    received,
+    open,
+    overdue,
+    drafts,
+    uncollectible,
+    overdue_count: overdueCount,
+    counted: invoices.length,
+    complete: true,
+  }
 }

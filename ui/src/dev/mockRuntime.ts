@@ -10,6 +10,8 @@ import {
 import {
   consoleCustomerDetail,
   consoleCustomers,
+  consoleOverview,
+  consoleSettings,
   consoleInvoiceDetail,
   consoleInvoices,
   consoleProduct,
@@ -17,6 +19,7 @@ import {
   consoleSubscriptionDetail,
   consoleSubscriptions,
   MOCK_CONSOLE_SESSION,
+  setConsoleDunning,
 } from "./consoleMockData"
 import {FIXTURES, MOCK_PIX_CODE} from "./mockData"
 
@@ -193,11 +196,44 @@ export const mockAdapter: AxiosAdapter = async config => {
   // would make the mode switch look broken in exactly the mode where being
   // wrong is expensive.
   if (url.includes("/v1.0/console/")) {
+    // `sem_conta` is a person with no billing account at all, so they have no
+    // organization either — every console route answers 403, which is what the
+    // shell renders as an explanation and what keeps the portal's Console link
+    // from appearing for somebody it would only frustrate.
+    if (scenario === "sem_conta") {
+      fail(config, 403, "Forbidden", "nenhuma organização para este usuário")
+    }
     const mode = (config.headers?.["X-Billing-Mode"] as string) === "test" ? "test" : "live"
     const invoices = consoleInvoices(mode)
 
     if (url.endsWith("/v1.0/console/session")) {
       return ok(config, MOCK_CONSOLE_SESSION[mode])
+    }
+    if (url.includes("/v1.0/console/overview")) {
+      const params = new URLSearchParams(url.split("?")[1] ?? "")
+      const today = new Date()
+      return ok(config, consoleOverview(
+        mode,
+        Number(params.get("year")) || today.getFullYear(),
+        Number(params.get("month")) || today.getMonth() + 1,
+      ))
+    }
+    if (url.endsWith("/v1.0/console/settings")) {
+      return ok(config, consoleSettings(mode))
+    }
+    if (url.endsWith("/v1.0/console/settings/dunning") && method === "put") {
+      const body = JSON.parse((config.data as string) || "{}")
+      return ok(config, setConsoleDunning(body.steps ?? []))
+    }
+    const productDunning = url.match(/\/v1\.0\/console\/products\/([^/]+)\/dunning$/)
+    if (productDunning && method === "put") {
+      const body = JSON.parse((config.data as string) || "{}")
+      const steps = body.steps ?? []
+      return ok(config, {steps: steps.length > 0 ? steps : consoleSettings(mode).dunning.steps, custom: steps.length > 0})
+    }
+    const taxID = url.match(/\/v1\.0\/console\/customers\/([^/]+)\/tax-id$/)
+    if (taxID && method === "post") {
+      return ok(config, {tax_id: "123.456.789-09"})
     }
     if (url.includes("/v1.0/console/invoices?") || url.endsWith("/v1.0/console/invoices")) {
       return ok(config, {data: invoices, has_more: false})

@@ -264,7 +264,7 @@ func TestAFreePlanIsInvoicedAndSettledWithoutBeingChased(t *testing.T) {
 	// after the read would still cost a morning's query and would still be one
 	// bad transition away from a reminder about R$ 0,00.
 	for _, step := range []int{-3, 1, 3, 7, 10, 30} {
-		date, ok := billing.DunningDate(inv.DueDate, indexOfOffset(step))
+		date, ok := inv.Schedule().DunningDate(inv.DueDate, indexOfOffset(step))
 		if !ok {
 			continue
 		}
@@ -283,7 +283,7 @@ func TestAFreePlanIsInvoicedAndSettledWithoutBeingChased(t *testing.T) {
 // indexOfOffset maps a policy offset in days back to its step index, so the test
 // above states the dates it cares about in the terms the policy is written in.
 func indexOfOffset(offset int) int {
-	for i, step := range billing.DunningPolicy {
+	for i, step := range billing.DefaultDunningPolicy {
 		if step.Offset == offset {
 			return i
 		}

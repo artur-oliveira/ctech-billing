@@ -27,11 +27,21 @@ import (
 
 func (e *apiEnv) consolePost(t *testing.T, path, token, mode, body string) apiResponse {
 	t.Helper()
+	return e.consoleWrite(t, http.MethodPost, path, token, mode, body)
+}
+
+func (e *apiEnv) consolePut(t *testing.T, path, token, mode, body string) apiResponse {
+	t.Helper()
+	return e.consoleWrite(t, http.MethodPut, path, token, mode, body)
+}
+
+func (e *apiEnv) consoleWrite(t *testing.T, method, path, token, mode, body string) apiResponse {
+	t.Helper()
 	var reader io.Reader
 	if body != "" {
 		reader = bytes.NewBufferString(body)
 	}
-	req := httptest.NewRequest(http.MethodPost, path, reader)
+	req := httptest.NewRequest(method, path, reader)
 	if body != "" {
 		req.Header.Set("Content-Type", "application/json")
 	}

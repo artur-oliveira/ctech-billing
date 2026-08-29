@@ -8,10 +8,17 @@ import {useSearchParams} from "next/navigation"
 import {Suspense, useState} from "react"
 import {toast} from "sonner"
 
+import {DunningPolicyCard} from "@/components/console/DunningPolicyCard"
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
 import {messageFor, statusOf} from "@/lib/api/client"
-import {archivePrice, consoleKeys, createPrice, getConsoleProduct} from "@/lib/api/console"
-import type {ConsolePrice} from "@/lib/api/consoleTypes"
+import {
+  archivePrice,
+  consoleKeys,
+  createPrice,
+  getConsoleProduct,
+  setProductDunningPolicy,
+} from "@/lib/api/console"
+import type {ConsolePrice, DunningStep} from "@/lib/api/consoleTypes"
 import {useMode} from "@/lib/console/useMode"
 import {money} from "@/lib/format"
 import {useDocumentTitle} from "@/lib/hooks/useDocumentTitle"
@@ -55,6 +62,11 @@ function Detail() {
     void queryClient.invalidateQueries({queryKey: consoleKeys.product(mode, id)})
     void queryClient.invalidateQueries({queryKey: consoleKeys.products(mode)})
   }
+
+  const savePolicy = useMutation({
+    mutationFn: (steps: DunningStep[]) => setProductDunningPolicy(id, steps, mode),
+    onSuccess: refresh,
+  })
 
   const archive = useMutation({
     mutationFn: (priceId: string) => archivePrice(priceId, mode),
@@ -157,6 +169,16 @@ function Detail() {
           </div>
         )}
       </section>
+
+      {product.dunning && (
+        <DunningPolicyCard
+          title="Política de cobrança deste produto"
+          description="Sobrepõe a política da organização para faturas que cobram este produto. Uma assinatura que cobra produtos com políticas diferentes volta para a da organização — não há como escolher entre duas."
+          policy={product.dunning}
+          inheritLabel="a política da organização"
+          onSave={steps => savePolicy.mutateAsync(steps)}
+        />
+      )}
 
       <NewPriceDialog
         open={pricing}

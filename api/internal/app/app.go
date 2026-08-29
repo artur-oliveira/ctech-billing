@@ -51,7 +51,7 @@ func Build(ctx context.Context, cfg *config.Config, clock func() time.Time) (*fi
 	audit := repositories.NewAuditRepository(db, cfg)
 	payments := repositories.NewPaymentRepository(db, cfg)
 
-	invoicer := services.NewInvoicer(subs, invoices, catalog, usage)
+	invoicer := services.NewInvoicer(subs, invoices, catalog, usage).WithOrganizations(orgs)
 	subscriber := services.NewSubscriber(subs, catalog, invoicer)
 
 	cacheBackend := newCache(cfg)
@@ -146,12 +146,16 @@ func BuildInvoicer(ctx context.Context, cfg *config.Config) (*services.Invoicer,
 	if err != nil {
 		return nil, err
 	}
+	// The organizations repository is included: the sweep is where an invoice is
+	// stamped with the dunning policy it will be chased under, and a sweep that
+	// could not read the tenant's default would silently issue every invoice on
+	// the built-in one.
 	return services.NewInvoicer(
 		repositories.NewSubscriptionRepository(db, cfg),
 		repositories.NewInvoiceRepository(db, cfg),
 		repositories.NewCatalogRepository(db, cfg),
 		repositories.NewUsageRepository(db, cfg),
-	), nil
+	).WithOrganizations(repositories.NewOrganizationRepository(db, cfg)), nil
 }
 
 // BuildProvisioner wires only what applying a tenant plan needs.

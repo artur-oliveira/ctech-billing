@@ -27,6 +27,10 @@ type Invoicer struct {
 	invoices *repositories.InvoiceRepository
 	catalog  *repositories.CatalogRepository
 	usage    *repositories.UsageRepository
+	// orgs answers "what is this tenant's default dunning policy". Optional: a
+	// nil one resolves every invoice to the product's policy or the built-in
+	// default, which is what a test that does not care about dunning wants.
+	orgs *repositories.OrganizationRepository
 }
 
 func NewInvoicer(
@@ -36,6 +40,17 @@ func NewInvoicer(
 	usage *repositories.UsageRepository,
 ) *Invoicer {
 	return &Invoicer{subs: subs, invoices: invoices, catalog: catalog, usage: usage}
+}
+
+// WithOrganizations supplies the tenant's default dunning policy.
+//
+// A setter rather than a constructor argument, unlike Collector's `subs`: a nil
+// organizations repository here degrades to the built-in schedule, which is
+// exactly what an invoice with no configured policy follows anyway. Nothing is
+// silently wrong, so nothing needs to be a compile error.
+func (s *Invoicer) WithOrganizations(orgs *repositories.OrganizationRepository) *Invoicer {
+	s.orgs = orgs
+	return s
 }
 
 // NetDaysDefault is how many days after the period boundary an invoice falls
@@ -76,6 +91,10 @@ func (s *Invoicer) GenerateForPeriod(
 	}
 
 	lines := make([]billing.InvoiceItem, 0, len(items))
+	// The products' policies, collected while the lines are built rather than in
+	// a second pass: every product on this invoice is already being read to name
+	// its line.
+	policies := make([]billing.DunningSchedule, 0, len(items))
 	for _, item := range items {
 		price, err := s.catalog.GetPrice(ctx, sub.OrganizationID, sub.Livemode, item.PriceID)
 		if err != nil {
@@ -90,6 +109,12 @@ func (s *Invoicer) GenerateForPeriod(
 			return nil, err
 		}
 		lines = append(lines, line)
+		policies = append(policies, product.DunningPolicy)
+	}
+
+	policy, err := s.resolvePolicy(ctx, sub.OrganizationID, sub.Livemode, policies)
+	if err != nil {
+		return nil, err
 	}
 
 	inv := &billing.Invoice{
@@ -106,6 +131,9 @@ func (s *Invoicer) GenerateForPeriod(
 		// the subscription's live metadata would let a later edit rewrite the past
 		// of closed invoices (ADR 0008).
 		Metadata: sub.Metadata.Clone(),
+		// Stamped at creation, so the schedule an invoice follows is decided once
+		// and cannot be rewritten under an invoice already being chased.
+		Policy: policy,
 	}
 	if err := billing.ApplyToInvoice(inv, lines, 0); err != nil {
 		return nil, err
@@ -142,11 +170,35 @@ func (s *Invoicer) GenerateForPeriod(
 	// The dunning queue, armed at the first step of the policy — which is three
 	// days *before* the due date, because the only message that prevents a late
 	// invoice is one that arrives while it can still be paid on time.
-	settlement := billing.FirstDunningDate(dueDate)
+	settlement := inv.Schedule().FirstDunningDate(dueDate)
 	if _, err := s.invoices.Finalize(ctx, inv, dueDate, settlement, billing.CauseScheduler, actor, "", now); err != nil {
 		return nil, err
 	}
 	return inv, nil
+}
+
+// resolvePolicy picks the schedule for an invoice: the product's when the
+// products agree, then the organization's, then the built-in default.
+//
+// The organization is read on every generation rather than cached, and that is
+// affordable — one point read per invoice, against a row the sweep is already
+// tenant-scoped to. A cache here would be a policy change that takes effect on
+// some invoices and not others in the same run.
+func (s *Invoicer) resolvePolicy(
+	ctx context.Context,
+	organizationID string,
+	livemode bool,
+	products []billing.DunningSchedule,
+) (billing.DunningSchedule, error) {
+	var orgPolicy billing.DunningSchedule
+	if s.orgs != nil {
+		org, err := s.orgs.Get(ctx, organizationID, livemode)
+		if err != nil {
+			return nil, fmt.Errorf("reading the organization's dunning policy: %w", err)
+		}
+		orgPolicy = org.DunningPolicy
+	}
+	return billing.ResolveDunningPolicy(orgPolicy, products), nil
 }
 
 // buildLine produces one item's invoice line for the period.
@@ -219,7 +271,7 @@ func (s *Invoicer) Issue(
 	// reading that cannot bill somebody before the service existed.
 	dueDate := billing.DueDate(inv.Period, timing, netDays)
 
-	settlement := billing.FirstDunningDate(dueDate)
+	settlement := inv.Schedule().FirstDunningDate(dueDate)
 	if inv.NothingDue() {
 		settlement = brcal.Date{}
 	}

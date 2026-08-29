@@ -9,9 +9,13 @@ import type {
   ConsolePage,
   ConsolePrice,
   ConsoleProduct,
+  ConsoleOverview,
   ConsoleSession,
+  ConsoleSettings,
   ConsoleSubscription,
   ConsoleSubscriptionDetail,
+  DunningPolicy,
+  DunningStep,
 } from "@/lib/api/consoleTypes"
 import {getMode, type Mode} from "@/lib/console/mode"
 
@@ -33,6 +37,9 @@ function modeHeaders(mode: Mode = getMode()) {
  */
 export const consoleKeys = {
   session: (mode: Mode) => ["console", mode, "session"] as const,
+  overview: (mode: Mode, year: number, month: number) =>
+    ["console", mode, "overview", year, month] as const,
+  settings: (mode: Mode) => ["console", mode, "settings"] as const,
   invoices: (mode: Mode) => ["console", mode, "invoices"] as const,
   invoiceMonth: (mode: Mode, year: number, month: number) =>
     ["console", mode, "invoices", "month", year, month] as const,
@@ -49,6 +56,62 @@ export const consoleKeys = {
 export async function getConsoleSession(mode?: Mode): Promise<ConsoleSession> {
   const {data} = await apiClient.get<ConsoleSession>("/v1.0/console/session", modeHeaders(mode))
   return data
+}
+
+export async function getConsoleOverview(
+  year: number,
+  month: number,
+  mode?: Mode,
+): Promise<ConsoleOverview> {
+  const {data} = await apiClient.get<ConsoleOverview>("/v1.0/console/overview", {
+    ...modeHeaders(mode),
+    params: {year, month},
+  })
+  return data
+}
+
+export async function getConsoleSettings(mode?: Mode): Promise<ConsoleSettings> {
+  const {data} = await apiClient.get<ConsoleSettings>("/v1.0/console/settings", modeHeaders(mode))
+  return data
+}
+
+/** Replaces the organization's default schedule. An empty list restores the
+ *  built-in one — there is no "never chase this". */
+export async function setDunningPolicy(
+  steps: DunningStep[],
+  mode?: Mode,
+): Promise<DunningPolicy> {
+  const {data} = await apiClient.put<DunningPolicy>(
+    "/v1.0/console/settings/dunning",
+    {steps},
+    modeHeaders(mode),
+  )
+  return data
+}
+
+/** Overrides (or clears) one product's schedule. */
+export async function setProductDunningPolicy(
+  productId: string,
+  steps: DunningStep[],
+  mode?: Mode,
+): Promise<DunningPolicy> {
+  const {data} = await apiClient.put<DunningPolicy>(
+    `/v1.0/console/products/${productId}/dunning`,
+    {steps},
+    modeHeaders(mode),
+  )
+  return data
+}
+
+/** Reveals a customer's full tax id, and records who looked. A POST because it
+ *  has an effect — the audit row — not because it sends anything. */
+export async function revealTaxID(customerId: string, mode?: Mode): Promise<string> {
+  const {data} = await apiClient.post<{tax_id: string}>(
+    `/v1.0/console/customers/${customerId}/tax-id`,
+    undefined,
+    modeHeaders(mode),
+  )
+  return data.tax_id
 }
 
 export async function listConsoleInvoices(
