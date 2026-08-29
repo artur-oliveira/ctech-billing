@@ -104,9 +104,34 @@
       header, which is a deliberate, argued departure from ADR 0003's second half
       ([ADR 0011](docs/adr/0011-console-session.md)). A service token is rejected on every console
       route and a session token on every M2M route — both directions are tested.
-- [ ] Console **writes** (finalize, void, credit note, new price). Held back on purpose: a second
-      write path to the same entities is a second place for the audit cause to be wrong, so each
-      arrives with the screen that needs it. Cancellation is the first one and has landed, below.
+- [ ] Console **writes**. Held back on purpose: a second write path to the same entities is a
+      second place for the audit cause to be wrong, so each arrives with the screen that needs it.
+    - [x] Cancellation and plan change (below).
+    - [x] **Finalize, void and credit note** — the three writes C3 needs.
+          Finalize goes through `Invoicer.Issue`, which is the sweep's own path rather than a
+          second one: same due date, same dunning arming, same zero-total settlement, and
+          `CauseManual` so the trail says a person did it. It exists for the DRAFT a half-failed
+          sweep leaves behind — written, unnumbered, and never picked up again, because the sweep
+          skips a period it has already billed. Finalizing twice does not spend a second invoice
+          number, which is the property the test pins.
+          Void is bounded by the domain: only DRAFT and OPEN reach it, so a PAID invoice cannot be
+          voided at all — money that arrived is corrected with a credit note, never by deleting
+          the document that recorded it.
+          The credit note is the correction path, and it never moves money: `refunded_externally`
+          records that wallet returned it. `CreditNoteRepository.Issue` writes the note, the audit
+          row and the event in one transaction, conditional on the invoice still being in the
+          status the total was validated against — so two operators crediting at once cannot both
+          pass a check that was true for each of them separately. The detail publishes
+          `credited` and `fully_credited`; "estornada" is a rule, not a status
+          (assessment § 6.1), because an invoice that was paid and then fully credited is still
+          a paid invoice.
+    - [x] **Two hard-coded causes found and fixed on the way**, both the same defect the
+          `ScheduleCancellation` one was: `InvoiceRepository.Finalize` stamped `CauseScheduler`
+          on the domain transition *and* on the audit row, so an operator issuing a stuck draft
+          from the console would have been recorded as the nightly sweep. The cause is now the
+          caller's, and an integration test asserts the operator's own id and cause land in the
+          timeline.
+    - [ ] New price / new product (C8–C9), and creating a customer from the console (C6–C7).
 - [x] Portal read API (`/v1.0/portal/*`) plus `GET /v1.0/me` — the consumer surface for **CTech's own
       customers**, tenant zero ([ADR 0012](docs/adr/0012-portal-serves-tenant-zero.md)). Every read
       is filtered to the signed-in customer, not merely to the tenant, because in the portal every

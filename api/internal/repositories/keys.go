@@ -90,6 +90,7 @@ const (
 	EntityCustomer       Entity = "CUSTOMER"
 	EntityPaymentAttempt Entity = "PAYMENT_ATTEMPT"
 	EntityCheckout       Entity = "CHECKOUT"
+	EntityCreditNote     Entity = "CREDIT_NOTE"
 	EntityAudit          Entity = "AUDIT"
 )
 
@@ -108,6 +109,7 @@ const (
 	skSubscription = "SUB#"
 	skInvoice      = "INVOICE#"
 	skCheckout     = "CHECKOUT#"
+	skCreditNote   = "CREDIT#"
 	skAudit        = "AUDIT#"
 	skCounter      = "COUNTER#"
 	skCustomerUser = "CUSTOMER_USER#"
@@ -165,6 +167,16 @@ func PaymentAttemptSK(invoiceID string, attemptNumber int) string {
 // its own.
 func CheckoutSK(invoiceID, sessionID string) string {
 	return skInvoice + invoiceID + "#" + skCheckout + sessionID
+}
+
+// CreditNoteSK nests a credit note under the invoice it corrects.
+//
+// Same reason as the payment attempt: a credit note is only ever read as part of
+// an invoice — "what has been credited against this?" — and never fetched by id
+// on its own. Nesting answers that with one prefix Query inside a partition the
+// caller already holds, and costs no index.
+func CreditNoteSK(invoiceID, creditNoteID string) string {
+	return skInvoice + invoiceID + "#" + skCreditNote + creditNoteID
 }
 
 // InvoiceItemSK nests a line under its invoice, ordered by position.

@@ -228,7 +228,7 @@ func TestConsoleInvoiceDetailCarriesItsTimeline(t *testing.T) {
 	inv := newDraftInvoice(t, e.org, "gen_"+id.New())
 	invoices := repositories.NewInvoiceRepository(testDB, testCfg)
 	due := brcal.New(2026, time.March, 10)
-	if _, err := invoices.Finalize(ctx, inv, due, due, "console-test", "req_1", now()); err != nil {
+	if _, err := invoices.Finalize(ctx, inv, due, due, billing.CauseScheduler, "console-test", "req_1", now()); err != nil {
 		t.Fatal(err)
 	}
 

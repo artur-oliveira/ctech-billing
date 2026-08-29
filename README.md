@@ -63,7 +63,8 @@ payloads and other unnecessary PII. This adds no OpenTelemetry exporter or custo
 | `docs/adr/` | The 20 architecture decisions that shape all of the above. |
 | `docs/analysis/` | The product/architecture assessment those decisions came out of. |
 | `docs/specs/` | Cross-repository contracts — currently the [`ctech-wallet` charge contract](docs/specs/2026-08-15-wallet-invoice-charge.md), now implemented on both sides. |
-| — | **Not built:** the console (screens C1–C9 and C17, and the console writes behind them — finalize, void, credit note, new price). Named in PLAN.md with the reason. |
+| `api/internal/repositories/creditnotes.go` | The corrections issued against an invoice, nested in its partition. Written with their audit row and their event in one transaction, conditional on the invoice's status — two operators crediting the same invoice at once cannot both pass a total check that was true for each separately. A credit note never moves money: wallet refunds, billing records that it did. |
+| — | **Not built:** the console UI (screens C1–C9 and C17), and the catalogue writes behind C8–C9 (new price, new product). The invoice writes those screens need — finalize, void, credit note — are built. Named in PLAN.md with the reason. |
 
 ### API surface (v1, M2M)
 
@@ -79,6 +80,18 @@ parameter and no `livemode` flag anywhere, deliberately (ADR 0003).
 | `GET /v1.0/invoices` · `GET /v1.0/invoices/:id` | `billing:invoices:read` |
 | `GET /v1.0/products` · `GET /v1.0/products/:id` | `billing:products:read` |
 | `GET /v1.0/entitlements?customer_ref=` | `billing:entitlements:read` |
+
+### Console writes (browser session, never a service token)
+
+| Route | Scope |
+|---|---|
+| `POST /v1.0/console/subscriptions/:id/cancel` · `/change` | `billing:subscriptions:write` |
+| `POST /v1.0/console/invoices/:id/finalize` · `/void` · `/credit-notes` | `billing:invoices:write` |
+
+Each is a no-op when the invoice is already in the state it asks for — a second
+click must not spend a second invoice number or write a second audit row — and
+the credit note is the exception that is refused rather than replayed, because
+crediting past the invoice total is the one thing this document may never do.
 
 Every `POST` requires an `Idempotency-Key`. A repeat returns the first response
 verbatim with `Idempotent-Replay: true`; the same key with a different body is a

@@ -127,7 +127,7 @@ func (s *Invoicer) GenerateForPeriod(
 	// reminder, and a customer chased for a free plan learns to ignore the next
 	// message, which will be about a real one.
 	if inv.NothingDue() {
-		if _, err := s.invoices.Finalize(ctx, inv, dueDate, brcal.Date{}, actor, "", now); err != nil {
+		if _, err := s.invoices.Finalize(ctx, inv, dueDate, brcal.Date{}, billing.CauseScheduler, actor, "", now); err != nil {
 			return nil, err
 		}
 		if _, err := s.invoices.Transition(ctx, inv, billing.InvoicePaid, billing.CauseNothingDue, actor, "", now); err != nil {
@@ -143,7 +143,7 @@ func (s *Invoicer) GenerateForPeriod(
 	// days *before* the due date, because the only message that prevents a late
 	// invoice is one that arrives while it can still be paid on time.
 	settlement := billing.FirstDunningDate(dueDate)
-	if _, err := s.invoices.Finalize(ctx, inv, dueDate, settlement, actor, "", now); err != nil {
+	if _, err := s.invoices.Finalize(ctx, inv, dueDate, settlement, billing.CauseScheduler, actor, "", now); err != nil {
 		return nil, err
 	}
 	return inv, nil
@@ -185,6 +185,55 @@ type SweepResult struct {
 	Skipped  int // already invoiced for the period — a re-run, which is normal
 	Failed   int
 	Errors   []error
+}
+
+// Issue finalizes a draft invoice that the sweep left behind (C3).
+//
+// A DRAFT is normally transient: GenerateForPeriod creates one and finalizes it
+// in the same call. One that outlives that call is the residue of a half-failed
+// run — the invoice exists, nobody has been billed for it, and nothing will ever
+// pick it up again, because the sweep skips a period it has already written.
+// This is the route that finishes it, and it is why the console needs a write at
+// all rather than an operator being told to wait.
+//
+// It is the sweep's own path, not a second one: the same due date, the same
+// dunning arming, the same zero-total settlement. What differs is the cause —
+// CauseManual, so the trail says a person issued this — and that is exactly the
+// distinction a second implementation would eventually lose.
+func (s *Invoicer) Issue(
+	ctx context.Context,
+	inv *billing.Invoice,
+	actor, requestID string,
+	now time.Time,
+) error {
+	timing, netDays := billing.BillArrears, 0
+	if inv.SubscriptionID != "" {
+		sub, err := s.subs.Get(ctx, inv.OrganizationID, inv.Livemode, inv.SubscriptionID)
+		if err != nil {
+			return err
+		}
+		timing, netDays = sub.Timing, sub.NetDays
+	}
+	// A one-off invoice with no subscription has no timing of its own, so it
+	// falls due at the end of the period it bills — arrears, which is the only
+	// reading that cannot bill somebody before the service existed.
+	dueDate := billing.DueDate(inv.Period, timing, netDays)
+
+	settlement := billing.FirstDunningDate(dueDate)
+	if inv.NothingDue() {
+		settlement = brcal.Date{}
+	}
+	if _, err := s.invoices.Finalize(ctx, inv, dueDate, settlement, billing.CauseManual, actor, requestID, now); err != nil {
+		return err
+	}
+	if inv.NothingDue() {
+		// Same close as the sweep's, and for the same reason: there is nothing to
+		// collect, so there is nothing to wait for (ADR 0019).
+		if _, err := s.invoices.Transition(ctx, inv, billing.InvoicePaid, billing.CauseNothingDue, actor, requestID, now); err != nil {
+			return fmt.Errorf("closing zero-total invoice %s: %w", inv.ID, err)
+		}
+	}
+	return nil
 }
 
 // RunDailySweep invoices every subscription due on `date`.

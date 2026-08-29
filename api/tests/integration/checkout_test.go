@@ -278,7 +278,7 @@ func (e *payEnv) openInvoice(t *testing.T) *billing.Invoice {
 	inv := newInvoiceFor(t, e.org, e.customer.ID)
 	due := brcal.New(2026, time.March, 20)
 	if _, err := repositories.NewInvoiceRepository(testDB, testCfg).
-		Finalize(ctxT(t), inv, due, due, "test", "req_setup", now()); err != nil {
+		Finalize(ctxT(t), inv, due, due, billing.CauseScheduler, "test", "req_setup", now()); err != nil {
 		t.Fatal(err)
 	}
 	return inv
@@ -540,7 +540,7 @@ func TestATestModeInvoiceIsNeverCollected(t *testing.T) {
 	inv := newInvoiceFor(t, testOrg, customer.ID)
 	due := brcal.New(2026, time.March, 20)
 	if _, err := repositories.NewInvoiceRepository(testDB, testCfg).
-		Finalize(ctxT(t), inv, due, due, "test", "req_setup", now()); err != nil {
+		Finalize(ctxT(t), inv, due, due, billing.CauseScheduler, "test", "req_setup", now()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -637,7 +637,7 @@ func TestChargesAreRefusedWithoutAPayerAccount(t *testing.T) {
 	inv := newInvoiceFor(t, e.org, anon.ID)
 	due := brcal.New(2026, time.March, 20)
 	if _, err := repositories.NewInvoiceRepository(testDB, testCfg).
-		Finalize(ctx, inv, due, due, "test", "req_setup", now()); err != nil {
+		Finalize(ctx, inv, due, due, billing.CauseScheduler, "test", "req_setup", now()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -806,7 +806,7 @@ func (e *payEnv) openSubscriptionInvoice(t *testing.T, sub *billing.Subscription
 	inv := newSubscriptionInvoice(t, e.org, sub)
 	due := brcal.New(2026, time.March, 20)
 	if _, err := repositories.NewInvoiceRepository(testDB, testCfg).
-		Finalize(ctxT(t), inv, due, due, "test", "req_setup", now()); err != nil {
+		Finalize(ctxT(t), inv, due, due, billing.CauseScheduler, "test", "req_setup", now()); err != nil {
 		t.Fatal(err)
 	}
 	return inv

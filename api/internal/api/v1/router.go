@@ -26,7 +26,11 @@ type Deps struct {
 	Organizations *repositories.OrganizationRepository
 	Audit         *repositories.AuditRepository
 	Payments      *repositories.PaymentRepository
+	CreditNotes   *repositories.CreditNoteRepository
 	Subscriber    *services.Subscriber
+	// Invoicer is the console's finalize path: the sweep's own, so an operator
+	// issuing a stuck draft produces the same invoice the scheduler would have.
+	Invoicer *services.Invoicer
 	// Collector is nil when the deployment has no wallet configuration. Every
 	// route that collects money is then not mounted at all — a checkout that 404s
 	// is a deployment somebody notices, while one that fails after showing a QR
@@ -214,6 +218,8 @@ func registerConsole(v1 fiber.Router, d Deps, h *handlers, auth fiber.Handler) {
 		handlers:             h,
 		orgs:                 d.Organizations,
 		audit:                d.Audit,
+		credit:               d.CreditNotes,
+		invoicer:             d.Invoicer,
 		portalOrganizationID: d.PortalOrganizationID,
 	}
 
@@ -231,6 +237,21 @@ func registerConsole(v1 fiber.Router, d Deps, h *handlers, auth fiber.Handler) {
 		middleware.RequireUserScope(middleware.ScopeInvoicesRead), ch.listInvoices)
 	console.Get("/invoices/:id",
 		middleware.RequireUserScope(middleware.ScopeInvoicesRead), ch.getInvoice)
+	// The three writes on an invoice (C3), each behind the write scope rather
+	// than the read one: the token that renders the screen is not the token that
+	// can void from it.
+	//
+	// No idempotency middleware, unlike the M2M routes, and that is the console
+	// session's own property rather than an omission: each of these is a
+	// deliberate click, each is a no-op when the invoice is already in the
+	// state it asks for, and the credit note is the one that is not — which is
+	// why it is refused rather than replayed when it would exceed the total.
+	console.Post("/invoices/:id/finalize",
+		middleware.RequireUserScope(middleware.ScopeInvoicesWrite), ch.finalizeInvoice)
+	console.Post("/invoices/:id/void",
+		middleware.RequireUserScope(middleware.ScopeInvoicesWrite), ch.voidInvoice)
+	console.Post("/invoices/:id/credit-notes",
+		middleware.RequireUserScope(middleware.ScopeInvoicesWrite), ch.creditInvoice)
 
 	console.Get("/subscriptions",
 		middleware.RequireUserScope(middleware.ScopeSubscriptionsRead), ch.listSubscriptions)

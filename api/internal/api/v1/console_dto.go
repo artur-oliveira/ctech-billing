@@ -6,7 +6,9 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
+	"gopkg.aoctech.app/billing/api/internal/domain/brcal"
 	"gopkg.aoctech.app/billing/api/internal/repositories"
+	"gopkg.aoctech.app/billing/api/internal/services"
 )
 
 // Console responses, kept apart from the M2M ones in dto.go for one reason: the
@@ -54,8 +56,78 @@ type auditResponse struct {
 // and a test-mode one — both of which open a page that cannot be paid. One
 // field, one rule (Invoice.Payable).
 type invoiceDetailResponse struct {
-	Invoice  invoiceResponse `json:"invoice"`
-	Timeline []auditResponse `json:"timeline"`
+	Invoice invoiceResponse `json:"invoice"`
+	// CreditNotes are the corrections issued against this invoice, oldest first,
+	// with the total they add up to. The total is published rather than left to
+	// the client: "is this fully credited" is a rule (billing.FullyCredited), and
+	// a screen that re-derives it from a list is a screen that will disagree with
+	// the server the first time the rule grows a condition.
+	CreditNotes   []creditNoteResponse `json:"credit_notes,omitempty"`
+	CreditedCents billing.Cents        `json:"credited"`
+	// FullyCredited is what a screen renders as "estornada". It is not a status
+	// — assessment § 6.1 — because an invoice that was paid and then fully
+	// credited is still a paid invoice, and rewriting its status would destroy
+	// the record of the money that actually arrived.
+	FullyCredited bool            `json:"fully_credited"`
+	Timeline      []auditResponse `json:"timeline"`
+}
+
+// creditNoteRequest is the console's "emitir nota de crédito" (C3).
+type creditNoteRequest struct {
+	// Amount is positive: the amount being credited, never a negative charge.
+	Amount billing.Cents `json:"amount"`
+	Reason string        `json:"reason"`
+	// RefundedExternally says wallet or the PSP actually returned the money.
+	// Billing records that it happened; it never does it.
+	RefundedExternally bool             `json:"refunded_externally"`
+	ExternalRefundRef  string           `json:"external_refund_ref"`
+	Metadata           billing.Metadata `json:"metadata"`
+}
+
+type creditNoteResponse struct {
+	ID                 string        `json:"id"`
+	InvoiceID          string        `json:"invoice_id"`
+	Amount             billing.Cents `json:"amount"`
+	Currency           string        `json:"currency"`
+	Reason             string        `json:"reason"`
+	RefundedExternally bool          `json:"refunded_externally"`
+	ExternalRefundRef  string        `json:"external_refund_ref,omitempty"`
+	CreatedBy          string        `json:"created_by"`
+	CreatedAt          time.Time     `json:"created_at"`
+}
+
+func newCreditNoteResponse(cn *billing.CreditNote) creditNoteResponse {
+	return creditNoteResponse{
+		ID:                 cn.ID,
+		InvoiceID:          cn.InvoiceID,
+		Amount:             cn.Amount,
+		Currency:           cn.Currency,
+		Reason:             cn.Reason,
+		RefundedExternally: cn.RefundedExternally,
+		ExternalRefundRef:  cn.ExternalRefundRef,
+		CreatedBy:          cn.CreatedBy,
+		CreatedAt:          cn.CreatedAt,
+	}
+}
+
+func newInvoiceDetailResponse(
+	inv *billing.Invoice,
+	lines []billing.InvoiceItem,
+	notes []billing.CreditNote,
+	trail []auditResponse,
+	today brcal.Date,
+	links *services.PayLink,
+) invoiceDetailResponse {
+	out := invoiceDetailResponse{
+		Invoice:  newInvoiceResponse(inv, lines, today, links),
+		Timeline: trail,
+	}
+	for i := range notes {
+		out.CreditNotes = append(out.CreditNotes, newCreditNoteResponse(&notes[i]))
+		out.CreditedCents += notes[i].Amount
+	}
+	out.FullyCredited = billing.FullyCredited(inv, out.CreditedCents)
+	return out
 }
 
 type subscriptionItemResponse struct {

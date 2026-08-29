@@ -4,9 +4,11 @@ import (
 	"github.com/gofiber/fiber/v3"
 
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
+	"gopkg.aoctech.app/billing/api/internal/domain/id"
 	"gopkg.aoctech.app/billing/api/internal/middleware"
 	"gopkg.aoctech.app/billing/api/internal/problem"
 	"gopkg.aoctech.app/billing/api/internal/repositories"
+	"gopkg.aoctech.app/billing/api/internal/services"
 )
 
 // The console surface (assessment § 15, screens C1–C9 and C17).
@@ -22,8 +24,11 @@ import (
 
 type consoleHandlers struct {
 	*handlers
-	orgs  *repositories.OrganizationRepository
-	audit *repositories.AuditRepository
+	orgs   *repositories.OrganizationRepository
+	audit  *repositories.AuditRepository
+	credit *repositories.CreditNoteRepository
+	// invoicer issues a draft invoice, through the same path the sweep uses.
+	invoicer *services.Invoicer
 	// portalOrganizationID is tenant zero, needed only by the /v1/me route, which
 	// answers for both shells and therefore belongs to neither.
 	portalOrganizationID string
@@ -127,6 +132,115 @@ func (h *consoleHandlers) getInvoice(c fiber.Ctx) error {
 	if err != nil {
 		return fail(c, err)
 	}
+	return h.invoiceDetail(c, inv)
+}
+
+// finalizeInvoice issues a draft invoice (C3).
+//
+// A DRAFT invoice is normally transient — the sweep creates and finalizes one in
+// the same call — so this route exists for the row a half-failed run left
+// behind: written, unnumbered, and never picked up again, because the sweep
+// skips a period it has already billed. Without it that invoice is
+// unrecoverable from any screen.
+//
+// Already OPEN is not an error. Finalizing twice is what a double-click is, and
+// the second one must not burn a second invoice number.
+func (h *consoleHandlers) finalizeInvoice(c fiber.Ctx) error {
+	t := middleware.GetTenant(c)
+	inv, err := h.invoices.Get(c.Context(), t.OrganizationID, t.Livemode, c.Params("id"))
+	if err != nil {
+		return fail(c, err)
+	}
+	if inv.Status != billing.InvoiceDraft {
+		return h.invoiceDetail(c, inv)
+	}
+	if err := h.invoicer.Issue(
+		c.Context(), inv, actorOfUser(c), middleware.GetRequestID(c), h.now(),
+	); err != nil {
+		return fail(c, err)
+	}
+	return h.invoiceDetail(c, inv)
+}
+
+// voidInvoice cancels an invoice that should never have been issued (C3).
+//
+// It is the destructive one on this surface, and the domain is what bounds it:
+// only DRAFT and OPEN reach VOID, so a PAID invoice cannot be voided at all —
+// money that arrived is corrected with a credit note, never by deleting the
+// document that recorded it.
+//
+// Already VOID answers with the invoice rather than an error, for the same
+// reason a repeated cancellation does: a second identical audit row makes a
+// timeline harder to read.
+func (h *consoleHandlers) voidInvoice(c fiber.Ctx) error {
+	t := middleware.GetTenant(c)
+	inv, err := h.invoices.Get(c.Context(), t.OrganizationID, t.Livemode, c.Params("id"))
+	if err != nil {
+		return fail(c, err)
+	}
+	if inv.Status == billing.InvoiceVoid {
+		return h.invoiceDetail(c, inv)
+	}
+	if _, err := h.invoices.Transition(
+		c.Context(), inv, billing.InvoiceVoid, billing.CauseManual,
+		actorOfUser(c), middleware.GetRequestID(c), h.now(),
+	); err != nil {
+		return fail(c, err)
+	}
+	return h.invoiceDetail(c, inv)
+}
+
+// creditInvoice issues a credit note (C3).
+//
+// The correction path for an invoice that has been issued, and the only one:
+// editing the lines of a document a customer has already been shown destroys the
+// record of what they were asked to pay, which is what an invoice is for.
+//
+// It never moves money. `refunded_externally` records that wallet or the PSP
+// returned it, with the reference there — billing issuing money is how this
+// service would start becoming a wallet.
+func (h *consoleHandlers) creditInvoice(c fiber.Ctx) error {
+	t := middleware.GetTenant(c)
+	var req creditNoteRequest
+	if err := c.Bind().Body(&req); err != nil {
+		return problem.BadRequest("corpo inválido").Send(c)
+	}
+	if req.Reason == "" {
+		// Required, and refused here rather than defaulted: a credit note with no
+		// reason is the one document nobody can explain a year later, and every
+		// default this could invent would be a sentence a person did not write.
+		return problem.BadRequest("informe o motivo do crédito").Send(c)
+	}
+	inv, err := h.invoices.Get(c.Context(), t.OrganizationID, t.Livemode, c.Params("id"))
+	if err != nil {
+		return fail(c, err)
+	}
+
+	cn := &billing.CreditNote{
+		ID:                 id.NewWithPrefix(id.PrefixCreditNote),
+		InvoiceID:          inv.ID,
+		Amount:             req.Amount,
+		Reason:             req.Reason,
+		RefundedExternally: req.RefundedExternally,
+		ExternalRefundRef:  req.ExternalRefundRef,
+		Metadata:           req.Metadata,
+	}
+	if err := h.credit.Issue(
+		c.Context(), cn, inv, actorOfUser(c), middleware.GetRequestID(c), h.now(),
+	); err != nil {
+		return fail(c, err)
+	}
+	return c.Status(fiber.StatusCreated).JSON(newCreditNoteResponse(cn))
+}
+
+// invoiceDetail is the response every write on this surface answers with: the
+// invoice as C3 renders it, freshly composed rather than echoed back.
+//
+// One shape for the read and the three writes, so a screen re-renders from the
+// response instead of refetching — and so a write can never publish a field the
+// read does not.
+func (h *consoleHandlers) invoiceDetail(c fiber.Ctx, inv *billing.Invoice) error {
+	t := middleware.GetTenant(c)
 	lines, err := h.invoices.ListItems(c.Context(), t.OrganizationID, t.Livemode, inv.ID)
 	if err != nil {
 		return fail(c, err)
@@ -135,10 +249,11 @@ func (h *consoleHandlers) getInvoice(c fiber.Ctx) error {
 	if err != nil {
 		return fail(c, err)
 	}
-	return c.JSON(invoiceDetailResponse{
-		Invoice:  newInvoiceResponse(inv, lines, h.today(), h.links),
-		Timeline: trail,
-	})
+	notes, err := h.credit.ListByInvoice(c.Context(), t.OrganizationID, t.Livemode, inv.ID)
+	if err != nil {
+		return fail(c, err)
+	}
+	return c.JSON(newInvoiceDetailResponse(inv, lines, notes, trail, h.today(), h.links))
 }
 
 // listSubscriptions is C4.

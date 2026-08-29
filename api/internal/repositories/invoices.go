@@ -180,11 +180,17 @@ func (r *InvoiceRepository) Finalize(
 	inv *billing.Invoice,
 	dueDate brcal.Date,
 	settlementSweep brcal.Date,
+	cause billing.Cause,
 	actor, requestID string,
 	now time.Time,
 ) ([]billing.EventType, error) {
 	updated := *inv
-	events, err := updated.Transition(billing.InvoiceOpen, billing.CauseScheduler)
+	// The cause is the caller's, not this function's. It used to be a hard-coded
+	// CauseScheduler, which was true while the sweep was the only finalizer and
+	// became a lie the moment an operator could issue a draft from the console:
+	// the trail would have said the scheduler did it, on a row where the whole
+	// question is who did.
+	events, err := updated.Transition(billing.InvoiceOpen, cause)
 	if err != nil {
 		return nil, err
 	}
@@ -236,10 +242,14 @@ func (r *InvoiceRepository) Finalize(
 			To:             string(billing.InvoiceOpen),
 			Set:            set,
 			Audit: AuditEntry{
-				Entity:    EntityInvoice,
-				EntityID:  inv.ID,
-				Action:    string(events[0]),
-				Cause:     billing.CauseScheduler,
+				Entity:   EntityInvoice,
+				EntityID: inv.ID,
+				Action:   string(events[0]),
+				// The caller's cause, not this function's. The audit row and the
+				// domain transition must agree about why the invoice was issued:
+				// one said "scheduler" while the other accepted whatever it was
+				// given, so an operator's manual issue read as the nightly sweep's.
+				Cause:     cause,
 				Actor:     actor,
 				RequestID: requestID,
 			},

@@ -61,6 +61,12 @@ type customerUserRow struct {
 	CustomerID string `dynamodbav:"customer_id"`
 }
 
+type creditNoteRow struct {
+	keys
+	PeriodAttrs
+	billing.CreditNote
+}
+
 type productRow struct {
 	keys
 	billing.Product

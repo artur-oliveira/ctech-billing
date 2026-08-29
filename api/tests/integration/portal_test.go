@@ -223,7 +223,7 @@ func TestPortalShowsOnlyTheSignedInCustomersInvoices(t *testing.T) {
 	theirs := newInvoiceFor(t, e.org, "cus_someone_else")
 	due := brcal.New(2026, time.March, 10)
 	for _, inv := range []*billing.Invoice{mine, theirs} {
-		if _, err := invoices.Finalize(ctx, inv, due, due, "test", "req_1", now()); err != nil {
+		if _, err := invoices.Finalize(ctx, inv, due, due, billing.CauseScheduler, "test", "req_1", now()); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -269,7 +269,7 @@ func TestPortalHidesAnotherCustomersInvoice(t *testing.T) {
 	theirs := newInvoiceFor(t, e.org, "cus_someone_else")
 	due := brcal.New(2026, time.March, 10)
 	if _, err := repositories.NewInvoiceRepository(testDB, testCfg).
-		Finalize(ctx, theirs, due, due, "test", "req_1", now()); err != nil {
+		Finalize(ctx, theirs, due, due, billing.CauseScheduler, "test", "req_1", now()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -290,7 +290,7 @@ func TestPortalPayloadCarriesNoInternalVocabulary(t *testing.T) {
 	inv := newInvoiceFor(t, e.org, e.customer.ID)
 	due := brcal.New(2026, time.March, 10)
 	if _, err := repositories.NewInvoiceRepository(testDB, testCfg).
-		Finalize(ctx, inv, due, due, "test", "req_1", now()); err != nil {
+		Finalize(ctx, inv, due, due, billing.CauseScheduler, "test", "req_1", now()); err != nil {
 		t.Fatal(err)
 	}
 

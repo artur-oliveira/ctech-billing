@@ -111,8 +111,10 @@ func Build(ctx context.Context, cfg *config.Config, clock func() time.Time) (*fi
 		Organizations: orgs,
 		Audit:         audit,
 		Payments:      payments,
+		CreditNotes:   repositories.NewCreditNoteRepository(db, cfg),
 
 		Subscriber: subscriber,
+		Invoicer:   invoicer,
 		Collector:  collector,
 		Links:      links,
 		Verifier:   middleware.NewVerifier(cfg.CtechJWKSURL, cfg.ServiceAudience, cfg.CtechIssuerURL, cacheBackend),

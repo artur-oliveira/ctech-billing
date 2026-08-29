@@ -212,7 +212,7 @@ func TestInvoiceNumberingIsGapless(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_, errs[i] = repo.Finalize(ctx, inv, brcal.New(2026, time.March, 10), brcal.New(2026, time.March, 20), "scheduler", "req_1", now())
+			_, errs[i] = repo.Finalize(ctx, inv, brcal.New(2026, time.March, 10), brcal.New(2026, time.March, 20), billing.CauseScheduler, "scheduler", "req_1", now())
 		}()
 	}
 	wg.Wait()
@@ -244,7 +244,7 @@ func TestTransitionWritesAuditAtomically(t *testing.T) {
 	org := newOrg(t, true)
 
 	inv := newDraftInvoice(t, org, "si_audit:2026-03-01")
-	if _, err := invoices.Finalize(ctx, inv, brcal.New(2026, time.March, 10), brcal.New(2026, time.March, 20), "scheduler", "req_a", now()); err != nil {
+	if _, err := invoices.Finalize(ctx, inv, brcal.New(2026, time.March, 10), brcal.New(2026, time.March, 20), billing.CauseScheduler, "scheduler", "req_a", now()); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := invoices.Transition(ctx, inv, billing.InvoicePaid, billing.CauseWalletWebhook, "wallet", "req_b", now()); err != nil {
@@ -308,7 +308,7 @@ func TestConcurrentTransitionsLoseOne(t *testing.T) {
 	org := newOrg(t, true)
 
 	inv := newDraftInvoice(t, org, "si_race:2026-03-01")
-	if _, err := repo.Finalize(ctx, inv, brcal.New(2026, time.March, 10), brcal.New(2026, time.March, 20), "scheduler", "req_1", now()); err != nil {
+	if _, err := repo.Finalize(ctx, inv, brcal.New(2026, time.March, 10), brcal.New(2026, time.March, 20), billing.CauseScheduler, "scheduler", "req_1", now()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -524,7 +524,7 @@ func TestRetentionIsWrittenOnCreation(t *testing.T) {
 		t.Fatal("an invoice is a commercial document and must carry no TTL")
 	}
 
-	if _, err := invoices.Finalize(ctx, inv, brcal.New(2026, time.March, 10), brcal.New(2026, time.March, 20), "scheduler", "req_1", now()); err != nil {
+	if _, err := invoices.Finalize(ctx, inv, brcal.New(2026, time.March, 10), brcal.New(2026, time.March, 20), billing.CauseScheduler, "scheduler", "req_1", now()); err != nil {
 		t.Fatal(err)
 	}
 	audits, err := repositories.NewAuditRepository(testDB, testCfg).ListForEntity(ctx, org.ID, true, inv.ID, 10)
