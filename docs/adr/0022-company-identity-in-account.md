@@ -46,6 +46,19 @@ issue. Inscrição Estadual is state-scoped and validated against rules `ctech-a
 **The A1 certificate never leaves `ctech-dfe`** — not as a file, not as a field saying one exists. It is a private key,
 and the only reason to mirror its existence elsewhere would be to render a badge.
 
+### A CNPJ is alphanumeric, so canonical is not "digits"
+
+Since the Receita Federal's 2026 change a CNPJ's first twelve positions may hold letters; only its two check
+digits stayed numeric. The canonical stored form is therefore *mask stripped, letters uppercased* — and any
+code assuming digits (a mask, a validator, a column type, a client parsing the response) is wrong on a CNPJ
+issued from now on. A CPF stayed numeric throughout.
+
+Check digits are verified locally, not at the registry lookup: they are arithmetic, not a fact about the
+world, and a CNPJ issued this morning is unknown to every public register but must still be accepted. The two
+documents share the modulus-11 skeleton and nothing else — CNPJ weights cycle 2..9 from the right, CPF weights
+descend from 10 — and one sequence used for both still validates most inputs by luck, which is how that bug
+reaches production.
+
 ### `tax_id_kind`, because a CPF issuer already exists
 
 `ctech-dfe` keys organizations `CNPJ_{digits}` **or** `CPF_{digits}` today
@@ -54,7 +67,7 @@ CNPJ" in its title and would have modelled a customer base that is already wider
 
 ### The id is opaque; the tax id is a unique attribute, not the key
 
-`company_id` is a UUIDv7. `(organization_id, tax_id)` uniqueness is enforced by a conditional write on a lookup row —
+`company_id` is a UUIDv7. `(organization_id, tax_id)` uniqueness is enforced by a conditional write on a lock row —
 the mechanism `Invitation` already uses for one-invite-per-email — not by making the tax id the primary key.
 
 The DF-e's present key *is* the CNPJ, which is the expensive half of its migration and the reason to not repeat the
