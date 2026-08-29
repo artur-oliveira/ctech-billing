@@ -145,7 +145,22 @@
       "metadata": {
         "plan": "ondemand",
         "meter": "companies",
-        "quota_companies": "-1",
+        "quota_companies": "-1"
+      }
+    },
+    {
+      "id": "price_dfe_ondemand_user",
+      "product_id": "prod_dfe_ondemand",
+      "type": "metered",
+      "unit_amount": 500,
+      "recurrence": {
+        "interval": "month",
+        "count": 1
+      },
+      "billing_timing": "arrears",
+      "metadata": {
+        "plan": "ondemand",
+        "meter": "users",
         "quota_users": "-1"
       }
     },

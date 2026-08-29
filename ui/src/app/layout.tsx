@@ -1,10 +1,10 @@
 import type {Metadata, Viewport} from "next"
-import {Geist} from "next/font/google"
+import {IBM_Plex_Sans} from "next/font/google"
 
 import {Providers} from "@/app/providers"
 import "./globals.css"
 
-const geist = Geist({variable: "--font-geist-sans", subsets: ["latin"], display: "swap"})
+const sans = IBM_Plex_Sans({variable: "--font-sans", subsets: ["latin"], display: "swap"})
 
 /** Where a relative OG image resolves from. Without it Next warns at build and
  *  every social preview points at localhost. */
@@ -66,7 +66,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({children}: LayoutProps<"/">) {
   return (
-    <html lang="pt-BR" className={`${geist.variable} h-full`} suppressHydrationWarning>
+    <html lang="pt-BR" className={`${sans.variable} h-full`} suppressHydrationWarning>
     <body className="min-h-full">
     <Providers>{children}</Providers>
     </body>

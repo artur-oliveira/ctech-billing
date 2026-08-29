@@ -18,7 +18,7 @@ colors:
   danger: oklch(0.500 0.190 22)
   danger-strong: oklch(0.440 0.175 22)
 typography:
-  family: Geist Sans (single family, all weights)
+  family: IBM Plex Sans (single family, all weights)
   body: 0.875rem / 1.5
   figure: 1.5rem / 600 / -0.015em
   hero: 1.875rem / 600 / -0.02em
@@ -157,7 +157,7 @@ genuinely raised — the outstanding-invoice panel, the open PIX charge — and
 
 ## Type
 
-One family, Geist, at fixed rem sizes. Hierarchy is weight and size; there is no
+One family, IBM Plex Sans, at fixed rem sizes. Hierarchy is weight and size; there is no
 second family and no fluid `clamp()`.
 
 Money uses tabular figures via `[data-numeric]`, because proportional digits
