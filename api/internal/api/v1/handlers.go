@@ -20,6 +20,10 @@ import (
 
 // handlers bundles what every route closure needs.
 type handlers struct {
+	// documents renders and serves invoice PDFs, shared by both signed-in
+	// surfaces because they render the same document from the same invoice.
+	// Nil when the deployment has no bucket, and then neither route exists.
+	documents  *services.Documents
 	customers  *repositories.CustomerRepository
 	subs       *repositories.SubscriptionRepository
 	invoices   *repositories.InvoiceRepository

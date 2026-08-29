@@ -601,7 +601,39 @@ Not blockers, worth naming so they are not rediscovered as surprises:
   is the last moment it will be.
 
 ## Explicitly deferred (post-MVP, do not build now)
-- Invoice PDF generation/storage.
+- ~~Invoice PDF generation/storage~~ — **built** (`internal/invoicepdf`, `services/documents.go`).
+  Rendered with [folio](https://github.com/carlos7ags/folio) from an HTML template, in-process:
+  no headless browser, no subprocess, no external service, and the template is the version
+  somebody can edit without learning a layout engine.
+
+  Three decisions worth keeping:
+
+  - **Rendered on first download, not at finalization.** Generating at finalization buys nothing
+    and costs a window in which an invoice exists and its document does not — plus a failure mode
+    where the sweep stops issuing bills because a PDF library returned an error. It is safe only
+    because the document carries frozen facts alone, so it is the same document whenever it is
+    produced; a test pins that determinism. An invoice nobody downloads never becomes a file.
+  - **The document carries no status.** An invoice does not stop being that document by being
+    paid, and one stamped PAGA would be a receipt — a different document nobody has asked for.
+    A test renders the same invoice OPEN and PAID and asserts the bytes are identical.
+  - **Write-once storage, presigned reads.** The put is conditional on the key being absent, so
+    two simultaneous downloads leave one object; the API answers with a five-minute signed URL
+    rather than the bytes, because a download path through t4g.nano instances is a download path
+    that competes with paying a bill. No `s3:DeleteObject` in the role at all: the document is the
+    invoice.
+
+  Available on **both signed-in surfaces and deliberately not on the public checkout** — a payment
+  link gets forwarded and its payload carries no name, e-mail or tax id, while the document
+  carries all three. The customer's tax id is printed **in full**, which is the one place billing
+  publishes an unmasked one without an audit row: it is the customer's own document, going to
+  them, and a masked payer is not something an accountant can file.
+
+  C17 gained the issuer block (razão social, CNPJ, endereço, e-mail) that heads it, written as one
+  unit — a partial update is how a document ends up carrying one company's name over another's
+  CNPJ — and the screen says so when the legal name is empty, because the consequence is invisible
+  from every other screen.
+
+  **Left:** the bucket is new, so `terraform apply` creates it before the first download works.
 - Base-fee-plus-overage hybrid plan type.
 - Multi-currency.
 - Self-serve plan upgrade/downgrade UI.

@@ -107,6 +107,12 @@ type Invoice struct {
 	// only reaches endpoints that asked for everything.
 	OwnerKey string `dynamodbav:"owner_key,omitempty" json:"-"`
 
+	// PDFKey is where this invoice's rendered document lives, set the first time
+	// somebody downloads it and never changed. Its presence is what says "the
+	// document exists"; its absence says "it has not been asked for yet", which
+	// is not the same as an invoice with no document.
+	PDFKey string `dynamodbav:"pdf_key,omitempty" json:"-"`
+
 	// Policy is the dunning schedule this invoice was issued under, copied at
 	// finalization and never shared with the product or organization it came
 	// from (the same rule Metadata follows — ADR 0008).

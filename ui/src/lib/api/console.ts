@@ -14,6 +14,7 @@ import type {
   ConsoleSettings,
   ConsoleSubscription,
   ConsoleSubscriptionDetail,
+  DocumentLink,
   DunningPolicy,
   DunningStep,
 } from "@/lib/api/consoleTypes"
@@ -241,6 +242,33 @@ export async function archivePrice(id: string, mode?: Mode): Promise<ConsolePric
   const {data} = await apiClient.post<ConsolePrice>(
     `/v1.0/console/prices/${id}/archive`,
     undefined,
+    modeHeaders(mode),
+  )
+  return data
+}
+
+export async function getConsoleInvoicePDF(id: string, mode?: Mode): Promise<DocumentLink> {
+  const {data} = await apiClient.get<DocumentLink>(
+    `/v1.0/console/invoices/${id}/pdf`,
+    modeHeaders(mode),
+  )
+  return data
+}
+
+export interface IssuerInput {
+  legal_name: string
+  tax_id: string
+  address: string
+  email: string
+}
+
+/** Who the invoice PDF says is charging. Written as one block: the four fields
+ *  are printed together, and a partial update is how a document ends up headed
+ *  by one company's name over another's CNPJ. */
+export async function setIssuer(input: IssuerInput, mode?: Mode): Promise<IssuerInput> {
+  const {data} = await apiClient.put<IssuerInput>(
+    "/v1.0/console/settings/issuer",
+    input,
     modeHeaders(mode),
   )
   return data

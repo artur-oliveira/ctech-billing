@@ -46,6 +46,20 @@ type Organization struct {
 	// never a copy of the person.
 	OwnerUserID string `dynamodbav:"owner_user_id" json:"owner_user_id"`
 
+	// The issuer block: who the invoice PDF says is charging. Every field is
+	// optional and none of it is used for anything but the document — billing
+	// does not validate a CNPJ or check an address, because it is not the
+	// authority on either and pretending to be would be worse than being blank.
+	//
+	// DisplayName is what screens show; LegalName is what a document says, and
+	// they differ for almost every real company ("CTech" against "A O CARVALHO
+	// TECH LTDA"). An organization that fills in neither still gets a usable
+	// PDF, headed by DisplayName.
+	LegalName     string `dynamodbav:"legal_name,omitempty"    json:"legal_name,omitempty"`
+	IssuerTaxID   string `dynamodbav:"issuer_tax_id,omitempty" json:"issuer_tax_id,omitempty"`
+	IssuerAddress string `dynamodbav:"issuer_address,omitempty" json:"issuer_address,omitempty"`
+	IssuerEmail   string `dynamodbav:"issuer_email,omitempty"  json:"issuer_email,omitempty"`
+
 	// DunningPolicy is this organization's default schedule for chasing an
 	// unpaid invoice. Empty means the built-in one, which is the state every
 	// organization starts in — a merchant who has not thought about dunning gets

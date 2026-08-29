@@ -113,6 +113,12 @@ type Config struct {
 	// reporting a failed tag, because the two have different remedies.
 	FieldEncryptionKey string `env:"FIELD_ENCRYPTION_KEY"`
 
+	// InvoiceDocumentsBucket holds the rendered invoice PDFs. Empty means the
+	// download routes are not mounted at all — a button that 404s is worse than
+	// a button that is absent, and this is a deployment choice rather than a
+	// runtime failure.
+	InvoiceDocumentsBucket string `env:"INVOICE_DOCUMENTS_BUCKET"`
+
 	// AlertsTopicARN is the account's shared alert topic
 	// (/ctech/{env}/alerts/topic-arn, written by ctech-cdk's AlertsStack). The
 	// scheduled jobs publish their own failures to it.

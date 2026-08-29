@@ -41,6 +41,7 @@ payloads and other unnecessary PII. This adds no OpenTelemetry exporter or custo
 | `api/internal/services` | The invoice-generation sweep, the subscribe/cancel flow, the collection path (`Collector`: open a charge, reuse a live one, settle from a re-read), reconciliation for charges whose webhook never arrived, the signed payment link, **dunning** (the schedule that chases an unpaid invoice), and **outbound webhook delivery**. |
 | `api/internal/crypto` | Field-level encryption for the stored values that are personal data on their own — today the customer's CPF/CNPJ ([ADR 0017](docs/adr/0017-field-level-encryption.md)). The service refuses to start without a key: writing a tax id in the clear is a failure no screen shows. |
 | `api/internal/email` | What billing says to a customer, and when. The SESv2 transport itself moved to `gopkg.aoctech.app/api-commons/email` — it was the same code here and in ctech-account — and the templates stayed, because a shared package that knew about invoices would be a notification service. |
+| `api/internal/invoicepdf` | The invoice as a PDF, rendered in-process with [folio](https://github.com/carlos7ags/folio) from an HTML template, and stored write-once in its own S3 bucket. The document carries frozen facts and no status — an invoice does not stop being that document by being paid — which is what makes rendering it on first download safe rather than requiring a job at finalization. |
 | `api/internal/jobs` | How the four scheduled binaries report a failure to a person: one alert to the account's SNS topic, and the existing exit codes. Not CloudWatch alarms — those are billed per alarm per month to say the one thing every job already knows when it happens. The failure a metric would miss entirely is the one that alerts loudest: a binary that dies on configuration emits no counters and looks like a quiet day. |
 | `api/internal/settlement` | "This invoice was paid", published over the Valkey this service already uses, so the browser holding a PIX code hears it from whichever instance the webhook reached. The payment stream still re-reads the invoice every thirty seconds — pub/sub has no replay, so the publish makes the common case instant and the re-read makes every case correct. |
 | `api/internal/provision` | A tenant as a reviewable JSON file: the organization, the integrations admitted to act for it, the catalogue and the webhook endpoints. It exists because nothing else can create the first row — every write path resolves its tenant from a credential, and a credential is itself a row. |
@@ -90,6 +91,8 @@ parameter and no `livemode` flag anywhere, deliberately (ADR 0003).
 | `POST /v1.0/console/customers` | `billing:customers:write` |
 | `POST /v1.0/console/products` · `POST /v1.0/console/prices` · `POST /v1.0/console/prices/:id/archive` | `billing:products:write` |
 | `POST /v1.0/console/customers/:id/tax-id` | `billing:customers:write` |
+| `GET /v1.0/console/invoices/:id/pdf` | `billing:invoices:read` |
+| `PUT /v1.0/console/settings/issuer` | `billing:invoices:write` |
 | `PUT /v1.0/console/settings/dunning` · `PUT /v1.0/console/products/:id/dunning` | `billing:invoices:write` |
 
 Revealing a tax id is a `POST` because it has an effect — it writes the audit row

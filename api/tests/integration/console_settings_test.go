@@ -281,3 +281,88 @@ func TestOverviewSeparatesReceivedOpenAndOverdue(t *testing.T) {
 }
 
 func itoa(n int) string { return strconv.Itoa(n) }
+
+// The issuer block is what the PDF is headed by, and it is written as one unit:
+// a partial update is how a document ends up carrying one company's name over
+// another's CNPJ.
+func TestConsoleSetsTheIssuerAsABlock(t *testing.T) {
+	e := newAPI(t)
+	token := e.sessionToken(t, middleware.ScopeInvoicesWrite, middleware.ScopeOrganizationRead)
+
+	res := e.consolePut(t, "/v1.0/console/settings/issuer", token, "live",
+		`{"legal_name":"A O CARVALHO TECH LTDA","tax_id":"12.345.678/0001-90","address":"São Paulo/SP","email":"cobranca@aoctech.app"}`)
+	if res.status != http.StatusOK {
+		t.Fatalf("status = %d: %s", res.status, res.body)
+	}
+
+	saved := readIssuer(t, e, token)
+	if saved.LegalName != "A O CARVALHO TECH LTDA" || saved.TaxID == "" {
+		t.Fatalf("issuer = %+v, want what was just written", saved)
+	}
+
+	// An empty field clears rather than being ignored: an organization that
+	// removed its address must not keep printing it.
+	if cleared := e.consolePut(t, "/v1.0/console/settings/issuer", token, "live",
+		`{"legal_name":"A O CARVALHO TECH LTDA","tax_id":"","address":"","email":""}`); cleared.status != http.StatusOK {
+		t.Fatalf("clear status = %d: %s", cleared.status, cleared.body)
+	}
+	// A **fresh** struct, and that is not a detail: the cleared fields are
+	// `omitempty`, so they are absent from the second response, and decoding
+	// into the struct the first read filled would leave the old values standing
+	// and pass a test that proves nothing.
+	after := readIssuer(t, e, token)
+	if after.TaxID != "" || after.Address != "" {
+		t.Fatalf("issuer = %+v, want the cleared fields gone", after)
+	}
+}
+
+type issuerView struct {
+	LegalName string `json:"legal_name"`
+	TaxID     string `json:"tax_id"`
+	Address   string `json:"address"`
+	Email     string `json:"email"`
+}
+
+func readIssuer(t *testing.T, e *apiEnv, token string) issuerView {
+	t.Helper()
+	res := e.console(t, "/v1.0/console/settings", token, "live")
+	if res.status != http.StatusOK {
+		t.Fatalf("settings status = %d: %s", res.status, res.body)
+	}
+	var body struct {
+		Issuer issuerView `json:"issuer"`
+	}
+	res.decode(t, &body)
+	return body.Issuer
+}
+
+// Changing the issuer leaves a trail, because it changes what every future
+// document says about who charged somebody.
+func TestChangingTheIssuerIsAudited(t *testing.T) {
+	ctx := ctxT(t)
+	e := newAPI(t)
+	token := e.sessionToken(t, middleware.ScopeInvoicesWrite)
+
+	if res := e.consolePut(t, "/v1.0/console/settings/issuer", token, "live",
+		`{"legal_name":"NOVA RAZAO LTDA","tax_id":"","address":"","email":""}`); res.status != http.StatusOK {
+		t.Fatalf("status = %d: %s", res.status, res.body)
+	}
+
+	audit := repositories.NewAuditRepository(testDB, testCfg)
+	entries, err := audit.ListForEntity(ctx, e.org.ID, e.org.Livemode, e.org.ID, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var found bool
+	for _, entry := range entries {
+		if entry.Action == "organization.issuer_changed" {
+			found = true
+			if entry.After != "NOVA RAZAO LTDA" {
+				t.Errorf("after = %q, want the new legal name", entry.After)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("changing the issuer must leave an audit row")
+	}
+}

@@ -26,6 +26,14 @@ type settingsResponse struct {
 	// because the screen's question is "what happens to an unpaid invoice" and
 	// "nothing configured" is not an answer to it.
 	Dunning dunningPolicyResponse `json:"dunning"`
+	// Issuer is what the invoice PDF is headed by. Published even when empty:
+	// the screen's job is to say that the documents are going out with no legal
+	// name on them, which is not something an operator discovers on their own.
+	Issuer issuerResponse `json:"issuer"`
+	// Documents says whether this deployment can produce a PDF at all. A screen
+	// that offered to configure the issuer of documents that are never rendered
+	// would be configuring nothing.
+	Documents bool `json:"documents_enabled"`
 	// Numbering, Retention and Sender are facts, not fields. They are published
 	// so the screen can state them rather than leave an operator guessing.
 	Numbering string `json:"numbering"`
@@ -77,7 +85,21 @@ func (req dunningPolicyRequest) schedule() billing.DunningSchedule {
 }
 
 func (h *consoleHandlers) settings(c fiber.Ctx) error {
-	org := middleware.GetOrganization(c)
+	// Re-read by primary key rather than using the resolver's copy.
+	//
+	// Every console request resolves its organization through `lookup-index`,
+	// which is a GSI and therefore eventually consistent — so an operator who
+	// has just saved the issuer or the dunning policy can refetch this screen
+	// and be shown what they replaced, which reads as a save that did not take.
+	// Nowhere else is affected: the resolver's copy is used for the id, the mode
+	// and the payout gate, none of which this surface edits.
+	//
+	// One strongly-consistent point read, on one screen, and only the screen
+	// that displays what it just wrote.
+	org, err := h.orgs.Get(c.Context(), middleware.GetTenant(c).OrganizationID, middleware.GetTenant(c).Livemode)
+	if err != nil {
+		return fail(c, err)
+	}
 	return c.JSON(settingsResponse{
 		Organization: sessionResponse{
 			OrganizationID: org.ID,
@@ -87,6 +109,8 @@ func (h *consoleHandlers) settings(c fiber.Ctx) error {
 			CanCharge:      org.AuthorizeCharge() == nil,
 		},
 		Dunning:   newDunningPolicyResponse(org.DunningPolicy),
+		Issuer:    newIssuerResponse(org),
+		Documents: h.documents.Enabled(),
 		Numbering: "sequencial por ano, sem lacunas",
 		Retention: "faturas e notas de crédito permanentes; auditoria por 5 anos",
 	})

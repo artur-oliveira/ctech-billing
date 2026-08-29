@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 
@@ -9,6 +10,7 @@ import (
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
 	"gopkg.aoctech.app/billing/api/internal/middleware"
 	"gopkg.aoctech.app/billing/api/internal/problem"
+	"gopkg.aoctech.app/billing/api/internal/repositories"
 	"gopkg.aoctech.app/billing/api/internal/services"
 	"gopkg.aoctech.app/billing/api/internal/settlement"
 )
@@ -156,6 +158,33 @@ func (h *portalHandlers) recentInvoices(c fiber.Ctx, subscriptionID string) ([]p
 	return out, nil
 }
 
+// ownInvoice reads the invoice named in the path, and only if it belongs to the
+// signed-in customer.
+//
+// The two rules are one function because they have to be applied together
+// everywhere: in the portal every reader shares a tenant, so tenant scoping
+// alone would show each of them all of the others — and a DRAFT is not a bill
+// anybody has been asked to pay. A route that read the invoice itself would be
+// one refactor away from forgetting the second half.
+//
+// The refusal is a 404 rather than a 403 on purpose: telling somebody that an
+// invoice exists but is not theirs is telling them something.
+func (h *portalHandlers) ownInvoice(c fiber.Ctx) (*billing.Invoice, error) {
+	t := middleware.GetTenant(c)
+	customer := middleware.GetCustomer(c)
+
+	inv, err := h.invoices.Get(c.Context(), t.OrganizationID, t.Livemode, c.Params("id"))
+	if err != nil {
+		return nil, err
+	}
+	if inv.CustomerID != customer.ID || inv.Status == billing.InvoiceDraft {
+		// The same error a missing row produces, so the two are indistinguishable
+		// to the caller and `fail` renders both as 404.
+		return nil, fmt.Errorf("%w: fatura", repositories.ErrNotFound)
+	}
+	return inv, nil
+}
+
 // listInvoices is P2.
 func (h *portalHandlers) listInvoices(c fiber.Ctx) error {
 	t := middleware.GetTenant(c)
@@ -186,14 +215,9 @@ func (h *portalHandlers) listInvoices(c fiber.Ctx) error {
 // getInvoice is P3: what it is, how much, when, and the lines that explain it.
 func (h *portalHandlers) getInvoice(c fiber.Ctx) error {
 	t := middleware.GetTenant(c)
-	customer := middleware.GetCustomer(c)
-
-	inv, err := h.invoices.Get(c.Context(), t.OrganizationID, t.Livemode, c.Params("id"))
+	inv, err := h.ownInvoice(c)
 	if err != nil {
 		return fail(c, err)
-	}
-	if inv.CustomerID != customer.ID || inv.Status == billing.InvoiceDraft {
-		return problem.NotFound("fatura não encontrada").Send(c)
 	}
 	lines, err := h.invoices.ListItems(c.Context(), t.OrganizationID, t.Livemode, inv.ID)
 	if err != nil {

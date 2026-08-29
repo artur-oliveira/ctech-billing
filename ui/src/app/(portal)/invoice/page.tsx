@@ -8,12 +8,13 @@ import {useSearchParams} from "next/navigation"
 import {Suspense, useState} from "react"
 import {toast} from "sonner"
 
+import {DownloadPDF} from "@/components/DownloadPDF"
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
 import {Money} from "@/components/portal/Money"
 import {PixPanel} from "@/components/portal/PixPanel"
 import {StatusBadge} from "@/components/portal/StatusBadge"
 import {messageFor, statusOf} from "@/lib/api/client"
-import {getInvoice, payInvoice, portalKeys} from "@/lib/api/portal"
+import {getInvoice, getInvoicePDF, payInvoice, portalKeys} from "@/lib/api/portal"
 import type {Invoice, PixPayment} from "@/lib/api/types"
 import {longDate, money, period} from "@/lib/format"
 import {useDocumentTitle} from "@/lib/hooks/useDocumentTitle"
@@ -159,6 +160,17 @@ function Invoice() {
       <Lines invoice={invoice}/>
 
       <Facts invoice={invoice}/>
+
+      {/* Last on the page, and quiet. Somebody who came to pay does not want a
+          download button competing with the one that pays; somebody who came to
+          file the invoice will scroll, because filing is a deliberate errand. */}
+      <div className="flex justify-start">
+        <DownloadPDF
+          fetchLink={() => getInvoicePDF(invoice.id)}
+          label="Baixar esta fatura em PDF"
+          variant="ghost"
+        />
+      </div>
     </div>
   )
 }

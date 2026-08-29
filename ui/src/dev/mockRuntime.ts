@@ -20,6 +20,7 @@ import {
   consoleSubscriptions,
   MOCK_CONSOLE_SESSION,
   setConsoleDunning,
+  setConsoleIssuer,
 } from "./consoleMockData"
 import {FIXTURES, MOCK_PIX_CODE} from "./mockData"
 
@@ -231,6 +232,20 @@ export const mockAdapter: AxiosAdapter = async config => {
       const steps = body.steps ?? []
       return ok(config, {steps: steps.length > 0 ? steps : consoleSettings(mode).dunning.steps, custom: steps.length > 0})
     }
+    if (url.endsWith("/v1.0/console/settings/issuer") && method === "put") {
+      return ok(config, setConsoleIssuer(JSON.parse((config.data as string) || "{}")))
+    }
+    // The document link. A real one is a presigned S3 URL the API signs after
+    // rendering; the fixture points at a data: URL so the button's whole path —
+    // pending label, navigation, error toast — is exercised without S3.
+    const pdf = url.match(/\/v1\.0\/(console|portal)\/invoices\/([^/]+)\/pdf$/)
+    if (pdf) {
+      return ok(config, {
+        url: "data:application/pdf;base64,JVBERi0xLjQK",
+        expires_in: 300,
+      })
+    }
+
     const taxID = url.match(/\/v1\.0\/console\/customers\/([^/]+)\/tax-id$/)
     if (taxID && method === "post") {
       return ok(config, {tax_id: "123.456.789-09"})
@@ -411,6 +426,11 @@ export const mockAdapter: AxiosAdapter = async config => {
     const inv = invoices().find(i => i.payable) ?? invoices()[0]
     if (!inv) fail(config, 404, "Link inválido", "link inválido ou expirado")
     return ok(config, {merchant: MOCK_MERCHANT, invoice: checkoutView(inv)})
+  }
+
+  const portalPDF = url.match(/\/v1\.0\/portal\/invoices\/([^/]+)\/pdf$/)
+  if (portalPDF) {
+    return ok(config, {url: "data:application/pdf;base64,JVBERi0xLjQK", expires_in: 300})
   }
 
   const detail = url.match(/\/v1\.0\/portal\/invoices\/([^/]+)$/)

@@ -31,6 +31,9 @@ type Deps struct {
 	// Invoicer is the console's finalize path: the sweep's own, so an operator
 	// issuing a stuck draft produces the same invoice the scheduler would have.
 	Invoicer *services.Invoicer
+	// Documents renders and serves invoice PDFs. Nil when the deployment has no
+	// bucket, and then the download routes are not mounted on either surface.
+	Documents *services.Documents
 	// Collector is nil when the deployment has no wallet configuration. Every
 	// route that collects money is then not mounted at all — a checkout that 404s
 	// is a deployment somebody notices, while one that fails after showing a QR
@@ -77,6 +80,7 @@ func Register(app *fiber.App, d Deps) {
 		clock = time.Now
 	}
 	h := &handlers{
+		documents:  d.Documents,
 		customers:  d.Customers,
 		subs:       d.Subs,
 		invoices:   d.Invoices,
@@ -243,6 +247,11 @@ func registerConsole(v1 fiber.Router, d Deps, h *handlers, auth fiber.Handler) {
 	// what happens to unpaid invoices — not what the organization is.
 	console.Get("/settings",
 		middleware.RequireUserScope(middleware.ScopeOrganizationRead), ch.settings)
+	// The issuer block is what the invoice PDF is headed by, so changing it is
+	// behind the invoice write scope rather than an organization one: it edits
+	// what every future document says.
+	console.Put("/settings/issuer",
+		middleware.RequireUserScope(middleware.ScopeInvoicesWrite), ch.setIssuer)
 	console.Put("/settings/dunning",
 		middleware.RequireUserScope(middleware.ScopeInvoicesWrite), ch.setDunningPolicy)
 
@@ -250,6 +259,12 @@ func registerConsole(v1 fiber.Router, d Deps, h *handlers, auth fiber.Handler) {
 		middleware.RequireUserScope(middleware.ScopeInvoicesRead), ch.listInvoices)
 	console.Get("/invoices/:id",
 		middleware.RequireUserScope(middleware.ScopeInvoicesRead), ch.getInvoice)
+	// The document, on the read scope: a PDF of an invoice is a rendering of
+	// what this token may already read.
+	if d.Documents.Enabled() {
+		console.Get("/invoices/:id/pdf",
+			middleware.RequireUserScope(middleware.ScopeInvoicesRead), ch.invoicePDF)
+	}
 	// The three writes on an invoice (C3), each behind the write scope rather
 	// than the read one: the token that renders the screen is not the token that
 	// can void from it.
@@ -356,6 +371,10 @@ func registerPortal(v1 fiber.Router, d Deps, h *handlers, auth fiber.Handler) {
 		middleware.RequireUserScope(middleware.ScopeMyInvoicesRead), ph.listInvoices)
 	portal.Get("/invoices/:id",
 		middleware.RequireUserScope(middleware.ScopeMyInvoicesRead), ph.getInvoice)
+	if d.Documents.Enabled() {
+		portal.Get("/invoices/:id/pdf",
+			middleware.RequireUserScope(middleware.ScopeMyInvoicesRead), ph.invoicePDF)
+	}
 
 	if d.Collector != nil {
 		portal.Post("/invoices/:id/pay",

@@ -594,3 +594,36 @@ func (r *InvoiceRepository) AdvanceDunning(ctx context.Context, inv *billing.Inv
 func (r *InvoiceRepository) tables() Tables {
 	return Tables{Rows: r.base, Audit: r.audit, Events: r.events}
 }
+
+// RecordPDFKey remembers where an invoice's rendered document was stored.
+//
+// Write-once, conditionally: the key is only set when there is not one already,
+// so two browsers downloading the same invoice at the same instant leave one
+// key rather than the second overwriting the first. Both wrote the same object
+// anyway — Render is a function of frozen facts — so a losing race is not an
+// error and this returns nil.
+//
+// No audit row. Downloading a document one is already entitled to read is not a
+// state change, and an audit table that grew a row per download would bury the
+// entries that are actually decisions. Access is in the access log, where reads
+// belong.
+func (r *InvoiceRepository) RecordPDFKey(ctx context.Context, inv *billing.Invoice, key string, now time.Time) error {
+	err := r.base.TransactWrite(ctx, txItems(r.base.BuildRawUpdateTxItem(
+		TenantPK(inv.OrganizationID, inv.Livemode), new(InvoiceSK(inv.ID)),
+		"SET #pk = :key, #ua = :now",
+		"attribute_exists(pk) AND attribute_not_exists(#pk)",
+		map[string]string{"#pk": "pdf_key", "#ua": "updated_at"},
+		map[string]types.AttributeValue{
+			":key": &types.AttributeValueMemberS{Value: key},
+			":now": &types.AttributeValueMemberS{Value: now.UTC().Format(time.RFC3339Nano)},
+		},
+	)))
+	if IsConditionFailed(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	inv.PDFKey = key
+	return nil
+}

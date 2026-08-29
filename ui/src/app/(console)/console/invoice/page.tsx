@@ -9,11 +9,18 @@ import {Suspense, useState} from "react"
 import {toast} from "sonner"
 
 import {CreditNoteDialog} from "@/components/console/CreditNoteDialog"
+import {DownloadPDF} from "@/components/DownloadPDF"
 import {InvoiceStatusBadge} from "@/components/console/InvoiceStatusBadge"
 import {Timeline} from "@/components/console/Timeline"
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
 import {messageFor, statusOf} from "@/lib/api/client"
-import {consoleKeys, finalizeInvoice, getConsoleInvoice, voidInvoice} from "@/lib/api/console"
+import {
+  consoleKeys,
+  finalizeInvoice,
+  getConsoleInvoice,
+  getConsoleInvoicePDF,
+  voidInvoice,
+} from "@/lib/api/console"
 import type {ConsoleInvoiceDetail} from "@/lib/api/consoleTypes"
 import {useMode} from "@/lib/console/useMode"
 import {longDate, money, period, shortDate} from "@/lib/format"
@@ -127,6 +134,12 @@ function Detail() {
               </Button>
             )}
             {invoice.checkout_url && <CopyLink url={invoice.checkout_url}/>}
+            {/* Not on a draft: it has no number, so there is no document — and
+                the server refuses rather than rendering something that looks
+                official and refers to nothing. */}
+            {invoice.status !== "DRAFT" && (
+              <DownloadPDF fetchLink={() => getConsoleInvoicePDF(invoice.id, mode)}/>
+            )}
             {canVoid && (
               <Button variant="outline" size="sm" onClick={() => setVoiding(true)}>
                 Anular

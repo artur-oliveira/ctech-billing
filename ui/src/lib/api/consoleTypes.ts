@@ -8,7 +8,9 @@
  * two payloads, and the console must never render the portal's phrasing back at
  * somebody who needs the enum (PRODUCT.md).
  */
-import type {Cents, IsoDate, Period} from "@/lib/api/types"
+import type {Cents, DocumentLink, IsoDate, Period} from "@/lib/api/types"
+
+export type {DocumentLink}
 
 export type InvoiceStatus = "DRAFT" | "OPEN" | "PAID" | "VOID" | "UNCOLLECTIBLE"
 
@@ -169,9 +171,22 @@ export interface DunningPolicy {
   custom: boolean
 }
 
+export interface Issuer {
+  legal_name?: string
+  tax_id?: string
+  address?: string
+  email?: string
+}
+
 export interface ConsoleSettings {
   organization: ConsoleSession
   dunning: DunningPolicy
+  /** What the invoice PDF is headed by. Empty is a real state the screen has to
+   *  point out: documents are going out with no legal name on them. */
+  issuer: Issuer
+  /** Whether this deployment renders PDFs at all. Configuring the issuer of
+   *  documents that are never produced would be configuring nothing. */
+  documents_enabled: boolean
   /** Facts, not fields: numbering has no options and retention is a constant.
    *  Published so the screen can state them rather than leave an operator
    *  guessing what it controls. */

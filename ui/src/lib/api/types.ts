@@ -84,6 +84,13 @@ export interface Subscription {
   cancelable: boolean
 }
 
+/** A short-lived signed link to a stored document. The URL carries no
+ *  authentication of its own, which is why it expires in minutes. */
+export interface DocumentLink {
+  url: string
+  expires_in: number
+}
+
 export interface PixPayment {
   method: string
   pix_code: string

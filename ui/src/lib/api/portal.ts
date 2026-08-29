@@ -2,6 +2,7 @@
 
 import {apiClient} from "@/lib/api/client"
 import type {
+  DocumentLink,
   Invoice,
   ListResponse,
   PaymentResult,
@@ -92,6 +93,19 @@ export async function listInvoices(cursor?: string): Promise<ListResponse<Invoic
 
 export async function getInvoice(id: string): Promise<Invoice> {
   const {data} = await apiClient.get<Invoice>(`/v1.0/portal/invoices/${id}`)
+  return data
+}
+
+/**
+ * A signed link to the invoice's PDF.
+ *
+ * The server renders and stores the document on the first request, so the first
+ * call for an invoice is slower than the rest. Not prefetched on render: most
+ * readers open an invoice to pay it, not to file it, and rendering a PDF for
+ * everybody who looks would be work nobody asked for.
+ */
+export async function getInvoicePDF(id: string): Promise<DocumentLink> {
+  const {data} = await apiClient.get<DocumentLink>(`/v1.0/portal/invoices/${id}/pdf`)
   return data
 }
 

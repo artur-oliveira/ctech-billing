@@ -466,10 +466,30 @@ export function setConsoleDunning(steps: DunningStep[]): DunningPolicy {
   return consoleDunning()
 }
 
+// Mutable for the same reason the policy is: the editor's save has to be
+// visible without a reload.
+let issuer = {
+  legal_name: "A O CARVALHO TECH LTDA",
+  tax_id: "12.345.678/0001-90",
+  address: "São Paulo/SP",
+  email: "cobranca@aoctech.app",
+}
+
+export function consoleIssuer() {
+  return issuer
+}
+
+export function setConsoleIssuer(next: typeof issuer) {
+  issuer = next
+  return issuer
+}
+
 export function consoleSettings(mode: "live" | "test") {
   return {
     organization: MOCK_CONSOLE_SESSION[mode],
     dunning: consoleDunning(),
+    issuer,
+    documents_enabled: true,
     numbering: "sequencial por ano, sem lacunas",
     retention: "faturas e notas de crédito permanentes; auditoria por 5 anos",
   }

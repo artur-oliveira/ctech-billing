@@ -20,6 +20,7 @@ import (
 	v1 "gopkg.aoctech.app/billing/api/internal/api/v1"
 	"gopkg.aoctech.app/billing/api/internal/config"
 	"gopkg.aoctech.app/billing/api/internal/email"
+	"gopkg.aoctech.app/billing/api/internal/invoicepdf"
 	"gopkg.aoctech.app/billing/api/internal/middleware"
 	"gopkg.aoctech.app/billing/api/internal/oauthresource"
 	"gopkg.aoctech.app/billing/api/internal/problem"
@@ -87,6 +88,19 @@ func Build(ctx context.Context, cfg *config.Config, clock func() time.Time) (*fi
 		slog.Warn("wallet not configured — checkout and payment routes are not mounted")
 	}
 
+	// Invoice documents. A deployment with no bucket serves no PDFs and mounts
+	// no download route, which is visible rather than broken.
+	pdfStore, err := invoicepdf.New(ctx, cfg.AWSRegion, cfg.InvoiceDocumentsBucket)
+	if err != nil {
+		return nil, err
+	}
+	var documents *services.Documents
+	if pdfStore.Enabled() {
+		documents = services.NewDocuments(invoices, customers, orgs, pdfStore)
+	} else {
+		slog.Warn("INVOICE_DOCUMENTS_BUCKET not set — invoice PDFs are disabled")
+	}
+
 	links := services.NewPayLink(cfg.CheckoutLinkSecret, cfg.CheckoutBaseURL)
 	if !links.Enabled() {
 		slog.Warn("CHECKOUT_LINK_SECRET not set — public payment links are disabled")
@@ -115,6 +129,7 @@ func Build(ctx context.Context, cfg *config.Config, clock func() time.Time) (*fi
 
 		Subscriber: subscriber,
 		Invoicer:   invoicer,
+		Documents:  documents,
 		Collector:  collector,
 		Links:      links,
 		Verifier:   middleware.NewVerifier(cfg.CtechJWKSURL, cfg.ServiceAudience, cfg.CtechIssuerURL, cacheBackend),

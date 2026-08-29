@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -219,6 +220,96 @@ func (r *OrganizationRepository) SetDunningPolicy(
 	}
 	org.DunningPolicy = policy.Clone()
 	return nil
+}
+
+// SetIssuer records who the invoice PDF says is charging.
+//
+// It writes the four fields as one block rather than patching them
+// individually: they are read together, printed together, and a partial update
+// is how a document ends up headed by a company name with somebody else's CNPJ
+// under it. An empty string clears the field.
+//
+// The audit row names the legal name only. The others are on every document the
+// organization issues anyway, and a trail that copied an address into itself on
+// every edit would be storing the same personal data twice.
+func (r *OrganizationRepository) SetIssuer(
+	ctx context.Context,
+	org *billing.Organization,
+	legalName, taxID, address, email string,
+	actor, requestID string,
+	now time.Time,
+) error {
+	if actor == "" {
+		return fmt.Errorf("repositories: changing the issuer of %s needs an actor", org.ID)
+	}
+
+	fields := map[string]string{
+		"legal_name":     strings.TrimSpace(legalName),
+		"issuer_tax_id":  strings.TrimSpace(taxID),
+		"issuer_address": strings.TrimSpace(address),
+		"issuer_email":   strings.TrimSpace(email),
+	}
+	names := map[string]string{"#ua": "updated_at"}
+	values := map[string]types.AttributeValue{
+		":now": &types.AttributeValueMemberS{Value: now.UTC().Format(time.RFC3339Nano)},
+	}
+	sets := []string{"#ua = :now"}
+	var removes []string
+
+	i := 0
+	for _, attr := range sortedStrings(fields) {
+		n, v := fmt.Sprintf("#f%d", i), fmt.Sprintf(":f%d", i)
+		names[n] = attr
+		if fields[attr] == "" {
+			removes = append(removes, n)
+		} else {
+			values[v] = &types.AttributeValueMemberS{Value: fields[attr]}
+			sets = append(sets, n+" = "+v)
+		}
+		i++
+	}
+	expr := "SET " + strings.Join(sets, ", ")
+	if len(removes) > 0 {
+		expr += " REMOVE " + strings.Join(removes, ", ")
+	}
+
+	auditItem, err := buildAuditItem(org.ID, org.Livemode, AuditEntry{
+		Entity:    EntityOrganization,
+		EntityID:  org.ID,
+		Action:    "organization.issuer_changed",
+		Cause:     billing.CauseManual,
+		Actor:     actor,
+		RequestID: requestID,
+		Before:    org.LegalName,
+		After:     fields["legal_name"],
+	}, "", "", now)
+	if err != nil {
+		return err
+	}
+
+	update := r.base.BuildRawUpdateTxItem(
+		TenantPK(org.ID, org.Livemode), new(OrganizationSK()),
+		expr, "attribute_exists(pk)", names, values,
+	)
+	if err := r.base.TransactWrite(ctx, txItems(update, r.audit.BuildPutTxItemIfAbsent(auditItem))); err != nil {
+		return err
+	}
+	org.LegalName = fields["legal_name"]
+	org.IssuerTaxID = fields["issuer_tax_id"]
+	org.IssuerAddress = fields["issuer_address"]
+	org.IssuerEmail = fields["issuer_email"]
+	return nil
+}
+
+// sortedStrings keeps the generated expression deterministic, and so diffable
+// in a log — the same reason sortedKeys exists for a status change.
+func sortedStrings(m map[string]string) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	slices.Sort(out)
+	return out
 }
 
 // describeSchedule renders a policy for the audit trail.

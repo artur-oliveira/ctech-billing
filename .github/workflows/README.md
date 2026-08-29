@@ -37,9 +37,9 @@ the code that moves money.
 morning's annoyance against running a vulnerability scanner a year out of date.
 
 **`api/go.mod` pins the Go patch version**, not just `go 1.26`. The bare minor is a floor, so
-`go-version-file` resolved it to whichever patch the runner offered — and a developer on 1.26.6
-saw a clean `govulncheck` while CI on 1.26.5 reported five standard-library findings, every one of
-them "Fixed in: go1.26.6". Most govulncheck failures are of exactly this shape: the finding is the
+`go-version-file` resolved it to whichever patch the runner offered — and a developer on 1.27
+saw a clean `govulncheck` while CI on 1.27 reported five standard-library findings, every one of
+them "Fixed in: go1.27". Most govulncheck failures are of exactly this shape: the finding is the
 toolchain, and the fix is that one line. `ctech-account` and `ctech-poker`, the siblings that also
 run the scanner, pin the same way.
 
