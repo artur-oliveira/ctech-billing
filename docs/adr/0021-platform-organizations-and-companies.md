@@ -67,6 +67,12 @@ The consequence is the point: two people may claim the same CNPJ, and the second
 the first one's verification. Under a boolean on the company they would, and whoever arrived second
 would walk into a company somebody else proved.
 
+A registry lookup does not shortcut this. `ctech-dfe` already queries cnpja from the browser to fill
+a form in, and that is what it should remain: a lookup says the CNPJ exists and is active, never
+that *this person* may act for it. A server-side one is worth adding later — it shortens the review
+queue by catching a dead CNPJ before a human reads documents — and it is evidence attached to the
+claim, never the field that decides it.
+
 Verification reuses `ctech-account`'s existing KYC machinery — levels, a pending/verified/rejected
 status, private documents with explicit audited access, a manager-only review queue — with a
 company as the subject and the membership as what gets stamped. It is not a second document store
