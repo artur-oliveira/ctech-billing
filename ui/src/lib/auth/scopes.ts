@@ -21,4 +21,32 @@ const PORTAL_SCOPES = [
   "billing:my-subscriptions:write",
 ] as const
 
-export const OAUTH_SCOPE = [...IDENTITY_SCOPES, ...PORTAL_SCOPES].join(" ")
+/**
+ * What the console needs, requested by the same login.
+ *
+ * One authorization for both shells, because they are one account and one app
+ * (PRODUCT.md): asking a person to sign in again to open "minha cobrança" would
+ * be asking them which of the two they are, which is exactly what this product
+ * does not do. Holding these scopes is not permission to use the console —
+ * every console route resolves an organization from the signed-in owner and
+ * answers 403 without one, so a customer who has never been provisioned one
+ * carries scopes that open nothing.
+ *
+ * **The `billing` OAuth client at ctech-account must be granted all of them.**
+ * ctech-account clamps the request to what the client holds and fails the flow
+ * rather than downgrading it, so a scope named here and missing there breaks
+ * sign-in for everybody — the portal included.
+ */
+const CONSOLE_SCOPES = [
+  "billing:organization:read",
+  "billing:invoices:read",
+  "billing:invoices:write",
+  "billing:subscriptions:read",
+  "billing:subscriptions:write",
+  "billing:customers:read",
+  "billing:customers:write",
+  "billing:products:read",
+  "billing:products:write",
+] as const
+
+export const OAUTH_SCOPE = [...IDENTITY_SCOPES, ...PORTAL_SCOPES, ...CONSOLE_SCOPES].join(" ")

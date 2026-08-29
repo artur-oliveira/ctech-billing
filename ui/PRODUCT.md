@@ -70,7 +70,9 @@ billing's own. A user should recognize the family and still know they changed pr
   in the portal is a bug — and so is asking the user which one they are.
 - **The tenant is never a question on screen.** Nothing in the UI lets anyone type, pick, or guess
   an organization; test-versus-live is the one mode the operator switches, and it is always visible
-  because acting on the wrong one is the expensive mistake.
+  because acting on the wrong one is the expensive mistake. In the built console the mode is a
+  header on every request and a segment of every query key, so the two modes are two caches and a
+  switch cannot leave live rows on a test screen.
 - **Show the derivation, not just the number.** Every total can be opened into its lines, its
   period, and its history. This is what "shows its work" means in practice, and it is why detail
   screens carry a timeline.

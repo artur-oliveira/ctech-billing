@@ -47,6 +47,18 @@ type auditResponse struct {
 	CreatedAt time.Time     `json:"created_at"`
 }
 
+// consoleInvoiceListItem is one row of C2.
+//
+// The invoice plus the customer's name, because a list of invoices without the
+// customer on it is a list an operator cannot use: the question at this screen
+// is "who owes what", and an id answers half of it. The name is not on the
+// shared invoiceResponse — an integration reading the M2M API already holds its
+// own customer records and does not need billing's copy.
+type consoleInvoiceListItem struct {
+	invoiceResponse
+	CustomerName string `json:"customer_name,omitempty"`
+}
+
 // invoiceDetailResponse is C3.
 //
 // The payment link an operator sends when a customer asks "can you send it
@@ -57,6 +69,12 @@ type auditResponse struct {
 // field, one rule (Invoice.Payable).
 type invoiceDetailResponse struct {
 	Invoice invoiceResponse `json:"invoice"`
+	// CustomerName, for the same reason C2 carries it: an operator reading this
+	// screen is talking to a person, not to an id. Absent when the customer row
+	// cannot be read — the invoice is still a real document, and refusing to
+	// render it over a missing name would take the screen down for a defect it
+	// can survive.
+	CustomerName string `json:"customer_name,omitempty"`
 	// CreditNotes are the corrections issued against this invoice, oldest first,
 	// with the total they add up to. The total is published rather than left to
 	// the client: "is this fully credited" is a rule (billing.FullyCredited), and
@@ -115,12 +133,14 @@ func newInvoiceDetailResponse(
 	lines []billing.InvoiceItem,
 	notes []billing.CreditNote,
 	trail []auditResponse,
+	customerName string,
 	today brcal.Date,
 	links *services.PayLink,
 ) invoiceDetailResponse {
 	out := invoiceDetailResponse{
-		Invoice:  newInvoiceResponse(inv, lines, today, links),
-		Timeline: trail,
+		Invoice:      newInvoiceResponse(inv, lines, today, links),
+		CustomerName: customerName,
+		Timeline:     trail,
 	}
 	for i := range notes {
 		out.CreditNotes = append(out.CreditNotes, newCreditNoteResponse(&notes[i]))

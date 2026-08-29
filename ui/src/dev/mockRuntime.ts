@@ -7,6 +7,17 @@ import {
   MOCK_CUSTOMER_PENDING_TERMS,
   type MockScenario,
 } from "@/lib/mockConfig"
+import {
+  consoleCustomerDetail,
+  consoleCustomers,
+  consoleInvoiceDetail,
+  consoleInvoices,
+  consoleProduct,
+  consoleProducts,
+  consoleSubscriptionDetail,
+  consoleSubscriptions,
+  MOCK_CONSOLE_SESSION,
+} from "./consoleMockData"
 import {FIXTURES, MOCK_PIX_CODE} from "./mockData"
 
 const STORAGE_KEY = "ctech-billing-mock-scenario"
@@ -100,8 +111,8 @@ function checkoutView(inv: Invoice) {
   }
 }
 
-function ok<T>(config: AxiosRequestConfig, data: T): AxiosResponse<T> {
-  return {data, status: 200, statusText: "OK", headers: {}, config: config as never}
+function ok<T>(config: AxiosRequestConfig, data: T, status = 200): AxiosResponse<T> {
+  return {data, status, statusText: "OK", headers: {}, config: config as never}
 }
 
 function fail(
@@ -174,6 +185,112 @@ export const mockAdapter: AxiosAdapter = async config => {
       "nenhuma conta de cobrança para este usuário",
       "/problems/no-billing-account"
     )
+  }
+
+  // ── Console ────────────────────────────────────────────────────────────────
+  // Answered above the portal routes and keyed on the mode header, which is the
+  // one thing the console adds to every request: a fixture that ignored it
+  // would make the mode switch look broken in exactly the mode where being
+  // wrong is expensive.
+  if (url.includes("/v1.0/console/")) {
+    const mode = (config.headers?.["X-Billing-Mode"] as string) === "test" ? "test" : "live"
+    const invoices = consoleInvoices(mode)
+
+    if (url.endsWith("/v1.0/console/session")) {
+      return ok(config, MOCK_CONSOLE_SESSION[mode])
+    }
+    if (url.includes("/v1.0/console/invoices?") || url.endsWith("/v1.0/console/invoices")) {
+      return ok(config, {data: invoices, has_more: false})
+    }
+
+    const write = url.match(/\/v1\.0\/console\/invoices\/([^/]+)\/(finalize|void|credit-notes)$/)
+    if (write && method === "post") {
+      const inv = invoices.find(i => i.id === write[1])
+      if (!inv) fail(config, 404, "Não encontrada", "fatura não encontrada")
+      switch (write[2]) {
+        case "finalize":
+          // Mutating the fixture in place is what makes the screen re-render
+          // into the state the real API would have returned. It lasts as long
+          // as the tab, which is the right lifetime for a mock.
+          if (inv.status === "DRAFT") {
+            inv.status = "OPEN"
+            inv.number = 1045
+          }
+          return ok(config, consoleInvoiceDetail(inv))
+        case "void":
+          inv.status = "VOID"
+          inv.amount_due = 0
+          return ok(config, consoleInvoiceDetail(inv))
+        default:
+          return ok(config, {id: "cn_mock_new"}, 201)
+      }
+    }
+
+    const detail = url.match(/\/v1\.0\/console\/invoices\/([^/]+)$/)
+    if (detail) {
+      const inv = invoices.find(i => i.id === detail[1])
+      if (!inv) fail(config, 404, "Não encontrada", "fatura não encontrada")
+      return ok(config, consoleInvoiceDetail(inv))
+    }
+
+    if (url.endsWith("/v1.0/console/customers") && method === "get") {
+      return ok(config, {data: consoleCustomers(mode), has_more: false})
+    }
+    const customer = url.match(/\/v1\.0\/console\/customers\/([^/]+)$/)
+    if (customer) {
+      const found = consoleCustomers(mode).find(c => c.id === customer[1])
+      if (!found) fail(config, 404, "Não encontrado", "cliente não encontrado")
+      return ok(config, consoleCustomerDetail(found))
+    }
+
+    if (url.endsWith("/v1.0/console/subscriptions") && method === "get") {
+      return ok(config, {data: consoleSubscriptions(mode), has_more: false})
+    }
+    const subscription = url.match(/\/v1\.0\/console\/subscriptions\/([^/]+)$/)
+    if (subscription) {
+      const found = consoleSubscriptions(mode).find(s => s.id === subscription[1])
+      if (!found) fail(config, 404, "Não encontrada", "assinatura não encontrada")
+      return ok(config, consoleSubscriptionDetail(found))
+    }
+    const subCancel = url.match(/\/v1\.0\/console\/subscriptions\/([^/]+)\/cancel$/)
+    if (subCancel && method === "post") {
+      const found = consoleSubscriptions(mode).find(s => s.id === subCancel[1])
+      if (!found) fail(config, 404, "Não encontrada", "assinatura não encontrada")
+      const atPeriodEnd = JSON.parse((config.data as string) || "{}").at_period_end === true
+      if (atPeriodEnd) {
+        found.cancel_at_period_end = true
+      } else {
+        found.status = "CANCELED"
+        found.entitled = false
+      }
+      return ok(config, found)
+    }
+
+    if (url.endsWith("/v1.0/console/products") && method === "get") {
+      return ok(config, {data: consoleProducts(), has_more: false})
+    }
+    const product = url.match(/\/v1\.0\/console\/products\/([^/]+)$/)
+    if (product && method === "get") {
+      const found = consoleProduct(product[1])
+      if (!found) fail(config, 404, "Não encontrado", "produto não encontrado")
+      return ok(config, found)
+    }
+    // The catalogue writes answer with a plausible row rather than mutating the
+    // fixtures: what these screens need designed is the dialog and the toast,
+    // and a mock catalogue that grew every time somebody clicked would make the
+    // list screen useless within a session.
+    if (url.endsWith("/v1.0/console/products") && method === "post") {
+      return ok(config, {id: "prod_mock_novo", name: "Novo produto", active: true, livemode: true}, 201)
+    }
+    if (url.endsWith("/v1.0/console/prices") && method === "post") {
+      return ok(config, {id: "price_mock_novo"}, 201)
+    }
+    const archive = url.match(/\/v1\.0\/console\/prices\/([^/]+)\/archive$/)
+    if (archive && method === "post") {
+      return ok(config, {id: archive[1], archived: true})
+    }
+
+    fail(config, 404, "Rota não mockada", `sem fixture para ${method.toUpperCase()} ${url}`)
   }
 
   if (url.endsWith("/v1.0/portal/session")) {

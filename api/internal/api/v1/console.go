@@ -117,9 +117,36 @@ func (h *consoleHandlers) listInvoices(c fiber.Ctx) error {
 	if err != nil {
 		return fail(c, err)
 	}
-	out := make([]invoiceResponse, 0, len(page.Items))
+	// The customers on this page, read once each. A page holds at most `pageLimit`
+	// invoices and usually far fewer distinct customers, so this is a handful of
+	// point reads rather than a join — and it is deliberately not an index or a
+	// denormalized copy of the name on the invoice, which would be a second
+	// version of a record that gets edited.
+	//
+	// A customer that cannot be read is not an error: the invoice is still a
+	// real document and the row renders without a name. Failing the whole
+	// listing because one customer row is missing would take the screen down
+	// for a defect it can survive.
+	names := map[string]string{}
 	for i := range page.Items {
-		out = append(out, newInvoiceResponse(&page.Items[i], nil, today, h.links))
+		id := page.Items[i].CustomerID
+		if _, seen := names[id]; seen || id == "" {
+			continue
+		}
+		customer, err := h.customers.Get(c.Context(), t.OrganizationID, t.Livemode, id)
+		if err != nil {
+			names[id] = ""
+			continue
+		}
+		names[id] = customer.Name
+	}
+
+	out := make([]consoleInvoiceListItem, 0, len(page.Items))
+	for i := range page.Items {
+		out = append(out, consoleInvoiceListItem{
+			invoiceResponse: newInvoiceResponse(&page.Items[i], nil, today, h.links),
+			CustomerName:    names[page.Items[i].CustomerID],
+		})
 	}
 	return c.JSON(pageOf(out, page.LastEvaluatedKey))
 }
@@ -253,7 +280,13 @@ func (h *consoleHandlers) invoiceDetail(c fiber.Ctx, inv *billing.Invoice) error
 	if err != nil {
 		return fail(c, err)
 	}
-	return c.JSON(newInvoiceDetailResponse(inv, lines, notes, trail, h.today(), h.links))
+	// Best effort, like the listing's: a name is what the screen shows a person,
+	// and its absence is a worse row rather than a broken page.
+	name := ""
+	if customer, err := h.customers.Get(c.Context(), t.OrganizationID, t.Livemode, inv.CustomerID); err == nil {
+		name = customer.Name
+	}
+	return c.JSON(newInvoiceDetailResponse(inv, lines, notes, trail, name, h.today(), h.links))
 }
 
 // createCustomer is C6's "novo cliente", on the shared implementation.

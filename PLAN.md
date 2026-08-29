@@ -244,11 +244,36 @@
       what one screen asks. Returned only from `GET /v1.0/portal/subscriptions/:id`.
       **Caveat:** invoices written before this change carry no `lookup_pk` and will not appear.
       Harmless today because no environment holds invoices; a backfill before one does.
-- [ ] UI: the console (C1–C9, C17). Same foundation, `data-density="compact"` on its shell.
-      Deferred by decision, twice: the portal is what stands between a customer and paying, and an
-      operator can already get everything the console reads from the API. It is also not worth
-      opening before the console **writes** above exist, because a read-only console answers
-      "what happened" and never "fix it".
+- [x] **UI: the console.** Same foundation, `data-density="compact"` on its shell — the whole of
+      the portal/console difference at the component level, and the reason `Button` has no
+      `size="console"`: height is decided by where a control is, not by each call site
+      remembering which screen it is on. Wider container too (`max-w-6xl` against the portal's
+      `max-w-2xl`): the portal reads one bill, this reads a table.
+    - [x] **C2 faturas** (paged by month, which is the partition `ListByMonth` indexes and the
+          way an operator asks), **C3 fatura** with its three writes, **C4/C5 assinaturas**,
+          **C6/C7 clientes**, **C8/C9 catálogo** with new product, new price and archive.
+    - [x] **The mode is a header, never a path segment or a body field** — and it is part of
+          every console query key. Without that, switching to test renders live rows out of the
+          cache until each query refetches, and acting on the wrong mode is the expensive
+          mistake this shell exists to prevent. It is always visible, and test mode carries a
+          band across the page.
+    - [x] **One sign-in for both shells.** The nine console scopes are requested by the same
+          authorization as the portal's four, because they are one account and one app: asking
+          somebody to sign in again to open "minhas cobranças" would be asking which of the two
+          they are. Holding the scopes is not permission — every console route resolves an
+          organization from the signed-in owner and answers 403 without one, which the shell
+          renders as an explanation rather than an error.
+    - [x] **C9 teaches immutability rather than hiding it.** The action is "novo preço" and there
+          is no edit anywhere; the screen says why, and archiving is a second, separate decision.
+          An edit button would create a new price behind the operator's back and leave them
+          believing they had changed what existing customers pay.
+    - [ ] **C1 (visão geral) and C17 (configurações)** are not built. C1 needs aggregates no
+          endpoint computes, and building it out of four list calls would be a dashboard that
+          lies at page size. C17 has nothing to configure yet: the dunning policy is one policy,
+          numbering has no options, and retention is a constant.
+    - [ ] **Revealing a tax id** is masked everywhere and never revealed. `RecordTaxIDAccess`
+          exists in the repository and no route calls it — a button that showed the whole CPF
+          without writing that row would be worse than not having one.
 
 ## Phase 3 — Invoice generation + payment
 - [x] Invoice-generation sweep (ARCHITECTURE.md § 5), idempotent by construction and proven by a
