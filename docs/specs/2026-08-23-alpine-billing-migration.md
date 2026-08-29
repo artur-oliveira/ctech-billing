@@ -56,6 +56,21 @@ Migrating billing to Alpine carries this forward with no extra work.
    occasionally. This spec explicitly does not solve that — the user has
    noted a Lambda + EventBridge Scheduler v2 replacement as the eventual
    fix, out of scope here. Revisit before enabling that schedule.
+
+   **Amended 2026-08-29 — the accepted risk was withdrawn.** Spot instances
+   made "a missed tick" a routine event rather than a rare one: an instance
+   replaced at 04:10 BRT skips that day's sweep and, an hour later, that day's
+   reminders. `Persistent=true` is now reproduced by two `@reboot` crontab
+   entries (`bootstrap-alpine.sh.tftpl`), which are safe for exactly the reason
+   the systemd flag was — the sweep skips a period it has already billed and
+   dunning stores the step each invoice has reached, so a boot after a normal
+   run is a no-op. It catches up **today**, not an arbitrary date: a day missed
+   entirely is still `job.sh sweep -date=…` by hand, because guessing how far
+   back to walk is how a job re-bills a month.
+
+   The nightly-shutdown trap above is unchanged and still real; the `@reboot`
+   entries would cover the 10:00 boot, but a schedule whose window contains both
+   ticks every day should not be enabled on the strength of a catch-up.
 4. **Environments:** apply direct to prod (user decision, same precedent as
    lbalancer). No canary/dev-first rollout requested.
 

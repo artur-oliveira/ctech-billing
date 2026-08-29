@@ -192,6 +192,15 @@ export const mockAdapter: AxiosAdapter = async config => {
     return ok(config, {data: fixture().subscriptions, has_more: false})
   }
 
+  // The detail carries the plan's own invoice history, which the list route
+  // deliberately does not — same split as the real API.
+  const subDetail = url.match(/\/v1\.0\/portal\/subscriptions\/([^/]+)$/)
+  if (subDetail) {
+    const sub = fixture().subscriptions.find(s => s.id === subDetail[1])
+    if (!sub) fail(config, 404, "Não encontrada", "assinatura não encontrada")
+    return ok(config, {...sub, recent_invoices: invoices().filter(i => !i.payable)})
+  }
+
   const cancel = url.match(/\/v1\.0\/portal\/subscriptions\/([^/]+)\/cancel$/)
   if (cancel && method === "post") {
     const sub = fixture().subscriptions.find(s => s.id === cancel[1])

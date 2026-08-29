@@ -340,6 +340,13 @@ func (r *InvoiceRepository) Transition(
 	if to == billing.InvoicePaid {
 		set["amount_paid"] = &types.AttributeValueMemberN{Value: strconv.FormatInt(int64(updated.Total), 10)}
 		updated.AmountPaid = updated.Total
+		// Written here and nowhere else, and only on the first arrival: a
+		// settlement confirmed twice (the webhook, then the reconciler) must not
+		// move the date the customer's receipt shows.
+		if updated.PaidAt == "" {
+			updated.PaidAt = now.UTC().Format(time.RFC3339)
+			set["paid_at"] = &types.AttributeValueMemberS{Value: updated.PaidAt}
+		}
 	}
 	if to != billing.InvoiceOpen {
 		remove = append(remove, "schedule_pk", "schedule_sk")

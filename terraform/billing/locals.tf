@@ -111,6 +111,18 @@ locals {
     ec2_scripts_version    = "/ctech/${var.environment}/ec2-scripts/version"
   }
 
+  # The account's alert topic, created by ctech-cdk's AlertsStack. The ARN is
+  # derived from the naming convention rather than read from
+  # /ctech/{env}/alerts/topic-arn, and that is the difference that matters: a
+  # data source would make every plan in this root fail in an environment where
+  # the topic has not been created yet, and alerting is not something the
+  # invoicing infrastructure should be unable to deploy without.
+  #
+  # Publishing to a topic that does not exist fails at publish time and is
+  # swallowed by api-commons/alerts, which is the correct blast radius: a job
+  # with nowhere to report still does its work.
+  alerts_topic_arn = var.alerts_topic_arn != "" ? var.alerts_topic_arn : "arn:aws:sns:${var.aws_region}:${var.aws_account}:ctech-${var.environment}-alerts"
+
   account_ssm = {
     internal_base_url = "/ctech-account/${var.environment}/internal-base-url"
     app_url           = "/ctech-account/${var.environment}/app-url"

@@ -2,6 +2,7 @@ package crypto
 
 import (
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"strings"
 	"testing"
@@ -99,3 +100,63 @@ func TestKeyIsRequired(t *testing.T) {
 		})
 	}
 }
+
+// Rotation, end to end: a value sealed by the old key opens under a
+// configuration whose write key is the new one, and new values carry the new
+// generation. This is the property the whole prefix exists for.
+func TestRotationReadsOldAndWritesNew(t *testing.T) {
+	old := "0123456789abcdef0123456789abcdef"
+	fresh := "fedcba9876543210fedcba9876543210"
+
+	v1 := NewSealer(hexOf(old))
+	sealed, err := v1.Seal("12345678909")
+	if err != nil {
+		t.Fatalf("Seal: %v", err)
+	}
+	if !strings.HasPrefix(sealed, "v1.") {
+		t.Fatalf("stored value = %q, want a v1 prefix", sealed)
+	}
+
+	rotated := NewSealer("2:" + hexOf(fresh) + ",1:" + hexOf(old))
+	if got := rotated.WriteGeneration(); got != 2 {
+		t.Errorf("WriteGeneration = %d, want 2", got)
+	}
+	plaintext, err := rotated.Open(sealed)
+	if err != nil {
+		t.Fatalf("Open of a v1 value under a rotated sealer: %v", err)
+	}
+	if plaintext != "12345678909" {
+		t.Errorf("plaintext = %q", plaintext)
+	}
+
+	next, err := rotated.Seal("98765432100")
+	if err != nil {
+		t.Fatalf("Seal: %v", err)
+	}
+	if !strings.HasPrefix(next, "v2.") {
+		t.Errorf("new value = %q, want a v2 prefix", next)
+	}
+}
+
+// Dropping the old key too early must say so. "Did not verify" reads as
+// tampering and sends whoever is on call looking for an attacker instead of a
+// line of configuration.
+func TestOpenNamesAMissingGeneration(t *testing.T) {
+	sealed, err := NewSealer(hexOf("0123456789abcdef0123456789abcdef")).Seal("12345678909")
+	if err != nil {
+		t.Fatalf("Seal: %v", err)
+	}
+	only2 := NewSealer("2:" + hexOf("fedcba9876543210fedcba9876543210"))
+	if _, err := only2.Open(sealed); !errors.Is(err, ErrUnknownGeneration) {
+		t.Fatalf("err = %v, want ErrUnknownGeneration", err)
+	}
+}
+
+func TestDuplicateGenerationIsRefused(t *testing.T) {
+	s := NewSealer("1:" + hexOf("0123456789abcdef0123456789abcdef") + ",1:" + hexOf("fedcba9876543210fedcba9876543210"))
+	if s.Enabled() {
+		t.Fatal("two keys on one generation must not build a usable sealer")
+	}
+}
+
+func hexOf(s string) string { return hex.EncodeToString([]byte(s)) }

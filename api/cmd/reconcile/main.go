@@ -24,6 +24,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log/slog"
 	"os"
 	"time"
@@ -32,6 +33,7 @@ import (
 	"gopkg.aoctech.app/billing/api/internal/app"
 	"gopkg.aoctech.app/billing/api/internal/config"
 	"gopkg.aoctech.app/billing/api/internal/domain/brcal"
+	"gopkg.aoctech.app/billing/api/internal/jobs"
 	"gopkg.aoctech.app/billing/api/internal/services"
 )
 
@@ -57,10 +59,10 @@ func main() {
 	}
 
 	ctx := context.Background()
+	alerter := jobs.Alerts(ctx, cfg)
 	collector, err := app.BuildCollector(ctx, cfg)
 	if err != nil {
-		slog.Error("startup", "error", err)
-		os.Exit(2)
+		jobs.Startup(ctx, alerter, "reconcile", err)
 	}
 
 	dates := recentDates(brcal.Today())
@@ -75,19 +77,39 @@ func main() {
 
 	now := time.Now()
 	failed := false
+	var errs []string
+	abandoned := 0
 	for _, date := range dates {
 		// Live and test both, and for the same reason the invoice sweep does it: a
 		// sandbox checkout that never reaches PAID cannot be built against. Only
 		// live failures fail the job — a test-mode charge is not worth a page at
 		// 03:00, and an alarm that fires on sandbox data is an alarm people learn
 		// to close.
-		if len(run(ctx, collector, true, date, now).Errors) > 0 {
+		res := run(ctx, collector, true, date, now)
+		if len(res.Errors) > 0 {
 			failed = true
+			errs = append(errs, jobs.Rendered(res.Errors)...)
 		}
+		abandoned += res.Abandoned
 		run(ctx, collector, false, date, now)
 	}
+
+	// ABANDONED is the one outcome worth waking somebody for, and it is
+	// deliberately reported before the failure check rather than folded into it:
+	// wallet not knowing about a charge billing opened is billing's own bug, and
+	// the run that found it succeeded. FAILED — a charge that expired unpaid —
+	// is an ordinary customer decision and says nothing here, because reporting
+	// the ordinary one as the alarming one is how a real alarm gets ignored.
+	if abandoned > 0 {
+		jobs.Notify(ctx, alerter, "reconcile",
+			fmt.Sprintf("%d charge(s) opened by billing are unknown to wallet", abandoned),
+			"Every one of these is a charge this service believes it opened and wallet has no record of. The invoice is still owed and nobody can pay it until this is resolved.")
+	}
+
 	if failed {
-		os.Exit(1)
+		jobs.Fail(ctx, alerter, "reconcile",
+			fmt.Sprintf("%d charge(s) could not be reconciled — a customer who paid may be looking at an unpaid invoice", len(errs)),
+			errs)
 	}
 }
 

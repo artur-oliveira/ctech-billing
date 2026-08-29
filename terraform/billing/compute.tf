@@ -147,6 +147,8 @@ locals {
     ssm_checkout_link_secret  = local.ssm_paths.checkout_link_secret
     ssm_field_encryption_key  = local.ssm_paths.field_encryption_key
     ssm_email_from            = local.ssm_paths.email_from
+
+    alerts_topic_arn = local.alerts_topic_arn
   }
 
   bootstrap_sh = var.os_family == "alpine" ? templatefile("${path.module}/../assets/bootstrap-alpine.sh.tftpl", local.bootstrap_vars) : templatefile("${path.module}/../assets/bootstrap.sh.tftpl", local.bootstrap_vars)

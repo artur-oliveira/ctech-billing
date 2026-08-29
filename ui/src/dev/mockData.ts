@@ -40,6 +40,7 @@ function invoice(over: Partial<Invoice> & Pick<Invoice, "id" | "state" | "tone">
     period: thisPeriod,
     lines: PLAN_LINES,
     payable: true,
+    settled: false,
     ...over,
   }
 }
@@ -54,6 +55,8 @@ const PAID_HISTORY: Invoice[] = [
     amount_paid: 11300,
     amount_due: 0,
     payable: false,
+    settled: true,
+    paid_on: day(-28),
     period: lastPeriod,
   }),
   invoice({
@@ -66,6 +69,8 @@ const PAID_HISTORY: Invoice[] = [
     amount_due: 0,
     total: 10900,
     payable: false,
+    settled: true,
+    paid_on: day(-59),
     period: {start: day(-72), end: day(-43)},
     lines: [{description: "Plano Essencial · mensal", amount: 10900, proration: false}],
   }),
@@ -81,6 +86,7 @@ const ACTIVE_SUB: Subscription = {
   metered: false,
   currency: "BRL",
   current_period: thisPeriod,
+  since: day(-402),
   cancelable: true,
 }
 
@@ -93,6 +99,7 @@ const METERED_SUB: Subscription = {
   metered: true,
   currency: "BRL",
   current_period: thisPeriod,
+  since: day(-98),
   cancelable: true,
 }
 
@@ -181,11 +188,40 @@ export const FIXTURES: Record<MockScenario, Fixture> = {
         amount_paid: 11300,
         amount_due: 0,
         payable: false,
+        settled: true,
+        paid_on: day(-1),
       }),
       ...PAID_HISTORY,
     ],
     subscriptions: [ACTIVE_SUB, METERED_SUB],
     settleAfterSeconds: 6,
+    pixTtlSeconds: 1800,
+  },
+
+  // A Free plan's invoice: issued, numbered, and settled on the spot with
+  // nothing ever paid (ADR 0019). Unreachable against a real backend without
+  // provisioning a zero-priced plan, and the exact shape that once made the
+  // detail screen tell its reader a paid invoice was "ainda não aberta para
+  // pagamento".
+  plano_gratuito: {
+    invoices: [
+      invoice({
+        id: "inv_mock_0043",
+        number: 2,
+        description: "DF-e Ilimitado · Interno",
+        state: "Paga",
+        tone: "positive",
+        total: 0,
+        amount_due: 0,
+        payable: false,
+        settled: true,
+        paid_on: day(-12),
+        lines: [{description: "DF-e Ilimitado · Interno", amount: 0, proration: false}],
+      }),
+      ...PAID_HISTORY,
+    ],
+    subscriptions: [{...ACTIVE_SUB, description: "DF-e Ilimitado", amount: 0}],
+    settleAfterSeconds: null,
     pixTtlSeconds: 1800,
   },
 

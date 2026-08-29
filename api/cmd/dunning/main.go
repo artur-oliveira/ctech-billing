@@ -14,6 +14,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log/slog"
 	"os"
 	"time"
@@ -22,6 +23,7 @@ import (
 	"gopkg.aoctech.app/billing/api/internal/app"
 	"gopkg.aoctech.app/billing/api/internal/config"
 	"gopkg.aoctech.app/billing/api/internal/domain/brcal"
+	"gopkg.aoctech.app/billing/api/internal/jobs"
 	"gopkg.aoctech.app/billing/api/internal/services"
 )
 
@@ -48,10 +50,10 @@ func main() {
 	}
 
 	ctx := context.Background()
+	alerter := jobs.Alerts(ctx, cfg)
 	dunner, err := app.BuildDunner(ctx, cfg)
 	if err != nil {
-		slog.Error("startup", "error", err)
-		os.Exit(2)
+		jobs.Startup(ctx, alerter, "dunning", err)
 	}
 
 	now := time.Now()
@@ -63,7 +65,9 @@ func main() {
 	run(ctx, dunner, false, date, now)
 
 	if len(live.Errors) > 0 {
-		os.Exit(1)
+		jobs.Fail(ctx, alerter, "dunning",
+			fmt.Sprintf("%d invoice(s) were not dunned for %s — a reminder that was not sent is a customer who loses access without warning", len(live.Errors), date),
+			live.Errors)
 	}
 }
 

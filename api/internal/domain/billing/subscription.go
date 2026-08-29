@@ -134,6 +134,16 @@ type Subscription struct {
 	// before the business-day roll-forward.
 	NetDays int `dynamodbav:"net_days" json:"net_days"`
 
+	// Since is when this subscription was created, RFC 3339 in UTC. It is the
+	// row's own created_at rather than a second stored copy — `dynamodbav:"-"`,
+	// so it is never written — and the repository fills it on every read.
+	//
+	// It exists because "cliente desde" is a question every billing screen is
+	// asked and none of the period fields answer: current_period_start moves
+	// every month, and the customer record's own age is when somebody was
+	// registered, not when they started paying.
+	Since string `dynamodbav:"-" json:"since,omitempty"`
+
 	// TrialEnd is set while the subscription is TRIALING.
 	TrialEnd brcal.Date `dynamodbav:"trial_end,omitempty" json:"trial_end,omitempty"`
 

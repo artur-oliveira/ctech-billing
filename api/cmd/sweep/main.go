@@ -17,6 +17,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log/slog"
 	"os"
 	"time"
@@ -25,6 +26,7 @@ import (
 	"gopkg.aoctech.app/billing/api/internal/app"
 	"gopkg.aoctech.app/billing/api/internal/config"
 	"gopkg.aoctech.app/billing/api/internal/domain/brcal"
+	"gopkg.aoctech.app/billing/api/internal/jobs"
 	"gopkg.aoctech.app/billing/api/internal/services"
 )
 
@@ -56,10 +58,10 @@ func main() {
 	}
 
 	ctx := context.Background()
+	alerter := jobs.Alerts(ctx, cfg)
 	invoicer, err := app.BuildInvoicer(ctx, cfg)
 	if err != nil {
-		slog.Error("startup", "error", err)
-		os.Exit(2)
+		jobs.Startup(ctx, alerter, "sweep", err)
 	}
 
 	now := time.Now()
@@ -74,7 +76,9 @@ func main() {
 	// someone at 04:00 for a test-mode subscription would train them to ignore
 	// the alarm that matters.
 	if len(live.Errors) > 0 {
-		os.Exit(1)
+		jobs.Fail(ctx, alerter, "sweep",
+			fmt.Sprintf("%d subscription(s) were not invoiced for %s", len(live.Errors), date),
+			jobs.Rendered(live.Errors))
 	}
 }
 

@@ -2,6 +2,7 @@ package v1
 
 import (
 	"fmt"
+	"time"
 
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
 	"gopkg.aoctech.app/billing/api/internal/domain/brcal"
@@ -20,6 +21,9 @@ type portalSessionResponse struct {
 	CustomerID string `json:"customer_id"`
 	Name       string `json:"name"`
 	Email      string `json:"email,omitempty"`
+	// Since is when this person became a customer, so a screen can say "cliente
+	// desde 2024" without counting anything.
+	Since *brcal.Date `json:"since,omitempty"`
 	// TermsAccepted is the server's answer to whether this person has agreed to
 	// the billing terms addendum **in force**, not to any version of it. The
 	// comparison is made here and only the result is published: which version
@@ -53,10 +57,25 @@ type portalInvoiceResponse struct {
 	AmountDue   billing.Cents `json:"amount_due"`
 	Currency    string        `json:"currency"`
 	Period      portalPeriod  `json:"period"`
-	Lines       []portalLine  `json:"lines,omitempty"`
+	// PaidOn is the civil date the invoice was settled, absent until it is. A
+	// date and not a timestamp: a receipt is read as "paguei no dia 17", and
+	// publishing the instant would put a UTC hour on a consumer screen.
+	PaidOn *brcal.Date `json:"paid_on,omitempty"`
+	// Settled is the server's answer to "is this bill done with", and the screen
+	// must not re-derive it from the amounts. A zero-total invoice — the Free
+	// plan, ADR 0019 — is issued and settled on the spot with nothing paid, so
+	// `amount_paid > 0` is a test that calls it unpaid and shows a person a
+	// message about a bill that never existed.
+	Settled bool         `json:"settled"`
+	Lines   []portalLine `json:"lines,omitempty"`
 	// Payable says whether there is anything for this person to do. The server
 	// decides it; a UI that derives "can I pay this?" from a status string is a UI
 	// that will offer to pay a voided invoice.
+	//
+	// Not payable and not settled are two different facts and both are
+	// published, because "no button" has several reasons and they need different
+	// sentences: a settled invoice is finished, a voided one was cancelled, an
+	// uncollectible one is a conversation.
 	Payable bool `json:"payable"`
 }
 
@@ -97,6 +116,9 @@ type portalSubscriptionResponse struct {
 	Metered  bool         `json:"metered"`
 	Currency string       `json:"currency,omitempty"`
 	Period   portalPeriod `json:"current_period"`
+	// Since is when this subscription started, so the screen can say how long
+	// somebody has been a customer without counting invoices.
+	Since *brcal.Date `json:"since,omitempty"`
 	// Cancelable is the server's answer, and the screen must not hide it: a
 	// subscription you cannot find how to cancel is a subscription you dispute
 	// with your bank.
@@ -209,6 +231,8 @@ func newPortalInvoiceResponse(inv *billing.Invoice, lines []billing.InvoiceItem,
 		AmountDue:   inv.AmountDue(),
 		Currency:    inv.Currency,
 		Period:      portalPeriod{Start: inv.Period.Start, End: inv.Period.End},
+		PaidOn:      civilDate(inv.PaidAt),
+		Settled:     inv.Status == billing.InvoicePaid,
 		Payable:     inv.Payable(),
 	}
 	for _, l := range lines {
@@ -219,6 +243,22 @@ func newPortalInvoiceResponse(inv *billing.Invoice, lines []billing.InvoiceItem,
 		})
 	}
 	return out
+}
+
+// civilDate renders a stored RFC 3339 instant as the civil date it happened on
+// in São Paulo, or nothing at all. A value that does not parse is dropped
+// rather than surfaced: an unreadable timestamp is a bug to fix in the logs,
+// not a broken date on somebody's receipt.
+func civilDate(stamp string) *brcal.Date {
+	if stamp == "" {
+		return nil
+	}
+	t, err := time.Parse(time.RFC3339, stamp)
+	if err != nil {
+		return nil
+	}
+	d := brcal.FromTime(t)
+	return &d
 }
 
 // describeLines names what an invoice is for in one phrase.

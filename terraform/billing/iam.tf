@@ -139,6 +139,25 @@ resource "aws_iam_role_policy" "ses_send" {
   policy = data.aws_iam_policy_document.ses_send.json
 }
 
+# The scheduled jobs report their own failures to the account's alert topic.
+# Publish only, and only to that topic: a role that could subscribe could
+# redirect every alert in the account to an address of its choosing, and one
+# that could publish anywhere could send a convincing alert about a service it
+# has nothing to do with.
+data "aws_iam_policy_document" "alerts_publish" {
+  statement {
+    effect    = "Allow"
+    actions   = ["sns:Publish"]
+    resources = [local.alerts_topic_arn]
+  }
+}
+
+resource "aws_iam_role_policy" "alerts_publish" {
+  name   = "${local.name}-alerts"
+  role   = aws_iam_role.billing.id
+  policy = data.aws_iam_policy_document.alerts_publish.json
+}
+
 resource "aws_iam_role_policy" "ssm_read" {
   name   = "${local.name}-ssm"
   role   = aws_iam_role.billing.id

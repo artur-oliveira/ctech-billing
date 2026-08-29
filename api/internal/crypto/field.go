@@ -7,11 +7,14 @@
 // record ARCHITECTURE.md § 9 promises is "encrypted at rest by the repository
 // layer", and until this package existed that sentence was not true.
 //
-// Scope is deliberately narrow: one AEAD, one key, values that are read back by
-// id and never searched. Anything that needed to be *queried* by its encrypted
-// value would need deterministic encryption, which leaks equality and is a
-// different decision — billing has no such field, and this package should not
-// grow one quietly.
+// Scope is deliberately narrow: one AEAD and values that are read back by id and
+// never searched. Anything that needed to be *queried* by its encrypted value
+// would need deterministic encryption, which leaks equality and is a different
+// decision — billing has no such field, and this package should not grow one
+// quietly.
+//
+// Several keys may be held at once, which is what makes rotation possible: the
+// highest generation writes, every generation reads. See NewSealer.
 package crypto
 
 import (
@@ -22,16 +25,18 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 )
 
-// prefix marks a value this package produced, and carries the key generation.
+// A stored value is `v<generation>.<base64>`.
 //
-// Without it, rotation is guesswork: the only way to know whether a stored
-// string is v1 or v2 ciphertext is to try one and see whether the tag verifies,
-// which is indistinguishable from tampering. With it, a second key is additive —
-// new writes stamp v2, old reads still resolve v1.
-const prefix = "v1."
+// The generation is what makes rotation something other than guesswork: without
+// it the only way to know whether a string is v1 or v2 ciphertext is to try a
+// key and see whether the tag verifies, which is indistinguishable from
+// tampering. With it a second key is additive — new writes stamp v2, old reads
+// still resolve v1, and nothing has to be re-encrypted before the new key is in
+// use.
 
 // ErrNotSealed reports a stored value that this package did not produce.
 //
@@ -44,6 +49,12 @@ var ErrNotSealed = errors.New("value is not sealed")
 // ErrNoKey reports a Sealer built without a usable key.
 var ErrNoKey = errors.New("field encryption key is missing or invalid")
 
+// ErrUnknownGeneration reports a value sealed by a key this deployment does not
+// hold. It is its own error because the remedy is specific and nothing else
+// says it: the old key was dropped from the configuration too early, and it has
+// to go back before that row can be read.
+var ErrUnknownGeneration = errors.New("value was sealed by a key this deployment does not hold")
+
 // Sealer encrypts and decrypts one field at a time.
 //
 // A construction failure is carried rather than returned, so a repository
@@ -52,30 +63,63 @@ var ErrNoKey = errors.New("field encryption key is missing or invalid")
 // Config by hand, which is a test, where failing loudly on first use is the
 // behaviour worth having.
 type Sealer struct {
-	aead cipher.AEAD
-	err  error
+	// keys is every generation this deployment can read.
+	keys map[int]cipher.AEAD
+	// write is the generation new values are sealed with: the highest one
+	// configured. Writing with the newest key and reading with all of them is
+	// the whole of the rotation procedure — add the new key, deploy, and old
+	// rows keep opening until something rewrites them.
+	write int
+	err   error
 }
 
-// NewSealer builds a Sealer from a 32-byte key given as base64 or hex.
+// NewSealer builds a Sealer from one or more 32-byte keys given as base64 or
+// hex.
 //
 // Both encodings are accepted because ctech-account's SECRET_ENC_KEY accepts
 // both, and an operator who has generated one of these before should not have to
 // discover that this service is fussier.
-func NewSealer(key string) *Sealer {
-	raw, err := decodeKey(key)
+//
+// The configured value is a comma-separated list of `generation:key` entries,
+// and a bare key with no generation is generation 1 — which is what every
+// deployment written before rotation existed already holds, so nothing has to
+// change to keep working. Rotating is two deploys and no migration:
+//
+//	FIELD_ENCRYPTION_KEY="2:<new>,1:<old>"   # writes v2, still reads v1
+//	FIELD_ENCRYPTION_KEY="2:<new>"           # once nothing v1 is left
+//
+// Dropping the old key is the irreversible step, and it is deliberately the
+// operator's own decision rather than something this package times: only they
+// know whether any v1 row survives. A value whose generation is gone opens with
+// ErrUnknownGeneration rather than "did not verify", because those two have
+// completely different remedies.
+func NewSealer(keys string) *Sealer {
+	parsed, err := decodeKeys(keys)
 	if err != nil {
 		return &Sealer{err: err}
 	}
-	block, err := aes.NewCipher(raw)
-	if err != nil {
-		return &Sealer{err: fmt.Errorf("%w: %s", ErrNoKey, err)}
+	s := &Sealer{keys: make(map[int]cipher.AEAD, len(parsed))}
+	for gen, raw := range parsed {
+		block, err := aes.NewCipher(raw)
+		if err != nil {
+			return &Sealer{err: fmt.Errorf("%w: %s", ErrNoKey, err)}
+		}
+		aead, err := cipher.NewGCM(block)
+		if err != nil {
+			return &Sealer{err: fmt.Errorf("%w: %s", ErrNoKey, err)}
+		}
+		s.keys[gen] = aead
+		if gen > s.write {
+			s.write = gen
+		}
 	}
-	aead, err := cipher.NewGCM(block)
-	if err != nil {
-		return &Sealer{err: fmt.Errorf("%w: %s", ErrNoKey, err)}
-	}
-	return &Sealer{aead: aead}
+	return s
 }
+
+// WriteGeneration is the generation new values are sealed with. Exported for
+// the operator-facing surfaces that report which key is in use; nothing in the
+// data path branches on it.
+func (s *Sealer) WriteGeneration() int { return s.write }
 
 // Enabled reports whether this Sealer can be used at all.
 func (s *Sealer) Enabled() bool { return s != nil && s.err == nil }
@@ -90,12 +134,13 @@ func (s *Sealer) Seal(plaintext string) (string, error) {
 	if s == nil || s.err != nil {
 		return "", s.keyErr()
 	}
-	nonce := make([]byte, s.aead.NonceSize())
+	aead := s.keys[s.write]
+	nonce := make([]byte, aead.NonceSize())
 	if _, err := rand.Read(nonce); err != nil {
 		return "", fmt.Errorf("generating nonce: %w", err)
 	}
-	sealed := s.aead.Seal(nonce, nonce, []byte(plaintext), nil)
-	return prefix + base64.RawStdEncoding.EncodeToString(sealed), nil
+	sealed := aead.Seal(nonce, nonce, []byte(plaintext), nil)
+	return "v" + strconv.Itoa(s.write) + "." + base64.RawStdEncoding.EncodeToString(sealed), nil
 }
 
 // Open reverses Seal.
@@ -106,19 +151,23 @@ func (s *Sealer) Open(stored string) (string, error) {
 	if s == nil || s.err != nil {
 		return "", s.keyErr()
 	}
-	body, ok := strings.CutPrefix(stored, prefix)
+	gen, body, ok := splitGeneration(stored)
 	if !ok {
 		return "", ErrNotSealed
+	}
+	aead, ok := s.keys[gen]
+	if !ok {
+		return "", fmt.Errorf("%w: v%d", ErrUnknownGeneration, gen)
 	}
 	raw, err := base64.RawStdEncoding.DecodeString(body)
 	if err != nil {
 		return "", fmt.Errorf("decoding sealed value: %w", err)
 	}
-	if len(raw) < s.aead.NonceSize() {
+	if len(raw) < aead.NonceSize() {
 		return "", errors.New("sealed value is too short")
 	}
-	nonce, ct := raw[:s.aead.NonceSize()], raw[s.aead.NonceSize():]
-	plaintext, err := s.aead.Open(nil, nonce, ct, nil)
+	nonce, ct := raw[:aead.NonceSize()], raw[aead.NonceSize():]
+	plaintext, err := aead.Open(nil, nonce, ct, nil)
 	if err != nil {
 		// Deliberately not wrapped with the underlying message. A GCM failure is
 		// either the wrong key or a tampered value, and neither is something to
@@ -133,6 +182,56 @@ func (s *Sealer) keyErr() error {
 		return ErrNoKey
 	}
 	return s.err
+}
+
+// splitGeneration parses `v<n>.<body>`.
+func splitGeneration(stored string) (gen int, body string, ok bool) {
+	rest, ok := strings.CutPrefix(stored, "v")
+	if !ok {
+		return 0, "", false
+	}
+	digits, body, ok := strings.Cut(rest, ".")
+	if !ok {
+		return 0, "", false
+	}
+	gen, err := strconv.Atoi(digits)
+	if err != nil || gen < 1 {
+		return 0, "", false
+	}
+	return gen, body, true
+}
+
+// decodeKeys parses the configured list into one raw key per generation.
+func decodeKeys(keys string) (map[int][]byte, error) {
+	out := map[int][]byte{}
+	for entry := range strings.SplitSeq(keys, ",") {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+		gen := 1
+		if digits, key, found := strings.Cut(entry, ":"); found {
+			n, err := strconv.Atoi(strings.TrimSpace(digits))
+			if err != nil || n < 1 {
+				return nil, fmt.Errorf("%w: generation must be a positive integer", ErrNoKey)
+			}
+			gen, entry = n, key
+		}
+		raw, err := decodeKey(entry)
+		if err != nil {
+			return nil, err
+		}
+		// Two keys claiming one generation is a configuration mistake with no
+		// safe reading: one of them wrote rows the other cannot open.
+		if _, dup := out[gen]; dup {
+			return nil, fmt.Errorf("%w: generation %d is configured twice", ErrNoKey, gen)
+		}
+		out[gen] = raw
+	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf("%w: empty", ErrNoKey)
+	}
+	return out, nil
 }
 
 func decodeKey(key string) ([]byte, error) {

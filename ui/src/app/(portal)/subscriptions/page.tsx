@@ -2,7 +2,8 @@
 
 import {Button, EmptyState, Modal, PageHeader, Skeleton} from "@aoctech/ui"
 import {useMutation, useQuery, useQueryClient} from "@tanstack/react-query"
-import {Repeat} from "lucide-react"
+import {ChevronRight, Repeat} from "lucide-react"
+import Link from "next/link"
 import {useState} from "react"
 import {toast} from "sonner"
 
@@ -55,23 +56,38 @@ export default function SubscriptionsPage() {
         <ul className="divide-y divide-border border-y border-border">
           {subscriptions.map(s => (
             <li key={s.id} className="py-5">
-              <div className="flex flex-wrap items-start justify-between gap-4">
-                <div className="space-y-2">
-                  <p className="font-medium text-foreground">{s.description}</p>
-                  <StatusBadge state={s.state} tone={s.tone}/>
+              {/* The row opens the detail; cancelling stays a button beside it
+                  rather than moving into that screen. Both are true actions on
+                  this list, and burying the exit one level deeper is how a
+                  cancellation becomes a chargeback. */}
+              <Link
+                href={`/subscription?id=${s.id}`}
+                className="group -mx-3 block rounded-xl px-3 py-1 transition-colors hover:bg-surface"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div className="space-y-2">
+                    <p className="flex items-center gap-1.5 font-medium text-foreground">
+                      {s.description}
+                      <ChevronRight
+                        aria-hidden
+                        className="size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none"
+                      />
+                    </p>
+                    <StatusBadge state={s.state} tone={s.tone}/>
+                  </div>
+                  {s.metered ? (
+                    <span className="text-sm text-muted-foreground">Valor conforme o uso</span>
+                  ) : (
+                    s.amount != null && <Money cents={s.amount} currency={s.currency}/>
+                  )}
                 </div>
-                {s.metered ? (
-                  <span className="text-sm text-muted-foreground">Valor conforme o uso</span>
-                ) : (
-                  s.amount != null && <Money cents={s.amount} currency={s.currency}/>
-                )}
-              </div>
 
-              <p className="mt-4 text-sm text-muted-foreground">
-                {s.renews_on
-                  ? `Próxima cobrança em ${longDate(s.renews_on)}`
-                  : `Ativa até ${longDate(s.current_period.end)}`}
-              </p>
+                <p className="mt-4 text-sm text-muted-foreground">
+                  {s.renews_on
+                    ? `Próxima cobrança em ${longDate(s.renews_on)}`
+                    : `Ativa até ${longDate(s.current_period.end)}`}
+                </p>
+              </Link>
 
               {/* Cancelling is offered plainly. A subscription whose exit a
                   person cannot find is a subscription they cancel by disputing

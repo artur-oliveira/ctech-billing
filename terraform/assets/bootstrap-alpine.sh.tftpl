@@ -41,6 +41,7 @@ SERVICE_AUDIENCE=${service_audience}
 CHECKOUT_BASE_URL=${checkout_base_url}
 PORTAL_ORGANIZATION_ID=${portal_organization_id}
 CORS_ALLOWED_ORIGINS=${cors_allowed_origins}
+ALERTS_TOPIC_ARN=${alerts_topic_arn}
 STATICENV
 
 # ── Secrets, read from SSM at every start ────────────────────────────────────
@@ -155,10 +156,11 @@ chown webapp:webapp /var/log/app
 # supervised while-loop instead.
 #
 # Persistent=true (sweep, dunning: a missed daily tick is caught up on next
-# boot) has no busybox cron equivalent and is NOT replicated — accepted risk,
-# see docs/specs/2026-08-23-alpine-billing-migration.md decision 3. A missed
-# tick means that day's invoices/reminders wait for tomorrow's tick; each job
-# is idempotent so a normal run the next day is not itself a duplicate risk.
+# boot) has no busybox cron equivalent, so it is replicated by hand below with
+# an @reboot entry per daily job — see the block after the schedules. That was
+# an accepted risk in docs/specs/2026-08-23-alpine-billing-migration.md
+# decision 3, and it stopped being acceptable when the ASG moved to spot: an
+# instance replaced at 04:00 skipped a whole day of invoices and reminders.
 # RandomizedDelaySec has no equivalent either and is dropped — its purpose
 # (avoiding a fleet-wide thundering herd) does not apply to a min_size=1 ASG.
 
@@ -173,6 +175,20 @@ chown webapp:webapp /var/log/app
 # an invoice generated this morning must exist before the pass that decides
 # whether to remind anybody about it.
 (crontab -l 2>/dev/null; echo "10 8 * * * /opt/app/job.sh dunning >> /var/log/app/jobs.log 2>&1") | crontab -
+
+# @reboot is busybox crond's Persistent=true, and it is safe precisely because
+# both jobs already had to be re-runnable: the sweep skips a period it has
+# already billed (the generation key), and dunning stores the step each invoice
+# has reached. So a boot that follows a normal run does nothing, and a boot that
+# follows a missed one catches it up.
+#
+# It runs for **today** rather than the missed date, which is the same thing in
+# every case this exists for: an instance replaced overnight boots on the civil
+# day whose sweep was skipped. A day missed entirely — the instance stayed down
+# past midnight — is still `job.sh sweep -date=…` by hand, because guessing how
+# far back to walk is how a job re-bills a month.
+(crontab -l 2>/dev/null; echo "@reboot /opt/app/job.sh sweep >> /var/log/app/jobs.log 2>&1") | crontab -
+(crontab -l 2>/dev/null; echo "@reboot /opt/app/job.sh dunning >> /var/log/app/jobs.log 2>&1") | crontab -
 
 mkdir -p /etc/periodic/hourly
 cat > /etc/periodic/hourly/billing-reconcile << 'RECONCILE'

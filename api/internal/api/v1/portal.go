@@ -45,6 +45,7 @@ func (h *portalHandlers) session(c fiber.Ctx) error {
 		CustomerID:    customer.ID,
 		Name:          customer.Name,
 		Email:         customer.Email,
+		Since:         civilDate(customer.Since),
 		TermsAccepted: customer.AcceptedCurrentTerms(),
 	})
 }
@@ -65,6 +66,7 @@ func (h *portalHandlers) acceptTerms(c fiber.Ctx) error {
 		CustomerID:    customer.ID,
 		Name:          customer.Name,
 		Email:         customer.Email,
+		Since:         civilDate(customer.Since),
 		TermsAccepted: customer.AcceptedCurrentTerms(),
 	})
 }
@@ -298,6 +300,7 @@ func (h *portalHandlers) describeSubscription(c fiber.Ctx, sub *billing.Subscrip
 		State:       state,
 		Tone:        tone,
 		Period:      portalPeriod{Start: period.Start, End: period.End},
+		Since:       civilDate(sub.Since),
 		// Everything short of already-ended can be stopped. Whether it stops now
 		// or at the period end is the screen's question, not this one's.
 		Cancelable: sub.Status != billing.SubscriptionCanceled,

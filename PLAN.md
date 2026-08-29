@@ -135,6 +135,25 @@
       sienna are the same components. [`ui/DESIGN.md`](ui/DESIGN.md) records the token system and
       what was rejected. Consumed by `file:` link until the package is published.
     - [x] P1 Início, P2 Faturas, P3 Fatura, plus P4 Assinaturas with at-period-end cancellation.
+    - [x] **P5 Assinatura — detalhe** (`/subscription?id=`), and the two questions the list
+          cannot answer: what this plan has charged so far (the `recent_invoices` the detail
+          endpoint already returned and no screen read), and how long it has been running.
+          "Cliente desde" is the subscription row's own `created_at`, surfaced as
+          `Subscription.Since` — never written, filled on every read, so it cannot be populated
+          on the detail and empty in the list.
+    - [x] **The invoice detail says when it was paid.** `Invoice.PaidAt` is written by the
+          repository on the transition to PAID and nowhere else, so the webhook and the
+          reconciler cannot disagree about it, and a settlement confirmed twice does not move
+          the date on somebody's receipt. Published as a civil date, not an instant: a receipt
+          is read as "paguei no dia 17".
+    - [x] **Defect, found in production and fixed at the source:** a zero-total invoice
+          ([ADR 0019](docs/adr/0019-zero-total-invoices.md)) is PAID with nothing ever paid, and
+          the screen decided "settled" from `amount_due === 0 && amount_paid > 0`. So a Free-plan
+          customer holding an invoice marked **Paga** was told "esta fatura ainda não está aberta
+          para pagamento" — wrong, and impossible to act on. The portal payload now carries
+          `settled` as the server's own answer, beside `payable`: "no button" has several reasons
+          and they need different sentences. The mock gained a `plano_gratuito` scenario, because
+          this state needs a zero-priced plan to reproduce against a real backend.
     - [x] Mock mode (`npm run dev:mock`), following `ctech-poker`'s pattern: an axios adapter, so
           the mock replaces the transport and every screen, hook and query key above it is the same
           code that talks to the real API. Ten named scenarios, most of which cannot be produced
@@ -341,9 +360,12 @@ gate.** Both sides of the payment path are now built — billing's, and wallet's
     - [x] Each invoice stores the step it is on, so `-date` re-runs a missed day and performs
           each step exactly once. The write is conditional on that step, so two instances
           cannot both send the same reminder.
-    - [x] Reminders go out over SES (`internal/email`). Flagged: this is the **third** SES
-          client in the company and belongs in `ctech-go-common` — noted in the package rather
-          than fixed there, because moving it changes two other repositories.
+    - [x] Reminders go out over SES. The transport moved to
+          `gopkg.aoctech.app/api-commons/email` (v1.8.0) — it was the same code here and in
+          ctech-account — and `internal/email` keeps what is billing's: which messages exist,
+          when they go out, and what they say. The shared package carries no templates on
+          purpose: one that knew about invoices would be a notification service.
+          **Left:** ctech-account still holds its own copy and should consume the shared one.
     - [x] `cmd/dunning` refuses to start without `EMAIL_FROM` or `CHECKOUT_LINK_SECRET`.
           Running the escalation half of the policy without the reminders that precede it is
           how a customer who was never contacted loses access.
@@ -376,14 +398,42 @@ gate.** Both sides of the payment path are now built — billing's, and wallet's
       with no development fallback key — a constant key in the repository is a published key —
       and an integration test that reads the raw DynamoDB item rather than trusting a
       round trip.
-- Metrics + alarms on scheduler health and charge success rate.
+- [x] **Alerts, over SNS rather than CloudWatch.** An alarm is billed per alarm per month and
+      the family would need dozens of them to say one thing — "this job did not do its work" —
+      which every job already knows at the moment it happens. So each of the four binaries
+      publishes its own failure to `ctech-{env}-alerts`, a topic with one e-mail subscription
+      created by ctech-cdk's `AlertsStack` and read here by convention rather than by a data
+      source (a plan must not fail in an environment where the topic does not exist yet).
+      `internal/jobs` holds the three shapes: a job that never started (exit 2 — the failure a
+      metric misses entirely, because a binary that dies on configuration emits no counters), a
+      run that failed in live mode (exit 1), and `reconcile`'s ABANDONED, which is reported
+      without failing the run: wallet not knowing about a charge billing opened is billing's own
+      bug, and the run that found it succeeded. FAILED — a charge that expired unpaid — says
+      nothing, because reporting the ordinary outcome as the alarming one is how a real alarm
+      gets ignored.
+
+      What this does not buy is liveness: a process that never runs publishes nothing, and
+      silence reads exactly like health. That is the gap the `@reboot` catch-up below closes for
+      the daily jobs, and it is the reason a "did the sweep run" check belongs in a later run
+      rather than in a metric nobody emits.
+- [x] **The Alpine jobs catch up again.** `Persistent=true` had no busybox-cron equivalent and
+      was accepted as a risk in the migration spec; moving the ASG to spot instances is what made
+      it unacceptable, because an instance replaced at 04:00 skipped a whole day of invoices and
+      reminders. Two `@reboot` entries restore it, and they are safe for the reason the flag was:
+      the sweep skips a period it has already billed and dunning stores the step each invoice has
+      reached, so a boot after a normal run does nothing.
 
 ## Phase 5 — First real integration (ctech-dfe)
 - Wire `ctech-dfe`'s two example plans (DF-e Basic fixed, DF-e Sob Demanda metered) end to end
   in a staging environment.
-- Wire the suggested `invoice.paid → NFS-e emission` call to `ctech-dfe` (OVERVIEW.md § 9.1) —
-  this is the feature most likely to surface real business-requirements gaps (tax rules,
-  service codes), so do it against a real consumer, not synthetically.
+- ~~Wire `invoice.paid → NFS-e emission` (OVERVIEW.md § 9.1)~~ — **not billing's feature, and not
+  now.** NFS-e emission is still being proven in production against the Sefaz, whose authorization
+  is the open item; building an automatic emission on top of a path that does not yet authorize
+  would be building on an unknown. And when it does work, the shape is a commercial one rather
+  than an integration inside billing: a customer who bills through ctech-billing and wants the
+  fiscal document contracts **DF-e** and gets automatic emission as a DF-e feature. That keeps
+  billing the system of record for what is owed, and leaves what is emitted to the product that
+  emits it.
 
 ## What is actually left (as of 2026-08-16)
 
@@ -395,13 +445,17 @@ The MVP is built and unreleased. In the order it blocks things:
    the whole pipeline is untested against real AWS — it is verified by `terraform validate`, `fmt`,
    and reading, which is not the same thing. Re-applying that root is also what picks up a trust
    policy fix, since the pipeline cannot repair the role it needs in order to run.
-2. **The `email-from` SSM parameter**, set to the same address as `var.email_from`
+2. **The alert topic's e-mail subscription.** `ALERT_EMAIL=… ENVIRONMENT={env} npx cdk deploy
+   Ctech-{Env}-Alerts` in ctech-cdk, then confirm the subscription from the mail AWS sends. Until
+   it is confirmed the topic accepts publishes and delivers them nowhere, which looks identical
+   from this side.
+3. **The `email-from` SSM parameter**, set to the same address as `var.email_from`
    (`billing@aoctech.app`). Verifying the *domain* in SES is necessary and not sufficient: the
    role's policy pins `ses:FromAddress` to the Terraform variable on purpose, so that dunning
    cannot send as ctech-account's address. The two are copies of one fact, nothing checks they
    agree, and a mismatch is discovered when the first reminder is refused at send time rather than
    at deploy time.
-3. **Console writes, then the console** (Phase 2). In that order, for the reason each item gives.
+4. **Console writes, then the console** (Phase 2). In that order, for the reason each item gives.
 
 Cleared on 2026-08-16, recorded so the cost of re-deriving them is not paid twice:
 
@@ -429,9 +483,15 @@ Not blockers, worth naming so they are not rediscovered as surprises:
 - **The rendered userdata is at ~12 KB of a 16 KiB ceiling** after four timers. It still fits and
   the margin is smaller than it was; the next substantial addition belongs in an S3 asset the
   bootstrap downloads.
-- **The field encryption key cannot be rotated yet.** Values carry a `v1.` marker so a second key
-  can be added, but nothing reads one. Losing the key makes every stored tax id unreadable, so it
-  belongs wherever the account's break-glass material lives.
+- ~~**The field encryption key cannot be rotated yet.**~~ — it can, as of this change, and with no
+  migration. `FIELD_ENCRYPTION_KEY` takes a comma-separated list of `generation:key` entries; the
+  highest generation seals, every generation opens, and a bare key is generation 1 — which is what
+  every existing deployment already holds, so nothing had to change to keep working. Rotating is
+  `"2:<new>,1:<old>"`, then `"2:<new>"` once nothing v1 is left. Dropping a generation still in use
+  fails as `ErrUnknownGeneration` and not as a tag that did not verify, because one of those sends
+  somebody looking for a line of configuration and the other for an attacker.
+  Losing every key still makes every stored tax id unreadable, so they belong wherever the
+  account's break-glass material lives.
 - **No environment holds invoices**, which is what makes the `lookup_pk` caveat above harmless and
   is the last moment it will be.
 

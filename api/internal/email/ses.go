@@ -1,29 +1,21 @@
-// Package email sends the two messages billing owes a customer.
+// Package email says what billing owes a customer. It does not send it.
 //
-// It is deliberately small and it is deliberately here. Notification delivery is
-// arguably not billing's domain — but there is no notification service in this
-// family, and ctech-account already sends its own mail
-// (ctech-account/api/internal/email). The convention is that a service sends
-// what it is responsible for saying, and inventing a shared notification service
-// to send two templates would be a larger decision than the feature.
+// The transport — building an SES client, putting one HTML message on the wire —
+// moved to api-commons/email, because it was the same code in ctech-account and
+// here. What stays is the part that is billing's: which messages exist, when
+// they are sent, and what they say.
 //
-// **This is the third SES client in the company** (ctech-account, ctech-wallet's
-// Asaas notifications, and now this). That is a duplication worth collapsing
-// into ctech-go-common the next time one of them changes, and it is noted here
-// rather than fixed here because moving it is a change to two other repositories.
+// That split is the reason the shared package carries no templates. A shared
+// package that knew about invoices would be a notification service, and
+// inventing one to send two messages is a much larger decision than the feature.
 package email
 
 import (
 	"context"
 	"fmt"
 	"html"
-	"strings"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/service/sesv2"
-	sestypes "github.com/aws/aws-sdk-go-v2/service/sesv2/types"
-
-	"gopkg.aoctech.app/api-commons/awsconfig"
+	commonemail "gopkg.aoctech.app/api-commons/email"
 )
 
 // Sender is what dunning needs. An interface at this seam, not because there
@@ -49,22 +41,25 @@ type Reminder struct {
 	Overdue bool
 }
 
-// Client sends through SESv2.
-type Client struct {
-	ses  *sesv2.Client
-	from string
+// transport is the shared SES client, narrowed to what this package uses. The
+// interface is here rather than in the shared package because it is this
+// package's tests that need to substitute it.
+type transport interface {
+	Send(ctx context.Context, to, subject, htmlBody string) error
 }
 
-// New builds a client. An empty `from` disables sending entirely — see Disabled.
+// Client renders billing's messages and hands them to the shared transport.
+type Client struct {
+	tx transport
+}
+
+// New builds a client. An empty `from` is refused by the shared transport.
 func New(ctx context.Context, region, from string) (*Client, error) {
-	if strings.TrimSpace(from) == "" {
-		return nil, fmt.Errorf("email: a sender address is required")
-	}
-	cfg, err := awsconfig.Load(ctx, region)
+	tx, err := commonemail.New(ctx, region, from)
 	if err != nil {
-		return nil, fmt.Errorf("email: loading AWS config: %w", err)
+		return nil, err
 	}
-	return &Client{ses: sesv2.NewFromConfig(cfg), from: from}, nil
+	return &Client{tx: tx}, nil
 }
 
 func (c *Client) SendInvoiceReminder(ctx context.Context, r Reminder) error {
@@ -77,26 +72,7 @@ func (c *Client) SendInvoiceReminder(ctx context.Context, r Reminder) error {
 	if r.Overdue {
 		subject = "Sua fatura está em aberto — CTech"
 	}
-	return c.send(ctx, r.To, subject, reminderHTML(r))
-}
-
-func (c *Client) send(ctx context.Context, to, subject, body string) error {
-	_, err := c.ses.SendEmail(ctx, &sesv2.SendEmailInput{
-		FromEmailAddress: aws.String(c.from),
-		Destination:      &sestypes.Destination{ToAddresses: []string{to}},
-		Content: &sestypes.EmailContent{
-			Simple: &sestypes.Message{
-				Subject: &sestypes.Content{Data: aws.String(subject), Charset: aws.String("UTF-8")},
-				Body: &sestypes.Body{
-					Html: &sestypes.Content{Data: aws.String(body), Charset: aws.String("UTF-8")},
-				},
-			},
-		},
-	})
-	if err != nil {
-		return fmt.Errorf("email: sending to %s: %w", to, err)
-	}
-	return nil
+	return c.tx.Send(ctx, r.To, subject, reminderHTML(r))
 }
 
 // reminderHTML renders the message.

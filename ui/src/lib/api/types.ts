@@ -47,6 +47,13 @@ export interface Invoice {
   amount_due: Cents
   currency: string
   period: Period
+  /** The civil date it was settled, absent until it is. A date, not an
+   *  instant: a receipt is read as "paguei no dia 17". */
+  paid_on?: IsoDate
+  /** The server's answer to "is this bill done with". Never derive it from the
+   *  amounts: a Free-plan invoice is issued and settled with nothing paid, so
+   *  `amount_paid > 0` calls it unpaid. */
+  settled: boolean
   lines?: InvoiceLine[]
   /** The server's answer to "is there anything for this person to do". A UI
    *  that derives this from the state string will offer to pay a voided
@@ -68,6 +75,12 @@ export interface Subscription {
   metered: boolean
   currency?: string
   current_period: Period
+  /** When this subscription started — "cliente desde". */
+  since?: IsoDate
+  /** The last few invoices this plan produced, newest first. Populated on the
+   *  detail only; the list endpoint leaves it out rather than fetching every
+   *  subscription's history to render rows that never show it. */
+  recent_invoices?: Invoice[]
   cancelable: boolean
 }
 
@@ -86,6 +99,8 @@ export interface Session {
   customer_id: string
   name: string
   email?: string
+  /** When this person became a customer. */
+  since?: IsoDate
   /** Whether this person agreed to the billing terms addendum **in force**.
    *  The server compares versions and publishes only the answer, so a stale
    *  acceptance reads as `false` here and re-gates on the next visit. */

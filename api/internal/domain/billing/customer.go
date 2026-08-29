@@ -45,6 +45,11 @@ type Customer struct {
 	// console, where revealing it is a separate, audited action.
 	TaxID string `dynamodbav:"tax_id,omitempty" json:"-"`
 
+	// Since is when this customer record was created, RFC 3339 in UTC. The row's
+	// own created_at, filled by the repository on read and never written from
+	// here (`dynamodbav:"-"`).
+	Since string `dynamodbav:"-" json:"since,omitempty"`
+
 	Locale   string `dynamodbav:"locale,omitempty"   json:"locale,omitempty"`
 	Timezone string `dynamodbav:"timezone,omitempty" json:"timezone,omitempty"`
 	Currency string `dynamodbav:"currency,omitempty" json:"currency,omitempty"`

@@ -119,3 +119,12 @@ variable "os_family" {
     error_message = "os_family must be al2023 or alpine."
   }
 }
+
+# The SNS topic the scheduled jobs publish their failures to. Empty derives it
+# from ctech-cdk's naming convention (`ctech-{env}-alerts`), which is what every
+# environment uses; set it only when the topic lives somewhere else.
+variable "alerts_topic_arn" {
+  description = "SNS topic ARN for job failure alerts; empty derives the shared ctech-{env}-alerts topic"
+  type        = string
+  default     = ""
+}

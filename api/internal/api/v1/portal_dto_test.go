@@ -166,3 +166,50 @@ func TestDescribeLinesSaysWhatTheInvoiceIsFor(t *testing.T) {
 		t.Errorf("many = %q", got)
 	}
 }
+
+// A zero-total invoice is issued and settled on the spot (ADR 0019), so it is
+// PAID with nothing ever paid. The screen must be able to tell that from a bill
+// that has not been opened yet, and `amount_paid > 0` cannot: it was the bug
+// that showed a Free-plan customer "esta fatura ainda não está aberta para
+// pagamento" on an invoice that says Paga.
+func TestZeroTotalInvoiceIsSettled(t *testing.T) {
+	today := brcal.New(2026, time.August, 20)
+	inv := &billing.Invoice{
+		Status:   billing.InvoicePaid,
+		DueDate:  brcal.New(2026, time.August, 17),
+		Total:    0,
+		PaidAt:   "2026-08-16T14:03:00Z",
+		Currency: "BRL",
+	}
+
+	out := newPortalInvoiceResponse(inv, nil, today)
+
+	if !out.Settled {
+		t.Error("a PAID invoice must be settled whatever it cost")
+	}
+	if out.Payable {
+		t.Error("a settled invoice is not payable")
+	}
+	if out.AmountPaid != 0 {
+		t.Errorf("AmountPaid = %d, want 0 — nothing was paid", out.AmountPaid)
+	}
+	if out.PaidOn == nil || out.PaidOn.String() != "2026-08-16" {
+		t.Errorf("PaidOn = %v, want the São Paulo civil date of the settlement", out.PaidOn)
+	}
+}
+
+// An invoice nobody has paid carries no date, and the absence is what the
+// screen branches on.
+func TestOpenInvoiceIsNeitherSettledNorDated(t *testing.T) {
+	today := brcal.New(2026, time.August, 20)
+	inv := &billing.Invoice{Status: billing.InvoiceOpen, DueDate: today.AddDays(5), Total: 9900}
+
+	out := newPortalInvoiceResponse(inv, nil, today)
+
+	if out.Settled {
+		t.Error("an OPEN invoice is not settled")
+	}
+	if out.PaidOn != nil {
+		t.Errorf("PaidOn = %v, want nothing", out.PaidOn)
+	}
+}

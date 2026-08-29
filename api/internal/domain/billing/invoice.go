@@ -130,6 +130,17 @@ type Invoice struct {
 	Total      Cents `dynamodbav:"total"       json:"total"`
 	AmountPaid Cents `dynamodbav:"amount_paid" json:"amount_paid"`
 
+	// PaidAt is when this invoice was settled, RFC 3339 in UTC. It is written by
+	// the repository on the transition to PAID, not by whoever caused it, so the
+	// webhook path and the reconciler cannot disagree about it — and a
+	// zero-total invoice, settled the moment it is issued, carries one too.
+	//
+	// Stored rather than derived from the audit trail: "quando foi pago" is on
+	// the customer's own receipt, and reading an audit log to render a receipt
+	// would make the portal depend on a table it is otherwise not allowed to
+	// see.
+	PaidAt string `dynamodbav:"paid_at,omitempty" json:"paid_at,omitempty"`
+
 	// AttemptCount is how many collection attempts have been made. It drives the
 	// dunning policy and is why PaymentAttempt is a separate entity: folding the
 	// attempt into the invoice makes dunning and diagnosis impossible.

@@ -40,6 +40,7 @@ export type MockScenario =
   | "pix_aberto"
   | "pix_expirado"
   | "paga"
+  | "plano_gratuito"
   | "pendente_de_acordo"
   | "termos_pendentes"
   | "erro_de_rede"
@@ -53,6 +54,7 @@ export const MOCK_SCENARIOS: { id: MockScenario; label: string }[] = [
   {id: "pix_aberto", label: "PIX aberto"},
   {id: "pix_expirado", label: "PIX expirado"},
   {id: "paga", label: "Fatura paga"},
+  {id: "plano_gratuito", label: "Fatura de valor zero (plano gratuito)"},
   {id: "pendente_de_acordo", label: "Pendente de acordo"},
   {id: "sem_assinatura", label: "Cliente sem assinatura"},
   {id: "sem_conta", label: "Sem conta de cobrança (403)"},

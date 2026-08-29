@@ -83,7 +83,12 @@ function Invoice() {
   }
 
   const invoice = query.data
-  const settled = invoice.amount_due === 0 && (invoice.amount_paid ?? 0) > 0
+  // The server's answer, not arithmetic on the amounts. `amount_due === 0 &&
+  // amount_paid > 0` called a zero-total invoice unpaid — the Free plan, issued
+  // and settled on the spot with nothing ever paid (ADR 0019) — and sent its
+  // reader to the "not payable" block, which told them a bill marked *Paga* was
+  // "ainda não aberta para pagamento".
+  const settled = invoice.settled
 
   return (
     <div className="space-y-10">
@@ -104,13 +109,19 @@ function Invoice() {
           />
         </h1>
         <StatusBadge state={invoice.state} tone={invoice.tone}/>
-        {/* Once it is settled the due date stops being the useful fact, and
-            labelling it "Pago em" would be a lie: the portal payload carries
-            no payment date, only the due date. Say what is true instead. */}
-        <p className="text-sm text-muted-foreground">
+        {/* One date, the one that matters now: the due date while anything is
+            owed, the payment date once nothing is. Everything else about the
+            document — number, period, the other date — is in Detalhes at the
+            foot, so this line stays a sentence rather than a record.
+
+            An invoice settled before `paid_at` existed carries no date, and
+            says the period instead of a wrong day. */}
+        <p className="text-pretty text-sm text-muted-foreground">
           {settled
-            ? `Referente ao período de ${period(invoice.period.start, invoice.period.end)}`
-            : `Vencimento em ${longDate(invoice.due_date)} · período de ${period(invoice.period.start, invoice.period.end)}`}
+            ? invoice.paid_on
+              ? `Pago em ${longDate(invoice.paid_on)}`
+              : `Referente ao período de ${period(invoice.period.start, invoice.period.end)}`
+            : `Vencimento em ${longDate(invoice.due_date)}`}
         </p>
       </header>
 
@@ -146,6 +157,8 @@ function Invoice() {
           when the amount surprised them; the pay button is what everybody
           else came for, and it should not be under a table. */}
       <Lines invoice={invoice}/>
+
+      <Facts invoice={invoice}/>
     </div>
   )
 }
@@ -229,6 +242,51 @@ function Lines({invoice}: { invoice: Invoice }) {
 }
 
 /**
+ * The facts a person quotes when they ask about a charge: which document, for
+ * what stretch of time, due when, paid when.
+ *
+ * A description list at the foot of the page rather than a panel at the top.
+ * Nobody opens an invoice to read its number — but the person who has to
+ * mention it to somebody else needs it on screen, and hunting for it is the
+ * reason they write in instead.
+ */
+function Facts({invoice}: { invoice: Invoice }) {
+  return (
+    <section aria-labelledby="detalhes" className="space-y-4 border-t border-border pt-6">
+      <h2 id="detalhes" className="text-sm font-medium text-muted-foreground">
+        Detalhes
+      </h2>
+      <dl className="grid gap-x-6 gap-y-4 sm:grid-cols-2">
+        {invoice.number != null && <Fact label="Número" value={String(invoice.number)} numeric/>}
+        <Fact label="Período" value={period(invoice.period.start, invoice.period.end)}/>
+        {/* Whichever date the header did not use. The same date in both places
+            reads as two facts, and the one this block owes the reader is the
+            other one: what a paid invoice was due, or how an open one is paid.
+            The method is named only while it is still an offer — the payload
+            does not say how a settled invoice was paid, and a zero-total one
+            was not paid at all. */}
+        {invoice.settled ? (
+          <Fact label="Vencimento" value={longDate(invoice.due_date)}/>
+        ) : (
+          invoice.payable && <Fact label="Forma de pagamento" value="PIX"/>
+        )}
+      </dl>
+    </section>
+  )
+}
+
+function Fact({label, value, numeric}: { label: string; value: string; numeric?: boolean }) {
+  return (
+    <div className="space-y-1">
+      <dt className="text-xs text-muted-foreground">{label}</dt>
+      <dd data-numeric={numeric ? "" : undefined} className="text-sm text-foreground">
+        {value}
+      </dd>
+    </div>
+  )
+}
+
+/**
  * The payoff. Paying a bill is the one moment on this portal that deserves to
  * be unmistakable, so the confirmation is a filled block and not the tinted
  * hairline note it started as — a person who has just transferred money should
@@ -240,9 +298,18 @@ function Receipt({invoice}: { invoice: Invoice }) {
       <Check aria-hidden className="mt-0.5 size-5 shrink-0"/>
       <div className="space-y-1">
         <p className="font-medium">Pagamento recebido</p>
-        <p data-numeric className="text-sm opacity-90">
-          {money(invoice.amount_paid ?? invoice.total, invoice.currency)} · esta fatura está
-          quitada.
+        <p className="text-sm opacity-90">
+          {/* A zero-total invoice is settled without a payment, so quoting an
+              amount received would be inventing one. Both branches say the same
+              thing — there is nothing left to do — in the words that are true. */}
+          {invoice.total === 0 ? (
+            "Nada a pagar nesta fatura."
+          ) : (
+            <>
+              <span data-numeric>{money(invoice.amount_paid ?? invoice.total, invoice.currency)}</span>
+              {" · esta fatura está quitada."}
+            </>
+          )}
         </p>
       </div>
     </div>
@@ -253,13 +320,18 @@ function Receipt({invoice}: { invoice: Invoice }) {
  * Not payable is several different situations, and they need different
  * sentences. "Pendente de acordo" in particular must never read as a dead end:
  * it is the one state whose resolution is a conversation with a person.
+ *
+ * A settled invoice never reaches here — it renders the receipt instead — which
+ * is what the final branch depends on. It used to catch that case too, and told
+ * somebody holding a paid Free-plan invoice that it was "ainda não aberta para
+ * pagamento": the one reading that is both wrong and impossible to act on.
  */
 function NotPayable({invoice}: { invoice: Invoice }) {
   const message = invoice.state.startsWith("Pendente")
     ? "Esta fatura está em negociação. Fale com a gente para combinar como quitar — não há nada a pagar por aqui enquanto isso."
     : invoice.state === "Cancelada"
       ? "Esta fatura foi cancelada. Não há nada a pagar, e nenhum valor foi cobrado."
-      : "Esta fatura ainda não está aberta para pagamento."
+      : "Esta fatura ainda está sendo preparada. Quando for emitida, o pagamento aparece aqui."
 
   return (
     <div className="rounded-xl border border-border bg-surface px-5 py-4">

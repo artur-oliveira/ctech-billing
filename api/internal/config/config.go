@@ -100,10 +100,28 @@ type Config struct {
 	// There is no development default on purpose — a constant key in the
 	// repository is a published key.
 	//
-	// Rotating it is not yet a supported operation: values carry a `v1.` marker
-	// so a second key can be introduced additively, but nothing reads a second
-	// key today. Changing this value makes existing tax ids unreadable.
+	// Rotation is supported and needs no migration. The value is a
+	// comma-separated list of `generation:key` entries; the highest generation
+	// seals new values and every generation opens old ones. A bare key with no
+	// generation is generation 1, which is what every deployment already holds:
+	//
+	//	FIELD_ENCRYPTION_KEY="2:<new>,1:<old>"   # writes v2, still reads v1
+	//	FIELD_ENCRYPTION_KEY="2:<new>"           # once nothing v1 is left
+	//
+	// Dropping a generation still in use makes those rows unreadable, and the
+	// service says exactly that (crypto.ErrUnknownGeneration) rather than
+	// reporting a failed tag, because the two have different remedies.
 	FieldEncryptionKey string `env:"FIELD_ENCRYPTION_KEY"`
+
+	// AlertsTopicARN is the account's shared alert topic
+	// (/ctech/{env}/alerts/topic-arn, written by ctech-cdk's AlertsStack). The
+	// scheduled jobs publish their own failures to it.
+	//
+	// Empty means alerts go nowhere, and that is allowed: a job that cannot page
+	// anybody must still do its work. What it costs is real and is the reason
+	// this is worth checking on a deployment — a failing sweep is then only
+	// visible to whoever reads the logs.
+	AlertsTopicARN string `env:"ALERTS_TOPIC_ARN"`
 
 	// EmailFrom is the verified SES identity dunning reminders are sent from.
 	// Empty disables sending: cmd/dunning refuses to start rather than escalating
@@ -122,7 +140,7 @@ func Load() (*Config, error) {
 	// length is a deployment mistake, and a deployment mistake should stop the
 	// process at boot — not surface on the first customer somebody creates.
 	if !crypto.NewSealer(cfg.FieldEncryptionKey).Enabled() {
-		return nil, fmt.Errorf("config: FIELD_ENCRYPTION_KEY must decode to exactly 32 bytes (base64 or hex)")
+		return nil, fmt.Errorf("config: FIELD_ENCRYPTION_KEY must hold at least one 32-byte key (base64 or hex), optionally as `generation:key` entries separated by commas")
 	}
 	// Fail closed, mirroring ctech-wallet's guard. Empty origins mean a wildcard
 	// with no credentials — a reasonable default on a laptop and the wrong one in

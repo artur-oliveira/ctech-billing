@@ -64,6 +64,7 @@ func (r *CustomerRepository) customerRowOf(c *billing.Customer, now time.Time) (
 // an invoice looks like a corrupted record rather than a missing decryption.
 func (r *CustomerRepository) open(row *customerRow) (*billing.Customer, error) {
 	c := row.Customer
+	c.Since = row.CreatedAt
 	plain, err := r.seal.Open(c.TaxID)
 	if err != nil {
 		return nil, fmt.Errorf("opening tax id of customer %s: %w", c.ID, err)

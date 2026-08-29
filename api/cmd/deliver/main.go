@@ -15,12 +15,14 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log/slog"
 	"os"
 	"time"
 
 	"gopkg.aoctech.app/billing/api/internal/app"
 	"gopkg.aoctech.app/billing/api/internal/config"
+	"gopkg.aoctech.app/billing/api/internal/jobs"
 	"gopkg.aoctech.app/billing/api/internal/services"
 )
 
@@ -42,10 +44,10 @@ func main() {
 	}
 
 	ctx := context.Background()
+	alerter := jobs.Alerts(ctx, cfg)
 	deliverer, err := app.BuildDeliverer(ctx, cfg)
 	if err != nil {
-		slog.Error("startup", "error", err)
-		os.Exit(2)
+		jobs.Startup(ctx, alerter, "deliver", err)
 	}
 
 	now := time.Now()
@@ -57,8 +59,10 @@ func main() {
 	// Only live failures fail the job, matching cmd/sweep. A failing sandbox
 	// endpoint is somebody's half-built integration, and paging on it teaches
 	// people to ignore the alarm that matters.
-	if live > 0 {
-		os.Exit(1)
+	if len(live) > 0 {
+		jobs.Fail(ctx, alerter, "deliver",
+			fmt.Sprintf("%d webhook pass error(s) — consumers are not hearing about events that already happened", len(live)),
+			live)
 	}
 }
 
@@ -66,7 +70,7 @@ func main() {
 // occurred. A failed *delivery* is not one of those: an endpoint answering 500
 // is the endpoint's problem, it is recorded on the row, and it will be retried.
 // What counts here is this job being unable to do its work at all.
-func run(ctx context.Context, d *services.Deliverer, livemode bool, limit int, now time.Time) int {
+func run(ctx context.Context, d *services.Deliverer, livemode bool, limit int, now time.Time) []string {
 	mode := "test"
 	if livemode {
 		mode = "live"
@@ -78,7 +82,7 @@ func run(ctx context.Context, d *services.Deliverer, livemode bool, limit int, n
 	del := d.Deliver(ctx, livemode, limit, now)
 	report(ctx, "webhook delivery", mode, del)
 
-	return len(fan.Errors) + len(del.Errors)
+	return append(append([]string{}, fan.Errors...), del.Errors...)
 }
 
 func report(ctx context.Context, what, mode string, res services.PassResult) {

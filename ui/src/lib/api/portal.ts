@@ -32,6 +32,7 @@ export const portalKeys = {
   invoicePages: ["portal", "invoices", "pages"] as const,
   invoice: (id: string) => ["portal", "invoices", "detail", id] as const,
   subscriptions: ["portal", "subscriptions"] as const,
+  subscription: (id: string) => ["portal", "subscriptions", "detail", id] as const,
 }
 
 /**
@@ -103,6 +104,12 @@ export async function payInvoice(id: string): Promise<PaymentResult> {
 
 export async function listSubscriptions(): Promise<ListResponse<Subscription>> {
   const {data} = await apiClient.get<ListResponse<Subscription>>("/v1.0/portal/subscriptions")
+  return data
+}
+
+/** The detail, which is the list row plus the plan's own invoice history. */
+export async function getSubscription(id: string): Promise<Subscription> {
+  const {data} = await apiClient.get<Subscription>(`/v1.0/portal/subscriptions/${id}`)
   return data
 }
 

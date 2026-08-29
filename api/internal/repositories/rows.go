@@ -82,6 +82,16 @@ type subscriptionRow struct {
 	ScheduleSK string `dynamodbav:"schedule_sk,omitempty"`
 }
 
+// entity is the subscription as the rest of the service sees it, with the one
+// attribute the domain cannot carry itself filled in. Every read path goes
+// through it, because a Since that is populated on the detail and empty in the
+// list is worse than one that is never populated at all.
+func (row subscriptionRow) entity() billing.Subscription {
+	sub := row.Subscription
+	sub.Since = row.CreatedAt
+	return sub
+}
+
 type subscriptionItemRow struct {
 	keys
 	billing.SubscriptionItem

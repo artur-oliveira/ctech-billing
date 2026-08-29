@@ -166,7 +166,8 @@ func (r *SubscriptionRepository) Get(ctx context.Context, organizationID string,
 	if err != nil {
 		return nil, err
 	}
-	return &row.Subscription, nil
+	sub := row.entity()
+	return &sub, nil
 }
 
 // Transition applies a state change, writing the audit entry in the same
@@ -374,7 +375,7 @@ func (r *SubscriptionRepository) ListByCustomer(ctx context.Context, organizatio
 		if row.Subscription.Status == "" {
 			continue
 		}
-		out = append(out, row.Subscription)
+		out = append(out, row.entity())
 	}
 	return out, nil
 }
@@ -393,7 +394,7 @@ func (r *SubscriptionRepository) List(
 ) (*Page[billing.Subscription], error) {
 	return pagePeriod(ctx, r.base, organizationID, livemode, EntitySubscription,
 		"", limit, startKey,
-		func(row subscriptionRow) billing.Subscription { return row.Subscription })
+		func(row subscriptionRow) billing.Subscription { return row.entity() })
 }
 
 // ScheduleCancellation marks the subscription to end when its current period
@@ -481,7 +482,7 @@ func (r *SubscriptionRepository) DueOn(ctx context.Context, livemode bool, due b
 	}
 	out := make([]billing.Subscription, len(rows))
 	for i, row := range rows {
-		out[i] = row.Subscription
+		out[i] = row.entity()
 	}
 	return &Page[billing.Subscription]{Items: out, LastEvaluatedKey: res.LastEvaluatedKey}, nil
 }
