@@ -117,7 +117,7 @@ func TestTenantAndModeIsolation(t *testing.T) {
 			ID: sharedID, OrganizationID: org.ID, Livemode: true,
 			Name: "Cliente " + org.ID, Email: "a@example.com",
 		}
-		if err := repo.Create(ctx, c, now()); err != nil {
+		if err := repo.Create(ctx, c, "test", "req_setup", now()); err != nil {
 			t.Fatalf("the same customer id must be usable in a different tenant: %v", err)
 		}
 	}
@@ -153,7 +153,7 @@ func TestTaxIDIsEncryptedAtRest(t *testing.T) {
 		ID: id.NewWithPrefix(id.PrefixCustomer), OrganizationID: org.ID, Livemode: true,
 		Name: "Ana Ribeiro", Email: "ana@example.com", TaxID: cpf,
 	}
-	if err := repo.Create(ctx, c, now()); err != nil {
+	if err := repo.Create(ctx, c, "test", "req_setup", now()); err != nil {
 		t.Fatal(err)
 	}
 	// Create must not hand the caller back a ciphertext it cannot render.

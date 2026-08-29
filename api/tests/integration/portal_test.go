@@ -44,7 +44,7 @@ func newPortal(t *testing.T) *portalEnv {
 		ID: id.NewWithPrefix(id.PrefixCustomer), OrganizationID: base.org.ID, Livemode: true,
 		Name: "Pessoa Que Paga", Email: "pessoa@example.com", UserID: userID,
 	}
-	if err := repositories.NewCustomerRepository(testDB, testCfg).Create(ctx, customer, now()); err != nil {
+	if err := repositories.NewCustomerRepository(testDB, testCfg).Create(ctx, customer, "test", "req_setup", now()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -369,7 +369,7 @@ func TestOneAccountCannotBeTwoCustomers(t *testing.T) {
 		ID: id.NewWithPrefix(id.PrefixCustomer), OrganizationID: e.org.ID, Livemode: true,
 		Name: "Outro Cadastro", UserID: e.userID,
 	}
-	err := customers.Create(ctx, duplicate, now())
+	err := customers.Create(ctx, duplicate, "test", "req_setup", now())
 	if err == nil {
 		t.Fatal("a second customer claimed an account that was already taken")
 	}

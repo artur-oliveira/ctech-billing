@@ -40,7 +40,7 @@ func newSubscribed(t *testing.T, priceType billing.PriceType, timing billing.Bil
 		ID: id.NewWithPrefix(id.PrefixProduct), OrganizationID: org.ID, Livemode: true,
 		Name: "DF-e Basic", Active: true,
 	}
-	if err := catalog.CreateProduct(ctx, product, now()); err != nil {
+	if err := catalog.CreateProduct(ctx, product, "test", "req_setup", now()); err != nil {
 		t.Fatal(err)
 	}
 	price := &billing.Price{
@@ -50,7 +50,7 @@ func newSubscribed(t *testing.T, priceType billing.PriceType, timing billing.Bil
 		Recurrence: billing.Recurrence{Interval: billing.IntervalMonth, Count: 1},
 		Timing:     timing,
 	}
-	if err := catalog.CreatePrice(ctx, price, now()); err != nil {
+	if err := catalog.CreatePrice(ctx, price, "test", "req_setup", now()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -339,7 +339,7 @@ func subscribeTo(t *testing.T, org *billing.Organization, price *billing.Price) 
 		ID: id.NewWithPrefix(id.PrefixCustomer), OrganizationID: org.ID, Livemode: org.Livemode,
 		Name: "Ana Ribeiro", Email: id.New() + "@example.com",
 	}
-	if err := repositories.NewCustomerRepository(testDB, testCfg).Create(ctxT(t), customer, now()); err != nil {
+	if err := repositories.NewCustomerRepository(testDB, testCfg).Create(ctxT(t), customer, "test", "req_setup", now()); err != nil {
 		t.Fatal(err)
 	}
 	subs := repositories.NewSubscriptionRepository(testDB, testCfg)
@@ -394,7 +394,7 @@ func TestSubscribingToAFreePlanIsActiveAtOnce(t *testing.T) {
 	free := *price
 	free.ID = id.NewWithPrefix(id.PrefixPrice)
 	free.UnitAmount = 0
-	if err := repositories.NewCatalogRepository(testDB, testCfg).CreatePrice(ctxT(t), &free, now()); err != nil {
+	if err := repositories.NewCatalogRepository(testDB, testCfg).CreatePrice(ctxT(t), &free, "test", "req_setup", now()); err != nil {
 		t.Fatal(err)
 	}
 

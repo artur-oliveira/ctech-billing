@@ -85,6 +85,15 @@
       "status": "active"
     },
     {
+      "name": "billing:products:write",
+      "descriptions": {
+        "pt-BR": "Criar produtos e preços, e arquivar um preço. Preços são imutáveis: alterar um valor é criar outro.",
+        "en": "Create products and prices, and archive a price. Prices are immutable: changing an amount means creating another."
+      },
+      "visibility": "public",
+      "status": "active"
+    },
+    {
       "name": "billing:organization:read",
       "descriptions": {
         "pt-BR": "Consultar dados de cobrança da organização.",

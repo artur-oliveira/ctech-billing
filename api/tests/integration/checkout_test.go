@@ -534,7 +534,7 @@ func TestATestModeInvoiceIsNeverCollected(t *testing.T) {
 		Name: "Sandbox Ltda", UserID: "usr_sandbox",
 	}
 	if err := repositories.NewCustomerRepository(testDB, testCfg).
-		Create(ctxT(t), customer, now()); err != nil {
+		Create(ctxT(t), customer, "test", "req_setup", now()); err != nil {
 		t.Fatal(err)
 	}
 	inv := newInvoiceFor(t, testOrg, customer.ID)
@@ -631,7 +631,7 @@ func TestChargesAreRefusedWithoutAPayerAccount(t *testing.T) {
 		ID: id.NewWithPrefix(id.PrefixCustomer), OrganizationID: e.org.ID, Livemode: true,
 		Name: "Cliente Do Merchant",
 	}
-	if err := repositories.NewCustomerRepository(testDB, testCfg).Create(ctx, anon, now()); err != nil {
+	if err := repositories.NewCustomerRepository(testDB, testCfg).Create(ctx, anon, "test", "req_setup", now()); err != nil {
 		t.Fatal(err)
 	}
 	inv := newInvoiceFor(t, e.org, anon.ID)

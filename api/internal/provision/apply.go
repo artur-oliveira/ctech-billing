@@ -11,6 +11,15 @@ import (
 	"gopkg.aoctech.app/billing/api/internal/repositories"
 )
 
+// provisionActor names the tenant plan in the audit trail.
+//
+// Not a user id, because nobody is signed in: a plan is a reviewed file applied
+// by a pipeline, and saying so is more honest than borrowing whichever operator
+// happened to run it. What identifies *which* application it was is the row's
+// own timestamp, and what identifies the change is the pull request the plan
+// arrived in.
+const provisionActor = "provisioner"
+
 // Repos is what applying a plan needs. It is an explicit struct rather than the
 // whole repository set so that this package cannot grow into a second write path
 // for entities it has no business touching — an invoice, a payment, an audit row.
@@ -126,7 +135,7 @@ func Apply(ctx context.Context, repos Repos, plan *Plan, livemode bool, now time
 		case !errors.Is(err, repositories.ErrNotFound):
 			return nil, fmt.Errorf("reading product %s: %w", p.ID, err)
 		}
-		if err := repos.Catalog.CreateProduct(ctx, p.entity(orgID, livemode), now); err != nil {
+		if err := repos.Catalog.CreateProduct(ctx, p.entity(orgID, livemode), provisionActor, "", now); err != nil {
 			return nil, fmt.Errorf("creating product %s: %w", p.ID, err)
 		}
 		res.created("product", p.ID)
@@ -140,7 +149,7 @@ func Apply(ctx context.Context, repos Repos, plan *Plan, livemode bool, now time
 		case !errors.Is(err, repositories.ErrNotFound):
 			return nil, fmt.Errorf("reading price %s: %w", p.ID, err)
 		}
-		if err := repos.Catalog.CreatePrice(ctx, p.entity(orgID, livemode), now); err != nil {
+		if err := repos.Catalog.CreatePrice(ctx, p.entity(orgID, livemode), provisionActor, "", now); err != nil {
 			return nil, fmt.Errorf("creating price %s: %w", p.ID, err)
 		}
 		res.created("price", p.ID)

@@ -81,7 +81,7 @@ func newAPI(t *testing.T) *apiEnv {
 		ID: id.NewWithPrefix(id.PrefixProduct), OrganizationID: org.ID, Livemode: true,
 		Name: "DF-e Basic", Active: true,
 	}
-	if err := catalog.CreateProduct(ctx, product, now()); err != nil {
+	if err := catalog.CreateProduct(ctx, product, "test", "req_setup", now()); err != nil {
 		t.Fatal(err)
 	}
 	price := &billing.Price{
@@ -91,7 +91,7 @@ func newAPI(t *testing.T) *apiEnv {
 		Recurrence: billing.Recurrence{Interval: billing.IntervalMonth, Count: 1},
 		Timing:     billing.BillAdvance,
 	}
-	if err := catalog.CreatePrice(ctx, price, now()); err != nil {
+	if err := catalog.CreatePrice(ctx, price, "test", "req_setup", now()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -417,7 +417,7 @@ func TestCredentialsCannotReachAnotherTenant(t *testing.T) {
 		ID: id.NewWithPrefix(id.PrefixCustomer), OrganizationID: other.ID, Livemode: true,
 		Name: "De Outra Org",
 	}
-	if err := repositories.NewCustomerRepository(testDB, testCfg).Create(ctx, stranger, now()); err != nil {
+	if err := repositories.NewCustomerRepository(testDB, testCfg).Create(ctx, stranger, "test", "req_setup", now()); err != nil {
 		t.Fatal(err)
 	}
 

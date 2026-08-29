@@ -4,6 +4,7 @@ package integration
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -293,5 +294,198 @@ func TestConsoleWritesNeedTheWriteScope(t *testing.T) {
 		if res.status != http.StatusForbidden {
 			t.Errorf("%s status = %d, want 403: %s", path, res.status, res.body)
 		}
+	}
+}
+
+// C8–C9: the catalogue writes. A price is immutable, so what is tested is that
+// there is no way to edit one, that archiving does not touch what it already
+// bills, and that both writes leave a trail — "who set this to R$ 199,00" is
+// what a disputed invoice turns into.
+
+type consolePrice struct {
+	ID         string `json:"id"`
+	ProductID  string `json:"product_id"`
+	UnitAmount int64  `json:"unit_amount"`
+	Archived   bool   `json:"archived"`
+}
+
+func TestConsoleCreatesAProductAndAPrice(t *testing.T) {
+	e := newAPI(t)
+	token := e.sessionToken(t, middleware.ScopeProductsWrite, middleware.ScopeProductsRead)
+
+	created := e.consolePost(t, "/v1.0/console/products", token, "live",
+		`{"name":"DF-e Avançado","owner_key":"dfe"}`)
+	if created.status != http.StatusCreated {
+		t.Fatalf("product status = %d: %s", created.status, created.body)
+	}
+	var product struct {
+		ID     string `json:"id"`
+		Name   string `json:"name"`
+		Active bool   `json:"active"`
+	}
+	created.decode(t, &product)
+	if !product.Active {
+		t.Error("a new product is sellable; archiving is a later, separate decision")
+	}
+
+	priced := e.consolePost(t, "/v1.0/console/prices", token, "live",
+		`{"product_id":"`+product.ID+`","type":"fixed","unit_amount":19900,`+
+			`"recurrence":{"interval":"month","count":1},"billing_timing":"advance"}`)
+	if priced.status != http.StatusCreated {
+		t.Fatalf("price status = %d: %s", priced.status, priced.body)
+	}
+	var price consolePrice
+	priced.decode(t, &price)
+	if price.UnitAmount != 19900 || price.ProductID != product.ID {
+		t.Fatalf("price = %+v, want 19900 on %s", price, product.ID)
+	}
+
+	// The product detail is where C9 reads it back, prices and all.
+	detail := e.console(t, "/v1.0/console/products/"+product.ID, token, "live")
+	var view struct {
+		Prices []consolePrice `json:"prices"`
+	}
+	detail.decode(t, &view)
+	if len(view.Prices) != 1 || view.Prices[0].ID != price.ID {
+		t.Fatalf("prices = %+v, want the one just created", view.Prices)
+	}
+}
+
+// A metered price billed in advance would have to guess the usage it charges
+// for. The domain refuses it, and the route must surface that rather than store
+// a price that fails weeks later at invoice generation.
+func TestConsoleRefusesAnUnbillablePrice(t *testing.T) {
+	e := newAPI(t)
+	token := e.sessionToken(t, middleware.ScopeProductsWrite)
+
+	created := e.consolePost(t, "/v1.0/console/products", token, "live", `{"name":"Medido"}`)
+	var product struct {
+		ID string `json:"id"`
+	}
+	created.decode(t, &product)
+
+	res := e.consolePost(t, "/v1.0/console/prices", token, "live",
+		`{"product_id":"`+product.ID+`","type":"metered","unit_amount":50,`+
+			`"recurrence":{"interval":"month","count":1},"billing_timing":"advance"}`)
+	if res.status < 400 || res.status >= 500 {
+		t.Fatalf("status = %d, want a refusal: %s", res.status, res.body)
+	}
+}
+
+// A fixed price above the wallet's per-charge ceiling produces an invoice that
+// is issued and then cannot be paid — the customer owes it and no screen can
+// collect it. Refused at the catalogue, which is the only moment it is cheap.
+func TestConsoleRefusesAPriceAboveTheChargeCeiling(t *testing.T) {
+	e := newAPI(t)
+	token := e.sessionToken(t, middleware.ScopeProductsWrite)
+
+	created := e.consolePost(t, "/v1.0/console/products", token, "live", `{"name":"Caro"}`)
+	var product struct {
+		ID string `json:"id"`
+	}
+	created.decode(t, &product)
+
+	res := e.consolePost(t, "/v1.0/console/prices", token, "live",
+		fmt.Sprintf(`{"product_id":"%s","type":"fixed","unit_amount":%d,`+
+			`"recurrence":{"interval":"month","count":1},"billing_timing":"advance"}`,
+			product.ID, billing.MaxChargeCents+1))
+	if res.status != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want 422: %s", res.status, res.body)
+	}
+}
+
+// Archiving withdraws a price from sale and touches nothing else. Repeating it
+// is a double click, not a second decision.
+func TestConsoleArchivesAPriceOnceAndIdempotently(t *testing.T) {
+	e := newAPI(t)
+	token := e.sessionToken(t, middleware.ScopeProductsWrite, middleware.ScopeProductsRead)
+
+	created := e.consolePost(t, "/v1.0/console/products", token, "live", `{"name":"Antigo"}`)
+	var product struct {
+		ID string `json:"id"`
+	}
+	created.decode(t, &product)
+
+	priced := e.consolePost(t, "/v1.0/console/prices", token, "live",
+		`{"product_id":"`+product.ID+`","type":"fixed","unit_amount":4990,`+
+			`"recurrence":{"interval":"month","count":1},"billing_timing":"advance"}`)
+	var price consolePrice
+	priced.decode(t, &price)
+
+	first := e.consolePost(t, "/v1.0/console/prices/"+price.ID+"/archive", token, "live", "")
+	if first.status != http.StatusOK {
+		t.Fatalf("archive status = %d: %s", first.status, first.body)
+	}
+	var archived consolePrice
+	first.decode(t, &archived)
+	if !archived.Archived {
+		t.Fatal("the price must come back archived")
+	}
+	if second := e.consolePost(t, "/v1.0/console/prices/"+price.ID+"/archive", token, "live", ""); second.status != http.StatusOK {
+		t.Fatalf("second archive status = %d, want 200: %s", second.status, second.body)
+	}
+
+	// Still listed on the product: a subscription may be on it, and hiding it
+	// makes the invoice it produces look like it came from nowhere.
+	detail := e.console(t, "/v1.0/console/products/"+product.ID, token, "live")
+	var view struct {
+		Prices []consolePrice `json:"prices"`
+	}
+	detail.decode(t, &view)
+	if len(view.Prices) != 1 || !view.Prices[0].Archived {
+		t.Fatalf("prices = %+v, want the archived one still listed", view.Prices)
+	}
+}
+
+// The console's customer creation is the M2M implementation with a different
+// actor, and the actor is the whole reason the route exists.
+func TestConsoleCreatesACustomerAsTheOperator(t *testing.T) {
+	e := newAPI(t)
+	token := e.sessionToken(t, middleware.ScopeCustomersWrite, middleware.ScopeCustomersRead)
+
+	res := e.consolePost(t, "/v1.0/console/customers", token, "live",
+		`{"name":"Padaria do Bairro","email":"contato@padaria.example"}`)
+	if res.status != http.StatusCreated {
+		t.Fatalf("status = %d: %s", res.status, res.body)
+	}
+	var customer struct {
+		ID   string `json:"id"`
+		Name string `json:"name"`
+	}
+	res.decode(t, &customer)
+	if customer.Name != "Padaria do Bairro" {
+		t.Fatalf("name = %q", customer.Name)
+	}
+
+	detail := e.console(t, "/v1.0/console/customers/"+customer.ID, token, "live")
+	var view struct {
+		Timeline []struct {
+			Action string `json:"action"`
+			Actor  string `json:"actor"`
+		} `json:"timeline"`
+	}
+	detail.decode(t, &view)
+	var created bool
+	for _, entry := range view.Timeline {
+		if entry.Action == "customer.created" {
+			created = true
+			if len(entry.Actor) < 5 || entry.Actor[:5] != "user:" {
+				t.Errorf("actor = %q, want the signed-in operator", entry.Actor)
+			}
+		}
+	}
+	if !created {
+		t.Error("creating a customer writes an audit row")
+	}
+}
+
+// Reading the catalogue is not being allowed to price it.
+func TestConsoleCatalogueWritesNeedTheProductsWriteScope(t *testing.T) {
+	e := newAPI(t)
+	readOnly := e.sessionToken(t, middleware.ScopeProductsRead)
+
+	res := e.consolePost(t, "/v1.0/console/products", readOnly, "live", `{"name":"Não"}`)
+	if res.status != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403: %s", res.status, res.body)
 	}
 }

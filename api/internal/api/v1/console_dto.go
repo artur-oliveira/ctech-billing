@@ -175,6 +175,34 @@ func newPriceResponse(p *billing.Price) priceResponse {
 	}
 }
 
+// createProductRequest is C8's "novo produto".
+//
+// OwnerKey is accepted here and nowhere else on this surface: it routes the
+// product's events to one endpoint (ADR 0016) and it is not metadata, because a
+// routing key read out of a caller-writable map is a caller who can redirect
+// somebody else's events.
+type createProductRequest struct {
+	Name     string           `json:"name"`
+	OwnerKey string           `json:"owner_key"`
+	Metadata billing.Metadata `json:"metadata"`
+}
+
+// createPriceRequest is C9's "novo preço" — never "editar preço".
+//
+// A price is immutable, so this is the only way an amount ever changes, and the
+// screen is expected to say so. Archiving the old one is a separate, deliberate
+// second action rather than something this request implies: replacing a price
+// and withdrawing it from sale are two decisions, and an operator correcting a
+// typo in a new price does not always mean to stop selling the old one.
+type createPriceRequest struct {
+	ProductID  string                `json:"product_id"`
+	Type       billing.PriceType     `json:"type"`
+	UnitAmount billing.Cents         `json:"unit_amount"`
+	Recurrence billing.Recurrence    `json:"recurrence"`
+	Timing     billing.BillingTiming `json:"billing_timing"`
+	Metadata   billing.Metadata      `json:"metadata"`
+}
+
 type productResponse struct {
 	ID       string           `json:"id"`
 	Name     string           `json:"name"`

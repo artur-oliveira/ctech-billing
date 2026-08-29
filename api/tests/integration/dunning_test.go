@@ -93,7 +93,7 @@ func unactivatedDunnableInvoice(t *testing.T, org *billing.Organization) (*billi
 		ID: id.NewWithPrefix(id.PrefixCustomer), OrganizationID: org.ID, Livemode: org.Livemode,
 		Name: "Ana Ribeiro", Email: address,
 	}
-	if err := repositories.NewCustomerRepository(testDB, testCfg).Create(ctx, customer, now()); err != nil {
+	if err := repositories.NewCustomerRepository(testDB, testCfg).Create(ctx, customer, "test", "req_setup", now()); err != nil {
 		t.Fatal(err)
 	}
 

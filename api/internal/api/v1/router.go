@@ -265,10 +265,25 @@ func registerConsole(v1 fiber.Router, d Deps, h *handlers, auth fiber.Handler) {
 	console.Post("/subscriptions/:id/change",
 		middleware.RequireUserScope(middleware.ScopeSubscriptionsWrite), ch.changeSubscription)
 
+	console.Post("/customers",
+		middleware.RequireUserScope(middleware.ScopeCustomersWrite), ch.createCustomer)
 	console.Get("/customers",
 		middleware.RequireUserScope(middleware.ScopeCustomersRead), ch.listCustomers)
 	console.Get("/customers/:id",
 		middleware.RequireUserScope(middleware.ScopeCustomersRead), ch.getCustomer)
+
+	// The catalogue writes (C8–C9). Behind a write scope that the read-only
+	// console session does not hold, and behind `billing:products:write` rather
+	// than the invoices one: an operator who may issue a credit note is not
+	// thereby somebody who may change what things cost.
+	console.Post("/products",
+		middleware.RequireUserScope(middleware.ScopeProductsWrite), ch.createProduct)
+	console.Post("/prices",
+		middleware.RequireUserScope(middleware.ScopeProductsWrite), ch.createPrice)
+	// There is no PUT and no PATCH on a price, on any surface. Immutability is
+	// the model, and archiving is the only mutation it accepts.
+	console.Post("/prices/:id/archive",
+		middleware.RequireUserScope(middleware.ScopeProductsWrite), ch.archivePrice)
 
 	console.Get("/products",
 		middleware.RequireUserScope(middleware.ScopeProductsRead), ch.listProducts)

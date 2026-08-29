@@ -170,7 +170,7 @@ func TestConsoleListingsAreTenantScoped(t *testing.T) {
 	}
 	customers := repositories.NewCustomerRepository(testDB, testCfg)
 	for _, c := range []*billing.Customer{mine, theirs} {
-		if err := customers.Create(ctx, c, now()); err != nil {
+		if err := customers.Create(ctx, c, "test", "req_setup", now()); err != nil {
 			t.Fatal(err)
 		}
 	}

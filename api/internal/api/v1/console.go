@@ -256,6 +256,117 @@ func (h *consoleHandlers) invoiceDetail(c fiber.Ctx, inv *billing.Invoice) error
 	return c.JSON(newInvoiceDetailResponse(inv, lines, notes, trail, h.today(), h.links))
 }
 
+// createCustomer is C6's "novo cliente", on the shared implementation.
+func (h *consoleHandlers) createCustomer(c fiber.Ctx) error {
+	return h.createCustomerAs(c, actorOfUser(c))
+}
+
+// createProduct adds a product to the catalogue (C8).
+func (h *consoleHandlers) createProduct(c fiber.Ctx) error {
+	t := middleware.GetTenant(c)
+	var req createProductRequest
+	if err := c.Bind().Body(&req); err != nil {
+		return problem.BadRequest("corpo inválido").Send(c)
+	}
+	if req.Name == "" {
+		return problem.Validation([]problem.FieldError{
+			{Field: "name", Message: "obrigatório", Tag: "required"},
+		}).Send(c)
+	}
+
+	product := &billing.Product{
+		ID:             id.NewWithPrefix(id.PrefixProduct),
+		OrganizationID: t.OrganizationID,
+		Livemode:       t.Livemode,
+		Name:           req.Name,
+		// A product nobody can sell is not what "novo produto" means. Archiving
+		// is a later, separate decision, and there is no screen that asks for an
+		// inactive one at creation.
+		Active:   true,
+		OwnerKey: req.OwnerKey,
+		Metadata: req.Metadata,
+	}
+	if err := h.cat.CreateProduct(
+		c.Context(), product, actorOfUser(c), middleware.GetRequestID(c), h.now(),
+	); err != nil {
+		return fail(c, err)
+	}
+	return c.Status(fiber.StatusCreated).JSON(newProductResponse(product, nil))
+}
+
+// createPrice adds a price to a product (C9).
+//
+// There is no "editar preço" and there never will be: a price is immutable, so
+// changing what something costs is this route plus, if the old one should stop
+// being sold, an explicit archive. The UI is expected to teach that rather than
+// hide it behind an edit button that creates something new behind the operator's
+// back.
+func (h *consoleHandlers) createPrice(c fiber.Ctx) error {
+	t := middleware.GetTenant(c)
+	var req createPriceRequest
+	if err := c.Bind().Body(&req); err != nil {
+		return problem.BadRequest("corpo inválido").Send(c)
+	}
+	// Read first: a price pointing at a product that does not exist bills
+	// nothing and is discovered at invoice generation, weeks later.
+	product, err := h.cat.GetProduct(c.Context(), t.OrganizationID, t.Livemode, req.ProductID)
+	if err != nil {
+		return fail(c, err)
+	}
+
+	price := &billing.Price{
+		ID:             id.NewWithPrefix(id.PrefixPrice),
+		OrganizationID: t.OrganizationID,
+		Livemode:       t.Livemode,
+		ProductID:      product.ID,
+		Type:           req.Type,
+		Currency:       billing.CurrencyBRL,
+		UnitAmount:     req.UnitAmount,
+		Recurrence:     req.Recurrence,
+		Timing:         req.Timing,
+		Metadata:       req.Metadata,
+	}
+	// Refused here rather than at the charge: a fixed price above the wallet's
+	// per-client ceiling produces an invoice that is issued and then cannot be
+	// paid, which is the worst of both — the customer owes it and no screen can
+	// collect it (ADR 0004).
+	if price.ExceedsChargeCeiling() {
+		return problem.Unprocessable(
+			"o valor excede o teto de cobrança do wallet; uma fatura nesse valor seria emitida e não poderia ser paga",
+		).Send(c)
+	}
+	if err := h.cat.CreatePrice(
+		c.Context(), price, actorOfUser(c), middleware.GetRequestID(c), h.now(),
+	); err != nil {
+		return fail(c, err)
+	}
+	return c.Status(fiber.StatusCreated).JSON(newPriceResponse(price))
+}
+
+// archivePrice withdraws a price from the catalogue (C9).
+//
+// It does not touch the subscriptions already on it, and that is the whole
+// point: archiving means "do not sell this any more", never "change what
+// existing customers pay". Repeating it answers with the price rather than an
+// error — a double click is not a second decision — and writes no second audit
+// row, because the update is conditional on it not already being archived.
+func (h *consoleHandlers) archivePrice(c fiber.Ctx) error {
+	t := middleware.GetTenant(c)
+	price, err := h.cat.GetPrice(c.Context(), t.OrganizationID, t.Livemode, c.Params("id"))
+	if err != nil {
+		return fail(c, err)
+	}
+	if price.Archived {
+		return c.JSON(newPriceResponse(price))
+	}
+	if err := h.cat.ArchivePrice(
+		c.Context(), price, actorOfUser(c), middleware.GetRequestID(c), h.now(),
+	); err != nil {
+		return fail(c, err)
+	}
+	return c.JSON(newPriceResponse(price))
+}
+
 // listSubscriptions is C4.
 func (h *consoleHandlers) listSubscriptions(c fiber.Ctx) error {
 	t := middleware.GetTenant(c)

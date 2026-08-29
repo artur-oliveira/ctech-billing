@@ -25,7 +25,12 @@ const (
 	// (ADR 0011). They are in the same manifest as the M2M scopes, not a parallel
 	// `billing:console:*` set: the resource is the same resource, and a second
 	// naming scheme for the same data is a second thing to keep in agreement.
-	ScopeProductsRead     = "billing:products:read"
+	ScopeProductsRead = "billing:products:read"
+	// ScopeProductsWrite creates products and prices, and archives a price
+	// (C8–C9). Separate from the invoice write scope on purpose: an operator who
+	// may issue a credit note against one bill is not thereby somebody who may
+	// change what every future customer pays.
+	ScopeProductsWrite    = "billing:products:write"
 	ScopeOrganizationRead = "billing:organization:read"
 	// The portal's scopes are `me`, not a resource, and that is the point
 	// (ADR 0012): `billing:my-invoices:read` reads **my** invoices, while
@@ -55,6 +60,7 @@ var AllScopes = []string{
 	ScopeCustomersWrite,
 	ScopeEntitlementsRead,
 	ScopeProductsRead,
+	ScopeProductsWrite,
 	ScopeOrganizationRead,
 	ScopeMyInvoicesRead,
 	ScopeMySubscriptionsRead,

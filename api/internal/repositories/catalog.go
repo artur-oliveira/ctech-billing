@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 
 	"gopkg.aoctech.app/billing/api/internal/config"
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
@@ -26,19 +27,30 @@ import (
 type CatalogRepository struct {
 	products Base
 	prices   Base
+	audit    Base
 }
 
 func NewCatalogRepository(db *dynamodb.Client, cfg *config.Config) *CatalogRepository {
 	return &CatalogRepository{
 		products: NewBase(db, cfg, TableProducts),
 		prices:   NewBase(db, cfg, TablePrices),
+		audit:    NewBase(db, cfg, TableAudit),
 	}
 }
 
-// CreateProduct writes a new product.
-func (r *CatalogRepository) CreateProduct(ctx context.Context, p *billing.Product, now time.Time) error {
+// CreateProduct writes a new product, with the audit row that says who added it.
+//
+// The audit is in the transaction rather than beside it, for the same reason it
+// is on every status change: "who put this in the catalogue" is asked about a
+// price nobody recognises, and it is answerable only if the answer was recorded
+// at the time. The actor is required — a catalogue entry that appeared by itself
+// is the one nobody can explain.
+func (r *CatalogRepository) CreateProduct(ctx context.Context, p *billing.Product, actor, requestID string, now time.Time) error {
 	if err := p.Metadata.Validate(); err != nil {
 		return err
+	}
+	if actor == "" {
+		return fmt.Errorf("repositories: creating product %s needs an actor", p.ID)
 	}
 	item, err := Encode(productRow{
 		keys:    newKeys(TenantPK(p.OrganizationID, p.Livemode), ProductSK(p.ID), RetentionProduct, now),
@@ -47,7 +59,22 @@ func (r *CatalogRepository) CreateProduct(ctx context.Context, p *billing.Produc
 	if err != nil {
 		return err
 	}
-	err = r.products.TransactWrite(ctx, txItems(r.products.BuildPutTxItemIfAbsent(item)))
+	auditItem, err := buildAuditItem(p.OrganizationID, p.Livemode, AuditEntry{
+		Entity:    EntityProduct,
+		EntityID:  p.ID,
+		Action:    "product.created",
+		Cause:     billing.CauseManual,
+		Actor:     actor,
+		RequestID: requestID,
+		After:     p.Name,
+	}, "", "", now)
+	if err != nil {
+		return err
+	}
+	err = r.products.TransactWrite(ctx, txItems(
+		r.products.BuildPutTxItemIfAbsent(item),
+		r.audit.BuildPutTxItemIfAbsent(auditItem),
+	))
 	if IsConditionFailed(err) {
 		return fmt.Errorf("product %s already exists", p.ID)
 	}
@@ -97,9 +124,12 @@ func (r *CatalogRepository) ListProducts(ctx context.Context, organizationID str
 //
 // The write is create-only. A price id that already exists fails rather than
 // overwriting, which is the storage-level half of immutability.
-func (r *CatalogRepository) CreatePrice(ctx context.Context, p *billing.Price, now time.Time) error {
+func (r *CatalogRepository) CreatePrice(ctx context.Context, p *billing.Price, actor, requestID string, now time.Time) error {
 	if err := p.Validate(); err != nil {
 		return err
+	}
+	if actor == "" {
+		return fmt.Errorf("repositories: creating price %s needs an actor", p.ID)
 	}
 	item, err := Encode(priceRow{
 		keys:  newKeys(TenantPK(p.OrganizationID, p.Livemode), PriceSK(p.ID), RetentionPrice, now),
@@ -108,7 +138,25 @@ func (r *CatalogRepository) CreatePrice(ctx context.Context, p *billing.Price, n
 	if err != nil {
 		return err
 	}
-	err = r.prices.TransactWrite(ctx, txItems(r.prices.BuildPutTxItemIfAbsent(item)))
+	// The amount is in the audit row on purpose. A price cannot be edited, so
+	// this line is the whole history of what was decided — and "who set this to
+	// R$ 199,00" is the question a disputed invoice turns into.
+	auditItem, err := buildAuditItem(p.OrganizationID, p.Livemode, AuditEntry{
+		Entity:    EntityPrice,
+		EntityID:  p.ID,
+		Action:    "price.created",
+		Cause:     billing.CauseManual,
+		Actor:     actor,
+		RequestID: requestID,
+		After:     p.UnitAmount.String(),
+	}, "", "", now)
+	if err != nil {
+		return err
+	}
+	err = r.prices.TransactWrite(ctx, txItems(
+		r.prices.BuildPutTxItemIfAbsent(item),
+		r.audit.BuildPutTxItemIfAbsent(auditItem),
+	))
 	if IsConditionFailed(err) {
 		return fmt.Errorf("price %s already exists (prices are immutable — create a new one)", p.ID)
 	}
@@ -136,12 +184,40 @@ func (r *CatalogRepository) GetPrice(ctx context.Context, organizationID string,
 // It is the **only** mutation a price accepts. Subscriptions already on it are
 // untouched: archiving means "do not sell this any more", never "change what
 // existing customers pay".
-func (r *CatalogRepository) ArchivePrice(ctx context.Context, p *billing.Price, now time.Time) error {
-	updates := map[string]any{
-		"archived":   true,
-		"updated_at": now.UTC().Format(time.RFC3339Nano),
+func (r *CatalogRepository) ArchivePrice(ctx context.Context, p *billing.Price, actor, requestID string, now time.Time) error {
+	if actor == "" {
+		return fmt.Errorf("repositories: archiving price %s needs an actor", p.ID)
 	}
-	if _, err := r.prices.UpdateItem(ctx, TenantPK(p.OrganizationID, p.Livemode), new(PriceSK(p.ID)), updates); err != nil {
+	auditItem, err := buildAuditItem(p.OrganizationID, p.Livemode, AuditEntry{
+		Entity:    EntityPrice,
+		EntityID:  p.ID,
+		Action:    "price.archived",
+		Cause:     billing.CauseManual,
+		Actor:     actor,
+		RequestID: requestID,
+	}, "false", "true", now)
+	if err != nil {
+		return err
+	}
+	// Conditional on the price not already being archived, which is what makes
+	// a second click write no second audit row — the same discipline every
+	// status change here follows.
+	update := r.prices.BuildRawUpdateTxItem(
+		TenantPK(p.OrganizationID, p.Livemode), new(PriceSK(p.ID)),
+		"SET #ar = :true, #ua = :now",
+		"attribute_exists(pk) AND (attribute_not_exists(#ar) OR #ar = :false)",
+		map[string]string{"#ar": "archived", "#ua": "updated_at"},
+		map[string]types.AttributeValue{
+			":true":  &types.AttributeValueMemberBOOL{Value: true},
+			":false": &types.AttributeValueMemberBOOL{Value: false},
+			":now":   &types.AttributeValueMemberS{Value: now.UTC().Format(time.RFC3339Nano)},
+		},
+	)
+	err = r.prices.TransactWrite(ctx, txItems(update, r.audit.BuildPutTxItemIfAbsent(auditItem)))
+	if IsConditionFailed(err) {
+		return fmt.Errorf("%w: price %s is already archived", ErrConcurrentModification, p.ID)
+	}
+	if err != nil {
 		return err
 	}
 	p.Archived = true

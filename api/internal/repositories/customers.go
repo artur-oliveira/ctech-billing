@@ -83,9 +83,14 @@ var ErrUserAlreadyCustomer = errors.New("user is already a customer of this orga
 // them sign in to the portal is written in the **same transaction** (ADR 0012).
 // Writing it afterwards would leave a window where the customer exists and their
 // own invoices are unreachable to them, and a failure in that window is silent.
-func (r *CustomerRepository) Create(ctx context.Context, c *billing.Customer, now time.Time) error {
+func (r *CustomerRepository) Create(ctx context.Context, c *billing.Customer, actor, requestID string, now time.Time) error {
 	if err := c.Metadata.Validate(); err != nil {
 		return err
+	}
+	if actor == "" {
+		// Every other write in this repository records who did it; a customer
+		// that appeared with no author is the row support cannot explain.
+		return fmt.Errorf("repositories: creating customer %s needs an actor", c.ID)
 	}
 	row, err := r.customerRowOf(c, now)
 	if err != nil {
@@ -111,6 +116,22 @@ func (r *CustomerRepository) Create(ctx context.Context, c *billing.Customer, no
 		// somebody else's invoices.
 		writes = append(writes, r.base.BuildPutTxItemIfAbsent(pointer))
 	}
+
+	// The name, not the tax id: the audit table is not the place to make a
+	// second copy of the one field this repository encrypts.
+	auditItem, err := buildAuditItem(c.OrganizationID, c.Livemode, AuditEntry{
+		Entity:    EntityCustomer,
+		EntityID:  c.ID,
+		Action:    "customer.created",
+		Cause:     billing.CauseManual,
+		Actor:     actor,
+		RequestID: requestID,
+		After:     c.Name,
+	}, "", "", now)
+	if err != nil {
+		return err
+	}
+	writes = append(writes, r.audit.BuildPutTxItemIfAbsent(auditItem))
 
 	err = r.base.TransactWrite(ctx, writes)
 	if IsConditionFailed(err) {

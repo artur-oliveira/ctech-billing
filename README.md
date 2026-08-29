@@ -46,7 +46,7 @@ payloads and other unnecessary PII. This adds no OpenTelemetry exporter or custo
 | `api/internal/provision` | A tenant as a reviewable JSON file: the organization, the integrations admitted to act for it, the catalogue and the webhook endpoints. It exists because nothing else can create the first row — every write path resolves its tenant from a credential, and a credential is itself a row. |
 | `api/internal/wallet` | The client for `ctech-wallet`'s charge contract, plus the HMAC verification for its notify-back. |
 | `api/internal/api/v1`, `internal/middleware` | Four HTTP surfaces: the M2M API (tenant from the credential, idempotency on every mutating route), the console API (tenant from the signed-in owner, mode from a required header — [ADR 0011](docs/adr/0011-console-session.md)), the portal API (tenant zero, filtered to the signed-in customer — [ADR 0012](docs/adr/0012-portal-serves-tenant-zero.md)), and the public checkout (no session at all; a signed link is the whole credential). The first three verify JWTs against `ctech-account` and gate every route on a scope. |
-| `api/internal/oauthresource` | The 14-scope manifest this service publishes about itself, plus the RFC 9728 `/.well-known/oauth-protected-resource` document derived from it. Billing is a resource server and registers its own vocabulary from its own pipeline — [ADR 0014](docs/adr/0014-billing-publishes-its-own-scopes.md). A test asserts the manifest and `middleware.AllScopes` are the same set, because a scope enforced here and unknown to ctech-account fails silently, at runtime, in one direction. |
+| `api/internal/oauthresource` | The 15-scope manifest this service publishes about itself, plus the RFC 9728 `/.well-known/oauth-protected-resource` document derived from it. Billing is a resource server and registers its own vocabulary from its own pipeline — [ADR 0014](docs/adr/0014-billing-publishes-its-own-scopes.md). A test asserts the manifest and `middleware.AllScopes` are the same set, because a scope enforced here and unknown to ctech-account fails silently, at runtime, in one direction. |
 | `api/cmd/server` | The service entry point. |
 | `api/cmd/sweep` | The daily invoice sweep, as a one-shot binary. Deliberately not a route: the sweep is the one cross-tenant read path, so it has no HTTP surface to mis-scope. `sweep -date=YYYY-MM-DD` re-runs a missed day, which is safe because a period already billed is skipped, not billed twice. |
 | `api/cmd/seed` | Applies a tenant plan (`api/tenants/*.json`) to one mode. Create-or-skip on every row, so it is safe to re-run and safe to extend. A binary and not a route, for the same reason the sweep is one. |
@@ -64,7 +64,7 @@ payloads and other unnecessary PII. This adds no OpenTelemetry exporter or custo
 | `docs/analysis/` | The product/architecture assessment those decisions came out of. |
 | `docs/specs/` | Cross-repository contracts — currently the [`ctech-wallet` charge contract](docs/specs/2026-08-15-wallet-invoice-charge.md), now implemented on both sides. |
 | `api/internal/repositories/creditnotes.go` | The corrections issued against an invoice, nested in its partition. Written with their audit row and their event in one transaction, conditional on the invoice's status — two operators crediting the same invoice at once cannot both pass a total check that was true for each separately. A credit note never moves money: wallet refunds, billing records that it did. |
-| — | **Not built:** the console UI (screens C1–C9 and C17), and the catalogue writes behind C8–C9 (new price, new product). The invoice writes those screens need — finalize, void, credit note — are built. Named in PLAN.md with the reason. |
+| — | **Not built:** the console UI (screens C1–C9 and C17). Every write those screens need is built — finalize, void, credit note, new product, new price, archive price, new customer — and there is deliberately no way to *edit* a price on any of them. Named in PLAN.md with the reason. |
 
 ### API surface (v1, M2M)
 
@@ -87,6 +87,8 @@ parameter and no `livemode` flag anywhere, deliberately (ADR 0003).
 |---|---|
 | `POST /v1.0/console/subscriptions/:id/cancel` · `/change` | `billing:subscriptions:write` |
 | `POST /v1.0/console/invoices/:id/finalize` · `/void` · `/credit-notes` | `billing:invoices:write` |
+| `POST /v1.0/console/customers` | `billing:customers:write` |
+| `POST /v1.0/console/products` · `POST /v1.0/console/prices` · `POST /v1.0/console/prices/:id/archive` | `billing:products:write` |
 
 Each is a no-op when the invoice is already in the state it asks for — a second
 click must not spend a second invoice number or write a second audit row — and

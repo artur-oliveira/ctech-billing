@@ -79,6 +79,15 @@ func fail(c fiber.Ctx, err error) error {
 }
 
 func (h *handlers) createCustomer(c fiber.Ctx) error {
+	return h.createCustomerAs(c, actorOf(c))
+}
+
+// createCustomerAs is the one implementation both surfaces use (C6). The M2M
+// route names the integration, the console route names the operator, and
+// nothing else differs — which is exactly why it is one function: a second
+// customer-creation path is a second place for the tenant, the validation or
+// the audit actor to be wrong.
+func (h *handlers) createCustomerAs(c fiber.Ctx, actor string) error {
 	t := middleware.GetTenant(c)
 	var req createCustomerRequest
 	if err := c.Bind().Body(&req); err != nil {
@@ -99,7 +108,9 @@ func (h *handlers) createCustomer(c fiber.Ctx) error {
 		TaxID:          req.TaxID,
 		Metadata:       req.Metadata,
 	}
-	if err := h.customers.Create(c.Context(), customer, h.now()); err != nil {
+	if err := h.customers.Create(
+		c.Context(), customer, actor, middleware.GetRequestID(c), h.now(),
+	); err != nil {
 		return fail(c, err)
 	}
 	return c.Status(fiber.StatusCreated).JSON(newCustomerResponse(customer))

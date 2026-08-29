@@ -41,7 +41,7 @@ func newCatalog(t *testing.T, ownerKey string) *catalogFixture {
 		ID: id.NewWithPrefix(id.PrefixProduct), OrganizationID: org.ID, Livemode: true,
 		Name: "DF-e Sob Demanda", Active: true, OwnerKey: ownerKey,
 	}
-	if err := catalog.CreateProduct(ctx, product, now()); err != nil {
+	if err := catalog.CreateProduct(ctx, product, "test", "req_setup", now()); err != nil {
 		t.Fatal(err)
 	}
 	return &catalogFixture{
@@ -67,7 +67,7 @@ func (f *catalogFixture) price(
 		Recurrence: billing.Recurrence{Interval: interval, Count: 1},
 		Timing:     timing,
 	}
-	if err := f.catalog.CreatePrice(ctxT(t), p, now()); err != nil {
+	if err := f.catalog.CreatePrice(ctxT(t), p, "test", "req_setup", now()); err != nil {
 		t.Fatal(err)
 	}
 	return p
@@ -220,7 +220,7 @@ func TestItemsMustAgreeOnTheOwner(t *testing.T) {
 		ID: id.NewWithPrefix(id.PrefixProduct), OrganizationID: f.org.ID, Livemode: true,
 		Name: "Poker", Active: true, OwnerKey: "poker",
 	}
-	if err := f.catalog.CreateProduct(ctx, poker, now()); err != nil {
+	if err := f.catalog.CreateProduct(ctx, poker, "test", "req_setup", now()); err != nil {
 		t.Fatal(err)
 	}
 

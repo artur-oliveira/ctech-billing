@@ -103,7 +103,7 @@ func seedProduct(t *testing.T, org *billing.Organization, productID, ownerKey st
 		ID: productID, OrganizationID: org.ID, Livemode: org.Livemode,
 		Name: productID, Active: true, OwnerKey: ownerKey,
 	}
-	if err := catalog.CreateProduct(ctx, product, now()); err != nil {
+	if err := catalog.CreateProduct(ctx, product, "test", "req_setup", now()); err != nil {
 		t.Fatal(err)
 	}
 	price := &billing.Price{
@@ -113,7 +113,7 @@ func seedProduct(t *testing.T, org *billing.Organization, productID, ownerKey st
 		Recurrence: billing.Recurrence{Interval: billing.IntervalMonth, Count: 1},
 		Timing:     billing.BillAdvance,
 	}
-	if err := catalog.CreatePrice(ctx, price, now()); err != nil {
+	if err := catalog.CreatePrice(ctx, price, "test", "req_setup", now()); err != nil {
 		t.Fatal(err)
 	}
 	return price

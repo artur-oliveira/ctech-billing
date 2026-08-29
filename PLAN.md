@@ -36,7 +36,7 @@
 - [x] **`billing:*` scopes — published by this repository, not registered by hand in
       `ctech-account`.** The premise of the original item was wrong: resource servers self-publish
       through CI/CD, as `ctech-dfe` already does. `api/internal/oauthresource/scope-manifest.json`
-      holds the 14 entries, `deploy.yml` calls ctech-account's reusable
+      holds the 15 entries, `deploy.yml` calls ctech-account's reusable
       `publish-resource-scopes.yml@main` before the API stage, and a test asserts the manifest and
       `middleware.AllScopes` are the same set ([ADR 0014](docs/adr/0014-billing-publishes-its-own-scopes.md)).
       The service also serves RFC 9728 metadata at `/.well-known/oauth-protected-resource`.
@@ -131,7 +131,28 @@
           from the console would have been recorded as the nightly sweep. The cause is now the
           caller's, and an integration test asserts the operator's own id and cause land in the
           timeline.
-    - [ ] New price / new product (C8–C9), and creating a customer from the console (C6–C7).
+    - [x] **New product, new price, archive price** (C8–C9) and **new customer** (C6–C7).
+          There is no PUT and no PATCH on a price, on any surface: immutability is the model, so
+          changing an amount is a new price plus — if the old one should stop being sold — an
+          explicit archive. Two decisions, two calls, because an operator fixing a typo does not
+          always mean to withdraw what customers are already on. Archiving is conditional on the
+          price not already being archived, so a second click writes no second audit row.
+          A price above the wallet's per-charge ceiling is refused at the catalogue
+          ([ADR 0004](docs/adr/0004-pix-on-invoice-via-wallet.md)) — the alternative is an invoice
+          that is issued and then cannot be paid, which is the worst of both.
+          The console's customer creation is the M2M implementation with a different actor
+          (`createCustomerAs`), not a second path: one function, two callers, so the tenant, the
+          validation and the audit actor cannot disagree.
+    - [x] **The catalogue writes now leave a trail at all.** `CreateProduct`, `CreatePrice`,
+          `ArchivePrice` and `CustomerRepository.Create` wrote no audit row before this — the
+          catalogue was the one part of the system where "who put this here" had no answer, on a
+          product whose positioning is that every amount can be traced to the price and the person
+          who set it. The audit row is in the same transaction as the write, like every other one,
+          and the price's row carries the amount: "who set this to R$ 199,00" is what a disputed
+          invoice turns into.
+    - [x] `billing:products:write`, a **15th scope**, published by the manifest. Separate from
+          `billing:invoices:write` on purpose: an operator who may issue a credit note against one
+          bill is not thereby somebody who may change what every future customer pays.
 - [x] Portal read API (`/v1.0/portal/*`) plus `GET /v1.0/me` — the consumer surface for **CTech's own
       customers**, tenant zero ([ADR 0012](docs/adr/0012-portal-serves-tenant-zero.md)). Every read
       is filtered to the signed-in customer, not merely to the tenant, because in the portal every

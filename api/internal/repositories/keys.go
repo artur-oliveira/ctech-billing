@@ -91,6 +91,8 @@ const (
 	EntityPaymentAttempt Entity = "PAYMENT_ATTEMPT"
 	EntityCheckout       Entity = "CHECKOUT"
 	EntityCreditNote     Entity = "CREDIT_NOTE"
+	EntityProduct        Entity = "PRODUCT"
+	EntityPrice          Entity = "PRICE"
 	EntityAudit          Entity = "AUDIT"
 )
 
