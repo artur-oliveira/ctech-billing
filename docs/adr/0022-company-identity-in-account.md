@@ -3,7 +3,10 @@
 Status: Accepted (2026-08-29) · Supersedes the **home** of Company in
 [ADR 0021](0021-platform-organizations-and-companies.md). Everything else in 0021 — the three-concept
 split, `(organization_id, tax_id)` scoping, verification on the edge, the two counters, the quota
-boundary — stands unchanged, and one of its limits is upgraded from "accepted" to "enforced".
+boundary — stands unchanged, and one of its limits is upgraded from "accepted" to "enforced". · **Amended by
+[ADR 0023](0023-membership-in-account-authorization-in-the-product.md) (2026-08-29)** — the
+"Reopen if" below fired: the `User ↔ Company` edge does need a role beside it, and 0023 decides it
+belongs to the product rather than to this edge.
 
 ## Context
 

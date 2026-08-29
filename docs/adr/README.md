@@ -31,6 +31,7 @@ re-litigate settled questions. Every ADR here is already decided — the analysi
 | [0020](0020-portal-on-cloudflare-workers.md) | The portal is served by Cloudflare Workers Static Assets, not S3 + CloudFront | supersedes the hosting half of 0013 (2026-08-20) |
 | [0021](0021-platform-organizations-and-companies.md) | Organization is a workspace and Company is a CNPJ; both move out of billing, into ctech-account and ctech-dfe | reopens 0007, whose trigger fired (2026-08-29) |
 | [0022](0022-company-identity-in-account.md) | Company identity lives in ctech-account; only issuance lives in ctech-dfe | supersedes Company's home in 0021 (2026-08-29) |
+| [0023](0023-membership-in-account-authorization-in-the-product.md) | Membership and invitations live in ctech-account; roles, verbs and grants stay in the product | amends 0022's no-company-roles line (2026-08-29) |
 
 ## Status of the record itself
 
