@@ -1,5 +1,9 @@
 # ctech-billing
 
+Authentication uses `@aoctech/auth-client`: refreshes are serialized across
+tabs, retryable Accounts/network failures preserve local identity, and only a
+definitive credential rejection is treated as logout.
+
 Recurring subscription and metered billing service for the CTech ecosystem.
 
 **Documentação jurídica vigente:** os Termos do CTech Billing publicados pela

@@ -12,7 +12,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@aoctech/auth-client": "^1.1.0",
+    "@aoctech/auth-client": "^1.2.0",
     "@aoctech/ui": "^0.1.1",
     "@base-ui/react": "^1.7.0",
     "@tanstack/react-query": "^5.101.4",
