@@ -79,8 +79,14 @@ export function AuthProvider({children}: { children: ReactNode }) {
     }
     let cancelled = false
     void (async () => {
-      await refresh()
-      if (!cancelled) setLoading(false)
+      try {
+        await refresh()
+      } catch {
+        // An unavailable IdP is not a logout. Leave cached display identity
+        // intact and let the next authenticated operation retry.
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
     })()
     return () => {
       cancelled = true
