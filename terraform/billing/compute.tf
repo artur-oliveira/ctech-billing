@@ -28,6 +28,20 @@ data "aws_subnets" "public" {
   }
 }
 
+# Keep the VPC's public subnet in us-east-1e available to other workloads, but
+# exclude it from this t4g ASG because that instance family is unavailable there.
+data "aws_subnet" "public" {
+  for_each = toset(data.aws_subnets.public.ids)
+  id       = each.value
+}
+
+locals {
+  t4g_public_subnet_ids = [
+    for subnet in data.aws_subnet.public : subnet.id
+    if subnet.availability_zone != "us-east-1e"
+  ]
+}
+
 data "aws_ssm_parameter" "edge_security_group_id" {
   name = local.shared_ssm.edge_security_group_id
 }
@@ -218,7 +232,7 @@ resource "aws_launch_template" "this" {
 
 resource "aws_autoscaling_group" "this" {
   name                = local.asg_name
-  vpc_zone_identifier = data.aws_subnets.public.ids
+  vpc_zone_identifier = local.t4g_public_subnet_ids
   min_size            = var.min_size
   max_size            = var.max_size
   default_cooldown    = 120
