@@ -70,7 +70,7 @@ every agent on them is explicitly told to use the dual-stack endpoints.
 repository is a route that outlives the thing it points at.
 
 The ASG uses **EC2** health checks, not ELB — there is no target group. HAProxy owns the application
-probe and reports repeated failures back through `SetInstanceHealth`, so an instance whose app has
+probe at dependency-free `/v1.0/health` and reports repeated failures back through `SetInstanceHealth`, so an instance whose app has
 died is still replaced; it is just the thing actually serving traffic that notices.
 
 ### The four scheduled jobs are systemd timers, not EventBridge

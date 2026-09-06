@@ -45,7 +45,7 @@ locals {
   # definition, four readers.
   app_port    = 8004 # the Go binary; config.Config.Port has the same default
   nginx_port  = 8080 # what HAProxy connects to
-  health_path = "/v1.0/health-check"
+  health_path = "/v1.0/health"
 
   # Second app process, loopback-only, so nginx can round-robin across both
   # and deploy.sh can roll them one at a time instead of restarting the only
