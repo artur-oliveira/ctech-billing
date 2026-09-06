@@ -69,7 +69,7 @@ payloads and other unnecessary PII. This adds no OpenTelemetry exporter or custo
 | `docs/analysis/` | The product/architecture assessment those decisions came out of. |
 | `docs/specs/` | Cross-repository contracts — currently the [`ctech-wallet` charge contract](docs/specs/2026-08-15-wallet-invoice-charge.md), now implemented on both sides. |
 | `api/internal/repositories/creditnotes.go` | The corrections issued against an invoice, nested in its partition. Written with their audit row and their event in one transaction, conditional on the invoice's status — two operators crediting the same invoice at once cannot both pass a total check that was true for each separately. A credit note never moves money: wallet refunds, billing records that it did. |
-| — | **Not built:** C1 (visão geral) and C17 (configurações). C1 needs aggregates no endpoint computes; C17 has nothing to configure yet. Revealing a tax id in full is also absent — `RecordTaxIDAccess` exists and no route calls it, and a button that showed the CPF without writing that audit row would be worse than none. Named in PLAN.md. |
+| — | **C1 (visão geral) and C17 (configurações) are built**, along with audited tax-id reveal (`POST /v1.0/console/customers/:id/tax-id` calls `RecordTaxIDAccess` before returning the value) — see PLAN.md Phase 2. Nothing from the console screen list is left unbuilt. |
 
 ### API surface (v1, M2M)
 

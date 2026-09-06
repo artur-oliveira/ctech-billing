@@ -209,13 +209,13 @@ retroactively corrupt every past invoice's math.
 
 ## 11. Known spec inconsistencies & open decisions (backlog B37)
 
-This project is design-only (no implementation exists). The following tensions are **known** and
-must be resolved before the PLAN.md phases that depend on them are executed. They are not bugs in
-the prose — they are genuinely undecided. Do not treat any single doc as final.
+This section predates implementation and is kept as a record of what was genuinely undecided at
+the time, not as current status — the MVP is now built (see README.md § Status). Do not treat any
+single doc as final for anything still open below.
 
-1. **Billing datastore is intentionally undecided.** Wallet source uses DynamoDB, but billing
-   has different query and transaction shapes. Phase 0 must decide from measured billing access
-   patterns and record the result in an ADR; Wallet's datastore is not a deciding dependency.
+1. ~~**Billing datastore is intentionally undecided.**~~ **Resolved.** DynamoDB, one table per
+   entity — [ADR 0002](docs/adr/0002-datastore-dynamodb.md) — decided from billing's own access
+   patterns, not inherited from wallet.
 2. **`FIXED_MONTHLY` vs `billing_timing=ADVANCE`.** A FIXED plan defaults to `ADVANCE` (§ 2),
    but the `FIXED_MONTHLY` cycle is always `ARREARS` "regardless of plan billing_timing" (§ 4).
    Resolved in-place above: `billing_timing` only applies to `VARIABLE_ANCHOR`; `FIXED_MONTHLY`
@@ -232,5 +232,4 @@ the prose — they are genuinely undecided. Do not treat any single doc as final
 
 - Roll-forward vs roll-backward for holiday/weekend due dates (§ 5). Spec assumes forward;
   confirm with the business owner.
-- Billing datastore ADR based on billing access patterns (see item 1 above).
 

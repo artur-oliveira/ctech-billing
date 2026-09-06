@@ -1,8 +1,9 @@
 # ui
 
 The billing front end. Two shells in one Next app: the **portal**, which a CTech customer opens to
-see what they owe, and the **console**, which is not built yet. `PRODUCT.md` says who they are for,
-`DESIGN.md` says what they look like and why.
+see what they owe, and the **console**, the merchant operator screens (C2–C9), now built — C1
+(visão geral) and C17 (configurações) are the remaining gaps, see root `README.md`. `PRODUCT.md`
+says who they are for, `DESIGN.md` says what they look like and why.
 
 ## Running it
 
