@@ -165,17 +165,19 @@ chown webapp:webapp /var/log/app
 # RandomizedDelaySec has no equivalent either and is dropped — its purpose
 # (avoiding a fleet-wide thundering herd) does not apply to a min_size=1 ASG.
 
+# Rebuild billing's entries in one write so a repeated bootstrap cannot add a
+# second copy of every job. Keep the AMI's periodic maintenance entries.
+billing_crontab=$(mktemp)
+(crontab -l 2>/dev/null || true) | sed '\|/opt/app/job.sh |d' > "$billing_crontab"
+
 # 07:10 UTC is 04:10 in America/Sao_Paulo, the civil day the sweep bills.
-(crontab -l 2>/dev/null; echo "10 7 * * * /opt/app/job.sh sweep >> /var/log/app/jobs.log 2>&1") | crontab -
 
 # Every minute — a consumer waiting to hear that an invoice was paid is a
 # customer waiting to be let back into a product.
-(crontab -l 2>/dev/null; echo "* * * * * /opt/app/job.sh deliver >> /var/log/app/jobs.log 2>&1") | crontab -
 
 # 08:10 UTC — 05:10 in Sao Paulo, an hour after the sweep. Ordering matters:
 # an invoice generated this morning must exist before the pass that decides
 # whether to remind anybody about it.
-(crontab -l 2>/dev/null; echo "10 8 * * * /opt/app/job.sh dunning >> /var/log/app/jobs.log 2>&1") | crontab -
 
 # @reboot is busybox crond's Persistent=true, and it is safe precisely because
 # both jobs already had to be re-runnable: the sweep skips a period it has
@@ -188,8 +190,15 @@ chown webapp:webapp /var/log/app
 # day whose sweep was skipped. A day missed entirely — the instance stayed down
 # past midnight — is still `job.sh sweep -date=…` by hand, because guessing how
 # far back to walk is how a job re-bills a month.
-(crontab -l 2>/dev/null; echo "@reboot /opt/app/job.sh sweep >> /var/log/app/jobs.log 2>&1") | crontab -
-(crontab -l 2>/dev/null; echo "@reboot /opt/app/job.sh dunning >> /var/log/app/jobs.log 2>&1") | crontab -
+cat >> "$billing_crontab" << 'BILLINGCRON'
+10 7 * * * /opt/app/job.sh sweep >> /var/log/app/jobs.log 2>&1
+* * * * * /opt/app/job.sh deliver >> /var/log/app/jobs.log 2>&1
+10 8 * * * /opt/app/job.sh dunning >> /var/log/app/jobs.log 2>&1
+@reboot /opt/app/job.sh sweep >> /var/log/app/jobs.log 2>&1
+@reboot /opt/app/job.sh dunning >> /var/log/app/jobs.log 2>&1
+BILLINGCRON
+crontab "$billing_crontab"
+rm "$billing_crontab"
 
 mkdir -p /etc/periodic/hourly
 cat > /etc/periodic/hourly/billing-reconcile << 'RECONCILE'
@@ -198,10 +207,14 @@ cat > /etc/periodic/hourly/billing-reconcile << 'RECONCILE'
 RECONCILE
 chmod +x /etc/periodic/hourly/billing-reconcile
 
-# crond is already enabled on the default runlevel by the Alpine AMI itself
-# (same assumption setup-realip.sh's /etc/periodic/daily drop already makes
-# elsewhere) — no rc-update/rc-service call needed here.
+# The AMI does not enable crond. Add it to the default runlevel so future
+# instances execute the jobs after boot.
+rc-update add crond default
 
 # ── First boot ───────────────────────────────────────────────────────────────
 # A brand-new environment has no artifact yet; that is a wait, not a failure.
 ctech_run bootstrap-deploy.sh ${deployments_bucket} ${current_artifact_key}
+
+# Start only after the current release is installed: @reboot invokes sweep and
+# dunning immediately, and those binaries must already exist when it does.
+rc-service crond start
