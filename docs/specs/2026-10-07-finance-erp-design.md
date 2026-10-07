@@ -47,9 +47,19 @@ gated by plan.** Paid tiers arrive with the integrations (§ 12) and each needs 
 | Custom (BYOK) | the customer's own Inter account: PIX with due date / boleto collection, statement sync | its own spec; Inter `cobv`/boleto support does not exist anywhere in the family yet |
 | BaaS | an account backed by CTech Ledger (Asaas) | Asaas production approval; no PJ sub-account flow exists |
 
-Which unit pays — the user or the organization — is **undecided** and must be decided by the plans
-spec before any tier is sold: `ctech-dfe` bills per user (`Customer.ExternalRef = USER_{sub}`) while
-ctech-account's organizations spec says the organization becomes the billed party.
+**Who pays is decided by the space (2026-10-07):**
+- in a **personal** space, the user pays;
+- in an **organization** space, the organization's **owner** (ctech-account's `owner_user_id`)
+  pays.
+
+In both cases the paying `Customer` in tenant zero is a person (`USER_{sub}`), which matches how
+`ctech-dfe` already bills. That resolves the disagreement with ctech-account's organizations spec
+for billing.
+
+Left to the plans spec:
+- whether an owner of several organizations holds one subscription per organization (all invoiced
+  to them) or one covering all;
+- what happens to the subscription when ownership is transferred.
 
 ## 2. Spaces and modes
 
@@ -457,7 +467,8 @@ Each phase ends with something demoable.
 ## 12. After v1 (each its own spec)
 
 1. **Plans and entitlements** for billing itself, sold through tenant zero (`owner_key: "billing"`,
-   ADR 0021). First question: who pays, user or organization.
+   ADR 0021). The payer is decided (§ 1); open: subscription per organization or per owner, and
+   ownership transfer.
 2. **BYOK Inter:**
    - The customer's mTLS client certificate is used only for **outbound** calls: a per-tenant
      `http.Transport` and token cache, with the credentials encrypted per space following the

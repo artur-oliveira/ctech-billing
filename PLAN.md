@@ -563,8 +563,10 @@ gates nothing by plan.
       expense in the customer's personal space.
 
 Cross-repo: ctech-account's account-deletion spec must emit the personal-space purge trigger
-(ADR 0026). After v1, each with its own spec: billing's own plans and entitlements (first decide
-whether the user or the organization pays — dfe and account disagree today), BYOK Inter, and an
+(ADR 0026). After v1, each with its own spec: billing's own plans and entitlements (payer decided
+2026-10-07: a personal space is paid by its user, an organization space by the organization's
+owner; left open: one subscription per organization or one per owner, and ownership transfer),
+BYOK Inter, and an
 account backed by CTech Ledger.
 
 ### What is still missing in the console, after Phase 6 (recovered 2026-10-07)
