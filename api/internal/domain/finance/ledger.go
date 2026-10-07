@@ -106,6 +106,7 @@ func NewTransaction(kind TxKind, date brcal.Date, legs ...Leg) (Transaction, err
 		return Transaction{}, fmt.Errorf("%w: %d legs, want 2..%d", ErrInvalidTransaction, len(legs), MaxLegs)
 	}
 	var sum billing.Cents
+	seen := make(map[string]bool, len(legs))
 	for _, l := range legs {
 		if l.AccountID == "" {
 			return Transaction{}, fmt.Errorf("%w: a leg has no account", ErrInvalidTransaction)
@@ -116,6 +117,10 @@ func NewTransaction(kind TxKind, date brcal.Date, legs ...Leg) (Transaction, err
 		if l.Amount > MaxLegAmount || l.Amount < -MaxLegAmount {
 			return Transaction{}, fmt.Errorf("%w: a leg on %s exceeds the maximum amount", ErrInvalidTransaction, l.AccountID)
 		}
+		if seen[l.AccountID] {
+			return Transaction{}, fmt.Errorf("%w: account %s appears in two legs", ErrInvalidTransaction, l.AccountID)
+		}
+		seen[l.AccountID] = true
 		sum += l.Amount
 	}
 	if sum != 0 {

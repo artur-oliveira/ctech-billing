@@ -43,3 +43,10 @@ func TestScheduleValidateRefusesExpressionsThatWouldPanic(t *testing.T) {
 		})
 	}
 }
+
+func TestNewTransactionRefusesTheSameAccountTwice(t *testing.T) {
+	_, err := NewTransaction(KindTransfer, d(2026, time.March, 2), Leg{"a", 100}, Leg{"a", -100})
+	if !errors.Is(err, ErrInvalidTransaction) {
+		t.Fatalf("err = %v, want ErrInvalidTransaction", err)
+	}
+}

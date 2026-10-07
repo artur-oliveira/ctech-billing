@@ -135,7 +135,7 @@ Transaction**, **Posting Rule**, and corrections by **Reversal / Replacement Adj
   System accounts (payables, receivables, opening balance) are created with the space and never
   shown as such.
 - **`LedgerTransaction`**: one business fact. It holds N ≥ 2 **`LedgerEntry`** legs whose amounts
-  **sum to zero**, or nothing is written. Each entry has its own date. Transactions and entries are
+  **sum to zero**, or nothing is written. A transaction carries one date, which every one of its entries shares (every fact in v1 is single-date). Transactions and entries are
   **immutable**.
 - **Corrections** never edit:
   - *reversal*: post the exact opposite of a transaction;
@@ -231,7 +231,7 @@ Expressions in v1:
 | `DayOfMonth(n)` | every 10th | clamps to the month's last day, like billing's anchor |
 | `WorkdayOfMonth(n)` | 5th business day | `n = -1` is the last business day; uses `brcal`, so already a business day |
 | `NthWeekdayOfMonth(weekday, n)` | 2nd Monday, last Friday (`n = -1`) | |
-| `Weekly(weekday, every)` | every other Friday | `every` counts weeks from `start` |
+| `Weekly(weekday, every)` | every other Friday | `every` counts weeks from an `anchor` day that falls on the weekday (set to the first occurrence on or after `start`) |
 | `Yearly(month, day)` | every 15 March | clamps 29 Feb |
 | `Difference(a, b)` | "every 10th except December" | `b` may be a `Dates([...])` set of skipped days |
 

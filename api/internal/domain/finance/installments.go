@@ -47,7 +47,9 @@ func SplitInstallments(total billing.Cents, n int) ([]billing.Cents, error) {
 // a card closing on closingDay. A purchase on or before the closing day falls
 // into that month's statement, after it into the next (spec § 3.6). A closing
 // day past the month's end clamps to its last day, like every day-of-month rule
-// in this package.
+// in this package. closingDay must be 1..31: AllocateInstallments checks it, and
+// the card entity must too (a value <= 0 would push every purchase to the next
+// statement).
 func StatementFor(purchase brcal.Date, closingDay int) Month {
 	m := MonthOf(purchase)
 	if purchase.Day <= min(closingDay, brcal.DaysInMonth(m.Year, m.Month)) {
