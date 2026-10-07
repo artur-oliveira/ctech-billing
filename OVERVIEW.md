@@ -8,6 +8,12 @@ usage-based subscriptions, without each product reinventing invoicing, pro-rata,
 system of record for **what actually moved**. Never conflate the two — `ctech-billing` must be
 rebuildable from zero by replaying `ctech-wallet`'s transaction history plus its own event log.
 
+Since 2026-10-07 the console is also where a space — a person, or an organization — sees its
+finances: payables, receivables, recurrences, cards, cash flow and an accrual income statement
+([spec](docs/specs/2026-10-07-finance-erp-design.md)). That is a **management** ledger of money held
+elsewhere, never custody ([ADR 0024](docs/adr/0024-billing-keeps-a-management-ledger.md)); the line
+above about wallet is unchanged.
+
 ## 2. Core entities
 
 ### Plan

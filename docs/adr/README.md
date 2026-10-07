@@ -32,6 +32,9 @@ re-litigate settled questions. Every ADR here is already decided — the analysi
 | [0021](0021-platform-organizations-and-companies.md) | Organization is a workspace and Company is a CNPJ; both move out of billing, into ctech-account and ctech-dfe | reopens 0007, whose trigger fired (2026-08-29) |
 | [0022](0022-company-identity-in-account.md) | Company identity lives in ctech-account; only issuance lives in ctech-dfe | supersedes Company's home in 0021 (2026-08-29) |
 | [0023](0023-membership-in-account-authorization-in-the-product.md) | Membership and invitations live in ctech-account; roles, verbs and grants stay in the product | amends 0022's no-company-roles line (2026-08-29) |
+| [0024](0024-billing-keeps-a-management-ledger.md) | Billing keeps a management ledger (finance / "mini ERP"), with internal double entry, and it is not custody | supersedes in part assessment § 14.3, § 14.11, § 20.2 (2026-10-07) |
+| [0025](0025-spaces-personal-and-organization.md) | Spaces: a personal space per user, and a space selector that is never authority | extends 0003 and 0011 (2026-10-07) |
+| [0026](0026-finance-retention-by-purge.md) | Finance records live as long as their space and leave by explicit purge | extends 0009 (2026-10-07) |
 
 ## Status of the record itself
 

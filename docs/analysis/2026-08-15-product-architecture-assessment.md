@@ -1104,6 +1104,9 @@ Lista explícita, com o domínio dono de cada item:
 2. **Métodos de pagamento / tokenização de cartão / chave PIX** → wallet/PSP. Billing referencia
    por id opaco.
 3. **Ledger de dupla entrada** → wallet. Billing tem faturas, não lançamentos.
+   *(2026-10-07: vale para ledger de **custódia**. Um livro-caixa gerencial — dinheiro guardado em
+   outro lugar — passou a ser do billing; ver [ADR 0024](../adr/0024-billing-keeps-a-management-ledger.md).
+   Idem itens 11 e § 20.2.)*
 4. **Reembolso executando movimento financeiro** → wallet. Billing emite `CreditNote` e *pede*.
 5. **Motor fiscal / NFS-e / cálculo de ISS** → `ctech-dfe`.
 6. **API keys, OAuth clients, MFA, consent, gestão de sessão** → `ctech-account` (**[FATO]** já

@@ -540,6 +540,52 @@ gate.** Both sides of the payment path are now built — billing's, and wallet's
   billing the system of record for what is owed, and leaves what is emitted to the product that
   emits it.
 
+## Phase 6 — Finance in the console ("mini ERP") — **next, ahead of the remaining console work**
+Spec: [`docs/specs/2026-10-07-finance-erp-design.md`](docs/specs/2026-10-07-finance-erp-design.md) ·
+[ADR 0024](docs/adr/0024-billing-keeps-a-management-ledger.md) (a management ledger, not custody) ·
+[ADR 0025](docs/adr/0025-spaces-personal-and-organization.md) (personal and organization spaces,
+a selector that is never authority) · [ADR 0026](docs/adr/0026-finance-retention-by-purge.md)
+(retention by purge).
+
+Payables/receivables, recurrences (temporal expressions, including the Nth business day), credit
+cards with installments, OFX/CSV import with reconciliation, cash flow and an accrual DRE — per
+space, for organizations and for individuals with no organization. This is the Free tier, so v1
+gates nothing by plan.
+
+- [ ] 6.1 Pure domain — temporal expressions, double entry and posting rules, installment allocation.
+- [ ] 6.2 Persistence and spaces — `ResolvedSpace`, verbs from the ctech-account role, the
+      spoofing tests, ledger tables, the balance rebuild command.
+- [ ] 6.3 Bills and recurrences — `cmd/finance` (materialise, auto-settle); F1 (basic), F2, F4, F8.
+- [ ] 6.4 Reports — F3 statement, F7 DRE and cash flow.
+- [ ] 6.5 Credit cards — F5, statement closing in the job.
+- [ ] 6.6 Import and reconciliation — F6.
+- [ ] 6.7 Billing integration — `invoice.paid` as revenue in the issuing organization and as an
+      expense in the paying customer's own space (personal or organization).
+
+Cross-repo: ctech-account's account-deletion spec must emit the personal-space purge trigger
+(ADR 0026). After v1, each with its own spec: billing's own plans and entitlements (decided
+2026-10-07: the subscription belongs to the space — a personal space's to its user, an organization
+space's to the organization, paid and managed by any of its owners or admins, seen in the portal through
+the same space selector as the console — ADR 0025 amendment — and named on the PDF by the designated
+billing company, or by the owner when a natural person is required), BYOK Inter, and an
+account backed by CTech Ledger.
+
+Cross-repo, `ctech-dfe`: its subscription is still keyed on the owner's user (`USER_{sub}`,
+`SnapshotForOrg`/`OwnerOf`). Under the decision above it moves to the organization; per-user
+pricing stays a quota inside the organization's plan, counted by dfe.
+
+### What is still missing in the console, after Phase 6 (recovered 2026-10-07)
+- **Organizations from ctech-account** (ADRs 0021–0023): billing still runs its local minimal
+  `Organization` with one owner (`GetByOwner`). Left: reading memberships, billing's own verbs for
+  the billing sections, the designated billing company, organization creation through account's
+  handoff. Phase 6's space selector is the first half of this.
+- **Selling billing itself** through tenant zero (`owner_key: "billing"`, ADR 0021): no products,
+  prices or entitlement checks yet.
+- **Screens from the assessment not built:** C10 collection queue, C11 reconciliation, C12–C15
+  webhooks / events / API logs, C16 coupons; on C5, pause/resume and price change with a pro-rata
+  preview; P6 in the portal.
+- **Merchant receives money** (assessment phase 6b): still gated by ADR 0005.
+
 ## What is actually left (as of 2026-08-16)
 
 The MVP is built and unreleased. In the order it blocks things:
