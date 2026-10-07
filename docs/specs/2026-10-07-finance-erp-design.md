@@ -61,12 +61,18 @@ on the owner's user (`USER_{sub}`, `SnapshotForOrg`/`OwnerOf`). Its per-user pri
 no reason to make a person the payer. **Cross-repo follow-up in `ctech-dfe`**: move its
 subscription to the organization.
 
-Left to the plans spec:
-- where an organization's admins see and pay its CTech invoices. The portal resolves one customer
-  per user (`CUSTOMER_USER#`, ADR 0012), so an organization customer probably belongs in the
-  organization's console space, behind the membership check, rather than in the portal;
-- the organization customer's identity on the invoice PDF: the designated billing company of
-  ADR 0022.
+Also decided (2026-10-07):
+- **The portal gets the same space selector as the console**
+  ([ADR 0025](../adr/0025-spaces-personal-and-organization.md), amendment):
+  - *Pessoal* shows the user's own CTech invoices and subscriptions, as today;
+  - an organization shows that organization's, resolved through the same server-side membership
+    check, never from the header alone;
+  - `owner` and `admin` see, pay and manage; other roles do not see the organization in the portal
+    selector.
+- **On the invoice PDF, an organization customer is named by its designated billing company**
+  (ADR 0022: legal name and CNPJ from ctech-account). When a natural person is required — the
+  organization has no company, or the document must carry a CPF — it is issued in the name of the
+  organization's owner.
 
 ## 2. Spaces and modes
 
@@ -476,8 +482,8 @@ Each phase ends with something demoable.
 
 1. **Plans and entitlements** for billing itself, sold through tenant zero (`owner_key: "billing"`,
    ADR 0021). The payer is decided (§ 1): the space's subscription, managed by its user or by
-   the organization's owners and admins. Open: where organization customers see their invoices, and
-   their identity on the PDF.
+   the organization's owners and admins. Also decided: the portal's space selector, and the PDF
+   naming the designated billing company (or the owner).
 2. **BYOK Inter:**
    - The customer's mTLS client certificate is used only for **outbound** calls: a per-tenant
      `http.Transport` and token cache, with the credentials encrypted per space following the

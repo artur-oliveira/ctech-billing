@@ -565,7 +565,9 @@ gates nothing by plan.
 Cross-repo: ctech-account's account-deletion spec must emit the personal-space purge trigger
 (ADR 0026). After v1, each with its own spec: billing's own plans and entitlements (decided
 2026-10-07: the subscription belongs to the space — a personal space's to its user, an organization
-space's to the organization, paid and managed by any of its owners or admins), BYOK Inter, and an
+space's to the organization, paid and managed by any of its owners or admins, seen in the portal through
+the same space selector as the console — ADR 0025 amendment — and named on the PDF by the designated
+billing company, or by the owner when a natural person is required), BYOK Inter, and an
 account backed by CTech Ledger.
 
 Cross-repo, `ctech-dfe`: its subscription is still keyed on the owner's user (`USER_{sub}`,

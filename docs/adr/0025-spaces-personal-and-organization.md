@@ -51,3 +51,22 @@ path.
 Somebody needs a consolidated view across spaces. The answer is a per-user projection written on
 each fact, with its own threat model and its own ADR — never a fan-out keyed on ids the browser
 sent.
+
+## Amendment, 2026-10-07 — the portal uses the same selector
+
+An organization's CTech subscription belongs to the organization, and any of its `owner`s or
+`admin`s pays and manages it. [ADR 0012](0012-portal-serves-tenant-zero.md) resolves exactly one
+customer per signed-in user (`CUSTOMER_USER#{user_id}`), so an organization customer had nowhere to
+be seen.
+
+The portal therefore gets the console's selector, with the **same resolver**:
+
+- `personal` resolves to the customer pointed at by `CUSTOMER_USER#{sub}`, as today.
+- `org:{id}` passes the membership check above; the role must be `owner` or `admin`, otherwise the
+  answer is the same 404 as a space that does not exist. The customer is found through a pointer
+  row `CUSTOMER_ORG#{organization_id}`, written in the same conditional transaction as the
+  customer, exactly like the user pointer.
+- The selector lists only organizations where the user is `owner` or `admin`.
+
+ADR 0012 stands — the portal still serves tenant zero only. What changes is that "the signed-in
+customer" may be an organization the user is entitled to act for.
