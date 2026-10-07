@@ -552,7 +552,12 @@ cards with installments, OFX/CSV import with reconciliation, cash flow and an ac
 space, for organizations and for individuals with no organization. This is the Free tier, so v1
 gates nothing by plan.
 
-- [ ] 6.1 Pure domain — temporal expressions, double entry and posting rules, installment allocation.
+- [x] 6.1 Pure domain (`internal/domain/finance`) — temporal expressions after Fowler (`DayOfMonth`,
+      `WorkdayOfMonth`, `NthWeekdayOfMonth`, `Weekly`, `Yearly`, `Difference` with `Dates` and
+      `MonthsOfYear` as exclusions), stored as a validated tagged union; `Schedule` selecting by
+      nominal day so a roll-forward never counts twice; balanced, immutable transactions with
+      reversal; posting rules as the only code that picks accounts; installments that always sum to
+      the purchase, remainder on the first.
 - [ ] 6.2 Persistence and spaces — `ResolvedSpace`, verbs from the ctech-account role, the
       spoofing tests, ledger tables, the balance rebuild command.
 - [ ] 6.3 Bills and recurrences — `cmd/finance` (materialise, auto-settle); F1 (basic), F2, F4, F8.
