@@ -45,6 +45,8 @@ func (s Schedule) Validate() error {
 		return errors.Join(ErrInvalidRecurrence, errors.New("expression is required"))
 	case !schedulable(s.Expression):
 		return errors.Join(ErrInvalidRecurrence, errors.New("expression only excludes days"))
+	case expressionInvalid(s.Expression):
+		return errors.Join(ErrInvalidRecurrence, errors.New("expression has out-of-range parameters"))
 	case s.Start.IsZero():
 		return errors.Join(ErrInvalidRecurrence, errors.New("start is required"))
 	case !s.End.IsZero() && s.End.Before(s.Start):
@@ -86,4 +88,15 @@ func (s Schedule) Occurrences(from, to brcal.Date) ([]Occurrence, error) {
 		out[i] = Occurrence{Nominal: day, Due: due}
 	}
 	return out, nil
+}
+
+// expressionInvalid runs e through the stored form and the parser, so a Schedule
+// built in code is held to exactly the rules of one read from storage.
+func expressionInvalid(e Expression) bool {
+	b, err := MarshalExpression(e)
+	if err != nil {
+		return true
+	}
+	_, err = ParseExpression(b)
+	return err != nil
 }

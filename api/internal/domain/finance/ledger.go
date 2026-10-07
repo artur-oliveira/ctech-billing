@@ -88,6 +88,11 @@ type Transaction struct {
 // updates in one DynamoDB transaction (spec § 4), whose limit is 100 items.
 const MaxLegs = 8
 
+// MaxLegAmount bounds one leg's magnitude (R$ 10 trillion, in centavos). With at
+// most MaxLegs legs the sum can never wrap int64, so "sums to zero" cannot be
+// forged by overflow, and negating a leg (Reverse) is always exact.
+const MaxLegAmount billing.Cents = 1e15
+
 // ErrInvalidTransaction wraps every reason a transaction is refused.
 var ErrInvalidTransaction = errors.New("invalid ledger transaction")
 
@@ -107,6 +112,9 @@ func NewTransaction(kind TxKind, date brcal.Date, legs ...Leg) (Transaction, err
 		}
 		if l.Amount == 0 {
 			return Transaction{}, fmt.Errorf("%w: a leg on %s is zero", ErrInvalidTransaction, l.AccountID)
+		}
+		if l.Amount > MaxLegAmount || l.Amount < -MaxLegAmount {
+			return Transaction{}, fmt.Errorf("%w: a leg on %s exceeds the maximum amount", ErrInvalidTransaction, l.AccountID)
 		}
 		sum += l.Amount
 	}
