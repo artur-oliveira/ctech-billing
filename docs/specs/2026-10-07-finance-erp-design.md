@@ -47,19 +47,26 @@ gated by plan.** Paid tiers arrive with the integrations (§ 12) and each needs 
 | Custom (BYOK) | the customer's own Inter account: PIX with due date / boleto collection, statement sync | its own spec; Inter `cobv`/boleto support does not exist anywhere in the family yet |
 | BaaS | an account backed by CTech Ledger (Asaas) | Asaas production approval; no PJ sub-account flow exists |
 
-**Who pays is decided by the space (2026-10-07):**
-- in a **personal** space, the user pays;
-- in an **organization** space, the organization's **owner** (ctech-account's `owner_user_id`)
-  pays.
+**The subscription belongs to the space (2026-10-07):**
+- a **personal** space's subscription belongs to the user, who pays and manages it;
+- an **organization** space's subscription belongs to **the organization**. Any member holding
+  `owner` or `admin` in ctech-account may pay and manage it, and it does not move when ownership is
+  transferred.
 
-In both cases the paying `Customer` in tenant zero is a person (`USER_{sub}`), which matches how
-`ctech-dfe` already bills. That resolves the disagreement with ctech-account's organizations spec
-for billing.
+In tenant zero the paying `Customer` is therefore either a person (`USER_{sub}`) or an organization
+(`ORG_{organization_id}`). This follows ctech-account's organizations spec ("the organization
+becomes the billed party") and **departs from how `ctech-dfe` bills today**: dfe keys the customer
+on the owner's user (`USER_{sub}`, `SnapshotForOrg`/`OwnerOf`). Its per-user pricing is a quota
+*inside* the organization's subscription (opaque price metadata, ADR 0008), counted by dfe, and is
+no reason to make a person the payer. **Cross-repo follow-up in `ctech-dfe`**: move its
+subscription to the organization.
 
 Left to the plans spec:
-- whether an owner of several organizations holds one subscription per organization (all invoiced
-  to them) or one covering all;
-- what happens to the subscription when ownership is transferred.
+- where an organization's admins see and pay its CTech invoices. The portal resolves one customer
+  per user (`CUSTOMER_USER#`, ADR 0012), so an organization customer probably belongs in the
+  organization's console space, behind the membership check, rather than in the portal;
+- the organization customer's identity on the invoice PDF: the designated billing company of
+  ADR 0022.
 
 ## 2. Spaces and modes
 
@@ -297,9 +304,10 @@ Rules:
 
    Today only tenant zero has real collection, so this carries real money only for CTech until BYOK
    exists. In test mode it works for everyone.
-2. **The customer's personal space**, when the `Customer` has a `user_id`: a payable `Bill` with the
-   same dates, settled, under a seeded *Assinaturas CTech* expense category. A person's CTech
-   subscriptions appear in their own finances by themselves.
+2. **The paying customer's own space**, when it has one: a payable `Bill` with the same dates,
+   settled, under a seeded *Assinaturas CTech* expense category. A person customer (`user_id`) posts
+   to their personal space; an organization customer (§ 1) posts to that organization's space. A
+   space's CTech subscriptions appear in its own finances by themselves.
 
 Both are idempotent by invoice id. A `CreditNote` against a paid invoice posts a reversal in both
 spaces for the credited amount.
@@ -467,8 +475,9 @@ Each phase ends with something demoable.
 ## 12. After v1 (each its own spec)
 
 1. **Plans and entitlements** for billing itself, sold through tenant zero (`owner_key: "billing"`,
-   ADR 0021). The payer is decided (§ 1); open: subscription per organization or per owner, and
-   ownership transfer.
+   ADR 0021). The payer is decided (§ 1): the space's subscription, managed by its user or by
+   the organization's owners and admins. Open: where organization customers see their invoices, and
+   their identity on the PDF.
 2. **BYOK Inter:**
    - The customer's mTLS client certificate is used only for **outbound** calls: a per-tenant
      `http.Transport` and token cache, with the credentials encrypted per space following the

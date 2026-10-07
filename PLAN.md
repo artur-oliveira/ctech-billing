@@ -560,14 +560,17 @@ gates nothing by plan.
 - [ ] 6.5 Credit cards — F5, statement closing in the job.
 - [ ] 6.6 Import and reconciliation — F6.
 - [ ] 6.7 Billing integration — `invoice.paid` as revenue in the issuing organization and as an
-      expense in the customer's personal space.
+      expense in the paying customer's own space (personal or organization).
 
 Cross-repo: ctech-account's account-deletion spec must emit the personal-space purge trigger
-(ADR 0026). After v1, each with its own spec: billing's own plans and entitlements (payer decided
-2026-10-07: a personal space is paid by its user, an organization space by the organization's
-owner; left open: one subscription per organization or one per owner, and ownership transfer),
-BYOK Inter, and an
+(ADR 0026). After v1, each with its own spec: billing's own plans and entitlements (decided
+2026-10-07: the subscription belongs to the space — a personal space's to its user, an organization
+space's to the organization, paid and managed by any of its owners or admins), BYOK Inter, and an
 account backed by CTech Ledger.
+
+Cross-repo, `ctech-dfe`: its subscription is still keyed on the owner's user (`USER_{sub}`,
+`SnapshotForOrg`/`OwnerOf`). Under the decision above it moves to the organization; per-user
+pricing stays a quota inside the organization's plan, counted by dfe.
 
 ### What is still missing in the console, after Phase 6 (recovered 2026-10-07)
 - **Organizations from ctech-account** (ADRs 0021–0023): billing still runs its local minimal
