@@ -59,9 +59,8 @@ variable "min_size" {
 
 variable "max_size" {
   type = number
-  # +1 over min_size: gives CapacityRebalance headroom to launch the
-  # replacement before terminating the spot-interrupted instance instead of
-  # waiting for it to go down first. Leader election is now load-bearing.
+  # +1 over min_size: headroom to launch the replacement before terminating the
+  # old instance during an instance refresh. Leader election is now load-bearing.
   default = 2
 
   validation {

@@ -245,20 +245,15 @@ resource "aws_autoscaling_group" "this" {
   health_check_type         = "EC2"
   health_check_grace_period = 180
 
-  capacity_rebalance = true
+  # On-Demand t4g.nano, covered by the t4g EC2 Instance Savings Plan. Capacity
+  # rebalancing only exists for Spot, so it is off, as in ctech-lbalancer.
+  capacity_rebalance = false
 
-  mixed_instances_policy {
-    launch_template {
-      launch_template_specification {
-        launch_template_id = aws_launch_template.this.id
-        version            = aws_launch_template.this.latest_version
-      }
-    }
-    instances_distribution {
-      spot_allocation_strategy                 = "price-capacity-optimized"
-      on_demand_percentage_above_base_capacity = 0
-    }
+  launch_template {
+    id      = aws_launch_template.this.id
+    version = aws_launch_template.this.latest_version
   }
+
   # An instance is only useful once bootstrap.sh has finished and the first
   # deploy has landed; without this, a rolling replacement can take the last
   # healthy instance out while the new one is still installing nginx.
