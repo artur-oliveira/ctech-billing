@@ -403,6 +403,13 @@ func (r *LedgerRepository) Reverse(ctx context.Context, sp space.ResolvedSpace, 
 	if err != nil {
 		return "", err
 	}
+	// Undoing a settlement is settling: the verb guards the effect, so a writer
+	// without finance.settle cannot reopen what only a settler could close.
+	if orig.Tx.Kind == finance.KindSettlement {
+		if err := sp.Require(space.Settle); err != nil {
+			return "", err
+		}
+	}
 	rev, err := finance.Reverse(orig.Tx, originalID, date)
 	if err != nil {
 		return "", err
@@ -425,7 +432,7 @@ func (r *LedgerRepository) Statement(ctx context.Context, sp space.ResolvedSpace
 		return nil, err
 	}
 	items, err := r.queryRange(ctx, r.txs, LedgerEntryPK(sp, accountID),
-		"ENTRY#"+from.String(), "ENTRY#"+to.String(), false)
+		"ENTRY#"+from.String(), "ENTRY#"+to.String())
 	if err != nil {
 		return nil, err
 	}
@@ -473,7 +480,7 @@ func (r *LedgerRepository) allSummaries(ctx context.Context, sp space.ResolvedSp
 }
 
 func (r *LedgerRepository) summaryRange(ctx context.Context, sp space.ResolvedSpace, lo, hi string) ([]SummaryRow, error) {
-	items, err := r.queryRange(ctx, r.accounts, sp.PK(), lo, hi, true)
+	items, err := r.queryRange(ctx, r.accounts, sp.PK(), lo, hi)
 	if err != nil {
 		return nil, err
 	}
@@ -525,18 +532,16 @@ func (r *LedgerRepository) AllTransactions(ctx context.Context, sp space.Resolve
 	return out, nil
 }
 
-// queryRange returns the items under pk whose sort key is in [lo, hi) — or
-// [lo, hi] when inclusive — ascending, following continuation keys.
-func (r *LedgerRepository) queryRange(ctx context.Context, b Base, pk, lo, hi string, inclusive bool) ([]map[string]types.AttributeValue, error) {
-	op := "<"
-	if inclusive {
-		op = "<="
-	}
+// queryRange returns the items under pk whose sort key is in [lo, hi], ascending,
+// following continuation keys. DynamoDB allows one condition per key, so this is
+// BETWEEN, which is inclusive: callers wanting [from, to) rely on no sort key
+// being exactly "ENTRY#<to>" (entry keys always carry a #tx#leg suffix).
+func (r *LedgerRepository) queryRange(ctx context.Context, b Base, pk, lo, hi string) ([]map[string]types.AttributeValue, error) {
 	var out []map[string]types.AttributeValue
 	var start map[string]types.AttributeValue
 	for {
 		res, err := b.QueryRaw(ctx, &dynamodb.QueryInput{
-			KeyConditionExpression: aws.String("pk = :pk AND sk >= :lo AND sk " + op + " :hi"),
+			KeyConditionExpression: aws.String("pk = :pk AND sk BETWEEN :lo AND :hi"),
 			ExpressionAttributeValues: map[string]types.AttributeValue{
 				":pk": &types.AttributeValueMemberS{Value: pk},
 				":lo": &types.AttributeValueMemberS{Value: lo},

@@ -70,3 +70,8 @@ The portal therefore gets the console's selector, with the **same resolver**:
 
 ADR 0012 stands — the portal still serves tenant zero only. What changes is that "the signed-in
 customer" may be an organization the user is entitled to act for.
+
+## Amendment, 2026-10-07 — implemented in 6.2
+
+The resolver, the verbs and the spoofing tests exist (`internal/space`). The membership route they
+rely on is a ctech-account addition, still to be built (see PLAN.md, 6.2, "Pending").

@@ -28,8 +28,11 @@ import (
 )
 
 var (
-	testDB  *dynamodb.Client
-	testCfg *config.Config
+	testDB *dynamodb.Client
+	// testAWSConf is the config testDB was built from, for tests that need a
+	// second client (one that counts its calls).
+	testAWSConf aws.Config
+	testCfg     *config.Config
 )
 
 func TestMain(m *testing.M) {
@@ -59,6 +62,7 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		panic(err)
 	}
+	testAWSConf = awsConf
 	testDB = dynamodb.NewFromConfig(awsConf, func(o *dynamodb.Options) {
 		o.BaseEndpoint = aws.String(endpoint)
 	})

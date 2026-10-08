@@ -558,8 +558,27 @@ gates nothing by plan.
       nominal day so a roll-forward never counts twice; balanced, immutable transactions with
       reversal; posting rules as the only code that picks accounts; installments that always sum to
       the purchase, remainder on the first.
-- [ ] 6.2 Persistence and spaces — `ResolvedSpace`, verbs from the ctech-account role, the
-      spoofing tests, ledger tables, the balance rebuild command.
+- [x] 6.2 Persistence and spaces (`internal/space`, `internal/accountclient`, `LedgerRepository`) —
+      `ResolvedSpace` with no exported fields, built only by the `Resolver` (or `ForJob` in `cmd/`,
+      forbidden on the request path by a source-scan test); `Billing-Space` is a request: `personal`
+      resolves to the token's own `sub`, `org:{id}` needs a ctech-account membership (cached 60 s
+      positive and negative, outage never cached, fail closed as 503), every refusal is one
+      byte-identical 404 `/problems/space-not-found`, and a refused space causes zero DynamoDB
+      calls (integration-tested with a counting client). Verbs come from the role (spec § 6.1).
+      `ledger_accounts` / `ledger_transactions`: one `TransactWriteItems` per fact (header,
+      entries, `ADD` on balance and monthly summary, reversal marker, audit), an account outside
+      the resolved partition cancels it all, a reversal is single-use and undoing a settlement
+      needs `finance.settle`. `finance-rebuild` derives balances and summaries from the entries and
+      reports (or `-apply`s) drift. Scopes `billing:finance:read|write`; route
+      `GET /v1.0/console/finance/space`.
+      **Pending, outside this repo:** (1) ctech-account must add
+      `GET /v1.0/internal/organizations/:organization_id/members/:user_id` (scope
+      `internal:account:org-member`, `200 {member, role}`, a non-member is still 200) and issue
+      billing a service client with that scope — until then organization spaces answer 503 and
+      personal spaces are unaffected; (2) once the client exists, add `ACCOUNT_BASE_URL`,
+      `ACCOUNT_TOKEN_URL`, `ACCOUNT_CLIENT_ID`, `ACCOUNT_CLIENT_SECRET` to the SSM paths and
+      userdata beside `WALLET_*` (`terraform/billing/{locals,ssm,compute}.tf`,
+      `terraform/assets/bootstrap*.tftpl`; mind the 16 KiB userdata ceiling).
 - [ ] 6.3 Bills and recurrences — `cmd/finance` (materialise, auto-settle); F1 (basic), F2, F4, F8.
 - [ ] 6.4 Reports — F3 statement, F7 DRE and cash flow.
 - [ ] 6.5 Credit cards — F5, statement closing in the job.
