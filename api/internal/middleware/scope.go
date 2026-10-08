@@ -45,6 +45,12 @@ const (
 	// the token that can cancel from it.
 	ScopeMyInvoicesWrite      = "billing:my-invoices:write"
 	ScopeMySubscriptionsWrite = "billing:my-subscriptions:write"
+
+	// The finance section (spec docs/specs/2026-10-07-finance-erp-design.md § 6).
+	// Holding one is not permission: every route also resolves the space and
+	// the caller's verbs.
+	ScopeFinanceRead  = "billing:finance:read"
+	ScopeFinanceWrite = "billing:finance:write"
 )
 
 // AllScopes is the manifest ctech-account must know about. Keeping it in one
@@ -66,6 +72,8 @@ var AllScopes = []string{
 	ScopeMySubscriptionsRead,
 	ScopeMyInvoicesWrite,
 	ScopeMySubscriptionsWrite,
+	ScopeFinanceRead,
+	ScopeFinanceWrite,
 }
 
 // RequireM2MScope gates a route on a client_credentials token carrying the

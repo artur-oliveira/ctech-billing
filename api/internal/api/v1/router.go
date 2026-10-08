@@ -11,6 +11,7 @@ import (
 	"gopkg.aoctech.app/billing/api/internal/repositories"
 	"gopkg.aoctech.app/billing/api/internal/services"
 	"gopkg.aoctech.app/billing/api/internal/settlement"
+	"gopkg.aoctech.app/billing/api/internal/space"
 )
 
 // Deps is everything the routes need, passed explicitly rather than assembled
@@ -43,7 +44,10 @@ type Deps struct {
 	// "send the link" field.
 	Links    *services.PayLink
 	Verifier *middleware.Verifier
-	Clock    func() time.Time
+	// Spaces resolves the finance section's space (ADR 0025). Nil disables the
+	// finance routes.
+	Spaces *space.Resolver
+	Clock  func() time.Time
 	// PortalOrganizationID is tenant zero (ADR 0012). Empty disables the portal:
 	// its routes 404 rather than falling back to some other organization.
 	PortalOrganizationID string
@@ -165,6 +169,17 @@ func Register(app *fiber.App, d Deps) {
 		middleware.RequireM2MScope(middleware.ScopeEntitlementsRead), h.getEntitlements)
 
 	registerConsole(v1, d, h, auth)
+
+	// Not inside registerConsole's group: that group resolves one organization
+	// per owner (ResolveConsoleTenant), which is not the finance space model.
+	if d.Spaces != nil {
+		fin := v1.Group("/console/finance", auth)
+		fin.Get("/space",
+			middleware.RequireUserScope(middleware.ScopeFinanceRead),
+			middleware.ResolveSpace(d.Spaces),
+			middleware.RequireVerb(space.Read),
+			financeSpace)
+	}
 	registerPortal(v1, d, h, auth)
 	registerCheckout(v1, d, h)
 }

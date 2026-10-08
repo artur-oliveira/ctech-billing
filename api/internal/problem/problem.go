@@ -34,6 +34,12 @@ const (
 	// anybody else: that this reader has no billing account is a fact they
 	// already hold.
 	TypeNoBillingAccount = "/problems/no-billing-account"
+	// TypeSpaceNotFound is every reason a finance space is refused — not a
+	// member, no such organization, malformed id — in one identical response.
+	TypeSpaceNotFound = "/problems/space-not-found"
+	// TypeSpaceUnavailable is ctech-account being unreachable: access fails
+	// closed, and the body says nothing about any organization.
+	TypeSpaceUnavailable = "/problems/space-unavailable"
 )
 
 // FieldError is a single field-level validation failure.
