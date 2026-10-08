@@ -164,3 +164,10 @@ Wallet-side, as tests in `ctech-wallet`:
   first annual plan, not after.
 - Aggregate caps (per day, per client) are deliberately not in this spec. Build when volume makes
   the threshold measurable rather than guessed.
+
+## Descrição obrigatória (2026-10-08)
+
+O `OpenCharge` envia `description` ("Fatura #<número>", ou "Fatura <id>" enquanto a fatura não tem número). A
+ctech-wallet passa a exigir o campo na rota de cobrança quando `REQUIRE_DESCRIPTION` está ligada
+(`ctech-wallet/docs/specs/2026-08-29-transaction-description.md`). É só texto de extrato: nunca autoridade sobre o
+valor e fora da chave de idempotência.

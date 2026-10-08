@@ -120,6 +120,15 @@ func (c *Collector) VerifyWebhook(body []byte, signature string) bool {
 	return c.charges.VerifySignature(body, signature)
 }
 
+// invoiceChargeDescription is the statement text of an invoice charge: the
+// gapless invoice number when it has been finalized, the id otherwise.
+func invoiceChargeDescription(inv *billing.Invoice) string {
+	if inv.Number > 0 {
+		return fmt.Sprintf("Fatura #%d", inv.Number)
+	}
+	return "Fatura " + inv.ID
+}
+
 // Pay opens a checkout session for an invoice, or returns the one that is still
 // usable.
 //
@@ -200,6 +209,7 @@ func (c *Collector) Pay(
 		Reference:      inv.ID,
 		IdempotencyKey: attempt.IdempotencyKey(),
 		PayerTaxID:     customer.TaxID,
+		Description:    invoiceChargeDescription(inv),
 	})
 	if err != nil {
 		return nil, inv, err

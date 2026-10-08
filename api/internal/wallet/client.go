@@ -171,6 +171,10 @@ type OpenChargeInput struct {
 	// PayerTaxID is an optional CPF the rail uses to match the payer. Sent when
 	// billing has one, never stored by billing for this purpose.
 	PayerTaxID string `json:"payer_tax_id,omitempty"`
+	// Description is the human sentence on the payer's wallet statement
+	// ("Fatura #42"). Display only: wallet never uses it as authority for the
+	// amount, and requires it once its REQUIRE_DESCRIPTION flag is on.
+	Description string `json:"description"`
 }
 
 // OpenCharge opens a PIX charge for an arbitrary amount.
