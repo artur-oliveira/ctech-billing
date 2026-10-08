@@ -26,6 +26,12 @@ const financeActor = "scheduler"
 // more than this many due rows.
 const jobBatch = 5000
 
+// maxDraftsPerRun bounds how many bills one recurrence materialises in one run.
+// A recurrence entered with years of catch-up is worked off in batches over
+// successive runs (the cursor carries the resume), so one tenant cannot stretch
+// the run — and delay every other tenant's auto-settle — for hours.
+const maxDraftsPerRun = 60
+
 type billStore interface {
 	CreateFromOccurrence(ctx context.Context, sp space.ResolvedSpace, d finance.Draft, recurrenceID string, meta repositories.PostMeta, now time.Time) (bool, finance.Bill, error)
 	Settle(ctx context.Context, sp space.ResolvedSpace, id string, paid billing.Cents, differenceCategoryID string, date brcal.Date, meta repositories.PostMeta, now time.Time) (finance.Bill, error)
@@ -87,9 +93,19 @@ func (j *FinanceJobs) Materialise(ctx context.Context, livemode bool, today brca
 			res.fail("recurrence %s: %v", rec.ID, err)
 			continue
 		}
+		if len(drafts) > maxDraftsPerRun {
+			drafts = drafts[:maxDraftsPerRun]
+		}
 		cursor, failed := d.Cursor, false
 		for _, draft := range drafts {
 			created, _, err := j.bills.CreateFromOccurrence(ctx, d.Space, draft, rec.ID, meta, now)
+			if errors.Is(err, repositories.ErrRecurrenceChanged) {
+				// Archived or retargeted after this run read it: not a failure. The
+				// cursor stays, so the next run works from the current rule.
+				res.Skipped++
+				failed = true
+				break
+			}
 			if err != nil {
 				res.fail("recurrence %s occurrence %s: %v", rec.ID, draft.Nominal, err)
 				failed = true

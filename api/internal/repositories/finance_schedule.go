@@ -12,16 +12,6 @@ import (
 	"gopkg.aoctech.app/billing/api/internal/space"
 )
 
-// spaceFromScheduleOwner rebuilds a row's space from the owner stored in its
-// schedule key. It is the ONE place in internal/ that calls space.ForJob
-// (TestForJobIsNotCalledFromInternal names this file), because the daily job
-// reads a cross-tenant index and has no request to resolve a space from. The
-// owner is validated by ForJob: a forged or malformed one is refused, never
-// trusted.
-func spaceFromScheduleOwner(owner string, livemode bool) (space.ResolvedSpace, error) {
-	return space.ForJob(owner, livemode)
-}
-
 // scheduleEntry is one parsed schedule-index row.
 type scheduleEntry struct {
 	Space space.ResolvedSpace
@@ -65,7 +55,12 @@ func scanSchedule(ctx context.Context, b Base, schedulePK string, livemode bool,
 				skipped++
 				continue
 			}
-			sp, serr := spaceFromScheduleOwner(owner, livemode)
+			// The ONE call to space.ForJob in internal/: the daily job has no request to
+			// resolve a space from, so it rebuilds each row's space from the owner in its
+			// schedule key. ForJob validates the owner; a forged or malformed one is
+			// counted as skipped, never trusted. (TestForJobIsNotCalledFromInternal names
+			// this file; the call is inlined so no other file here can reuse it.)
+			sp, serr := space.ForJob(owner, livemode)
 			if serr != nil {
 				skipped++
 				continue

@@ -43,6 +43,8 @@ type fakeBills struct {
 	open     map[finance.Direction][]finance.Bill
 	settleFn func(id string) error
 	failRef  string // CreateFromOccurrence fails for this OriginRef
+	// changedRef makes CreateFromOccurrence answer ErrRecurrenceChanged for this ref.
+	changedRef string
 }
 
 func newFakeBills() *fakeBills {
@@ -51,6 +53,9 @@ func newFakeBills() *fakeBills {
 
 func (f *fakeBills) CreateFromOccurrence(_ context.Context, _ space.ResolvedSpace, d finance.Draft, recID string, _ repositories.PostMeta, _ time.Time) (bool, finance.Bill, error) {
 	ref := finance.OccurrenceRef(recID, d.Nominal)
+	if ref == f.changedRef {
+		return false, finance.Bill{}, repositories.ErrRecurrenceChanged
+	}
 	if ref == f.failRef {
 		return false, finance.Bill{}, errors.New("dynamodb: boom")
 	}
@@ -319,5 +324,44 @@ func TestProjectRefusesAnUnreasonableWindow(t *testing.T) {
 		if _, err := jobs.Project(context.Background(), testSpace(t), day(2026, time.March, 20), n); err == nil {
 			t.Errorf("%d months was accepted", n)
 		}
+	}
+}
+
+// One tenant must not be able to stretch the run: a recurrence with years of
+// catch-up is worked in batches across runs, the cursor carrying the resume.
+func TestMaterialiseCapsTheDraftsPerRecurrencePerRun(t *testing.T) {
+	r := monthly("old", 10)
+	r.Schedule.Start = day(2021, time.April, 1) // five years back: 60+ months owed
+	bills, recs := newFakeBills(), newFakeRecs(r)
+	jobs := NewFinanceJobs(bills, recs)
+	today, now := day(2026, time.March, 20), time.Now()
+
+	first := jobs.Materialise(context.Background(), true, today, now)
+	if first.Done != maxDraftsPerRun || first.Failed != 0 {
+		t.Fatalf("first run = %+v, want exactly %d bills", first, maxDraftsPerRun)
+	}
+	total := first.Done
+	for i := 0; i < 5 && total < 61; i++ {
+		total += jobs.Materialise(context.Background(), true, today, now).Done
+	}
+	if total != 61 { // Apr 2021 .. Apr 2026, inclusive
+		t.Fatalf("after catching up %d bills exist, want 61 (Apr 2021 to Apr 2026)", total)
+	}
+}
+
+// The recurrence was archived or retargeted after the job read it: the stale
+// snapshot must not turn into bills. It is a skip, not a failure, and the cursor
+// stays so the next run works from the current rule.
+func TestARecurrenceChangedUnderTheJobIsSkippedNotFailed(t *testing.T) {
+	bills, recs := newFakeBills(), newFakeRecs(monthly("r1", 10))
+	bills.changedRef = finance.OccurrenceRef("r1", day(2026, time.February, 10))
+	jobs := NewFinanceJobs(bills, recs)
+
+	res := jobs.Materialise(context.Background(), true, day(2026, time.March, 20), time.Now())
+	if res.Failed != 0 || len(res.Errors) != 0 || res.Skipped < 1 {
+		t.Fatalf("res = %+v: a changed recurrence is a skip", res)
+	}
+	if !recs.cursors["r1"].IsZero() {
+		t.Fatalf("the cursor moved to %s although the recurrence changed under the job", recs.cursors["r1"])
 	}
 }

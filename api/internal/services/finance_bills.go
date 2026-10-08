@@ -29,8 +29,12 @@ func meta(origin, actor, requestID string) repositories.PostMeta {
 	return repositories.PostMeta{Origin: origin, Actor: actor, RequestID: requestID}
 }
 
-func (s *FinanceBills) Create(ctx context.Context, sp space.ResolvedSpace, b finance.Bill, actor, requestID string, now time.Time) (finance.Bill, error) {
-	return s.repo.Create(ctx, sp, b, meta("manual", actor, requestID), now)
+// Create makes a manual bill. idempotencyKey, when the request carried one,
+// names the bill, so a double submit racing the first request makes one bill.
+func (s *FinanceBills) Create(ctx context.Context, sp space.ResolvedSpace, b finance.Bill, actor, requestID, idempotencyKey string, now time.Time) (finance.Bill, error) {
+	m := meta("manual", actor, requestID)
+	m.IdempotencyKey = idempotencyKey
+	return s.repo.Create(ctx, sp, b, m, now)
 }
 
 func (s *FinanceBills) Get(ctx context.Context, sp space.ResolvedSpace, id string) (*finance.Bill, error) {

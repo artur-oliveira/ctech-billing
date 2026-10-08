@@ -92,15 +92,45 @@ func TestABillThatAutoSettlesNeedsTheSettleVerb(t *testing.T) {
 }
 
 // Settle, Cancel and Edit all act on the bill as it was read; the guard is what
-// stops a stale read from committing after an edit appended a transaction.
-func TestTheForecastGuardPinsStatusAndTheTransactionList(t *testing.T) {
+// stops a stale read from committing after anything that changes what a
+// settlement or cancellation would do: an edit that appended a transaction
+// (amount, category), or one that moved the account or the due date.
+func TestTheForecastGuardPinsEverythingASettlementUses(t *testing.T) {
 	b := fixtureBill()
 	b.TransactionIDs = []string{"t1", "t2", "t3"}
 	cond, names, values := forecastGuard(&b)
-	if cond != "#status = :forecast AND size(#n) = :n" || names["#n"] != "transaction_ids" || names["#status"] != "status" {
-		t.Fatalf("cond %q names %v", cond, names)
+	want := "#status = :gforecast AND size(#n) = :gn AND account_id = :gacct AND #due = :gdue"
+	if cond != want {
+		t.Fatalf("cond = %q, want %q", cond, want)
 	}
-	if n, ok := values[":n"].(*types.AttributeValueMemberN); !ok || n.Value != "3" {
-		t.Fatalf(":n = %v, want 3", values[":n"])
+	if names["#n"] != "transaction_ids" || names["#status"] != "status" || names["#due"] != "due" {
+		t.Fatalf("names = %v", names)
+	}
+	if n, ok := values[":gn"].(*types.AttributeValueMemberN); !ok || n.Value != "3" {
+		t.Fatalf(":gn = %v, want 3", values[":gn"])
+	}
+	if a, ok := values[":gacct"].(*types.AttributeValueMemberS); !ok || a.Value != "bank" {
+		t.Fatalf(":gacct = %v", values[":gacct"])
+	}
+	if d, ok := values[":gdue"].(*types.AttributeValueMemberS); !ok || d.Value != "2026-03-10" {
+		t.Fatalf(":gdue = %v", values[":gdue"])
+	}
+}
+
+func TestTheIdempotentIDIsStableAndScopedToTheSpace(t *testing.T) {
+	a, _ := space.ForJob("USER#alice", true)
+	b, _ := space.ForJob("USER#bob", true)
+	x, y := idempotentID(a, "bill", "k1"), idempotentID(a, "bill", "k1")
+	if x != y || x == "" {
+		t.Fatalf("not stable: %q %q", x, y)
+	}
+	if idempotentID(b, "bill", "k1") == x {
+		t.Error("two spaces share an id for one key")
+	}
+	if idempotentID(a, "recurrence", "k1") == x {
+		t.Error("a bill and a recurrence share an id for one key")
+	}
+	if idempotentID(a, "bill", "k2") == x {
+		t.Error("two keys share an id")
 	}
 }

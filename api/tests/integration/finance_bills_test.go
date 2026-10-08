@@ -404,3 +404,143 @@ func TestACreatedOccurrenceThatAutoSettlesNeedsTheSettleVerb(t *testing.T) {
 		t.Fatalf("a writer created an auto-settling occurrence: %v", err)
 	}
 }
+
+// Review (6.3) #5: the idempotency store is lookup-then-store, so two requests
+// carrying one key can run concurrently. The operation's own conditional write
+// must make them one bill, not two recognitions in the DRE.
+func TestConcurrentCreatesWithOneIdempotencyKeyMakeOneBill(t *testing.T) {
+	f := newBillsFixture(t)
+	var wg sync.WaitGroup
+	ids := make(chan string, 6)
+	for i := 0; i < 6; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			b, err := f.bills.Create(context.Background(), f.sp, finance.Bill{
+				Direction: finance.Payable, Amount: 2500, AccountID: "bank", CategoryID: "rent",
+				Competence: brcal.New(2026, 3, 1), Due: brcal.New(2026, 3, 10), Origin: finance.OriginManual,
+			}, repositories.PostMeta{IdempotencyKey: "one-key"}, time.Now())
+			if err != nil && !strings.Contains(err.Error(), "TransactionCanceled") {
+				t.Errorf("create: %v", err)
+				return
+			}
+			if err == nil {
+				ids <- b.ID
+			}
+		}()
+	}
+	wg.Wait()
+	close(ids)
+	seen := map[string]bool{}
+	for id := range ids {
+		seen[id] = true
+	}
+	if len(seen) != 1 {
+		t.Fatalf("%d distinct bills came back for one key, want 1", len(seen))
+	}
+	if got := f.bal(t, "sys-payables"); got != -2500 {
+		t.Fatalf("payables = %d: the bill was recognised %d times, want once", got, -got/2500)
+	}
+}
+
+// Review (6.3) #2: the job reads a recurrence and later creates its bills. If the
+// recurrence was archived or retargeted in between, the stale snapshot must not
+// become bills (they could carry auto_settle and be settled in the same run).
+func TestAStaleMaterialisationLosesToAnArchiveOrARetarget(t *testing.T) {
+	f := newBillsFixture(t)
+	ctx, now := context.Background(), time.Date(2026, 3, 20, 12, 0, 0, 0, time.UTC)
+	rec, recs := f.recurrence(t, 10, true)
+	drafts, err := rec.Materialise(brcal.Date{}, brcal.New(2026, 3, 20))
+	if err != nil || len(drafts) == 0 {
+		t.Fatal(err)
+	}
+
+	// Retarget: the amount changes after the job took its snapshot.
+	bigger := billing.Cents(990000)
+	if err := recs.Update(ctx, f.sp, rec.ID, repositories.RecurrencePatch{Amount: &bigger}, now); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := f.bills.CreateFromOccurrence(ctx, f.sp, drafts[0], rec.ID, repositories.PostMeta{}, now); !errors.Is(err, repositories.ErrRecurrenceChanged) {
+		t.Fatalf("a stale snapshot after a retarget: %v, want ErrRecurrenceChanged", err)
+	}
+	// Archive.
+	rec2, recs2 := f.recurrence(t, 12, false)
+	drafts2, _ := rec2.Materialise(brcal.Date{}, brcal.New(2026, 3, 20))
+	if err := recs2.Archive(ctx, f.sp, rec2.ID, now); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := f.bills.CreateFromOccurrence(ctx, f.sp, drafts2[0], rec2.ID, repositories.PostMeta{}, now); !errors.Is(err, repositories.ErrRecurrenceChanged) {
+		t.Fatalf("a stale snapshot after an archive: %v, want ErrRecurrenceChanged", err)
+	}
+	if f.bal(t, "sys-payables") != 0 {
+		t.Fatal("a stale snapshot still recognised a bill")
+	}
+}
+
+// Review (6.3) #3: after auto-pay is turned off on a recurrence, bills already
+// on the list keep paying themselves unless the user can turn it off per bill.
+// Turning it OFF removes power and needs only write; turning it ON is settling.
+func TestAutoSettleCanBeSwitchedOffPerBillWithWriteAlone(t *testing.T) {
+	f := newBillsFixture(t)
+	ctx, now := context.Background(), time.Now()
+	b, err := f.bills.Create(ctx, f.sp, finance.Bill{
+		Direction: finance.Payable, Amount: 1000, AccountID: "bank", CategoryID: "rent", AutoSettle: true,
+		Competence: brcal.New(2026, 3, 1), Due: brcal.New(2026, 3, 10), Origin: finance.OriginManual,
+	}, repositories.PostMeta{}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writer := space.Narrow(f.sp, space.Read|space.Write)
+	off, on := false, true
+
+	if _, err := f.bills.Edit(ctx, writer, b.ID, repositories.BillEdit{AutoSettle: &on}, brcal.Date{}, repositories.PostMeta{}, now); err != nil {
+		t.Fatalf("setting what is already on is not a change: %v", err)
+	}
+	got, err := f.bills.Edit(ctx, writer, b.ID, repositories.BillEdit{AutoSettle: &off}, brcal.Date{}, repositories.PostMeta{}, now)
+	if err != nil || got.AutoSettle {
+		t.Fatalf("a writer could not switch auto-settle off: %+v %v", got, err)
+	}
+	due, _, _ := f.bills.DueForAutoSettle(ctx, true, brcal.New(2026, 3, 30), 10000)
+	for _, d := range due {
+		if d.Bill.ID == b.ID {
+			t.Fatal("the bill is still on the auto-settle list after switching it off")
+		}
+	}
+	if _, err := f.bills.Edit(ctx, writer, b.ID, repositories.BillEdit{AutoSettle: &on}, brcal.Date{}, repositories.PostMeta{}, now); !errors.Is(err, space.ErrDenied) {
+		t.Fatalf("a writer switched auto-settle ON: %v", err)
+	}
+	if _, err := f.bills.Edit(ctx, f.sp, b.ID, repositories.BillEdit{AutoSettle: &on}, brcal.Date{}, repositories.PostMeta{}, now); err != nil {
+		t.Fatalf("a settler could not: %v", err)
+	}
+	due, _, _ = f.bills.DueForAutoSettle(ctx, true, brcal.New(2026, 3, 30), 10000)
+	found := false
+	for _, d := range due {
+		found = found || d.Bill.ID == b.ID
+	}
+	if !found {
+		t.Fatal("switching auto-settle back on did not put the bill on the list")
+	}
+}
+
+// Review (6.3) #4: extending the End of an auto-settling recurrence keeps the
+// job paying for longer, which is retargeting.
+func TestAWriterCannotExtendAnAutoSettlingRecurrencesEnd(t *testing.T) {
+	f := newBillsFixture(t)
+	ctx, now := context.Background(), time.Date(2026, 3, 20, 12, 0, 0, 0, time.UTC)
+	rec, recs := f.recurrence(t, 10, true)
+	writer := space.Narrow(f.sp, space.Read|space.Write)
+	end := brcal.New(2026, time.December, 31)
+	if err := recs.Update(ctx, f.sp, rec.ID, repositories.RecurrencePatch{End: &end}, now); err != nil {
+		t.Fatal(err)
+	}
+	later, never := brcal.New(2030, time.December, 31), brcal.Date{}
+	for name, e := range map[string]*brcal.Date{"a later end": &later, "no end": &never} {
+		if err := recs.Update(ctx, writer, rec.ID, repositories.RecurrencePatch{End: e}, now); !errors.Is(err, space.ErrDenied) {
+			t.Errorf("a writer extended the end (%s): %v", name, err)
+		}
+	}
+	sooner := brcal.New(2026, time.June, 30)
+	if err := recs.Update(ctx, writer, rec.ID, repositories.RecurrencePatch{End: &sooner}, now); err != nil {
+		t.Fatalf("shortening is removing power and must be allowed: %v", err)
+	}
+}

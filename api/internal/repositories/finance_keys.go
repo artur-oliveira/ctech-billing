@@ -1,6 +1,8 @@
 package repositories
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"strings"
 
@@ -53,4 +55,12 @@ func ParseScheduleSK(sk string) (date brcal.Date, owner, id string, err error) {
 		return brcal.Date{}, "", "", fmt.Errorf("malformed schedule key %q: %w", sk, err)
 	}
 	return date, sk[first+1 : last], sk[last+1:], nil
+}
+
+// idempotentID derives a row id from (space, kind, idempotency key): the same
+// request, however concurrently it is repeated, names the same row. The space is
+// part of the hash so one space's key can never name another space's row.
+func idempotentID(sp space.ResolvedSpace, kind, key string) string {
+	sum := sha256.Sum256([]byte(sp.PK() + "\x00" + kind + "\x00" + key))
+	return strings.ToUpper(hex.EncodeToString(sum[:13])) // 26 characters, like a ULID
 }

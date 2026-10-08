@@ -18,6 +18,17 @@ import (
 	"gopkg.aoctech.app/billing/api/internal/space"
 )
 
+// ErrRecurrenceChanged is a materialisation that was built from a snapshot of a
+// recurrence that has since been archived or retargeted. The job skips it and
+// works from the current rule on its next run.
+var ErrRecurrenceChanged = errors.New("recurrence changed since it was read")
+
+// catchUpSlackDays is the month of slack the first materialisation and an edit
+// allow on the creation-time bound, so a recurrence created on the last day of a
+// month with the oldest allowed Start does not become a poison row when the
+// month rolls over.
+const catchUpSlackDays = 31
+
 // RecurrenceRepository stores recurrence rules (spec § 3.5). A rule produces
 // bills through the daily job; editing one never touches bills that exist.
 type RecurrenceRepository struct {
@@ -127,6 +138,9 @@ func (r *RecurrenceRepository) Create(ctx context.Context, sp space.ResolvedSpac
 		return finance.Recurrence{}, err
 	}
 	rec.ID, rec.Archived = id.New(), false
+	if meta.IdempotencyKey != "" {
+		rec.ID = idempotentID(sp, "recurrence", meta.IdempotencyKey)
+	}
 	if err := rec.ValidateAt(brcal.FromTime(now)); err != nil {
 		return finance.Recurrence{}, err
 	}
@@ -142,6 +156,12 @@ func (r *RecurrenceRepository) Create(ctx context.Context, sp space.ResolvedSpac
 		return finance.Recurrence{}, err
 	}
 	if err := r.recs.TransactWrite(ctx, txItems(r.recs.BuildPutTxItemIfAbsent(item))); err != nil {
+		if meta.IdempotencyKey != "" && onlyConditionFailed(err) {
+			// The same request already created it (a concurrent double submit).
+			if existing, gerr := r.Get(ctx, sp, rec.ID); gerr == nil {
+				return *existing, nil
+			}
+		}
 		return finance.Recurrence{}, err
 	}
 	return rec, nil
@@ -251,7 +271,8 @@ func (r *RecurrenceRepository) Update(ctx context.Context, sp space.ResolvedSpac
 	// An auto-settling recurrence is a standing instruction the daily job carries
 	// out on the user's behalf; changing what it pays, from where, is settling.
 	// Turning auto_settle OFF only removes power and needs no extra verb.
-	if rec.AutoSettle && (rec.Amount != before.Amount || rec.AccountID != before.AccountID || rec.CategoryID != before.CategoryID) {
+	endExtended := p.End != nil && !before.Schedule.End.IsZero() && (rec.Schedule.End.IsZero() || rec.Schedule.End.After(before.Schedule.End))
+	if rec.AutoSettle && (rec.Amount != before.Amount || rec.AccountID != before.AccountID || rec.CategoryID != before.CategoryID || endExtended) {
 		if err := sp.Require(space.Write | space.Settle); err != nil {
 			return err
 		}
@@ -262,7 +283,7 @@ func (r *RecurrenceRepository) Update(ctx context.Context, sp space.ResolvedSpac
 	}
 	// The catch-up bound only matters before the first materialisation.
 	if cursor.IsZero() {
-		err = rec.ValidateAt(brcal.FromTime(now))
+		err = rec.ValidateAt(brcal.FromTime(now).AddDays(-catchUpSlackDays))
 	} else {
 		err = rec.Validate()
 	}

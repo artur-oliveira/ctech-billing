@@ -12,6 +12,7 @@ import (
 	"gopkg.aoctech.app/billing/api/internal/domain/brcal"
 	"gopkg.aoctech.app/billing/api/internal/domain/finance"
 	"gopkg.aoctech.app/billing/api/internal/repositories"
+	"gopkg.aoctech.app/billing/api/internal/services"
 )
 
 func (f billsFixture) recurrence(t *testing.T, day int, autoSettle bool) (finance.Recurrence, *repositories.RecurrenceRepository) {
@@ -172,5 +173,67 @@ func TestAutoSettleBillsAreOnTheWorkListUntilSettled(t *testing.T) {
 	}
 	if has(brcal.New(2026, 3, 25)) {
 		t.Fatal("a settled bill is still on the auto-settle list")
+	}
+}
+
+// Review Focus 1, end to end: the real job logic over the real tables, run
+// repeatedly, with a recurrence that auto-settles.
+func TestTheJobIsRerunnableAgainstRealTables(t *testing.T) {
+	f := newBillsFixture(t)
+	ctx := context.Background()
+	recs := repositories.NewRecurrenceRepository(testDB, testCfg)
+	now := time.Date(2026, 3, 20, 12, 0, 0, 0, time.UTC)
+	today := brcal.New(2026, 3, 20)
+
+	_, err := recs.Create(ctx, f.sp, finance.Recurrence{
+		Direction: finance.Payable, Amount: 150000, CategoryID: "rent", AccountID: "bank", Description: "Aluguel",
+		AutoSettle: true,
+		Schedule:   finance.Schedule{Expression: finance.DayOfMonth{Day: 10}, Start: brcal.New(2026, time.January, 1), Adjust: finance.AdjustNone},
+	}, repositories.PostMeta{}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	job := services.NewFinanceJobs(f.bills, recs)
+
+	// The work lists are shared with the other tests in this run, so assertions
+	// are on THIS space's data, never on the job's counters.
+	for run := 0; run < 3; run++ {
+		_ = job.Materialise(ctx, true, today, now)
+		_ = job.AutoSettle(ctx, true, today, now)
+	}
+
+	// Jan, Feb, Mar and Apr occurrences: four recognitions.
+	if got := f.bal(t, "rent"); got != 4*150000 {
+		t.Fatalf("rent = %d, want exactly four months recognised", got)
+	}
+	// Auto-settle runs for bills due on or before today: Jan 10, Feb 10, Mar 10.
+	// April's is due in the future and stays a forecast.
+	if got := f.bal(t, "bank"); got != -3*150000 {
+		t.Fatalf("bank = %d, want exactly three settlements (one per due bill, however often the job ran)", got)
+	}
+	if got := f.bal(t, "sys-payables"); got != -150000 {
+		t.Fatalf("payables = %d, want only April still owed", got)
+	}
+	page, err := f.bills.ListOpen(ctx, f.sp, finance.Payable, 50, nil)
+	if err != nil || len(page.Items) != 1 || page.Items[0].Due != brcal.New(2026, time.April, 10) {
+		t.Fatalf("open bills = %+v, %v; want only April's", page.Items, err)
+	}
+	drift, err := f.ledger.Rebuild(ctx, f.sp, false, time.Now())
+	if err != nil || len(drift) != 0 {
+		t.Fatalf("drift %+v %v", drift, err)
+	}
+
+	// A later day catches up: April 10th arrives, the recurrence rolls its
+	// horizon (May enters on 1 April) and the April bill settles.
+	later, laterNow := brcal.New(2026, 4, 12), time.Date(2026, 4, 12, 12, 0, 0, 0, time.UTC)
+	for run := 0; run < 2; run++ {
+		_ = job.Materialise(ctx, true, later, laterNow)
+		_ = job.AutoSettle(ctx, true, later, laterNow)
+	}
+	if got := f.bal(t, "rent"); got != 5*150000 {
+		t.Fatalf("after April: rent = %d, want five months", got)
+	}
+	if got := f.bal(t, "bank"); got != -4*150000 {
+		t.Fatalf("after April: bank = %d, want four settlements", got)
 	}
 }

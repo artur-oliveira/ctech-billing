@@ -92,7 +92,7 @@ func (h *financeHandlers) createBill(c fiber.Ctx) error {
 		Direction: finance.Direction(req.Direction), Amount: req.Amount, AccountID: req.AccountID,
 		CategoryID: req.CategoryID, Description: req.Description, Competence: competence, Due: req.DueDate,
 		Origin: finance.OriginManual, AutoSettle: req.AutoSettle,
-	}, actorOfUser(c), middleware.GetRequestID(c), h.now())
+	}, actorOfUser(c), middleware.GetRequestID(c), c.Get(middleware.IdempotencyHeader), h.now())
 	if err != nil {
 		return fail(c, err)
 	}
@@ -141,6 +141,7 @@ type patchBillRequest struct {
 	AccountID   *string        `json:"account_id"`
 	Description *string        `json:"description"`
 	DueDate     *brcal.Date    `json:"due_date"`
+	AutoSettle  *bool          `json:"auto_settle"`
 }
 
 func (h *financeHandlers) patchBill(c fiber.Ctx) error {
@@ -153,7 +154,7 @@ func (h *financeHandlers) patchBill(c fiber.Ctx) error {
 	}
 	b, err := h.bills.Edit(c.Context(), middleware.GetSpace(c), c.Params("id"), repositories.BillEdit{
 		Amount: req.Amount, CategoryID: req.CategoryID, AccountID: req.AccountID,
-		Description: req.Description, Due: req.DueDate,
+		Description: req.Description, Due: req.DueDate, AutoSettle: req.AutoSettle,
 	}, actorOfUser(c), middleware.GetRequestID(c), h.now())
 	if err != nil {
 		return fail(c, err)
@@ -185,10 +186,8 @@ func (h *financeHandlers) settleBill(c fiber.Ctx) error {
 			if err != nil {
 				return fail(c, err)
 			}
-			if paid != bill.Amount {
-				return problem.Validation([]problem.FieldError{
-					fieldErr("difference_category_id", "obrigatório quando o valor pago difere do valor da conta", "required_with"),
-				}).Send(c)
+			if e := settleGapError(paid, bill.Amount, req.DifferenceCategoryID); e != nil {
+				return problem.Validation([]problem.FieldError{*e}).Send(c)
 			}
 		}
 	}
@@ -210,4 +209,15 @@ func (h *financeHandlers) cancelBill(c fiber.Ctx) error {
 		return fail(c, err)
 	}
 	return c.JSON(newBillDTO(b, h.today()))
+}
+
+// settleGapError is the rule "a paid amount different from the bill's needs a
+// category for the difference", apart from the handler so it is testable without
+// a bill to read.
+func settleGapError(paid, billAmount billing.Cents, categoryID string) *problem.FieldError {
+	if paid == billAmount || categoryID != "" {
+		return nil
+	}
+	e := fieldErr("difference_category_id", "obrigatório quando o valor pago difere do valor da conta", "required_with")
+	return &e
 }

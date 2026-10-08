@@ -45,6 +45,9 @@ func (r Recurrence) Validate() error {
 	return r.Schedule.Validate()
 }
 
+// catchUpSlackDays is the month of slack the job allows on ValidateAt's bound.
+const catchUpSlackDays = 31
+
 // ValidateAt is Validate plus the one rule that needs a day: a recurrence is user
 // input the daily job expands into bills, so how far back its first run may
 // catch up is bounded (MaxSpanDays before the horizon starts). Without it a
@@ -88,7 +91,10 @@ type Draft struct {
 func (r Recurrence) Materialise(cursor, today brcal.Date) ([]Draft, error) {
 	if cursor.IsZero() {
 		// First materialisation: a catch-up from Start, which must be bounded.
-		if err := r.ValidateAt(today); err != nil {
+		// A month of slack on the creation-time bound: a recurrence validly created
+		// on the last day of a month must not turn into a poison row, refused every
+		// day and impossible to edit, once the month rolls over.
+		if err := r.ValidateAt(today.AddDays(-catchUpSlackDays)); err != nil {
 			return nil, err
 		}
 	} else if err := r.Validate(); err != nil {

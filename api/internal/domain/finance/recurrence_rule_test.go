@@ -163,3 +163,25 @@ func TestACatchUpBeyondTheSpanIsRefused(t *testing.T) {
 		t.Fatalf("a long-running recurrence was refused: %v", err)
 	}
 }
+
+// A recurrence created on the last day of a month with the oldest allowed Start
+// must not become undeletable the next month: the job's check has a month of
+// slack, so the day rolling over does not turn a valid recurrence into a poison
+// row that alerts forever.
+func TestTheJobsCatchUpCheckHasAMonthOfSlack(t *testing.T) {
+	r := rent()
+	created := d(2026, time.March, 31)
+	from, _ := Horizon(created)
+	r.Schedule.Start = from.AddDays(-MaxSpanDays) // exactly the creation-time limit
+	if err := r.ValidateAt(created); err != nil {
+		t.Fatalf("the creation-time limit was refused at creation: %v", err)
+	}
+	nextDay := d(2026, time.April, 1)
+	if _, err := r.Materialise(brcal.Date{}, nextDay); err != nil {
+		t.Fatalf("the job refused a recurrence one day after it was validly created: %v", err)
+	}
+	r.Schedule.Start = from.AddDays(-MaxSpanDays - 60)
+	if _, err := r.Materialise(brcal.Date{}, nextDay); !errors.Is(err, ErrInvalidRecurrence) {
+		t.Fatalf("a start two months past the limit was accepted: %v", err)
+	}
+}

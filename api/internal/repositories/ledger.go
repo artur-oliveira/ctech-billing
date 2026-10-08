@@ -276,6 +276,11 @@ type PostMeta struct {
 	Origin    string // e.g. "manual", "bill_settlement", "invoice_paid"
 	Actor     string // the token subject
 	RequestID string
+	// IdempotencyKey, when set on a create, makes the new row's id a function of
+	// (space, key): two concurrent requests with one key then collide on the
+	// conditional put and make ONE row. The idempotency middleware only replays
+	// requests that already finished.
+	IdempotencyKey string
 }
 
 type txItem struct {

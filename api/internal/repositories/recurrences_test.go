@@ -57,19 +57,6 @@ func TestCreateRefusesAnInvalidRecurrenceBeforeAnyWrite(t *testing.T) {
 	}
 }
 
-// The job rebuilds a space from a stored owner. A row whose owner is not a
-// valid organization id or USER#sub must be refused, never trusted.
-func TestAScheduleRowWithAForgedOwnerIsRejected(t *testing.T) {
-	for _, owner := range []string{"", "USER#", "not-a-uuid", "USER#a#b"} {
-		if _, err := spaceFromScheduleOwner(owner, true); err == nil {
-			t.Errorf("owner %q was accepted", owner)
-		}
-	}
-	if sp, err := spaceFromScheduleOwner("USER#u1", false); err != nil || sp.PK() != "USER#u1#test" {
-		t.Fatalf("a valid owner: %v %v", sp, err)
-	}
-}
-
 // auto_settle makes the daily job settle on the user's behalf. Choosing it is
 // therefore settling: a writer without finance.settle must not be able to turn
 // it on, or the job settles for them.

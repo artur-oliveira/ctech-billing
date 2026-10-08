@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 
@@ -24,12 +25,14 @@ import (
 // own write plan plus the bill's item, so a bill never exists without its
 // recognition and never changes status without the transaction that explains it.
 type BillRepository struct {
-	bills  Base
+	bills Base
+	// recs is read only by CreateFromOccurrence's ConditionCheck on the recurrence.
+	recs   Base
 	ledger *LedgerRepository
 }
 
 func NewBillRepository(db *dynamodb.Client, cfg *config.Config) *BillRepository {
-	return &BillRepository{bills: NewBase(db, cfg, TableBills), ledger: NewLedgerRepository(db, cfg)}
+	return &BillRepository{bills: NewBase(db, cfg, TableBills), recs: NewBase(db, cfg, TableRecurrences), ledger: NewLedgerRepository(db, cfg)}
 }
 
 type billItem struct {
@@ -165,7 +168,9 @@ func billCancelError(err error) error {
 }
 
 // Create validates a bill and posts its recognition at the competence date, in
-// one transaction. The id is assigned here; Status is forced to forecast.
+// one transaction. The id is assigned here; Status is forced to forecast. With
+// meta.IdempotencyKey the id is derived from (space, key), so a concurrent double
+// submit collides on the conditional put and returns the one bill.
 func (r *BillRepository) Create(ctx context.Context, sp space.ResolvedSpace, b finance.Bill, meta PostMeta, now time.Time) (finance.Bill, error) {
 	need := space.Write
 	if b.AutoSettle {
@@ -177,21 +182,26 @@ func (r *BillRepository) Create(ctx context.Context, sp space.ResolvedSpace, b f
 		return finance.Bill{}, err
 	}
 	b.ID, b.Status, b.PaidDate, b.TransactionIDs = id.New(), finance.BillForecast, brcal.Date{}, nil
+	if meta.IdempotencyKey != "" {
+		b.ID = idempotentID(sp, "bill", meta.IdempotencyKey)
+	}
 	if err := b.Validate(); err != nil {
 		return finance.Bill{}, err
 	}
 	if err := r.checkBillAccounts(ctx, sp, b); err != nil {
 		return finance.Bill{}, err
 	}
-	b, _, err := r.createWithLock(ctx, sp, b, nil, meta, now)
+	b, _, err := r.createWithGuards(ctx, sp, b, nil, nil, meta, now)
 	return b, err
 }
 
-// createWithLock is Create after validation. lock, when set, is a conditional
-// Put added to the same transaction (the occurrence lock): if that condition is
-// what fails, nothing was written and created is false with no error — the
-// occurrence already has its bill.
-func (r *BillRepository) createWithLock(ctx context.Context, sp space.ResolvedSpace, b finance.Bill, lock *types.TransactWriteItem, meta PostMeta, now time.Time) (finance.Bill, bool, error) {
+// createWithGuards is Create after validation. lock, when set, is the occurrence
+// lock Put: if that condition is what fails, nothing was written and created is
+// false with no error — the occurrence already has its bill. check, when set, is
+// a ConditionCheck on the recurrence row: if it fails the recurrence changed
+// after the job read it and ErrRecurrenceChanged comes back. A bill whose own
+// (idempotent) id already exists is returned as it is, created=false.
+func (r *BillRepository) createWithGuards(ctx context.Context, sp space.ResolvedSpace, b finance.Bill, lock, check *types.TransactWriteItem, meta PostMeta, now time.Time) (finance.Bill, bool, error) {
 	sys, _ := finance.DefaultSystemAccounts()
 	rec, err := finance.RecognizeBill(sys, b.Facts(), b.Competence)
 	if err != nil {
@@ -206,25 +216,70 @@ func (r *BillRepository) createWithLock(ctx context.Context, sp space.ResolvedSp
 	if err != nil {
 		return finance.Bill{}, false, err
 	}
-	items := append(append([]types.TransactWriteItem(nil), plan.Items...), r.bills.BuildPutTxItemIfAbsent(item))
-	lockIdx := -1
+	items := append([]types.TransactWriteItem(nil), plan.Items...)
+	billIdx := len(items)
+	items = append(items, r.bills.BuildPutTxItemIfAbsent(item))
+	lockIdx, checkIdx := -1, -1
 	if lock != nil {
 		lockIdx = len(items)
 		items = append(items, *lock)
 	}
+	if check != nil {
+		checkIdx = len(items)
+		items = append(items, *check)
+	}
 	if err := r.bills.TransactWrite(ctx, items); err != nil {
-		if codes := cancellationCodes(err); lockIdx >= 0 && lockIdx < len(codes) && codes[lockIdx] == codeConditionFailed {
+		codes := cancellationCodes(err)
+		failed := func(i int) bool { return i >= 0 && i < len(codes) && codes[i] == codeConditionFailed }
+		switch {
+		case failed(checkIdx):
+			return finance.Bill{}, false, ErrRecurrenceChanged
+		case failed(lockIdx):
 			return finance.Bill{}, false, nil
+		case failed(billIdx) && meta.IdempotencyKey != "":
+			if existing, gerr := r.get(ctx, sp, b.ID); gerr == nil {
+				return *existing, false, nil
+			}
 		}
 		return finance.Bill{}, false, classifyPostCancel(err, plan.MarkerIdx)
 	}
 	return b, true, nil
 }
 
+// recurrenceUnchanged is the ConditionCheck that ties a materialisation to the
+// recurrence the job read: still there, not archived, and still paying what the
+// draft says from where it says, with the same auto_settle. If a user archived
+// or retargeted it in between, the stale snapshot must not become bills.
+func (r *BillRepository) recurrenceUnchanged(sp space.ResolvedSpace, recurrenceID string, b finance.Bill) types.TransactWriteItem {
+	// DynamoDB refuses values the expression does not use, so :t and :f are added
+	// only where the condition names them.
+	values := map[string]types.AttributeValue{
+		":f":   &types.AttributeValueMemberBOOL{Value: false}, // archived is not true
+		":amt": numberValue(int64(b.Amount)), ":acct": str(b.AccountID), ":cat": str(b.CategoryID),
+	}
+	autoCond := "(attribute_not_exists(#as) OR #as = :f)"
+	if b.AutoSettle {
+		autoCond = "#as = :t"
+		values[":t"] = &types.AttributeValueMemberBOOL{Value: true}
+	}
+	return types.TransactWriteItem{ConditionCheck: &types.ConditionCheck{
+		TableName: aws.String(r.recs.TableName),
+		Key: map[string]types.AttributeValue{
+			"pk": str(sp.PK()), "sk": str(RecurrenceSK(recurrenceID)),
+		},
+		ConditionExpression: aws.String("attribute_exists(pk) AND (attribute_not_exists(#arch) OR #arch = :f) AND #amt = :amt AND #acct = :acct AND #cat = :cat AND " + autoCond),
+		ExpressionAttributeNames: map[string]string{
+			"#arch": "archived", "#as": "auto_settle", "#amt": "amount", "#acct": "account_id", "#cat": "category_id",
+		},
+		ExpressionAttributeValues: values,
+	}}
+}
+
 // CreateFromOccurrence creates the bill of one recurrence occurrence, guarded by
 // the OCCURRENCE#{recurrence}#{nominal} lock row written in the same
-// transaction. A repeat — a re-run, a retry after a crash — finds the lock and
-// is (created=false, nil): one bill per occurrence, however often the job runs.
+// transaction, and by a check that the recurrence is still what the job read. A
+// repeat — a re-run, a retry after a crash — finds the lock and is
+// (created=false, nil): one bill per occurrence, however often the job runs.
 func (r *BillRepository) CreateFromOccurrence(ctx context.Context, sp space.ResolvedSpace, d finance.Draft, recurrenceID string, meta PostMeta, now time.Time) (bool, finance.Bill, error) {
 	need := space.Write
 	if d.Bill.AutoSettle {
@@ -247,7 +302,8 @@ func (r *BillRepository) CreateFromOccurrence(ctx context.Context, sp space.Reso
 		return false, finance.Bill{}, err
 	}
 	lock := r.bills.BuildPutTxItemIfAbsent(lockRow)
-	created, ok, err := r.createWithLock(ctx, sp, b, &lock, meta, now)
+	check := r.recurrenceUnchanged(sp, recurrenceID, b)
+	created, ok, err := r.createWithGuards(ctx, sp, b, &lock, &check, meta, now)
 	return ok, created, err
 }
 
@@ -338,16 +394,22 @@ func (r *BillRepository) ListOpen(ctx context.Context, sp space.ResolvedSpace, d
 const removeSparse = " REMOVE open_pk, open_sk, schedule_pk, schedule_sk"
 
 // forecastGuard is the condition every write that acts on a bill as it was read
-// carries: still a forecast, and with exactly the transaction list it had when
-// it was read. Edits append to that list, so a settlement or cancellation built
-// from stale facts (amount, category) cannot commit after an edit — it would
-// negate or clear the wrong recognition and leave a residue in the ledger.
+// carries: still a forecast, with exactly the transaction list it had when read
+// (edits that change the recognised amount or category append to it), and the
+// same paying account and due date (a settlement posts cash from that account,
+// and the job settles on that date). A stale read — including an eventually
+// consistent one — therefore cannot commit after anything that changes what the
+// write would do.
 func forecastGuard(cur *finance.Bill) (cond string, names map[string]string, values map[string]types.AttributeValue) {
-	return "#status = :forecast AND size(#n) = :n",
-		map[string]string{"#status": "status", "#n": "transaction_ids"},
+	// The :g prefix keeps these placeholders apart from the ones Edit builds for
+	// its own SET clauses (":due" there is the NEW due date, here the one read).
+	return "#status = :gforecast AND size(#n) = :gn AND account_id = :gacct AND #due = :gdue",
+		map[string]string{"#status": "status", "#n": "transaction_ids", "#due": "due"},
 		map[string]types.AttributeValue{
-			":forecast": str(string(finance.BillForecast)),
-			":n":        &types.AttributeValueMemberN{Value: fmt.Sprint(len(cur.TransactionIDs))},
+			":gforecast": str(string(finance.BillForecast)),
+			":gn":        &types.AttributeValueMemberN{Value: fmt.Sprint(len(cur.TransactionIDs))},
+			":gacct":     str(cur.AccountID),
+			":gdue":      str(cur.Due.String()),
 		}
 }
 
@@ -365,9 +427,21 @@ func (r *BillRepository) stamp(now time.Time) types.AttributeValue {
 	return str(now.UTC().Format(time.RFC3339Nano))
 }
 
+// changedSince tells a guard failure that is the bill having moved on (a
+// concurrent edit, settle or cancel — the caller re-reads) from one that is an
+// account having gone missing.
+func (r *BillRepository) changedSince(ctx context.Context, sp space.ResolvedSpace, read *finance.Bill) bool {
+	cur, err := r.get(ctx, sp, read.ID)
+	if err != nil {
+		return false
+	}
+	return cur.Status != read.Status || len(cur.TransactionIDs) != len(read.TransactionIDs) ||
+		cur.AccountID != read.AccountID || cur.Due != read.Due
+}
+
 // Settle posts the cash movement for a forecast bill and marks it paid, in one
-// transaction guarded by "still a forecast": of two concurrent settlements
-// exactly one commits and the other is finance.ErrBillState.
+// transaction guarded by forecastGuard: of two concurrent settlements exactly one
+// commits and the other is finance.ErrBillState.
 func (r *BillRepository) Settle(ctx context.Context, sp space.ResolvedSpace, billID string, paid billing.Cents, differenceCategoryID string, date brcal.Date, meta PostMeta, now time.Time) (finance.Bill, error) {
 	if err := sp.Require(space.Write | space.Settle); err != nil {
 		return finance.Bill{}, err
@@ -415,23 +489,23 @@ func (r *BillRepository) Settle(ctx context.Context, sp space.ResolvedSpace, bil
 	items := append(append([]types.TransactWriteItem(nil), plan.Items...), update)
 	if err := r.bills.TransactWrite(ctx, items); err != nil {
 		if onlyConditionFailed(err) {
-			// Either the bill left the forecast state (a concurrent settle or
-			// cancel) or an account is gone. The bill is re-read to tell them apart.
-			if cur, gerr := r.get(ctx, sp, billID); gerr == nil && cur.Status != finance.BillForecast {
+			// Either the bill moved on since it was read (a concurrent edit,
+			// settle or cancel) or an account is gone; the bill is re-read to tell
+			// them apart, so a settle that merely lost a race is not reported as
+			// an unknown account.
+			if r.changedSince(ctx, sp, b) {
 				return finance.Bill{}, finance.ErrBillState
 			}
 			return finance.Bill{}, ErrUnknownAccount
 		}
 		return finance.Bill{}, err
 	}
-	return *mustGet(r.get(ctx, sp, billID)), nil
-}
-
-func mustGet(b *finance.Bill, err error) *finance.Bill {
-	if err != nil || b == nil {
-		return &finance.Bill{}
-	}
-	return b
+	// Built in memory, not re-read: the re-read is eventually consistent and could
+	// show the bill as still a forecast right after it was settled, and whatever
+	// is returned is what the idempotency layer stores and replays.
+	b.Status, b.PaidDate = finance.BillPaid, date
+	b.TransactionIDs = append(append([]string(nil), b.TransactionIDs...), plan.TxID)
+	return *b, nil
 }
 
 // Cancel removes a forecast bill: its recognition is negated at the competence
@@ -473,7 +547,9 @@ func (r *BillRepository) Cancel(ctx context.Context, sp space.ResolvedSpace, bil
 	if err := r.bills.TransactWrite(ctx, items); err != nil {
 		return finance.Bill{}, billCancelError(err)
 	}
-	return *mustGet(r.get(ctx, sp, billID)), nil
+	b.Status = finance.BillCanceled
+	b.TransactionIDs = append(append([]string(nil), b.TransactionIDs...), plan.TxID)
+	return *b, nil
 }
 
 // BillEdit is a partial change to a forecast bill. Nil fields stay as they are.
@@ -483,13 +559,15 @@ type BillEdit struct {
 	AccountID   *string
 	Description *string
 	Due         *brcal.Date
+	// AutoSettle switches the daily job's settlement on or off for this bill.
+	// Off removes power and needs only write; on is settling.
+	AutoSettle *bool
 }
 
-// Edit changes a forecast bill. Due date, account and description have no
-// ledger effect. An amount or category change adjusts what was recognised as one
-// net transaction (finance.AdjustBill), in the same write as the bill. Two edits
-// racing cannot both win: the update is conditioned on the bill still being a
-// forecast with the transaction list it was read with.
+// Edit changes a forecast bill. Due date, account, description and auto_settle
+// have no ledger effect. An amount or category change adjusts what was recognised
+// as one net transaction (finance.AdjustBill), in the same write as the bill.
+// Two edits racing cannot both win: the update is guarded by forecastGuard.
 func (r *BillRepository) Edit(ctx context.Context, sp space.ResolvedSpace, billID string, e BillEdit, date brcal.Date, meta PostMeta, now time.Time) (finance.Bill, error) {
 	if err := sp.Require(space.Write); err != nil {
 		return finance.Bill{}, err
@@ -517,13 +595,16 @@ func (r *BillRepository) Edit(ctx context.Context, sp space.ResolvedSpace, billI
 	if e.Due != nil {
 		next.Due = *e.Due
 	}
+	if e.AutoSettle != nil {
+		next.AutoSettle = *e.AutoSettle
+	}
 	if err := next.Validate(); err != nil {
 		return finance.Bill{}, err
 	}
 	// An auto-settling bill is a standing instruction to move cash on its due
-	// date; changing the account, amount or date changes what that instruction
-	// does, which is settling.
-	if cur.AutoSettle && (next.AccountID != cur.AccountID || next.Amount != cur.Amount || next.Due != cur.Due) {
+	// date. Turning it on, or changing the account, amount or date of one that
+	// stays on, is settling. Turning it off only removes power.
+	if next.AutoSettle && (!cur.AutoSettle || next.AccountID != cur.AccountID || next.Amount != cur.Amount || next.Due != cur.Due) {
 		if err := sp.Require(space.Write | space.Settle); err != nil {
 			return finance.Bill{}, err
 		}
@@ -537,12 +618,14 @@ func (r *BillRepository) Edit(ctx context.Context, sp space.ResolvedSpace, billI
 	values := map[string]types.AttributeValue{":now": r.stamp(now)}
 	cond, names := mergeGuard(cur, values)
 	sets := []string{"updated_at = :now"}
+	var removes []string
 	set := func(attr string, v types.AttributeValue) {
 		names["#"+attr] = attr
 		values[":"+attr] = v
 		sets = append(sets, "#"+attr+" = :"+attr)
 	}
 	var items []types.TransactWriteItem
+	newIDs := append([]string(nil), cur.TransactionIDs...)
 
 	if next.Amount != cur.Amount || next.CategoryID != cur.CategoryID {
 		set("amount", numberValue(int64(next.Amount)))
@@ -559,6 +642,7 @@ func (r *BillRepository) Edit(ctx context.Context, sp space.ResolvedSpace, billI
 		items = append(items, plan.Items...)
 		values[":tx"] = &types.AttributeValueMemberL{Value: []types.AttributeValue{str(plan.TxID)}}
 		sets = append(sets, "#n = list_append(#n, :tx)")
+		newIDs = append(newIDs, plan.TxID)
 	}
 	if next.AccountID != cur.AccountID {
 		set("account_id", str(next.AccountID))
@@ -568,25 +652,37 @@ func (r *BillRepository) Edit(ctx context.Context, sp space.ResolvedSpace, billI
 	}
 	if next.Due != cur.Due {
 		set("due", str(next.Due.String()))
-		openPK, openSK, schedPK, schedSK := sparseKeys(sp, next)
-		set("open_pk", str(openPK))
-		set("open_sk", str(openSK))
-		if schedPK != "" {
+		set("open_sk", str(OpenSK(next.Due, next.ID)))
+	}
+	if next.AutoSettle != cur.AutoSettle {
+		set("auto_settle", &types.AttributeValueMemberBOOL{Value: next.AutoSettle})
+	}
+	// The auto-settle work-list keys follow (auto_settle, due): present while the
+	// bill auto-settles, absent otherwise.
+	if next.AutoSettle {
+		if next.AutoSettle != cur.AutoSettle || next.Due != cur.Due {
+			_, _, schedPK, schedSK := sparseKeys(sp, next)
 			set("schedule_pk", str(schedPK))
 			set("schedule_sk", str(schedSK))
 		}
+	} else if cur.AutoSettle {
+		removes = append(removes, "schedule_pk", "schedule_sk")
 	}
-	if len(sets) == 1 {
+	if len(sets) == 1 && len(removes) == 0 {
 		return *cur, nil // nothing changed
 	}
+	expr := "SET " + strings.Join(sets, ", ")
+	if len(removes) > 0 {
+		expr += " REMOVE " + strings.Join(removes, ", ")
+	}
 	sk := BillSK(billID)
-	items = append(items, r.bills.BuildRawUpdateTxItem(sp.PK(), &sk,
-		"SET "+strings.Join(sets, ", "), cond, names, values))
+	items = append(items, r.bills.BuildRawUpdateTxItem(sp.PK(), &sk, expr, cond, names, values))
 	if err := r.bills.TransactWrite(ctx, items); err != nil {
 		if onlyConditionFailed(err) {
 			return finance.Bill{}, finance.ErrBillState
 		}
 		return finance.Bill{}, err
 	}
-	return *mustGet(r.get(ctx, sp, billID)), nil
+	next.TransactionIDs = newIDs
+	return next, nil
 }

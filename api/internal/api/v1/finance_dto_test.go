@@ -1,9 +1,11 @@
 package v1
 
 import (
+	"fmt"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gofiber/fiber/v3"
 
@@ -81,4 +83,35 @@ func parseDate(t *testing.T, s string) brcal.Date {
 		t.Fatal(err)
 	}
 	return d
+}
+
+func TestADifferentPaidAmountNeedsACategoryForTheGap(t *testing.T) {
+	if e := settleGapError(10000, 10000, ""); e != nil {
+		t.Errorf("an equal amount needs no category: %v", e)
+	}
+	if e := settleGapError(10200, 10000, "interest"); e != nil {
+		t.Errorf("a category was supplied: %v", e)
+	}
+	e := settleGapError(10200, 10000, "")
+	if e == nil || e.Field != "difference_category_id" {
+		t.Fatalf("got %+v, want a field error on difference_category_id", e)
+	}
+}
+
+func TestPreviewCountMustBeBetween1And24(t *testing.T) {
+	h := &financeHandlers{clock: time.Now}
+	app := fiber.New()
+	app.Post("/", h.previewRecurrence)
+	for _, n := range []int{0, 25, -3} {
+		body := fmt.Sprintf(`{"expression":{"kind":"day_of_month","day":10},"start":"2026-01-01","count":%d}`, n)
+		resp, err := app.Test(httptest.NewRequest("POST", "/", strings.NewReader(body)))
+		if err != nil || resp.StatusCode != 422 {
+			t.Errorf("count %d: status %d %v, want 422", n, resp.StatusCode, err)
+		}
+	}
+	ok := `{"expression":{"kind":"day_of_month","day":10},"start":"2026-01-01","count":3}`
+	resp, err := app.Test(httptest.NewRequest("POST", "/", strings.NewReader(ok)))
+	if err != nil || resp.StatusCode != 200 {
+		t.Errorf("a valid preview answered %d %v", resp.StatusCode, err)
+	}
 }
