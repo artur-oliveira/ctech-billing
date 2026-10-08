@@ -107,7 +107,10 @@ apiClient.interceptors.response.use(undefined, async (error: AxiosError) => {
     }
   }
 
-  if (status === 503 && typeof window !== "undefined" && !onPage(MAINTENANCE_PATH)) {
+  // A finance organization space answers 503 space-unavailable when ctech-account
+  // cannot be reached, while the personal space keeps working. Redirecting the
+  // whole app would take the working half down; the screen says so instead.
+  if (status === 503 && !isSpaceUnavailable(error) && typeof window !== "undefined" && !onPage(MAINTENANCE_PATH)) {
     const from = window.location.pathname + window.location.search
     window.location.replace(`${MAINTENANCE_PATH}?from=${encodeURIComponent(from)}`)
   }
@@ -156,4 +159,17 @@ const NO_BILLING_ACCOUNT = "/problems/no-billing-account"
  */
 export function isNoBillingAccount(error: unknown): boolean {
   return (error as AxiosError<Problem>)?.response?.data?.type === NO_BILLING_ACCOUNT
+}
+
+const SPACE_UNAVAILABLE = "/problems/space-unavailable"
+const SPACE_NOT_FOUND = "/problems/space-not-found"
+
+/** ctech-account could not verify the organization space; personal still works. */
+export function isSpaceUnavailable(error: unknown): boolean {
+  return (error as AxiosError<Problem>)?.response?.data?.type === SPACE_UNAVAILABLE
+}
+
+/** The selected organization space is not (or no longer) the reader's. */
+export function isSpaceNotFound(error: unknown): boolean {
+  return (error as AxiosError<Problem>)?.response?.data?.type === SPACE_NOT_FOUND
 }
