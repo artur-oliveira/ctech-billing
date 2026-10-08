@@ -80,3 +80,27 @@ func TestNewNeedsTheWholeCredential(t *testing.T) {
 		t.Fatal("a complete credential produced no client")
 	}
 }
+
+func TestOrganizationsReadsTheListAndEscapesTheUser(t *testing.T) {
+	c, path := serve(t, 200, `{"organizations":[{"id":"o1","display_name":"Acme","role":"admin"},{"id":"o2","display_name":"Beta","role":"viewer"}]}`)
+	got, err := c.organizationsWithToken(context.Background(), "tok", "u?1")
+	if err != nil || len(got) != 2 || got[0].Role != "admin" || got[1].DisplayName != "Beta" {
+		t.Fatalf("got %+v, %v", got, err)
+	}
+	if want := "/v1.0/internal/users/u%3F1/organizations"; *path != want {
+		t.Fatalf("request URI = %q, want %q", *path, want)
+	}
+}
+
+func TestOrganizationsFailsClosed(t *testing.T) {
+	for _, status := range []int{401, 403, 404, 500, 503} {
+		c, _ := serve(t, status, `{"organizations":[]}`)
+		if _, err := c.organizationsWithToken(context.Background(), "tok", "u"); err == nil {
+			t.Errorf("status %d was read as an empty list", status)
+		}
+	}
+	var nilClient *Client
+	if _, err := nilClient.Organizations(context.Background(), "u"); err == nil {
+		t.Error("a nil client answered")
+	}
+}

@@ -111,3 +111,51 @@ func (c *Client) membershipWithToken(ctx context.Context, token, organizationID,
 	}
 	return out.Role, true, nil
 }
+
+// Organization is one workspace a person belongs to, as ctech-account lists it.
+type Organization struct {
+	ID          string `json:"id"`
+	DisplayName string `json:"display_name"`
+	Role        string `json:"role"`
+}
+
+// Organizations lists the organizations userID belongs to, with their role in
+// each, for the console's space switcher. It is information only: every request
+// is still authorized by Membership, so a stale or generous list grants nothing.
+// Like Membership it fails closed — a nil client, a non-200 and an unreadable
+// body are errors, never an empty list.
+func (c *Client) Organizations(ctx context.Context, userID string) ([]Organization, error) {
+	if c == nil {
+		return nil, fmt.Errorf("ctech-account client is not configured")
+	}
+	token, err := c.tokens.Get(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("minting a service token: %w", err)
+	}
+	return c.organizationsWithToken(ctx, token, userID)
+}
+
+func (c *Client) organizationsWithToken(ctx context.Context, token, userID string) ([]Organization, error) {
+	path := fmt.Sprintf("%s/v1.0/internal/users/%s/organizations", c.baseURL, url.PathEscape(userID))
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, fmt.Errorf("building the organizations request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Accept", "application/json")
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("calling ctech-account: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("ctech-account answered %d", resp.StatusCode)
+	}
+	var out struct {
+		Organizations []Organization `json:"organizations"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxBody)).Decode(&out); err != nil {
+		return nil, fmt.Errorf("decoding the organizations answer: %w", err)
+	}
+	return out.Organizations, nil
+}
