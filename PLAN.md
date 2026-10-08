@@ -577,7 +577,25 @@ gates nothing by plan.
       secret live at `/ctech-billing/{env}/billing/account-client-{id,secret}` (created by the
       command, not by Terraform). The userdata sets `ACCOUNT_CLIENT_ID/SECRET` from them and derives
       `ACCOUNT_BASE_URL` and `ACCOUNT_TOKEN_URL` from `CTECH_INTERNAL_URL`, as `WALLET_TOKEN_URL` is.
-- [ ] 6.3 Bills and recurrences — `cmd/finance` (materialise, auto-settle); F1 (basic), F2, F4, F8.
+- [x] 6.3 Bills and recurrences, **backend** (`finance.Bill`/`Recurrence`, `BillRepository`,
+      `RecurrenceRepository`, `services.FinanceJobs`, `cmd/finance`, `/v1.0/console/finance/*`) —
+      a bill's recognise, settle (full or for a different amount, the gap on an income/expense category),
+      edit and cancel are each ONE `TransactWriteItems` with the ledger entries; an amount/category edit and
+      a cancellation post one net adjustment (DynamoDB forbids two writes to one item in a transaction);
+      Settle, Cancel and Edit share a guard (still a forecast, same transaction list) so a stale read cannot
+      commit after an edit. Recurrences materialise inside a two-month horizon, one bill per occurrence via
+      the `OCCURRENCE#` lock, bounded catch-up (`Recurrence.ValidateAt`), re-runnable and missed-day safe
+      (the job indexes are one date-ordered partition per mode). `auto_settle` is a standing instruction the
+      job executes, so choosing or retargeting it needs `finance.settle`. Space-scoped idempotency
+      (`SpaceIdempotency`) on every write route; verbs and scopes in one route table that the gate tests drive.
+      The daily job runs 07:30 UTC (cron + `@reboot` on Alpine, a systemd timer on AL2023) and is packaged by
+      `api.yml`. Userdata: AL2023 ~15.9 KB of 16,384 (the next addition there must move the timers to S3),
+      Alpine/prod ~12.2 KB.
+      **Not in this entry:** the console screens F1 (basic), F2, F4, F8 are **6.3b**, and F1's "resultado
+      realizado" ships with the cash read in 6.4 (the cached SUMMARY rows do not separate opening balances and
+      transfers from real cash movement).
+- [ ] 6.3b Console screens — F1 (basic), F2, F4, F8; needs `/impeccable`, `@aoctech/ui`, the cross-repo
+      check, and the `Billing-Space` header in the client.
 - [ ] 6.4 Reports — F3 statement, F7 DRE and cash flow.
 - [ ] 6.5 Credit cards — F5, statement closing in the job.
 - [ ] 6.6 Import and reconciliation — F6.
