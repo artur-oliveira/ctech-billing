@@ -131,13 +131,21 @@ The bucket, the distribution id and the route store's ARN are published to SSM, 
 - **DNS.** The record pointing `billing[-env].aoctech.app` at the distribution is outside Terraform,
   the same as `billing-api` today.
 
+### Billing's client at ctech-account is not a Terraform resource
+
+`account-client-id` and `account-client-secret` (see `locals.tf`) are created by ctech-account's
+`cmd/createclient -ssm-path-client/-ssm-path-secret`, which refuses to overwrite. Declaring them in
+`ssm.tf` like the collection secrets would make the first apply fail with "already exists", so
+Terraform only knows their paths (for the userdata; the IAM policy already covers the whole prefix).
+
 ### The userdata is close to EC2's limit
 
 The rendered `bootstrap.sh` is ~28 KB, gzipped and base64'd into ~12 KB of `user_data` against a
 16 KiB ceiling. Two timers were added since that figure was last checked and it is still inside the
 limit, with less room than before. The next substantial addition belongs in an S3 asset the
 bootstrap downloads, not in the template — and it is worth re-measuring rather than assuming, which
-is `gzip -9 -c bootstrap.sh.tftpl | base64 -w0 | wc -c`.
+is `gzip -9 -c bootstrap.sh.tftpl | base64 -w0 | wc -c`. (The 6.2 membership client added ~300 bytes
+to the rendered script: ~14.9 KB for AL2023, ~11.8 KB for Alpine, which prod runs.)
 
 ## Two more grants, both narrow
 
