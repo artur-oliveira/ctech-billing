@@ -81,7 +81,7 @@ export default function ConsoleLayout({children}: LayoutProps<"/console">) {
   return (
     <div data-density="compact" className="min-h-dvh">
       <header className="border-b border-border">
-        <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-4 px-4">
+        <div className="mx-auto flex min-h-14 max-w-6xl flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-2">
           <div className="flex min-w-0 items-center gap-4">
             <Link href="/console/overview" className="flex shrink-0 items-center gap-2.5">
               <Image
@@ -96,14 +96,17 @@ export default function ConsoleLayout({children}: LayoutProps<"/console">) {
                 <span className="ml-1.5 font-normal text-muted-foreground">Billing</span>
               </span>
             </Link>
-            {session && (
+            {/* In Finanças the space switcher names the space; the invoicing
+                organization's name here would read as the space and contradict
+                it ("CTech Tecnologia" beside "Pessoal"). */}
+            {session && !inFinance && (
               <span className="truncate border-l border-border pl-4 text-sm text-foreground">
                 {session.display_name}
               </span>
             )}
           </div>
 
-          <div className="flex shrink-0 items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             {/* Space and mode side by side, so "Pessoal · Teste" reads as one
                 answer. The space only exists in Finanças: invoicing's
                 organization comes from the signed-in owner (ADR 0011). */}
@@ -129,7 +132,7 @@ export default function ConsoleLayout({children}: LayoutProps<"/console">) {
         </div>
 
         <nav className="mx-auto max-w-6xl px-4" aria-label="Seções">
-          <ul className="-mb-px flex gap-1">
+          <ul className="-mb-px flex gap-1 overflow-x-auto">
             {nav.map(item => {
               const active = pathname.startsWith(item.href)
               return (
@@ -137,7 +140,7 @@ export default function ConsoleLayout({children}: LayoutProps<"/console">) {
                   <Link
                     href={item.href}
                     aria-current={active ? "page" : undefined}
-                    className={`inline-flex h-10 items-center border-b-2 px-3 text-sm transition-colors ${
+                    className={`inline-flex h-10 items-center whitespace-nowrap border-b-2 px-3 text-sm transition-colors ${
                       active
                         ? "border-brand-600 font-medium text-brand-600"
                         : "border-transparent text-muted-foreground hover:text-foreground"
