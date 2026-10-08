@@ -17,6 +17,7 @@ import (
 	"github.com/gofiber/fiber/v3/middleware/recover"
 	"gopkg.aoctech.app/api-commons/cache"
 
+	"gopkg.aoctech.app/billing/api/internal/accountclient"
 	v1 "gopkg.aoctech.app/billing/api/internal/api/v1"
 	"gopkg.aoctech.app/billing/api/internal/config"
 	"gopkg.aoctech.app/billing/api/internal/email"
@@ -28,6 +29,7 @@ import (
 	"gopkg.aoctech.app/billing/api/internal/repositories"
 	"gopkg.aoctech.app/billing/api/internal/services"
 	"gopkg.aoctech.app/billing/api/internal/settlement"
+	"gopkg.aoctech.app/billing/api/internal/space"
 	"gopkg.aoctech.app/billing/api/internal/wallet"
 )
 
@@ -132,8 +134,15 @@ func Build(ctx context.Context, cfg *config.Config, clock func() time.Time) (*fi
 		Documents:  documents,
 		Collector:  collector,
 		Links:      links,
-		Verifier:   middleware.NewVerifier(cfg.CtechJWKSURL, cfg.ServiceAudience, cfg.CtechIssuerURL, cacheBackend),
-		Clock:      clock,
+		// accountclient.New returns a typed nil when the credential is not
+		// configured. That is deliberate and safe: a nil *Client answers
+		// Membership with an error, which the resolver reads as "unavailable".
+		Spaces: space.NewResolver(accountclient.New(accountclient.Config{
+			BaseURL: cfg.AccountBaseURL, TokenURL: cfg.AccountTokenURL,
+			ClientID: cfg.AccountClientID, ClientSecret: cfg.AccountClientSecret, Cache: cacheBackend,
+		}), cacheBackend),
+		Verifier: middleware.NewVerifier(cfg.CtechJWKSURL, cfg.ServiceAudience, cfg.CtechIssuerURL, cacheBackend),
+		Clock:    clock,
 
 		PortalOrganizationID: cfg.PortalOrganizationID,
 		SettlementBus:        bus,
@@ -189,6 +198,15 @@ func BuildProvisioner(ctx context.Context, cfg *config.Config) (provision.Repos,
 		Catalog:       repositories.NewCatalogRepository(db, cfg),
 		Webhooks:      repositories.NewWebhookRepository(db, cfg),
 	}, nil
+}
+
+// BuildLedger wires the finance ledger repository for cmd/finance-rebuild.
+func BuildLedger(ctx context.Context, cfg *config.Config) (*repositories.LedgerRepository, error) {
+	db, err := newDynamoDB(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+	return repositories.NewLedgerRepository(db, cfg), nil
 }
 
 // BuildDeliverer wires only what the outbound webhook job needs.

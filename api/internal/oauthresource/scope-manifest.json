@@ -137,6 +137,24 @@
       },
       "visibility": "public",
       "status": "active"
+    },
+    {
+      "name": "billing:finance:read",
+      "descriptions": {
+        "pt-BR": "Consultar as finanças de um espaço (pessoal ou de uma organização).",
+        "en": "Read the finances of a space (personal or an organization's)."
+      },
+      "visibility": "public",
+      "status": "active"
+    },
+    {
+      "name": "billing:finance:write",
+      "descriptions": {
+        "pt-BR": "Lançar contas, recorrências, transferências e estornos em um espaço.",
+        "en": "Record bills, recurrences, transfers and reversals in a space."
+      },
+      "visibility": "public",
+      "status": "active"
     }
   ]
 }

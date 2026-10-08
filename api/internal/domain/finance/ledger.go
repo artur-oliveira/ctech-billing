@@ -88,10 +88,10 @@ type Transaction struct {
 // updates in one DynamoDB transaction (spec § 4), whose limit is 100 items.
 const MaxLegs = 8
 
-// MaxLegAmount bounds one leg's magnitude (R$ 10 trillion, in centavos). With at
+// MaxLegAmount bounds one leg's magnitude (R$ 10 billion, in centavos). With at
 // most MaxLegs legs the sum can never wrap int64, so "sums to zero" cannot be
 // forged by overflow, and negating a leg (Reverse) is always exact.
-const MaxLegAmount billing.Cents = 1e15
+const MaxLegAmount billing.Cents = 1e12
 
 // ErrInvalidTransaction wraps every reason a transaction is refused.
 var ErrInvalidTransaction = errors.New("invalid ledger transaction")
@@ -99,6 +99,9 @@ var ErrInvalidTransaction = errors.New("invalid ledger transaction")
 // NewTransaction builds and validates a transaction. A transaction that does not
 // balance is never returned, so a caller cannot persist one.
 func NewTransaction(kind TxKind, date brcal.Date, legs ...Leg) (Transaction, error) {
+	if !kind.valid() {
+		return Transaction{}, fmt.Errorf("%w: unknown kind %q", ErrInvalidTransaction, kind)
+	}
 	if date.IsZero() {
 		return Transaction{}, fmt.Errorf("%w: date is required", ErrInvalidTransaction)
 	}
@@ -150,4 +153,13 @@ func Reverse(original Transaction, originalID string, date brcal.Date) (Transact
 	}
 	tx.Adjusts = originalID
 	return tx, nil
+}
+
+func (k TxKind) valid() bool {
+	switch k {
+	case KindRecognition, KindSettlement, KindTransfer, KindCardPurchase,
+		KindStatementPayment, KindOpeningBalance, KindReversal:
+		return true
+	}
+	return false
 }

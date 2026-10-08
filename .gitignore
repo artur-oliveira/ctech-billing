@@ -5,3 +5,4 @@ cdk.out/
 .DS_Store
 .idea/
 .terraform/
+api/coverage.out

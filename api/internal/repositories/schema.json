@@ -177,5 +177,17 @@
       "sk": "S"
     },
     "indexes": []
+  },
+  "ledger_accounts": {
+    "hash_key": "pk",
+    "range_key": "sk",
+    "attributes": { "pk": "S", "sk": "S" },
+    "indexes": []
+  },
+  "ledger_transactions": {
+    "hash_key": "pk",
+    "range_key": "sk",
+    "attributes": { "pk": "S", "sk": "S" },
+    "indexes": []
   }
 }
