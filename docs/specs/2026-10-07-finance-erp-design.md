@@ -354,13 +354,16 @@ One binary, **`cmd/finance`**, daily, on the leader instance like the others, wi
 1. **Materialise:** recurrences whose next date falls inside the horizon → bills, guarded by the
    `OCCURRENCE#` lock.
 2. **Auto-settle:** `auto_settle` bills due today or earlier and still `forecast` → settlement on
-   the due date.
+   the due date. Choosing or retargeting `auto_settle` needs `finance.settle`, because the job then
+   moves cash on the user's behalf.
 3. **Close statements:** card statements whose closing day has arrived → frozen total, statement
    bill.
 
 Runs both modes, takes `-date` so a missed day is re-runnable, and reports failure through the
 `internal/jobs` shapes to the alerts topic. `schedule-index` is the only cross-tenant read and it
-has no HTTP surface (ADR 0002).
+has no HTTP surface (ADR 0002). It is one partition per mode and job (`{mode}#finance-materialize`,
+`{mode}#finance-autosettle`) with the sort key `{date}#{space owner}#{id}`, so the job reads "everything due
+on or before today" and a missed day is caught up by the next run.
 
 The rendered userdata was at ~12 KB of a 16 KiB ceiling. One more crontab line fits; if it does not,
 the bootstrap moves to an S3 asset as PLAN.md already anticipates.
@@ -409,7 +412,7 @@ The space selector at the top lists *Pessoal* first, then the organizations from
 
 | | Screen | Answers |
 |---|---|---|
-| F1 | Visão geral | balance per account; realised result this month; projection 3–6 months (realised + forecast + virtual occurrences, forecast visibly distinct); overdue first |
+| F1 | Visão geral | balance per account; realised result this month (ships with the cash read in 6.4: the cached summaries do not separate opening balances and transfers from cash movement); projection 3–6 months (realised + forecast + virtual occurrences, forecast visibly distinct); overdue first |
 | F2 | A pagar / a receber | `open-index` list: overdue, today, upcoming; settle (full or different amount); cancel |
 | F3 | Contas e extrato | statement per account and period with running balance; transfer; reverse an entry |
 | F4 | Recorrências | list and expression editor with a **preview of the next occurrences before saving**; auto-settle toggle |

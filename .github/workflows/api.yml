@@ -88,7 +88,7 @@ jobs:
           VERSION="$(date -u '+%y%m%d%H%M'):${SHA:0:7}"
           echo "ARTIFACT_VERSION=$(date -u '+%y%m%d%H%M')-${SHA:0:7}" >> "$GITHUB_ENV"
 
-          for cmd in server sweep reconcile deliver dunning; do
+          for cmd in server sweep reconcile deliver dunning finance; do
             out="$cmd"
             [ "$cmd" = "server" ] && out="app"
             CGO_ENABLED=0 GOOS=linux GOARCH=arm64 \
@@ -103,7 +103,7 @@ jobs:
         working-directory: api
         run: |
           ARCHIVE="api-${ARTIFACT_VERSION}.zip"
-          zip -j "$ARCHIVE" dist/app dist/sweep dist/reconcile dist/deliver dist/dunning dist/release.env
+          zip -j "$ARCHIVE" dist/app dist/sweep dist/reconcile dist/deliver dist/dunning dist/finance dist/release.env
           echo "ARCHIVE_FILE=$ARCHIVE" >> "$GITHUB_ENV"
 
       - name: Configure AWS credentials

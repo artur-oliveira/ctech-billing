@@ -37,6 +37,39 @@ const maxKeyLength = 255
 // generation key, the usage sort key — which is where it can actually be
 // enforced by the database rather than approximated here.
 func Idempotency(store *repositories.IdempotencyRepository, clock func() time.Time) fiber.Handler {
+	return idempotency(store, clock, credentialScope)
+}
+
+// SpaceIdempotency is Idempotency for the console's finance routes, scoped by the
+// resolved space instead of an M2M credential (which a browser session does not
+// carry). It must run after ResolveSpace: the key is scoped by the space that
+// request was authorized for, so an organization's key and a personal one can
+// never collide, and a refused space never reaches the store.
+func SpaceIdempotency(store *repositories.IdempotencyRepository, clock func() time.Time) fiber.Handler {
+	return idempotency(store, clock, spaceScope)
+}
+
+// scopeFunc names the tenant a key belongs to: an owner (an organization id or
+// USER#sub), its mode, and whether it could be resolved at all.
+type scopeFunc func(c fiber.Ctx) (owner string, livemode, ok bool)
+
+func credentialScope(c fiber.Ctx) (string, bool, bool) {
+	cred := GetCredential(c)
+	if cred == nil {
+		return "", false, false
+	}
+	return cred.OrganizationID, cred.Livemode, true
+}
+
+func spaceScope(c fiber.Ctx) (string, bool, bool) {
+	sp := GetSpace(c)
+	if sp.IsZero() {
+		return "", false, false
+	}
+	return sp.Owner(), sp.Livemode(), true
+}
+
+func idempotency(store *repositories.IdempotencyRepository, clock func() time.Time, scope scopeFunc) fiber.Handler {
 	return func(c fiber.Ctx) error {
 		key := c.Get(IdempotencyHeader)
 		if key == "" {
@@ -45,13 +78,13 @@ func Idempotency(store *repositories.IdempotencyRepository, clock func() time.Ti
 		if len(key) > maxKeyLength {
 			return problem.BadRequest("Idempotency-Key excede o tamanho máximo").Send(c)
 		}
-		cred := GetCredential(c)
-		if cred == nil {
+		owner, livemode, ok := scope(c)
+		if !ok {
 			return problem.Internal("tenant não resolvido antes da idempotência").Send(c)
 		}
 
 		hash := hashRequest(c)
-		existing, err := store.Lookup(c.Context(), cred.OrganizationID, cred.Livemode, key, hash)
+		existing, err := store.Lookup(c.Context(), owner, livemode, key, hash)
 		switch {
 		case errors.Is(err, repositories.ErrIdempotencyConflict):
 			return problem.New(fiber.StatusConflict, problem.TypeIdempotencyConflict,
@@ -86,7 +119,7 @@ func Idempotency(store *repositories.IdempotencyRepository, clock func() time.Ti
 			Response:    string(c.Response().Body()),
 			Route:       c.Method() + " " + c.Route().Path,
 		}
-		if err := store.Store(c.Context(), cred.OrganizationID, cred.Livemode, record, clock()); err != nil {
+		if err := store.Store(c.Context(), owner, livemode, record, clock()); err != nil {
 			// The operation already happened. Failing the response now would tell
 			// the caller it did not, and their retry would run it again — the exact
 			// harm this middleware exists to prevent. The lost record only costs a

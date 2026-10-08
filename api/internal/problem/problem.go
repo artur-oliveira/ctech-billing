@@ -11,7 +11,9 @@ import (
 	commonproblem "gopkg.aoctech.app/api-commons/problem"
 
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
+	"gopkg.aoctech.app/billing/api/internal/domain/finance"
 	"gopkg.aoctech.app/billing/api/internal/repositories"
+	"gopkg.aoctech.app/billing/api/internal/space"
 )
 
 const ContentType = "application/problem+json"
@@ -105,6 +107,21 @@ func FromError(err error) *Problem {
 
 	case errors.Is(err, repositories.ErrNotFound):
 		return NotFound("recurso não encontrado")
+
+	case errors.Is(err, space.ErrDenied):
+		return Forbidden("seu papel não permite esta operação")
+
+	case errors.Is(err, finance.ErrBillState), errors.Is(err, repositories.ErrAlreadyReversed):
+		return New(409, TypeInvalidTransition, "Invalid Transition", err.Error())
+
+	case errors.Is(err, repositories.ErrUnknownAccount):
+		return Unprocessable("conta ou categoria desconhecida neste espaço")
+
+	case errors.Is(err, finance.ErrInvalidBill), errors.Is(err, finance.ErrInvalidRecurrence),
+		errors.Is(err, finance.ErrInvalidTransaction), errors.Is(err, finance.ErrInvalidAccount):
+		// These messages are the domain's own and are written for the person who
+		// typed the request ("amount must be between 1 and ..."), not internals.
+		return Unprocessable(err.Error())
 
 	case errors.Is(err, billing.ErrPayoutNotEnabled):
 		p := New(409, TypePayoutNotEnabled, "Payout Not Enabled",

@@ -50,7 +50,8 @@ func NewLedgerRepository(db *dynamodb.Client, cfg *config.Config) *LedgerReposit
 // AccountRow is an account with its cached balance (debit positive).
 type AccountRow struct {
 	finance.LedgerAccount
-	Balance billing.Cents
+	Balance  billing.Cents
+	Archived bool
 }
 
 type accountItem struct {
@@ -61,12 +62,16 @@ type accountItem struct {
 	Group   finance.DREGroup     `dynamodbav:"dre_group,omitempty"`
 	System  bool                 `dynamodbav:"system,omitempty"`
 	Balance int64                `dynamodbav:"balance"`
+	// Archived hides an account from new activity; it is never deleted, because
+	// its entries and reports must keep resolving.
+	Archived bool `dynamodbav:"archived,omitempty"`
 }
 
 func (i accountItem) row() AccountRow {
 	return AccountRow{
 		LedgerAccount: finance.LedgerAccount{ID: i.ID, Name: i.Name, Class: i.Class, Group: i.Group, System: i.System},
 		Balance:       billing.Cents(i.Balance),
+		Archived:      i.Archived,
 	}
 }
 
@@ -134,6 +139,10 @@ func (r *LedgerRepository) GetAccount(ctx context.Context, sp space.ResolvedSpac
 	if err := sp.Require(space.Read); err != nil {
 		return nil, err
 	}
+	return r.getAccount(ctx, sp, id)
+}
+
+func (r *LedgerRepository) getAccount(ctx context.Context, sp space.ResolvedSpace, id string) (*AccountRow, error) {
 	raw, err := r.accounts.GetItem(ctx, sp.PK(), LedgerAccountSK(id))
 	if err != nil {
 		return nil, err
@@ -147,6 +156,77 @@ func (r *LedgerRepository) GetAccount(ctx context.Context, sp space.ResolvedSpac
 	}
 	row := it.row()
 	return &row, nil
+}
+
+// ArchiveAccount hides an account or category from new activity. Idempotent; a
+// system account cannot be archived; nothing is ever deleted.
+func (r *LedgerRepository) ArchiveAccount(ctx context.Context, sp space.ResolvedSpace, id string, now time.Time) error {
+	if err := sp.Require(space.Configure); err != nil {
+		return err
+	}
+	acct, err := r.getAccount(ctx, sp, id)
+	if err != nil {
+		return err
+	}
+	if acct.System {
+		return fmt.Errorf("%w: system accounts cannot be archived", finance.ErrInvalidAccount)
+	}
+	sk := LedgerAccountSK(id)
+	return r.accounts.TransactWrite(ctx, txItems(r.accounts.BuildRawUpdateTxItem(sp.PK(), &sk,
+		"SET archived = :t, updated_at = :now", "attribute_exists(pk)", nil,
+		map[string]types.AttributeValue{
+			":t":   &types.AttributeValueMemberBOOL{Value: true},
+			":now": &types.AttributeValueMemberS{Value: now.UTC().Format(time.RFC3339Nano)},
+		})))
+}
+
+// Settings are the space's own preferences, on its SPACE row.
+type Settings struct {
+	DefaultReceivingAccountID string
+}
+
+// GetSettings reads the space's settings; a space with none yet has the zero value.
+func (r *LedgerRepository) GetSettings(ctx context.Context, sp space.ResolvedSpace) (Settings, error) {
+	if err := sp.Require(space.Read); err != nil {
+		return Settings{}, err
+	}
+	raw, err := r.accounts.GetItem(ctx, sp.PK(), LedgerSpaceSK())
+	if err != nil {
+		return Settings{}, err
+	}
+	if raw == nil {
+		return Settings{}, nil
+	}
+	it, err := Decode[struct {
+		Default string `dynamodbav:"default_receiving_account_id"`
+	}](raw)
+	if err != nil {
+		return Settings{}, err
+	}
+	return Settings{DefaultReceivingAccountID: it.Default}, nil
+}
+
+// SetDefaultReceivingAccount names the asset account receivables settle into by
+// default. It must exist in this space, be an asset the user holds (not a system
+// account) and not be archived.
+func (r *LedgerRepository) SetDefaultReceivingAccount(ctx context.Context, sp space.ResolvedSpace, accountID string, now time.Time) error {
+	if err := sp.Require(space.Configure); err != nil {
+		return err
+	}
+	acct, err := r.getAccount(ctx, sp, accountID)
+	if errors.Is(err, ErrNotFound) {
+		return ErrUnknownAccount
+	}
+	if err != nil {
+		return err
+	}
+	if acct.System || acct.Archived || acct.Class != finance.ClassAsset {
+		return fmt.Errorf("%w: the default receiving account must be an active asset account", finance.ErrInvalidAccount)
+	}
+	sk := LedgerSpaceSK()
+	return r.accounts.UpsertAttrs(ctx, sp.PK(), &sk, map[string]any{
+		"default_receiving_account_id": accountID, "updated_at": now.UTC().Format(time.RFC3339Nano),
+	})
 }
 
 // ListAccounts returns the chart: one Query on the space partition.
@@ -196,6 +276,11 @@ type PostMeta struct {
 	Origin    string // e.g. "manual", "bill_settlement", "invoice_paid"
 	Actor     string // the token subject
 	RequestID string
+	// IdempotencyKey, when set on a create, makes the new row's id a function of
+	// (space, key): two concurrent requests with one key then collide on the
+	// conditional put and make ONE row. The idempotency middleware only replays
+	// requests that already finished.
+	IdempotencyKey string
 }
 
 type txItem struct {
@@ -238,31 +323,51 @@ func (r *LedgerRepository) Post(ctx context.Context, sp space.ResolvedSpace, tx 
 	return r.post(ctx, sp, tx, meta, now)
 }
 
-func (r *LedgerRepository) post(ctx context.Context, sp space.ResolvedSpace, tx finance.Transaction, meta PostMeta, now time.Time) (string, error) {
+// ledgerPlan is what a fact writes to the ledger tables, built but not sent. The
+// bill repository appends its own items to Items so the bill and its ledger
+// entries commit together or not at all (spec § 4: one TransactWriteItems).
+type ledgerPlan struct {
+	TxID  string
+	Items []types.TransactWriteItem
+	// MarkerIdx is the index of the reversal marker in Items, or -1.
+	MarkerIdx int
+}
+
+// planPost validates a transaction against the space's verbs and builds its
+// write items. It writes nothing.
+func (r *LedgerRepository) planPost(sp space.ResolvedSpace, tx finance.Transaction, meta PostMeta, now time.Time) (ledgerPlan, error) {
 	need := space.Write
 	if tx.Kind == finance.KindSettlement {
 		need |= space.Settle
 	}
 	if err := sp.Require(need); err != nil {
-		return "", err
+		return ledgerPlan{}, err
 	}
 	// Revalidate: a Transaction is only trusted if it went through
 	// NewTransaction, and a zero or hand-built one must not reach the table.
 	checked, err := finance.NewTransaction(tx.Kind, tx.Date, tx.Legs...)
 	if err != nil {
-		return "", err
+		return ledgerPlan{}, err
 	}
 	checked.Adjusts = tx.Adjusts
 
 	txID := id.New()
 	items, markerIdx, err := r.postItems(sp, txID, checked, meta, now)
 	if err != nil {
+		return ledgerPlan{}, err
+	}
+	return ledgerPlan{TxID: txID, Items: items, MarkerIdx: markerIdx}, nil
+}
+
+func (r *LedgerRepository) post(ctx context.Context, sp space.ResolvedSpace, tx finance.Transaction, meta PostMeta, now time.Time) (string, error) {
+	plan, err := r.planPost(sp, tx, meta, now)
+	if err != nil {
 		return "", err
 	}
-	if err := r.txs.TransactWrite(ctx, items); err != nil {
-		return "", classifyPostCancel(err, markerIdx)
+	if err := r.txs.TransactWrite(ctx, plan.Items); err != nil {
+		return "", classifyPostCancel(err, plan.MarkerIdx)
 	}
-	return txID, nil
+	return plan.TxID, nil
 }
 
 // cancellationCodes returns the per-item reason codes of a cancelled
@@ -438,25 +543,39 @@ func (i txItem) stored() (*StoredTx, error) {
 // mistake and its correction stay in the record (Fowler's Reversal Adjustment).
 // A second reversal of the same transaction is ErrAlreadyReversed.
 func (r *LedgerRepository) Reverse(ctx context.Context, sp space.ResolvedSpace, originalID string, date brcal.Date, meta PostMeta, now time.Time) (string, error) {
-	if err := sp.Require(space.Write); err != nil {
+	plan, err := r.planReverse(ctx, sp, originalID, date, meta, now)
+	if err != nil {
 		return "", err
+	}
+	if err := r.txs.TransactWrite(ctx, plan.Items); err != nil {
+		return "", classifyPostCancel(err, plan.MarkerIdx)
+	}
+	return plan.TxID, nil
+}
+
+// planReverse loads the original, applies the verb its kind needs and builds the
+// reversal's write items. It writes nothing; the bill repository composes it
+// with a status change.
+func (r *LedgerRepository) planReverse(ctx context.Context, sp space.ResolvedSpace, originalID string, date brcal.Date, meta PostMeta, now time.Time) (ledgerPlan, error) {
+	if err := sp.Require(space.Write); err != nil {
+		return ledgerPlan{}, err
 	}
 	orig, err := r.GetTransaction(ctx, sp, originalID)
 	if err != nil {
-		return "", err
+		return ledgerPlan{}, err
 	}
 	// Undoing a settlement is settling: the verb guards the effect, so a writer
 	// without finance.settle cannot reopen what only a settler could close.
 	if orig.Tx.Kind == finance.KindSettlement {
 		if err := sp.Require(space.Settle); err != nil {
-			return "", err
+			return ledgerPlan{}, err
 		}
 	}
 	rev, err := finance.Reverse(orig.Tx, originalID, date)
 	if err != nil {
-		return "", err
+		return ledgerPlan{}, err
 	}
-	return r.post(ctx, sp, rev, meta, now)
+	return r.planPost(sp, rev, meta, now)
 }
 
 // EntryRow is one leg of a posted transaction on an account.

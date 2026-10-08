@@ -142,3 +142,58 @@ func OpeningBalance(sys SystemAccounts, accountID string, amount billing.Cents, 
 	}
 	return NewTransaction(KindOpeningBalance, date, Leg{accountID, amount}, Leg{sys.OpeningBalance, -amount})
 }
+
+// AdjustBill is the net effect of editing a forecast bill's amount or category:
+// the new recognition minus the old, per account, as ONE transaction. A reversal
+// plus a fresh recognition would say the same thing in two transactions that both
+// touch the payables account and the month's summary, and a single atomic write
+// cannot update the same item twice. Accounts whose net is zero drop out.
+func AdjustBill(sys SystemAccounts, was, next BillFacts, competence brcal.Date) (Transaction, error) {
+	wasTx, err := RecognizeBill(sys, was, competence)
+	if err != nil {
+		return Transaction{}, err
+	}
+	nextTx, err := RecognizeBill(sys, next, competence)
+	if err != nil {
+		return Transaction{}, err
+	}
+	net := map[string]billing.Cents{}
+	order := []string{}
+	add := func(l Leg, sign billing.Cents) {
+		if _, seen := net[l.AccountID]; !seen {
+			order = append(order, l.AccountID)
+		}
+		net[l.AccountID] += sign * l.Amount
+	}
+	for _, l := range wasTx.Legs {
+		add(l, -1)
+	}
+	for _, l := range nextTx.Legs {
+		add(l, 1)
+	}
+	legs := make([]Leg, 0, len(order))
+	for _, acct := range order {
+		if net[acct] != 0 {
+			legs = append(legs, Leg{acct, net[acct]})
+		}
+	}
+	if len(legs) < 2 {
+		return Transaction{}, fmt.Errorf("%w: the edit changes nothing the ledger recognised", ErrInvalidTransaction)
+	}
+	return NewTransaction(KindAdjustment, competence, legs...)
+}
+
+// CancelBill removes a forecast bill's recognition: the negation of its current
+// facts' recognition, whatever edits came before, so nothing of it stays in the
+// DRE for its competence month.
+func CancelBill(sys SystemAccounts, facts BillFacts, competence brcal.Date) (Transaction, error) {
+	rec, err := RecognizeBill(sys, facts, competence)
+	if err != nil {
+		return Transaction{}, err
+	}
+	legs := make([]Leg, len(rec.Legs))
+	for i, l := range rec.Legs {
+		legs[i] = Leg{l.AccountID, -l.Amount}
+	}
+	return NewTransaction(KindAdjustment, competence, legs...)
+}

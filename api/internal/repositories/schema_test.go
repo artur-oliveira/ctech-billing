@@ -28,6 +28,8 @@ var allTables = []string{
 	TableIdempotency,
 	TableLedgerAccounts,
 	TableLedgerTransactions,
+	TableBills,
+	TableRecurrences,
 }
 
 func TestEveryTableConstantHasASchema(t *testing.T) {
@@ -94,7 +96,7 @@ func TestNoAttributeIsDeclaredWithoutAKeyUsingIt(t *testing.T) {
 // for "period-index" creates an index nothing reads, and the queries fall back
 // to nothing at all — a runtime error, after a deploy.
 func TestIndexNamesAreTheOnesTheQueriesUse(t *testing.T) {
-	known := []string{IndexPeriod, IndexSchedule, IndexLookup}
+	known := []string{IndexPeriod, IndexSchedule, IndexLookup, IndexOpen}
 	seen := map[string]bool{}
 	for name, s := range Schemas() {
 		for _, idx := range s.Indexes {
@@ -130,7 +132,7 @@ func TestTheSweepIndexIsOnlyWhereASweepReads(t *testing.T) {
 	// queues are read by cmd/deliver, which is cross-tenant for the same reason
 	// the sweep is: a delivery backlog spans every tenant that has one, and the
 	// job holds no credential to scope it by.
-	want := []string{TableInvoices, TableSubscriptions, TableWebhooks}
+	want := []string{TableBills, TableInvoices, TableRecurrences, TableSubscriptions, TableWebhooks}
 	slices.Sort(want)
 	if !slices.Equal(withSweep, want) {
 		t.Errorf("tables with %s: got %v, want %v", IndexSchedule, withSweep, want)

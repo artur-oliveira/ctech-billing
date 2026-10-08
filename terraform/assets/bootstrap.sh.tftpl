@@ -96,7 +96,7 @@ ctech_run setup-realip.sh ${vpc_cidr}
 # second Go process resident on a 512 MiB box; watch memory if it becomes tight.
 ctech_run setup-nginx.sh ${nginx_port} ${app_port} ${health_path} 100 1m ${app_port_alt}
 ctech_run setup-app-service.sh "CTech Billing API" app "network.target nginx.service" ${app_port_alt}
-ctech_run setup-deploy.sh ${deployments_bucket} app "http://127.0.0.1:${nginx_port}${health_path}" sweep reconcile deliver dunning
+ctech_run setup-deploy.sh ${deployments_bucket} app "http://127.0.0.1:${nginx_port}${health_path}" sweep reconcile deliver dunning finance
 ctech_run setup-logs.sh ${logs_bucket} ${s3_prefix} ctech-billing /var/log/app /var/log/nginx
 
 # ── CloudWatch agent ─────────────────────────────────────────────────────────
@@ -322,11 +322,45 @@ Persistent=true
 WantedBy=timers.target
 DUNTIMER
 
+# 07:30 UTC — 04:30 in Sao Paulo, after the sweep. Re-runnable by construction
+# (each recurrence occurrence has a lock row; settlement is conditional on the bill
+# still being a forecast), so Persistent=true catches up a missed day safely.
+cat > /etc/systemd/system/billing-finance.service << 'FINSVC'
+[Unit]
+Description=CTech Billing finance job
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=webapp
+Group=webapp
+WorkingDirectory=/opt/app/current
+Environment=HOME=/opt/app
+ExecStartPre=/bin/test -x /opt/app/current/finance
+ExecStart=/opt/app/job.sh finance
+StandardOutput=append:/var/log/app/jobs.log
+StandardError=append:/var/log/app/jobs.log
+FINSVC
+
+cat > /etc/systemd/system/billing-finance.timer << 'FINTIMER'
+[Unit]
+Description=Daily CTech Billing finance job
+
+[Timer]
+OnCalendar=*-*-* 07:30:00 UTC
+RandomizedDelaySec=300
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+FINTIMER
+
 systemctl daemon-reload
 # `app` is already enabled by setup-app-service.sh; repeating it is harmless and
 # keeps this line readable as "everything this instance runs".
 systemctl enable app
-systemctl enable billing-sweep.timer billing-reconcile.timer billing-deliver.timer billing-dunning.timer
+systemctl enable billing-sweep.timer billing-reconcile.timer billing-deliver.timer billing-dunning.timer billing-finance.timer
 
 # ── First boot ───────────────────────────────────────────────────────────────
 # A brand-new environment has no artifact yet; that is a wait, not a failure.

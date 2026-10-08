@@ -80,7 +80,7 @@ ctech_run setup-realip.sh ${vpc_cidr}
 # on a t4g.nano if it becomes tight.
 ctech_run setup-nginx.sh ${nginx_port} ${app_port} ${health_path} 100 1m ${app_port_alt}
 ctech_run setup-app-service.sh "CTech Billing API" app ${app_port_alt}
-ctech_run setup-deploy.sh ${deployments_bucket} app "http://127.0.0.1:${nginx_port}${health_path}" sweep reconcile deliver dunning
+ctech_run setup-deploy.sh ${deployments_bucket} app "http://127.0.0.1:${nginx_port}${health_path}" sweep reconcile deliver dunning finance
 ctech_run setup-logs.sh ${logs_bucket} ${s3_prefix} ctech-billing /var/log/app /var/log/nginx
 
 # ── ctech-ec2-agent logs-tail ────────────────────────────────────────────────
@@ -175,6 +175,9 @@ billing_crontab=$(mktemp)
 (crontab -l 2>/dev/null || true) | sed '\|/opt/app/job.sh |d' > "$billing_crontab"
 
 # 07:10 UTC is 04:10 in America/Sao_Paulo, the civil day the sweep bills.
+# The finance job (materialise recurrences, auto-settle) runs at 07:30 UTC and is
+# re-runnable by construction (occurrence lock, conditional settle), so its
+# @reboot catch-up is as safe as the sweep's.
 
 # Every minute — a consumer waiting to hear that an invoice was paid is a
 # customer waiting to be let back into a product.
@@ -198,8 +201,10 @@ cat >> "$billing_crontab" << 'BILLINGCRON'
 10 7 * * * /opt/app/job.sh sweep >> /var/log/app/jobs.log 2>&1
 * * * * * /opt/app/job.sh deliver >> /var/log/app/jobs.log 2>&1
 10 8 * * * /opt/app/job.sh dunning >> /var/log/app/jobs.log 2>&1
+30 7 * * * /opt/app/job.sh finance >> /var/log/app/jobs.log 2>&1
 @reboot /opt/app/job.sh sweep >> /var/log/app/jobs.log 2>&1
 @reboot /opt/app/job.sh dunning >> /var/log/app/jobs.log 2>&1
+@reboot /opt/app/job.sh finance >> /var/log/app/jobs.log 2>&1
 BILLINGCRON
 crontab "$billing_crontab"
 rm "$billing_crontab"

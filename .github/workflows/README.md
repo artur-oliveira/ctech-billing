@@ -7,7 +7,7 @@ Two entry points and four reusable workflows.
 | `ci.yml`       | every PR, and pushes to deploy branches   | Static analysis → API → UI, chained. **No AWS credentials.**                        |
 | `deploy.yml`   | push to `main`/`staging`/`dev`, or manual | Path filter and ordering. Calls the four below.                                      |
 | `infra.yml`    | called; **and PRs** for validate-only     | `terraform apply` on both roots.                                                     |
-| `api.yml`      | called                                    | Builds five arm64 binaries (`server`, `sweep`, `reconcile`, `deliver`, `dunning`), uploads, rolling deploy via SSM. |
+| `api.yml`      | called                                    | Builds six arm64 binaries (`server`, `sweep`, `reconcile`, `deliver`, `dunning`, `finance`), uploads, rolling deploy via SSM. |
 | `frontend.yml` | called                                    | Thin caller of `ctech-cdk`'s `frontend-cloudflare.yml@main`: static export, generated `_headers`, deploy to Cloudflare Workers Static Assets. |
 | *(scopes)*     | called                                    | `ctech-account/.github/workflows/publish-resource-scopes.yml@main`.                  |
 

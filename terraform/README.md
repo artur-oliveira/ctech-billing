@@ -144,8 +144,13 @@ The rendered `bootstrap.sh` is ~28 KB, gzipped and base64'd into ~12 KB of `user
 16 KiB ceiling. Two timers were added since that figure was last checked and it is still inside the
 limit, with less room than before. The next substantial addition belongs in an S3 asset the
 bootstrap downloads, not in the template — and it is worth re-measuring rather than assuming, which
-is `gzip -9 -c bootstrap.sh.tftpl | base64 -w0 | wc -c`. (The 6.2 membership client added ~300 bytes
+is the **rendered** script's byte count, because `compute.tf` no longer gzips: `user_data` is the raw
+script (limit 16,384 bytes before base64). `wc -c` on the template plus the length of the substituted values
+(SSM paths, URLs) is the estimate used here; render with `terraform console` when it matters. (The 6.2 membership client added ~300 bytes
 to the rendered script: ~14.9 KB for AL2023, ~11.8 KB for Alpine, which prod runs.)
+The finance job (`billing-finance` timer on AL2023, a cron line on Alpine) then took AL2023 to ~15.9 KB
+against the 16,384-byte limit: **the next addition to the AL2023 template must move the timer units to
+the S3 asset first.** Alpine, which prod runs, is at ~12.2 KB.
 
 ## Two more grants, both narrow
 

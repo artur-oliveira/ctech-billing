@@ -7,9 +7,11 @@ import (
 	crand "crypto/rand"
 	"encoding/hex"
 	"errors"
+	"io"
 	"math/rand/v2"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -369,5 +371,53 @@ func TestReversingASettlementNeedsTheSettleVerb(t *testing.T) {
 	}
 	if _, err := r.Reverse(context.Background(), full, id, date.AddDays(1), repositories.PostMeta{}, time.Now()); err != nil {
 		t.Fatalf("a holder of settle could not reverse it: %v", err)
+	}
+}
+
+// Review Focus 5 (6.3): the same Idempotency-Key and body sent in two different
+// spaces must execute twice, never replaying one space's stored response in the
+// other; inside one space a repeat replays.
+func TestAnIdempotencyKeyIsScopedToTheSpace(t *testing.T) {
+	runs := 0
+	app := fiber.New()
+	app.Use(func(c fiber.Ctx) error {
+		c.Locals(mw.ClaimsKey, &mw.Claims{Sub: c.Get("X-Test-User"), SID: "s", Scope: mw.ScopeFinanceWrite})
+		return c.Next()
+	})
+	resolver := space.NewResolver(staticMembers{}, cache.NewMemoryBackend(10))
+	store := repositories.NewIdempotencyRepository(testDB, testCfg)
+	app.Post("/do", mw.RequireUserScope(mw.ScopeFinanceWrite), mw.ResolveSpace(resolver), mw.RequireVerb(space.Write),
+		mw.SpaceIdempotency(store, time.Now),
+		func(c fiber.Ctx) error {
+			runs++
+			return c.Status(201).SendString(mw.GetSpace(c).Owner())
+		})
+
+	post := func(user, key string) (int, string, string) {
+		req := httptest.NewRequest("POST", "/do", strings.NewReader(`{"x":1}`))
+		req.Header.Set(mw.ModeHeader, "live")
+		req.Header.Set(mw.SpaceHeader, "personal")
+		req.Header.Set(mw.IdempotencyHeader, key)
+		req.Header.Set("X-Test-User", user)
+		resp, err := app.Test(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, _ := io.ReadAll(resp.Body)
+		return resp.StatusCode, string(b), resp.Header.Get("Idempotent-Replay")
+	}
+
+	key := "same-key-" + newSpaceOrgID()
+	if code, body, replay := post("alice", key); code != 201 || body != "USER#alice" || replay != "" {
+		t.Fatalf("alice first: %d %q replay=%q", code, body, replay)
+	}
+	if code, body, replay := post("bob", key); code != 201 || body != "USER#bob" || replay != "" {
+		t.Fatalf("bob with alice's key: %d %q replay=%q — alice's response leaked into bob's space", code, body, replay)
+	}
+	if code, body, replay := post("alice", key); code != 201 || body != "USER#alice" || replay != "true" {
+		t.Fatalf("alice repeat: %d %q replay=%q, want a replay of her own response", code, body, replay)
+	}
+	if runs != 2 {
+		t.Fatalf("the handler ran %d times, want 2 (alice once, bob once)", runs)
 	}
 }

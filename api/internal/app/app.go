@@ -115,6 +115,9 @@ func Build(ctx context.Context, cfg *config.Config, clock func() time.Time) (*fi
 	// scopes exist, and it has to be able to ask before it holds one.
 	oauthresource.Register(app, cfg.ServiceAudience, cfg.CtechIssuerURL)
 
+	billRepo := repositories.NewBillRepository(db, cfg)
+	recRepo := repositories.NewRecurrenceRepository(db, cfg)
+	ledgerRepo := repositories.NewLedgerRepository(db, cfg)
 	v1.Register(app, v1.Deps{
 		Customers:   customers,
 		Subs:        subs,
@@ -137,6 +140,10 @@ func Build(ctx context.Context, cfg *config.Config, clock func() time.Time) (*fi
 		// accountclient.New returns a typed nil when the credential is not
 		// configured. That is deliberate and safe: a nil *Client answers
 		// Membership with an error, which the resolver reads as "unavailable".
+		FinanceBills: services.NewFinanceBills(billRepo),
+		FinanceJobs:  services.NewFinanceJobs(billRepo, recRepo),
+		Recurrences:  recRepo,
+		Ledger:       ledgerRepo,
 		Spaces: space.NewResolver(accountclient.New(accountclient.Config{
 			BaseURL: cfg.AccountBaseURL, TokenURL: cfg.AccountTokenURL,
 			ClientID: cfg.AccountClientID, ClientSecret: cfg.AccountClientSecret, Cache: cacheBackend,
@@ -427,4 +434,18 @@ func newCache(cfg *config.Config) cache.Backend {
 		return cache.NewMemoryBackend(100)
 	}
 	return backend
+}
+
+// BuildFinanceJobs wires only what the daily finance job needs: the bill and
+// recurrence repositories. It reads the two job work lists, which are the only
+// cross-tenant reads of the finance module (ADR 0002), and has no HTTP surface.
+func BuildFinanceJobs(ctx context.Context, cfg *config.Config) (*services.FinanceJobs, error) {
+	db, err := newDynamoDB(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+	return services.NewFinanceJobs(
+		repositories.NewBillRepository(db, cfg),
+		repositories.NewRecurrenceRepository(db, cfg),
+	), nil
 }
