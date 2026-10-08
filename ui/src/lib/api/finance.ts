@@ -7,7 +7,7 @@ import type {
   Account, Bill, BillPatch, CurrentSpace, Direction, FinanceSpaces, ListResponse, NewAccount, NewBill,
   NewRecurrence, Occurrence, PreviewInput, ProjectionMonth, Recurrence, RecurrencePatch, Settings, Settlement,
 } from "@/lib/api/financeTypes"
-import {PERSONAL, type Space, setSpace, spaceHeader} from "@/lib/console/space"
+import {getSpace, PERSONAL, type Space, setSpace, spaceHeader} from "@/lib/console/space"
 import type {Mode} from "@/lib/console/mode"
 
 /**
@@ -36,9 +36,12 @@ function headers(c: FinanceCtx, idempotencyKey?: string): Record<string, string>
  * selection falls back to personal instead of every block showing an error.
  */
 function spaceGone(c: FinanceCtx, error: unknown): never {
-  if (c.space.kind === "organization" && isSpaceNotFound(error)) {
+  // Only while that space is still the selection: a late 404 from a space the
+  // person already left must not overwrite where they went. One toast id, so
+  // the blocks failing together show one message.
+  if (c.space.kind === "organization" && isSpaceNotFound(error) && spaceHeader(getSpace()) === spaceHeader(c.space)) {
     setSpace(PERSONAL)
-    toast.info("Você não tem mais acesso a esse espaço. Mostrando Pessoal.")
+    toast.info("Você não tem mais acesso a esse espaço. Mostrando Pessoal.", {id: "space-gone"})
   }
   throw error
 }

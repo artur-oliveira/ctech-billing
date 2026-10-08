@@ -98,4 +98,14 @@ describe("a space that is no longer the reader's", () => {
     expect(getSpace()).toEqual({kind: "personal"})
     window.localStorage.clear()
   })
+
+  it("leaves the selection alone when the 404 is from a space already left", async () => {
+    const {getSpace, setSpace} = await import("@/lib/console/space")
+    const other: Space = {kind: "organization", organizationId: "0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5c"}
+    setSpace(other)
+    vi.mocked(apiClient.request).mockRejectedValueOnce({response: {status: 404, data: {type: "/problems/space-not-found"}}})
+    await expect(finance.listAccounts(ctx)).rejects.toBeTruthy()
+    expect(getSpace()).toEqual(other)
+    window.localStorage.clear()
+  })
 })
