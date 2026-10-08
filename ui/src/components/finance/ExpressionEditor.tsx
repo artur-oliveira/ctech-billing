@@ -34,29 +34,30 @@ function patternFor(kind: Pattern["kind"], start: string, prev: Pattern): Patter
   }
 }
 
-/**
- * The rule part of the recurrence form: a pattern plus exceptions. It edits an
- * EditorModel and nothing else; the parent owns the preview and the save.
- */
-export function ExpressionEditor({model, start, errors, onChange}: {
+interface EditorProps {
   model: EditorModel
   start: string
   errors: ModelError[]
   onChange: (m: EditorModel) => void
-}) {
+}
+
+/**
+ * The pattern fields ("Repetição" and what it needs), as bare Fields so the
+ * parent lays them out in its own row. Months longer than the chosen day fall
+ * back to the last day; the preview shows it, so no hint is needed here.
+ */
+export function PatternFields({model, start, errors, onChange}: EditorProps) {
   const p = model.pattern
   const err = (field: string) => errors.find(e => e.field === field)?.message
   const setPattern = (next: Pattern) => onChange({...model, pattern: next})
-  const [newDate, setNewDate] = useState("")
-
   return (
-    <div className="grid items-start gap-3 sm:grid-cols-2">
-      <Field label="Repetição" htmlFor="rx-kind" className="sm:col-span-2">
+    <>
+      <Field label="Repetição" htmlFor="rx-kind">
         <Select id="rx-kind" value={p.kind} onValueChange={k => setPattern(patternFor(k as Pattern["kind"], start, p))} options={KIND_OPTIONS}/>
       </Field>
 
       {p.kind === "day_of_month" && (
-        <Field label="Dia do mês" htmlFor="rx-day" error={err("day")} hint="Em meses mais curtos, vale o último dia.">
+        <Field label="Dia do mês" htmlFor="rx-day" error={err("day")}>
           <Input id="rx-day" inputMode="numeric" value={Number.isNaN(p.day) ? "" : String(p.day)} onChange={e => setPattern({...p, day: Number.parseInt(e.target.value, 10)})} aria-invalid={!!err("day")}/>
         </Field>
       )}
@@ -109,8 +110,17 @@ export function ExpressionEditor({model, start, errors, onChange}: {
           </Field>
         </>
       )}
+    </>
+  )
+}
 
-      <fieldset className="space-y-2 sm:col-span-2">
+/** The exceptions (whole months, single dates), shown under "Mais opções". */
+export function ExceptionsFields({model, errors, onChange}: Omit<EditorProps, "start">) {
+  const err = (field: string) => errors.find(e => e.field === field)?.message
+  const [newDate, setNewDate] = useState("")
+  return (
+    <div className="space-y-3">
+      <fieldset className="space-y-2">
         <legend className="text-sm font-medium text-foreground">Exceto nos meses</legend>
         <div className="flex flex-wrap gap-1">
           {MONTH_LABEL.map((label, i) => {
@@ -132,7 +142,7 @@ export function ExpressionEditor({model, start, errors, onChange}: {
         {err("months") && <p role="alert" className="text-sm text-danger">{err("months")}</p>}
       </fieldset>
 
-      <div className="space-y-2 sm:col-span-2">
+      <div className="space-y-2">
         <Field label="Exceto nas datas" htmlFor="rx-date-add">
           <div className="flex gap-2">
             <Input id="rx-date-add" type="date" value={newDate} onChange={e => setNewDate(e.target.value)}/>

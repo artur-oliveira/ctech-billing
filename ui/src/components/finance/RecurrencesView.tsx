@@ -5,7 +5,7 @@ import {useQuery} from "@tanstack/react-query"
 import {Repeat} from "lucide-react"
 import {useEffect, useRef, useState} from "react"
 
-import {ExpressionEditor} from "@/components/finance/ExpressionEditor"
+import {ExceptionsFields, PatternFields} from "@/components/finance/ExpressionEditor"
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
 import {Select} from "@/components/ui/Select"
 import {messageFor} from "@/lib/api/client"
@@ -57,35 +57,32 @@ export function RecurrencesView() {
         )}
       </div>
 
-      <div className={panel ? "grid gap-6 lg:grid-cols-[1fr_30rem]" : ""}>
-        <div className="min-w-0">
-          {recs.isLoading ? (
-            <div className="space-y-2" aria-busy><Skeleton className="h-4 w-full"/><Skeleton className="h-4 w-4/5"/></div>
-          ) : recs.error ? (
-            <ErrorBlock error={recs.error} onRetry={() => void recs.refetch()}/>
-          ) : active.length === 0 ? (
-            <EmptyState
-              icon={<Repeat/>}
-              title="Nenhuma recorrência"
-              description="Cadastre o que se repete (aluguel, salário, assinaturas) e as contas de cada mês aparecem sozinhas em A pagar e a receber."
-            />
-          ) : (
-            <ul className="divide-y divide-border border-y border-border">
-              {active.map(r => (
-                <RecurrenceRow key={r.id} rec={r} account={names.get(r.account_id)} onEdit={() => setPanel({mode: "edit", rec: r})}/>
-              ))}
-            </ul>
-          )}
-        </div>
-        {panel && (
-          <RecurrencePanel
-            key={panel.mode === "edit" ? panel.rec.id : "new"}
-            editing={panel.mode === "edit" ? panel.rec : undefined}
-            accounts={accounts.data?.data ?? []}
-            onDone={() => setPanel(null)}
-          />
-        )}
-      </div>
+      {panel && (
+        <RecurrencePanel
+          key={panel.mode === "edit" ? panel.rec.id : "new"}
+          editing={panel.mode === "edit" ? panel.rec : undefined}
+          accounts={accounts.data?.data ?? []}
+          onDone={() => setPanel(null)}
+        />
+      )}
+
+      {recs.isLoading ? (
+        <div className="space-y-2" aria-busy><Skeleton className="h-4 w-full"/><Skeleton className="h-4 w-4/5"/></div>
+      ) : recs.error ? (
+        <ErrorBlock error={recs.error} onRetry={() => void recs.refetch()}/>
+      ) : active.length === 0 ? (
+        <EmptyState
+          icon={<Repeat/>}
+          title="Nenhuma recorrência"
+          description="Cadastre o que se repete (aluguel, salário, assinaturas) e as contas de cada mês aparecem sozinhas em A pagar e a receber."
+        />
+      ) : (
+        <ul className="divide-y divide-border border-y border-border">
+          {active.map(r => (
+            <RecurrenceRow key={r.id} rec={r} account={names.get(r.account_id)} onEdit={() => setPanel({mode: "edit", rec: r})}/>
+          ))}
+        </ul>
+      )}
     </div>
   )
 }
@@ -201,12 +198,15 @@ function RecurrencePanel({editing, accounts, onDone}: {editing?: Recurrence; acc
     patch.mutate(body)
   }
 
+  const [more, setMore] = useState(false)
+  const nextDates = preview.occ.slice(0, PREVIEW_COUNT)
+
   return (
-    <aside aria-label={editing ? "Editar recorrência" : "Nova recorrência"} className="h-fit space-y-4 rounded-lg border border-border p-4 motion-safe:animate-in motion-safe:fade-in">
-      <h2 className="text-sm font-medium text-foreground">{editing ? "Editar recorrência" : "Nova recorrência"}</h2>
-      <form className="space-y-4" onSubmit={submit}>
+    <aside aria-label={editing ? "Editar recorrência" : "Nova recorrência"} className="space-y-4 rounded-lg border border-border p-4 motion-safe:animate-in motion-safe:fade-in">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-sm font-medium text-foreground">{editing ? "Editar recorrência" : "Nova recorrência"}</h2>
         {!editing && (
-          <div role="group" aria-label="Direção" className="flex w-fit items-center gap-0.5 rounded-lg border border-border bg-surface p-0.5">
+          <div role="group" aria-label="Direção" className="flex items-center gap-0.5 rounded-lg border border-border bg-surface p-0.5">
             {(["payable", "receivable"] as Direction[]).map(d => (
               <button key={d} type="button" aria-pressed={direction === d} onClick={() => { setDirection(d); setCategory("") }}
                 className={`rounded-md px-3 py-1 text-sm ${direction === d ? "bg-background font-medium text-foreground shadow-sm" : "text-muted-foreground"}`}>
@@ -215,74 +215,85 @@ function RecurrencePanel({editing, accounts, onDone}: {editing?: Recurrence; acc
             ))}
           </div>
         )}
-        <div className="grid items-start gap-3 sm:grid-cols-2">
-          <Field label="Descrição" htmlFor="rc-desc" className="sm:col-span-2"><Input id="rc-desc" value={description} onChange={e => setDescription(e.target.value)}/></Field>
+      </div>
+      <form className="space-y-4" onSubmit={submit}>
+        <div className="grid items-start gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <Field label="Descrição" htmlFor="rc-desc" className="lg:col-span-2"><Input id="rc-desc" value={description} onChange={e => setDescription(e.target.value)}/></Field>
           <Field label="Valor" htmlFor="rc-amount" required><Input id="rc-amount" inputMode="decimal" placeholder="0,00" value={amountText} onChange={e => setAmountText(e.target.value)}/></Field>
           <Field label="Categoria" htmlFor="rc-cat">
             <Select id="rc-cat" value={category} onValueChange={setCategory} options={cats.map(a => ({value: a.id, label: a.name}))}/>
           </Field>
-          <Field label={direction === "payable" ? "Pagar com" : "Receber em"} htmlFor="rc-acct" className="sm:col-span-2">
+          <Field label={direction === "payable" ? "Pagar com" : "Receber em"} htmlFor="rc-acct">
             <Select id="rc-acct" value={account} onValueChange={setAccount} options={assets.map(a => ({value: a.id, label: a.name}))}/>
           </Field>
+          {!editing && (
+            <>
+              <PatternFields model={model} start={start} errors={errors} onChange={setModel}/>
+              <Field label="Começa em" htmlFor="rc-start"><Input id="rc-start" type="date" value={start} onChange={e => setStart(e.target.value)}/></Field>
+            </>
+          )}
+          {editing && (
+            <Field label="Termina em" htmlFor="rc-end-edit"><Input id="rc-end-edit" type="date" value={end} onChange={e => setEnd(e.target.value)}/></Field>
+          )}
         </div>
 
         {editing ? (
-          <div className="space-y-1 rounded-lg bg-surface p-3 text-sm">
-            <p className="text-foreground">{ruleOf(editing)}</p>
-            <p className="text-muted-foreground">Para mudar a regra, encerre esta recorrência e crie outra. As contas já geradas continuam como estão.</p>
-          </div>
+          <p className="text-sm text-muted-foreground">
+            <span className="text-foreground">{ruleOf(editing)}.</span> Para mudar a regra, encerre esta recorrência e crie outra; as contas já geradas continuam como estão.
+          </p>
         ) : (
           <>
-            <div className="grid items-start gap-3 sm:grid-cols-2">
-              <Field label="Começa em" htmlFor="rc-start"><Input id="rc-start" type="date" value={start} onChange={e => setStart(e.target.value)}/></Field>
-              <Field label="Termina em" htmlFor="rc-end" hint="Em branco, não termina."><Input id="rc-end" type="date" value={end} onChange={e => setEnd(e.target.value)}/></Field>
+            <p className="text-sm" aria-live="polite">
+              <span className="font-medium text-foreground">Próximas datas: </span>
+              {errors.length > 0 ? (
+                <span className="text-muted-foreground">corrija a regra para ver as datas.</span>
+              ) : preview.error ? (
+                <span role="alert" className="text-danger">{messageFor(preview.error)}</span>
+              ) : nextDates.length === 0 ? (
+                <span className="text-muted-foreground">calculando…</span>
+              ) : (
+                <span className="tabular-nums text-foreground">
+                  {nextDates.map((o, i) => (
+                    <span key={o.nominal}>
+                      {i > 0 && <span className="text-muted-foreground"> • </span>}
+                      {shortDate(o.nominal)}
+                      {o.due !== o.nominal && <span className="text-muted-foreground">{` (paga em ${shortDate(o.due)})`}</span>}
+                    </span>
+                  ))}
+                </span>
+              )}
+            </p>
+
+            <div>
+              <button type="button" aria-expanded={more} onClick={() => setMore(v => !v)}
+                className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline">
+                {more ? "Menos opções" : "Mais opções"}
+              </button>
+              {more && (
+                <div className="mt-3 grid items-start gap-4 border-t border-border pt-4 lg:grid-cols-[1fr_1fr_2fr]">
+                  <Field label="Termina em" htmlFor="rc-end" hint="Em branco, não termina."><Input id="rc-end" type="date" value={end} onChange={e => setEnd(e.target.value)}/></Field>
+                  <Field label="Se cair em fim de semana ou feriado" htmlFor="rc-adjust">
+                    <Select id="rc-adjust" value={adjust} onValueChange={v => setAdjust(v as Adjust)} options={ADJUST_OPTIONS}/>
+                  </Field>
+                  <ExceptionsFields model={model} errors={errors} onChange={setModel}/>
+                </div>
+              )}
             </div>
-            <ExpressionEditor model={model} start={start} errors={errors} onChange={setModel}/>
-            <Field label="Se cair em fim de semana ou feriado" htmlFor="rc-adjust">
-              <Select id="rc-adjust" value={adjust} onValueChange={v => setAdjust(v as Adjust)} options={ADJUST_OPTIONS}/>
-            </Field>
           </>
         )}
 
-        {editing && (
-          <Field label="Termina em" htmlFor="rc-end-edit" hint="Encurtar para quando parar de gerar contas.">
-            <Input id="rc-end-edit" type="date" value={end} onChange={e => setEnd(e.target.value)}/>
-          </Field>
-        )}
-
-        {showAuto && (
-          <label className="flex items-center gap-2 text-sm">
-            <Switch checked={autoSettle} onCheckedChange={setAutoSettle} disabled={!autoSettle && !can("finance.settle")}
-              aria-label={direction === "payable" ? "Pagar automaticamente no vencimento" : "Receber automaticamente no vencimento"}/>
-            {direction === "payable" ? "Pagar automaticamente no vencimento" : "Receber automaticamente no vencimento"}
-          </label>
-        )}
-
-        {!editing && (
-          <section aria-label="Próximas datas" className="space-y-1">
-            <h3 className="text-sm font-medium text-foreground">Próximas datas</h3>
-            {errors.length > 0 ? (
-              <p className="text-sm text-muted-foreground">Corrija a regra para ver as datas.</p>
-            ) : preview.error ? (
-              <p role="alert" className="text-sm text-danger">{messageFor(preview.error)}</p>
-            ) : preview.loading && preview.occ.length === 0 ? (
-              <Skeleton className="h-16 w-full"/>
-            ) : (
-              <ol className="space-y-0.5 text-sm tabular-nums">
-                {preview.occ.map(o => (
-                  <li key={o.nominal} className="text-foreground">
-                    {shortDate(o.nominal)}
-                    {o.due !== o.nominal && <span className="text-muted-foreground">{` • paga em ${shortDate(o.due)}`}</span>}
-                  </li>
-                ))}
-              </ol>
-            )}
-          </section>
-        )}
-
-        <div className="flex flex-wrap gap-2">
-          <Button type="submit" variant="brand" size="sm" disabled={!ready}>{editing ? "Salvar" : "Criar recorrência"}</Button>
-          <Button type="button" variant="outline" size="sm" onClick={onDone}>Fechar</Button>
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+          {showAuto && (
+            <label className="flex items-center gap-2 text-sm">
+              <Switch checked={autoSettle} onCheckedChange={setAutoSettle} disabled={!autoSettle && !can("finance.settle")}
+                aria-label={direction === "payable" ? "Pagar automaticamente no vencimento" : "Receber automaticamente no vencimento"}/>
+              {direction === "payable" ? "Pagar automaticamente no vencimento" : "Receber automaticamente no vencimento"}
+            </label>
+          )}
+          <div className="flex gap-2">
+            <Button type="submit" variant="brand" size="sm" disabled={!ready}>{editing ? "Salvar" : "Criar recorrência"}</Button>
+            <Button type="button" variant="outline" size="sm" onClick={onDone}>Fechar</Button>
+          </div>
         </div>
         {(create.error || patch.error) && <p role="alert" className="text-sm text-danger">{messageFor(create.error ?? patch.error)}</p>}
       </form>
