@@ -16,9 +16,12 @@ export function NoOrganization() {
     <EmptyState
       icon={<Building2/>}
       title="Esta conta não tem uma organização"
-      description="O console é de quem emite cobranças. Se você veio ver o que paga para a CTech, suas faturas estão em Minhas cobranças."
+      description="Faturas, assinaturas e clientes são de quem emite cobranças. Suas finanças pessoais estão em Finanças, e o que você paga para a CTech, em Minhas cobranças."
       action={
-        <Button render={<Link href="/dashboard"/>}>Ver minhas cobranças</Button>
+        <div className="flex flex-wrap gap-2">
+          <Button render={<Link href="/console/finance"/>}>Ir para Finanças</Button>
+          <Button variant="outline" render={<Link href="/dashboard"/>}>Ver minhas cobranças</Button>
+        </div>
       }
     />
   )

@@ -88,3 +88,14 @@ describe("financeKeys", () => {
 // A write without a key is a compile error, not a runtime surprise.
 // @ts-expect-error — createBill requires an idempotency key
 void (() => finance.createBill(ctx, {direction: "payable", amount: 1, account_id: "a", category_id: "c", due_date: "2026-03-10"}))
+
+describe("a space that is no longer the reader's", () => {
+  it("falls back to personal when any finance call answers 404 space-not-found", async () => {
+    const {getSpace, setSpace} = await import("@/lib/console/space")
+    setSpace(org)
+    vi.mocked(apiClient.request).mockRejectedValueOnce({response: {status: 404, data: {type: "/problems/space-not-found"}}})
+    await expect(finance.listAccounts(ctx)).rejects.toBeTruthy()
+    expect(getSpace()).toEqual({kind: "personal"})
+    window.localStorage.clear()
+  })
+})

@@ -1,11 +1,13 @@
 "use client"
 
-import {apiClient} from "@/lib/api/client"
+import {toast} from "sonner"
+
+import {apiClient, isSpaceNotFound} from "@/lib/api/client"
 import type {
   Account, Bill, BillPatch, CurrentSpace, Direction, FinanceSpaces, ListResponse, NewAccount, NewBill,
   NewRecurrence, Occurrence, PreviewInput, ProjectionMonth, Recurrence, RecurrencePatch, Settings, Settlement,
 } from "@/lib/api/financeTypes"
-import {type Space, spaceHeader} from "@/lib/console/space"
+import {PERSONAL, type Space, setSpace, spaceHeader} from "@/lib/console/space"
 import type {Mode} from "@/lib/console/mode"
 
 /**
@@ -28,14 +30,35 @@ function headers(c: FinanceCtx, idempotencyKey?: string): Record<string, string>
   return h
 }
 
+/**
+ * One place for the one recovery every screen needs: an organization space that
+ * answers 404 space-not-found is not (or no longer) this person's, so the
+ * selection falls back to personal instead of every block showing an error.
+ */
+function spaceGone(c: FinanceCtx, error: unknown): never {
+  if (c.space.kind === "organization" && isSpaceNotFound(error)) {
+    setSpace(PERSONAL)
+    toast.info("Você não tem mais acesso a esse espaço. Mostrando Pessoal.")
+  }
+  throw error
+}
+
 async function read<T>(c: FinanceCtx, url: string, params?: Record<string, unknown>): Promise<T> {
-  const {data} = await apiClient.request<T>({method: "GET", url: BASE + url, headers: headers(c), params})
-  return data
+  try {
+    const {data} = await apiClient.request<T>({method: "GET", url: BASE + url, headers: headers(c), params})
+    return data
+  } catch (e) {
+    return spaceGone(c, e)
+  }
 }
 
 async function write<T>(c: FinanceCtx, method: "POST" | "PATCH" | "PUT", url: string, body: unknown, key: string): Promise<T> {
-  const {data} = await apiClient.request<T>({method, url: BASE + url, headers: headers(c, key), data: body ?? {}})
-  return data
+  try {
+    const {data} = await apiClient.request<T>({method, url: BASE + url, headers: headers(c, key), data: body ?? {}})
+    return data
+  } catch (e) {
+    return spaceGone(c, e)
+  }
 }
 
 /**
