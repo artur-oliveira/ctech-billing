@@ -15,10 +15,18 @@ import (
 
 // The repository must offer no way to edit what was written (spec § 10,
 // "entries are never edited"). Corrections are Reverse.
+// settingsWriters are the methods that write the space's own preferences on its
+// SPACE row. They never touch a transaction, an entry or a balance, which is
+// what "no edit path" protects; naming them here keeps the exception reviewable.
+var settingsWriters = map[string]bool{"SetDefaultReceivingAccount": true}
+
 func TestLedgerRepositoryHasNoEditPath(t *testing.T) {
 	rt := reflect.TypeOf(&LedgerRepository{})
 	for i := 0; i < rt.NumMethod(); i++ {
 		name := rt.Method(i).Name
+		if settingsWriters[name] {
+			continue
+		}
 		for _, banned := range []string{"Update", "Delete", "Edit", "Set", "Remove", "Patch", "Put", "Overwrite"} {
 			if strings.HasPrefix(name, banned) {
 				t.Errorf("LedgerRepository.%s: the ledger has no edit path; use Reverse", name)
@@ -52,6 +60,10 @@ func TestEveryLedgerMethodRefusesTheZeroSpace(t *testing.T) {
 	checks["GetTransaction"] = err
 	_, err = r.AllTransactions(ctx, zero)
 	checks["AllTransactions"] = err
+	checks["ArchiveAccount"] = r.ArchiveAccount(ctx, zero, "a", time.Now())
+	checks["SetDefaultReceivingAccount"] = r.SetDefaultReceivingAccount(ctx, zero, "a", time.Now())
+	_, err = r.GetSettings(ctx, zero)
+	checks["GetSettings"] = err
 	checks["CreateAccount"] = r.CreateAccount(ctx, zero, finance.LedgerAccount{ID: "a", Name: "a", Class: finance.ClassAsset}, time.Now())
 
 	for name, err := range checks {

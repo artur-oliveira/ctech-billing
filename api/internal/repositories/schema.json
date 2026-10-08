@@ -189,5 +189,22 @@
     "range_key": "sk",
     "attributes": { "pk": "S", "sk": "S" },
     "indexes": []
+  },
+  "bills": {
+    "hash_key": "pk",
+    "range_key": "sk",
+    "attributes": { "pk": "S", "sk": "S", "open_pk": "S", "open_sk": "S", "schedule_pk": "S", "schedule_sk": "S" },
+    "indexes": [
+      { "name": "open-index", "hash_key": "open_pk", "range_key": "open_sk" },
+      { "name": "schedule-index", "hash_key": "schedule_pk", "range_key": "schedule_sk" }
+    ]
+  },
+  "recurrences": {
+    "hash_key": "pk",
+    "range_key": "sk",
+    "attributes": { "pk": "S", "sk": "S", "schedule_pk": "S", "schedule_sk": "S" },
+    "indexes": [
+      { "name": "schedule-index", "hash_key": "schedule_pk", "range_key": "schedule_sk" }
+    ]
   }
 }

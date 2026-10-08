@@ -61,6 +61,11 @@ const (
 	// the immutable transactions and their per-account entries (spec § 4).
 	TableLedgerAccounts     = "ledger_accounts"
 	TableLedgerTransactions = "ledger_transactions"
+	// TableBills holds a space's payables and receivables and the OCCURRENCE#
+	// materialisation locks; TableRecurrences holds its recurrence rules
+	// (spec § 4).
+	TableBills       = "bills"
+	TableRecurrences = "recurrences"
 )
 
 // Index names.
@@ -79,6 +84,9 @@ const (
 	IndexSchedule = "schedule-index"
 	// IndexLookup serves reference lookups by an external identifier. Sparse.
 	IndexLookup = "lookup-index"
+	// IndexOpen serves "a pagar", "a receber" and "vencidos". Sparse: a bill is
+	// in it only while it is a forecast, so these lists never read history.
+	IndexOpen = "open-index"
 )
 
 // Entity discriminates rows in a period index. It is part of the partition

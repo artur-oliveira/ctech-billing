@@ -136,3 +136,30 @@ func TestPreviewListsTheNextOccurrences(t *testing.T) {
 		}
 	}
 }
+
+// A recurrence is user input that the daily job expands into bills. A Start far
+// in the past would make the first run create bills for every period since, so
+// the catch-up is bounded, and refused where it is entered.
+func TestACatchUpBeyondTheSpanIsRefused(t *testing.T) {
+	r := rent()
+	r.Schedule.Start = d(1900, time.January, 1)
+	today := d(2026, time.March, 20)
+	if err := r.ValidateAt(today); !errors.Is(err, ErrInvalidRecurrence) {
+		t.Fatalf("ValidateAt = %v, want ErrInvalidRecurrence", err)
+	}
+	if drafts, err := r.Materialise(brcal.Date{}, today); !errors.Is(err, ErrInvalidRecurrence) || len(drafts) != 0 {
+		t.Fatalf("Materialise = %d drafts, %v; want none and ErrInvalidRecurrence", len(drafts), err)
+	}
+	// The boundary itself is fine: exactly MaxSpanDays before the horizon starts.
+	from, _ := Horizon(today)
+	r.Schedule.Start = from.AddDays(-MaxSpanDays)
+	if err := r.ValidateAt(today); err != nil {
+		t.Fatalf("a start at the limit was refused: %v", err)
+	}
+	// A cursor already past the limit is not a catch-up: a long-running recurrence
+	// keeps materialising even though its Start is old.
+	r.Schedule.Start = d(1900, time.January, 1)
+	if _, err := r.Materialise(d(2026, time.March, 10), today); err != nil {
+		t.Fatalf("a long-running recurrence was refused: %v", err)
+	}
+}

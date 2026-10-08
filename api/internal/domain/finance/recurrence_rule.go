@@ -45,6 +45,23 @@ func (r Recurrence) Validate() error {
 	return r.Schedule.Validate()
 }
 
+// ValidateAt is Validate plus the one rule that needs a day: a recurrence is user
+// input the daily job expands into bills, so how far back its first run may
+// catch up is bounded (MaxSpanDays before the horizon starts). Without it a
+// Start in the year 1900 makes the first run create a bill for every period
+// since. It is checked where the recurrence is entered and again before the
+// first materialisation.
+func (r Recurrence) ValidateAt(today brcal.Date) error {
+	if err := r.Validate(); err != nil {
+		return err
+	}
+	from, _ := Horizon(today)
+	if r.Schedule.Start.Before(from.AddDays(-MaxSpanDays)) {
+		return fmt.Errorf("%w: start is more than %d days before the current month; enter a later start", ErrInvalidRecurrence, MaxSpanDays)
+	}
+	return nil
+}
+
 // Horizon is the window the job keeps materialised: from the first day of
 // today's month to the last day of the next month, inclusive.
 func Horizon(today brcal.Date) (from, to brcal.Date) {
@@ -69,7 +86,12 @@ type Draft struct {
 // materialised yet, so the recurrence is caught up from its Start: someone who
 // enters "rent, since January" gets every month.
 func (r Recurrence) Materialise(cursor, today brcal.Date) ([]Draft, error) {
-	if err := r.Validate(); err != nil {
+	if cursor.IsZero() {
+		// First materialisation: a catch-up from Start, which must be bounded.
+		if err := r.ValidateAt(today); err != nil {
+			return nil, err
+		}
+	} else if err := r.Validate(); err != nil {
 		return nil, err
 	}
 	if r.Archived {
