@@ -186,3 +186,49 @@ and no scroll-reveal. Every animation has a `motion-reduce` alternative;
 - No tenant or organization on any portal screen.
 - No uppercase tracked eyebrow above sections, no numbered section markers, no
   gradient text, no glassmorphism, no side-stripe borders.
+
+## Finance (console, phase 6.3b)
+
+Shaped with `/impeccable shape` on 2026-10-08 and confirmed by the owner. The rules above still
+hold; this section records what the finance screens add to them.
+
+**Lane.** Restrained, as everywhere else: white canvas, sienna only on the primary action, the
+active tab and the selected row; `danger` is the one saturated colour, and in finance it means
+*vencida*. Scene: an operator — or a person managing their own money — on a laptop on a workday
+morning, checking what is due this week. Light theme. References: Stripe Dashboard (dense tables
+that compare down a column), Linear (tabs and in-place expansion instead of modals), Mercury
+(balances as a ruled list, not cards).
+
+**Navigation.** *Finanças* is one item of the console's top nav. Inside it, a second row of tabs:
+Visão geral · A pagar e a receber · Recorrências · Contas. The header always shows the space and
+the mode together — "Pessoal · Teste", "Acme LTDA · Produção" — because each can be mistaken for
+the other and acting on the wrong one is the expensive mistake. A person with no organization sees
+only *Finanças*, and the console opens there.
+
+**F2, the working list.** One table per direction, grouped *Vencidas*, *Vence hoje*, *A vencer*,
+with a subtotal per group in tabular figures. A row's actions expand **in place** (settle, edit,
+cancel); the list never disappears behind a modal. Creating a bill opens a side panel. Settling for
+a different amount requires the category for the gap and states it in words ("R$ 20,00 a mais —
+registrado como juros"). Overdue is a badge with a glyph and text, never colour alone.
+
+**F4, recurrences.** A list, and an editor in a side panel: a pattern (todo dia N, Nº dia útil,
+Nª semana do mês, semanal, anual) plus exceptions (months, dates), with the next occurrences shown
+beside it and refreshed while editing — the preview is the confirmation, before anything is saved.
+When a rolled due date differs from the nominal day, both are shown ("31/01 → paga em 02/02").
+
+**F8, accounts.** Three groups: Contas, Receitas, Despesas (by DRE group). Balances right-aligned
+in tabular figures; archived items collapsed behind "Mostrar arquivadas", never deleted. System
+accounts are never shown.
+
+**F1, overview.** Three independent blocks, separated by rules: Saldos (a ruled list), Vencidas e
+próximas, and Projeção. The projection is diverging bars per month — *a receber* above the axis,
+*a pagar* below — where forecast bills are solid and recurrences not yet generated are outline
+only: the difference is shape, not hue. "Ver como tabela" shows the same numbers. There is no
+"resultado realizado" tile and no placeholder for one (it ships with the cash read in 6.4). This is
+the first chart in billing; the portal ban on charts stands.
+
+**States.** A skeleton per block, never a page spinner. Empty states teach the next step ("Crie
+sua primeira conta para registrar contas a pagar e a receber"). Errors are per block, with
+"Tentar de novo", so one failing request never blanks the screen. A role that lacks a verb sees
+the control **absent**, not disabled; the server is the authority either way. Motion 150–250 ms on
+state changes only (row expanding, panel opening), each with a `motion-reduce` alternative.

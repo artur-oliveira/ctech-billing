@@ -19,8 +19,12 @@ is CTech itself ([ADR 0001](../docs/adr/0001-product-scope-a-and-b.md)). The por
 questions — what am I paying, how much, when — and opens on *my subscriptions*. It must never show
 a merchant's internal vocabulary: no status enum, no metadata, no audit trail, no error code.
 
+**Everyone can manage their own finances.** The console opens for every signed-in person: a
+personal space holds their accounts, bills and recurrences (*Finanças*), and each organization
+they belong to is a space of its own (ADR 0025).
+
 **Some are also operators.** A customer whose account has been provisioned an organization can
-invoice customers of their own. That is what the console is for, and it is additive: the same person
+invoice customers of their own. That is what the console's invoicing sections are for, and it is additive: the same person
 sees *my invoices* and *my billing* without changing accounts or toggling a mode. They live in
 tables — subscriptions, invoices, customers, catalogue — and open the console to answer *who is
 active*. They already know what a price version and a proration are, so the console must show those
@@ -68,8 +72,11 @@ billing's own. A user should recognize the family and still know they changed pr
   day; the portal is spare because the same person visits it twice a month wearing the other hat.
   Same tokens and same components, deliberately different densities. A console component appearing
   in the portal is a bug — and so is asking the user which one they are.
-- **The tenant is never a question on screen.** Nothing in the UI lets anyone type, pick, or guess
-  an organization; test-versus-live is the one mode the operator switches, and it is always visible
+- **The tenant is never typed or guessed.** For invoicing, the organization still comes from the
+  signed-in owner. For finance, the person picks a space from a list the server issues — personal
+  first, then their organizations — and the server re-authorizes every request against
+  ctech-account, so a picked or tampered value grants nothing (ADR 0025). Test-versus-live is the
+  other thing the operator switches, and it is always visible
   because acting on the wrong one is the expensive mistake. In the built console the mode is a
   header on every request and a segment of every query key, so the two modes are two caches and a
   switch cannot leave live rows on a test screen.
