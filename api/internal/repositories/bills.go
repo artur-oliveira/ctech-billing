@@ -120,36 +120,41 @@ func newBillItem(sp space.ResolvedSpace, b finance.Bill, now time.Time) billItem
 	}
 }
 
-// checkBillAccounts loads the accounts a bill names and refuses combinations the
-// reports could not read: a payable's category must be an expense, a receivable's
-// an income, and the account it is paid from or into an active asset. The
-// ledger's own balance conditions only prove an account exists in the space.
-func (r *BillRepository) checkBillAccounts(ctx context.Context, sp space.ResolvedSpace, b finance.Bill) error {
-	cat, err := r.ledger.getAccount(ctx, sp, b.CategoryID)
+// checkDirectionAccounts loads the accounts a bill or recurrence names and
+// refuses combinations the reports could not read: a payable's category must be
+// an expense, a receivable's an income, and the account it is paid from or into
+// an active asset. The ledger's own balance conditions only prove an account
+// exists in the space. invalid is the sentinel the caller's refusals wrap.
+func checkDirectionAccounts(ctx context.Context, ledger *LedgerRepository, sp space.ResolvedSpace, dir finance.Direction, categoryID, accountID string, invalid error) error {
+	cat, err := ledger.getAccount(ctx, sp, categoryID)
 	if errors.Is(err, ErrNotFound) {
-		return fmt.Errorf("%w: category %s", ErrUnknownAccount, b.CategoryID)
+		return fmt.Errorf("%w: category %s", ErrUnknownAccount, categoryID)
 	}
 	if err != nil {
 		return err
 	}
 	want := finance.ClassExpense
-	if b.Direction == finance.Receivable {
+	if dir == finance.Receivable {
 		want = finance.ClassIncome
 	}
 	if cat.Class != want || cat.System || cat.Archived {
-		return fmt.Errorf("%w: a %s needs an active %s category", finance.ErrInvalidBill, b.Direction, want)
+		return fmt.Errorf("%w: a %s needs an active %s category", invalid, dir, want)
 	}
-	acct, err := r.ledger.getAccount(ctx, sp, b.AccountID)
+	acct, err := ledger.getAccount(ctx, sp, accountID)
 	if errors.Is(err, ErrNotFound) {
-		return fmt.Errorf("%w: account %s", ErrUnknownAccount, b.AccountID)
+		return fmt.Errorf("%w: account %s", ErrUnknownAccount, accountID)
 	}
 	if err != nil {
 		return err
 	}
 	if acct.Class != finance.ClassAsset || acct.System || acct.Archived {
-		return fmt.Errorf("%w: the account must be an active asset account", finance.ErrInvalidBill)
+		return fmt.Errorf("%w: the account must be an active asset account", invalid)
 	}
 	return nil
+}
+
+func (r *BillRepository) checkBillAccounts(ctx context.Context, sp space.ResolvedSpace, b finance.Bill) error {
+	return checkDirectionAccounts(ctx, r.ledger, sp, b.Direction, b.CategoryID, b.AccountID, finance.ErrInvalidBill)
 }
 
 func billCancelError(err error) error {
@@ -162,7 +167,13 @@ func billCancelError(err error) error {
 // Create validates a bill and posts its recognition at the competence date, in
 // one transaction. The id is assigned here; Status is forced to forecast.
 func (r *BillRepository) Create(ctx context.Context, sp space.ResolvedSpace, b finance.Bill, meta PostMeta, now time.Time) (finance.Bill, error) {
-	if err := sp.Require(space.Write); err != nil {
+	need := space.Write
+	if b.AutoSettle {
+		// The daily job will settle this bill on the user's behalf, so choosing
+		// it is settling: it needs the same verb.
+		need |= space.Settle
+	}
+	if err := sp.Require(need); err != nil {
 		return finance.Bill{}, err
 	}
 	b.ID, b.Status, b.PaidDate, b.TransactionIDs = id.New(), finance.BillForecast, brcal.Date{}, nil
@@ -172,32 +183,96 @@ func (r *BillRepository) Create(ctx context.Context, sp space.ResolvedSpace, b f
 	if err := r.checkBillAccounts(ctx, sp, b); err != nil {
 		return finance.Bill{}, err
 	}
-	return r.create(ctx, sp, b, nil, meta, now)
+	b, _, err := r.createWithLock(ctx, sp, b, nil, meta, now)
+	return b, err
 }
 
-// create is Create after validation. extra are items appended to the same
-// transaction (the occurrence lock).
-func (r *BillRepository) create(ctx context.Context, sp space.ResolvedSpace, b finance.Bill, extra []types.TransactWriteItem, meta PostMeta, now time.Time) (finance.Bill, error) {
+// createWithLock is Create after validation. lock, when set, is a conditional
+// Put added to the same transaction (the occurrence lock): if that condition is
+// what fails, nothing was written and created is false with no error — the
+// occurrence already has its bill.
+func (r *BillRepository) createWithLock(ctx context.Context, sp space.ResolvedSpace, b finance.Bill, lock *types.TransactWriteItem, meta PostMeta, now time.Time) (finance.Bill, bool, error) {
 	sys, _ := finance.DefaultSystemAccounts()
 	rec, err := finance.RecognizeBill(sys, b.Facts(), b.Competence)
 	if err != nil {
-		return finance.Bill{}, err
+		return finance.Bill{}, false, err
 	}
 	plan, err := r.ledger.planPost(sp, rec, meta, now)
 	if err != nil {
-		return finance.Bill{}, err
+		return finance.Bill{}, false, err
 	}
 	b.TransactionIDs = []string{plan.TxID}
 	item, err := Encode(newBillItem(sp, b, now))
 	if err != nil {
-		return finance.Bill{}, err
+		return finance.Bill{}, false, err
 	}
 	items := append(append([]types.TransactWriteItem(nil), plan.Items...), r.bills.BuildPutTxItemIfAbsent(item))
-	items = append(items, extra...)
-	if err := r.bills.TransactWrite(ctx, items); err != nil {
-		return finance.Bill{}, classifyPostCancel(err, plan.MarkerIdx)
+	lockIdx := -1
+	if lock != nil {
+		lockIdx = len(items)
+		items = append(items, *lock)
 	}
-	return b, nil
+	if err := r.bills.TransactWrite(ctx, items); err != nil {
+		if codes := cancellationCodes(err); lockIdx >= 0 && lockIdx < len(codes) && codes[lockIdx] == codeConditionFailed {
+			return finance.Bill{}, false, nil
+		}
+		return finance.Bill{}, false, classifyPostCancel(err, plan.MarkerIdx)
+	}
+	return b, true, nil
+}
+
+// CreateFromOccurrence creates the bill of one recurrence occurrence, guarded by
+// the OCCURRENCE#{recurrence}#{nominal} lock row written in the same
+// transaction. A repeat — a re-run, a retry after a crash — finds the lock and
+// is (created=false, nil): one bill per occurrence, however often the job runs.
+func (r *BillRepository) CreateFromOccurrence(ctx context.Context, sp space.ResolvedSpace, d finance.Draft, recurrenceID string, meta PostMeta, now time.Time) (bool, finance.Bill, error) {
+	if err := sp.Require(space.Write); err != nil {
+		return false, finance.Bill{}, err
+	}
+	b := d.Bill
+	b.ID, b.Status, b.PaidDate, b.TransactionIDs = id.New(), finance.BillForecast, brcal.Date{}, nil
+	b.Origin, b.OriginRef = finance.OriginRecurrence, finance.OccurrenceRef(recurrenceID, d.Nominal)
+	if err := b.Validate(); err != nil {
+		return false, finance.Bill{}, err
+	}
+	lockRow, err := Encode(struct {
+		keys
+		BillID string `dynamodbav:"bill_id"`
+	}{newKeys(sp.PK(), OccurrenceSK(recurrenceID, d.Nominal), RetentionPermanent, now), b.ID})
+	if err != nil {
+		return false, finance.Bill{}, err
+	}
+	lock := r.bills.BuildPutTxItemIfAbsent(lockRow)
+	created, ok, err := r.createWithLock(ctx, sp, b, &lock, meta, now)
+	return ok, created, err
+}
+
+// DueBill is an auto-settle bill the daily job should settle.
+type DueBill struct {
+	Space space.ResolvedSpace
+	Bill  finance.Bill
+}
+
+// DueForAutoSettle returns, oldest first, the forecast bills flagged to
+// auto-settle whose due date is on or before today. Like DueToMaterialise it
+// counts forged owners and vanished rows in skipped and never acts on them.
+func (r *BillRepository) DueForAutoSettle(ctx context.Context, livemode bool, today brcal.Date, limit int) (due []DueBill, skipped int, err error) {
+	entries, skipped, err := scanSchedule(ctx, r.bills, AutoSettlePK(livemode), livemode, today, limit)
+	if err != nil {
+		return nil, skipped, err
+	}
+	for _, e := range entries {
+		b, err := r.get(ctx, e.Space, e.ID)
+		if errors.Is(err, ErrNotFound) {
+			skipped++
+			continue
+		}
+		if err != nil {
+			return due, skipped, err
+		}
+		due = append(due, DueBill{Space: e.Space, Bill: *b})
+	}
+	return due, skipped, nil
 }
 
 // Get reads a bill inside the space; an id from another space is ErrNotFound.
@@ -258,6 +333,28 @@ func (r *BillRepository) ListOpen(ctx context.Context, sp space.ResolvedSpace, d
 
 const removeSparse = " REMOVE open_pk, open_sk, schedule_pk, schedule_sk"
 
+// forecastGuard is the condition every write that acts on a bill as it was read
+// carries: still a forecast, and with exactly the transaction list it had when
+// it was read. Edits append to that list, so a settlement or cancellation built
+// from stale facts (amount, category) cannot commit after an edit — it would
+// negate or clear the wrong recognition and leave a residue in the ledger.
+func forecastGuard(cur *finance.Bill) (cond string, names map[string]string, values map[string]types.AttributeValue) {
+	return "#status = :forecast AND size(#n) = :n",
+		map[string]string{"#status": "status", "#n": "transaction_ids"},
+		map[string]types.AttributeValue{
+			":forecast": str(string(finance.BillForecast)),
+			":n":        &types.AttributeValueMemberN{Value: fmt.Sprint(len(cur.TransactionIDs))},
+		}
+}
+
+func mergeGuard(cur *finance.Bill, values map[string]types.AttributeValue) (cond string, names map[string]string) {
+	cond, names, guardValues := forecastGuard(cur)
+	for k, v := range guardValues {
+		values[k] = v
+	}
+	return cond, names
+}
+
 func str(s string) types.AttributeValue { return &types.AttributeValueMemberS{Value: s} }
 
 func (r *BillRepository) stamp(now time.Time) types.AttributeValue {
@@ -302,14 +399,15 @@ func (r *BillRepository) Settle(ctx context.Context, sp space.ResolvedSpace, bil
 		return finance.Bill{}, err
 	}
 	sk := BillSK(billID)
+	values := map[string]types.AttributeValue{
+		":paid": str(string(finance.BillPaid)),
+		":d":    str(date.String()), ":now": r.stamp(now),
+		":tx": &types.AttributeValueMemberL{Value: []types.AttributeValue{str(plan.TxID)}},
+	}
+	cond, names := mergeGuard(b, values)
 	update := r.bills.BuildRawUpdateTxItem(sp.PK(), &sk,
-		"SET #status = :paid, paid_date = :d, transaction_ids = list_append(transaction_ids, :tx), updated_at = :now"+removeSparse,
-		"#status = :forecast", map[string]string{"#status": "status"},
-		map[string]types.AttributeValue{
-			":paid": str(string(finance.BillPaid)), ":forecast": str(string(finance.BillForecast)),
-			":d": str(date.String()), ":now": r.stamp(now),
-			":tx": &types.AttributeValueMemberL{Value: []types.AttributeValue{str(plan.TxID)}},
-		})
+		"SET #status = :paid, paid_date = :d, #n = list_append(#n, :tx), updated_at = :now"+removeSparse,
+		cond, names, values)
 	items := append(append([]types.TransactWriteItem(nil), plan.Items...), update)
 	if err := r.bills.TransactWrite(ctx, items); err != nil {
 		if onlyConditionFailed(err) {
@@ -359,14 +457,14 @@ func (r *BillRepository) Cancel(ctx context.Context, sp space.ResolvedSpace, bil
 		return finance.Bill{}, err
 	}
 	sk := BillSK(billID)
+	values := map[string]types.AttributeValue{
+		":canceled": str(string(finance.BillCanceled)), ":now": r.stamp(now),
+		":tx": &types.AttributeValueMemberL{Value: []types.AttributeValue{str(plan.TxID)}},
+	}
+	cond, names := mergeGuard(b, values)
 	update := r.bills.BuildRawUpdateTxItem(sp.PK(), &sk,
-		"SET #status = :canceled, transaction_ids = list_append(transaction_ids, :tx), updated_at = :now"+removeSparse,
-		"#status = :forecast", map[string]string{"#status": "status"},
-		map[string]types.AttributeValue{
-			":canceled": str(string(finance.BillCanceled)), ":forecast": str(string(finance.BillForecast)),
-			":now": r.stamp(now),
-			":tx":  &types.AttributeValueMemberL{Value: []types.AttributeValue{str(plan.TxID)}},
-		})
+		"SET #status = :canceled, #n = list_append(#n, :tx), updated_at = :now"+removeSparse,
+		cond, names, values)
 	items := append(append([]types.TransactWriteItem(nil), plan.Items...), update)
 	if err := r.bills.TransactWrite(ctx, items); err != nil {
 		return finance.Bill{}, billCancelError(err)
@@ -424,11 +522,8 @@ func (r *BillRepository) Edit(ctx context.Context, sp space.ResolvedSpace, billI
 		}
 	}
 
-	names := map[string]string{"#status": "status", "#n": "transaction_ids"}
-	values := map[string]types.AttributeValue{
-		":forecast": str(string(finance.BillForecast)), ":now": r.stamp(now),
-		":n": &types.AttributeValueMemberN{Value: fmt.Sprint(len(cur.TransactionIDs))},
-	}
+	values := map[string]types.AttributeValue{":now": r.stamp(now)}
+	cond, names := mergeGuard(cur, values)
 	sets := []string{"updated_at = :now"}
 	set := func(attr string, v types.AttributeValue) {
 		names["#"+attr] = attr
@@ -474,7 +569,7 @@ func (r *BillRepository) Edit(ctx context.Context, sp space.ResolvedSpace, billI
 	}
 	sk := BillSK(billID)
 	items = append(items, r.bills.BuildRawUpdateTxItem(sp.PK(), &sk,
-		"SET "+strings.Join(sets, ", "), "#status = :forecast AND size(#n) = :n", names, values))
+		"SET "+strings.Join(sets, ", "), cond, names, values))
 	if err := r.bills.TransactWrite(ctx, items); err != nil {
 		if onlyConditionFailed(err) {
 			return finance.Bill{}, finance.ErrBillState

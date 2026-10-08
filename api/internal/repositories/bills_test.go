@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
 	"gopkg.aoctech.app/billing/api/internal/domain/brcal"
 	"gopkg.aoctech.app/billing/api/internal/domain/finance"
@@ -75,5 +77,30 @@ func TestCreateRefusesAnInvalidBillBeforeAnyWrite(t *testing.T) {
 	b.Amount = billing.Cents(0)
 	if _, err := r.Create(context.Background(), sp, b, PostMeta{}, time.Now()); !errors.Is(err, finance.ErrInvalidBill) {
 		t.Fatalf("err = %v, want ErrInvalidBill", err)
+	}
+}
+
+func TestABillThatAutoSettlesNeedsTheSettleVerb(t *testing.T) {
+	r := &BillRepository{}
+	full, _ := space.ForJob("USER#u1", true)
+	writer := space.Narrow(full, space.Read|space.Write)
+	b := fixtureBill()
+	b.AutoSettle = true
+	if _, err := r.Create(context.Background(), writer, b, PostMeta{}, time.Now()); !errors.Is(err, space.ErrDenied) {
+		t.Fatalf("Create with auto_settle as a writer: %v, want ErrDenied", err)
+	}
+}
+
+// Settle, Cancel and Edit all act on the bill as it was read; the guard is what
+// stops a stale read from committing after an edit appended a transaction.
+func TestTheForecastGuardPinsStatusAndTheTransactionList(t *testing.T) {
+	b := fixtureBill()
+	b.TransactionIDs = []string{"t1", "t2", "t3"}
+	cond, names, values := forecastGuard(&b)
+	if cond != "#status = :forecast AND size(#n) = :n" || names["#n"] != "transaction_ids" || names["#status"] != "status" {
+		t.Fatalf("cond %q names %v", cond, names)
+	}
+	if n, ok := values[":n"].(*types.AttributeValueMemberN); !ok || n.Value != "3" {
+		t.Fatalf(":n = %v, want 3", values[":n"])
 	}
 }

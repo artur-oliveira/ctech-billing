@@ -252,3 +252,81 @@ func TestTheOpenIndexHoldsOnlyForecastBills(t *testing.T) {
 		t.Fatalf("open list = %+v, want only %s", page.Items, kept.ID)
 	}
 }
+
+// A settlement or a cancellation is built from the bill as it was read. An edit
+// landing in between changes what was recognised, so acting on the stale facts
+// would leave a residue in payables. Both writes are conditioned on the bill
+// being exactly as read, so of the two racing operations at most one commits.
+func TestSettleAndEditRacingNeverLeaveAResidue(t *testing.T) {
+	for i := 0; i < 15; i++ {
+		f := newBillsFixture(t)
+		b := f.payable(t, 100000, brcal.New(2026, time.March, 10))
+		bigger := billing.Cents(130000)
+
+		var wg sync.WaitGroup
+		var settleErr, editErr error
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			_, settleErr = f.bills.Settle(context.Background(), f.sp, b.ID, 100000, "", brcal.New(2026, 3, 10), repositories.PostMeta{}, time.Now())
+		}()
+		go func() {
+			defer wg.Done()
+			_, editErr = f.bills.Edit(context.Background(), f.sp, b.ID, repositories.BillEdit{Amount: &bigger}, brcal.Date{}, repositories.PostMeta{}, time.Now())
+		}()
+		wg.Wait()
+
+		final, err := f.bills.Get(context.Background(), f.sp, b.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		payables := f.bal(t, "sys-payables")
+		switch final.Status {
+		case finance.BillPaid:
+			if payables != 0 {
+				t.Fatalf("iteration %d: paid bill left payables at %d (settle %v, edit %v)", i, payables, settleErr, editErr)
+			}
+		case finance.BillForecast:
+			if payables != -final.Amount {
+				t.Fatalf("iteration %d: forecast bill of %d has payables at %d (settle %v, edit %v)", i, final.Amount, payables, settleErr, editErr)
+			}
+		default:
+			t.Fatalf("iteration %d: unexpected status %s", i, final.Status)
+		}
+	}
+}
+
+func TestCancelAndEditRacingNeverLeaveAResidue(t *testing.T) {
+	for i := 0; i < 15; i++ {
+		f := newBillsFixture(t)
+		b := f.payable(t, 100000, brcal.New(2026, time.March, 10))
+		bigger := billing.Cents(130000)
+
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			_, _ = f.bills.Cancel(context.Background(), f.sp, b.ID, brcal.Date{}, repositories.PostMeta{}, time.Now())
+		}()
+		go func() {
+			defer wg.Done()
+			_, _ = f.bills.Edit(context.Background(), f.sp, b.ID, repositories.BillEdit{Amount: &bigger}, brcal.Date{}, repositories.PostMeta{}, time.Now())
+		}()
+		wg.Wait()
+
+		final, _ := f.bills.Get(context.Background(), f.sp, b.ID)
+		payables, rent := f.bal(t, "sys-payables"), f.bal(t, "rent")
+		switch final.Status {
+		case finance.BillCanceled:
+			if payables != 0 || rent != 0 {
+				t.Fatalf("iteration %d: a cancelled bill left payables %d rent %d", i, payables, rent)
+			}
+		case finance.BillForecast:
+			if payables != -final.Amount || rent != final.Amount {
+				t.Fatalf("iteration %d: forecast %d has payables %d rent %d", i, final.Amount, payables, rent)
+			}
+		default:
+			t.Fatalf("iteration %d: unexpected status %s", i, final.Status)
+		}
+	}
+}
