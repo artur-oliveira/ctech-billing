@@ -31,8 +31,11 @@ func TestEveryBillMethodChecksTheSpaceAndTheVerb(t *testing.T) {
 	date := brcal.New(2026, time.March, 10)
 
 	calls := map[string]func(sp space.ResolvedSpace) error{
-		"Create": func(sp space.ResolvedSpace) error { _, err := r.Create(ctx, sp, fixtureBill(), PostMeta{}, now); return err },
-		"Get":    func(sp space.ResolvedSpace) error { _, err := r.Get(ctx, sp, "b"); return err },
+		"Create": func(sp space.ResolvedSpace) error {
+			_, err := r.Create(ctx, sp, fixtureBill(), PostMeta{}, now)
+			return err
+		},
+		"Get": func(sp space.ResolvedSpace) error { _, err := r.Get(ctx, sp, "b"); return err },
 		"ListOpen": func(sp space.ResolvedSpace) error {
 			_, err := r.ListOpen(ctx, sp, finance.Payable, 10, nil)
 			return err
@@ -41,8 +44,14 @@ func TestEveryBillMethodChecksTheSpaceAndTheVerb(t *testing.T) {
 			_, err := r.Settle(ctx, sp, "b", 1000, "", date, PostMeta{}, now)
 			return err
 		},
-		"Cancel": func(sp space.ResolvedSpace) error { _, err := r.Cancel(ctx, sp, "b", date, PostMeta{}, now); return err },
-		"Edit":   func(sp space.ResolvedSpace) error { _, err := r.Edit(ctx, sp, "b", BillEdit{}, date, PostMeta{}, now); return err },
+		"Cancel": func(sp space.ResolvedSpace) error {
+			_, err := r.Cancel(ctx, sp, "b", date, PostMeta{}, now)
+			return err
+		},
+		"Edit": func(sp space.ResolvedSpace) error {
+			_, err := r.Edit(ctx, sp, "b", BillEdit{}, date, PostMeta{}, now)
+			return err
+		},
 	}
 	for name, call := range calls {
 		if err := call(zero); !errors.Is(err, space.ErrNoSpace) {
