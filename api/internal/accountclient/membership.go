@@ -23,6 +23,13 @@ import (
 // Scope is what the membership route requires; this client holds nothing else.
 const Scope = "internal:account:org-member"
 
+// ListScope is what listing a user's organizations requires — its own scope at
+// ctech-account, because enumerating a person's workspaces is a wider grant than
+// checking one membership. It is minted on its own token (listTokens) so a
+// missing grant for it degrades the space switcher, never the membership checks
+// that authorize every organization-space request.
+const ListScope = "internal:account:user-organizations"
+
 const (
 	requestTimeout = 6 * time.Second
 	maxBody        = 8 << 10
@@ -39,9 +46,10 @@ type Config struct {
 
 // Client asks ctech-account about organization membership.
 type Client struct {
-	http    *http.Client
-	tokens  *oauth2client.TokenManager
-	baseURL string
+	http       *http.Client
+	tokens     *oauth2client.TokenManager // Scope
+	listTokens *oauth2client.TokenManager // ListScope
+	baseURL    string
 }
 
 // New builds a client, or returns nil when the service credential is not
@@ -52,9 +60,10 @@ func New(cfg Config) *Client {
 	}
 	hc := &http.Client{Timeout: requestTimeout}
 	return &Client{
-		http:    hc,
-		tokens:  oauth2client.New(hc, cfg.Cache, cfg.TokenURL, cfg.ClientID, cfg.ClientSecret, Scope),
-		baseURL: strings.TrimSuffix(cfg.BaseURL, "/"),
+		http:       hc,
+		tokens:     oauth2client.New(hc, cfg.Cache, cfg.TokenURL, cfg.ClientID, cfg.ClientSecret, Scope),
+		listTokens: oauth2client.New(hc, cfg.Cache, cfg.TokenURL, cfg.ClientID, cfg.ClientSecret, ListScope),
+		baseURL:    strings.TrimSuffix(cfg.BaseURL, "/"),
 	}
 }
 
@@ -128,7 +137,7 @@ func (c *Client) Organizations(ctx context.Context, userID string) ([]Organizati
 	if c == nil {
 		return nil, fmt.Errorf("ctech-account client is not configured")
 	}
-	token, err := c.tokens.Get(ctx)
+	token, err := c.listTokens.Get(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("minting a service token: %w", err)
 	}

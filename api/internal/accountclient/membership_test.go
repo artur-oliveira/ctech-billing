@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -102,5 +103,39 @@ func TestOrganizationsFailsClosed(t *testing.T) {
 	var nilClient *Client
 	if _, err := nilClient.Organizations(context.Background(), "u"); err == nil {
 		t.Error("a nil client answered")
+	}
+}
+
+// Listing a user's organizations is its own scope at ctech-account, and it is
+// fetched with its own token: if that scope has not been granted yet, the
+// membership checks — which authorize every org-space request — must keep
+// working on theirs.
+func TestEachQuestionMintsItsOwnScope(t *testing.T) {
+	scopes := map[string]bool{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/token" {
+			_ = r.ParseForm()
+			scopes[r.Form.Get("scope")] = true
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"access_token":"tok","token_type":"Bearer","expires_in":3600}`))
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if strings.Contains(r.URL.Path, "/members/") {
+			_, _ = w.Write([]byte(`{"member":false}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"organizations":[]}`))
+	}))
+	t.Cleanup(srv.Close)
+	c := New(Config{BaseURL: srv.URL, TokenURL: srv.URL + "/token", ClientID: "billing", ClientSecret: "s"})
+	if _, _, err := c.Membership(context.Background(), "o", "u"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Organizations(context.Background(), "u"); err != nil {
+		t.Fatal(err)
+	}
+	if !scopes[Scope] || !scopes[ListScope] || len(scopes) != 2 {
+		t.Fatalf("token scopes requested = %v, want exactly %q and %q, separately", scopes, Scope, ListScope)
 	}
 }
