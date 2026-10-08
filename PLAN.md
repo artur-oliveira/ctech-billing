@@ -594,8 +594,19 @@ gates nothing by plan.
       **Not in this entry:** the console screens F1 (basic), F2, F4, F8 are **6.3b**, and F1's "resultado
       realizado" ships with the cash read in 6.4 (the cached SUMMARY rows do not separate opening balances and
       transfers from real cash movement).
-- [ ] 6.3b Console screens — F1 (basic), F2, F4, F8; needs `/impeccable`, `@aoctech/ui`, the cross-repo
-      check, and the `Billing-Space` header in the client.
+- [x] 6.3b Console screens — F1 (basic: balances, overdue and next due, 3/6/12-month projection as
+      diverging bars with a table view), F2 (pay/receive, edit, cancel inline), F4 (recurrences with a
+      rule editor that previews the next dates before saving), F8 (accounts, categories, default
+      receiving account), and the space switcher fed by `GET /console/finance/spaces`. The console opens
+      for everyone; a person without an organization sees Finanças only.
+      **Deploy order** (done 2026-10-08): ctech-account route `/internal/users/:user_id/organizations` on
+      its own scope `internal:account:user-organizations` (account #41), granted to the
+      `billing-account-membership` client; `billing:finance:read|write` were already on the public
+      `billing` client (reconciled from the manifest publish), so the UI requests them in the same commit.
+      **Found on the way:** account's `GET /v1.0/organizations` is first-party-only, so the switcher
+      cannot call it with billing's token (ADR 0025 amendment); the axios interceptor sent every 503 to
+      /maintenance, which would turn one unreachable organization into a site outage, so
+      `/problems/space-unavailable` is exempt and the personal space keeps working.
 - [ ] 6.4 Reports — F3 statement, F7 DRE and cash flow.
 - [ ] 6.5 Credit cards — F5, statement closing in the job.
 - [ ] 6.6 Import and reconciliation — F6.

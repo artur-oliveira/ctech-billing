@@ -75,3 +75,17 @@ customer" may be an organization the user is entitled to act for.
 
 The resolver, the verbs and the spoofing tests exist (`internal/space`). The membership route they
 rely on is a ctech-account addition, still to be built (see PLAN.md, 6.2, "Pending").
+
+## Amendment, 2026-10-08 — the switcher's source (6.3b)
+
+The selector is not fed by ctech-account's `GET /v1.0/organizations`: that route serves first-party
+clients only, and billing's browser token is not one. Billing serves `GET /console/finance/spaces`
+instead: *Pessoal* first, then the organizations from account's service route
+`GET /internal/users/:user_id/organizations`, always for the token's own subject, each with the verbs
+its role grants. That route has its own scope, `internal:account:user-organizations`, minted on a
+token separate from the membership check, so a client allowed to ask "is this person in that
+organization" is not thereby allowed to enumerate a person's organizations.
+
+The list stays information, not authority: every request still resolves its space through the
+membership check. When account is unreachable the list answers the personal space with
+`organizations_unavailable: true`, and the console says so instead of failing.
