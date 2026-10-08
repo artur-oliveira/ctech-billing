@@ -4,6 +4,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"testing"
 )
 
@@ -86,4 +87,21 @@ func sign(body []byte, secret string) string {
 	mac := hmac.New(sha256.New, []byte(secret))
 	mac.Write(body)
 	return "sha256=" + hex.EncodeToString(mac.Sum(nil))
+}
+
+// The wallet makes the description mandatory on its charge route, so it must be
+// on the wire; billing's invoice number or id is what the payer reads on their
+// statement.
+func TestOpenChargeInputCarriesDescription(t *testing.T) {
+	raw, err := json.Marshal(OpenChargeInput{UserID: "u1", Amount: 1000, Reference: "inv_1", IdempotencyKey: "inv_1:1", Description: "Fatura #42"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatal(err)
+	}
+	if m["description"] != "Fatura #42" {
+		t.Fatalf("description on the wire = %v in %s", m["description"], raw)
+	}
 }
