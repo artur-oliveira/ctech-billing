@@ -47,7 +47,12 @@ type Deps struct {
 	// Spaces resolves the finance section's space (ADR 0025). Nil disables the
 	// finance routes.
 	Spaces *space.Resolver
-	Clock  func() time.Time
+	// The finance section's use cases; used only when Spaces is set.
+	FinanceBills *services.FinanceBills
+	FinanceJobs  *services.FinanceJobs
+	Recurrences  *repositories.RecurrenceRepository
+	Ledger       *repositories.LedgerRepository
+	Clock        func() time.Time
 	// PortalOrganizationID is tenant zero (ADR 0012). Empty disables the portal:
 	// its routes 404 rather than falling back to some other organization.
 	PortalOrganizationID string
@@ -172,14 +177,7 @@ func Register(app *fiber.App, d Deps) {
 
 	// Not inside registerConsole's group: that group resolves one organization
 	// per owner (ResolveConsoleTenant), which is not the finance space model.
-	if d.Spaces != nil {
-		fin := v1.Group("/console/finance", auth)
-		fin.Get("/space",
-			middleware.RequireUserScope(middleware.ScopeFinanceRead),
-			middleware.ResolveSpace(d.Spaces),
-			middleware.RequireVerb(space.Read),
-			financeSpace)
-	}
+	registerFinance(v1, d, auth, clock)
 	registerPortal(v1, d, h, auth)
 	registerCheckout(v1, d, h)
 }

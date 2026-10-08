@@ -115,6 +115,9 @@ func Build(ctx context.Context, cfg *config.Config, clock func() time.Time) (*fi
 	// scopes exist, and it has to be able to ask before it holds one.
 	oauthresource.Register(app, cfg.ServiceAudience, cfg.CtechIssuerURL)
 
+	billRepo := repositories.NewBillRepository(db, cfg)
+	recRepo := repositories.NewRecurrenceRepository(db, cfg)
+	ledgerRepo := repositories.NewLedgerRepository(db, cfg)
 	v1.Register(app, v1.Deps{
 		Customers:   customers,
 		Subs:        subs,
@@ -137,6 +140,10 @@ func Build(ctx context.Context, cfg *config.Config, clock func() time.Time) (*fi
 		// accountclient.New returns a typed nil when the credential is not
 		// configured. That is deliberate and safe: a nil *Client answers
 		// Membership with an error, which the resolver reads as "unavailable".
+		FinanceBills: services.NewFinanceBills(billRepo),
+		FinanceJobs:  services.NewFinanceJobs(billRepo, recRepo),
+		Recurrences:  recRepo,
+		Ledger:       ledgerRepo,
 		Spaces: space.NewResolver(accountclient.New(accountclient.Config{
 			BaseURL: cfg.AccountBaseURL, TokenURL: cfg.AccountTokenURL,
 			ClientID: cfg.AccountClientID, ClientSecret: cfg.AccountClientSecret, Cache: cacheBackend,
