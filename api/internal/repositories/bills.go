@@ -226,7 +226,11 @@ func (r *BillRepository) createWithLock(ctx context.Context, sp space.ResolvedSp
 // transaction. A repeat — a re-run, a retry after a crash — finds the lock and
 // is (created=false, nil): one bill per occurrence, however often the job runs.
 func (r *BillRepository) CreateFromOccurrence(ctx context.Context, sp space.ResolvedSpace, d finance.Draft, recurrenceID string, meta PostMeta, now time.Time) (bool, finance.Bill, error) {
-	if err := sp.Require(space.Write); err != nil {
+	need := space.Write
+	if d.Bill.AutoSettle {
+		need |= space.Settle // an auto-settling bill is settled by the job on the user's behalf
+	}
+	if err := sp.Require(need); err != nil {
 		return false, finance.Bill{}, err
 	}
 	b := d.Bill
@@ -515,6 +519,14 @@ func (r *BillRepository) Edit(ctx context.Context, sp space.ResolvedSpace, billI
 	}
 	if err := next.Validate(); err != nil {
 		return finance.Bill{}, err
+	}
+	// An auto-settling bill is a standing instruction to move cash on its due
+	// date; changing the account, amount or date changes what that instruction
+	// does, which is settling.
+	if cur.AutoSettle && (next.AccountID != cur.AccountID || next.Amount != cur.Amount || next.Due != cur.Due) {
+		if err := sp.Require(space.Write | space.Settle); err != nil {
+			return finance.Bill{}, err
+		}
 	}
 	if next.CategoryID != cur.CategoryID || next.AccountID != cur.AccountID {
 		if err := r.checkBillAccounts(ctx, sp, next); err != nil {

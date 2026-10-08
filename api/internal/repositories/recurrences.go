@@ -229,6 +229,7 @@ func (r *RecurrenceRepository) Update(ctx context.Context, sp space.ResolvedSpac
 	if err != nil {
 		return err
 	}
+	before := rec
 	if p.Amount != nil {
 		rec.Amount = *p.Amount
 	}
@@ -246,6 +247,14 @@ func (r *RecurrenceRepository) Update(ctx context.Context, sp space.ResolvedSpac
 	}
 	if p.End != nil {
 		rec.Schedule.End = *p.End
+	}
+	// An auto-settling recurrence is a standing instruction the daily job carries
+	// out on the user's behalf; changing what it pays, from where, is settling.
+	// Turning auto_settle OFF only removes power and needs no extra verb.
+	if rec.AutoSettle && (rec.Amount != before.Amount || rec.AccountID != before.AccountID || rec.CategoryID != before.CategoryID) {
+		if err := sp.Require(space.Write | space.Settle); err != nil {
+			return err
+		}
 	}
 	cursor, err := row.cursor()
 	if err != nil {

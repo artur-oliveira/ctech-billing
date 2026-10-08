@@ -330,3 +330,77 @@ func TestCancelAndEditRacingNeverLeaveAResidue(t *testing.T) {
 		}
 	}
 }
+
+// An auto-settling bill is a standing instruction to move cash on its due date.
+// Changing what that instruction does — the account, the amount, the date — is
+// settling, so a writer without finance.settle must not be able to.
+func TestAWriterCannotRedirectAnAutoSettlingBill(t *testing.T) {
+	f := newBillsFixture(t)
+	ctx, now := context.Background(), time.Now()
+	if err := f.ledger.CreateAccount(ctx, f.sp, finance.LedgerAccount{ID: "bank2", Name: "Outro banco", Class: finance.ClassAsset}, now); err != nil {
+		t.Fatal(err)
+	}
+	b, err := f.bills.Create(ctx, f.sp, finance.Bill{
+		Direction: finance.Payable, Amount: 1000, AccountID: "bank", CategoryID: "rent", AutoSettle: true,
+		Competence: brcal.New(2026, 3, 1), Due: brcal.New(2026, 3, 10), Origin: finance.OriginManual,
+	}, repositories.PostMeta{}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writer := space.Narrow(f.sp, space.Read|space.Write)
+	other, bigger, later := "bank2", billing.Cents(9000), brcal.New(2026, 3, 30)
+	for name, e := range map[string]repositories.BillEdit{
+		"the paying account": {AccountID: &other},
+		"the amount":         {Amount: &bigger},
+		"the due date":       {Due: &later},
+	} {
+		if _, err := f.bills.Edit(ctx, writer, b.ID, e, brcal.Date{}, repositories.PostMeta{}, now); !errors.Is(err, space.ErrDenied) {
+			t.Errorf("a writer changed %s of an auto-settling bill: %v", name, err)
+		}
+	}
+	desc := "Aluguel de março"
+	if _, err := f.bills.Edit(ctx, writer, b.ID, repositories.BillEdit{Description: &desc}, brcal.Date{}, repositories.PostMeta{}, now); err != nil {
+		t.Fatalf("a description is not a cash instruction: %v", err)
+	}
+	// The same edits are fine for someone who may settle.
+	if _, err := f.bills.Edit(ctx, f.sp, b.ID, repositories.BillEdit{AccountID: &other}, brcal.Date{}, repositories.PostMeta{}, now); err != nil {
+		t.Fatalf("a settler could not redirect: %v", err)
+	}
+}
+
+func TestAWriterCannotRedirectAnAutoSettlingRecurrence(t *testing.T) {
+	f := newBillsFixture(t)
+	ctx, now := context.Background(), time.Date(2026, 3, 20, 12, 0, 0, 0, time.UTC)
+	if err := f.ledger.CreateAccount(ctx, f.sp, finance.LedgerAccount{ID: "bank2", Name: "Outro banco", Class: finance.ClassAsset}, now); err != nil {
+		t.Fatal(err)
+	}
+	rec, recs := f.recurrence(t, 10, true)
+	writer := space.Narrow(f.sp, space.Read|space.Write)
+	other, bigger := "bank2", billing.Cents(900000)
+	for name, p := range map[string]repositories.RecurrencePatch{
+		"the paying account": {AccountID: &other},
+		"the amount":         {Amount: &bigger},
+	} {
+		if err := recs.Update(ctx, writer, rec.ID, p, now); !errors.Is(err, space.ErrDenied) {
+			t.Errorf("a writer changed %s of an auto-settling recurrence: %v", name, err)
+		}
+	}
+	off := false
+	if err := recs.Update(ctx, writer, rec.ID, repositories.RecurrencePatch{AutoSettle: &off}, now); err != nil {
+		t.Fatalf("turning auto-settle OFF removes power and must be allowed: %v", err)
+	}
+	// A writer may edit a recurrence that does not auto-settle freely.
+	if err := recs.Update(ctx, writer, rec.ID, repositories.RecurrencePatch{AccountID: &other}, now); err != nil {
+		t.Fatalf("a plain recurrence is a writer's: %v", err)
+	}
+}
+
+func TestACreatedOccurrenceThatAutoSettlesNeedsTheSettleVerb(t *testing.T) {
+	f := newBillsFixture(t)
+	rec, _ := f.recurrence(t, 10, true)
+	drafts, _ := rec.Materialise(brcal.Date{}, brcal.New(2026, 3, 20))
+	writer := space.Narrow(f.sp, space.Read|space.Write)
+	if _, _, err := f.bills.CreateFromOccurrence(context.Background(), writer, drafts[0], rec.ID, repositories.PostMeta{}, time.Now()); !errors.Is(err, space.ErrDenied) {
+		t.Fatalf("a writer created an auto-settling occurrence: %v", err)
+	}
+}
