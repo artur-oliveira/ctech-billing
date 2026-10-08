@@ -4,4 +4,5 @@ cdk.out/
 *.log
 .DS_Store
 .idea/
-.terraform/api/coverage.out
+.terraform/
+api/coverage.out
