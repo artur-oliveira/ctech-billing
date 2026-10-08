@@ -23,10 +23,14 @@ const GROUPS: {bucket: Bucket; title: string}[] = [
   {bucket: "today", title: "Vencem hoje"},
   {bucket: "upcoming", title: "A vencer"},
 ]
-/** Settling, said per direction. */
-const SETTLE_LABEL: Record<Direction, {action: string; confirm: string}> = {
-  payable: {action: "Dar baixa", confirm: "Confirmar baixa"},
-  receivable: {action: "Dar baixa", confirm: "Confirmar baixa"},
+/**
+ * Settling, said per direction and in plain words. Not "dar baixa" (ERP jargon
+ * a person managing their own money does not use) and not "lançar" (which is
+ * recording an entry — creating the bill — not paying it).
+ */
+const SETTLE_LABEL: Record<Direction, {action: string; confirm: string; auto: string; autoNote: string}> = {
+  payable: {action: "Pagar", confirm: "Confirmar pagamento", auto: "Pagar automaticamente no vencimento", autoNote: "Pagamento automático"},
+  receivable: {action: "Receber", confirm: "Confirmar recebimento", auto: "Receber automaticamente no vencimento", autoNote: "Recebimento automático"},
 }
 
 const BADGE: Record<Bucket, {tone: "urgent" | "attention" | "neutral"; icon: typeof Clock}> = {
@@ -92,7 +96,7 @@ export function BillsView() {
             <EmptyState
               icon={<Receipt/>}
               title={direction === "payable" ? "Nenhuma conta a pagar em aberto" : "Nenhuma conta a receber em aberto"}
-              description="Registre uma conta para acompanhar o vencimento e dar baixa quando pagar ou receber."
+              description="Registre uma conta para acompanhar o vencimento e marcar quando pagar ou receber."
             />
           ) : (
             GROUPS.map(g => {
@@ -134,7 +138,7 @@ function BillRow({bill, accountName, accounts}: {bill: Bill; accountName?: strin
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm text-foreground">{bill.description || "Sem descrição"}</p>
           <p className="text-xs text-muted-foreground">
-            Vence {shortDate(bill.due_date)}{accountName ? ` · ${accountName}` : ""}{bill.auto_settle ? " · Baixa automática" : ""}
+            Vence {shortDate(bill.due_date)}{accountName ? ` · ${accountName}` : ""}{bill.auto_settle ? ` · ${SETTLE_LABEL[bill.direction].autoNote}` : ""}
           </p>
         </div>
         <Badge tone={BADGE[bucket].tone}><Icon aria-hidden className="size-3"/>{BUCKET_LABEL[bucket]}</Badge>
@@ -290,8 +294,8 @@ function EditForm({bill, accounts, onDone}: {bill: Bill; accounts: Account[]; on
       </Field>
       {showAuto && (
         <label className="flex items-center gap-2 self-end text-sm">
-          <Switch checked={autoSettle} onCheckedChange={setAutoSettle} disabled={!autoSettle && !can("finance.settle")} aria-label="Baixa automática no vencimento"/>
-          Baixa automática no vencimento
+          <Switch checked={autoSettle} onCheckedChange={setAutoSettle} disabled={!autoSettle && !can("finance.settle")} aria-label={SETTLE_LABEL[bill.direction].auto}/>
+          {SETTLE_LABEL[bill.direction].auto}
         </label>
       )}
       <div className="flex flex-wrap items-center gap-2 sm:col-span-2">
@@ -366,8 +370,8 @@ function NewBillPanel({direction, accounts, onDone}: {direction: Direction; acco
         </Field>
         {can("finance.settle") && (
           <label className="flex items-center gap-2 text-sm">
-            <Switch checked={autoSettle} onCheckedChange={setAutoSettle} aria-label="Baixa automática no vencimento"/>
-            Baixa automática no vencimento
+            <Switch checked={autoSettle} onCheckedChange={setAutoSettle} aria-label={SETTLE_LABEL[direction].auto}/>
+            {SETTLE_LABEL[direction].auto}
           </label>
         )}
         <div className="flex flex-wrap gap-2">

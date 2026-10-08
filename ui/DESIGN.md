@@ -206,8 +206,9 @@ the other and acting on the wrong one is the expensive mistake. A person with no
 only *Finanças*, and the console opens there.
 
 **F2, the working list.** One table per direction, grouped *Vencidas*, *Vence hoje*, *A vencer*,
-with a subtotal per group in tabular figures. A row's actions expand **in place** (settle, edit,
-cancel); the list never disappears behind a modal. Creating a bill opens a side panel. Settling for
+with a subtotal per group in tabular figures. A row's actions expand **in place** — *Pagar* / *Receber*, edit,
+cancel; the list never disappears behind a modal. The settle action is named by direction in plain
+words, never "dar baixa" (ERP jargon) nor "lançar" (which means recording the bill, not paying it). Creating a bill opens a side panel. Settling for
 a different amount requires the category for the gap and states it in words ("R$ 20,00 a mais —
 registrado como juros"). Overdue is a badge with a glyph and text, never colour alone.
 

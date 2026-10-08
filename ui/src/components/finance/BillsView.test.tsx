@@ -34,7 +34,7 @@ function serve(verbs: Verb[], bills: Bill[]) {
 
 async function openRow(description: string) {
   const row = (await screen.findByText(description)).closest("li") as HTMLElement
-  await userEvent.click(within(row).getByRole("button", {name: "Dar baixa"}))
+  await userEvent.click(within(row).getByRole("button", {name: "Pagar"}))
   return row
 }
 
@@ -62,7 +62,7 @@ describe("F2 — a pagar e a receber", () => {
     serve(ALL, [bill({})])
     renderWithQuery(<BillsView/>)
     const row = await openRow("Aluguel")
-    const confirm = within(row).getByRole("button", {name: "Confirmar baixa"})
+    const confirm = within(row).getByRole("button", {name: "Confirmar pagamento"})
     expect(confirm).toBeEnabled()
     const amount = within(row).getByLabelText("Valor pago")
     await userEvent.clear(amount)
@@ -93,7 +93,7 @@ describe("F2 — a pagar e a receber", () => {
     const settle = vi.spyOn(finance, "settleBill").mockImplementation(() => new Promise(r => (release = () => r(bill({status: "paid"})))))
     renderWithQuery(<BillsView/>)
     const row = await openRow("Aluguel")
-    const confirm = within(row).getByRole("button", {name: "Confirmar baixa"})
+    const confirm = within(row).getByRole("button", {name: "Confirmar pagamento"})
     await userEvent.dblClick(confirm)
     await userEvent.click(confirm)
     expect(settle).toHaveBeenCalledTimes(1)
@@ -111,9 +111,9 @@ describe("F2 — a pagar e a receber", () => {
       .mockResolvedValueOnce(bill({status: "paid"}))
     renderWithQuery(<BillsView/>)
     const row = await openRow("Aluguel")
-    await userEvent.click(within(row).getByRole("button", {name: "Confirmar baixa"}))
+    await userEvent.click(within(row).getByRole("button", {name: "Confirmar pagamento"}))
     await within(row).findByRole("alert")
-    await userEvent.click(within(row).getByRole("button", {name: "Confirmar baixa"}))
+    await userEvent.click(within(row).getByRole("button", {name: "Confirmar pagamento"}))
     await waitFor(() => expect(settle).toHaveBeenCalledTimes(2))
     expect(settle.mock.calls[0][3]).toBe(settle.mock.calls[1][3])
   })
@@ -128,7 +128,7 @@ describe("F2 — a pagar e a receber", () => {
     await userEvent.type(amount, "1.600,00")
     await userEvent.selectOptions(within(row).getByLabelText("Categoria da diferença"), "juros")
     const calls = vi.mocked(finance.listBills).mock.calls.length
-    await userEvent.click(within(row).getByRole("button", {name: "Confirmar baixa"}))
+    await userEvent.click(within(row).getByRole("button", {name: "Confirmar pagamento"}))
     await within(row).findByText(/mudou enquanto/i)
     expect(within(row).getByLabelText("Valor pago")).toHaveValue("1.600,00")
     await waitFor(() => expect(vi.mocked(finance.listBills).mock.calls.length).toBeGreaterThan(calls))
@@ -148,14 +148,14 @@ describe("F2 — a pagar e a receber", () => {
     serve(["finance.read", "finance.write"], [])
     renderWithQuery(<BillsView/>)
     await userEvent.click(await screen.findByRole("button", {name: "Nova conta"}))
-    expect(screen.queryByLabelText("Baixa automática no vencimento")).toBeNull()
+    expect(screen.queryByLabelText("Pagar automaticamente no vencimento")).toBeNull()
   })
 
   it("gives a viewer the list and no actions", async () => {
     serve(["finance.read"], [bill({})])
     renderWithQuery(<BillsView/>)
     await screen.findByText("Aluguel")
-    expect(screen.queryByRole("button", {name: "Dar baixa"})).toBeNull()
+    expect(screen.queryByRole("button", {name: "Pagar"})).toBeNull()
     expect(screen.queryByRole("button", {name: "Nova conta"})).toBeNull()
     expect(screen.queryByRole("button", {name: "Editar"})).toBeNull()
   })
