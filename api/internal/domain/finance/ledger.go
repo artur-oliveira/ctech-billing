@@ -61,6 +61,9 @@ const (
 	KindStatementPayment TxKind = "statement_payment"
 	KindOpeningBalance   TxKind = "opening_balance"
 	KindReversal         TxKind = "reversal"
+	// KindAdjustment changes what a still-open bill recognised (an edit or a
+	// cancellation) as one net transaction.
+	KindAdjustment TxKind = "adjustment"
 )
 
 // Leg is one side of a transaction on one account. Amount is signed: **positive
@@ -158,7 +161,7 @@ func Reverse(original Transaction, originalID string, date brcal.Date) (Transact
 func (k TxKind) valid() bool {
 	switch k {
 	case KindRecognition, KindSettlement, KindTransfer, KindCardPurchase,
-		KindStatementPayment, KindOpeningBalance, KindReversal:
+		KindStatementPayment, KindOpeningBalance, KindReversal, KindAdjustment:
 		return true
 	}
 	return false
