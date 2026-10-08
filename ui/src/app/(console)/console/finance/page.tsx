@@ -1,8 +1,8 @@
 "use client"
 
-import {Skeleton} from "@aoctech/ui"
+import {OverviewView} from "@/components/finance/OverviewView"
 
-/** F1 — the finance overview. Its blocks arrive with Task 9 of the 6.3b plan. */
+/** F1 — the finance overview. */
 export default function FinanceOverviewPage() {
-  return <Skeleton className="h-24 w-full"/>
+  return <OverviewView/>
 }

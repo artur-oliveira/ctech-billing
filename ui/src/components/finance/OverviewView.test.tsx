@@ -1,0 +1,96 @@
+import "@testing-library/jest-dom/vitest"
+
+import {screen, waitFor, within} from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
+import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
+
+import {OverviewView} from "@/components/finance/OverviewView"
+import {pick, renderWithQuery} from "@/components/finance/finance.test-utils"
+import * as finance from "@/lib/api/finance"
+import type {Account, Bill, ProjectionMonth, Verb} from "@/lib/api/financeTypes"
+
+const ALL: Verb[] = ["finance.read", "finance.write", "finance.settle", "finance.import", "finance.configure"]
+const ACCOUNTS: Account[] = [
+  {id: "cc", name: "Conta corrente", class: "asset", system: false, archived: false, balance: 842315},
+  {id: "pp", name: "Poupança", class: "asset", system: false, archived: false, balance: 1250000},
+  {id: "old", name: "Banco antigo", class: "asset", system: false, archived: true, balance: 0},
+  {id: "alu", name: "Aluguel", class: "expense", system: false, archived: false, balance: 0},
+]
+const bill = (o: Partial<Bill>): Bill => ({id: "x", direction: "payable", amount: 1000, account_id: "cc", category_id: "alu",
+  description: "Conta", competence_date: "2026-03-01", due_date: "2026-03-10", status: "forecast", origin: "manual", auto_settle: false, ...o})
+const MONTHS: ProjectionMonth[] = [
+  {month: "2026-10", receivable: 0, payable: 225490, virtual: 0},
+  {month: "2026-11", receivable: 350000, payable: 40000, virtual: 0},
+  {month: "2026-12", receivable: 0, payable: 0, virtual: -150000},
+]
+
+function serve() {
+  vi.spyOn(finance, "getFinanceSpaces").mockResolvedValue({spaces: [{kind: "personal", label: "Pessoal", verbs: ALL}], organizations_unavailable: false})
+  vi.spyOn(finance, "listAccounts").mockResolvedValue({data: ACCOUNTS, has_more: false})
+  vi.spyOn(finance, "listBills").mockImplementation(async (_c, dir) => ({
+    data: dir === "payable"
+      ? [bill({id: "a", description: "Aluguel atrasado", bucket: "overdue"}), bill({id: "b", description: "Internet", bucket: "upcoming"})]
+      : [bill({id: "c", direction: "receivable", description: "Freela", bucket: "upcoming"})],
+    has_more: false,
+  }))
+  return vi.spyOn(finance, "getProjection").mockResolvedValue({data: MONTHS, has_more: false})
+}
+
+beforeEach(() => window.localStorage.clear())
+afterEach(() => vi.restoreAllMocks())
+
+describe("F1 — visão geral", () => {
+  it("lists the balance of each active account and the total", async () => {
+    serve()
+    renderWithQuery(<OverviewView/>)
+    const block = await screen.findByRole("region", {name: "Saldos"})
+    await within(block).findByText("Conta corrente")
+    expect(within(block).queryByText("Banco antigo")).toBeNull()
+    expect(within(block).queryByText("Aluguel")).toBeNull()
+    expect(within(block).getByText("R$ 20.923,15")).toBeInTheDocument()
+  })
+
+  it("puts overdue items first in due soon", async () => {
+    serve()
+    renderWithQuery(<OverviewView/>)
+    const block = await screen.findByRole("region", {name: "Vencidas e próximas"})
+    await within(block).findByText("Aluguel atrasado")
+    const text = block.textContent ?? ""
+    expect(text.indexOf("Aluguel atrasado")).toBeLessThan(text.indexOf("Internet"))
+  })
+
+  it("keeps recurrences not yet generated apart from the bills", async () => {
+    serve()
+    renderWithQuery(<OverviewView/>)
+    const block = await screen.findByRole("region", {name: "Projeção"})
+    await userEvent.click(await within(block).findByRole("button", {name: "Ver como tabela"}))
+    const table = within(block).getByRole("table")
+    const headers = within(table).getAllByRole("columnheader").map(h => h.textContent)
+    expect(headers).toEqual(["Mês", "A receber", "A pagar", "Recorrências ainda não geradas"])
+    const dec = within(table).getByRole("row", {name: /dez/i})
+    expect(within(dec).getByText("-R$ 1.500,00")).toBeInTheDocument()
+  })
+
+  it("fails one block without blanking the others", async () => {
+    serve().mockRejectedValue({response: {status: 500, data: {title: "Erro"}}})
+    renderWithQuery(<OverviewView/>)
+    const projection = await screen.findByRole("region", {name: "Projeção"})
+    expect(await within(projection).findByRole("button", {name: "Tentar de novo"})).toBeInTheDocument()
+    expect(await within(screen.getByRole("region", {name: "Saldos"})).findByText("Conta corrente")).toBeInTheDocument()
+  })
+
+  it("asks for the chosen window", async () => {
+    const projection = serve()
+    renderWithQuery(<OverviewView/>)
+    await waitFor(() => expect(projection).toHaveBeenCalledWith(expect.anything(), 6))
+    await pick("Período", "12 meses")
+    await waitFor(() => expect(projection).toHaveBeenCalledWith(expect.anything(), 12))
+  })
+
+  it("has no realised-result tile", async () => {
+    serve()
+    renderWithQuery(<OverviewView/>)
+    await screen.findByRole("region", {name: "Saldos"})
+    expect(screen.queryByText(/resultado realizado/i)).toBeNull()
+  })
+})
