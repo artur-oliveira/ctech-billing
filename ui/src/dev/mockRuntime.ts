@@ -22,6 +22,7 @@ import {
   setConsoleDunning,
   setConsoleIssuer,
 } from "./consoleMockData"
+import {financeMock} from "./financeMockData"
 import {FIXTURES, MOCK_PIX_CODE} from "./mockData"
 
 const STORAGE_KEY = "ctech-billing-mock-scenario"
@@ -189,6 +190,22 @@ export const mockAdapter: AxiosAdapter = async config => {
       "nenhuma conta de cobrança para este usuário",
       "/problems/no-billing-account"
     )
+  }
+
+  // ── Finance ────────────────────────────────────────────────────────────────
+  // Above the console block, because `sem_conta` (no organization) still has a
+  // personal finance space. The module enforces the space, mode and
+  // idempotency headers itself.
+  if (url.includes("/v1.0/console/finance/")) {
+    const res = financeMock({
+      method, url, headers: config.headers as Record<string, unknown>, data: config.data,
+      params: config.params as Record<string, unknown>,
+    })
+    if (res.status >= 400) {
+      const p = res.data as {type?: string; title?: string; detail?: string}
+      fail(config, res.status, p.title ?? "Error", p.detail ?? "", p.type)
+    }
+    return {...ok(config, res.data), status: res.status}
   }
 
   // ── Console ────────────────────────────────────────────────────────────────
