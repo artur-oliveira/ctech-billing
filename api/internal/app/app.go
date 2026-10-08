@@ -200,6 +200,15 @@ func BuildProvisioner(ctx context.Context, cfg *config.Config) (provision.Repos,
 	}, nil
 }
 
+// BuildLedger wires the finance ledger repository for cmd/finance-rebuild.
+func BuildLedger(ctx context.Context, cfg *config.Config) (*repositories.LedgerRepository, error) {
+	db, err := newDynamoDB(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+	return repositories.NewLedgerRepository(db, cfg), nil
+}
+
 // BuildDeliverer wires only what the outbound webhook job needs.
 //
 // One repository: the delivery job reads endpoints, events and deliveries, and
