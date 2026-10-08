@@ -571,14 +571,12 @@ gates nothing by plan.
       needs `finance.settle`. `finance-rebuild` derives balances and summaries from the entries and
       reports (or `-apply`s) drift. Scopes `billing:finance:read|write`; route
       `GET /v1.0/console/finance/space`.
-      **Pending, outside this repo:** (1) ctech-account must add
+      **Membership route and client (done 2026-10-07):** ctech-account PR #38 added
       `GET /v1.0/internal/organizations/:organization_id/members/:user_id` (scope
-      `internal:account:org-member`, `200 {member, role}`, a non-member is still 200) and issue
-      billing a service client with that scope — until then organization spaces answer 503 and
-      personal spaces are unaffected; (2) once the client exists, add `ACCOUNT_BASE_URL`,
-      `ACCOUNT_TOKEN_URL`, `ACCOUNT_CLIENT_ID`, `ACCOUNT_CLIENT_SECRET` to the SSM paths and
-      userdata beside `WALLET_*` (`terraform/billing/{locals,ssm,compute}.tf`,
-      `terraform/assets/bootstrap*.tftpl`; mind the 16 KiB userdata ceiling).
+      `internal:account:org-member`); billing's client was issued with `createclient` and its id and
+      secret live at `/ctech-billing/{env}/billing/account-client-{id,secret}` (created by the
+      command, not by Terraform). The userdata sets `ACCOUNT_CLIENT_ID/SECRET` from them and derives
+      `ACCOUNT_BASE_URL` and `ACCOUNT_TOKEN_URL` from `CTECH_INTERNAL_URL`, as `WALLET_TOKEN_URL` is.
 - [ ] 6.3 Bills and recurrences — `cmd/finance` (materialise, auto-settle); F1 (basic), F2, F4, F8.
 - [ ] 6.4 Reports — F3 statement, F7 DRE and cash flow.
 - [ ] 6.5 Credit cards — F5, statement closing in the job.

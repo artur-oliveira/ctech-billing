@@ -66,6 +66,8 @@ ctech_run setup-ssm-env.sh \
   WALLET_CLIENT_ID=${ssm_wallet_client_id} \
   WALLET_CLIENT_SECRET=${ssm_wallet_client_secret} \
   WALLET_WEBHOOK_SECRET=${ssm_wallet_webhook_secret} \
+  ACCOUNT_CLIENT_ID=${ssm_account_client_id} \
+  ACCOUNT_CLIENT_SECRET=${ssm_account_client_secret} \
   CHECKOUT_LINK_SECRET=${ssm_checkout_link_secret} \
   FIELD_ENCRYPTION_KEY=${ssm_field_encryption_key} \
   EMAIL_FROM=${ssm_email_from}
@@ -79,7 +81,9 @@ ctech_run setup-ssm-env.sh \
 cat > /opt/app/service-env.sh << 'SERVICEENV'
 if [ -n "$VALKEY_BASE" ]; then VALKEY_URL="$${VALKEY_BASE%/}/${valkey_db}"; else VALKEY_URL=""; fi
 WALLET_TOKEN_URL="$CTECH_INTERNAL_URL/v1.0/token"
-export VALKEY_URL WALLET_TOKEN_URL
+ACCOUNT_BASE_URL="$CTECH_INTERNAL_URL"
+ACCOUNT_TOKEN_URL="$CTECH_INTERNAL_URL/v1.0/token"
+export VALKEY_URL WALLET_TOKEN_URL ACCOUNT_BASE_URL ACCOUNT_TOKEN_URL
 SERVICEENV
 chmod 0755 /opt/app/service-env.sh
 

@@ -23,6 +23,14 @@ locals {
     wallet_client_id      = "${local.ssm_prefix}/wallet-client-id"
     wallet_client_secret  = "${local.ssm_prefix}/wallet-client-secret"
     wallet_webhook_secret = "${local.ssm_prefix}/wallet-webhook-secret"
+
+    # Billing's client at ctech-account (internal:account:org-member), which
+    # resolves a finance space's membership (ADR 0025). Unlike the collection
+    # secrets, these two parameters are NOT declared in ssm.tf: ctech-account's
+    # `cmd/createclient -ssm-path-client/-ssm-path-secret` creates them, with
+    # Overwrite=false, so a managed resource here would collide with them.
+    account_client_id     = "${local.ssm_prefix}/account-client-id"
+    account_client_secret = "${local.ssm_prefix}/account-client-secret"
     checkout_link_secret  = "${local.ssm_prefix}/checkout-link-secret"
 
     # Encrypts the stored values that are personal data on their own — today the
