@@ -31,6 +31,12 @@ describe("parseMoney", () => {
     expect(parseMoney("1.005,05")).toBe(100505)
   })
 
+  it("prints thousands like a person types them", () => {
+    expect(formatMoneyInput(180000)).toBe("1.800,00")
+    expect(formatMoneyInput(123456789)).toBe("1.234.567,89")
+    expect(formatMoneyInput(5)).toBe("0,05")
+  })
+
   it("round-trips what it prints", () => {
     for (const cents of [1, 5, 99, 100, 123456, 100000000]) {
       expect(parseMoney(formatMoneyInput(cents))).toBe(cents)

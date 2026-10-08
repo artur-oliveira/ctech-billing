@@ -26,5 +26,6 @@ export function parseMoney(input: string): number | null {
 
 /** Centavos to the text an input shows ("1234,56"): the inverse of parseMoney. */
 export function formatMoneyInput(cents: number): string {
-  return `${Math.trunc(cents / 100)},${String(cents % 100).padStart(2, "0")}`
+  const whole = String(Math.trunc(cents / 100)).replace(/\B(?=(\d{3})+(?!\d))/g, ".")
+  return `${whole},${String(cents % 100).padStart(2, "0")}`
 }

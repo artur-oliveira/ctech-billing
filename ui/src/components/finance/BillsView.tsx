@@ -23,6 +23,12 @@ const GROUPS: {bucket: Bucket; title: string}[] = [
   {bucket: "today", title: "Vencem hoje"},
   {bucket: "upcoming", title: "A vencer"},
 ]
+/** Settling, said per direction. */
+const SETTLE_LABEL: Record<Direction, {action: string; confirm: string}> = {
+  payable: {action: "Dar baixa", confirm: "Confirmar baixa"},
+  receivable: {action: "Dar baixa", confirm: "Confirmar baixa"},
+}
+
 const BADGE: Record<Bucket, {tone: "urgent" | "attention" | "neutral"; icon: typeof Clock}> = {
   overdue: {tone: "urgent", icon: AlertCircle},
   today: {tone: "attention", icon: Clock},
@@ -136,7 +142,7 @@ function BillRow({bill, accountName, accounts}: {bill: Bill; accountName?: strin
         <div className="flex gap-1">
           {can("finance.settle") && (
             <Button size="sm" variant={panel === "settle" ? "outline" : "ghost"} aria-expanded={panel === "settle"} onClick={() => setPanel(panel === "settle" ? null : "settle")}>
-              {bill.direction === "payable" ? "Dar baixa" : "Dar baixa"}
+              {SETTLE_LABEL[bill.direction].action}
             </Button>
           )}
           {can("finance.write") && (
@@ -174,16 +180,21 @@ function FormError({error}: {error: unknown}) {
   )
 }
 
-const inPanel = "mt-3 grid gap-3 rounded-lg bg-surface p-3 sm:grid-cols-2 motion-safe:animate-in motion-safe:fade-in"
+// items-start: each Field is itself a grid; stretched to the row's height, the
+// spare space goes to its label row and pushes the input down out of line with
+// the field beside it (the one with a hint is taller).
+const inPanel = "mt-3 grid items-start gap-3 rounded-lg bg-surface p-3 sm:grid-cols-2 motion-safe:animate-in motion-safe:fade-in"
 
 function SettleForm({bill, accounts, onDone}: {bill: Bill; accounts: Account[]; onDone: () => void}) {
-  const [different, setDifferent] = useState(false)
   const [amountText, setAmountText] = useState(formatMoneyInput(bill.amount))
   const [date, setDate] = useState(todayIso())
   const [category, setCategory] = useState("")
   const settle = useFinanceMutation((c, body: Settlement, key) => settleBill(c, bill.id, body, key), touched, onDone)
 
-  const paid = different ? parseMoney(amountText) : bill.amount
+  // The amount is always visible and starts at the bill's own: paying exactly
+  // what was owed is the common case, and a different amount is just an edit
+  // of the same field — no extra toggle to find.
+  const paid = parseMoney(amountText)
   const gap = paid === null ? 0 : paid - bill.amount
   const categories = accounts.filter(a => (a.class === "income" || a.class === "expense") && !a.system && !a.archived)
   const catName = categories.find(a => a.id === category)?.name
@@ -206,16 +217,10 @@ function SettleForm({bill, accounts, onDone}: {bill: Bill; accounts: Account[]; 
       <Field label={bill.direction === "payable" ? "Data do pagamento" : "Data do recebimento"} htmlFor={`d-${bill.id}`}>
         <Input id={`d-${bill.id}`} type="date" value={date} onChange={e => setDate(e.target.value)}/>
       </Field>
-      {different ? (
-        <Field label="Valor pago" htmlFor={`v-${bill.id}`} hint={`Valor da conta: ${money(bill.amount)}`}>
-          <Input id={`v-${bill.id}`} inputMode="decimal" value={amountText} onChange={e => setAmountText(e.target.value)} aria-invalid={paid === null}/>
-        </Field>
-      ) : (
-        <div className="flex items-end">
-          <Button type="button" variant="ghost" size="sm" onClick={() => setDifferent(true)}>Valor diferente</Button>
-        </div>
-      )}
-      {different && gap !== 0 && (
+      <Field label={bill.direction === "payable" ? "Valor pago" : "Valor recebido"} htmlFor={`v-${bill.id}`}>
+        <Input id={`v-${bill.id}`} inputMode="decimal" value={amountText} onChange={e => setAmountText(e.target.value)} aria-invalid={paid === null}/>
+      </Field>
+      {gap !== 0 && (
         <>
           <Field label="Categoria da diferença" htmlFor={`c-${bill.id}`}>
             <select id={`c-${bill.id}`} value={category} onChange={e => setCategory(e.target.value)} className={SELECT}>
@@ -223,14 +228,14 @@ function SettleForm({bill, accounts, onDone}: {bill: Bill; accounts: Account[]; 
               {categories.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
             </select>
           </Field>
-          <p className="self-end text-sm text-muted-foreground">
-            {money(Math.abs(gap))} {gap > 0 ? "a mais" : "a menos"}
+          <p className="text-sm text-muted-foreground sm:pt-7">
+            {money(Math.abs(gap))} {gap > 0 ? "a mais" : "a menos"} que a conta ({money(bill.amount)})
             {catName ? ` — registrado em ${catName}` : " — escolha onde registrar a diferença"}
           </p>
         </>
       )}
       <div className="flex flex-wrap items-center gap-2 sm:col-span-2">
-        <Button type="submit" variant="brand" size="sm" disabled={!ready}>Confirmar baixa</Button>
+        <Button type="submit" variant="brand" size="sm" disabled={!ready}>{SETTLE_LABEL[bill.direction].confirm}</Button>
         <Button type="button" variant="outline" size="sm" onClick={onDone}>Fechar</Button>
         <FormError error={settle.error}/>
       </div>
