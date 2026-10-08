@@ -56,6 +56,11 @@ const (
 	// retrying means reading a delivery beside the event it carries.
 	TableWebhooks    = "webhooks"
 	TableIdempotency = "idempotency"
+	// TableLedgerAccounts holds a space's chart of accounts and the cached
+	// balance and monthly summary of each account; TableLedgerTransactions holds
+	// the immutable transactions and their per-account entries (spec § 4).
+	TableLedgerAccounts     = "ledger_accounts"
+	TableLedgerTransactions = "ledger_transactions"
 )
 
 // Index names.
@@ -95,6 +100,7 @@ const (
 	EntityPrice          Entity = "PRICE"
 	EntityOrganization   Entity = "ORGANIZATION"
 	EntityAudit          Entity = "AUDIT"
+	EntityLedgerTx       Entity = "LEDGER_TX"
 )
 
 // Sort-key prefixes. One constant per row type, so the layout lives in this file

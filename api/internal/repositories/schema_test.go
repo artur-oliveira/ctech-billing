@@ -26,6 +26,8 @@ var allTables = []string{
 	TableAudit,
 	TableWebhooks,
 	TableIdempotency,
+	TableLedgerAccounts,
+	TableLedgerTransactions,
 }
 
 func TestEveryTableConstantHasASchema(t *testing.T) {
