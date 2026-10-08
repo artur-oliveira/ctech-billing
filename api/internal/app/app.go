@@ -435,3 +435,17 @@ func newCache(cfg *config.Config) cache.Backend {
 	}
 	return backend
 }
+
+// BuildFinanceJobs wires only what the daily finance job needs: the bill and
+// recurrence repositories. It reads the two job work lists, which are the only
+// cross-tenant reads of the finance module (ADR 0002), and has no HTTP surface.
+func BuildFinanceJobs(ctx context.Context, cfg *config.Config) (*services.FinanceJobs, error) {
+	db, err := newDynamoDB(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+	return services.NewFinanceJobs(
+		repositories.NewBillRepository(db, cfg),
+		repositories.NewRecurrenceRepository(db, cfg),
+	), nil
+}
