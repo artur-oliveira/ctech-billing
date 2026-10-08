@@ -133,7 +133,7 @@ function Detail() {
           />
           {sub.since && <Fact label="Cliente desde" value={longDate(sub.since)}/>}
           {!sub.renews_on && sub.cancelable && (
-            <Fact label="Renovação" value="Cancelada — não haverá nova cobrança"/>
+            <Fact label="Renovação" value="Cancelada; não haverá nova cobrança"/>
           )}
         </dl>
       </section>

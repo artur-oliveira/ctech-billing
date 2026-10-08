@@ -5,7 +5,7 @@ import userEvent from "@testing-library/user-event"
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 
 import {BillsView} from "@/components/finance/BillsView"
-import {renderWithQuery} from "@/components/finance/finance.test-utils"
+import {optionsOf, pick, renderWithQuery} from "@/components/finance/finance.test-utils"
 import * as finance from "@/lib/api/finance"
 import type {Account, Bill, Verb} from "@/lib/api/financeTypes"
 import {todayIso} from "@/lib/finance/today"
@@ -69,7 +69,7 @@ describe("F2 — a pagar e a receber", () => {
     await userEvent.type(amount, "1.520,00")
     expect(within(row).getByText(/R\$ 20,00 a mais/)).toBeInTheDocument()
     expect(confirm).toBeDisabled()
-    await userEvent.selectOptions(within(row).getByLabelText("Categoria da diferença"), "juros")
+    await pick("Categoria da diferença", "Juros", row)
     expect(confirm).toBeEnabled()
     await userEvent.clear(amount)
     await userEvent.type(amount, "1.495,00")
@@ -83,8 +83,7 @@ describe("F2 — a pagar e a receber", () => {
     const amount = within(row).getByLabelText("Valor pago")
     await userEvent.clear(amount)
     await userEvent.type(amount, "1.600,00")
-    const values = [...(within(row).getByLabelText("Categoria da diferença") as HTMLSelectElement).options].map(o => o.value).filter(Boolean)
-    expect(values.sort()).toEqual(["alu", "desc", "juros", "sal"])
+    expect((await optionsOf("Categoria da diferença", row)).sort()).toEqual(["Aluguel", "Descontos obtidos", "Juros", "Salário"])
   })
 
   it("settles at the bill's amount and today unless changed, once on a double click", async () => {
@@ -126,7 +125,7 @@ describe("F2 — a pagar e a receber", () => {
     const amount = within(row).getByLabelText("Valor pago")
     await userEvent.clear(amount)
     await userEvent.type(amount, "1.600,00")
-    await userEvent.selectOptions(within(row).getByLabelText("Categoria da diferença"), "juros")
+    await pick("Categoria da diferença", "Juros", row)
     const calls = vi.mocked(finance.listBills).mock.calls.length
     await userEvent.click(within(row).getByRole("button", {name: "Confirmar pagamento"}))
     await within(row).findByText(/mudou enquanto/i)
@@ -138,10 +137,8 @@ describe("F2 — a pagar e a receber", () => {
     serve(ALL, [])
     renderWithQuery(<BillsView/>)
     await userEvent.click(await screen.findByRole("button", {name: "Nova conta"}))
-    const cats = [...(screen.getByLabelText("Categoria") as HTMLSelectElement).options].map(o => o.value).filter(Boolean)
-    expect(cats.sort()).toEqual(["alu", "juros"])
-    const accts = [...(screen.getByLabelText("Pagar com") as HTMLSelectElement).options].map(o => o.value).filter(Boolean)
-    expect(accts).toEqual(["cc"])
+    expect((await optionsOf("Categoria")).sort()).toEqual(["Aluguel", "Juros"])
+    expect(await optionsOf("Pagar com")).toEqual(["Conta corrente"])
   })
 
   it("shows the auto-settle switch only to a role that may settle", async () => {

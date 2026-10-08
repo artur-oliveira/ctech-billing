@@ -6,6 +6,7 @@ import {AlertCircle, CalendarClock, Clock, Receipt} from "lucide-react"
 import {useEffect, useState} from "react"
 
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
+import {Select} from "@/components/ui/Select"
 import {messageFor, statusOf} from "@/lib/api/client"
 import {cancelBill, createBill, financeKeys, listAccounts, listBills, patchBill, settleBill} from "@/lib/api/finance"
 import type {Account, Bill, BillPatch, Bucket, Direction, NewBill, Settlement} from "@/lib/api/financeTypes"
@@ -17,7 +18,6 @@ import {useFinanceCtx, useFinanceSpaces} from "@/lib/finance/useFinanceSpaces"
 import {money, shortDate} from "@/lib/format"
 import {formatMoneyInput, parseMoney} from "@/lib/money"
 
-const SELECT = "h-8 w-full rounded-md border border-border bg-background px-2 text-sm"
 const GROUPS: {bucket: Bucket; title: string}[] = [
   {bucket: "overdue", title: "Vencidas"},
   {bucket: "today", title: "Vencem hoje"},
@@ -179,7 +179,7 @@ function FormError({error}: {error: unknown}) {
   if (!error) return null
   return (
     <p role="alert" className="w-full text-sm text-danger">
-      {conflict ? "Esta conta mudou enquanto você a via — recarregamos a lista. Confira e tente de novo." : messageFor(error)}
+      {conflict ? "Esta conta mudou enquanto você a via; recarregamos a lista. Confira e tente de novo." : messageFor(error)}
     </p>
   )
 }
@@ -227,14 +227,11 @@ function SettleForm({bill, accounts, onDone}: {bill: Bill; accounts: Account[]; 
       {gap !== 0 && (
         <>
           <Field label="Categoria da diferença" htmlFor={`c-${bill.id}`}>
-            <select id={`c-${bill.id}`} value={category} onChange={e => setCategory(e.target.value)} className={SELECT}>
-              <option value="">Escolha…</option>
-              {categories.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-            </select>
+            <Select id={`c-${bill.id}`} value={category} onValueChange={setCategory} options={categories.map(a => ({value: a.id, label: a.name}))}/>
           </Field>
           <p className="text-sm text-muted-foreground sm:pt-7">
             {money(Math.abs(gap))} {gap > 0 ? "a mais" : "a menos"} que a conta ({money(bill.amount)})
-            {catName ? ` — registrado em ${catName}` : " — escolha onde registrar a diferença"}
+            {catName ? `; registrado em ${catName}` : "; escolha onde registrar a diferença"}
           </p>
         </>
       )}
@@ -283,14 +280,10 @@ function EditForm({bill, accounts, onDone}: {bill: Bill; accounts: Account[]; on
       <Field label="Valor" htmlFor={`ev-${bill.id}`}><Input id={`ev-${bill.id}`} inputMode="decimal" value={amountText} onChange={e => setAmountText(e.target.value)} aria-invalid={amount === null}/></Field>
       <Field label="Vencimento" htmlFor={`eu-${bill.id}`}><Input id={`eu-${bill.id}`} type="date" value={due} onChange={e => setDue(e.target.value)}/></Field>
       <Field label="Categoria" htmlFor={`ec-${bill.id}`}>
-        <select id={`ec-${bill.id}`} value={category} onChange={e => setCategory(e.target.value)} className={SELECT}>
-          {cats.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-        </select>
+        <Select id={`ec-${bill.id}`} value={category} onValueChange={setCategory} options={cats.map(a => ({value: a.id, label: a.name}))}/>
       </Field>
       <Field label={bill.direction === "payable" ? "Pagar com" : "Receber em"} htmlFor={`ea-${bill.id}`}>
-        <select id={`ea-${bill.id}`} value={account} onChange={e => setAccount(e.target.value)} className={SELECT}>
-          {assets.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-        </select>
+        <Select id={`ea-${bill.id}`} value={account} onValueChange={setAccount} options={assets.map(a => ({value: a.id, label: a.name}))}/>
       </Field>
       {showAuto && (
         <label className="flex items-center gap-2 self-end text-sm">
@@ -357,16 +350,10 @@ function NewBillPanel({direction, accounts, onDone}: {direction: Direction; acco
           <Input id="nb-comp" type="date" value={competence} onChange={e => setCompetence(e.target.value)}/>
         </Field>
         <Field label="Categoria" htmlFor="nb-cat">
-          <select id="nb-cat" value={category} onChange={e => setCategory(e.target.value)} className={SELECT}>
-            <option value="">Escolha…</option>
-            {cats.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-          </select>
+          <Select id="nb-cat" value={category} onValueChange={setCategory} options={cats.map(a => ({value: a.id, label: a.name}))}/>
         </Field>
         <Field label={direction === "payable" ? "Pagar com" : "Receber em"} htmlFor="nb-acct">
-          <select id="nb-acct" value={account} onChange={e => setAccount(e.target.value)} className={SELECT}>
-            <option value="">Escolha…</option>
-            {assets.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-          </select>
+          <Select id="nb-acct" value={account} onValueChange={setAccount} options={assets.map(a => ({value: a.id, label: a.name}))}/>
         </Field>
         {can("finance.settle") && (
           <label className="flex items-center gap-2 text-sm">

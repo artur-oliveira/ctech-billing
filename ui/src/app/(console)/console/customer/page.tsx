@@ -74,7 +74,7 @@ function Detail() {
         {customer.anonymized && (
           <p className="text-sm text-muted-foreground">
             Este cadastro foi anonimizado a pedido do titular. As faturas emitidas continuam
-            existindo — um documento não some porque alguém pediu para ser esquecido.
+            existindo; um documento não some porque alguém pediu para ser esquecido.
           </p>
         )}
       </header>
@@ -188,7 +188,7 @@ function NotFound() {
           Cliente não encontrado
         </h1>
         <p className="text-sm text-muted-foreground">
-          Ele pode pertencer ao outro modo — confira se você está em Produção ou Teste.
+          Ele pode pertencer ao outro modo; confira se você está em Produção ou Teste.
         </p>
       </div>
     </div>

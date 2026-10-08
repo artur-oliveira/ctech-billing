@@ -1,11 +1,10 @@
 import "@testing-library/jest-dom/vitest"
 
 import {act, screen, waitFor} from "@testing-library/react"
-import userEvent from "@testing-library/user-event"
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 
 import {SpaceSwitch} from "@/components/finance/SpaceSwitch"
-import {renderWithQuery} from "@/components/finance/finance.test-utils"
+import {optionsOf, pick, renderWithQuery, selectByLabel} from "@/components/finance/finance.test-utils"
 import * as finance from "@/lib/api/finance"
 import {getSpace, setSpace} from "@/lib/console/space"
 
@@ -36,11 +35,10 @@ describe("SpaceSwitch", () => {
       organizations_unavailable: false,
     })
     renderWithQuery(<SpaceSwitch/>)
-    const select = await screen.findByLabelText("Espaço")
-    await waitFor(() => expect(select.querySelectorAll("option")).toHaveLength(2))
-    const options = [...select.querySelectorAll("option")].map(o => o.textContent)
-    expect(options).toEqual(["Pessoal", "Acme LTDA"])
-    expect(select).toHaveValue("personal")
+    await waitFor(() => expect(finance.getFinanceSpaces).toHaveBeenCalled())
+    await waitFor(async () => expect(await optionsOf("Espaço")).toEqual(["Pessoal", "Acme LTDA"]))
+    // The trigger shows the space's NAME, never its "personal"/"org:…" value.
+    expect(selectByLabel("Espaço")).toHaveTextContent("Pessoal")
     // No way to type an id: the control is a closed list.
     expect(screen.queryByRole("textbox")).toBeNull()
   })
@@ -54,10 +52,12 @@ describe("SpaceSwitch", () => {
       organizations_unavailable: false,
     })
     renderWithQuery(<SpaceSwitch/>)
-    const select = await screen.findByLabelText("Espaço")
-    await waitFor(() => expect(select.querySelectorAll("option")).toHaveLength(2))
-    await userEvent.selectOptions(select, `org:${ACME}`)
+    await waitFor(() => expect(finance.getFinanceSpaces).toHaveBeenCalled())
+    await waitFor(async () => expect(await optionsOf("Espaço")).toHaveLength(2))
+    await pick("Espaço", "Acme LTDA")
     expect(getSpace()).toEqual({kind: "organization", organizationId: ACME})
+    expect(selectByLabel("Espaço")).toHaveTextContent("Acme LTDA")
+    expect(selectByLabel("Espaço")).not.toHaveTextContent(ACME)
   })
 
   it("keeps personal and says so when organizations are unavailable", async () => {

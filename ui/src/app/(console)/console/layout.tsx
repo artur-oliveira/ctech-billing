@@ -160,7 +160,7 @@ export default function ConsoleLayout({children}: LayoutProps<"/console">) {
           forgets that voids a real invoice believing it is a sandbox one. */}
       {mode === "test" && (
         <p className="bg-warning/12 border-b border-warning/30 px-4 py-2 text-center text-xs text-foreground">
-          Modo de teste — nada aqui cobra dinheiro de verdade.
+          Modo de teste; nada aqui cobra dinheiro de verdade.
         </p>
       )}
 

@@ -340,7 +340,7 @@ function Receipt({invoice}: { invoice: Invoice }) {
  */
 function NotPayable({invoice}: { invoice: Invoice }) {
   const message = invoice.state.startsWith("Pendente")
-    ? "Esta fatura está em negociação. Fale com a gente para combinar como quitar — não há nada a pagar por aqui enquanto isso."
+    ? "Esta fatura está em negociação. Fale com a gente para combinar como quitar; não há nada a pagar por aqui enquanto isso."
     : invoice.state === "Cancelada"
       ? "Esta fatura foi cancelada. Não há nada a pagar, e nenhum valor foi cobrado."
       : "Esta fatura ainda está sendo preparada. Quando for emitida, o pagamento aparece aqui."

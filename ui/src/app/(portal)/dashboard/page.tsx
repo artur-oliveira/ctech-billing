@@ -132,7 +132,7 @@ function Pendencia({invoices}: { invoices: Invoice[] }) {
             href="/invoices"
             className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
           >
-            e mais {rest.length} — {money(total - first.amount_due, first.currency)}
+            e mais {rest.length} • {money(total - first.amount_due, first.currency)}
           </Link>
         )}
       </div>

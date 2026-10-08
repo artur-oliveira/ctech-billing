@@ -40,7 +40,7 @@ export default function InvoicesPage() {
         <EmptyState
           icon={<Receipt/>}
           title="Nenhuma fatura ainda"
-          description="Assim que sua primeira cobrança for emitida, ela aparece aqui — com o que foi cobrado, quando vence e como pagar."
+          description="Assim que sua primeira cobrança for emitida, ela aparece aqui, com o que foi cobrado, quando vence e como pagar."
         />
       )}
 

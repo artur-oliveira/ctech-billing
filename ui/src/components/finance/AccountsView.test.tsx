@@ -5,7 +5,7 @@ import userEvent from "@testing-library/user-event"
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 
 import {AccountsView} from "@/components/finance/AccountsView"
-import {renderWithQuery} from "@/components/finance/finance.test-utils"
+import {optionsOf, pick, renderWithQuery} from "@/components/finance/finance.test-utils"
 import * as finance from "@/lib/api/finance"
 import type {Account, Verb} from "@/lib/api/financeTypes"
 
@@ -62,11 +62,10 @@ describe("F8 — accounts", () => {
     serve(ALL)
     renderWithQuery(<AccountsView/>)
     await userEvent.click(await screen.findByRole("button", {name: "Nova conta ou categoria"}))
-    await userEvent.selectOptions(screen.getByLabelText("Tipo"), "income")
-    const groups = [...(screen.getByLabelText("Grupo na DRE") as HTMLSelectElement).options].map(o => o.value)
-    expect(groups).toEqual(["gross_revenue", "financial_result", "other"])
-    await userEvent.selectOptions(screen.getByLabelText("Tipo"), "asset")
-    expect(screen.queryByLabelText("Grupo na DRE")).toBeNull()
+    await pick("Tipo", "Receita")
+    expect(await optionsOf("Grupo na DRE")).toEqual(["Receita bruta", "Resultado financeiro", "Outros"])
+    await pick("Tipo", "Conta")
+    expect(screen.queryByRole("combobox", {name: "Grupo na DRE"})).toBeNull()
   })
 
   it("creates without an id and keeps one key across a retry", async () => {
@@ -104,15 +103,14 @@ describe("F8 — accounts", () => {
     await row("Conta corrente")
     expect(screen.queryByRole("button", {name: "Nova conta ou categoria"})).toBeNull()
     expect(screen.queryByRole("button", {name: "Arquivar"})).toBeNull()
-    expect(screen.queryByLabelText("Conta padrão de recebimento")).toBeNull()
+    expect(screen.queryByRole("combobox", {name: "Conta padrão de recebimento"})).toBeNull()
   })
 
   it("offers only active asset accounts as the default receiving account", async () => {
     serve(ALL)
     renderWithQuery(<AccountsView/>)
-    const select = await screen.findByLabelText("Conta padrão de recebimento")
-    const values = [...(select as HTMLSelectElement).options].map(o => o.value).filter(Boolean)
-    expect(values).toEqual(["cc", "pp"])
+    await row("Conta corrente")
+    expect(await optionsOf("Conta padrão de recebimento")).toEqual(["Conta corrente", "Poupança"])
   })
 
   it("teaches the first step when there is nothing yet", async () => {

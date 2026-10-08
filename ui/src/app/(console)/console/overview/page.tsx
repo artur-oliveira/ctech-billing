@@ -79,14 +79,14 @@ export default function ConsoleOverviewPage() {
               <Item
                 href="/console/invoices"
                 title={`${data.drafts} rascunho${data.drafts === 1 ? "" : "s"} sem emitir`}
-                detail="Uma fatura em rascunho não é cobrada de ninguém e nada vai emiti-la sozinho — abra e emita."
+                detail="Uma fatura em rascunho não é cobrada de ninguém e nada vai emiti-la sozinho; abra e emita."
               />
             )}
             {data.uncollectible > 0 && (
               <Item
                 href="/console/invoices"
                 title={`${data.uncollectible} dada${data.uncollectible === 1 ? "" : "s"} por perdida${data.uncollectible === 1 ? "" : "s"}`}
-                detail="Fim da política de cobrança. Continua devida — o que mudou é que o billing parou de esperar."
+                detail="Fim da política de cobrança. Continua devida; o que mudou é que o billing parou de esperar."
               />
             )}
           </ul>

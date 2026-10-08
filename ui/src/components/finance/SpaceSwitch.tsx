@@ -1,5 +1,6 @@
 "use client"
 
+import {Select} from "@/components/ui/Select"
 import {spaceHeader, parseSpace, setSpace} from "@/lib/console/space"
 import {useSpace} from "@/lib/console/useSpace"
 import {useFinanceSpaces} from "@/lib/finance/useFinanceSpaces"
@@ -13,8 +14,8 @@ import {useFinanceSpaces} from "@/lib/finance/useFinanceSpaces"
  * job is to make the current answer visible, sitting next to the mode switch
  * so "Pessoal · Teste" is read as one thing.
  *
- * A native select on purpose: a standard affordance, keyboard and screen-reader
- * complete, at the console's compact height.
+ * The shared styled Select (components/ui/Select), which shows the space's
+ * name and never its "org:{id}" value once chosen.
  */
 export function SpaceSwitch() {
   const space = useSpace()
@@ -22,19 +23,15 @@ export function SpaceSwitch() {
 
   return (
     <div className="flex items-center gap-2">
-      <label className="sr-only" htmlFor="finance-space">Espaço</label>
-      <select
-        id="finance-space"
+      <Select
+        aria-label="Espaço"
+        className="max-w-52"
         value={spaceHeader(space)}
-        onChange={e => setSpace(parseSpace(e.target.value))}
-        className="h-8 max-w-48 truncate rounded-lg border border-border bg-background px-2 text-xs text-foreground focus-visible:outline-2 focus-visible:outline-ring"
-      >
-        {spaces.length === 0 && <option value="personal">Pessoal</option>}
-        {spaces.map(e => {
-          const value = spaceHeader(spaceOf(e))
-          return <option key={value} value={value}>{e.label}</option>
-        })}
-      </select>
+        onValueChange={v => setSpace(parseSpace(v))}
+        options={spaces.length === 0
+          ? [{value: "personal", label: "Pessoal"}]
+          : spaces.map(e => ({value: spaceHeader(spaceOf(e)), label: e.label}))}
+      />
       {unavailable && <span className="text-xs text-muted-foreground">Organizações indisponíveis agora</span>}
     </div>
   )

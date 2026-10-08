@@ -233,3 +233,15 @@ sua primeira conta para registrar contas a pagar e a receber"). Errors are per b
 "Tentar de novo", so one failing request never blanks the screen. A role that lacks a verb sees
 the control **absent**, not disabled; the server is the authority either way. Motion 150–250 ms on
 state changes only (row expanding, panel opening), each with a `motion-reduce` alternative.
+
+## Copy and controls (owner's rules, 2026-10-08)
+
+**No em dash in interface copy.** A separation uses a bullet (`•`), a pause uses a semicolon (`;`),
+and a paired aside becomes parentheses. The lone `—` standing for an empty value in a table cell or
+a fact is not punctuation and stays. Code comments are not copy.
+
+**Styled selects, never the native one.** Every choice from a list uses `components/ui/Select`
+(the shadcn shape on `@base-ui/react`, sized by `data-density`). Once something is chosen the
+trigger shows the option's **label**, never its value: an account shows "Conta corrente", not its
+id, and the space shows "Pessoal", not `personal`. The component's own test pins this.
+`ctech-ui` has no Select yet; this one is written to move there unchanged.

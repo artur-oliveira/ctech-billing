@@ -6,6 +6,7 @@ import {Landmark} from "lucide-react"
 import {useState} from "react"
 
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
+import {Select} from "@/components/ui/Select"
 import {messageFor} from "@/lib/api/client"
 import {archiveAccount, createAccount, financeKeys, getSettings, listAccounts, setDefaultReceivingAccount} from "@/lib/api/finance"
 import type {Account, AccountClass, DREGroup} from "@/lib/api/financeTypes"
@@ -58,7 +59,7 @@ export function AccountsView() {
         <EmptyState
           icon={<Landmark/>}
           title="Nenhuma conta ainda"
-          description="Crie a primeira conta — corrente, poupança, dinheiro — e as categorias de receita e despesa para registrar contas a pagar e a receber."
+          description="Crie a primeira conta (corrente, poupança, dinheiro) e as categorias de receita e despesa para registrar contas a pagar e a receber."
         />
       ) : (
         <>
@@ -144,15 +145,11 @@ function AccountForm({onDone}: {onDone: () => void}) {
         <Input id="acc-name" value={name} onChange={e => setName(e.target.value)} autoFocus/>
       </Field>
       <Field label="Tipo" htmlFor="acc-class">
-        <select id="acc-class" value={cls} onChange={e => setCls(e.target.value as AccountClass)} className="h-8 w-full rounded-md border border-border bg-background px-2 text-sm">
-          {(["asset", "income", "expense"] as AccountClass[]).map(c => <option key={c} value={c}>{CLASS_LABEL[c]}</option>)}
-        </select>
+        <Select id="acc-class" value={cls} onValueChange={v => setCls(v as AccountClass)} options={(["asset", "income", "expense"] as AccountClass[]).map(c => ({value: c, label: CLASS_LABEL[c]}))}/>
       </Field>
       {groups.length > 0 ? (
         <Field label="Grupo na DRE" htmlFor="acc-group">
-          <select id="acc-group" value={chosenGroup} onChange={e => setGroup(e.target.value as DREGroup)} className="h-8 w-full rounded-md border border-border bg-background px-2 text-sm">
-            {groups.map(g => <option key={g} value={g}>{DRE_GROUP_LABEL[g]}</option>)}
-          </select>
+          <Select id="acc-group" value={chosenGroup} onValueChange={v => setGroup(v as DREGroup)} options={groups.map(g => ({value: g, label: DRE_GROUP_LABEL[g]}))}/>
         </Field>
       ) : <div/>}
       <div className="flex gap-2">
@@ -175,16 +172,16 @@ function DefaultReceiving({accounts}: {accounts: Account[]}) {
   return (
     <section className="space-y-2 border-t border-border pt-4">
       <Field label="Conta padrão de recebimento" htmlFor="default-receiving" hint="Onde as contas a receber caem quando ninguém escolhe outra.">
-        <select
-          id="default-receiving"
-          value={settings.data?.default_receiving_account_id ?? ""}
-          onChange={e => e.target.value && save.mutate(e.target.value)}
-          disabled={save.isPending}
-          className="h-8 w-full max-w-xs rounded-md border border-border bg-background px-2 text-sm"
-        >
-          <option value="">Nenhuma</option>
-          {options.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-        </select>
+        <div className="max-w-xs">
+          <Select
+            id="default-receiving"
+            value={settings.data?.default_receiving_account_id ?? ""}
+            onValueChange={v => v && save.mutate(v)}
+            disabled={save.isPending}
+            placeholder="Nenhuma"
+            options={options.map(a => ({value: a.id, label: a.name}))}
+          />
+        </div>
       </Field>
       {save.error && <p role="alert" className="text-sm text-danger">{messageFor(save.error)}</p>}
     </section>
