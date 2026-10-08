@@ -9,7 +9,26 @@ import (
 // ErrInvalidAccount wraps every reason a ledger account is refused.
 var ErrInvalidAccount = errors.New("invalid ledger account")
 
-const maxAccountName = 80
+const (
+	maxAccountName = 80
+	maxAccountID   = 64
+)
+
+// validAccountID keeps ids inside the ASCII range that sorts below "~", which is
+// the upper bound of the SUMMARY range query: an id outside it would vanish from
+// every report without an error.
+func validAccountID(id string) bool {
+	if id == "" || len(id) > maxAccountID {
+		return false
+	}
+	for i := 0; i < len(id); i++ {
+		c := id[i]
+		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '_' || c == '-') {
+			return false
+		}
+	}
+	return true
+}
 
 // LedgerAccount is an account, a category or a system account (spec § 3.1).
 // Users see accounts and categories; the class and the DRE group are what the
@@ -27,8 +46,8 @@ type LedgerAccount struct {
 // Validate refuses an account the ledger could not report on.
 func (a LedgerAccount) Validate() error {
 	switch {
-	case a.ID == "" || strings.ContainsAny(a.ID, "#/ "):
-		return fmt.Errorf("%w: id is required and cannot contain '#', '/' or a space", ErrInvalidAccount)
+	case !validAccountID(a.ID):
+		return fmt.Errorf("%w: id is 1..%d characters of A-Z a-z 0-9 '_' '-'", ErrInvalidAccount, maxAccountID)
 	case strings.TrimSpace(a.Name) == "" || len(a.Name) > maxAccountName:
 		return fmt.Errorf("%w: name is required and at most %d characters", ErrInvalidAccount, maxAccountName)
 	case !validClass(a.Class):

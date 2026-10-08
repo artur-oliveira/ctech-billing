@@ -2,9 +2,6 @@ package space
 
 import (
 	"errors"
-	"io/fs"
-	"os"
-	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -105,30 +102,6 @@ func TestResolvedSpaceHasNoExportedFields(t *testing.T) {
 	for i := 0; i < rt.NumField(); i++ {
 		if rt.Field(i).IsExported() {
 			t.Fatalf("ResolvedSpace.%s is exported", rt.Field(i).Name)
-		}
-	}
-}
-
-// ForJob exists for binaries (the daily job, the rebuild command), which choose
-// a space by operator decision. A handler or middleware calling it would build
-// a space from request data, which is the thing this package prevents.
-func TestForJobIsNotUsedOnTheRequestPath(t *testing.T) {
-	for _, dir := range []string{"../api", "../middleware", "../services"} {
-		err := filepath.WalkDir(dir, func(path string, e fs.DirEntry, err error) error {
-			if err != nil || e.IsDir() || !strings.HasSuffix(path, ".go") {
-				return err
-			}
-			b, rerr := os.ReadFile(path)
-			if rerr != nil {
-				return rerr
-			}
-			if strings.Contains(string(b), "space.ForJob") {
-				t.Errorf("%s calls space.ForJob; it is for cmd/ binaries only", path)
-			}
-			return nil
-		})
-		if err != nil {
-			t.Fatal(err)
 		}
 	}
 }

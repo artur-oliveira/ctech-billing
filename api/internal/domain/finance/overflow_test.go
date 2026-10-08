@@ -50,3 +50,33 @@ func TestNewTransactionRefusesTheSameAccountTwice(t *testing.T) {
 		t.Fatalf("err = %v, want ErrInvalidTransaction", err)
 	}
 }
+
+// ADD on a summary only ever grows. The per-leg bound must leave room for
+// millions of legs on one account in one month before int64 can wrap.
+func TestMaxLegAmountLeavesRoomForAMonthOfActivity(t *testing.T) {
+	if MaxLegAmount > math.MaxInt64/5_000_000 {
+		t.Fatalf("MaxLegAmount = %d: five million max-size legs would overflow a summary", MaxLegAmount)
+	}
+}
+
+func TestLedgerAccountIDsSortInsideTheSummaryRange(t *testing.T) {
+	for _, id := range []string{"água", "é", "~x", "a~", "a b", "a\x7f", "a/b", "a#b", ""} {
+		a := LedgerAccount{ID: id, Name: "n", Class: ClassAsset}
+		if err := a.Validate(); !errors.Is(err, ErrInvalidAccount) {
+			t.Errorf("id %q was accepted", id)
+		}
+	}
+	for _, id := range []string{"bank", "01J9ZXQ0ABC", "sys-payables", "a_b-C9"} {
+		a := LedgerAccount{ID: id, Name: "n", Class: ClassAsset}
+		if err := a.Validate(); err != nil {
+			t.Errorf("id %q refused: %v", id, err)
+		}
+	}
+}
+
+func TestNewTransactionRefusesAnUnknownKind(t *testing.T) {
+	_, err := NewTransaction(TxKind("whatever"), d(2026, time.March, 2), Leg{"a", 1}, Leg{"b", -1})
+	if !errors.Is(err, ErrInvalidTransaction) {
+		t.Fatalf("err = %v", err)
+	}
+}

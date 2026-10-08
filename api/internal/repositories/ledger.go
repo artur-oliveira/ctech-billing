@@ -101,8 +101,8 @@ func (r *LedgerRepository) EnsureSpace(ctx context.Context, sp space.ResolvedSpa
 		items = append(items, r.accounts.BuildPutTxItemIfAbsent(item))
 	}
 	err = r.accounts.TransactWrite(ctx, items)
-	if IsConditionFailed(err) {
-		return nil
+	if err != nil && onlyConditionFailed(err) {
+		return nil // the space already exists
 	}
 	return err
 }
@@ -123,7 +123,7 @@ func (r *LedgerRepository) CreateAccount(ctx context.Context, sp space.ResolvedS
 		return err
 	}
 	err = r.accounts.TransactWrite(ctx, txItems(r.accounts.BuildPutTxItemIfAbsent(item)))
-	if IsConditionFailed(err) {
+	if err != nil && onlyConditionFailed(err) {
 		return fmt.Errorf("%w: account %s already exists", finance.ErrInvalidAccount, a.ID)
 	}
 	return err
@@ -229,6 +229,16 @@ type entryItem struct {
 // (attribute_exists on the balance update); an account id from another space is
 // therefore ErrUnknownAccount and nothing is written.
 func (r *LedgerRepository) Post(ctx context.Context, sp space.ResolvedSpace, tx finance.Transaction, meta PostMeta, now time.Time) (string, error) {
+	// A reversal is only made by Reverse, which loads the original and checks the
+	// verb its kind needs. Accepting one here would let a caller undo a settlement
+	// without finance.settle, or burn another transaction's single-use marker.
+	if tx.Adjusts != "" || tx.Kind == finance.KindReversal {
+		return "", fmt.Errorf("%w: reversals are made with Reverse", finance.ErrInvalidTransaction)
+	}
+	return r.post(ctx, sp, tx, meta, now)
+}
+
+func (r *LedgerRepository) post(ctx context.Context, sp space.ResolvedSpace, tx finance.Transaction, meta PostMeta, now time.Time) (string, error) {
 	need := space.Write
 	if tx.Kind == finance.KindSettlement {
 		need |= space.Settle
@@ -250,28 +260,60 @@ func (r *LedgerRepository) Post(ctx context.Context, sp space.ResolvedSpace, tx 
 		return "", err
 	}
 	if err := r.txs.TransactWrite(ctx, items); err != nil {
-		if IsConditionFailed(err) {
-			return "", classifyPostCancel(err, checked, markerIdx)
-		}
-		return "", err
+		return "", classifyPostCancel(err, markerIdx)
 	}
 	return txID, nil
 }
 
-// classifyPostCancel tells a repeated reversal from an unknown account. The
-// per-item cancellation reasons say which condition failed; when the SDK error
-// is not reachable, only a reversal carries a marker condition, and Reverse
-// loads the original (and so its accounts) first, so the marker is the likely
-// cause.
-func classifyPostCancel(err error, tx finance.Transaction, markerIdx int) error {
+// cancellationCodes returns the per-item reason codes of a cancelled
+// transaction, or nil when err is not one.
+func cancellationCodes(err error) []string {
 	var tc *types.TransactionCanceledException
-	if errors.As(err, &tc) && markerIdx >= 0 && markerIdx < len(tc.CancellationReasons) {
-		if code := tc.CancellationReasons[markerIdx].Code; code != nil && *code == "ConditionalCheckFailed" {
-			return ErrAlreadyReversed
-		}
-		return ErrUnknownAccount
+	if !errors.As(err, &tc) {
+		return nil
 	}
-	if tx.Adjusts != "" {
+	codes := make([]string, len(tc.CancellationReasons))
+	for i, r := range tc.CancellationReasons {
+		if r.Code != nil {
+			codes[i] = *r.Code
+		}
+	}
+	return codes
+}
+
+const (
+	codeNone            = "None"
+	codeConditionFailed = "ConditionalCheckFailed"
+)
+
+// onlyConditionFailed reports a cancellation whose every non-trivial reason is a
+// failed condition. A conflict or a throttle among the reasons is not "it already
+// exists": nothing was decided, and the caller must see the original error.
+func onlyConditionFailed(err error) bool {
+	codes := cancellationCodes(err)
+	seen := false
+	for _, c := range codes {
+		switch c {
+		case "", codeNone:
+		case codeConditionFailed:
+			seen = true
+		default:
+			return false
+		}
+	}
+	return seen
+}
+
+// classifyPostCancel maps a cancelled Post to the error a caller can act on. Only
+// a failed condition is a verdict (the marker already exists, or a leg's account
+// is not in this space); a conflict or throttle comes back unchanged so it can be
+// retried instead of being reported as a permanent client error.
+func classifyPostCancel(err error, markerIdx int) error {
+	codes := cancellationCodes(err)
+	if !onlyConditionFailed(err) {
+		return err
+	}
+	if markerIdx >= 0 && markerIdx < len(codes) && codes[markerIdx] == codeConditionFailed {
 		return ErrAlreadyReversed
 	}
 	return ErrUnknownAccount
@@ -414,7 +456,7 @@ func (r *LedgerRepository) Reverse(ctx context.Context, sp space.ResolvedSpace, 
 	if err != nil {
 		return "", err
 	}
-	return r.Post(ctx, sp, rev, meta, now)
+	return r.post(ctx, sp, rev, meta, now)
 }
 
 // EntryRow is one leg of a posted transaction on an account.
@@ -430,6 +472,9 @@ type EntryRow struct {
 func (r *LedgerRepository) Statement(ctx context.Context, sp space.ResolvedSpace, accountID string, from, to brcal.Date) ([]EntryRow, error) {
 	if err := sp.Require(space.Read); err != nil {
 		return nil, err
+	}
+	if !from.Before(to) {
+		return nil, nil // BETWEEN with lo > hi is a DynamoDB validation error
 	}
 	items, err := r.queryRange(ctx, r.txs, LedgerEntryPK(sp, accountID),
 		"ENTRY#"+from.String(), "ENTRY#"+to.String())
