@@ -78,6 +78,14 @@ type Config struct {
 	WalletTokenURL     string `env:"WALLET_TOKEN_URL"`
 	WalletClientID     string `env:"WALLET_CLIENT_ID"`
 	WalletClientSecret string `env:"WALLET_CLIENT_SECRET"`
+
+	// ctech-account membership (ADR 0025). Reach for an organization space is a
+	// service-to-service question; an incomplete block leaves organization spaces
+	// unavailable (fail closed) while personal spaces keep working.
+	AccountBaseURL      string `env:"ACCOUNT_BASE_URL"`
+	AccountTokenURL     string `env:"ACCOUNT_TOKEN_URL"`
+	AccountClientID     string `env:"ACCOUNT_CLIENT_ID"`
+	AccountClientSecret string `env:"ACCOUNT_CLIENT_SECRET"`
 	// WalletWebhookSecret verifies wallet's notify-back HMAC. It authenticates the
 	// sender and nothing else: the charge is always re-read before an invoice moves.
 	WalletWebhookSecret string `env:"WALLET_WEBHOOK_SECRET"`
