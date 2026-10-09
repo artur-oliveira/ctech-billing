@@ -10,7 +10,7 @@ module gopkg.aoctech.app/billing/api
 // Same pin as ctech-account and ctech-poker, which are the sibling repositories
 // that also run govulncheck. When the next standard-library advisory lands, the
 // scanner goes red and the fix is this line.
-go 1.27
+go 1.27.2
 
 require (
 	github.com/aws/aws-sdk-go-v2 v1.45.1
@@ -19,6 +19,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue v1.21.1
 	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.65.1
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.109.1
+	github.com/aws/smithy-go v1.28.1
 	github.com/caarlos0/env/v11 v11.4.1
 	github.com/carlos7ags/folio v0.10.1
 	github.com/gofiber/fiber/v3 v3.5.0
@@ -47,7 +48,6 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sso v1.35.1 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.40.1 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.47.1 // indirect
-	github.com/aws/smithy-go v1.28.1 // indirect
 	github.com/gofiber/schema v1.8.4 // indirect
 	github.com/gofiber/utils/v2 v2.4.2 // indirect
 	github.com/google/uuid v1.6.0 // indirect
@@ -58,9 +58,9 @@ require (
 	github.com/tinylib/msgp v1.6.4 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasthttp v1.73.0 // indirect
-	golang.org/x/crypto v0.55.0 // indirect
+	golang.org/x/crypto v0.57.0 // indirect
 	golang.org/x/image v0.45.0 // indirect
-	golang.org/x/net v0.58.0 // indirect
-	golang.org/x/sys v0.47.0 // indirect
-	golang.org/x/text v0.41.0 // indirect
+	golang.org/x/net v0.60.0 // indirect
+	golang.org/x/sys v0.48.0 // indirect
+	golang.org/x/text v0.42.0 // indirect
 )
