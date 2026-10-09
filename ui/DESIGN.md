@@ -207,8 +207,9 @@ morning, checking what is due this week. Light theme. References: Stripe Dashboa
 that compare down a column), Linear (tabs and in-place expansion instead of modals), Mercury
 (balances as a ruled list, not cards).
 
-**Navigation.** *Finanças* is one item of the console's top nav. Inside it, a second row of tabs:
-Visão geral · A pagar e a receber · Recorrências · Contas. The header always shows the space and
+**Navigation.** *Finanças* is one item of the console's top nav. Inside it, its sections are a
+column on a laptop, a picker on a tablet and a bottom bar on a phone (see "Navigation and the
+shell"). The header always shows the space and
 the mode together — "Pessoal · Teste", "Acme LTDA · Produção" — because each can be mistaken for
 the other and acting on the wrong one is the expensive mistake. A person with no organization sees
 only *Finanças*, and the console opens there.
@@ -257,8 +258,8 @@ id, and the space shows "Pessoal", not `personal`. The component's own test pins
 
 ## On a phone (finance, 2026-10-09)
 
-A phone is its own layout, not the laptop's squeezed. Navigation is out of this note; it
-changes in its own batch.
+A phone is its own layout, not the laptop's squeezed. Navigation is in "Navigation and the
+shell" below.
 
 **A chart becomes a list, and stays one tap away.** Under `sm`, a chart whose x-axis is
 categories (the projection's months) opens as a list: one row per category, its headline
@@ -288,3 +289,44 @@ name contains the visible text.
 **Adicionar**, and its panel is **Novo lançamento**. Once "Já foi pago" is on, the section that
 held the account becomes **Pagamento** or **Recebimento**, with the date and the account it was
 paid from or received into.
+
+## Navigation and the shell (2026-10-09)
+
+**Finanças on a phone is a bottom bar.** Under `md`, `@aoctech/ui`'s `BottomNav`
+(`FinanceBottomNav`) is Finanças' navigation; the section column and the tablet picker are not
+shown. Three tabs a person opens daily, **Resumo · A pagar/receber · Extrato**, and **Mais**, a
+sheet with the rest in two groups: *Lançamentos* (Recorrências, Cartões, Importar) and *Análise e
+cadastro* (Relatórios, Contas). Mais reads as current while one of its sections is on screen. The
+bar is touch-sized whatever `data-density` says. The console's own section row stays in the
+header; the bar is Finanças only. From `md` to `lg` Finanças is a picker; from `lg` a column.
+
+**The central action is always "create", and follows the screen.** It creates what the screen
+lists, in that screen's own drawer: A pagar/receber **Adicionar** (Novo lançamento), Cartões
+**Nova compra** (or Novo cartão when there is no card yet), Recorrências **Recorrência**,
+Extrato **Transferir**, Contas **Nova conta**. Resumo, Importar and Relatórios have nothing of
+their own to create, so the action is **Adicionar** and it goes to A pagar/receber to do it,
+where the new line is on screen once saved. The shell asks through a one-shot request
+(`lib/finance/createRequest`), never a URL parameter, so a reload or a shared link never reopens
+a drawer. A role that cannot create there gets no slot, not a disabled button. On a phone the
+screen's own top create button is hidden (`max-md:hidden`): it would be the same action twice.
+
+**Nothing sits under the bar.** Finanças' layout ends its content with `BottomNavSpacer`, and
+the viewport is `viewport-fit=cover`, so the bar pads itself by the home indicator's inset on an
+iPhone instead of reading 0.
+
+**Creating a space is the last entry of the space list.** "Novo espaço" sits after the spaces
+behind a divider, with a plus icon, and choosing it starts the ctech-account handoff without
+changing the current space (`Select`'s `actions`). There is no second button beside the select.
+Gerenciar acesso stays beside it, only for the owner of a personal workspace. On a phone the
+select fills the row next to the mode switch.
+
+**The person is an avatar, in both shells.** `UserMenu` from `@aoctech/ui` holds the whole name
+and the e-mail (never cut), the view switch **Portal / Console** with the current one checked,
+and **Sair**. It is the only way between the shells: no "Console" link in the portal, no "Minhas
+cobranças" link in the console. Console is offered to everyone signed in, since each has a
+personal finance space; the operator probe only decides whether it opens on invoicing's overview
+or on Finanças. On a phone it stays in the header; the bottom bar never repeats it.
+
+**Shell controls are 44px under touch.** The mode switch is a segment (`data-slot`), and the
+console's section tabs, the logo links, the language switch and the avatar grow to 44px under
+`touch:`; on a desk with a mouse the console keeps 32px.
