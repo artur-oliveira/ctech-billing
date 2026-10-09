@@ -273,6 +273,71 @@ func TestATestModeInvoiceNeverReachesTheLiveSpace(t *testing.T) {
 	}
 }
 
+// Review Focus 2: a partial credit, posted twice by mistake, credits once.
+func TestACreditNoteIsRecordedOnce(t *testing.T) {
+	sp := invoiceSpace(t, newSpaceOrgID(), true)
+	bills := repositories.NewBillRepository(testDB, testCfg)
+	ledger := repositories.NewLedgerRepository(testDB, testCfg)
+	ctx := context.Background()
+	if _, _, err := bills.RecordInvoice(ctx, sp, revenueFact("in_7"), repositories.PostMeta{}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	day := brcal.New(2026, time.March, 20)
+	for i, want := range []bool{true, false} {
+		posted, err := bills.RecordInvoiceCredit(ctx, sp, "in_7", "cn_1", 1990, day, repositories.PostMeta{Actor: "user:op"}, time.Now())
+		if err != nil || posted != want {
+			t.Fatalf("attempt %d: posted=%v err=%v", i, posted, err)
+		}
+	}
+	if got := balance(t, ledger, sp, "bank"); got != 3000 {
+		t.Errorf("bank = %d, want 3000 (4990 received, 1990 credited back once)", got)
+	}
+	if got := balance(t, ledger, sp, finance.CategorySubscriptionRevenue); got != -3000 {
+		t.Errorf("revenue = %d, want -3000", got)
+	}
+	if got := balance(t, ledger, sp, "sys-receivables"); got != 0 {
+		t.Errorf("receivables = %d: a credit on a paid bill leaves nothing to receive", got)
+	}
+	b, err := bills.Get(ctx, sp, repositories.InvoiceBillID(sp, "in_7"))
+	if err != nil || b.Status != finance.BillPaid || len(b.TransactionIDs) != 2 {
+		t.Fatalf("the credit must not change the bill (Desfazer pagamento reverses the settlement): %+v, %v", b, err)
+	}
+	if _, err := bills.RecordInvoiceCredit(ctx, sp, "in_7", "cn_2", 4991, day, repositories.PostMeta{}, time.Now()); !errors.Is(err, finance.ErrInvalidTransaction) {
+		t.Errorf("a credit above the bill: err = %v", err)
+	}
+}
+
+// Review Focus 2: an invoice that was never recorded in a space (it had no
+// receiving account) has nothing there to credit.
+func TestACreditForAnInvoiceNeverRecordedWritesNothing(t *testing.T) {
+	sp := invoiceSpace(t, newSpaceOrgID(), true)
+	_, err := repositories.NewBillRepository(testDB, testCfg).RecordInvoiceCredit(context.Background(), sp, "in_never", "cn_x", 100, brcal.New(2026, time.March, 1), repositories.PostMeta{}, time.Now())
+	if !errors.Is(err, repositories.ErrNotFound) {
+		t.Fatalf("err = %v, want ErrNotFound", err)
+	}
+	if balance(t, repositories.NewLedgerRepository(testDB, testCfg), sp, "bank") != 0 {
+		t.Fatal("a credit with no bill moved cash")
+	}
+}
+
+// A bill the person reopened in Finanças (Desfazer pagamento) is no longer a
+// payment to take back.
+func TestACreditOnAReopenedBillIsRefused(t *testing.T) {
+	sp := invoiceSpace(t, newSpaceOrgID(), true)
+	bills := repositories.NewBillRepository(testDB, testCfg)
+	ctx := context.Background()
+	b, _, err := bills.RecordInvoice(ctx, sp, revenueFact("in_8"), repositories.PostMeta{}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := bills.Unsettle(ctx, sp, b.ID, brcal.New(2026, time.March, 6), repositories.PostMeta{}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := bills.RecordInvoiceCredit(ctx, sp, "in_8", "cn_3", 100, brcal.New(2026, time.March, 7), repositories.PostMeta{}, time.Now()); !errors.Is(err, finance.ErrBillState) {
+		t.Fatalf("err = %v, want ErrBillState", err)
+	}
+}
+
 func contains(xs []string, x string) bool {
 	for _, s := range xs {
 		if s == x {

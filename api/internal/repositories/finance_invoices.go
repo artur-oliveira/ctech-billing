@@ -150,6 +150,47 @@ func (r *BillRepository) recordInvoiceOnce(ctx context.Context, sp space.Resolve
 	return b, true, nil
 }
 
+// RecordInvoiceCredit posts a billing credit note against the bill a paid
+// invoice made in this space (spec § 3.8): finance.CreditBill for the note's
+// amount, dated the note's day, as one transaction whose id derives from
+// (space, note) — a second post finds its header and posts nothing (false, nil).
+//
+// The credit is not added to the bill's transaction list: "Desfazer pagamento"
+// reverses the bill's last transaction, which must stay its settlement. An
+// invoice never recorded here is ErrNotFound; a bill no longer paid (reopened in
+// Finanças) is finance.ErrBillState. Both write nothing.
+func (r *BillRepository) RecordInvoiceCredit(ctx context.Context, sp space.ResolvedSpace, invoiceID, creditNoteID string, amount billing.Cents, date brcal.Date, meta PostMeta, now time.Time) (bool, error) {
+	if err := sp.Require(space.Read | space.Write | space.Settle); err != nil {
+		return false, err
+	}
+	b, err := r.get(ctx, sp, InvoiceBillID(sp, invoiceID))
+	if err != nil {
+		return false, err
+	}
+	if b.Status != finance.BillPaid {
+		return false, fmt.Errorf("%w: the invoice's bill is %s", finance.ErrBillState, b.Status)
+	}
+	tx, err := finance.CreditBill(b.Facts(), amount, date)
+	if err != nil {
+		return false, err
+	}
+	meta = billMeta(meta, *b)
+	meta.Origin = "billing_credit_note"
+	meta.Memo = "Nota de crédito · " + b.Description
+	meta.txID = idempotentID(sp, "billing-credit-note", creditNoteID)
+	plan, err := r.ledger.planPost(sp, tx, meta, now)
+	if err != nil {
+		return false, err
+	}
+	if err := r.bills.TransactWrite(ctx, plan.Items); err != nil {
+		if codes := cancellationCodes(err); len(codes) > 0 && codes[0] == codeConditionFailed {
+			return false, nil // the header exists: this note was already recorded
+		}
+		return false, classifyPostCancel(err, -1)
+	}
+	return true, nil
+}
+
 // receivingAccount is the space's default receiving account, if it is still an
 // active asset account the person holds.
 func (r *BillRepository) receivingAccount(ctx context.Context, sp space.ResolvedSpace) (string, error) {
