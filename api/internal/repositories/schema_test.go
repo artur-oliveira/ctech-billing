@@ -31,6 +31,7 @@ var allTables = []string{
 	TableBills,
 	TableRecurrences,
 	TableCards,
+	TableImports,
 }
 
 func TestEveryTableConstantHasASchema(t *testing.T) {

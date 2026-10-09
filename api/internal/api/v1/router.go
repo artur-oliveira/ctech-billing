@@ -50,9 +50,11 @@ type Deps struct {
 	// The finance section's use cases; used only when Spaces is set.
 	FinanceBills *services.FinanceBills
 	FinanceJobs  *services.FinanceJobs
-	Recurrences  *repositories.RecurrenceRepository
-	Cards        *repositories.CardRepository
-	Ledger       *repositories.LedgerRepository
+	// FinanceImports is F6: statement upload and reconciliation.
+	FinanceImports *services.FinanceImports
+	Recurrences    *repositories.RecurrenceRepository
+	Cards          *repositories.CardRepository
+	Ledger         *repositories.LedgerRepository
 	// SpaceLister feeds the console's space switcher (the same ctech-account
 	// client the resolver uses). Informational: the resolver still authorizes.
 	SpaceLister spaceLister

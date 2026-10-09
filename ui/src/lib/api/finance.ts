@@ -8,7 +8,7 @@ import {apiClient, isSpaceNotFound} from "@/lib/api/client"
 import type {
   Account, Bill, BillPatch, Card, CardPatch, CardStatement, CashFlow, CurrentSpace, Direction, DRE, FinanceSpaces, ListResponse, NewAccount, NewBill,
   NewCard, NewPurchase, NewRecurrence, NewTransfer, Purchase, Occurrence, OpeningBalance, PreviewInput, ProjectionMonth, Recurrence, RecurrencePatch,
-  Settings, Settlement, Statement,
+  Settings, Settlement, Statement, CsvMapping, ImportDetail, ImportSummary, LineResult, NewImport,
 } from "@/lib/api/financeTypes"
 import {getSpace, PERSONAL, type Space, setSpace, spaceHeader} from "@/lib/console/space"
 import type {Mode} from "@/lib/console/mode"
@@ -89,6 +89,9 @@ export const financeKeys = {
   cardStatement: (mode: Mode, space: Space, cardId: string, month: string) =>
     ["finance", mode, spaceHeader(space), "card-statement", cardId, month] as const,
   purchases: (mode: Mode, space: Space, cardId: string) => ["finance", mode, spaceHeader(space), "purchases", cardId] as const,
+  imports: (mode: Mode, space: Space, accountId: string) => ["finance", mode, spaceHeader(space), "imports", accountId] as const,
+  importDetail: (mode: Mode, space: Space, id: string) => ["finance", mode, spaceHeader(space), "import", id] as const,
+  csvMapping: (mode: Mode, space: Space, accountId: string) => ["finance", mode, spaceHeader(space), "csv-mapping", accountId] as const,
   spaces: () => ["finance", "spaces"] as const,
 }
 
@@ -190,3 +193,38 @@ export const advancePurchase = (c: FinanceCtx, cardId: string, purchaseId: strin
  *  that is not the open one is refused, so a repeated click cannot close the next. */
 export const closeStatement = (c: FinanceCtx, cardId: string, month: string, idempotencyKey: string) =>
   write<CardStatement>(c, "POST", `${card(cardId)}/close`, {month}, idempotencyKey)
+
+// --- import and reconciliation (F6) ------------------------------------------------
+
+const line = (importId: string, n: number) => `/imports/${encodeURIComponent(importId)}/lines/${n}`
+
+export const listImports = (c: FinanceCtx, accountId: string) => read<ListResponse<ImportSummary>>(c, "/imports", {account_id: accountId})
+export const getImport = (c: FinanceCtx, id: string) => read<ImportDetail>(c, `/imports/${encodeURIComponent(id)}`)
+/** 201 with an id when lines were added; 200 with no id when the file held nothing new. */
+export const uploadImport = (c: FinanceCtx, body: NewImport, idempotencyKey: string) =>
+  write<ImportSummary>(c, "POST", "/imports", body, idempotencyKey)
+/** Settles the bill with the line's date and amount. */
+export const matchLine = (c: FinanceCtx, importId: string, n: number, body: {bill_id: string; difference_category_id?: string}, idempotencyKey: string) =>
+  write<LineResult>(c, "POST", `${line(importId, n)}/match`, body, idempotencyKey)
+/** Creates a bill from the line and settles it at once. */
+export const newFromLine = (c: FinanceCtx, importId: string, n: number, body: {category_id: string; description?: string}, idempotencyKey: string) =>
+  write<LineResult>(c, "POST", `${line(importId, n)}/new`, body, idempotencyKey)
+export const ignoreLine = (c: FinanceCtx, importId: string, n: number, idempotencyKey: string) =>
+  write<LineResult>(c, "POST", `${line(importId, n)}/ignore`, {}, idempotencyKey)
+export const reopenLine = (c: FinanceCtx, importId: string, n: number, idempotencyKey: string) =>
+  write<LineResult>(c, "POST", `${line(importId, n)}/reopen`, {}, idempotencyKey)
+export const getCsvMapping = (c: FinanceCtx, accountId: string) => read<CsvMapping>(c, `/accounts/${encodeURIComponent(accountId)}/csv-mapping`)
+export const putCsvMapping = (c: FinanceCtx, accountId: string, body: CsvMapping, idempotencyKey: string) =>
+  write<CsvMapping>(c, "PUT", `/accounts/${encodeURIComponent(accountId)}/csv-mapping`, body, idempotencyKey)
+
+/**
+ * A file's bytes as base64. The bytes are never decoded as text here: a bank's
+ * Windows-1252 export read as UTF-8 would lose its accents before the server
+ * could tell which charset it is.
+ */
+export async function fileToBase64(file: Blob): Promise<string> {
+  const bytes = new Uint8Array(await file.arrayBuffer())
+  let binary = ""
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
+  return btoa(binary)
+}

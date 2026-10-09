@@ -22,13 +22,14 @@ import (
 // from middleware.GetSpace — resolved by the server, never from the request — and
 // hands it to a repository that refuses anything else.
 type financeHandlers struct {
-	bills  *services.FinanceBills
-	jobs   *services.FinanceJobs
-	recs   *repositories.RecurrenceRepository
-	cards  *repositories.CardRepository
-	ledger *repositories.LedgerRepository
-	clock  func() time.Time
-	spaces spaceLister
+	bills   *services.FinanceBills
+	imports *services.FinanceImports
+	jobs    *services.FinanceJobs
+	recs    *repositories.RecurrenceRepository
+	cards   *repositories.CardRepository
+	ledger  *repositories.LedgerRepository
+	clock   func() time.Time
+	spaces  spaceLister
 	// ensured runs a space's creation once per process, however many requests
 	// arrive together.
 	ensured ensureOnce
@@ -113,6 +114,16 @@ func financeRoutes() []financeRoute {
 		{"POST", "/cards/:id/purchases/:pid/refund", space.Write, true, func(h *financeHandlers) fiber.Handler { return h.refundPurchase }},
 		{"POST", "/cards/:id/purchases/:pid/advance", space.Write, true, func(h *financeHandlers) fiber.Handler { return h.advancePurchase }},
 		{"POST", "/cards/:id/close", space.Write, true, func(h *financeHandlers) fiber.Handler { return h.closeStatement }},
+		// imports (F6)
+		{"GET", "/imports", space.Read, false, func(h *financeHandlers) fiber.Handler { return h.listImports }},
+		{"POST", "/imports", space.Import, true, func(h *financeHandlers) fiber.Handler { return h.uploadImport }},
+		{"GET", "/imports/:id", space.Read, false, func(h *financeHandlers) fiber.Handler { return h.getImport }},
+		{"POST", "/imports/:id/lines/:n/match", space.Import | space.Write | space.Settle, true, func(h *financeHandlers) fiber.Handler { return h.matchLine }},
+		{"POST", "/imports/:id/lines/:n/new", space.Import | space.Write | space.Settle, true, func(h *financeHandlers) fiber.Handler { return h.newFromLine }},
+		{"POST", "/imports/:id/lines/:n/ignore", space.Import, true, func(h *financeHandlers) fiber.Handler { return h.ignoreLine }},
+		{"POST", "/imports/:id/lines/:n/reopen", space.Import, true, func(h *financeHandlers) fiber.Handler { return h.reopenLine }},
+		{"GET", "/accounts/:id/csv-mapping", space.Read, false, func(h *financeHandlers) fiber.Handler { return h.getCSVMapping }},
+		{"PUT", "/accounts/:id/csv-mapping", space.Import, true, func(h *financeHandlers) fiber.Handler { return h.putCSVMapping }},
 		{"GET", "/reports/dre", space.Read, false, func(h *financeHandlers) fiber.Handler { return h.dre }},
 		{"GET", "/reports/cash-flow", space.Read, false, func(h *financeHandlers) fiber.Handler { return h.cashFlow }},
 		{"GET", "/settings", space.Read, false, func(h *financeHandlers) fiber.Handler { return h.getSettings }},
@@ -143,7 +154,7 @@ func registerFinance(v1 fiber.Router, d Deps, auth fiber.Handler, clock func() t
 	if d.Spaces == nil {
 		return
 	}
-	h := &financeHandlers{bills: d.FinanceBills, jobs: d.FinanceJobs, recs: d.Recurrences, cards: d.Cards, ledger: d.Ledger, clock: clock, spaces: d.SpaceLister}
+	h := &financeHandlers{bills: d.FinanceBills, imports: d.FinanceImports, jobs: d.FinanceJobs, recs: d.Recurrences, cards: d.Cards, ledger: d.Ledger, clock: clock, spaces: d.SpaceLister}
 	idem := middleware.SpaceIdempotency(d.Idempotency, clock)
 	fin := v1.Group("/console/finance", auth)
 	mountSpaces(fin, h)

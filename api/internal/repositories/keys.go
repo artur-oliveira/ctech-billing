@@ -69,6 +69,11 @@ const (
 	// TableCards holds a space's cards (S → CARD#{id}) and, per card, its
 	// purchases, closed statements and statement items (spec § 4, 6.5).
 	TableCards = "cards"
+	// TableImports holds a space's statement imports, their parsed lines (both
+	// kept 90 days), the per-account FITID# locks that make a transaction import
+	// once (kept as long as the space, ADR 0026) and each account's CSV column
+	// mapping (spec § 3.7, § 4).
+	TableImports = "imports"
 )
 
 // Index names.

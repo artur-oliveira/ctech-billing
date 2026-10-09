@@ -61,6 +61,7 @@
     "overview": "Overview",
     "bills": "To pay and to receive",
     "statement": "Statement",
+    "import": "Import",
     "cards": "Cards",
     "recurrences": "Recurrences",
     "reports": "Reports",
@@ -262,5 +263,86 @@
     "marketing": "Marketing",
     "administrative_expenses": "Administrative expenses",
     "bank_fees": "Bank fees"
+  },
+  "import": {
+    "account": "Account",
+    "noAccounts": "No account to import into.",
+    "noAccountsHint": "Create a checking or cash account in Accounts and come back.",
+    "upload": "Send a statement",
+    "file": "Statement file",
+    "fileHint": "OFX or CSV, up to 1 MB. The file is not kept; its lines stay 90 days for you to reconcile.",
+    "submit": "Import",
+    "columns": "CSV columns",
+    "added_one": "{{count}} new line",
+    "added_other": "{{count}} new lines",
+    "duplicates_one": "{{count}} imported before",
+    "duplicates_other": "{{count}} imported before",
+    "rejected_one": "{{count}} line not read",
+    "rejected_other": "{{count}} lines not read",
+    "nothingNew": "Nothing new: this statement was already imported.",
+    "history": "Imports",
+    "noImports": "No import in this account yet.",
+    "period": "{{from}} to {{to}}",
+    "waiting_one": "{{count}} to reconcile",
+    "waiting_other": "{{count}} to reconcile",
+    "allDone": "all reconciled",
+    "lines": "Statement lines",
+    "tabs": {
+      "pending": "To reconcile",
+      "done": "Reconciled",
+      "ignored": "Ignored"
+    },
+    "empty": {
+      "pending": "Nothing to reconcile in this statement.",
+      "done": "No line reconciled yet.",
+      "ignored": "No line ignored."
+    },
+    "noDescription": "No description",
+    "candidate": "Looks like: {{description}}, due {{date}}",
+    "which": "Which bill it is",
+    "noCandidate": "No open bill for this amount near this date.",
+    "match": "Settle",
+    "new": "New bill",
+    "ignore": "Ignore",
+    "reopen": "Undo",
+    "matched": "Settled",
+    "created": "Bill created and paid",
+    "category": "Category",
+    "description": "Description",
+    "create": "Create and settle",
+    "back": "Back",
+    "noCategory": {
+      "expense": "No expense category. Create one in Accounts.",
+      "income": "No income category. Create one in Accounts."
+    },
+    "rejectedLine": "Line {{line}}: {{reason}}",
+    "reasons": {
+      "invalid_date": "unreadable date",
+      "invalid_amount": "unreadable amount",
+      "zero_amount": "zero amount",
+      "balance_row": "balance line"
+    },
+    "mapping": {
+      "delimiter": "Separator",
+      "semicolon": "Semicolon (;)",
+      "comma": "Comma (,)",
+      "tab": "Tab",
+      "decimal": "Decimals",
+      "decimalComma": "Comma (1.234,56)",
+      "decimalDot": "Dot (1,234.56)",
+      "dateFormat": "Date format",
+      "formats": {
+        "ddmmyyyy": "day/month/year",
+        "yyyymmdd": "year-month-day",
+        "mmddyyyy": "month/day/year"
+      },
+      "skipRows": "Header rows",
+      "dateColumn": "Date column",
+      "descriptionColumn": "Description column",
+      "amountColumn": "Amount column",
+      "debitColumn": "Money-out column",
+      "debitHint": "Only if the bank splits money in and money out into two columns.",
+      "save": "Save columns"
+    }
   }
 }

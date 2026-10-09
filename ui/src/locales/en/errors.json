@@ -63,7 +63,17 @@
     "conflict": "This changed while you were viewing it. Refresh and try again.",
     "unprocessable_entity": "Check the data and try again.",
     "too_many_requests": "Too many attempts. Wait a bit and try again.",
-    "validation_error": "Check the fields and try again."
+    "validation_error": "Check the fields and try again.",
+    "line_already_reconciled": "This line was already reconciled. The list was refreshed.",
+    "line_bill_mismatch": "That bill is not in this bank account or is not of the same kind (to pay or to receive).",
+    "statement_card_not_supported": "Card statements are not imported yet. Import the checking account statement.",
+    "statement_many_accounts": "The file holds more than one account. Export one account per file.",
+    "statement_currency": "The statement is not in reais.",
+    "statement_too_large": "The file is too large (up to 1 MB and 2,000 lines).",
+    "statement_empty": "The file has no transactions.",
+    "statement_unreadable": "The file could not be read. Check that it is the bank's OFX or CSV.",
+    "csv_mapping_required": "First say which CSV columns hold the date, the description and the amount.",
+    "invalid_csv_mapping": "The CSV columns are not right."
   },
   "field": {
     "required": "Required.",

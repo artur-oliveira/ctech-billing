@@ -54,6 +54,12 @@ const (
 	// canceled ones. A completed session is support data too — the evidence of
 	// payment is the PaymentAttempt, which is kept for five years.
 	RetentionCheckoutSession = RetentionNinetyDays
+	// An import and its parsed lines are kept 90 days for the reconciliation
+	// screen; the raw file is never stored (ADR 0026, spec § 8).
+	RetentionImportLine = RetentionNinetyDays
+	// A FITID# lock is kept as long as the space: expiring it would let an old
+	// file be imported twice (ADR 0026).
+	RetentionImportLock = RetentionPermanent
 )
 
 // ExpiresAt returns the Unix timestamp DynamoDB should expire the item at, or

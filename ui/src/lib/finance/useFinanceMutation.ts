@@ -21,7 +21,7 @@ export function useFinanceMutation<V, R>(
   const ctx = useFinanceCtx()
   const client = useQueryClient()
   const intent = useIntent()
-  return useMutation({
+  const mutation = useMutation({
     mutationFn: (vars: V) => run(ctx, vars, intent.key()),
     onSuccess: result => {
       intent.done()
@@ -30,4 +30,7 @@ export function useFinanceMutation<V, R>(
     },
     onError,
   })
+  // newIntent: the person changed WHAT they are submitting (another file), so a
+  // failed attempt's key must not be reused for it.
+  return Object.assign(mutation, {newIntent: intent.done})
 }

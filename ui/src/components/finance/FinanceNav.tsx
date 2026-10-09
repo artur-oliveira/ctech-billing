@@ -12,6 +12,7 @@ const SECTIONS = [
   {href: "/console/finance", key: "overview", exact: true},
   {href: "/console/finance/bills", key: "bills"},
   {href: "/console/finance/statement", key: "statement"},
+  {href: "/console/finance/import", key: "import"},
   {href: "/console/finance/cards", key: "cards"},
   {href: "/console/finance/recurrences", key: "recurrences"},
   {href: "/console/finance/reports", key: "reports"},

@@ -138,3 +138,55 @@ describe("the finance mock's cards", () => {
     expect((r(`/cards/${id}/statements/${ym(1)}`) as {total: number}).total).toBe(-10000)
   })
 })
+
+describe("the mock imports statements (F6)", () => {
+  const w = (url: string, data: unknown, key: string) =>
+    call({method: "post", url, headers: {...personal, "Idempotency-Key": key}, data})
+  const r = (url: string) => call({url, headers: personal}).data as never
+  // A synthetic OFX: invented values only.
+  const ofx = (amount: string, date: string) => btoa(`OFXHEADER:100\r\n<OFX><STMTRS><CURDEF>BRL<BANKTRANLIST>
+<STMTTRN><TRNTYPE>DEBIT<DTPOSTED>${date.replaceAll("-", "")}<TRNAMT>${amount}<FITID>X1<MEMO>Compra teste</STMTTRN>
+</BANKTRANLIST></STMTRS></OFX>`)
+
+  it("adds a file once: the same file again answers 200 with nothing new", () => {
+    const today = new Date().toISOString().slice(0, 10)
+    const body = {account_id: "conta-corrente", format: "ofx", content: ofx("-12.34", today)}
+    const first = w("/imports", body, "u1")
+    expect(first.status).toBe(201)
+    expect((first.data as {lines: number}).lines).toBe(1)
+    const second = w("/imports", body, "u2")
+    expect(second.status).toBe(200)
+    expect(second.data).toMatchObject({lines: 0, duplicates: 1})
+    expect((second.data as {id?: string}).id).toBeUndefined()
+  })
+
+  it("offers the forecast bill and settles it on match", () => {
+    const bills = (call({url: "/bills", headers: personal, params: {direction: "payable"}}).data as {data: {id: string; amount: number; due_date: string}[]}).data
+    const target = bills.find(b => b.id === "b-mercado")!
+    const up = w("/imports", {account_id: "conta-corrente", format: "ofx", content: ofx(`-${(target.amount / 100).toFixed(2)}`, target.due_date)}, "u3")
+    const id = (up.data as {id: string}).id
+    const detail = r(`/imports/${id}`) as {lines: {n: number; candidates: {id: string}[]}[]}
+    expect(detail.lines[0].candidates.map(c => c.id)).toContain("b-mercado")
+    expect(w(`/imports/${id}/lines/1/match`, {bill_id: "b-mercado"}, "m1").status).toBe(200)
+    expect(w(`/imports/${id}/lines/1/ignore`, {}, "i1").status).toBe(409)
+    expect((r(`/imports/${id}`) as {import: {pending: number}}).import.pending).toBe(0)
+  })
+
+  it("ignores and reopens a line, and creates a paid bill from one", () => {
+    expect(w("/imports/imp-seed/lines/2/ignore", {}, "i2").status).toBe(200)
+    expect(w("/imports/imp-seed/lines/2/reopen", {}, "o2").status).toBe(200)
+    const made = w("/imports/imp-seed/lines/2/new", {category_id: "mercado"}, "n2")
+    expect(made.status).toBe(201)
+    expect((made.data as {bill: {status: string; origin: string}}).bill).toMatchObject({status: "paid", origin: "import"})
+  })
+
+  it("asks for the CSV columns before reading a CSV", () => {
+    const csv = btoa("05/03/2026;Café;-5,00\n")
+    expect(w("/imports", {account_id: "conta-corrente", format: "csv", content: csv}, "c1").data).toMatchObject({code: "csv_mapping_required"})
+    const m = {delimiter: ";", decimal: ",", date_format: "dd/mm/yyyy", skip_rows: 0, date_column: 1, description_column: 2, amount_column: 3, debit_column: 0}
+    expect(call({method: "put", url: "/accounts/conta-corrente/csv-mapping", headers: {...personal, "Idempotency-Key": "m"}, data: m}).status).toBe(200)
+    const up = w("/imports", {account_id: "conta-corrente", format: "csv", content: csv}, "c2")
+    expect(up.status).toBe(201)
+    expect((up.data as {lines: number}).lines).toBe(1)
+  })
+})

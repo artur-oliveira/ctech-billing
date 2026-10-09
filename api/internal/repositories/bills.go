@@ -450,6 +450,15 @@ func (r *BillRepository) changedSince(ctx context.Context, sp space.ResolvedSpac
 		cur.AccountID != read.AccountID || cur.Due != read.Due
 }
 
+// settlePlan is a bill's settlement built but not sent: the ledger's items with
+// the bill's guarded update last, so another fact (an import line's
+// reconciliation) can commit with it in one TransactWriteItems.
+type settlePlan struct {
+	bill  *finance.Bill // as read
+	txID  string
+	items []types.TransactWriteItem
+}
+
 // Settle posts the cash movement for a forecast bill and marks it paid, in one
 // transaction guarded by forecastGuard: of two concurrent settlements exactly one
 // commits and the other is finance.ErrBillState.
@@ -457,35 +466,71 @@ func (r *BillRepository) Settle(ctx context.Context, sp space.ResolvedSpace, bil
 	if err := sp.Require(space.Write | space.Settle); err != nil {
 		return finance.Bill{}, err
 	}
-	b, err := r.get(ctx, sp, billID)
+	p, err := r.planSettle(ctx, sp, billID, paid, differenceCategoryID, date, meta, now)
 	if err != nil {
 		return finance.Bill{}, err
 	}
+	if err := r.bills.TransactWrite(ctx, p.items); err != nil {
+		return finance.Bill{}, r.settleError(ctx, sp, p.bill, err)
+	}
+	return p.paid(date), nil
+}
+
+// paid is the bill after its settlement committed. Built in memory, not
+// re-read: the re-read is eventually consistent and could show the bill as
+// still a forecast right after it was settled, and whatever is returned is
+// what the idempotency layer stores and replays.
+func (p settlePlan) paid(date brcal.Date) finance.Bill {
+	b := *p.bill
+	b.Status, b.PaidDate = finance.BillPaid, date
+	b.TransactionIDs = append(append([]string(nil), b.TransactionIDs...), p.txID)
+	return b
+}
+
+// settleError maps a refused settlement: either the bill moved on since it was
+// read (a concurrent edit, settle or cancel) or an account is gone; the bill is
+// re-read to tell them apart, so a settle that merely lost a race is not
+// reported as an unknown account.
+func (r *BillRepository) settleError(ctx context.Context, sp space.ResolvedSpace, read *finance.Bill, err error) error {
+	if !onlyConditionFailed(err) {
+		return err
+	}
+	if r.changedSince(ctx, sp, read) {
+		return finance.ErrBillState
+	}
+	return ErrUnknownAccount
+}
+
+func (r *BillRepository) planSettle(ctx context.Context, sp space.ResolvedSpace, billID string, paid billing.Cents, differenceCategoryID string, date brcal.Date, meta PostMeta, now time.Time) (settlePlan, error) {
+	b, err := r.get(ctx, sp, billID)
+	if err != nil {
+		return settlePlan{}, err
+	}
 	if err := b.CanSettle(); err != nil {
-		return finance.Bill{}, err
+		return settlePlan{}, err
 	}
 	if differenceCategoryID != "" {
 		// The gap lands on this category: interest or discount, so an income or
 		// expense account — never an asset, a liability or a system account.
 		cat, err := r.ledger.getAccount(ctx, sp, differenceCategoryID)
 		if errors.Is(err, ErrNotFound) {
-			return finance.Bill{}, fmt.Errorf("%w: category %s", ErrUnknownAccount, differenceCategoryID)
+			return settlePlan{}, fmt.Errorf("%w: category %s", ErrUnknownAccount, differenceCategoryID)
 		}
 		if err != nil {
-			return finance.Bill{}, err
+			return settlePlan{}, err
 		}
 		if (cat.Class != finance.ClassIncome && cat.Class != finance.ClassExpense) || cat.System || cat.Archived {
-			return finance.Bill{}, fmt.Errorf("%w: the difference needs an active income or expense category", finance.ErrInvalidTransaction)
+			return settlePlan{}, fmt.Errorf("%w: the difference needs an active income or expense category", finance.ErrInvalidTransaction)
 		}
 	}
 	sys, _ := finance.DefaultSystemAccounts()
 	tx, err := finance.SettleBill(sys, b.Facts(), paid, differenceCategoryID, date)
 	if err != nil {
-		return finance.Bill{}, err
+		return settlePlan{}, err
 	}
 	plan, err := r.ledger.planPost(sp, tx, billMeta(meta, *b), now)
 	if err != nil {
-		return finance.Bill{}, err
+		return settlePlan{}, err
 	}
 	sk := BillSK(billID)
 	values := map[string]types.AttributeValue{
@@ -497,26 +542,7 @@ func (r *BillRepository) Settle(ctx context.Context, sp space.ResolvedSpace, bil
 	update := r.bills.BuildRawUpdateTxItem(sp.PK(), &sk,
 		"SET #status = :paid, paid_date = :d, #n = list_append(#n, :tx), updated_at = :now"+removeSparse,
 		cond, names, values)
-	items := append(append([]types.TransactWriteItem(nil), plan.Items...), update)
-	if err := r.bills.TransactWrite(ctx, items); err != nil {
-		if onlyConditionFailed(err) {
-			// Either the bill moved on since it was read (a concurrent edit,
-			// settle or cancel) or an account is gone; the bill is re-read to tell
-			// them apart, so a settle that merely lost a race is not reported as
-			// an unknown account.
-			if r.changedSince(ctx, sp, b) {
-				return finance.Bill{}, finance.ErrBillState
-			}
-			return finance.Bill{}, ErrUnknownAccount
-		}
-		return finance.Bill{}, err
-	}
-	// Built in memory, not re-read: the re-read is eventually consistent and could
-	// show the bill as still a forecast right after it was settled, and whatever
-	// is returned is what the idempotency layer stores and replays.
-	b.Status, b.PaidDate = finance.BillPaid, date
-	b.TransactionIDs = append(append([]string(nil), b.TransactionIDs...), plan.TxID)
-	return *b, nil
+	return settlePlan{bill: b, txID: plan.TxID, items: append(append([]types.TransactWriteItem(nil), plan.Items...), update)}, nil
 }
 
 // Cancel removes a forecast bill: its recognition is negated at the competence
