@@ -75,3 +75,33 @@ describe("the finance mock enforces the contract", () => {
     expect(call({method: "post", url: "/recurrences/preview", headers: personal, data: {expression: {kind: "day_of_month", day: 10}, start: "2026-01-01", count: 0}}).status).toBe(422)
   })
 })
+
+describe("the finance mock's ledger facts", () => {
+  const w = (url: string, data: unknown, key: string) =>
+    call({method: "post", url, headers: {...personal, "Idempotency-Key": key}, data})
+  const month = () => new Date().toISOString().slice(0, 7)
+  const day = () => `${month()}-01`
+  const balance = (id: string) =>
+    (call({url: "/accounts", headers: personal}).data as {data: {id: string; balance: number}[]}).data.find(a => a.id === id)!.balance
+
+  it("moves both balances on a transfer and keeps it out of the cash flow", () => {
+    const before = [balance("conta-corrente"), balance("poupanca")]
+    expect(w("/transfers", {from_account_id: "conta-corrente", to_account_id: "poupanca", amount: 1000, date: day()}, "t1").status).toBe(201)
+    expect([balance("conta-corrente"), balance("poupanca")]).toEqual([before[0] - 1000, before[1] + 1000])
+    const cf = call({url: "/reports/cash-flow", headers: personal, params: {from: month(), to: month()}})
+    const m = (cf.data as {months: {in: number; out: number}[]}).months[0]
+    expect([m.in, m.out]).toEqual([0, 0])
+  })
+
+  it("puts an unsettled bill back in the open list", () => {
+    expect(w("/bills/b-mercado/settle", {}, "s1").status).toBe(200)
+    expect(w("/bills/b-mercado/unsettle", {}, "u1").status).toBe(200)
+    const open = call({url: "/bills", headers: personal, params: {direction: "payable"}}).data as {data: {id: string; auto_settle: boolean}[]}
+    expect(open.data.find(b => b.id === "b-mercado")?.auto_settle).toBe(false)
+  })
+
+  it("refuses a second opening balance on one account", () => {
+    expect(w("/accounts/poupanca/opening-balance", {amount: 500, date: day()}, "o1").status).toBe(201)
+    expect(w("/accounts/poupanca/opening-balance", {amount: 500, date: day()}, "o2").status).toBe(409)
+  })
+})
