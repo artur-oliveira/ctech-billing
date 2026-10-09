@@ -137,3 +137,138 @@ func (f cardsFixture) purchase(t *testing.T, cardID string, d brcal.Date, total 
 	}
 	return p
 }
+func TestAdvanceKeepsTheSum(t *testing.T) {
+	f, card := newCardsFixture(t)
+	ctx := context.Background()
+	p := f.purchase(t, card.ID, brcal.New(2026, time.March, 1), 100000, 4) // Mar 25.000 ×4
+	if _, err := f.cards.Advance(ctx, f.sp, card.ID, p.ID, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	mar, _ := f.cards.GetStatement(ctx, f.sp, card.ID, finance.Month{Year: 2026, Month: time.March})
+	if mar.Total != 100000 {
+		t.Fatalf("March after advance = %d, want the whole purchase", mar.Total)
+	}
+	apr, _ := f.cards.GetStatement(ctx, f.sp, card.ID, finance.Month{Year: 2026, Month: time.April})
+	if len(apr.Items) != 0 {
+		t.Fatalf("April still bills %+v", apr.Items)
+	}
+	if _, err := f.cards.Advance(ctx, f.sp, card.ID, p.ID, time.Now()); !errors.Is(err, repositories.ErrNothingToAdvance) {
+		t.Fatalf("second advance: %v", err)
+	}
+	if f.ledgerBal(t, "food") != 100000 {
+		t.Fatal("an advance changes no ledger figure")
+	}
+}
+
+func TestClosingTwiceMakesOneBill(t *testing.T) {
+	f, card := newCardsFixture(t)
+	ctx := context.Background()
+	f.purchase(t, card.ID, brcal.New(2026, time.March, 2), 30000, 1)
+	for i := 0; i < 3; i++ {
+		f.closeThrough(t, card.ID, brcal.New(2026, time.March, 3))
+	}
+	mar, _ := f.cards.GetStatement(ctx, f.sp, card.ID, finance.Month{Year: 2026, Month: time.March})
+	if mar.Status != "closed" || mar.Total != 30000 || mar.BillID == "" {
+		t.Fatalf("March = %+v", mar)
+	}
+	b, err := f.bills.Get(ctx, f.sp, mar.BillID)
+	if err != nil || b.Origin != finance.OriginCardStatement || b.Amount != 30000 || b.Due != brcal.New(2026, time.March, 10) || b.AccountID != "bank" {
+		t.Fatalf("statement bill = %+v, %v", b, err)
+	}
+	page, _ := f.bills.ListOpen(ctx, f.sp, finance.Payable, 10, nil)
+	if len(page.Items) != 1 {
+		t.Fatalf("open payables = %d, want one statement bill", len(page.Items))
+	}
+	if f.ledgerBal(t, "sys-payables") != 0 {
+		t.Fatal("a statement bill must not be recognised: the purchase already was")
+	}
+}
+
+func TestAMissedMonthIsClosedInOrder(t *testing.T) {
+	f, card := newCardsFixture(t)
+	ctx := context.Background()
+	f.purchase(t, card.ID, brcal.New(2026, time.March, 1), 20000, 2) // March and April
+	if n, err := f.cards.CloseDue(ctx, f.sp, card.ID, brcal.New(2026, time.April, 20), time.Now()); err != nil || n != 2 {
+		t.Fatalf("closed %d, %v; want March and April", n, err)
+	}
+	got, _ := f.cards.GetCard(ctx, f.sp, card.ID)
+	if got.OpenMonth != (finance.Month{Year: 2026, Month: time.May}) {
+		t.Fatalf("open month = %v", got.OpenMonth)
+	}
+}
+
+func TestALatePurchaseLandsOnTheOpenStatement(t *testing.T) {
+	f, card := newCardsFixture(t)
+	f.closeThrough(t, card.ID, brcal.New(2026, time.March, 3)) // March closed (empty)
+	p := f.purchase(t, card.ID, brcal.New(2026, time.February, 20), 5000, 1)
+	if p.Installments[0].Statement != (finance.Month{Year: 2026, Month: time.April}) {
+		t.Fatalf("a purchase dated in a closed month landed on %v", p.Installments[0].Statement)
+	}
+}
+
+func TestAPurchaseAfterTheCloseReadIsRefused(t *testing.T) {
+	f, card := newCardsFixture(t)
+	ctx := context.Background()
+	// The close read the card at version v; a purchase lands; the close's write
+	// must fail and the next run must count the purchase.
+	f.purchase(t, card.ID, brcal.New(2026, time.March, 1), 1000, 1)
+	read, _ := f.cards.GetCard(ctx, f.sp, card.ID)
+	f.purchase(t, card.ID, brcal.New(2026, time.March, 2), 2000, 1)
+	if err := f.cards.CloseAt(ctx, f.sp, *read, brcal.New(2026, time.March, 3), time.Now()); !errors.Is(err, repositories.ErrCardMoved) {
+		t.Fatalf("close against a stale read: %v", err)
+	}
+	f.closeThrough(t, card.ID, brcal.New(2026, time.March, 3))
+	mar, _ := f.cards.GetStatement(ctx, f.sp, card.ID, finance.Month{Year: 2026, Month: time.March})
+	if mar.Total != 3000 {
+		t.Fatalf("March = %d, want both purchases", mar.Total)
+	}
+}
+
+func TestANegativeStatementCarriesToTheNext(t *testing.T) {
+	f, card := newCardsFixture(t)
+	ctx := context.Background()
+	p := f.purchase(t, card.ID, brcal.New(2026, time.March, 1), 30000, 1)
+	f.closeThrough(t, card.ID, brcal.New(2026, time.March, 3))
+	if _, err := f.cards.Refund(ctx, f.sp, card.ID, p.ID, repositories.PostMeta{Actor: "u"}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	f.closeThrough(t, card.ID, brcal.New(2026, time.April, 3)) // April: −300,00
+	apr, _ := f.cards.GetStatement(ctx, f.sp, card.ID, finance.Month{Year: 2026, Month: time.April})
+	may, _ := f.cards.GetStatement(ctx, f.sp, card.ID, finance.Month{Year: 2026, Month: time.May})
+	if apr.BillID != "" || apr.Total != -30000 || may.Total != -30000 || may.Items[0].Kind != "carry" {
+		t.Fatalf("April = %+v, May = %+v", apr, may)
+	}
+}
+
+// closeThrough closes every statement whose closing date is on or before d.
+func (f cardsFixture) closeThrough(t *testing.T, cardID string, d brcal.Date) {
+	t.Helper()
+	if _, err := f.cards.CloseDue(context.Background(), f.sp, cardID, d, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRefundCreditPlusRemovedIsTheTotal(t *testing.T) {
+	f, card := newCardsFixture(t)
+	ctx := context.Background()
+	p := f.purchase(t, card.ID, brcal.New(2026, time.March, 1), 100000, 4) // March, April, May, June
+	f.closeThrough(t, card.ID, brcal.New(2026, time.April, 3))             // March and April closed
+	got, err := f.cards.Refund(ctx, f.sp, card.ID, p.ID, repositories.PostMeta{Actor: "u"}, time.Now())
+	if err != nil || !got.Refunded {
+		t.Fatalf("refund = %+v, %v", got, err)
+	}
+	may, _ := f.cards.GetStatement(ctx, f.sp, card.ID, finance.Month{Year: 2026, Month: time.May})
+	if may.Total != -50000 || len(may.Items) != 1 || may.Items[0].Kind != "credit" {
+		t.Fatalf("May after refund = %+v (credit for March and April, May and June removed)", may)
+	}
+	june, _ := f.cards.GetStatement(ctx, f.sp, card.ID, finance.Month{Year: 2026, Month: time.June})
+	if len(june.Items) != 0 {
+		t.Fatalf("June still bills %+v", june.Items)
+	}
+	if f.ledgerBal(t, "food") != 0 {
+		t.Fatal("the refund must reverse the expense")
+	}
+	if _, err := f.cards.Refund(ctx, f.sp, card.ID, p.ID, repositories.PostMeta{Actor: "u"}, time.Now()); !errors.Is(err, repositories.ErrPurchaseRefunded) {
+		t.Fatalf("second refund: %v", err)
+	}
+}

@@ -742,3 +742,18 @@ func (r *BillRepository) Unsettle(ctx context.Context, sp space.ResolvedSpace, b
 	reopened.TransactionIDs = append(append([]string(nil), b.TransactionIDs...), plan.TxID)
 	return reopened, nil
 }
+
+// statementBillItem is the write that creates a card statement's bill
+// (scope decision 6 of the 6.5 plan): the bill row only, conditional on its
+// absence — a statement bill is not recognised, because the purchases already
+// put the expense in the DRE. Settling it clears the card (BillFacts.Clears).
+func (r *BillRepository) statementBillItem(sp space.ResolvedSpace, b finance.Bill, now time.Time) (types.TransactWriteItem, error) {
+	if err := b.Validate(); err != nil {
+		return types.TransactWriteItem{}, err
+	}
+	item, err := Encode(newBillItem(sp, b, now))
+	if err != nil {
+		return types.TransactWriteItem{}, err
+	}
+	return r.bills.BuildPutTxItemIfAbsent(item), nil
+}
