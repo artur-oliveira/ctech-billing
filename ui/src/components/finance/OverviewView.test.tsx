@@ -150,10 +150,13 @@ describe("F1 — visão geral", () => {
     const flow = within(block).getByRole("button", {name: "Entradas e saídas"})
     await userEvent.click(flow)
     const table = within(block).getByRole("table")
-    expect(within(table).getAllByRole("columnheader").map(h => h.textContent)).toEqual(["Mês", "Entradas", "Saídas", "Resultado do mês"])
+    // The accumulated balance is the projection's point; switching the view
+    // changes how the month is broken down, never whether the balance shows.
+    expect(within(table).getAllByRole("columnheader").map(h => h.textContent)).toEqual(["Mês", "Entradas", "Saídas", "Resultado do mês", "Saldo projetado"])
     const nov = within(table).getByRole("row", {name: /nov/i})
     // Recurrences are inside the totals, and the cell says how much of each.
     expect(nov.textContent?.replace(/\s/g, " ")).toMatch(/R\$ 4\.500,00.*R\$ 1\.000,00 de recorrências.*R\$ 700,00.*R\$ 300,00 de recorrências.*R\$ 3\.800,00/)
+    expect(within(nov).getAllByRole("cell").at(-1)?.textContent).toMatch(/R\$/)
     await userEvent.click(within(block).getByRole("button", {name: "Saldo"}))
     expect(within(within(block).getByRole("table")).getAllByRole("columnheader").map(h => h.textContent).at(-1)).toBe("Saldo projetado")
   })
@@ -200,7 +203,10 @@ describe("F1 — visão geral", () => {
       const block = await screen.findByRole("region", {name: "Projeção"})
       await userEvent.click(await within(block).findByRole("button", {name: "Entradas e saídas"}))
       const list = await within(block).findByRole("list", {name: "Projeção mês a mês"})
-      expect(within(list).getAllByRole("listitem").map(r => r.querySelector("[data-value]")?.textContent?.replace(/\s/g, " "))).toEqual(["−R$ 2.254,90", "R$ 3.100,00", "−R$ 1.500,00"])
+      const rows = within(list).getAllByRole("listitem")
+      expect(rows.map(r => r.querySelector("[data-value]")?.textContent?.replace(/\s/g, " "))).toEqual(["−R$ 2.254,90", "R$ 3.100,00", "−R$ 1.500,00"])
+      // ...and still the balance each month ends on.
+      expect(rows.map(r => r.querySelector("[data-balance]")?.textContent?.replace(/\s/g, " "))).toEqual(["Saldo projetado R$ 18.668,25", "Saldo projetado R$ 21.768,25", "Saldo projetado R$ 20.268,25"])
     })
   })
 

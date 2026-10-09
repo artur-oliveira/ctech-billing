@@ -276,6 +276,7 @@ function ProjectionTable({data, view}: {data: ProjectedMonth[]; view: View}) {
                 <th className={th}>{t("finance.overview.legendIn")}</th>
                 <th className={th}>{t("finance.overview.legendOut")}</th>
                 <th className={th}>{t("finance.overview.monthResult")}</th>
+                <th className={th}>{t("finance.overview.projected")}</th>
               </>
             )}
           </tr>
@@ -296,7 +297,11 @@ function ProjectionTable({data, view}: {data: ProjectedMonth[]; view: View}) {
                 <>
                   <td className={td}>{money(m.inflow)}<OfRecurrences cents={m.recIn}/></td>
                   <td className={td}>{money(m.outflow)}<OfRecurrences cents={m.recOut}/></td>
-                  <td className={`${td} font-medium ${m.result < 0 ? "text-danger" : ""}`}>{signedMoney(m.result)}</td>
+                  <td className={`${td} ${m.result < 0 ? "text-danger" : ""}`}>{signedMoney(m.result)}</td>
+                  {/* The accumulated balance stays in both views: the view
+                      changes how a month is broken down, not whether the
+                      projection says where the money ends up. */}
+                  <td className={`${td} font-medium ${m.balance < 0 ? "text-danger" : ""}`}>{signedMoney(m.balance)}</td>
                 </>
               )}
             </tr>
@@ -331,6 +336,14 @@ function MonthList({data, view}: {data: ProjectedMonth[]; view: View}) {
               <span data-month className="text-sm text-foreground">{monthShort(m.month)}</span>
               <span data-value data-numeric className={`text-sm font-medium tabular-nums ${value < 0 ? "text-danger" : "text-foreground"}`}>{signedMoney(value)}</span>
             </div>
+            {view === "flow" && (
+              // The headline is the month's result here; the balance it ends on
+              // is still the projection's point, so it stays, one line down.
+              <p data-balance data-numeric className="flex justify-between gap-3 text-xs tabular-nums text-muted-foreground">
+                <span>{t("finance.overview.projected")}</span>{" "}
+                <span className={m.balance < 0 ? "text-danger" : ""}>{signedMoney(m.balance)}</span>
+              </p>
+            )}
             <div data-numeric className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-1 text-xs tabular-nums text-muted-foreground">
               <Bar total={m.inflow} width={pct(m.inflow)} tone="bg-success"/>
               <span className="whitespace-nowrap text-right">{t("finance.overview.legendIn")} {money(m.inflow)}<OfRecurrences cents={m.recIn}/></span>
