@@ -123,7 +123,7 @@ export default function ConsoleLayout({children}: LayoutProps<"/console">) {
         </div>
 
         <nav className="mx-auto max-w-6xl px-4" aria-label={t("console.nav.label")}>
-          <ul ref={navRef} className="relative -mb-px flex gap-1 overflow-x-auto overscroll-x-contain scrollbar-none max-sm:[mask-image:linear-gradient(to_right,#000_calc(100%-1.5rem),transparent)]">
+          <ul ref={navRef} className="relative -mb-px flex gap-1 touch:pt-1 overflow-x-auto overscroll-x-contain scrollbar-none max-sm:[mask-image:linear-gradient(to_right,#000_calc(100%-1.5rem),transparent)]">
             {nav.map(item => {
               const active = pathname.startsWith(item.href)
               return (
@@ -131,7 +131,10 @@ export default function ConsoleLayout({children}: LayoutProps<"/console">) {
                   <Link
                     href={item.href}
                     aria-current={active ? "page" : undefined}
-                    className={`inline-flex h-10 touch:h-11 items-center whitespace-nowrap border-b-2 px-3 text-sm transition-colors ${
+                    // 40px drawn, as on a desk. Under touch the target grows 4px
+                    // up into the list's padding (the row scrolls sideways, so
+                    // it clips anything below): 44px without a taller bar.
+                    className={`relative inline-flex h-10 items-center touch:after:absolute touch:after:inset-x-0 touch:after:-top-1 touch:after:bottom-0 touch:after:content-[''] whitespace-nowrap border-b-2 px-3 text-sm transition-colors ${
                       active
                         ? "border-brand-600 font-medium text-brand-600"
                         : "border-transparent text-muted-foreground hover:text-foreground"

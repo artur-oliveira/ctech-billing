@@ -117,28 +117,96 @@
 }
 
 /*
- * Touch restores the 44px target inside the compact console (WCAG 2.5.5, and
- * the platform guidelines on both phones). Keyed on the `data-slot` every
- * shared control already carries, so no call site has to remember it. It is
- * unlayered on purpose: it must beat `in-data-[density=compact]:h-8`, which
- * lives in the utilities layer. A min-height, not a height, so a control that
- * is already taller is left alone. A control with no data-slot (DateField's
- * DatePicker trigger) asks for `touch:min-h-11` itself. Candidate for @aoctech/ui.
- * A drawer or modal is portaled out of the density root, so `[role=dialog]`
- * is a root of its own here (UX batch 3: every drawer's buttons were 36px).
+ * Touch: a compact control keeps its compact LOOK and gets a 44px TARGET
+ * (UX batch 4; WCAG 2.5.5 and both phones' guidelines). Batch 2 grew every
+ * control to 44px under a finger and a phone screen became mostly chrome; the
+ * size a finger needs is the hit area, not the drawing.
+ *
+ * - Visual: 36px (`--touch-visual`), a segment 32px inside its 38px group.
+ * - Hit: an invisible `::after` centred on the control, at least 44 x 44px
+ *   (`--touch-target`). It only grows past the control where the control is
+ *   smaller, so a wide button is not widened; a segment grows vertically only,
+ *   since its neighbours touch it. Keep 8px between stacked controls (gap-2)
+ *   so two extensions meet and never overlap.
+ * - Input fields are replaced elements and cannot carry an `::after`; a Field's
+ *   label already focuses its control, so the label's own `::after` covers the
+ *   whole field, label to hint, behind the control.
+ *
+ * Roots: the console's `[data-density=compact]`, and a dialog that opts in by
+ * holding `[data-touch-compact]` (our Drawer and Modal wrappers): a portaled
+ * dialog is outside the density root, and the bottom bar's Mais sheet, which
+ * is touch-sized on purpose, holds no marker. Keyed on the `data-slot` every
+ * shared control carries; a control with none (DatePicker's trigger, a tab, a
+ * link styled as one) adds the class `touch-target`. Unlayered on purpose, to
+ * beat `h-11` and `in-data-[density=compact]:h-8` in the utilities layer.
+ * Candidate for @aoctech/ui, with the components.
  */
+:root {
+  --touch-visual: 2.25rem;
+  --touch-target: 2.75rem;
+}
+
 @media (pointer: coarse), (max-width: 39.999rem) {
-  :is([data-density="compact"], [role="dialog"]) :is(
+  :is([data-density="compact"], [role="dialog"]:has([data-touch-compact])) :is(
     [data-slot="button"],
     [data-slot="input"],
     [data-slot="select-trigger"],
-    [data-slot="segmented-item"]
+    .touch-target
   ) {
-    min-height: 2.75rem;
+    height: auto;
+    min-height: var(--touch-visual);
+  }
+
+  :is([data-density="compact"], [role="dialog"]:has([data-touch-compact])) :is(
+    [data-slot="button"],
+    [data-slot="select-trigger"],
+    [data-slot="segmented-item"],
+    .touch-target
+  ) {
+    position: relative;
+  }
+
+  :is([data-density="compact"], [role="dialog"]:has([data-touch-compact])) :is(
+    [data-slot="button"],
+    [data-slot="select-trigger"],
+    [data-slot="segmented-item"],
+    .touch-target
+  )::after {
+    content: "";
+    position: absolute;
+    /* Percentages resolve against the control itself (it is the containing
+       block): negative only while the control is under 44px on that axis. */
+    top: min(0px, calc((100% - var(--touch-target)) / 2));
+    bottom: min(0px, calc((100% - var(--touch-target)) / 2));
+    left: min(0px, calc((100% - var(--touch-target)) / 2));
+    right: min(0px, calc((100% - var(--touch-target)) / 2));
+  }
+
+  /* Segments sit edge to edge: their targets grow up and down, never sideways. */
+  :is([data-density="compact"], [role="dialog"]:has([data-touch-compact])) [data-slot="segmented-item"] {
+    min-height: 2rem;
+  }
+  :is([data-density="compact"], [role="dialog"]:has([data-touch-compact])) [data-slot="segmented-item"]::after {
+    left: 0;
+    right: 0;
+  }
+
+  /* A field's label is its input's target: it covers the field, behind the control. */
+  :is([data-density="compact"], [role="dialog"]:has([data-touch-compact])) [data-slot="field"]:has(> [data-slot="input"]) {
+    position: relative;
+  }
+  :is([data-density="compact"], [role="dialog"]:has([data-touch-compact])) [data-slot="field"]:has(> [data-slot="input"]) > label::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+  }
+  :is([data-density="compact"], [role="dialog"]:has([data-touch-compact])) [data-slot="field"] > [data-slot="input"] {
+    position: relative;
+    z-index: 1;
   }
 
   /* A switch is drawn at 24px; its label is the target. */
-  :is([data-density="compact"], [role="dialog"]) label:has(> [data-slot="switch"]) {
-    min-height: 2.75rem;
+  :is([data-density="compact"], [role="dialog"]:has([data-touch-compact])) label:has(> [data-slot="switch"]) {
+    min-height: var(--touch-target);
   }
 }

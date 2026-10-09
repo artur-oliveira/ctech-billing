@@ -1,7 +1,8 @@
 "use client"
 
 import limits from "@/lib/limits.json"
-import {Button, EmptyState, Field, Input, Modal, Skeleton} from "@aoctech/ui"
+import {Button, EmptyState, Field, Input, Skeleton} from "@aoctech/ui"
+import {Modal} from "@/components/ui/ConsoleOverlay"
 import {useMutation, useQuery, useQueryClient} from "@tanstack/react-query"
 import {Package} from "lucide-react"
 import Link from "next/link"

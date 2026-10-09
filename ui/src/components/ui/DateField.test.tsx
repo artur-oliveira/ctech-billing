@@ -22,12 +22,13 @@ describe("DateField", () => {
     expect(screen.getByText("Sem fim")).toBeInTheDocument()
   })
 
-  // Measured in the browser by scratchpad audit.cjs; here the contract that
-  // makes it so. The DatePicker's trigger has no data-slot for the touch rule.
-  it("is a 44px target under touch, inside the compact console too", () => {
+  // Measured in the browser (scratchpad b4/shoot.cjs: 36px drawn, 44px hit);
+  // here the contract that makes it so. The DatePicker's trigger has no
+  // data-slot, so it asks for the touch rule by class (UX batch 4).
+  it("asks for the touch rule (compact look, 44px target), inside the compact console too", () => {
     render(<div data-density="compact"><label htmlFor="t">Data</label><DateField id="t" value="" onValueChange={() => {}} className="w-40"/></div>)
     const trigger = screen.getByLabelText("Data")
-    expect(trigger).toHaveClass("touch:min-h-11")
+    expect(trigger).toHaveClass("touch-target")
     expect(trigger).toHaveClass("w-40")
   })
 })

@@ -1,6 +1,7 @@
 "use client"
 
-import {Badge, Button, Drawer, EmptyState, Field, Skeleton} from "@aoctech/ui"
+import {Badge, Button, EmptyState, Field, Skeleton} from "@aoctech/ui"
+import {Drawer} from "@/components/ui/ConsoleOverlay"
 import {useQuery} from "@tanstack/react-query"
 import {AlertCircle, ChevronLeft, ChevronRight, CircleCheck, CircleDot, Clock, CreditCard, Lock} from "lucide-react"
 import {useState} from "react"

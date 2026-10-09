@@ -1,7 +1,8 @@
 "use client"
 
 import limits from "@/lib/limits.json"
-import {Button, buttonVariants, Drawer, EmptyState, Field, Input, Skeleton, Switch} from "@aoctech/ui"
+import {Button, buttonVariants, EmptyState, Field, Input, Skeleton, Switch} from "@aoctech/ui"
+import {Drawer} from "@/components/ui/ConsoleOverlay"
 import {useQuery} from "@tanstack/react-query"
 import {CircleCheck, FileUp, Landmark} from "lucide-react"
 import Link from "next/link"
@@ -137,7 +138,7 @@ function AccountRow({account, card, configure}: {account: Account; card?: Card; 
             <>
               {/* A card's balance is a credit: negative is what is owed. */}
               <span data-numeric className="text-sm tabular-nums">{account.balance < 0 ? t("finance.accounts.owed", {amount: money(-account.balance)}) : money(account.balance)}</span>
-              <Link href={`/console/finance/cards?card=${encodeURIComponent(account.id)}`} className="inline-flex items-center text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline touch:min-h-11">{t("finance.accounts.open")}</Link>
+              <Link href={`/console/finance/cards?card=${encodeURIComponent(account.id)}`} className="inline-flex items-center text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline touch-target">{t("finance.accounts.open")}</Link>
             </>
           )}
           {account.archived && <span className="text-xs">{t("finance.accounts.archived")}</span>}

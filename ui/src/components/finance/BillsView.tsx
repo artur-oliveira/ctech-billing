@@ -1,7 +1,8 @@
 "use client"
 
 import limits from "@/lib/limits.json"
-import {Badge, Button, Drawer, EmptyState, Field, Input, Skeleton, Switch} from "@aoctech/ui"
+import {Badge, Button, EmptyState, Field, Input, Skeleton, Switch} from "@aoctech/ui"
+import {Drawer} from "@/components/ui/ConsoleOverlay"
 import {useQuery, useQueryClient} from "@tanstack/react-query"
 import {AlertCircle, CalendarClock, Clock, Receipt} from "lucide-react"
 import Link from "next/link"

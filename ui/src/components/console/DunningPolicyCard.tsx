@@ -1,6 +1,7 @@
 "use client"
 
-import {Button, Input, Modal} from "@aoctech/ui"
+import {Button, Input} from "@aoctech/ui"
+import {Modal} from "@/components/ui/ConsoleOverlay"
 import {useMutation} from "@tanstack/react-query"
 import {Plus, X} from "lucide-react"
 import {useState} from "react"

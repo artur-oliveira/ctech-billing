@@ -1,6 +1,7 @@
 "use client"
 
-import {Button, Field, Input, Modal, Skeleton} from "@aoctech/ui"
+import {Button, Field, Input, Skeleton} from "@aoctech/ui"
+import {Modal} from "@/components/ui/ConsoleOverlay"
 import {useMutation, useQuery, useQueryClient} from "@tanstack/react-query"
 import {ArrowLeft} from "lucide-react"
 import Link from "next/link"

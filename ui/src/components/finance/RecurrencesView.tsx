@@ -1,7 +1,8 @@
 "use client"
 
 import limits from "@/lib/limits.json"
-import {Button, Drawer, EmptyState, Field, Input, Skeleton, Switch} from "@aoctech/ui"
+import {Button, EmptyState, Field, Input, Skeleton, Switch} from "@aoctech/ui"
+import {Drawer} from "@/components/ui/ConsoleOverlay"
 import {useQuery} from "@tanstack/react-query"
 import {ChevronDown, Repeat} from "lucide-react"
 import Link from "next/link"
@@ -164,7 +165,7 @@ function RecurrenceDetail({id, rec}: {id: string; rec: Recurrence}) {
     key: o.bill_id, nominal: o.nominal, due: o.due, kind: o.state, amount: money(o.amount),
     state: o.state === "paid" && o.paid_date ? t("bills.rec.state.paidOn", {date: shortDate(o.paid_date)}) : t(`bills.rec.state.${o.state}`),
     action: o.state === "overdue"
-      ? <Link href={`/console/finance/bills?direction=${rec.direction}&bill=${encodeURIComponent(o.bill_id)}`} className="inline-flex items-center text-sm text-foreground underline underline-offset-4 hover:text-brand-700 touch:min-h-11">{t(`bills.rec.openBill.${rec.direction}`)}</Link>
+      ? <Link href={`/console/finance/bills?direction=${rec.direction}&bill=${encodeURIComponent(o.bill_id)}`} className="inline-flex items-center text-sm text-foreground underline underline-offset-4 hover:text-brand-700 touch-target">{t(`bills.rec.openBill.${rec.direction}`)}</Link>
       : undefined,
   })
   const next: TimelineEntry[] = [
@@ -215,7 +216,7 @@ function StillGoing({rec, end}: {rec: Recurrence; end: string}) {
     <div className="w-full space-y-1 text-muted-foreground">
       <p>
         {t("bills.rec.stillGoing", {count: going.length, dates})}{" "}
-        <Link href={`/console/finance/bills?direction=${rec.direction}`} className="inline-flex items-center text-foreground underline underline-offset-4 hover:text-brand-700 touch:min-h-11">
+        <Link href={`/console/finance/bills?direction=${rec.direction}`} className="inline-flex items-center text-foreground underline underline-offset-4 hover:text-brand-700 touch-target">
           {t(`bills.rec.openBill.${rec.direction}`)}
         </Link>
       </p>
@@ -401,7 +402,7 @@ function RecurrencePanel({editing, accounts, onDone}: {editing?: Recurrence; acc
 
             <div>
               <button type="button" aria-expanded={more} onClick={() => setMore(v => !v)}
-                className="inline-flex items-center text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline touch:min-h-11">
+                className="inline-flex items-center text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline touch-target">
                 {more ? t("bills.rec.lessOptions") : t("bills.rec.moreOptions")}
               </button>
               {more && (
