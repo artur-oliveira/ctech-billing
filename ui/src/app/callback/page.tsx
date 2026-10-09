@@ -8,6 +8,7 @@ import {Suspense, useEffect, useRef, useState} from "react"
 import {StatusScreen} from "@/components/StatusScreen"
 import {useAuth} from "@/lib/auth/AuthContext"
 import {exchangeCode} from "@/lib/auth/oauth"
+import {safeReturnTo} from "@/lib/auth/returnTo"
 
 /**
  * Where ctech-account sends the browser back to, carrying `code` and `state`.
@@ -65,7 +66,7 @@ function Callback() {
       try {
         const {accessToken, idToken, returnTo} = await exchangeCode(code!, state!)
         onCallback(accessToken, idToken)
-        router.replace(returnTo || "/dashboard")
+        router.replace(safeReturnTo(returnTo))
       } catch {
         setExchangeFailed(true)
       }

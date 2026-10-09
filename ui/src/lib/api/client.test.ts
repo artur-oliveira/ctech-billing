@@ -57,3 +57,36 @@ describe("the 503 rule", () => {
     expect(replace).toHaveBeenCalledWith(expect.stringMatching(/^\/maintenance\?from=/))
   })
 })
+
+// A hard reload fires queries before the boot-time silent refresh has answered.
+// Sent without a token they come back 401 (and only recover through the retry);
+// the first request with no token waits for that refresh instead.
+describe("the first request without a token", () => {
+  it("waits for the session to be resumed and carries its token", async () => {
+    vi.resetModules()
+    const client = await import("./client")
+    const refresh = vi.fn(async () => {
+      client.setAccessToken("resumed")
+      return "resumed"
+    })
+    client.registerRefresh(refresh)
+    const handler = (client.apiClient.interceptors.request as unknown as {handlers: {fulfilled: (c: unknown) => Promise<{headers: Record<string, string>}>}[]}).handlers[0].fulfilled
+    const first = await handler({headers: {}})
+    const second = await handler({headers: {}})
+    expect(first.headers.Authorization).toBe("Bearer resumed")
+    expect(second.headers.Authorization).toBe("Bearer resumed")
+    expect(refresh).toHaveBeenCalledTimes(1)
+  })
+
+  it("asks once for a visitor who has no session, not on every request", async () => {
+    vi.resetModules()
+    const client = await import("./client")
+    const refresh = vi.fn(async () => null)
+    client.registerRefresh(refresh)
+    const handler = (client.apiClient.interceptors.request as unknown as {handlers: {fulfilled: (c: unknown) => Promise<{headers: Record<string, string>}>}[]}).handlers[0].fulfilled
+    await handler({headers: {}})
+    const again = await handler({headers: {}})
+    expect(again.headers.Authorization).toBeUndefined()
+    expect(refresh).toHaveBeenCalledTimes(1)
+  })
+})

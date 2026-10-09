@@ -56,3 +56,35 @@ const CONSOLE_SCOPES = [
 ] as const
 
 export const OAUTH_SCOPE = [...IDENTITY_SCOPES, ...PORTAL_SCOPES, ...CONSOLE_SCOPES].join(" ")
+
+const IDENTITY = new Set<string>(IDENTITY_SCOPES)
+
+/**
+ * The scopes this app asks for that `accessToken` was not granted. ctech-account
+ * clamps a refresh to what the ORIGINAL authorization granted, so a session
+ * that signed in before a scope was added here keeps refreshing without it —
+ * and every route behind that scope answers 403 — until it authorizes again.
+ * Reads the payload unverified: it only decides whether to ask again, never
+ * whether anything is allowed (the API checks the signed token).
+ */
+export function missingScopes(accessToken: string): string[] {
+  try {
+    const payload = accessToken.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")
+    const scope: unknown = JSON.parse(atob(payload)).scope
+    const granted = new Set(typeof scope === "string" ? scope.split(" ") : [])
+    return OAUTH_SCOPE.split(" ").filter(s => !IDENTITY.has(s) && !granted.has(s))
+  } catch {
+    return []
+  }
+}
+
+const UPGRADE_RETRY_MS = 10 * 60_000
+
+/**
+ * Whether to send the browser through /authorize again for missing scopes. At
+ * most once per ten minutes: if the client itself lacks a scope, ctech-account
+ * cannot grant it and re-asking on every load would be a redirect loop.
+ */
+export function shouldUpgradeScopes(missing: string[], lastAttempt: number | null, now: number): boolean {
+  return missing.length > 0 && (lastAttempt === null || now - lastAttempt > UPGRADE_RETRY_MS)
+}

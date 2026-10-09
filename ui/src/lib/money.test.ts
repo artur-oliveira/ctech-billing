@@ -1,6 +1,6 @@
 import {describe, expect, it} from "vitest"
 
-import {formatMoneyInput, parseMoney, parseSignedMoney} from "@/lib/money"
+import {formatMoneyInput, limitMoneyDecimals, parseMoney, parseSignedMoney} from "@/lib/money"
 
 describe("parseMoney", () => {
   it.each([
@@ -54,5 +54,18 @@ describe("parseSignedMoney", () => {
     expect(parseSignedMoney("-")).toBeNull()
     expect(parseSignedMoney("--5")).toBeNull()
     expect(parseSignedMoney("-0")).toBeNull()
+  })
+})
+
+describe("limitMoneyDecimals", () => {
+  it.each([
+    ["10,999", "10,99"],
+    ["1.234,5", "1.234,5"],
+    ["1.234,56", "1.234,56"],
+    ["-20,123", "-20,12"],
+    ["100", "100"],
+    ["", ""],
+  ])("keeps %j as %j while typing", (typed, kept) => {
+    expect(limitMoneyDecimals(typed)).toBe(kept)
   })
 })

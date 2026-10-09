@@ -19,7 +19,7 @@ import {todayIso} from "@/lib/finance/today"
 import {useFinanceMutation} from "@/lib/finance/useFinanceMutation"
 import {useFinanceCtx, useFinanceSpaces} from "@/lib/finance/useFinanceSpaces"
 import {money, shortDate} from "@/lib/format"
-import {formatMoneyInput, parseMoney} from "@/lib/money"
+import {formatMoneyInput, limitMoneyDecimals, parseMoney} from "@/lib/money"
 
 const PREVIEW_COUNT = 6
 const DEBOUNCE_MS = 300
@@ -219,7 +219,7 @@ function RecurrencePanel({editing, accounts, onDone}: {editing?: Recurrence; acc
       <form className="space-y-4" onSubmit={submit}>
         <div className="grid items-start gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Field label="Descrição" htmlFor="rc-desc" className="lg:col-span-2"><Input id="rc-desc" value={description} onChange={e => setDescription(e.target.value)}/></Field>
-          <Field label="Valor" htmlFor="rc-amount" required><Input id="rc-amount" inputMode="decimal" placeholder="0,00" value={amountText} onChange={e => setAmountText(e.target.value)}/></Field>
+          <Field label="Valor" htmlFor="rc-amount" required><Input id="rc-amount" inputMode="decimal" placeholder="0,00" value={amountText} onChange={e => setAmountText(limitMoneyDecimals(e.target.value))}/></Field>
           <Field label="Categoria" htmlFor="rc-cat">
             <Select id="rc-cat" value={category} onValueChange={setCategory} options={cats.map(a => ({value: a.id, label: a.name}))}/>
           </Field>

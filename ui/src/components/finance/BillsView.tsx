@@ -16,7 +16,7 @@ import {useFinanceMutation} from "@/lib/finance/useFinanceMutation"
 import {type FinanceCtx} from "@/lib/api/finance"
 import {useFinanceCtx, useFinanceSpaces} from "@/lib/finance/useFinanceSpaces"
 import {money, shortDate} from "@/lib/format"
-import {formatMoneyInput, parseMoney} from "@/lib/money"
+import {formatMoneyInput, limitMoneyDecimals, parseMoney} from "@/lib/money"
 
 const GROUPS: {bucket: Bucket; title: string}[] = [
   {bucket: "overdue", title: "Vencidas"},
@@ -222,7 +222,7 @@ function SettleForm({bill, accounts, onDone}: {bill: Bill; accounts: Account[]; 
         <Input id={`d-${bill.id}`} type="date" value={date} onChange={e => setDate(e.target.value)}/>
       </Field>
       <Field label={bill.direction === "payable" ? "Valor pago" : "Valor recebido"} htmlFor={`v-${bill.id}`}>
-        <Input id={`v-${bill.id}`} inputMode="decimal" value={amountText} onChange={e => setAmountText(e.target.value)} aria-invalid={paid === null}/>
+        <Input id={`v-${bill.id}`} inputMode="decimal" value={amountText} onChange={e => setAmountText(limitMoneyDecimals(e.target.value))} aria-invalid={paid === null}/>
       </Field>
       {gap !== 0 && (
         <>
@@ -277,7 +277,7 @@ function EditForm({bill, accounts, onDone}: {bill: Bill; accounts: Account[]; on
       }}
     >
       <Field label="Descrição" htmlFor={`ed-${bill.id}`}><Input id={`ed-${bill.id}`} value={description} onChange={e => setDescription(e.target.value)}/></Field>
-      <Field label="Valor" htmlFor={`ev-${bill.id}`}><Input id={`ev-${bill.id}`} inputMode="decimal" value={amountText} onChange={e => setAmountText(e.target.value)} aria-invalid={amount === null}/></Field>
+      <Field label="Valor" htmlFor={`ev-${bill.id}`}><Input id={`ev-${bill.id}`} inputMode="decimal" value={amountText} onChange={e => setAmountText(limitMoneyDecimals(e.target.value))} aria-invalid={amount === null}/></Field>
       <Field label="Vencimento" htmlFor={`eu-${bill.id}`}><Input id={`eu-${bill.id}`} type="date" value={due} onChange={e => setDue(e.target.value)}/></Field>
       <Field label="Categoria" htmlFor={`ec-${bill.id}`}>
         <Select id={`ec-${bill.id}`} value={category} onValueChange={setCategory} options={cats.map(a => ({value: a.id, label: a.name}))}/>
@@ -344,7 +344,7 @@ function NewBillPanel({direction, accounts, onDone}: {direction: Direction; acco
         }}
       >
         <Field label="Descrição" htmlFor="nb-desc"><Input id="nb-desc" value={description} onChange={e => setDescription(e.target.value)} autoFocus/></Field>
-        <Field label="Valor" htmlFor="nb-amount" required><Input id="nb-amount" inputMode="decimal" placeholder="0,00" value={amountText} onChange={e => setAmountText(e.target.value)}/></Field>
+        <Field label="Valor" htmlFor="nb-amount" required><Input id="nb-amount" inputMode="decimal" placeholder="0,00" value={amountText} onChange={e => setAmountText(limitMoneyDecimals(e.target.value))}/></Field>
         <Field label="Vencimento" htmlFor="nb-due" required><Input id="nb-due" type="date" value={due} onChange={e => setDue(e.target.value)}/></Field>
         <Field label="Competência (DRE)" htmlFor="nb-comp" hint="Em branco, vale o vencimento.">
           <Input id="nb-comp" type="date" value={competence} onChange={e => setCompetence(e.target.value)}/>

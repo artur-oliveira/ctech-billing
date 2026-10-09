@@ -15,7 +15,7 @@ import {useFinanceMutation} from "@/lib/finance/useFinanceMutation"
 import {useFinanceCtx, useFinanceSpaces} from "@/lib/finance/useFinanceSpaces"
 import {money} from "@/lib/format"
 import {todayIso} from "@/lib/finance/today"
-import {parseSignedMoney} from "@/lib/money"
+import {limitMoneyDecimals, parseSignedMoney} from "@/lib/money"
 
 const SECTIONS: {title: string; classes: AccountClass[]}[] = [
   {title: "Contas", classes: ["asset"]},
@@ -150,8 +150,8 @@ function OpeningForm({account, onDone}: {account: Account; onDone: () => void}) 
         if (amount !== null) post.mutate({amount, date})
       }}
     >
-      <Field label="Valor" htmlFor={`ob-${account.id}`} hint="Negativo se a conta estava no vermelho.">
-        <Input id={`ob-${account.id}`} inputMode="decimal" placeholder="0,00" value={text} onChange={e => setText(e.target.value)} autoFocus/>
+      <Field label="Valor" htmlFor={`ob-${account.id}`}>
+        <Input id={`ob-${account.id}`} inputMode="decimal" placeholder="0,00" value={text} onChange={e => setText(limitMoneyDecimals(e.target.value))} autoFocus/>
       </Field>
       <Field label="Em" htmlFor={`obd-${account.id}`}>
         <Input id={`obd-${account.id}`} type="date" value={date} onChange={e => setDate(e.target.value)}/>
@@ -209,8 +209,8 @@ function AccountForm({onDone}: {onDone: () => void}) {
         </Field>
       ) : asset ? (
         <div className="grid grid-cols-2 items-start gap-3">
-          <Field label="Saldo inicial" htmlFor="acc-opening" hint="Opcional. Negativo se a conta está no vermelho.">
-            <Input id="acc-opening" inputMode="decimal" placeholder="0,00" value={openingText} onChange={e => setOpeningText(e.target.value)} aria-invalid={openingInvalid}/>
+          <Field label="Saldo inicial (opcional)" htmlFor="acc-opening">
+            <Input id="acc-opening" inputMode="decimal" placeholder="0,00" value={openingText} onChange={e => setOpeningText(limitMoneyDecimals(e.target.value))} aria-invalid={openingInvalid}/>
           </Field>
           {openingText.trim() !== "" && (
             <Field label="Em" htmlFor="acc-opening-date">

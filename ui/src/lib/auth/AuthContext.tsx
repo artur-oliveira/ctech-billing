@@ -7,6 +7,8 @@ import {registerRefresh, setAccessToken} from "@/lib/api/client"
 import {MOCK_CUSTOMER, USE_MOCK} from "@/lib/mockConfig"
 
 import {decodeIdToken, doRefresh, logout as endSession, startOAuthFlow} from "./oauth"
+import {safeReturnTo} from "./returnTo"
+import {missingScopes, shouldUpgradeScopes} from "./scopes"
 
 interface Auth {
   /** The signed-in person's display name, or null. Never authorize on this — it
@@ -25,6 +27,28 @@ interface Auth {
 const AuthContext = createContext<Auth | undefined>(undefined)
 
 const NAME_KEY = "ctech-billing-name"
+const UPGRADE_KEY = "ctech-billing-scope-upgrade"
+
+/**
+ * A session that signed in before this app asked for a scope keeps refreshing
+ * without it (ctech-account clamps a refresh to the original grant). Going
+ * through /authorize again is silent while the SSO session lives, and grants
+ * the scopes the client now holds. Returns true when the browser is leaving.
+ */
+function upgradeScopes(token: string): boolean {
+  let last: number | null = null
+  try {
+    const raw = window.sessionStorage.getItem(UPGRADE_KEY)
+    last = raw ? Number(raw) : null
+  } catch { /* storage blocked: still try once per page load */ }
+  const now = Date.now()
+  if (!shouldUpgradeScopes(missingScopes(token), last, now)) return false
+  try {
+    window.sessionStorage.setItem(UPGRADE_KEY, String(now))
+  } catch { /* see above */ }
+  void startOAuthFlow(safeReturnTo(window.location.pathname + window.location.search))
+  return true
+}
 
 export function useAuth(): Auth {
   const ctx = useContext(AuthContext)
@@ -80,7 +104,8 @@ export function AuthProvider({children}: { children: ReactNode }) {
     let cancelled = false
     void (async () => {
       try {
-        await refresh()
+        const token = await refresh()
+        if (token && upgradeScopes(token)) return
       } catch {
         // An unavailable IdP is not a logout. Leave cached display identity
         // intact and let the next authenticated operation retry.
