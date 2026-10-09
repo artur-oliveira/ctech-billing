@@ -31,9 +31,9 @@ const GROUPS: {bucket: Bucket; title: string}[] = [
  * a person managing their own money does not use) and not "lançar" (which is
  * recording an entry — creating the bill — not paying it).
  */
-const SETTLE_LABEL: Record<Direction, {action: string; confirm: string; auto: string; autoNote: string}> = {
-  payable: {action: "Pagar", confirm: "Confirmar pagamento", auto: "Pagar automaticamente no vencimento", autoNote: "Pagamento automático"},
-  receivable: {action: "Receber", confirm: "Confirmar recebimento", auto: "Receber automaticamente no vencimento", autoNote: "Recebimento automático"},
+const SETTLE_LABEL: Record<Direction, {action: string; confirm: string; auto: string; autoNote: string; now: string; on: string}> = {
+  payable: {action: "Pagar", confirm: "Confirmar pagamento", auto: "Pagar automaticamente no vencimento", autoNote: "Pagamento automático", now: "Já foi pago", on: "Pago em"},
+  receivable: {action: "Receber", confirm: "Confirmar recebimento", auto: "Receber automaticamente no vencimento", autoNote: "Recebimento automático", now: "Já foi recebido", on: "Recebido em"},
 }
 
 const BADGE: Record<Bucket, {tone: "urgent" | "attention" | "neutral"; icon: typeof Clock}> = {
@@ -335,9 +335,18 @@ function NewBillPanel({direction, accounts, onDone}: {direction: Direction; acco
   const [category, setCategory] = useState("")
   const [account, setAccount] = useState("")
   const [autoSettle, setAutoSettle] = useState(false)
-  const create = useFinanceMutation((c, body: NewBill, key) => createBill(c, body, key), touched, onDone)
+  // Paid already (cash received at the counter, a bill paid on the spot): the
+  // bill is created and settled right after, each with its own intent; if only
+  // the second fails, the bill exists and the form offers to retry the payment.
+  const [paidNow, setPaidNow] = useState(false)
+  const [paidOn, setPaidOn] = useState(todayIso())
+  const settle = useFinanceMutation(
+    (c, v: {id: string; body: Settlement}, key) => settleBill(c, v.id, v.body, key), touched, onDone,
+  )
+  const create = useFinanceMutation((c, body: NewBill, key) => createBill(c, body, key), touched,
+    created => (paidNow ? settle.mutate({id: created.id, body: {paid_date: paidOn}}) : onDone()))
   const amount = parseMoney(amountText)
-  const ready = amount !== null && category !== "" && account !== "" && due !== "" && !create.isPending
+  const ready = amount !== null && category !== "" && account !== "" && due !== "" && !create.isPending && !create.isSuccess
 
   return (
     <aside aria-label={direction === "payable" ? "Nova conta a pagar" : "Nova conta a receber"} className="h-fit space-y-3 rounded-lg border border-border p-4 motion-safe:animate-in motion-safe:fade-in">
@@ -349,7 +358,7 @@ function NewBillPanel({direction, accounts, onDone}: {direction: Direction; acco
           if (!ready) return
           create.mutate({
             direction, amount: amount!, category_id: category, account_id: account, description: description || undefined,
-            due_date: due, competence_date: competence || undefined, auto_settle: autoSettle || undefined,
+            due_date: due, competence_date: competence || undefined, auto_settle: (autoSettle && !paidNow) || undefined,
           })
         }}
       >
@@ -367,6 +376,17 @@ function NewBillPanel({direction, accounts, onDone}: {direction: Direction; acco
         </Field>
         {can("finance.settle") && (
           <label className="flex items-center gap-2 text-sm">
+            <Switch checked={paidNow} onCheckedChange={setPaidNow} aria-label={SETTLE_LABEL[direction].now}/>
+            {SETTLE_LABEL[direction].now}
+          </label>
+        )}
+        {paidNow && (
+          <Field label={SETTLE_LABEL[direction].on} htmlFor="nb-paid">
+            <DateField id="nb-paid" min={limits.minDate} max={todayIso()} value={paidOn} onValueChange={setPaidOn}/>
+          </Field>
+        )}
+        {can("finance.settle") && !paidNow && (
+          <label className="flex items-center gap-2 text-sm">
             <Switch checked={autoSettle} onCheckedChange={setAutoSettle} aria-label={SETTLE_LABEL[direction].auto}/>
             {SETTLE_LABEL[direction].auto}
           </label>
@@ -376,6 +396,13 @@ function NewBillPanel({direction, accounts, onDone}: {direction: Direction; acco
           <Button type="button" variant="outline" size="sm" onClick={onDone}>Fechar</Button>
         </div>
         <FormError error={create.error}/>
+        {settle.error && settle.variables ? (
+          <div role="alert" className="flex flex-wrap items-center gap-2 text-sm">
+            <p className="text-danger">A conta foi registrada, mas o {direction === "payable" ? "pagamento" : "recebimento"} não foi lançado.</p>
+            <Button type="button" size="sm" variant="outline" disabled={settle.isPending} onClick={() => settle.mutate(settle.variables!)}>Tentar de novo</Button>
+            <Button type="button" size="sm" variant="ghost" onClick={onDone}>Deixar em aberto</Button>
+          </div>
+        ) : null}
       </form>
     </aside>
   )

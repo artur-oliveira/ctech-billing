@@ -25,7 +25,7 @@ export function monthRange(id: PresetId, today: string): {from: string; to: stri
     case "this_month": return {from: now, to: now}
     case "last_month": return {from: shift(now, -1), to: shift(now, -1)}
     case "last_3": return {from: shift(now, -2), to: now}
-    case "this_year": return {from: `${now.slice(0, 4)}-01`, to: now}
+    case "this_year": return {from: `${now.slice(0, 4)}-01`, to: `${now.slice(0, 4)}-12`}
     case "last_12": return {from: shift(now, -11), to: now}
   }
 }

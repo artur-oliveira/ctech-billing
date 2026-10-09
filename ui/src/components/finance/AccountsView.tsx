@@ -201,7 +201,7 @@ function AccountForm({onDone}: {onDone: () => void}) {
   const chosenGroup = groups.includes(group as DREGroup) ? (group as DREGroup) : groups[0]
   return (
     <form
-      className="grid items-start gap-3 border-y border-border py-4 sm:grid-cols-2 lg:grid-cols-4"
+      className="grid items-start gap-x-4 gap-y-3 border-y border-border py-4 sm:grid-cols-2 lg:grid-cols-4 [&>*]:min-w-0"
       onSubmit={e => {
         e.preventDefault()
         if (!name.trim() || openingInvalid) return

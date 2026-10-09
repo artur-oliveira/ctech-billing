@@ -188,7 +188,7 @@ function Projection() {
         <ErrorBlock error={q.error ?? accounts.error} onRetry={() => { void q.refetch(); void accounts.refetch() }}/>
       ) : asTable ? <ProjectionTable data={data}/> : <ProjectionChart data={data}/>}
       <p className="text-xs text-muted-foreground">
-        Saldo projetado: o saldo de hoje ({signedMoney(start)}) mais, a cada mês, o que vence a receber, menos o que vence a pagar, mais as recorrências ainda não geradas. Contas vencidas entram no primeiro mês.
+        Saldo projetado: o saldo de hoje ({signedMoney(start)}) mais, a cada mês, o que vence a receber, menos o que vence a pagar (faturas de cartão incluídas, no mês em que vencem), mais as recorrências ainda não geradas. Contas vencidas entram no primeiro mês.
       </p>
     </Block>
   )
