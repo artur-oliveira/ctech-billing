@@ -71,9 +71,25 @@ describe("F1 — visão geral", () => {
     await userEvent.click(await within(block).findByRole("button", {name: "Ver como tabela"}))
     const table = within(block).getByRole("table")
     const headers = within(table).getAllByRole("columnheader").map(h => h.textContent)
-    expect(headers).toEqual(["Mês", "A receber", "A pagar", "Recorrências ainda não geradas"])
+    expect(headers).toEqual(["Mês", "A receber", "A pagar", "Recorrências ainda não geradas", "Resultado do mês", "Saldo projetado"])
     const dec = within(table).getByRole("row", {name: /dez/i})
-    expect(within(dec).getByText("-R$ 1.500,00")).toBeInTheDocument()
+    expect(within(dec).getAllByText("−R$ 1.500,00").length).toBe(2) // the recurrences and the month's result
+  })
+
+  // Today's balance (R$ 20.923,15 across the active accounts) plus each month's
+  // result, accumulated: what the person will have if everything happens.
+  it("accumulates the projected balance month by month, in the table and the chart", async () => {
+    serve()
+    renderWithQuery(<OverviewView/>)
+    const block = await screen.findByRole("region", {name: "Projeção"})
+    await waitFor(() => expect(block.querySelector("svg title")?.textContent?.replace(/\s/g, " ")).toMatch(/^Out\/26: saldo projetado R\$ 18\.668,25 /))
+    // The Y axis says what the bars are in: R$, from zero up past the highest.
+    const ticks = [...block.querySelectorAll("svg [data-axis=y]")].map(t => t.textContent?.replace(/\s/g, " "))
+    expect(ticks[0]).toBe("R$ 0")
+    expect(ticks.at(-1)).toMatch(/^R\$ \d+ mil$/)
+    await userEvent.click(within(block).getByRole("button", {name: "Ver como tabela"}))
+    const rows = within(within(block).getByRole("table")).getAllByRole("row").slice(1)
+    expect(rows.map(r => r.lastElementChild?.textContent?.replace(/\s/g, " "))).toEqual(["R$ 18.668,25", "R$ 21.768,25", "R$ 20.268,25"])
   })
 
   it("shows the month's realised result, by cash, and links to the cash flow", async () => {

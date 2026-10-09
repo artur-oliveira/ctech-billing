@@ -146,12 +146,34 @@ function DueSoon() {
   )
 }
 
+/** One month of the projection, with the balance it leaves. */
+interface ProjectedMonth extends ProjectionMonth {
+  result: number
+  balance: number
+}
+
+/**
+ * Today's balance plus each month's result (to receive − to pay + recurrences
+ * not yet generated), accumulated: what the person will have at the end of each
+ * month if everything happens as forecast.
+ */
+function project(start: number, data: ProjectionMonth[]): ProjectedMonth[] {
+  let balance = start
+  return data.map(m => {
+    const result = m.receivable - m.payable + m.virtual
+    balance += result
+    return {...m, result, balance}
+  })
+}
+
 function Projection() {
   const ctx = useFinanceCtx()
   const [months, setMonths] = useState("6")
   const [asTable, setAsTable] = useState(false)
   const q = useQuery({queryKey: financeKeys.projection(ctx.mode, ctx.space, Number(months)), queryFn: () => getProjection(ctx, Number(months))})
-  const data = q.data?.data ?? []
+  const accounts = useQuery({queryKey: financeKeys.accounts(ctx.mode, ctx.space), queryFn: () => listAccounts(ctx)})
+  const start = (accounts.data?.data ?? []).filter(a => a.class === "asset" && !a.system && !a.archived).reduce((s, a) => s + a.balance, 0)
+  const data = project(start, q.data?.data ?? [])
   return (
     <Block
       title="Projeção"
@@ -162,76 +184,99 @@ function Projection() {
         </div>
       }
     >
-      {q.isLoading ? <Skeleton className="h-40 w-full"/> : q.error ? (
-        <ErrorBlock error={q.error} onRetry={() => void q.refetch()}/>
+      {q.isLoading || accounts.isLoading ? <Skeleton className="h-40 w-full"/> : q.error || accounts.error ? (
+        <ErrorBlock error={q.error ?? accounts.error} onRetry={() => { void q.refetch(); void accounts.refetch() }}/>
       ) : asTable ? <ProjectionTable data={data}/> : <ProjectionChart data={data}/>}
-      <p className="text-xs text-muted-foreground">Contas vencidas entram no primeiro mês. Recorrências ainda não geradas aparecem com contorno.</p>
+      <p className="text-xs text-muted-foreground">
+        Saldo projetado: o saldo de hoje ({signedMoney(start)}) mais, a cada mês, o que vence a receber, menos o que vence a pagar, mais as recorrências ainda não geradas. Contas vencidas entram no primeiro mês.
+      </p>
     </Block>
   )
 }
 
-function ProjectionTable({data}: {data: ProjectionMonth[]}) {
+function ProjectionTable({data}: {data: ProjectedMonth[]}) {
   return (
-    <table className="w-full text-sm tabular-nums">
-      <thead>
-        <tr className="border-b border-border text-left text-muted-foreground">
-          <th className="py-2 font-normal">Mês</th>
-          <th className="py-2 text-right font-normal">A receber</th>
-          <th className="py-2 text-right font-normal">A pagar</th>
-          <th className="py-2 text-right font-normal">Recorrências ainda não geradas</th>
-        </tr>
-      </thead>
-      <tbody>
-        {data.map(m => (
-          <tr key={m.month} className="border-b border-border">
-            <th scope="row" className="py-2 text-left font-normal">{monthShort(m.month)}</th>
-            <td className="py-2 text-right">{money(m.receivable)}</td>
-            <td className="py-2 text-right">{money(m.payable)}</td>
-            <td className="py-2 text-right">{money(m.virtual)}</td>
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-max text-sm tabular-nums">
+        <thead>
+          <tr className="border-b border-border text-left text-muted-foreground">
+            <th className="py-2 pr-4 font-normal">Mês</th>
+            <th className="py-2 pl-4 text-right font-normal">A receber</th>
+            <th className="py-2 pl-4 text-right font-normal">A pagar</th>
+            <th className="py-2 pl-4 text-right font-normal">Recorrências ainda não geradas</th>
+            <th className="py-2 pl-4 text-right font-normal">Resultado do mês</th>
+            <th className="py-2 pl-4 text-right font-normal">Saldo projetado</th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {data.map(m => (
+            <tr key={m.month} className="border-b border-border">
+              <th scope="row" className="py-2 pr-4 text-left font-normal">{monthShort(m.month)}</th>
+              <td className="py-2 pl-4 text-right">{money(m.receivable)}</td>
+              <td className="py-2 pl-4 text-right">{money(m.payable)}</td>
+              <td className="py-2 pl-4 text-right">{signedMoney(m.virtual)}</td>
+              <td className="py-2 pl-4 text-right">{signedMoney(m.result)}</td>
+              <td className={`py-2 pl-4 text-right font-medium ${m.balance < 0 ? "text-danger" : ""}`}>{signedMoney(m.balance)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   )
 }
 
 /**
- * Diverging bars per month: receivables above the axis, payables below. Bills
- * are solid; recurrences not yet generated are outline only, so the difference
- * is shape, not hue (DESIGN.md). Inline SVG, no chart library.
+ * The projected balance at the end of each month, as bars from zero: up when
+ * the person still has money, down (in the danger colour, and below the axis,
+ * so not by colour alone) when the forecast leaves them in the red. The month's
+ * breakdown is in each bar's title and in the table view. Inline SVG, no chart
+ * library.
  */
-function ProjectionChart({data}: {data: ProjectionMonth[]}) {
-  const W = 640, H = 200, MID = H / 2, PAD = 4
-  const up = (m: ProjectionMonth) => m.receivable + Math.max(m.virtual, 0)
-  const down = (m: ProjectionMonth) => m.payable + Math.max(-m.virtual, 0)
-  const max = Math.max(1, ...data.map(up), ...data.map(down))
-  const scale = (v: number) => (v / max) * (MID - 18)
-  const slot = W / Math.max(1, data.length)
-  const bw = Math.min(28, slot * 0.4)
+const COMPACT = new Intl.NumberFormat("pt-BR", {style: "currency", currency: "BRL", notation: "compact", maximumFractionDigits: 1})
+
+/** A round step (1, 2 or 5 × a power of ten) that cuts the span into about four. */
+function niceStep(span: number): number {
+  const raw = span / 4
+  const pow = 10 ** Math.floor(Math.log10(raw))
+  return [1, 2, 5, 10].map(f => f * pow).find(s => s >= raw) ?? 10 * pow
+}
+
+function ProjectionChart({data}: {data: ProjectedMonth[]}) {
+  const W = 640, H = 200, TOP = 10, BOTTOM = 22, LEFT = 64
+  const step = niceStep(Math.max(100, Math.max(0, ...data.map(m => m.balance)) - Math.min(0, ...data.map(m => m.balance))))
+  const lo = Math.floor(Math.min(0, ...data.map(m => m.balance)) / step) * step
+  const hi = Math.max(step, Math.ceil(Math.max(0, ...data.map(m => m.balance)) / step) * step)
+  const ticks: number[] = []
+  for (let v = lo; v <= hi; v += step) ticks.push(v)
+  const y = (v: number) => TOP + ((hi - v) / (hi - lo)) * (H - TOP - BOTTOM)
+  const zero = y(0)
+  const slot = (W - LEFT) / Math.max(1, data.length)
+  const bw = Math.min(36, slot * 0.5)
   return (
     <figure className="space-y-2">
-      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Projeção de ${data.length} meses em reais: a receber acima do eixo, a pagar abaixo`} className="h-52 w-full">
-        <line x1={0} x2={W} y1={MID} y2={MID} className="stroke-border" strokeWidth={1}/>
+      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Saldo projetado ao fim de cada um dos próximos ${data.length} meses`} className="h-52 w-full">
+        {ticks.map(v => (
+          <g key={v}>
+            <line x1={LEFT} x2={W} y1={y(v)} y2={y(v)} className={v === 0 ? "stroke-border" : "stroke-border/50"} strokeWidth={1} strokeDasharray={v === 0 ? undefined : "2 3"}/>
+            {/* Centavos: the formatter takes reais. */}
+            <text data-axis="y" x={LEFT - 8} y={y(v) + 4} textAnchor="end" className="fill-muted-foreground text-[11px]">{COMPACT.format(v / 100)}</text>
+          </g>
+        ))}
         {data.map((m, i) => {
-          const x = i * slot + slot / 2 - bw / 2
-          const rec = scale(m.receivable), pay = scale(m.payable)
-          const vUp = scale(Math.max(m.virtual, 0)), vDown = scale(Math.max(-m.virtual, 0))
+          const x = LEFT + i * slot + slot / 2 - bw / 2
+          const top = Math.min(y(m.balance), zero), h = Math.abs(y(m.balance) - zero)
           return (
             <g key={m.month}>
-              <title>{`${monthShort(m.month)}: a receber ${money(m.receivable)}, a pagar ${money(m.payable)}, recorrências ${money(m.virtual)}`}</title>
-              {rec > 0 && <rect x={x} y={MID - rec} width={bw} height={rec} className="fill-success"/>}
-              {vUp > 0 && <rect x={x + 0.5} y={MID - rec - vUp} width={bw - 1} height={vUp} className="fill-none stroke-success" strokeWidth={1} strokeDasharray="3 2"/>}
-              {pay > 0 && <rect x={x} y={MID} width={bw} height={pay} className="fill-foreground/70"/>}
-              {vDown > 0 && <rect x={x + 0.5} y={MID + pay} width={bw - 1} height={vDown} className="fill-none stroke-foreground/70" strokeWidth={1} strokeDasharray="3 2"/>}
-              <text x={i * slot + slot / 2} y={H - PAD} textAnchor="middle" className="fill-muted-foreground text-[11px]">{monthShort(m.month)}</text>
+              <title>{`${monthShort(m.month)}: saldo projetado ${signedMoney(m.balance)} (a receber ${money(m.receivable)}, a pagar ${money(m.payable)}, recorrências ${signedMoney(m.virtual)})`}</title>
+              <rect x={x} y={top} width={bw} height={Math.max(h, 1)} rx={2} className={m.balance < 0 ? "fill-danger" : "fill-brand-600"}/>
+              <text x={LEFT + i * slot + slot / 2} y={H - 6} textAnchor="middle" className="fill-muted-foreground text-[11px]">{monthShort(m.month)}</text>
             </g>
           )
         })}
       </svg>
       <figcaption className="flex flex-wrap gap-4 text-xs text-muted-foreground">
-        <span className="flex items-center gap-1.5"><span className="inline-block size-3 bg-success"/>A receber</span>
-        <span className="flex items-center gap-1.5"><span className="inline-block size-3 bg-foreground/70"/>A pagar</span>
-        <span className="flex items-center gap-1.5"><span className="inline-block size-3 border border-dashed border-foreground/70"/>Recorrências ainda não geradas</span>
+        <span className="flex items-center gap-1.5"><span className="inline-block size-3 rounded-sm bg-brand-600"/>Saldo projetado ao fim do mês</span>
+        <span className="flex items-center gap-1.5"><span className="inline-block size-3 rounded-sm bg-danger"/>No vermelho</span>
       </figcaption>
     </figure>
   )

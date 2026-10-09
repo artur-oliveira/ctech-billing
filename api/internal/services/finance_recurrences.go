@@ -42,7 +42,7 @@ type billStore interface {
 type recurrenceStore interface {
 	DueToMaterialise(ctx context.Context, livemode bool, today brcal.Date, limit int) ([]repositories.DueRecurrence, int, error)
 	MarkMaterialised(ctx context.Context, sp space.ResolvedSpace, id string, cursor brcal.Date, now time.Time) error
-	List(ctx context.Context, sp space.ResolvedSpace) ([]finance.Recurrence, error)
+	ListWithCursors(ctx context.Context, sp space.ResolvedSpace) ([]repositories.DueRecurrence, error)
 }
 
 // FinanceJobs is the daily job's logic and the projection read: materialise
@@ -228,17 +228,25 @@ func (j *FinanceJobs) Project(ctx context.Context, sp space.ResolvedSpace, today
 		}
 	}
 
-	recs, err := j.recs.List(ctx, sp)
+	recs, err := j.recs.ListWithCursors(ctx, sp)
 	if err != nil {
 		return Projection{}, err
 	}
-	_, horizonEnd := finance.Horizon(today)
 	windowEnd := first.Add(months - 1).Last()
-	for _, r := range recs {
+	for _, due := range recs {
+		r := due.Recurrence
 		if r.Archived {
 			continue
 		}
-		occ, err := r.Schedule.Occurrences(horizonEnd.AddDays(1), windowEnd.AddDays(1))
+		// Virtual is everything after the recurrence's own materialisation
+		// cursor: what the job has made is already a bill above. Counting from
+		// the horizon instead left the first months empty for a recurrence the
+		// job had not reached yet (created today, materialised tomorrow).
+		from := r.Schedule.Start
+		if !due.Cursor.IsZero() {
+			from = due.Cursor.AddDays(1)
+		}
+		occ, err := r.Schedule.Occurrences(from, windowEnd.AddDays(1))
 		if err != nil {
 			return Projection{}, fmt.Errorf("projecting recurrence %s: %w", r.ID, err)
 		}
