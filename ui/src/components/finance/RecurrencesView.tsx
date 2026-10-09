@@ -326,7 +326,8 @@ function RecurrencePanel({editing, accounts, onDone}: {editing?: Recurrence; acc
     if (account !== editing.account_id) body.account_id = account
     if (description !== (editing.description ?? "")) body.description = description
     if (autoSettle !== editing.auto_settle) body.auto_settle = autoSettle
-    if (end && end !== (editing.end ?? "")) body.end = end
+    // Emptied is sent as "": the API layer turns it into null, which removes the end.
+    if (end !== (editing.end ?? "")) body.end = end
     if (Object.keys(body).length === 0) return onDone()
     lastPatch.current = body
     if (body.end && body.end === endsAt) {
@@ -385,7 +386,7 @@ function RecurrencePanel({editing, accounts, onDone}: {editing?: Recurrence; acc
             </>
           )}
           {editing && (
-            <Field label={t("bills.rec.endsOn")} htmlFor="rc-end-edit" error={fe.of("end")}><DateField id="rc-end-edit" min={start || limits.minDate} max={addYearsIso(start || todayIso(), limits.maxRecurrenceYears)} value={end} invalid={!!fe.of("end")} onValueChange={v => { setEnd(v); fe.clear("end") }} placeholder={t("bills.rec.noEnd")}/></Field>
+            <Field label={t("bills.rec.endsOn")} htmlFor="rc-end-edit" error={fe.of("end")}><DateField id="rc-end-edit" min={start || limits.minDate} max={addYearsIso(start || todayIso(), limits.maxRecurrenceYears)} value={end} invalid={!!fe.of("end")} onValueChange={v => { setEnd(v); fe.clear("end") }} placeholder={t("bills.rec.noEnd")} clearLabel={t("bills.rec.clearEnd")}/></Field>
           )}
         </div>
 
@@ -407,7 +408,7 @@ function RecurrencePanel({editing, accounts, onDone}: {editing?: Recurrence; acc
               </button>
               {more && (
                 <div className="mt-3 grid items-start gap-4 border-t border-border pt-4 sm:grid-cols-2">
-                  <Field label={t("bills.rec.endsOn")} htmlFor="rc-end" error={fe.of("end")}><DateField id="rc-end" min={start || limits.minDate} max={addYearsIso(start || todayIso(), limits.maxRecurrenceYears)} value={end} invalid={!!fe.of("end")} onValueChange={v => { setEnd(v); fe.clear("end") }} placeholder={t("bills.rec.noEnd")}/></Field>
+                  <Field label={t("bills.rec.endsOn")} htmlFor="rc-end" error={fe.of("end")}><DateField id="rc-end" min={start || limits.minDate} max={addYearsIso(start || todayIso(), limits.maxRecurrenceYears)} value={end} invalid={!!fe.of("end")} onValueChange={v => { setEnd(v); fe.clear("end") }} placeholder={t("bills.rec.noEnd")} clearLabel={t("bills.rec.clearEnd")}/></Field>
                   <Field label={t("bills.rec.weekend")} htmlFor="rc-adjust">
                     <Select id="rc-adjust" value={adjust} onValueChange={v => setAdjust(v as Adjust)} options={adjustOptions()}/>
                   </Field>

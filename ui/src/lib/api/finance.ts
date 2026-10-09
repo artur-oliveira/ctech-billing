@@ -58,9 +58,20 @@ async function read<T>(c: FinanceCtx, url: string, params?: Record<string, unkno
   }
 }
 
+/**
+ * An edit's body under the API's PATCH rule (UX batch 4): a field a form
+ * emptied ("") is sent as null, which clears it; a field left out is not sent,
+ * which keeps it. The one place this is decided: screens put "" in a patch for
+ * "nothing", never null, and never drop an emptied field.
+ */
+export function patchBody<B extends object>(body: B): {[K in keyof B]: B[K] | null} {
+  return Object.fromEntries(Object.entries(body).map(([k, v]) => [k, v === "" ? null : v])) as {[K in keyof B]: B[K] | null}
+}
+
 async function write<T>(c: FinanceCtx, method: "POST" | "PATCH" | "PUT", url: string, body: unknown, key: string): Promise<T> {
   try {
-    const {data} = await apiClient.request<T>({method, url: BASE + url, headers: headers(c, key), data: body ?? {}})
+    const payload = method === "PATCH" && body ? patchBody(body) : body ?? {}
+    const {data} = await apiClient.request<T>({method, url: BASE + url, headers: headers(c, key), data: payload})
     return data
   } catch (e) {
     return spaceGone(c, e)
@@ -156,8 +167,9 @@ export const createAccount = (c: FinanceCtx, body: NewAccount, idempotencyKey: s
 export const archiveAccount = (c: FinanceCtx, id: string, idempotencyKey: string) =>
   write<void>(c, "POST", `/accounts/${encodeURIComponent(id)}/archive`, {}, idempotencyKey)
 export const getSettings = (c: FinanceCtx) => read<Settings>(c, "/settings")
+/** "" clears it: a paid CTech invoice then goes to the only bank or cash account, if one. */
 export const setDefaultReceivingAccount = (c: FinanceCtx, accountId: string, idempotencyKey: string) =>
-  write<Settings>(c, "PUT", "/settings/default-receiving-account", {default_receiving_account_id: accountId}, idempotencyKey)
+  write<Settings>(c, "PUT", "/settings/default-receiving-account", patchBody({default_receiving_account_id: accountId}), idempotencyKey)
 export const setPostCTechInvoices = (c: FinanceCtx, on: boolean, idempotencyKey: string) =>
   write<Settings>(c, "PUT", "/settings/post-ctech-invoices", {post_ctech_invoices: on}, idempotencyKey)
 

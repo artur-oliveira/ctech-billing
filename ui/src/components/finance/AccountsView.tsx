@@ -334,7 +334,9 @@ function DefaultReceiving({accounts}: {accounts: Account[]}) {
           <Select
             id="default-receiving"
             value={settings.data?.default_receiving_account_id ?? ""}
-            onValueChange={v => v && save.mutate(v)}
+            // "" is Nenhuma: the API clears the setting.
+            onValueChange={v => save.mutate(v)}
+            none={t("finance.accounts.none")}
             disabled={save.isPending}
             placeholder={t("finance.accounts.none")}
             options={options.map(a => ({value: a.id, label: accountName(a)}))}

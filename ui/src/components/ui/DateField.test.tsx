@@ -17,6 +17,24 @@ describe("DateField", () => {
     expect(change).toHaveBeenCalledWith("2026-03-15")
   })
 
+  // UX batch 4: an optional date can be emptied, by a visible button whose
+  // name says which date it clears and contains its visible word.
+  it("offers Limpar on an optional date with a value, and gives back an empty date", async () => {
+    const change = vi.fn()
+    const {rerender} = render(<DateField id="c" value="2026-12-10" onValueChange={change} clearLabel="Limpar data de término"/>)
+    const clear = screen.getByRole("button", {name: "Limpar data de término"})
+    expect(clear).toHaveTextContent("Limpar")
+    await userEvent.click(clear)
+    expect(change).toHaveBeenCalledWith("")
+    rerender(<DateField id="c" value="" onValueChange={change} clearLabel="Limpar data de término"/>)
+    expect(screen.queryByRole("button", {name: "Limpar data de término"})).not.toBeInTheDocument()
+  })
+
+  it("offers no Limpar on a required date", () => {
+    render(<DateField id="r" value="2026-12-10" onValueChange={() => {}}/>)
+    expect(screen.queryByRole("button", {name: /Limpar/})).not.toBeInTheDocument()
+  })
+
   it("shows the placeholder when empty", () => {
     render(<DateField id="e" value="" onValueChange={() => {}} placeholder="Sem fim"/>)
     expect(screen.getByText("Sem fim")).toBeInTheDocument()

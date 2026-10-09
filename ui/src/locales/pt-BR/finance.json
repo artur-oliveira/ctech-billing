@@ -177,6 +177,7 @@
       "other": "Outra"
     },
     "brand": "Bandeira",
+    "noBrand": "Nenhuma",
     "last4": "Últimos 4 dígitos",
     "last4Hint": "Opcional; só para reconhecer o cartão.",
     "last4Invalid": "Digite os 4 últimos dígitos, ou deixe em branco.",

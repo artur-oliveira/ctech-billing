@@ -81,6 +81,7 @@
   "new": {
     "competence": "Competência (DRE)",
     "competencePlaceholder": "Igual ao vencimento",
+    "clearCompetence": "Limpar competência",
     "paidNow": {
       "payable": "Já foi pago",
       "receivable": "Já foi recebido"
@@ -123,6 +124,7 @@
     "startsOn": "Começa em",
     "endsOn": "Termina em",
     "noEnd": "Não termina",
+    "clearEnd": "Limpar data de término",
     "editNote": "{{rule}}. Para mudar a regra, encerre e crie outra.",
     "next": "Próximas datas",
     "fixRule": "regra inválida.",

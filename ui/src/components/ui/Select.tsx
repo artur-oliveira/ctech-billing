@@ -27,6 +27,8 @@ export interface SelectAction {
 
 /** The values action items answer to. No option value starts with a NUL. */
 const ACTION = "\u0000action:"
+/** The value of the "none" option; the caller sees "". */
+const NONE = "\u0000none"
 
 interface SelectProps {
   id?: string
@@ -34,6 +36,11 @@ interface SelectProps {
   onValueChange: (value: string) => void
   options: SelectOption[]
   actions?: SelectAction[]
+  /**
+   * Makes the choice optional: this label ("Nenhuma", "Nenhum") is the first
+   * option, chosen while the value is "" and giving back "" when picked.
+   */
+  none?: string
   placeholder?: string
   disabled?: boolean
   "aria-label"?: string
@@ -54,17 +61,21 @@ interface SelectProps {
  * Sized by the shell's density like every @aoctech/ui control (32px in the
  * compact console). Candidate for @aoctech/ui (ctech-ui has no Select yet).
  */
-export function Select({id, value, onValueChange, options, actions = [], placeholder, disabled, className, ...aria}: SelectProps) {
+export function Select({id, value, onValueChange, options: given, actions = [], none, placeholder, disabled, className, ...aria}: SelectProps) {
   const {t} = useTranslation()
   const emptyLabel = placeholder ?? t("auth.select.placeholder")
+  // An optional choice (UX batch 4) lists its "none" first, as a real option:
+  // the list itself is where a choice is undone.
+  const options = none ? [{value: NONE, label: none}, ...given] : given
   const labelOf = (v: string | null) => options.find(o => o.value === v)?.label
   const iconOf = (v: string | null) => options.find(o => o.value === v)?.icon
   return (
     <SelectPrimitive.Root
       items={options}
-      value={value === "" ? null : value}
+      value={value === "" ? (none ? NONE : null) : value}
       onValueChange={(v, details) => {
-        const picked = (v as string | null) ?? ""
+        const raw = (v as string | null) ?? ""
+        const picked = raw === NONE ? "" : raw
         if (picked.startsWith(ACTION)) {
           // Only a deliberate press in the open list (a click, or Enter) runs
           // an action. Base UI also types ahead on a closed, focused trigger,

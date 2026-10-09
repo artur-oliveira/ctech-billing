@@ -161,6 +161,39 @@ describe("report keys", () => {
   })
 })
 
+// UX batch 4: an emptied optional field is sent as null (the API clears it);
+// an absent one is not sent (the API keeps it). Mapped here, once, for every
+// edit: no screen converts it itself.
+describe("an edit that empties a field", () => {
+  const sent = () => seen.at(-1)!.data as Record<string, unknown>
+
+  it("sends null for an emptied recurrence end and description, and leaves absent fields out", async () => {
+    await finance.patchRecurrence(ctx, "r1", {end: "", description: ""}, "K")
+    expect(sent()).toEqual({end: null, description: null})
+    await finance.patchRecurrence(ctx, "r1", {amount: 5}, "K")
+    expect(sent()).toEqual({amount: 5})
+  })
+
+  it("sends null for an emptied bill description and card brand and digits", async () => {
+    await finance.patchBill(ctx, "b1", {description: ""}, "K")
+    expect(sent()).toEqual({description: null})
+    await finance.patchCard(ctx, "c1", {brand: "", last4: "", due_day: 10}, "K")
+    expect(sent()).toEqual({brand: null, last4: null, due_day: 10})
+  })
+
+  it("clears the default receiving account with null", async () => {
+    await finance.setDefaultReceivingAccount(ctx, "", "K")
+    expect(sent()).toEqual({default_receiving_account_id: null})
+    await finance.setDefaultReceivingAccount(ctx, "a1", "K")
+    expect(sent()).toEqual({default_receiving_account_id: "a1"})
+  })
+
+  it("leaves a create alone: an empty field there is just not sent by the form", async () => {
+    await finance.createAccount(ctx, {name: "Banco", class: "asset"}, "K")
+    expect(sent()).toEqual({name: "Banco", class: "asset"})
+  })
+})
+
 describe("a space that is no longer the reader's", () => {
   it("falls back to personal when any finance call answers 404 space-not-found", async () => {
     const {getSpace, setSpace} = await import("@/lib/console/space")

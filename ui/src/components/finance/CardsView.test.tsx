@@ -111,10 +111,11 @@ describe("F5 — a card's brand and last four digits (UX batch 3)", () => {
     await userEvent.click(within(form).getByRole("combobox", {name: "Bandeira"}))
     const options = await screen.findAllByRole("option")
     // By accessible name: the mark is aria-hidden decoration beside the name.
-    const names = ["Visa", "Mastercard", "Elo", "American Express", "Hipercard", "Diners Club", "Outra"]
+    // Nenhuma first (UX batch 4): a brand is optional and can be taken back.
+    const names = ["Nenhuma", "Visa", "Mastercard", "Elo", "American Express", "Hipercard", "Diners Club", "Outra"]
     expect(options).toHaveLength(names.length)
     names.forEach((name, i) => expect(options[i]).toBe(screen.getByRole("option", {name})))
-    for (const o of options) expect(o.querySelector("svg[data-brand]")).not.toBeNull()
+    for (const o of options.slice(1)) expect(o.querySelector("svg[data-brand]")).not.toBeNull()
     await userEvent.click(screen.getByRole("option", {name: "Mastercard"}))
     // Only digits, at most four.
     await userEvent.type(within(form).getByLabelText(/Últimos 4 dígitos/), "42a425")

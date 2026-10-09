@@ -290,7 +290,7 @@ describe("F8 — accounts", () => {
     serve(ALL)
     renderWithQuery(<AccountsView/>)
     await row("Conta corrente")
-    expect(await optionsOf("Conta padrão de recebimento")).toEqual(["Conta corrente", "Poupança"])
+    expect(await optionsOf("Conta padrão de recebimento")).toEqual(["Nenhuma", "Conta corrente", "Poupança"])
   })
 
   it("posts CTech invoices by default and lets an admin turn it off", async () => {
