@@ -89,7 +89,7 @@ func TestPreflightAllowsEveryHeaderTheClientSends(t *testing.T) {
 	}
 }
 
-// The finance console edits bills and recurrences with PATCH; a method missing
+// The console edits with PATCH and PUT (bills, recurrences, settings); a method missing
 // here fails preflight in the browser and nowhere else.
 func TestPreflightAllowsEveryMethodTheConsoleUses(t *testing.T) {
 	res := request(t, corsApp(t, portalOrigin), http.MethodOptions, "/v1.0/customers", map[string]string{
@@ -97,7 +97,7 @@ func TestPreflightAllowsEveryMethodTheConsoleUses(t *testing.T) {
 		fiber.HeaderAccessControlRequestMethod: http.MethodPatch,
 	})
 	allowed := res.Header.Get(fiber.HeaderAccessControlAllowMethods)
-	for _, m := range []string{http.MethodGet, http.MethodPost, http.MethodPatch} {
+	for _, m := range []string{http.MethodGet, http.MethodPost, http.MethodPatch, http.MethodPut} {
 		if !strings.Contains(allowed, m) {
 			t.Errorf("preflight does not allow %s (allows %q)", m, allowed)
 		}

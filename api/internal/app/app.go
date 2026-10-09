@@ -346,7 +346,7 @@ func newFiber(cfg *config.Config) *fiber.App {
 	// answers 401 and the page reports it as a CORS failure, pointing every
 	// investigation at the wrong layer.
 	corsCfg := cors.Config{
-		AllowMethods: []string{fiber.MethodGet, fiber.MethodPost, fiber.MethodPatch, fiber.MethodOptions},
+		AllowMethods: []string{fiber.MethodGet, fiber.MethodPost, fiber.MethodPatch, fiber.MethodPut, fiber.MethodOptions},
 		AllowHeaders: []string{
 			fiber.HeaderOrigin,
 			fiber.HeaderContentType,
