@@ -1,6 +1,6 @@
 "use client"
 
-import {Badge, Button, EmptyState, Field, Skeleton} from "@aoctech/ui"
+import {Badge, Button, Drawer, EmptyState, Field, Skeleton} from "@aoctech/ui"
 import {useQuery} from "@tanstack/react-query"
 import {Landmark} from "lucide-react"
 import Link from "next/link"
@@ -96,12 +96,14 @@ export function StatementView({account: initial = ""}: {account?: string}) {
             <Select id="st-period" aria-label="Período" value={preset} onValueChange={v => setPreset(v as PresetId)} className="w-48" options={PRESETS}/>
           </Field>
         </div>
-        {can("finance.write") && !transferring && (
+        {can("finance.write") && (
           <Button variant="brand" size="sm" onClick={() => setTransferring(true)}>Nova transferência</Button>
         )}
       </div>
 
-      {transferring && <TransferPanel accounts={all} from={accountId} onDone={() => setTransferring(false)}/>}
+      <Drawer open={transferring} onClose={() => setTransferring(false)} title="Nova transferência" description="Entre duas das suas contas: não é receita nem despesa.">
+        <TransferPanel accounts={all} from={accountId} onDone={() => setTransferring(false)}/>
+      </Drawer>
 
       {statement.isLoading || !s ? (
         statement.error ? (

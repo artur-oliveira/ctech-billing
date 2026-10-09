@@ -1,6 +1,6 @@
 "use client"
 
-import {Badge, Button, EmptyState, Field, Skeleton} from "@aoctech/ui"
+import {Badge, Button, Drawer, EmptyState, Field, Skeleton} from "@aoctech/ui"
 import {useQuery} from "@tanstack/react-query"
 import {ChevronLeft, ChevronRight, CreditCard} from "lucide-react"
 import {useState} from "react"
@@ -66,7 +66,10 @@ export function CardsView({card: initial = ""}: {card?: string}) {
   if (!card) {
     return (
       <div className="space-y-4">
-        {panel === "new-card" ? <CardForm accounts={all} onDone={id => { setPanel(null); if (id) setPicked(id) }}/> : (
+        <Drawer open={panel === "new-card"} onClose={() => setPanel(null)} title="Novo cartão">
+          <CardForm accounts={all} onDone={id => { setPanel(null); if (id) setPicked(id) }}/>
+        </Drawer>
+        {(
           <EmptyState
             icon={<CreditCard/>}
             title="Nenhum cartão ainda"
@@ -99,9 +102,15 @@ export function CardsView({card: initial = ""}: {card?: string}) {
         </div>
       </div>
 
-      {panel === "purchase" && <PurchasePanel cardId={card.id} accounts={all} onDone={() => setPanel(null)}/>}
-      {panel === "edit-card" && <CardForm card={card} accounts={all} onDone={() => setPanel(null)}/>}
-      {panel === "new-card" && <CardForm accounts={all} onDone={id => { setPanel(null); if (id) { setPicked(id); setMonth(null) } }}/>}
+      <Drawer open={panel === "purchase"} onClose={() => setPanel(null)} title="Nova compra" description={`No cartão ${card.name}. A compra entra inteira no resultado; as parcelas, uma em cada fatura.`}>
+        <PurchasePanel cardId={card.id} accounts={all} onDone={() => setPanel(null)}/>
+      </Drawer>
+      <Drawer open={panel === "edit-card"} onClose={() => setPanel(null)} title={`Editar ${card.name}`}>
+        <CardForm key={card.id} card={card} accounts={all} onDone={() => setPanel(null)}/>
+      </Drawer>
+      <Drawer open={panel === "new-card"} onClose={() => setPanel(null)} title="Novo cartão">
+        <CardForm accounts={all} onDone={id => { setPanel(null); if (id) { setPicked(id); setMonth(null) } }}/>
+      </Drawer>
 
       <StatementBlock key={`${card.id}-${shown}`} card={card} month={shown} accounts={all} onMonth={setMonth}/>
     </div>

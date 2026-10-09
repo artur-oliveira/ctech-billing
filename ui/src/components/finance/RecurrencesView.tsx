@@ -1,7 +1,7 @@
 "use client"
 
 import limits from "@/lib/limits.json"
-import {Button, EmptyState, Field, Input, Skeleton, Switch} from "@aoctech/ui"
+import {Button, Drawer, EmptyState, Field, Input, Skeleton, Switch} from "@aoctech/ui"
 import {useQuery} from "@tanstack/react-query"
 import {Repeat} from "lucide-react"
 import {useEffect, useRef, useState} from "react"
@@ -54,19 +54,22 @@ export function RecurrencesView() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-lg font-semibold tracking-[-0.01em] text-foreground">Recorrências</h1>
-        {can("finance.write") && !panel && (
+        {can("finance.write") && (
           <Button variant="brand" size="sm" onClick={() => setPanel({mode: "new"})}>Nova recorrência</Button>
         )}
       </div>
 
-      {panel && (
-        <RecurrencePanel
-          key={panel.mode === "edit" ? panel.rec.id : "new"}
-          editing={panel.mode === "edit" ? panel.rec : undefined}
-          accounts={accounts.data?.data ?? []}
-          onDone={() => setPanel(null)}
-        />
-      )}
+      <Drawer open={panel !== null} onClose={() => setPanel(null)} size="lg"
+        title={panel?.mode === "edit" ? "Editar recorrência" : "Nova recorrência"}>
+        {panel && (
+          <RecurrencePanel
+            key={panel.mode === "edit" ? panel.rec.id : "new"}
+            editing={panel.mode === "edit" ? panel.rec : undefined}
+            accounts={accounts.data?.data ?? []}
+            onDone={() => setPanel(null)}
+          />
+        )}
+      </Drawer>
 
       {recs.isLoading ? (
         <div className="space-y-2" aria-busy><Skeleton className="h-4 w-full"/><Skeleton className="h-4 w-4/5"/></div>
@@ -204,9 +207,9 @@ function RecurrencePanel({editing, accounts, onDone}: {editing?: Recurrence; acc
   const nextDates = preview.occ.slice(0, PREVIEW_COUNT)
 
   return (
-    <aside aria-label={editing ? "Editar recorrência" : "Nova recorrência"} className="space-y-4 rounded-lg border border-border p-4 motion-safe:animate-in motion-safe:fade-in">
+    <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-sm font-medium text-foreground">{editing ? "Editar recorrência" : "Nova recorrência"}</h2>
+
         {!editing && (
           <div role="group" aria-label="Direção" className="flex items-center gap-0.5 rounded-lg border border-border bg-surface p-0.5">
             {(["payable", "receivable"] as Direction[]).map(d => (
@@ -219,8 +222,8 @@ function RecurrencePanel({editing, accounts, onDone}: {editing?: Recurrence; acc
         )}
       </div>
       <form className="space-y-4" onSubmit={submit}>
-        <div className="grid items-start gap-x-4 gap-y-3 sm:grid-cols-2 lg:grid-cols-4 [&>*]:min-w-0">
-          <Field label="Descrição" htmlFor="rc-desc" className="lg:col-span-2"><Input id="rc-desc" maxLength={limits.text.description} value={description} onChange={e => setDescription(e.target.value)}/></Field>
+        <div className="grid items-start gap-x-4 gap-y-3 sm:grid-cols-2 [&>*]:min-w-0">
+          <Field label="Descrição" htmlFor="rc-desc" className="sm:col-span-2"><Input id="rc-desc" maxLength={limits.text.description} value={description} onChange={e => setDescription(e.target.value)}/></Field>
           <Field label="Valor" htmlFor="rc-amount" required><Input id="rc-amount" inputMode="decimal" placeholder="0,00" value={amountText} onChange={e => setAmountText(maskMoney(e.target.value))}/></Field>
           <Field label="Categoria" htmlFor="rc-cat" required hint={cats.length === 0 ? `Nenhuma categoria de ${direction === "payable" ? "despesa" : "receita"}. Crie uma em Contas.` : undefined}>
             <Select id="rc-cat" value={category} onValueChange={setCategory} options={cats.map(a => ({value: a.id, label: a.name}))}/>
@@ -272,7 +275,7 @@ function RecurrencePanel({editing, accounts, onDone}: {editing?: Recurrence; acc
                 {more ? "Menos opções" : "Mais opções"}
               </button>
               {more && (
-                <div className="mt-3 grid items-start gap-4 border-t border-border pt-4 lg:grid-cols-[1fr_1fr_2fr]">
+                <div className="mt-3 grid items-start gap-4 border-t border-border pt-4 sm:grid-cols-2">
                   <Field label="Termina em" htmlFor="rc-end"><DateField id="rc-end" min={start || limits.minDate} max={addYearsIso(start || todayIso(), limits.maxRecurrenceYears)} value={end} onValueChange={setEnd} placeholder="Não termina"/></Field>
                   <Field label="Se cair em fim de semana ou feriado" htmlFor="rc-adjust">
                     <Select id="rc-adjust" value={adjust} onValueChange={v => setAdjust(v as Adjust)} options={ADJUST_OPTIONS}/>
@@ -299,6 +302,6 @@ function RecurrencePanel({editing, accounts, onDone}: {editing?: Recurrence; acc
         </div>
         {(create.error || patch.error) && <p role="alert" className="text-sm text-danger">{messageFor(create.error ?? patch.error)}</p>}
       </form>
-    </aside>
+    </div>
   )
 }

@@ -1,7 +1,7 @@
 "use client"
 
 import limits from "@/lib/limits.json"
-import {Badge, Button, EmptyState, Field, Input, Skeleton, Switch} from "@aoctech/ui"
+import {Badge, Button, Drawer, EmptyState, Field, Input, Skeleton, Switch} from "@aoctech/ui"
 import {useQuery, useQueryClient} from "@tanstack/react-query"
 import {AlertCircle, CalendarClock, Clock, Receipt} from "lucide-react"
 import Link from "next/link"
@@ -84,12 +84,12 @@ export function BillsView() {
             </button>
           ))}
         </div>
-        {can("finance.write") && !creating && (
+        {can("finance.write") && (
           <Button variant="brand" size="sm" onClick={() => setCreating(true)}>Nova conta</Button>
         )}
       </div>
 
-      <div className={creating ? "grid gap-6 lg:grid-cols-[1fr_22rem]" : ""}>
+      <div>
         <div className="min-w-0 space-y-6">
           {bills.isLoading ? (
             <div className="space-y-2" aria-busy><Skeleton className="h-5 w-32"/><Skeleton className="h-4 w-full"/><Skeleton className="h-4 w-4/5"/></div>
@@ -122,8 +122,11 @@ export function BillsView() {
             })
           )}
         </div>
-        {creating && <NewBillPanel direction={direction} accounts={accounts.data?.data ?? []} onDone={() => setCreating(false)}/>}
+
       </div>
+      <Drawer open={creating} onClose={() => setCreating(false)} title={direction === "payable" ? "Nova conta a pagar" : "Nova conta a receber"}>
+        <NewBillPanel direction={direction} accounts={accounts.data?.data ?? []} onDone={() => setCreating(false)}/>
+      </Drawer>
     </div>
   )
 }
@@ -349,8 +352,7 @@ function NewBillPanel({direction, accounts, onDone}: {direction: Direction; acco
   const ready = amount !== null && category !== "" && account !== "" && due !== "" && !create.isPending && !create.isSuccess
 
   return (
-    <aside aria-label={direction === "payable" ? "Nova conta a pagar" : "Nova conta a receber"} className="h-fit space-y-3 rounded-lg border border-border p-4 motion-safe:animate-in motion-safe:fade-in">
-      <h2 className="text-sm font-medium text-foreground">{direction === "payable" ? "Nova conta a pagar" : "Nova conta a receber"}</h2>
+    <div className="space-y-3">
       <form
         className="space-y-3"
         onSubmit={e => {
@@ -404,6 +406,6 @@ function NewBillPanel({direction, accounts, onDone}: {direction: Direction; acco
           </div>
         ) : null}
       </form>
-    </aside>
+    </div>
   )
 }

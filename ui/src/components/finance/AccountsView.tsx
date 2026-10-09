@@ -1,7 +1,7 @@
 "use client"
 
 import limits from "@/lib/limits.json"
-import {Button, EmptyState, Field, Input, Skeleton} from "@aoctech/ui"
+import {Button, Drawer, EmptyState, Field, Input, Skeleton} from "@aoctech/ui"
 import {useQuery} from "@tanstack/react-query"
 import {Landmark} from "lucide-react"
 import Link from "next/link"
@@ -50,12 +50,14 @@ export function AccountsView() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-lg font-semibold tracking-[-0.01em] text-foreground">Contas e categorias</h1>
-        {configure && !creating && (
+        {configure && (
           <Button variant="brand" size="sm" onClick={() => setCreating(true)}>Nova conta ou categoria</Button>
         )}
       </div>
 
-      {creating && <AccountForm onDone={() => setCreating(false)}/>}
+      <Drawer open={creating} onClose={() => setCreating(false)} title="Nova conta ou categoria">
+        <AccountForm onDone={() => setCreating(false)}/>
+      </Drawer>
 
       {q.isLoading ? (
         <div className="space-y-2" aria-busy><Skeleton className="h-5 w-40"/><Skeleton className="h-4 w-full"/><Skeleton className="h-4 w-5/6"/></div>
@@ -201,7 +203,7 @@ function AccountForm({onDone}: {onDone: () => void}) {
   const chosenGroup = groups.includes(group as DREGroup) ? (group as DREGroup) : groups[0]
   return (
     <form
-      className="grid items-start gap-x-4 gap-y-3 border-y border-border py-4 sm:grid-cols-2 lg:grid-cols-4 [&>*]:min-w-0"
+      className="grid items-start gap-x-4 gap-y-3 sm:grid-cols-2 [&>*]:min-w-0"
       onSubmit={e => {
         e.preventDefault()
         if (!name.trim() || openingInvalid) return
@@ -230,13 +232,13 @@ function AccountForm({onDone}: {onDone: () => void}) {
           )}
         </>
       ) : null}
-      <div className="flex gap-2 sm:col-span-2 lg:col-span-4">
+      <div className="flex gap-2 sm:col-span-2">
         <Button type="button" variant="outline" size="sm" onClick={onDone}>Cancelar</Button>
         <Button type="submit" variant="brand" size="sm" disabled={create.isPending || opening.isPending || create.isSuccess || !name.trim() || openingInvalid}>Criar</Button>
       </div>
-      {create.error && <p role="alert" className="text-sm text-danger sm:col-span-2 lg:col-span-4">{messageFor(create.error)}</p>}
+      {create.error && <p role="alert" className="text-sm text-danger sm:col-span-2">{messageFor(create.error)}</p>}
       {opening.error && opening.variables && (
-        <div role="alert" className="flex flex-wrap items-center gap-2 text-sm sm:col-span-2 lg:col-span-4">
+        <div role="alert" className="flex flex-wrap items-center gap-2 text-sm sm:col-span-2">
           <p className="text-danger">A conta foi criada, mas o saldo inicial não foi lançado.</p>
           <Button type="button" size="sm" variant="outline" disabled={opening.isPending} onClick={() => opening.mutate(opening.variables!)}>Tentar de novo</Button>
           <Button type="button" size="sm" variant="ghost" onClick={onDone}>Deixar sem saldo inicial</Button>
