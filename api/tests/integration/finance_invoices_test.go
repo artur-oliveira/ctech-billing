@@ -5,6 +5,7 @@ package integration
 import (
 	"context"
 	"errors"
+	"net/http"
 	"sync"
 	"testing"
 	"time"
@@ -13,8 +14,10 @@ import (
 	"gopkg.aoctech.app/billing/api/internal/domain/brcal"
 	"gopkg.aoctech.app/billing/api/internal/domain/finance"
 	"gopkg.aoctech.app/billing/api/internal/domain/id"
+	"gopkg.aoctech.app/billing/api/internal/middleware"
 	"gopkg.aoctech.app/billing/api/internal/provision"
 	"gopkg.aoctech.app/billing/api/internal/repositories"
+	"gopkg.aoctech.app/billing/api/internal/services"
 	"gopkg.aoctech.app/billing/api/internal/space"
 )
 
@@ -335,6 +338,172 @@ func TestACreditOnAReopenedBillIsRefused(t *testing.T) {
 	}
 	if _, err := bills.RecordInvoiceCredit(ctx, sp, "in_8", "cn_3", 100, brcal.New(2026, time.March, 7), repositories.PostMeta{}, time.Now()); !errors.Is(err, finance.ErrBillState) {
 		t.Fatalf("err = %v, want ErrBillState", err)
+	}
+}
+
+// ---- end to end: settlement and credit notes reach both ledgers ----------------
+
+// financePayEnv is a checkout environment whose tenant zero is linked to a
+// ctech-account organization with a finance space (bank as the receiving
+// account), and whose paying customer has (or has not) opened Finanças.
+type financePayEnv struct {
+	*payEnv
+	issuer, payer space.ResolvedSpace
+	ledger        *repositories.LedgerRepository
+	bills         *repositories.BillRepository
+}
+
+func newFinancePayEnv(t *testing.T, payerHasSpace bool) *financePayEnv {
+	t.Helper()
+	e := newPayEnv(t)
+	orgs := repositories.NewOrganizationRepository(testDB, testCfg)
+	link := newSpaceOrgID()
+	if err := orgs.LinkAccountOrganization(ctxT(t), e.org, link, "test", "req_setup", now()); err != nil {
+		t.Fatal(err)
+	}
+	f := &financePayEnv{
+		payEnv: e,
+		issuer: invoiceSpace(t, link, true),
+		payer:  jobSpace(t, "USER#"+e.userID, true),
+		ledger: repositories.NewLedgerRepository(testDB, testCfg),
+		bills:  repositories.NewBillRepository(testDB, testCfg),
+	}
+	if payerHasSpace {
+		f.payer = invoiceSpace(t, "USER#"+e.userID, true)
+	}
+	// The reconciler's collector, wired the way app.BuildReconciler wires it.
+	e.collector.WithFinance(services.NewFinanceInvoices(f.bills, orgs, repositories.NewCustomerRepository(testDB, testCfg), e.org.ID))
+	return f
+}
+
+// payByWebhook opens the invoice, pays it in the fake wallet and delivers the
+// wallet's webhook, as production does.
+func (f *financePayEnv) payByWebhook(t *testing.T) (*billing.Invoice, string) {
+	t.Helper()
+	inv := f.openInvoice(t)
+	charge := f.openCharge(t, inv)
+	f.wallet.settle(charge, int64(inv.Total))
+	if res := f.notify(t, charge); res.status != http.StatusOK {
+		t.Fatalf("webhook: %d", res.status)
+	}
+	if got := f.invoiceStatus(t, inv.ID); got != billing.InvoicePaid {
+		t.Fatalf("invoice is %s, want PAID", got)
+	}
+	return inv, charge
+}
+
+func (f *financePayEnv) bal(t *testing.T, sp space.ResolvedSpace, account string) billing.Cents {
+	t.Helper()
+	return balance(t, f.ledger, sp, account)
+}
+
+func TestAPaidInvoiceIsRevenueForTheIssuerAndAnExpenseForThePayer(t *testing.T) {
+	f := newFinancePayEnv(t, true)
+	inv, _ := f.payByWebhook(t)
+
+	if got := f.bal(t, f.issuer, "bank"); got != inv.Total {
+		t.Errorf("issuer bank = %d, want %d", got, inv.Total)
+	}
+	if got := f.bal(t, f.issuer, finance.CategorySubscriptionRevenue); got != -inv.Total {
+		t.Errorf("issuer revenue = %d, want %d", got, -inv.Total)
+	}
+	if got := f.bal(t, f.payer, "bank"); got != -inv.Total {
+		t.Errorf("payer bank = %d, want %d", got, -inv.Total)
+	}
+	if got := f.bal(t, f.payer, finance.CategoryCTechSubscriptions); got != inv.Total {
+		t.Errorf("payer expense = %d, want %d", got, inv.Total)
+	}
+	for _, sp := range []space.ResolvedSpace{f.issuer, f.payer} {
+		b, err := f.bills.Get(ctxT(t), sp, repositories.InvoiceBillID(sp, inv.ID))
+		if err != nil || b.Status != finance.BillPaid || b.Origin != finance.OriginBillingInvoice || b.OriginRef != inv.ID ||
+			b.Competence != inv.Period.Start {
+			t.Errorf("%s: bill = %+v, %v", sp.PK(), b, err)
+		}
+	}
+}
+
+// Review Focus 1: the webhook delivered twice, then the reconciler confirming
+// the same charge — one bill per space, money counted once.
+func TestAReplayedSettlementRecordsTheInvoiceOnce(t *testing.T) {
+	f := newFinancePayEnv(t, true)
+	inv, charge := f.payByWebhook(t)
+	if res := f.notify(t, charge); res.status != http.StatusOK {
+		t.Fatalf("second webhook: %d", res.status)
+	}
+	if err := f.collector.Confirm(ctxT(t), true, charge, billing.CauseReconciliation, "req_reconcile", now()); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.bal(t, f.issuer, "bank"); got != inv.Total {
+		t.Errorf("issuer bank = %d, want %d once", got, inv.Total)
+	}
+	if got := f.bal(t, f.payer, "bank"); got != -inv.Total {
+		t.Errorf("payer bank = %d, want %d once", got, -inv.Total)
+	}
+	b, err := f.bills.Get(ctxT(t), f.issuer, repositories.InvoiceBillID(f.issuer, inv.ID))
+	if err != nil || len(b.TransactionIDs) != 2 {
+		t.Fatalf("issuer bill = %+v, %v", b, err)
+	}
+}
+
+// Review Focus 3: the payer never opened Finanças. The invoice is paid, the
+// issuer has its revenue, and nothing was created for the payer.
+func TestAPayerWithNoFinanceSpaceIsLeftAlone(t *testing.T) {
+	f := newFinancePayEnv(t, false)
+	inv, _ := f.payByWebhook(t)
+	if got := f.bal(t, f.issuer, "bank"); got != inv.Total {
+		t.Errorf("issuer bank = %d, want %d", got, inv.Total)
+	}
+	accts, err := f.ledger.ListAccounts(ctxT(t), f.payer)
+	if err != nil || len(accts) != 0 {
+		t.Fatalf("a space was created for the payer: %d accounts, %v", len(accts), err)
+	}
+}
+
+type panickingPoster struct{}
+
+func (panickingPoster) Paid(context.Context, *billing.Invoice, string, string, time.Time) []services.Posting {
+	panic("finance is down")
+}
+
+// Review Focus 5: whatever the finance side does, the money that arrived is
+// recorded and the confirmation succeeds.
+func TestAFailingFinancePostingNeverFailsTheSettlement(t *testing.T) {
+	f := newFinancePayEnv(t, true)
+	f.collector.WithFinance(panickingPoster{})
+	inv := f.openInvoice(t)
+	charge := f.openCharge(t, inv)
+	f.wallet.settle(charge, int64(inv.Total))
+	if err := f.collector.Confirm(ctxT(t), true, charge, billing.CauseReconciliation, "req_reconcile", now()); err != nil {
+		t.Fatalf("the settlement failed because of finance: %v", err)
+	}
+	if got := f.invoiceStatus(t, inv.ID); got != billing.InvoicePaid {
+		t.Fatalf("invoice is %s, want PAID", got)
+	}
+}
+
+// Review Focus 2: a partial credit note issued in the console on the paid
+// invoice takes its amount back out of both ledgers.
+func TestACreditNoteOnAPaidInvoiceTakesTheAmountBackInBothSpaces(t *testing.T) {
+	f := newFinancePayEnv(t, true)
+	inv, _ := f.payByWebhook(t)
+	token := f.sessionToken(t, middleware.ScopeInvoicesWrite, middleware.ScopeInvoicesRead)
+	res := f.consolePost(t, "/v1.0/console/invoices/"+inv.ID+"/credit-notes", token, "live",
+		`{"amount":1990,"reason":"cobrança em duplicidade","refunded_externally":true}`)
+	if res.status != http.StatusCreated {
+		t.Fatalf("credit note: %d %s", res.status, res.body)
+	}
+	kept := inv.Total - 1990
+	if got := f.bal(t, f.issuer, "bank"); got != kept {
+		t.Errorf("issuer bank = %d, want %d", got, kept)
+	}
+	if got := f.bal(t, f.issuer, finance.CategorySubscriptionRevenue); got != -kept {
+		t.Errorf("issuer revenue = %d, want %d", got, -kept)
+	}
+	if got := f.bal(t, f.payer, "bank"); got != -kept {
+		t.Errorf("payer bank = %d, want %d", got, -kept)
+	}
+	if got := f.bal(t, f.payer, finance.CategoryCTechSubscriptions); got != kept {
+		t.Errorf("payer expense = %d, want %d", got, kept)
 	}
 }
 
