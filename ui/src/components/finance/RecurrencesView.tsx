@@ -13,6 +13,7 @@ import {LedgerRow} from "@/components/finance/LedgerRow"
 import {OccurrenceTimeline, type TimelineEntry} from "@/components/finance/OccurrenceTimeline"
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
 import {DateField} from "@/components/ui/DateField"
+import {Segmented} from "@/components/ui/Segmented"
 import {Select} from "@/components/ui/Select"
 import {messageFor, problemCode} from "@/lib/api/client"
 import {
@@ -163,7 +164,7 @@ function RecurrenceDetail({id, rec}: {id: string; rec: Recurrence}) {
     key: o.bill_id, nominal: o.nominal, due: o.due, kind: o.state, amount: money(o.amount),
     state: o.state === "paid" && o.paid_date ? t("bills.rec.state.paidOn", {date: shortDate(o.paid_date)}) : t(`bills.rec.state.${o.state}`),
     action: o.state === "overdue"
-      ? <Link href={`/console/finance/bills?direction=${rec.direction}&bill=${encodeURIComponent(o.bill_id)}`} className="text-sm text-foreground underline underline-offset-4 hover:text-brand-700">{t(`bills.rec.openBill.${rec.direction}`)}</Link>
+      ? <Link href={`/console/finance/bills?direction=${rec.direction}&bill=${encodeURIComponent(o.bill_id)}`} className="inline-flex items-center text-sm text-foreground underline underline-offset-4 hover:text-brand-700 touch:min-h-11">{t(`bills.rec.openBill.${rec.direction}`)}</Link>
       : undefined,
   })
   const next: TimelineEntry[] = [
@@ -333,14 +334,12 @@ function RecurrencePanel({editing, accounts, onDone}: {editing?: Recurrence; acc
       <div className="flex flex-wrap items-center justify-between gap-3">
 
         {!editing && (
-          <div role="group" aria-label={t("bills.direction.label")} className="flex items-center gap-0.5 rounded-lg border border-border bg-surface p-0.5">
-            {(["payable", "receivable"] as Direction[]).map(d => (
-              <button key={d} type="button" aria-pressed={direction === d} onClick={() => { setDirection(d); setCategory("") }}
-                className={`rounded-md px-3 py-1 text-sm ${direction === d ? "bg-background font-medium text-foreground shadow-sm" : "text-muted-foreground"}`}>
-                {t(`bills.direction.${d}`)}
-              </button>
-            ))}
-          </div>
+          <Segmented
+            label={t("bills.direction.label")}
+            value={direction}
+            onValueChange={d => { setDirection(d); setCategory("") }}
+            options={(["payable", "receivable"] as Direction[]).map(d => ({value: d, label: t(`bills.direction.${d}`)}))}
+          />
         )}
       </div>
       <form className="space-y-4" onSubmit={submit}>
@@ -377,7 +376,7 @@ function RecurrencePanel({editing, accounts, onDone}: {editing?: Recurrence; acc
 
             <div>
               <button type="button" aria-expanded={more} onClick={() => setMore(v => !v)}
-                className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline">
+                className="inline-flex items-center text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline touch:min-h-11">
                 {more ? t("bills.rec.lessOptions") : t("bills.rec.moreOptions")}
               </button>
               {more && (

@@ -124,9 +124,11 @@
  * lives in the utilities layer. A min-height, not a height, so a control that
  * is already taller is left alone. A control with no data-slot (DateField's
  * DatePicker trigger) asks for `touch:min-h-11` itself. Candidate for @aoctech/ui.
+ * A drawer or modal is portaled out of the density root, so `[role=dialog]`
+ * is a root of its own here (UX batch 3: every drawer's buttons were 36px).
  */
 @media (pointer: coarse), (max-width: 39.999rem) {
-  [data-density="compact"] :is(
+  :is([data-density="compact"], [role="dialog"]) :is(
     [data-slot="button"],
     [data-slot="input"],
     [data-slot="select-trigger"],
@@ -136,7 +138,7 @@
   }
 
   /* A switch is drawn at 24px; its label is the target. */
-  [data-density="compact"] label:has(> [data-slot="switch"]) {
+  :is([data-density="compact"], [role="dialog"]) label:has(> [data-slot="switch"]) {
     min-height: 2.75rem;
   }
 }

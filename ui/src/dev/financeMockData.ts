@@ -415,12 +415,12 @@ function route(method: string, path: string, r: Req, s: SpaceState, can: (v: Ver
   // recurrences
   if (path === "/recurrences" && method === "get") return ok({data: s.recurrences, has_more: false})
   if (path === "/recurrences/preview" && method === "post") {
-    const p = body<{expression: ExpressionJSON; start: string; from?: string; count: number}>(r)
+    const p = body<{expression: ExpressionJSON; start: string; end?: string; from?: string; count: number}>(r)
     if (!(p.count >= 1 && p.count <= 24)) {
       return {status: 422, data: {type: "about:blank", title: "Validation", status: 422, errors: [{field: "count", message: "entre 1 e 24"}]}}
     }
     const from = p.from && p.from > p.start ? p.from : p.start
-    return ok({data: occurrences(p.expression, from, p.count), has_more: false})
+    return ok({data: occurrences(p.expression, from, p.count).filter(o => !p.end || o.nominal <= p.end), has_more: false})
   }
   if (path === "/recurrences" && method === "post") {
     if (!can("finance.write")) return forbidden()

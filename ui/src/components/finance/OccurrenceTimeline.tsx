@@ -7,8 +7,9 @@ import {shortDate, weekdayShort} from "@/lib/format"
 
 /**
  * paid, forecast, overdue and skipped are bills a recurrence made; `upcoming`
- * is a date the rule will make (no bill yet), drawn outline-only and dashed,
- * the same difference of shape the projection uses for recurrences.
+ * is a date the rule will make (no bill yet), drawn as a faint outline: the
+ * same "outline is not made yet" the projection uses for recurrences. A made
+ * forecast is a firm outline; paid and overdue are filled.
  */
 export type TimelineKind = "paid" | "forecast" | "overdue" | "skipped" | "upcoming"
 
@@ -27,8 +28,8 @@ export interface TimelineEntry {
 const MARKER: Record<TimelineKind, string> = {
   paid: "border-success bg-success",
   overdue: "border-danger bg-danger",
-  forecast: "border-foreground/70 bg-background",
-  upcoming: "border-dashed border-muted-foreground bg-background",
+  forecast: "border-foreground bg-background",
+  upcoming: "border-muted-foreground/45 bg-background",
   skipped: "border-border bg-border",
 }
 
