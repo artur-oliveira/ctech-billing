@@ -229,6 +229,15 @@ func (j *FinanceJobs) Project(ctx context.Context, sp space.ResolvedSpace, today
 		}
 	}
 
+	cardsEnd := first.Add(months - 1).Last()
+	if err := j.projectCards(ctx, sp, cardsEnd, func(due brcal.Date, amount billing.Cents) {
+		if i, ok := slot(due); ok {
+			window[i].Payable += amount
+		}
+	}); err != nil {
+		return Projection{}, err
+	}
+
 	recs, err := j.recs.ListWithCursors(ctx, sp)
 	if err != nil {
 		return Projection{}, err

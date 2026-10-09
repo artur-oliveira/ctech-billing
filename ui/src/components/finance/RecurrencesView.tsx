@@ -219,7 +219,7 @@ function RecurrencePanel({editing, accounts, onDone}: {editing?: Recurrence; acc
         )}
       </div>
       <form className="space-y-4" onSubmit={submit}>
-        <div className="grid items-start gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid items-start gap-x-4 gap-y-3 sm:grid-cols-2 lg:grid-cols-4 [&>*]:min-w-0">
           <Field label="Descrição" htmlFor="rc-desc" className="lg:col-span-2"><Input id="rc-desc" maxLength={limits.text.description} value={description} onChange={e => setDescription(e.target.value)}/></Field>
           <Field label="Valor" htmlFor="rc-amount" required><Input id="rc-amount" inputMode="decimal" placeholder="0,00" value={amountText} onChange={e => setAmountText(maskMoney(e.target.value))}/></Field>
           <Field label="Categoria" htmlFor="rc-cat" required hint={cats.length === 0 ? `Nenhuma categoria de ${direction === "payable" ? "despesa" : "receita"}. Crie uma em Contas.` : undefined}>

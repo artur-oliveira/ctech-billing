@@ -153,6 +153,22 @@ describe("F2 — a pagar e a receber", () => {
     expect(await optionsOf("Pagar com")).toEqual(["Conta corrente"])
   })
 
+  it("records a bill already paid in one go: created, then settled on the date given", async () => {
+    serve(ALL, [])
+    const create = vi.spyOn(finance, "createBill").mockResolvedValue(bill({id: "new"}))
+    const settle = vi.spyOn(finance, "settleBill").mockResolvedValue(bill({id: "new", status: "paid"}))
+    renderWithQuery(<BillsView/>)
+    await userEvent.click(await screen.findByRole("button", {name: "Nova conta"}))
+    await userEvent.type(screen.getByLabelText(/^Valor/), "50,00")
+    await pick("Categoria", "Aluguel")
+    await pick("Pagar com", "Conta corrente")
+    await userEvent.click(screen.getAllByLabelText("Já foi pago")[0])
+    expect(screen.queryByLabelText("Pagar automaticamente no vencimento")).toBeNull()
+    await userEvent.click(screen.getByRole("button", {name: "Registrar"}))
+    await waitFor(() => expect(settle).toHaveBeenCalledWith(expect.anything(), "new", {paid_date: todayIso()}, expect.any(String)))
+    expect(create).toHaveBeenCalledTimes(1)
+  })
+
   it("shows the auto-settle switch only to a role that may settle", async () => {
     serve(["finance.read", "finance.write"], [])
     renderWithQuery(<BillsView/>)

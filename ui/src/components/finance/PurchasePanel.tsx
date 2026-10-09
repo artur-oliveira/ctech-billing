@@ -46,13 +46,13 @@ export function PurchasePanel({cardId, accounts, onDone}: {cardId: string; accou
   return (
     <form
       aria-label="Nova compra"
-      className="grid items-start gap-3 rounded-lg border border-border p-4 sm:grid-cols-2 lg:grid-cols-5 motion-safe:animate-in motion-safe:fade-in"
+      className="grid items-start gap-x-4 gap-y-3 rounded-lg border border-border p-4 sm:grid-cols-2 lg:grid-cols-3 [&>*]:min-w-0 motion-safe:animate-in motion-safe:fade-in"
       onSubmit={e => {
         e.preventDefault()
         if (ready) create.mutate({date, description: description.trim(), category_id: category, total: total!, installments: n})
       }}
     >
-      <Field label="Descrição" htmlFor="pu-desc" required>
+      <Field label="Descrição" htmlFor="pu-desc" required className="lg:col-span-2">
         <Input id="pu-desc" maxLength={limits.text.description} value={description} onChange={e => setDescription(e.target.value)} autoFocus/>
       </Field>
       <Field label="Valor" htmlFor="pu-amount" required hint={total ? installmentsPreview(total, n) : undefined}>
@@ -67,7 +67,7 @@ export function PurchasePanel({cardId, accounts, onDone}: {cardId: string; accou
       <Field label="Categoria" htmlFor="pu-cat" required hint={cats.length === 0 ? "Nenhuma categoria de despesa. Crie uma em Contas." : undefined}>
         <Select id="pu-cat" aria-label="Categoria" value={category} onValueChange={setCategory} options={cats.map(a => ({value: a.id, label: a.name}))}/>
       </Field>
-      <div className="flex flex-wrap items-center gap-2 sm:col-span-2 lg:col-span-5">
+      <div className="flex flex-wrap items-center gap-2 sm:col-span-2 lg:col-span-3">
         <Button type="submit" variant="brand" size="sm" disabled={!ready}>Registrar compra</Button>
         <Button type="button" variant="outline" size="sm" onClick={onDone}>Fechar</Button>
         {create.error ? <p role="alert" className="text-sm text-danger">{messageFor(create.error)}</p> : null}

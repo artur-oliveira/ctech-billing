@@ -150,7 +150,7 @@ func Build(ctx context.Context, cfg *config.Config, clock func() time.Time) (*fi
 		// configured. That is deliberate and safe: a nil *Client answers
 		// Membership with an error, which the resolver reads as "unavailable".
 		FinanceBills: services.NewFinanceBills(billRepo),
-		FinanceJobs:  services.NewFinanceJobs(billRepo, recRepo),
+		FinanceJobs:  services.NewFinanceJobs(billRepo, recRepo).WithCards(repositories.NewCardRepository(db, cfg)),
 		Recurrences:  recRepo,
 		Cards:        repositories.NewCardRepository(db, cfg),
 		Ledger:       ledgerRepo,

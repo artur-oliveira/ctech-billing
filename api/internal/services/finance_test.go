@@ -417,3 +417,30 @@ func TestCloseStatementsClosesEveryDueCardAndSurvivesOneFailure(t *testing.T) {
 		t.Fatalf("res = %+v, closed = %v", res, cards.closed)
 	}
 }
+
+func (f *fakeCards) ListCards(context.Context, space.ResolvedSpace) ([]repositories.CardRow, error) {
+	return []repositories.CardRow{{Card: finance.Card{ID: "visa", ClosingDay: 3, DueDay: 10, PayingAccountID: "bank",
+		OpenMonth: finance.Month{Year: 2026, Month: time.March}}, Name: "Visa"}}, nil
+}
+
+func (f *fakeCards) GetStatement(_ context.Context, _ space.ResolvedSpace, _ string, m finance.Month) (repositories.Statement, error) {
+	if m.Month == time.March || m.Month == time.April {
+		return repositories.Statement{Month: m, Total: 10000}, nil
+	}
+	return repositories.Statement{Month: m}, nil
+}
+
+// The card has to be paid: its open and future statements are payables in the
+// month they fall due (closed ones are already bills and counted as such).
+func TestProjectCountsCardStatementsOnTheirDueMonth(t *testing.T) {
+	jobs := NewFinanceJobs(newFakeBills(), newFakeRecs()).WithCards(&fakeCards{})
+	p, err := jobs.Project(context.Background(), testSpace(t), day(2026, time.March, 2), 3) // Mar..May
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, want := range []int64{10000, 10000, 0} {
+		if got := int64(p.Months[i].Payable); got != want {
+			t.Errorf("%s payable = %d, want %d", p.Months[i].Month, got, want)
+		}
+	}
+}
