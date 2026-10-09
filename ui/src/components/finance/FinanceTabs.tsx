@@ -8,6 +8,7 @@ const TABS = [
   {href: "/console/finance/bills", label: "A pagar e a receber"},
   {href: "/console/finance/statement", label: "Extrato"},
   {href: "/console/finance/recurrences", label: "Recorrências"},
+  {href: "/console/finance/reports", label: "Relatórios"},
   {href: "/console/finance/accounts", label: "Contas"},
 ] as const
 

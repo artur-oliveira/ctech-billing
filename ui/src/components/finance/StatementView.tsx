@@ -16,7 +16,7 @@ import {dateRange, type PresetId, PRESETS} from "@/lib/finance/periods"
 import {todayIso} from "@/lib/finance/today"
 import {useFinanceMutation} from "@/lib/finance/useFinanceMutation"
 import {useFinanceCtx, useFinanceSpaces} from "@/lib/finance/useFinanceSpaces"
-import {money, shortDate} from "@/lib/format"
+import {shortDate, signedMoney} from "@/lib/format"
 
 /** The day before a civil date, without reading it as UTC. */
 function dayBefore(iso: string): string {
@@ -24,9 +24,6 @@ function dayBefore(iso: string): string {
   const t = new Date(y, m - 1, d - 1, 12)
   return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`
 }
-
-/** "−R$ 300,00" for money out (a real minus sign), "R$ 300,00" for money in. */
-const signed = (cents: number) => (cents < 0 ? `−${money(-cents)}` : money(cents))
 
 function memoOf(e: StatementEntry): string {
   if (e.memo) return e.memo
@@ -135,7 +132,7 @@ function BalanceLine({label, amount}: {label: string; amount: number}) {
   return (
     <div className="flex items-baseline justify-between text-sm">
       <span className="text-muted-foreground">{label}</span>
-      <span data-numeric className="font-medium tabular-nums text-foreground">{signed(amount)}</span>
+      <span data-numeric className="font-medium tabular-nums text-foreground">{signedMoney(amount)}</span>
     </div>
   )
 }
@@ -158,9 +155,9 @@ function EntryRow({entry: e, category}: {entry: StatementEntry; category?: strin
         {e.reversal && <Badge tone="neutral">Estorno</Badge>}
         {e.reversed && <Badge tone="neutral">Estornado</Badge>}
         <span data-numeric className={`w-28 text-right text-sm tabular-nums ${e.reversed ? "text-muted-foreground line-through" : "text-foreground"}`}>
-          {signed(e.amount)}
+          {signedMoney(e.amount)}
         </span>
-        <span data-numeric className="w-28 text-right text-sm tabular-nums text-muted-foreground">{signed(e.balance)}</span>
+        <span data-numeric className="w-28 text-right text-sm tabular-nums text-muted-foreground">{signedMoney(e.balance)}</span>
         <div className="flex gap-1">
           {canReverse && (
             <Button size="sm" variant="ghost" aria-expanded={action === "reverse"} onClick={() => setAction(action === "reverse" ? null : "reverse")}>Estornar</Button>

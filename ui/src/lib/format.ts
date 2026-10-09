@@ -44,3 +44,6 @@ export function countdown(secondsLeft: number): string {
   const s = Math.max(0, Math.floor(secondsLeft))
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`
 }
+
+/** "−R$ 300,00" (a real minus sign) for a negative amount, "R$ 300,00" otherwise. */
+export const signedMoney = (cents: Cents) => (cents < 0 ? `−${money(-cents)}` : money(cents))

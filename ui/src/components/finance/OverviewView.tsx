@@ -11,6 +11,7 @@ import {Select} from "@/components/ui/Select"
 import {financeKeys, getProjection, listAccounts, listBills} from "@/lib/api/finance"
 import type {Bill, ProjectionMonth} from "@/lib/api/financeTypes"
 import {BUCKET_LABEL} from "@/lib/finance/labels"
+import {monthShort} from "@/lib/finance/today"
 import {useFinanceCtx} from "@/lib/finance/useFinanceSpaces"
 import {money, shortDate} from "@/lib/format"
 
@@ -116,11 +117,6 @@ function DueSoon() {
       )}
     </Block>
   )
-}
-
-function monthShort(ym: string): string {
-  const [y, m] = ym.split("-").map(Number)
-  return new Intl.DateTimeFormat("pt-BR", {month: "short", year: "2-digit"}).format(new Date(y, m - 1, 1))
 }
 
 function Projection() {
