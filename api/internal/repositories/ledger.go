@@ -184,7 +184,8 @@ func (r *LedgerRepository) spaceState(ctx context.Context, sp space.ResolvedSpac
 // with, kept on its SPACE row. Raising it seeds a space again (only what is
 // missing is added).
 // Version 2 backfills system_key onto the defaults seeded by version 1.
-const seedVersion = 2
+// Version 3 adds the billing categories (6.7).
+const seedVersion = 3
 
 // SeedCategories adds the space's default categories (spec § 3.3), once per
 // seed version. Each is a conditional put, so one the person archived is never
@@ -261,6 +262,35 @@ func (r *LedgerRepository) backfillSystemKey(ctx context.Context, sp space.Resol
 		return err
 	}
 	return nil
+}
+
+// ensureCategory makes sure the space holds the default category a posting rule
+// names, and returns its id. Seeding normally made it; it is missing when the
+// person already had a category of that name when the seed ran (the seed never
+// duplicates a name), and then it is created by id anyway: a posting rule must
+// find its category, and a second "Assinaturas" is less wrong than revenue with
+// nowhere to go. An archived one is still used — archiving hides a category from
+// what a person records next, and this fact is billing's, not theirs.
+func (r *LedgerRepository) ensureCategory(ctx context.Context, sp space.ResolvedSpace, want finance.LedgerAccount, now time.Time) (string, error) {
+	cur, err := r.getAccount(ctx, sp, want.ID)
+	switch {
+	case err == nil:
+		if cur.Class != want.Class || cur.System {
+			return "", fmt.Errorf("%w: %s is not a %s category", finance.ErrInvalidAccount, want.ID, want.Class)
+		}
+		return cur.ID, nil
+	case !errors.Is(err, ErrNotFound):
+		return "", err
+	}
+	item, err := Encode(newAccountItem(sp, want, now))
+	if err != nil {
+		return "", err
+	}
+	err = r.accounts.TransactWrite(ctx, txItems(r.accounts.BuildPutTxItemIfAbsent(item)))
+	if err != nil && !onlyConditionFailed(err) {
+		return "", err
+	}
+	return want.ID, nil
 }
 
 // CreateAccount adds an account or category to the space's chart.
