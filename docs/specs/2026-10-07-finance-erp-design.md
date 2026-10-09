@@ -327,6 +327,34 @@ spaces for the credited amount.
 Revenue linked to a subscription is **only realised when an invoice is paid**. Its projection
 comes from billing: open invoices plus the subscription's next renewals, computed on read.
 
+**As built (6.7, 2026-10-09)** — [plan](../plans/2026-10-09-finance-6.7-billing-integration.md):
+- The issuing organization's space is found through `Organization.AccountOrganizationID`, a link to the
+  ctech-account organization set by the tenant plan (billing's tenant ids are not account ids:
+  tenant zero is `ctech`). An unlinked tenant posts nothing on the issuer side.
+- The payer side is **tenant zero only** (a third-party merchant's `user_id` is that merchant's claim)
+  and **person customers only**: organization customers are not modelled yet, so a customer with a
+  `user_id` posts to that person's personal space.
+- The cash account is the space's default receiving account **on both sides**. With none (or an
+  archived one), a space holding **exactly one** active bank or cash account receives there; with
+  zero or several candidates it gets nothing (a warning), and it is not created by the posting.
+- **"Lançar minhas faturas da CTech automaticamente neste espaço"** (`post_ctech_invoices` on the
+  space's `SPACE` row, on when absent, changed with `finance.configure`, audited): when off, the
+  payer side (the invoice and its credit notes) writes nothing in that space. The issuer side is
+  CTech's own books and is never affected. Future postings only: turning it off deletes nothing and
+  turning it on replays nothing older; the replay pass reads it at replay time. Only personal spaces
+  are payers today.
+- Tenant zero (`ctech`) is linked to CTech's ctech-account organization
+  `01a04ed6-1af9-745e-bcf7-d3b66fe52321` in `api/tenants/ctech.json`.
+- Zero-total invoices post nothing. A credit note posts one adjustment (`finance.CreditBill`) dated
+  the note's day, in each space where the invoice was recorded and its bill is still paid.
+- Idempotent by the bill's id (space, invoice) and the credit's transaction id (space, note). The
+  settlement never fails because of finance. What could not be written (a failed write, no receiving
+  account yet, an unlinked tenant) stays on a durable queue armed in the same write that makes the
+  invoice PAID (or issues the note), and `cmd/reconcile` replays it hourly for 30 days. It is a retry,
+  not a backfill.
+- Credits never sum past the invoice: billing's `credited_total` and the finance bill's `credited` move
+  by compare-and-set in the same write as the note or the credit.
+
 ## 4. Persistence
 
 Every table is `{env}_billing_{name}` and declared in `api/internal/repositories/schema.json`.

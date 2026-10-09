@@ -18,7 +18,7 @@ import (
 // settingsWriters are the methods that write the space's own preferences on its
 // SPACE row. They never touch a transaction, an entry or a balance, which is
 // what "no edit path" protects; naming them here keeps the exception reviewable.
-var settingsWriters = map[string]bool{"SetDefaultReceivingAccount": true}
+var settingsWriters = map[string]bool{"SetDefaultReceivingAccount": true, "SetPostCTechInvoices": true}
 
 func TestLedgerRepositoryHasNoEditPath(t *testing.T) {
 	rt := reflect.TypeOf(&LedgerRepository{})
@@ -62,6 +62,7 @@ func TestEveryLedgerMethodRefusesTheZeroSpace(t *testing.T) {
 	checks["AllTransactions"] = err
 	checks["ArchiveAccount"] = r.ArchiveAccount(ctx, zero, "a", time.Now())
 	checks["SetDefaultReceivingAccount"] = r.SetDefaultReceivingAccount(ctx, zero, "a", time.Now())
+	checks["SetPostCTechInvoices"] = r.SetPostCTechInvoices(ctx, zero, false, "a", "", time.Now())
 	_, err = r.GetSettings(ctx, zero)
 	checks["GetSettings"] = err
 	checks["CreateAccount"] = r.CreateAccount(ctx, zero, finance.LedgerAccount{ID: "a", Name: "a", Class: finance.ClassAsset}, time.Now())

@@ -3,6 +3,7 @@ package repositories
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
@@ -80,11 +81,19 @@ func (r *CreditNoteRepository) Issue(
 	cn.CreatedAt = now.UTC()
 
 	pk := TenantPK(inv.OrganizationID, inv.Livemode)
-	item, err := Encode(creditNoteRow{
+	row := creditNoteRow{
 		keys:        newKeys(pk, CreditNoteSK(inv.ID, cn.ID), RetentionCreditNote, now),
 		PeriodAttrs: NewPeriodAttrs(inv.OrganizationID, inv.Livemode, EntityCreditNote, brcal.FromTime(now), cn.ID),
 		CreditNote:  *cn,
-	})
+	}
+	if inv.Status == billing.InvoicePaid {
+		// A credit on a paid invoice is money going back in Finanças (spec
+		// § 3.8): queued for the finance replay in the note's own write, and
+		// taken off once both ledgers have it.
+		row.SchedulePK = FinanceQueuePK(inv.Livemode, JobFinanceCredit)
+		row.ScheduleSK = FinanceQueueSK(cn.CreatedAt.Format(time.RFC3339Nano), inv.OrganizationID, inv.ID, cn.ID)
+	}
+	item, err := Encode(row)
 	if err != nil {
 		return err
 	}
@@ -119,32 +128,42 @@ func (r *CreditNoteRepository) Issue(
 
 	err = r.base.TransactWrite(ctx, []types.TransactWriteItem{
 		r.base.BuildPutTxItemIfAbsent(item),
-		r.guardInvoice(pk, inv, now),
+		r.guardInvoice(pk, inv, credited, credited+cn.Amount, now),
 		r.audit.BuildPutTxItemIfAbsent(auditItem),
 		event,
 	})
 	if IsConditionFailed(err) {
-		return fmt.Errorf("%w: invoice %s expected to be %s", ErrConcurrentModification, inv.ID, inv.Status)
+		return fmt.Errorf("%w: invoice %s expected to be %s with %s credited", ErrConcurrentModification, inv.ID, inv.Status, credited)
 	}
 	return err
 }
 
 // guardInvoice is the condition that makes the credit note safe, expressed as
-// the smallest write that can carry one: the invoice's updated_at moves, and the
-// item is refused unless the status is still what the caller validated against.
+// the smallest write that can carry one. The item is refused unless the status
+// is still what the caller validated against **and** the credited total is
+// still the one the caller summed: credited_total is a compare-and-set, moved
+// from `before` to `after` in the same transaction as the note.
 //
-// A bare ConditionCheck would say the same thing, and touching updated_at is
-// worth the difference — an invoice that has been credited has changed, and a
-// screen ordering by updated_at should see it.
-func (r *CreditNoteRepository) guardInvoice(pk string, inv *billing.Invoice, now time.Time) types.TransactWriteItem {
+// The status alone was not enough (found in the 6.7 review, older than 6.7):
+// two operators crediting R$ 30 each on a R$ 49,90 invoice both read "nothing
+// credited", both passed ValidateAgainst, and both committed. Now the second
+// finds credited_total already moved and is refused. A row from before the
+// attribute existed has none; the first note written since sets it, so two
+// racing first notes still cannot both commit.
+//
+// It also touches updated_at — an invoice that has been credited has changed,
+// and a screen ordering by updated_at should see it.
+func (r *CreditNoteRepository) guardInvoice(pk string, inv *billing.Invoice, before, after billing.Cents, now time.Time) types.TransactWriteItem {
 	return r.base.BuildRawUpdateTxItem(
 		pk, new(InvoiceSK(inv.ID)),
-		"SET #ua = :now",
-		"attribute_exists(pk) AND #st = :status",
-		map[string]string{"#ua": "updated_at", "#st": "status"},
+		"SET #ua = :now, #ct = :after",
+		"attribute_exists(pk) AND #st = :status AND (attribute_not_exists(#ct) OR #ct = :before)",
+		map[string]string{"#ua": "updated_at", "#st": "status", "#ct": "credited_total"},
 		map[string]types.AttributeValue{
 			":now":    &types.AttributeValueMemberS{Value: now.UTC().Format(time.RFC3339Nano)},
 			":status": &types.AttributeValueMemberS{Value: string(inv.Status)},
+			":before": &types.AttributeValueMemberN{Value: strconv.FormatInt(int64(before), 10)},
+			":after":  &types.AttributeValueMemberN{Value: strconv.FormatInt(int64(after), 10)},
 		},
 	)
 }
@@ -162,6 +181,10 @@ func (r *CreditNoteRepository) ListByInvoice(
 		SKPrefix:         InvoiceSK(invoiceID) + "#" + skCreditNote,
 		ScanIndexForward: true,
 		Limit:            100,
+		// Consistent: Issue sums these and then compares the invoice's
+		// credited_total against the sum, so a stale read would refuse a note
+		// that is perfectly valid.
+		ConsistentRead: true,
 	})
 	if err != nil {
 		return nil, err

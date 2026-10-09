@@ -1,6 +1,9 @@
 package v1
 
 import (
+	"context"
+	"time"
+
 	"github.com/gofiber/fiber/v3"
 
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
@@ -33,6 +36,15 @@ type consoleHandlers struct {
 	// portalOrganizationID is tenant zero, needed only by the /v1/me route, which
 	// answers for both shells and therefore belongs to neither.
 	portalOrganizationID string
+	// finance records a credit note against a paid invoice in Finanças (spec
+	// § 3.8). Nil when the deployment has no posting rule.
+	finance creditPoster
+}
+
+// creditPoster is the slice of services.FinanceInvoices the credit-note route
+// uses. It never fails and never panics into the handler.
+type creditPoster interface {
+	Credited(ctx context.Context, inv *billing.Invoice, cn *billing.CreditNote, actor, requestID string, now time.Time) []services.Posting
 }
 
 // cancelSubscription is the console's cancellation, and the **first write on
@@ -262,6 +274,12 @@ func (h *consoleHandlers) creditInvoice(c fiber.Ctx) error {
 		c.Context(), cn, inv, actorOfUser(c), middleware.GetRequestID(c), h.now(),
 	); err != nil {
 		return fail(c, err)
+	}
+	// A credit against a paid invoice takes its amount back out of both
+	// ledgers (spec § 3.8). After the note exists, never instead of it, and
+	// nothing the rule answers changes this response.
+	if h.finance != nil && inv.Status == billing.InvoicePaid {
+		h.finance.Credited(c.Context(), inv, cn, actorOfUser(c), middleware.GetRequestID(c), h.now())
 	}
 	return c.Status(fiber.StatusCreated).JSON(newCreditNoteResponse(cn))
 }

@@ -31,6 +31,8 @@ const SEEDED_NAMES: Record<string, string> = {
   marketing: "Marketing",
   administrative_expenses: "Despesas administrativas",
   bank_fees: "Tarifas bancárias",
+  subscriptions_revenue: "Assinaturas",
+  ctech_subscriptions: "Assinaturas CTech",
 }
 
 const norm = (s: string): string => s.trim().toLowerCase()

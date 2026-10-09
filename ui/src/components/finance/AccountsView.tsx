@@ -1,7 +1,7 @@
 "use client"
 
 import limits from "@/lib/limits.json"
-import {Button, Drawer, EmptyState, Field, Input, Skeleton} from "@aoctech/ui"
+import {Button, Drawer, EmptyState, Field, Input, Skeleton, Switch} from "@aoctech/ui"
 import {useQuery} from "@tanstack/react-query"
 import {Landmark} from "lucide-react"
 import Link from "next/link"
@@ -12,7 +12,7 @@ import {ErrorBlock} from "@/components/portal/ErrorBlock"
 import {DateField} from "@/components/ui/DateField"
 import {Select} from "@/components/ui/Select"
 import {messageFor} from "@/lib/api/client"
-import {archiveAccount, createAccount, financeKeys, getSettings, listAccounts, postOpeningBalance, setDefaultReceivingAccount} from "@/lib/api/finance"
+import {archiveAccount, createAccount, financeKeys, getSettings, listAccounts, postOpeningBalance, setDefaultReceivingAccount, setPostCTechInvoices} from "@/lib/api/finance"
 import type {Account, AccountClass, DREGroup, OpeningBalance} from "@/lib/api/financeTypes"
 import {classLabel, dreGroupLabel, groupsForClass} from "@/lib/finance/labels"
 import {useFinanceMutation} from "@/lib/finance/useFinanceMutation"
@@ -92,6 +92,7 @@ export function AccountsView() {
             </Button>
           )}
           {configure && <DefaultReceiving accounts={accounts}/>}
+          {configure && <PostCTechInvoices/>}
         </>
       )}
     </div>
@@ -284,6 +285,35 @@ function DefaultReceiving({accounts}: {accounts: Account[]}) {
           />
         </div>
       </Field>
+      {save.error && <p role="alert" className="text-sm text-danger">{messageFor(save.error)}</p>}
+    </section>
+  )
+}
+
+/** "Lançar minhas faturas da CTech automaticamente neste espaço": on unless turned off. */
+function PostCTechInvoices() {
+  const {t} = useTranslation()
+  const ctx = useFinanceCtx()
+  const settings = useQuery({queryKey: financeKeys.settings(ctx.mode, ctx.space), queryFn: () => getSettings(ctx)})
+  const save = useFinanceMutation(
+    (c, on: boolean, key) => setPostCTechInvoices(c, on, key),
+    c => [financeKeys.settings(c.mode, c.space)],
+  )
+  const on = save.isPending ? save.variables : settings.data?.post_ctech_invoices !== false
+  return (
+    <section className="space-y-1 border-t border-border pt-4">
+      <div className="flex items-center gap-3">
+        <Switch
+          id="post-ctech-invoices"
+          aria-labelledby="post-ctech-invoices-label"
+          aria-describedby="post-ctech-invoices-help"
+          checked={on}
+          disabled={settings.isPending || save.isPending}
+          onCheckedChange={(next: boolean) => save.mutate(next)}
+        />
+        <span id="post-ctech-invoices-label" className="text-sm font-medium">{t("finance.accounts.postCTechInvoices")}</span>
+      </div>
+      <p id="post-ctech-invoices-help" className="text-sm text-muted-foreground">{t("finance.accounts.postCTechInvoicesHelp")}</p>
       {save.error && <p role="alert" className="text-sm text-danger">{messageFor(save.error)}</p>}
     </section>
   )

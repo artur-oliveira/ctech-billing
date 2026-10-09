@@ -58,6 +58,10 @@ type Bill struct {
 	AutoSettle     bool
 	PaymentGroup   string // the card statement the bill belongs to, when it does
 	TransactionIDs []string
+	// Credited is how much of a paid billing invoice's bill credit notes have
+	// taken back (spec § 3.8). Never more than Amount; the repository moves it
+	// by compare-and-set in the same write as the credit.
+	Credited billing.Cents
 }
 
 // Validate refuses a bill the ledger could not post.

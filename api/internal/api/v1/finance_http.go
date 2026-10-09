@@ -128,6 +128,7 @@ func financeRoutes() []financeRoute {
 		{"GET", "/reports/cash-flow", space.Read, false, func(h *financeHandlers) fiber.Handler { return h.cashFlow }},
 		{"GET", "/settings", space.Read, false, func(h *financeHandlers) fiber.Handler { return h.getSettings }},
 		{"PUT", "/settings/default-receiving-account", space.Configure, true, func(h *financeHandlers) fiber.Handler { return h.setDefaultReceivingAccount }},
+		{"PUT", "/settings/post-ctech-invoices", space.Configure, true, func(h *financeHandlers) fiber.Handler { return h.setPostCTechInvoices }},
 	}
 }
 

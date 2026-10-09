@@ -85,6 +85,8 @@ export interface Account {
 
 export interface Settings {
   default_receiving_account_id?: string
+  /** "Lançar minhas faturas da CTech automaticamente". Absent means on. */
+  post_ctech_invoices?: boolean
 }
 
 export interface FinanceSpaceEntry {

@@ -73,13 +73,28 @@ func Apply(ctx context.Context, repos Repos, plan *Plan, livemode bool, now time
 				orgID, existing.PayoutStatus, plan.Organization.PayoutStatus)
 		}
 		res.skipped("organization", orgID)
+		// The one field an existing tenant may gain from a plan: its link to the
+		// ctech-account organization, once, when it has none (spec § 3.8). A plan
+		// naming a different link than the stored one is refused, like a
+		// diverging payout gate — moving it moves where revenue is recorded.
+		if link := plan.Organization.AccountOrganizationID; link != "" {
+			if existing.AccountOrganizationID == link {
+				res.skipped("account organization link", orgID)
+			} else {
+				if err := repos.Organizations.LinkAccountOrganization(ctx, existing, link, provisionActor, "", now); err != nil {
+					return res, fmt.Errorf("linking organization %s: %w", orgID, err)
+				}
+				res.created("account organization link", orgID)
+			}
+		}
 	case errors.Is(err, repositories.ErrNotFound):
 		org := &billing.Organization{
-			ID:           orgID,
-			DisplayName:  plan.Organization.DisplayName,
-			Livemode:     livemode,
-			PayoutStatus: plan.Organization.PayoutStatus,
-			OwnerUserID:  plan.Organization.OwnerUserID,
+			ID:                    orgID,
+			DisplayName:           plan.Organization.DisplayName,
+			Livemode:              livemode,
+			PayoutStatus:          plan.Organization.PayoutStatus,
+			OwnerUserID:           plan.Organization.OwnerUserID,
+			AccountOrganizationID: plan.Organization.AccountOrganizationID,
 		}
 		if err := repos.Organizations.Create(ctx, org, now); err != nil {
 			return nil, fmt.Errorf("creating organization %s: %w", orgID, err)

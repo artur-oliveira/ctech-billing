@@ -76,6 +76,23 @@ type Collector struct {
 	// screen. Optional: without Valkey the screen falls back to re-reading the
 	// invoice, which is slower and equally correct.
 	bus settlement.Bus
+	// finance records a paid invoice in the finance ledger (spec § 3.8).
+	// Optional for the same reason the bus is: without it a paid invoice is a
+	// line missing from Finanças, never a payment refused.
+	finance InvoicePoster
+}
+
+// InvoicePoster records a paid invoice in the finance ledger (spec § 3.8).
+// FinanceInvoices is the implementation; it never fails and never panics into
+// the caller.
+type InvoicePoster interface {
+	Paid(ctx context.Context, inv *billing.Invoice, actor, requestID string, now time.Time) []Posting
+}
+
+// WithFinance attaches the finance posting rule.
+func (c *Collector) WithFinance(f InvoicePoster) *Collector {
+	c.finance = f
+	return c
 }
 
 // WithSettlementBus attaches the notification channel.
@@ -358,6 +375,9 @@ func (c *Collector) settleInvoice(ctx context.Context, attempt *billing.PaymentA
 	if c.bus != nil {
 		c.bus.Settled(ctx, inv.ID)
 	}
+	// Last: the person holding the payment screen hears about it first, and the
+	// ledger's few writes never stand between a payment and its confirmation.
+	c.recordInFinance(ctx, inv, actor, requestID, now)
 	return nil
 }
 
@@ -408,6 +428,27 @@ func (c *Collector) activateSubscription(ctx context.Context, inv *billing.Invoi
 	}
 	slog.InfoContext(ctx, "subscription activated by payment",
 		"invoice_id", inv.ID, "subscription_id", sub.ID, "from", from, "actor", actor)
+}
+
+// recordInFinance is the ledger's half of a payment landing (spec § 3.8): revenue
+// in the issuing organization's space, an expense in the payer's.
+//
+// It runs on both paths for the reason activateSubscription does — a repeat must
+// be able to finish what the first delivery could not, and the bill's id keeps a
+// repeat to one bill — and it never fails the settlement: the money arrived. The
+// rule logs its own outcome per space; a panic is contained here as well,
+// because this is the one call on the payment path into another module.
+func (c *Collector) recordInFinance(ctx context.Context, inv *billing.Invoice, actor, requestID string, now time.Time) {
+	if c.finance == nil {
+		return
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			slog.ErrorContext(ctx, "invoice paid but the finance posting panicked",
+				"invoice_id", inv.ID, "panic", r)
+		}
+	}()
+	c.finance.Paid(ctx, inv, actor, requestID, now)
 }
 
 // completeSession closes the page's own state. Failures are logged and swallowed

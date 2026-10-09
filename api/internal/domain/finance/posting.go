@@ -109,6 +109,28 @@ func SettleBill(sys SystemAccounts, b BillFacts, paid billing.Cents, differenceC
 	return NewTransaction(KindSettlement, date, legs...)
 }
 
+// CreditBill takes amount back out of a bill that was recognised and settled,
+// as ONE transaction on date: the exact opposite of recognising and settling
+// amount, with payables/receivables untouched because the settlement already
+// cleared them. It is what a billing credit note against a paid invoice posts
+// (spec § 3.8): the issuer's revenue and cash go down, the payer's expense and
+// cash out go down. The cash leg keeps the bill's category as its flow, so the
+// cash flow shows the money coming back under the line it went out on.
+func CreditBill(b BillFacts, amount billing.Cents, date brcal.Date) (Transaction, error) {
+	if err := b.validate(); err != nil {
+		return Transaction{}, err
+	}
+	if amount <= 0 || amount > b.Amount {
+		return Transaction{}, fmt.Errorf("%w: a credit of %s against a bill of %s", ErrInvalidTransaction, amount, b.Amount)
+	}
+	if b.Direction == Receivable {
+		return NewTransaction(KindAdjustment, date,
+			Leg{AccountID: b.CategoryID, Amount: amount}, Leg{AccountID: b.AccountID, Amount: -amount, Flow: b.CategoryID})
+	}
+	return NewTransaction(KindAdjustment, date,
+		Leg{AccountID: b.AccountID, Amount: amount, Flow: b.CategoryID}, Leg{AccountID: b.CategoryID, Amount: -amount})
+}
+
 // Transfer moves money between two of the space's own accounts. It touches no
 // category, so it never appears in the DRE.
 func Transfer(fromAccountID, toAccountID string, amount billing.Cents, date brcal.Date) (Transaction, error) {

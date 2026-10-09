@@ -83,9 +83,11 @@ func Build(ctx context.Context, cfg *config.Config, clock func() time.Time) (*fi
 		WebhookSecret: cfg.WalletWebhookSecret,
 		Cache:         cacheBackend,
 	}
+	finance := financeInvoices(db, cfg, orgs, customers)
 	if walletCfg.Enabled() {
 		collector = services.NewCollector(invoices, payments, customers, orgs, subs, wallet.New(walletCfg)).
-			WithSettlementBus(bus)
+			WithSettlementBus(bus).
+			WithFinance(finance)
 	} else {
 		slog.Warn("wallet not configured — checkout and payment routes are not mounted")
 	}
@@ -149,16 +151,17 @@ func Build(ctx context.Context, cfg *config.Config, clock func() time.Time) (*fi
 		// accountclient.New returns a typed nil when the credential is not
 		// configured. That is deliberate and safe: a nil *Client answers
 		// Membership with an error, which the resolver reads as "unavailable".
-		FinanceBills:   services.NewFinanceBills(billRepo),
-		FinanceImports: services.NewFinanceImports(repositories.NewImportRepository(db, cfg), billRepo),
-		FinanceJobs:    services.NewFinanceJobs(billRepo, recRepo).WithCards(repositories.NewCardRepository(db, cfg)),
-		Recurrences:    recRepo,
-		Cards:          repositories.NewCardRepository(db, cfg),
-		Ledger:         ledgerRepo,
-		Spaces:         space.NewResolver(account, cacheBackend),
-		SpaceLister:    account,
-		Verifier:       middleware.NewVerifier(cfg.CtechJWKSURL, cfg.ServiceAudience, cfg.CtechIssuerURL, cacheBackend),
-		Clock:          clock,
+		FinanceBills:    services.NewFinanceBills(billRepo),
+		FinanceInvoices: finance,
+		FinanceImports:  services.NewFinanceImports(repositories.NewImportRepository(db, cfg), billRepo),
+		FinanceJobs:     services.NewFinanceJobs(billRepo, recRepo).WithCards(repositories.NewCardRepository(db, cfg)),
+		Recurrences:     recRepo,
+		Cards:           repositories.NewCardRepository(db, cfg),
+		Ledger:          ledgerRepo,
+		Spaces:          space.NewResolver(account, cacheBackend),
+		SpaceLister:     account,
+		Verifier:        middleware.NewVerifier(cfg.CtechJWKSURL, cfg.ServiceAudience, cfg.CtechIssuerURL, cacheBackend),
+		Clock:           clock,
 
 		PortalOrganizationID: cfg.PortalOrganizationID,
 		SettlementBus:        bus,
@@ -173,6 +176,14 @@ func Build(ctx context.Context, cfg *config.Config, clock func() time.Time) (*fi
 		AppVersion:    cfg.AppVersion,
 	})
 	return app, nil
+}
+
+// financeInvoices is the posting rule that records billing's own paid invoices
+// and credit notes in Finanças (spec § 3.8), for the server and the reconciler
+// alike. Tenant zero is the only tenant whose customers' own spaces it writes.
+func financeInvoices(db *dynamodb.Client, cfg *config.Config, orgs *repositories.OrganizationRepository, customers *repositories.CustomerRepository) *services.FinanceInvoices {
+	return services.NewFinanceInvoices(repositories.NewBillRepository(db, cfg), orgs, customers,
+		repositories.NewInvoiceRepository(db, cfg), repositories.NewCreditNoteRepository(db, cfg), cfg.PortalOrganizationID)
 }
 
 // BuildInvoicer wires only what the daily sweep needs.
@@ -274,7 +285,10 @@ func BuildDunner(ctx context.Context, cfg *config.Config) (*services.Dunner, err
 // than the warning it is in Build. The API degrades by unmounting its checkout
 // routes; a reconciler that started and reconciled nothing would report success
 // every hour while payments sat unsettled.
-func BuildCollector(ctx context.Context, cfg *config.Config) (*services.Collector, error) {
+//
+// It also returns the finance posting rule, whose Replay the same job runs: the
+// postings a settlement could not write are retried on the reconciler's clock.
+func BuildCollector(ctx context.Context, cfg *config.Config) (*services.Collector, *services.FinanceInvoices, error) {
 	walletCfg := wallet.Config{
 		BaseURL:       cfg.WalletBaseURL,
 		TokenURL:      cfg.WalletTokenURL,
@@ -284,20 +298,26 @@ func BuildCollector(ctx context.Context, cfg *config.Config) (*services.Collecto
 		Cache:         newCache(cfg),
 	}
 	if !walletCfg.Enabled() {
-		return nil, fmt.Errorf("reconciliation needs wallet configured (WALLET_BASE_URL, WALLET_TOKEN_URL, WALLET_CLIENT_ID, WALLET_CLIENT_SECRET, WALLET_WEBHOOK_SECRET)")
+		return nil, nil, fmt.Errorf("reconciliation needs wallet configured (WALLET_BASE_URL, WALLET_TOKEN_URL, WALLET_CLIENT_ID, WALLET_CLIENT_SECRET, WALLET_WEBHOOK_SECRET)")
 	}
 	db, err := newDynamoDB(ctx, cfg)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
+	customers := repositories.NewCustomerRepository(db, cfg)
+	orgs := repositories.NewOrganizationRepository(db, cfg)
+	finance := financeInvoices(db, cfg, orgs, customers)
 	collector := services.NewCollector(
 		repositories.NewInvoiceRepository(db, cfg),
 		repositories.NewPaymentRepository(db, cfg),
-		repositories.NewCustomerRepository(db, cfg),
-		repositories.NewOrganizationRepository(db, cfg),
+		customers,
+		orgs,
 		repositories.NewSubscriptionRepository(db, cfg),
 		wallet.New(walletCfg),
-	)
+	).WithFinance(finance)
+	// The reconciler settles invoices the webhook missed, so it records them in
+	// Finanças too (spec § 3.8); the bill's id makes it a no-op when the webhook
+	// already did.
 	// The reconciler settles invoices too — that is its whole job — and somebody
 	// may well have the payment screen open when it does. Without this, the
 	// settlement that arrives through reconciliation is the one case that still
@@ -309,7 +329,7 @@ func BuildCollector(ctx context.Context, cfg *config.Config) (*services.Collecto
 			collector = collector.WithSettlementBus(bus)
 		}
 	}
-	return collector, nil
+	return collector, finance, nil
 }
 
 func newFiber(cfg *config.Config) *fiber.App {

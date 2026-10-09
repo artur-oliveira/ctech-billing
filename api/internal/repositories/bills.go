@@ -52,6 +52,7 @@ type billItem struct {
 	AutoSettle     bool     `dynamodbav:"auto_settle,omitempty"`
 	PaymentGroup   string   `dynamodbav:"payment_group,omitempty"`
 	TransactionIDs []string `dynamodbav:"transaction_ids"`
+	Credited       int64    `dynamodbav:"credited,omitempty"`
 
 	// Sparse index keys, present only while the bill is a forecast (open-index)
 	// and, when it auto-settles, until it is settled (schedule-index).
@@ -91,6 +92,7 @@ func (i billItem) bill() (finance.Bill, error) {
 		Status: finance.BillStatus(i.Status), Origin: finance.BillOrigin(i.Origin), OriginRef: i.OriginRef,
 		AutoSettle: i.AutoSettle, PaymentGroup: i.PaymentGroup,
 		TransactionIDs: append([]string(nil), i.TransactionIDs...),
+		Credited:       billing.Cents(i.Credited),
 	}, nil
 }
 
@@ -119,7 +121,8 @@ func newBillItem(sp space.ResolvedSpace, b finance.Bill, now time.Time) billItem
 		Competence: b.Competence.String(), Due: b.Due.String(), PaidDate: paid,
 		Status: string(b.Status), Origin: string(b.Origin), OriginRef: b.OriginRef,
 		AutoSettle: b.AutoSettle, PaymentGroup: b.PaymentGroup, TransactionIDs: b.TransactionIDs,
-		OpenPK: openPK, OpenSK: openSK, SchedulePK: schedPK, ScheduleSK: schedSK,
+		Credited: int64(b.Credited),
+		OpenPK:   openPK, OpenSK: openSK, SchedulePK: schedPK, ScheduleSK: schedSK,
 	}
 }
 

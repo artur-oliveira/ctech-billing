@@ -65,6 +65,10 @@ type creditNoteRow struct {
 	keys
 	PeriodAttrs
 	billing.CreditNote
+	// The finance replay queue (JobFinanceCredit), present only while a note on
+	// a PAID invoice has not reached both ledgers.
+	SchedulePK string `dynamodbav:"schedule_pk,omitempty"`
+	ScheduleSK string `dynamodbav:"schedule_sk,omitempty"`
 }
 
 type productRow struct {

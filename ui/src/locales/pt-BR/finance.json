@@ -103,6 +103,8 @@
     "openingFailed": "A conta foi criada, mas o saldo inicial não foi salvo.",
     "skipOpening": "Deixar sem saldo inicial",
     "defaultReceiving": "Conta padrão de recebimento",
+    "postCTechInvoices": "Lançar minhas faturas da CTech automaticamente neste espaço",
+    "postCTechInvoicesHelp": "Quando uma fatura sua da CTech é paga, ela entra aqui como despesa. Hoje vale para o espaço pessoal.",
     "none": "Nenhuma"
   },
   "cards": {
@@ -262,7 +264,9 @@
     "software_subscriptions": "Software e assinaturas",
     "marketing": "Marketing",
     "administrative_expenses": "Despesas administrativas",
-    "bank_fees": "Tarifas bancárias"
+    "bank_fees": "Tarifas bancárias",
+    "subscriptions_revenue": "Assinaturas",
+    "ctech_subscriptions": "Assinaturas CTech"
   },
   "import": {
     "account": "Conta",

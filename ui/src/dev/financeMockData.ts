@@ -49,6 +49,7 @@ interface SpaceState {
   bills: Bill[]
   recurrences: Recurrence[]
   defaultReceiving?: string
+  postCTechInvoices?: boolean
   seq: number
   /** Cash entries posted in this session; seeded balances predate them. */
   entries: MEntry[]
@@ -811,7 +812,12 @@ function route(method: string, path: string, r: Req, s: SpaceState, can: (v: Ver
     return ok(m)
   }
 
-  if (path === "/settings" && method === "get") return ok({default_receiving_account_id: s.defaultReceiving})
+  if (path === "/settings" && method === "get") return ok({default_receiving_account_id: s.defaultReceiving, post_ctech_invoices: s.postCTechInvoices !== false})
+  if (path === "/settings/post-ctech-invoices") {
+    if (!can("finance.configure")) return forbidden()
+    s.postCTechInvoices = body<{post_ctech_invoices: boolean}>(r).post_ctech_invoices
+    return ok({post_ctech_invoices: s.postCTechInvoices})
+  }
   if (path === "/settings/default-receiving-account") {
     if (!can("finance.configure")) return forbidden()
     s.defaultReceiving = body<{default_receiving_account_id: string}>(r).default_receiving_account_id

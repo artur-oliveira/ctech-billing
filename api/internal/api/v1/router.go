@@ -50,6 +50,10 @@ type Deps struct {
 	// The finance section's use cases; used only when Spaces is set.
 	FinanceBills *services.FinanceBills
 	FinanceJobs  *services.FinanceJobs
+	// FinanceInvoices is the posting rule for billing's own invoices (spec
+	// § 3.8). The console's credit-note route uses it; nil leaves credit notes
+	// out of Finanças.
+	FinanceInvoices *services.FinanceInvoices
 	// FinanceImports is F6: statement upload and reconciliation.
 	FinanceImports *services.FinanceImports
 	Recurrences    *repositories.RecurrenceRepository
@@ -248,6 +252,11 @@ func registerConsole(v1 fiber.Router, d Deps, h *handlers, auth fiber.Handler) {
 		credit:               d.CreditNotes,
 		invoicer:             d.Invoicer,
 		portalOrganizationID: d.PortalOrganizationID,
+	}
+	// Assigned only when set: a nil *FinanceInvoices in the interface field
+	// would not compare equal to nil.
+	if d.FinanceInvoices != nil {
+		ch.finance = d.FinanceInvoices
 	}
 
 	// /v1/me carries authentication and nothing else: which tenant this person
