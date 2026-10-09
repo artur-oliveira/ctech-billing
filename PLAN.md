@@ -674,6 +674,23 @@ gates nothing by plan.
       `planSettle`/`settleError` so another fact can commit with a settlement; (6) review: line text is
       bounded in bytes (what `Bill.Validate` counts) with control characters dropped. Not built: purging (ADR 0026's job
       is still unbuilt for every finance table, `imports` included).
+      **6.6 follow-up (2026-10-09):** (1) *Decision:* "Desfazer pagamento" does **not** reopen an import line; a line
+      that matched, created or was linked to a bill stays reconciled when that bill's payment is undone — the bank
+      statement says the money moved, so the statement resolves the line (no code change; this was already the
+      behaviour). (2) Expiry where it matters: the line DTO carries `expires_at` (the line's TTL); the "A conciliar" tab
+      says pending lines stay 90 days, and a pending line in its last 15 calendar days shows *expira em N dias* /
+      *expira hoje* (no banner). (3) **Link to a bill auto-settle already paid**, exact case only: a pending line is
+      also offered the paid bills of the import's account whose standing settlement was posted by the daily job
+      (`origin = auto_settle` on the ledger header — written since 6.3, so older auto-settled bills qualify too), same
+      direction, exactly the line's amount, paid within ±5 days, not linked yet; found by one range Query on the
+      account's entry partition (settlement entries with `ref = bill:{id}` and the line's signed amount), then one
+      read of each such bill and its settlement header (entries posted before 6.4 carry no ref and are not found).
+      `POST …/lines/:n/link {bill_id}` (`finance.import | finance.write`) posts **nothing**: one `TransactWriteItems`
+      sets `import_link` on the bill (conditional: still paid with the same transactions, `attribute_not_exists`) and
+      the line's decision (status `linked`). Two lines racing for one bill: one wins, the other is 409
+      `bill_already_linked` and stays pending; the same link again answers what the first did. A different amount
+      (interest, discount) is not offered — the person ignores the line. The console shows such a candidate as *já
+      pago automaticamente em DD/MM* with "Vincular" instead of "Dar baixa".
 - [x] 6.7 Billing integration — a paid invoice is revenue in the issuing organization's space and an
       expense in the paying person's own space; a credit note on a paid invoice takes its amount back from both.
       [Plan](docs/plans/2026-10-09-finance-6.7-billing-integration.md).
