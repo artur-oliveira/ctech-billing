@@ -625,7 +625,21 @@ gates nothing by plan.
       of `/console/finance` (Fiber mounts group handlers as prefix middleware), so `/spaces` answered 400
       without a mode and a person with no organization could not reach Finanças; the CORS preflight
       refused the space header, PATCH and PUT. The space header is now `X-Billing-Space`.
-- [ ] 6.5 Credit cards — F5, statement closing in the job.
+- [x] 6.5 Credit cards — F5 (cards, statements month by month, purchases in up to 48 installments
+      with a live preview, refund, advance, close now, pay), statement closing as `cmd/finance`'s third
+      step, statement bills in F2, one cash-flow line per card in F7, cards in F8.
+      **Shape:** a card is a liability account in the ledger plus `S → CARD#{id}` in the new `cards`
+      table (closing/due day, paying account, open month, version, close schedule key); purchases,
+      closed statements and items live under `S#CARD#{id}`. An open statement has **no stored total**:
+      it is its items, so a 48× purchase stays under the 100-item transaction limit. Every write that
+      adds or removes items conditions on the open month and bumps the card's version; closing
+      conditions on both, so a purchase racing the close is refused (and retried) rather than left out
+      of a frozen total. Closing freezes the total and creates the statement bill (deterministic id,
+      no recognition: the purchase already put the expense in the DRE; settling it clears the card,
+      cash flow `card:{id}`), or carries a negative total as a credit to the next month; a job that
+      missed days closes the months in order. A purchase dated in a closed month lands on the open one.
+      **Out:** opening debt on a card, interest/IOF lines (6.6 import), card installments in F1's
+      projection, business-day roll of due dates (the bill's due date is editable).
 - [ ] 6.6 Import and reconciliation — F6.
 - [ ] 6.7 Billing integration — `invoice.paid` as revenue in the issuing organization and as an
       expense in the paying customer's own space (personal or organization).
