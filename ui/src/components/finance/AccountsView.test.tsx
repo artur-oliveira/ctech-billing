@@ -93,11 +93,11 @@ describe("F8 — accounts", () => {
     await userEvent.click(await screen.findByRole("button", {name: "Nova conta ou categoria"}))
     await userEvent.type(screen.getByLabelText(/^Nome/), "Nubank")
     expect(screen.queryByLabelText("Em")).not.toBeInTheDocument()
-    await userEvent.type(screen.getByLabelText("Saldo inicial"), "-1.500,00")
+    await userEvent.type(screen.getByLabelText(/^Saldo inicial/), "-1.500,00")
     expect(screen.getByLabelText("Em")).toBeInTheDocument()
     await userEvent.click(screen.getByRole("button", {name: "Criar"}))
     await waitFor(() => expect(opening).toHaveBeenCalledWith(expect.anything(), "new", expect.objectContaining({amount: -150000}), expect.any(String)))
-    await waitFor(() => expect(screen.queryByLabelText("Saldo inicial")).not.toBeInTheDocument())
+    await waitFor(() => expect(screen.queryByLabelText(/^Saldo inicial/)).not.toBeInTheDocument())
   })
 
   it("keeps the account when the opening balance fails, and retries with the same key", async () => {
@@ -109,7 +109,7 @@ describe("F8 — accounts", () => {
     renderWithQuery(<AccountsView/>)
     await userEvent.click(await screen.findByRole("button", {name: "Nova conta ou categoria"}))
     await userEvent.type(screen.getByLabelText(/^Nome/), "Nubank")
-    await userEvent.type(screen.getByLabelText("Saldo inicial"), "1.500,00")
+    await userEvent.type(screen.getByLabelText(/^Saldo inicial/), "1.500,00")
     await userEvent.click(screen.getByRole("button", {name: "Criar"}))
     expect(await screen.findByText("A conta foi criada, mas o saldo inicial não foi lançado.")).toBeInTheDocument()
     expect(screen.getByRole("button", {name: "Deixar sem saldo inicial"})).toBeInTheDocument()
@@ -124,9 +124,9 @@ describe("F8 — accounts", () => {
     serve(ALL)
     renderWithQuery(<AccountsView/>)
     await userEvent.click(await screen.findByRole("button", {name: "Nova conta ou categoria"}))
-    expect(screen.getByLabelText("Saldo inicial")).toBeInTheDocument()
+    expect(screen.getByLabelText(/^Saldo inicial/)).toBeInTheDocument()
     await pick("Tipo", "Despesa")
-    expect(screen.queryByLabelText("Saldo inicial")).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/^Saldo inicial/)).not.toBeInTheDocument()
   })
 
   it("posts an opening balance on an account created before there was one", async () => {

@@ -48,7 +48,21 @@ export const apiClient = axios.create({
     : undefined,
 })
 
-apiClient.interceptors.request.use(config => {
+/**
+ * The first request made without a token waits for the session to be resumed.
+ * A hard reload renders and starts queries before the boot-time silent refresh
+ * has answered; sent bare, they come back 401 and only recover through the
+ * retry below. One shared check per page load: a visitor with no session is
+ * asked once, not on every request (the refresh itself is single-flight in
+ * @aoctech/auth-client, so the boot refresh and this one are one network call).
+ */
+let sessionCheck: Promise<unknown> | null = null
+
+apiClient.interceptors.request.use(async config => {
+  if (!accessToken && refresh) {
+    sessionCheck ??= refresh().catch(() => null)
+    await sessionCheck
+  }
   if (accessToken) config.headers.Authorization = `Bearer ${accessToken}`
   return config
 })

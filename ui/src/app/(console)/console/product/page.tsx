@@ -21,6 +21,7 @@ import {
 import type {ConsolePrice, DunningStep} from "@/lib/api/consoleTypes"
 import {useMode} from "@/lib/console/useMode"
 import {money} from "@/lib/format"
+import {limitMoneyDecimals} from "@/lib/money"
 import {useDocumentTitle} from "@/lib/hooks/useDocumentTitle"
 
 /**
@@ -284,7 +285,7 @@ function NewPriceDialog({
             id="price-amount"
             inputMode="decimal"
             value={amount}
-            onChange={event => setAmount(event.target.value)}
+            onChange={event => setAmount(limitMoneyDecimals(event.target.value))}
             placeholder="0,00"
           />
         </Field>

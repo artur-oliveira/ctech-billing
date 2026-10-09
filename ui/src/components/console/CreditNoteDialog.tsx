@@ -10,6 +10,7 @@ import {creditInvoice} from "@/lib/api/console"
 import type {ConsoleInvoice} from "@/lib/api/consoleTypes"
 import {useMode} from "@/lib/console/useMode"
 import {money} from "@/lib/format"
+import {limitMoneyDecimals} from "@/lib/money"
 
 /**
  * "Emitir nota de crédito", and the screen where immutability is taught rather
@@ -83,7 +84,7 @@ export function CreditNoteDialog({
             inputMode="decimal"
             placeholder="0,00"
             value={amount}
-            onChange={event => setAmount(event.target.value)}
+            onChange={event => setAmount(limitMoneyDecimals(event.target.value))}
           />
         </Field>
 

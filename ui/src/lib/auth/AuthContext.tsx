@@ -7,6 +7,7 @@ import {registerRefresh, setAccessToken} from "@/lib/api/client"
 import {MOCK_CUSTOMER, USE_MOCK} from "@/lib/mockConfig"
 
 import {decodeIdToken, doRefresh, logout as endSession, startOAuthFlow} from "./oauth"
+import {safeReturnTo} from "./returnTo"
 import {missingScopes, shouldUpgradeScopes} from "./scopes"
 
 interface Auth {
@@ -45,7 +46,7 @@ function upgradeScopes(token: string): boolean {
   try {
     window.sessionStorage.setItem(UPGRADE_KEY, String(now))
   } catch { /* see above */ }
-  void startOAuthFlow(window.location.pathname + window.location.search)
+  void startOAuthFlow(safeReturnTo(window.location.pathname + window.location.search))
   return true
 }
 

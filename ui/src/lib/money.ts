@@ -40,3 +40,9 @@ export function parseSignedMoney(input: string): number | null {
   const cents = parseMoney(negative ? s.slice(1) : s)
   return cents === null ? null : negative ? -cents : cents
 }
+
+/** What a money input keeps while typing: nothing past two decimals after the comma. */
+export function limitMoneyDecimals(typed: string): string {
+  const comma = typed.indexOf(",")
+  return comma < 0 ? typed : typed.slice(0, comma + 3)
+}
