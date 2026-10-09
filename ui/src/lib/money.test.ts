@@ -1,6 +1,6 @@
 import {describe, expect, it} from "vitest"
 
-import {formatMoneyInput, parseMoney} from "@/lib/money"
+import {formatMoneyInput, parseMoney, parseSignedMoney} from "@/lib/money"
 
 describe("parseMoney", () => {
   it.each([
@@ -41,5 +41,18 @@ describe("parseMoney", () => {
     for (const cents of [1, 5, 99, 100, 123456, 100000000]) {
       expect(parseMoney(formatMoneyInput(cents))).toBe(cents)
     }
+  })
+})
+
+describe("parseSignedMoney", () => {
+  it("reads an overdrawn balance with either minus sign", () => {
+    expect(parseSignedMoney("-1.500,00")).toBe(-150000)
+    expect(parseSignedMoney("−20")).toBe(-2000)
+    expect(parseSignedMoney("1.500,00")).toBe(150000)
+  })
+  it("refuses what parseMoney refuses, and a lone sign", () => {
+    expect(parseSignedMoney("-")).toBeNull()
+    expect(parseSignedMoney("--5")).toBeNull()
+    expect(parseSignedMoney("-0")).toBeNull()
   })
 })

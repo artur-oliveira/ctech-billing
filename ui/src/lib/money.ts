@@ -29,3 +29,14 @@ export function formatMoneyInput(cents: number): string {
   const whole = String(Math.trunc(cents / 100)).replace(/\B(?=(\d{3})+(?!\d))/g, ".")
   return `${whole},${String(cents % 100).padStart(2, "0")}`
 }
+
+/**
+ * parseMoney for a balance, which may be negative (an overdrawn account is
+ * real). A leading "-" or "−" negates; zero is still refused.
+ */
+export function parseSignedMoney(input: string): number | null {
+  const s = input.trim()
+  const negative = s.startsWith("-") || s.startsWith("−")
+  const cents = parseMoney(negative ? s.slice(1) : s)
+  return cents === null ? null : negative ? -cents : cents
+}

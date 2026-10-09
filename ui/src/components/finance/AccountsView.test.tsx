@@ -85,6 +85,50 @@ describe("F8 — accounts", () => {
     expect(first[2]).toBe(second[2]) // the same intent, the same key
   })
 
+  it("posts an opening balance right after creating an asset account", async () => {
+    serve(ALL)
+    vi.spyOn(finance, "createAccount").mockResolvedValue({id: "new", name: "Nubank", class: "asset", system: false, archived: false, balance: 0})
+    const opening = vi.spyOn(finance, "postOpeningBalance").mockResolvedValue({transaction_id: "t"})
+    renderWithQuery(<AccountsView/>)
+    await userEvent.click(await screen.findByRole("button", {name: "Nova conta ou categoria"}))
+    await userEvent.type(screen.getByLabelText(/^Nome/), "Nubank")
+    expect(screen.queryByLabelText("Em")).not.toBeInTheDocument()
+    await userEvent.type(screen.getByLabelText("Saldo inicial"), "-1.500,00")
+    expect(screen.getByLabelText("Em")).toBeInTheDocument()
+    await userEvent.click(screen.getByRole("button", {name: "Criar"}))
+    await waitFor(() => expect(opening).toHaveBeenCalledWith(expect.anything(), "new", expect.objectContaining({amount: -150000}), expect.any(String)))
+    await waitFor(() => expect(screen.queryByLabelText("Saldo inicial")).not.toBeInTheDocument())
+  })
+
+  it("keeps the account when the opening balance fails, and retries with the same key", async () => {
+    serve(ALL)
+    const create = vi.spyOn(finance, "createAccount").mockResolvedValue({id: "new", name: "Nubank", class: "asset", system: false, archived: false, balance: 0})
+    const opening = vi.spyOn(finance, "postOpeningBalance")
+      .mockRejectedValueOnce({code: "ERR_NETWORK"})
+      .mockResolvedValueOnce({transaction_id: "t"})
+    renderWithQuery(<AccountsView/>)
+    await userEvent.click(await screen.findByRole("button", {name: "Nova conta ou categoria"}))
+    await userEvent.type(screen.getByLabelText(/^Nome/), "Nubank")
+    await userEvent.type(screen.getByLabelText("Saldo inicial"), "1.500,00")
+    await userEvent.click(screen.getByRole("button", {name: "Criar"}))
+    expect(await screen.findByText("A conta foi criada, mas o saldo inicial não foi lançado.")).toBeInTheDocument()
+    expect(screen.getByRole("button", {name: "Deixar sem saldo inicial"})).toBeInTheDocument()
+    await userEvent.click(screen.getByRole("button", {name: "Tentar de novo"}))
+    await waitFor(() => expect(opening).toHaveBeenCalledTimes(2))
+    expect(opening.mock.calls[0][3]).toBe(opening.mock.calls[1][3])
+    expect(create).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(screen.queryByText(/saldo inicial não foi lançado/)).not.toBeInTheDocument())
+  })
+
+  it("never offers an opening balance on a category", async () => {
+    serve(ALL)
+    renderWithQuery(<AccountsView/>)
+    await userEvent.click(await screen.findByRole("button", {name: "Nova conta ou categoria"}))
+    expect(screen.getByLabelText("Saldo inicial")).toBeInTheDocument()
+    await pick("Tipo", "Despesa")
+    expect(screen.queryByLabelText("Saldo inicial")).not.toBeInTheDocument()
+  })
+
   it("asks before archiving and says nothing is deleted", async () => {
     serve(ALL)
     const archive = vi.spyOn(finance, "archiveAccount").mockResolvedValue(undefined)
