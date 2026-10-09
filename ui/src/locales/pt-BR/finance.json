@@ -262,7 +262,9 @@
     "software_subscriptions": "Software e assinaturas",
     "marketing": "Marketing",
     "administrative_expenses": "Despesas administrativas",
-    "bank_fees": "Tarifas bancárias"
+    "bank_fees": "Tarifas bancárias",
+    "subscriptions_revenue": "Assinaturas",
+    "ctech_subscriptions": "Assinaturas CTech"
   },
   "import": {
     "account": "Conta",

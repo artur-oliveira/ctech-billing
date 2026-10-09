@@ -13,4 +13,12 @@ describe("accountName", () => {
     await changeAppLanguage("pt-BR")
     expect(accountName({name: "Salário", system_key: "salary"})).toBe("Salário")
   })
+
+  it("names the categories billing's own invoices post under", async () => {
+    await changeAppLanguage("en")
+    expect(accountName({name: "Assinaturas", system_key: "subscriptions_revenue"})).toBe("Subscriptions")
+    expect(accountName({name: "Assinaturas CTech", system_key: "ctech_subscriptions"})).toBe("CTech subscriptions")
+    await changeAppLanguage("pt-BR")
+    expect(accountName({name: "Assinaturas CTech", system_key: "ctech_subscriptions"})).toBe("Assinaturas CTech")
+  })
 })

@@ -262,7 +262,9 @@
     "software_subscriptions": "Software and subscriptions",
     "marketing": "Marketing",
     "administrative_expenses": "Administrative expenses",
-    "bank_fees": "Bank fees"
+    "bank_fees": "Bank fees",
+    "subscriptions_revenue": "Subscriptions",
+    "ctech_subscriptions": "CTech subscriptions"
   },
   "import": {
     "account": "Account",
