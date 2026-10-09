@@ -1,5 +1,6 @@
 "use client"
 
+import limits from "@/lib/limits.json"
 import {Button, EmptyState, Field, Input, Skeleton} from "@aoctech/ui"
 import {useQuery} from "@tanstack/react-query"
 import {Landmark} from "lucide-react"
@@ -16,7 +17,7 @@ import {useFinanceMutation} from "@/lib/finance/useFinanceMutation"
 import {useFinanceCtx, useFinanceSpaces} from "@/lib/finance/useFinanceSpaces"
 import {money} from "@/lib/format"
 import {todayIso} from "@/lib/finance/today"
-import {limitMoneyDecimals, parseSignedMoney} from "@/lib/money"
+import {maskMoney, parseSignedMoney} from "@/lib/money"
 
 const SECTIONS: {title: string; classes: AccountClass[]}[] = [
   {title: "Contas", classes: ["asset"]},
@@ -152,10 +153,10 @@ function OpeningForm({account, onDone}: {account: Account; onDone: () => void}) 
       }}
     >
       <Field label="Valor" htmlFor={`ob-${account.id}`}>
-        <Input id={`ob-${account.id}`} inputMode="decimal" placeholder="0,00" value={text} onChange={e => setText(limitMoneyDecimals(e.target.value))} autoFocus/>
+        <Input id={`ob-${account.id}`} inputMode="decimal" placeholder="0,00" value={text} onChange={e => setText(maskMoney(e.target.value, {signed: true}))} autoFocus/>
       </Field>
       <Field label="Em" htmlFor={`obd-${account.id}`}>
-        <DateField id={`obd-${account.id}`} value={date} onValueChange={setDate}/>
+        <DateField id={`obd-${account.id}`} min={limits.minDate} max={todayIso()} value={date} onValueChange={setDate}/>
       </Field>
       <div className="flex gap-2 sm:pt-6">
         <Button type="button" variant="outline" size="sm" onClick={onDone}>Fechar</Button>
@@ -199,7 +200,7 @@ function AccountForm({onDone}: {onDone: () => void}) {
       }}
     >
       <Field label="Nome" htmlFor="acc-name" required>
-        <Input id="acc-name" value={name} onChange={e => setName(e.target.value)} autoFocus/>
+        <Input id="acc-name" maxLength={limits.text.accountName} value={name} onChange={e => setName(e.target.value)} autoFocus/>
       </Field>
       <Field label="Tipo" htmlFor="acc-class">
         <Select id="acc-class" value={cls} onValueChange={v => setCls(v as AccountClass)} options={(["asset", "income", "expense"] as AccountClass[]).map(c => ({value: c, label: CLASS_LABEL[c]}))}/>
@@ -211,11 +212,11 @@ function AccountForm({onDone}: {onDone: () => void}) {
       ) : asset ? (
         <>
           <Field label="Saldo inicial (opcional)" htmlFor="acc-opening">
-            <Input id="acc-opening" inputMode="decimal" placeholder="0,00" value={openingText} onChange={e => setOpeningText(limitMoneyDecimals(e.target.value))} aria-invalid={openingInvalid}/>
+            <Input id="acc-opening" inputMode="decimal" placeholder="0,00" value={openingText} onChange={e => setOpeningText(maskMoney(e.target.value, {signed: true}))} aria-invalid={openingInvalid}/>
           </Field>
           {openingText.trim() !== "" && (
             <Field label="Em" htmlFor="acc-opening-date">
-              <DateField id="acc-opening-date" value={openingDate} onValueChange={setOpeningDate}/>
+              <DateField id="acc-opening-date" min={limits.minDate} max={todayIso()} value={openingDate} onValueChange={setOpeningDate}/>
             </Field>
           )}
         </>

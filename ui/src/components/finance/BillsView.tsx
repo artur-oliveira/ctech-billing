@@ -1,5 +1,6 @@
 "use client"
 
+import limits from "@/lib/limits.json"
 import {Badge, Button, EmptyState, Field, Input, Skeleton, Switch} from "@aoctech/ui"
 import {useQuery, useQueryClient} from "@tanstack/react-query"
 import {AlertCircle, CalendarClock, Clock, Receipt} from "lucide-react"
@@ -12,12 +13,12 @@ import {messageFor, statusOf} from "@/lib/api/client"
 import {cancelBill, createBill, financeKeys, listAccounts, listBills, patchBill, settleBill} from "@/lib/api/finance"
 import type {Account, Bill, BillPatch, Bucket, Direction, NewBill, Settlement} from "@/lib/api/financeTypes"
 import {BUCKET_LABEL} from "@/lib/finance/labels"
-import {monthLabel, todayIso} from "@/lib/finance/today"
+import {addYearsIso, monthLabel, todayIso} from "@/lib/finance/today"
 import {useFinanceMutation} from "@/lib/finance/useFinanceMutation"
 import {type FinanceCtx} from "@/lib/api/finance"
 import {useFinanceCtx, useFinanceSpaces} from "@/lib/finance/useFinanceSpaces"
 import {money, shortDate} from "@/lib/format"
-import {formatMoneyInput, limitMoneyDecimals, parseMoney} from "@/lib/money"
+import {formatMoneyInput, maskMoney, parseMoney} from "@/lib/money"
 
 const GROUPS: {bucket: Bucket; title: string}[] = [
   {bucket: "overdue", title: "Vencidas"},
@@ -220,10 +221,10 @@ function SettleForm({bill, accounts, onDone}: {bill: Bill; accounts: Account[]; 
       }}
     >
       <Field label={bill.direction === "payable" ? "Data do pagamento" : "Data do recebimento"} htmlFor={`d-${bill.id}`}>
-        <DateField id={`d-${bill.id}`} value={date} onValueChange={setDate}/>
+        <DateField id={`d-${bill.id}`} min={limits.minDate} max={todayIso()} value={date} onValueChange={setDate}/>
       </Field>
       <Field label={bill.direction === "payable" ? "Valor pago" : "Valor recebido"} htmlFor={`v-${bill.id}`}>
-        <Input id={`v-${bill.id}`} inputMode="decimal" value={amountText} onChange={e => setAmountText(limitMoneyDecimals(e.target.value))} aria-invalid={paid === null}/>
+        <Input id={`v-${bill.id}`} inputMode="decimal" value={amountText} onChange={e => setAmountText(maskMoney(e.target.value))} aria-invalid={paid === null}/>
       </Field>
       {gap !== 0 && (
         <>
@@ -277,9 +278,9 @@ function EditForm({bill, accounts, onDone}: {bill: Bill; accounts: Account[]; on
         edit.mutate(body)
       }}
     >
-      <Field label="Descrição" htmlFor={`ed-${bill.id}`}><Input id={`ed-${bill.id}`} value={description} onChange={e => setDescription(e.target.value)}/></Field>
-      <Field label="Valor" htmlFor={`ev-${bill.id}`}><Input id={`ev-${bill.id}`} inputMode="decimal" value={amountText} onChange={e => setAmountText(limitMoneyDecimals(e.target.value))} aria-invalid={amount === null}/></Field>
-      <Field label="Vencimento" htmlFor={`eu-${bill.id}`}><DateField id={`eu-${bill.id}`} value={due} onValueChange={setDue}/></Field>
+      <Field label="Descrição" htmlFor={`ed-${bill.id}`}><Input id={`ed-${bill.id}`} maxLength={limits.text.description} value={description} onChange={e => setDescription(e.target.value)}/></Field>
+      <Field label="Valor" htmlFor={`ev-${bill.id}`}><Input id={`ev-${bill.id}`} inputMode="decimal" value={amountText} onChange={e => setAmountText(maskMoney(e.target.value))} aria-invalid={amount === null}/></Field>
+      <Field label="Vencimento" htmlFor={`eu-${bill.id}`}><DateField id={`eu-${bill.id}`} min={limits.minDate} max={addYearsIso(todayIso(), limits.maxFutureYears)} value={due} onValueChange={setDue}/></Field>
       <Field label="Categoria" htmlFor={`ec-${bill.id}`}>
         <Select id={`ec-${bill.id}`} value={category} onValueChange={setCategory} options={cats.map(a => ({value: a.id, label: a.name}))}/>
       </Field>
@@ -344,11 +345,11 @@ function NewBillPanel({direction, accounts, onDone}: {direction: Direction; acco
           })
         }}
       >
-        <Field label="Descrição" htmlFor="nb-desc"><Input id="nb-desc" value={description} onChange={e => setDescription(e.target.value)} autoFocus/></Field>
-        <Field label="Valor" htmlFor="nb-amount" required><Input id="nb-amount" inputMode="decimal" placeholder="0,00" value={amountText} onChange={e => setAmountText(limitMoneyDecimals(e.target.value))}/></Field>
-        <Field label="Vencimento" htmlFor="nb-due" required><DateField id="nb-due" value={due} onValueChange={setDue}/></Field>
+        <Field label="Descrição" htmlFor="nb-desc"><Input id="nb-desc" maxLength={limits.text.description} value={description} onChange={e => setDescription(e.target.value)} autoFocus/></Field>
+        <Field label="Valor" htmlFor="nb-amount" required><Input id="nb-amount" inputMode="decimal" placeholder="0,00" value={amountText} onChange={e => setAmountText(maskMoney(e.target.value))}/></Field>
+        <Field label="Vencimento" htmlFor="nb-due" required><DateField id="nb-due" min={limits.minDate} max={addYearsIso(todayIso(), limits.maxFutureYears)} value={due} onValueChange={setDue}/></Field>
         <Field label="Competência (DRE)" htmlFor="nb-comp" hint="Em branco, vale o vencimento.">
-          <DateField id="nb-comp" value={competence} onValueChange={setCompetence} placeholder="Igual ao vencimento"/>
+          <DateField id="nb-comp" min={limits.minDate} max={addYearsIso(todayIso(), limits.maxFutureYears)} value={competence} onValueChange={setCompetence} placeholder="Igual ao vencimento"/>
         </Field>
         <Field label="Categoria" htmlFor="nb-cat" required hint={cats.length === 0 ? `Nenhuma categoria de ${direction === "payable" ? "despesa" : "receita"}. Crie uma em Contas.` : undefined}>
           <Select id="nb-cat" value={category} onValueChange={setCategory} options={cats.map(a => ({value: a.id, label: a.name}))}/>

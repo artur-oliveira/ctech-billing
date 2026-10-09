@@ -1,5 +1,6 @@
 "use client"
 
+import limits from "@/lib/limits.json"
 import {Button, EmptyState, Field, Input, Modal, Skeleton} from "@aoctech/ui"
 import {useMutation, useQuery, useQueryClient} from "@tanstack/react-query"
 import {Package} from "lucide-react"
@@ -150,6 +151,7 @@ function NewProductDialog({
         <Field label="Nome" htmlFor="product-name">
           <Input
             id="product-name"
+            maxLength={limits.text.productName}
             value={name}
             onChange={event => setName(event.target.value)}
             placeholder="DF-e Avançado"
@@ -162,6 +164,7 @@ function NewProductDialog({
         >
           <Input
             id="product-owner"
+            maxLength={limits.text.ownerKey}
             value={ownerKey}
             onChange={event => setOwnerKey(event.target.value)}
             placeholder="dfe"

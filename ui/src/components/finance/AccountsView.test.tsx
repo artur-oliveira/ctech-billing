@@ -120,6 +120,13 @@ describe("F8 — accounts", () => {
     await waitFor(() => expect(screen.queryByText(/saldo inicial não foi lançado/)).not.toBeInTheDocument())
   })
 
+  it("bounds the name to what the API accepts", async () => {
+    serve(ALL)
+    renderWithQuery(<AccountsView/>)
+    await userEvent.click(await screen.findByRole("button", {name: "Nova conta ou categoria"}))
+    expect(screen.getByLabelText(/^Nome/)).toHaveAttribute("maxLength", "80")
+  })
+
   it("never offers an opening balance on a category", async () => {
     serve(ALL)
     renderWithQuery(<AccountsView/>)

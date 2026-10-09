@@ -21,7 +21,7 @@ import {
 import type {ConsolePrice, DunningStep} from "@/lib/api/consoleTypes"
 import {useMode} from "@/lib/console/useMode"
 import {money} from "@/lib/format"
-import {limitMoneyDecimals} from "@/lib/money"
+import {maskMoney, parseMoney} from "@/lib/money"
 import {useDocumentTitle} from "@/lib/hooks/useDocumentTitle"
 
 /**
@@ -215,8 +215,10 @@ function NewPriceDialog({
   const [amount, setAmount] = useState("")
   const [type, setType] = useState<"fixed" | "metered">("fixed")
 
-  const cents = Math.round(Number(amount.replace(",", ".")) * 100)
-  const valid = Number.isFinite(cents) && cents >= 0 && amount.trim() !== ""
+  // A price may be zero (free); anything else goes through the same pt-BR parse
+  // as every money field, never through a float.
+  const cents = /^0+(,0{0,2})?$/.test(amount.trim()) ? 0 : (parseMoney(amount) ?? -1)
+  const valid = cents >= 0 && amount.trim() !== ""
 
   const create = useMutation({
     mutationFn: () =>
@@ -285,7 +287,7 @@ function NewPriceDialog({
             id="price-amount"
             inputMode="decimal"
             value={amount}
-            onChange={event => setAmount(limitMoneyDecimals(event.target.value))}
+            onChange={event => setAmount(maskMoney(event.target.value))}
             placeholder="0,00"
           />
         </Field>

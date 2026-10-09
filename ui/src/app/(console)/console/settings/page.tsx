@@ -1,5 +1,6 @@
 "use client"
 
+import limits from "@/lib/limits.json"
 import {Alert, Button, Field, Input, Modal, Skeleton} from "@aoctech/ui"
 import {useMutation, useQuery, useQueryClient} from "@tanstack/react-query"
 import {useState} from "react"
@@ -181,20 +182,20 @@ function IssuerEditor({
     >
       <div className="space-y-4">
         <Field label="Razão social" htmlFor="issuer-legal-name">
-          <Input id="issuer-legal-name" placeholder="A O CARVALHO TECH LTDA" {...field("legal_name")}/>
+          <Input id="issuer-legal-name" maxLength={limits.text.legalName} placeholder="A O CARVALHO TECH LTDA" {...field("legal_name")}/>
         </Field>
         <Field label="CNPJ" htmlFor="issuer-tax-id">
-          <Input id="issuer-tax-id" placeholder="12.345.678/0001-90" {...field("tax_id")}/>
+          <Input id="issuer-tax-id" maxLength={limits.text.taxID} placeholder="12.345.678/0001-90" {...field("tax_id")}/>
         </Field>
         <Field label="Endereço" htmlFor="issuer-address">
-          <Input id="issuer-address" placeholder="Rua Exemplo, 100 • São Paulo/SP" {...field("address")}/>
+          <Input id="issuer-address" maxLength={limits.text.address} placeholder="Rua Exemplo, 100 • São Paulo/SP" {...field("address")}/>
         </Field>
         <Field
           label="E-mail no documento"
           htmlFor="issuer-email"
           hint="Para onde o cliente escreve sobre a cobrança. Não é o remetente dos lembretes."
         >
-          <Input id="issuer-email" placeholder="cobranca@exemplo.com.br" {...field("email")}/>
+          <Input id="issuer-email" type="email" maxLength={limits.text.email} placeholder="cobranca@exemplo.com.br" {...field("email")}/>
         </Field>
       </div>
     </Modal>

@@ -1,5 +1,6 @@
 "use client"
 
+import limits from "@/lib/limits.json"
 import {Checkbox, Field, Input, Modal} from "@aoctech/ui"
 import {useMutation} from "@tanstack/react-query"
 import {useState} from "react"
@@ -10,7 +11,7 @@ import {creditInvoice} from "@/lib/api/console"
 import type {ConsoleInvoice} from "@/lib/api/consoleTypes"
 import {useMode} from "@/lib/console/useMode"
 import {money} from "@/lib/format"
-import {limitMoneyDecimals} from "@/lib/money"
+import {maskMoney, parseMoney} from "@/lib/money"
 
 /**
  * "Emitir nota de crédito", and the screen where immutability is taught rather
@@ -42,8 +43,8 @@ export function CreditNoteDialog({
   const [reason, setReason] = useState("")
   const [refunded, setRefunded] = useState(false)
 
-  const cents = Math.round(Number(amount.replace(",", ".")) * 100)
-  const valid = Number.isFinite(cents) && cents > 0 && cents <= remaining && reason.trim() !== ""
+  const cents = parseMoney(amount) ?? 0
+  const valid = cents > 0 && cents <= remaining && reason.trim() !== ""
 
   const issue = useMutation({
     mutationFn: () =>
@@ -84,7 +85,7 @@ export function CreditNoteDialog({
             inputMode="decimal"
             placeholder="0,00"
             value={amount}
-            onChange={event => setAmount(limitMoneyDecimals(event.target.value))}
+            onChange={event => setAmount(maskMoney(event.target.value))}
           />
         </Field>
 
@@ -95,6 +96,7 @@ export function CreditNoteDialog({
         >
           <Input
             id="credit-reason"
+            maxLength={limits.text.reason}
             value={reason}
             onChange={event => setReason(event.target.value)}
             placeholder="Cobrança em duplicidade"
