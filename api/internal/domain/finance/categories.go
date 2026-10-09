@@ -27,6 +27,7 @@ func DefaultCategories(personal bool) []LedgerAccount {
 			out("educacao", "Educação", GroupOperatingExpenses),
 			out("lazer", "Lazer", GroupOperatingExpenses),
 			out("assinaturas", "Assinaturas e serviços", GroupOperatingExpenses),
+			BillingCategory(Payable),
 			out("impostos-taxas", "Impostos e taxas", GroupOperatingExpenses),
 			out("outras-despesas", "Outras despesas", GroupOther),
 		}, gaps...)
@@ -34,12 +35,14 @@ func DefaultCategories(personal bool) []LedgerAccount {
 	return append([]LedgerAccount{
 		in("vendas", "Vendas", GroupGrossRevenue),
 		in("servicos", "Prestação de serviços", GroupGrossRevenue),
+		BillingCategory(Receivable),
 		in("rendimentos", "Rendimentos", GroupFinancialResult),
 		out("impostos-vendas", "Impostos sobre vendas", GroupDeductions),
 		out("custo-vendas", "Custo das vendas e serviços", GroupCosts),
 		out("pessoal", "Salários e encargos", GroupOperatingExpenses),
 		out("aluguel", "Aluguel", GroupOperatingExpenses),
 		out("software", "Software e assinaturas", GroupOperatingExpenses),
+		BillingCategory(Payable),
 		out("marketing", "Marketing", GroupOperatingExpenses),
 		out("administrativas", "Despesas administrativas", GroupOperatingExpenses),
 		out("tarifas-bancarias", "Tarifas bancárias", GroupFinancialResult),
@@ -50,30 +53,53 @@ func DefaultCategories(personal bool) []LedgerAccount {
 // categoryKeys maps a default category id (without the "cat-" prefix) to its
 // stable system key. "rendimentos" and "outras-despesas" are shared by both sets.
 var categoryKeys = map[string]string{
-	"juros-multas":      "interest_and_fines",
-	"descontos-obtidos": "discounts_obtained",
-	"salario":           "salary",
-	"rendimentos":       "investment_income",
-	"outras-receitas":   "other_income",
-	"moradia":           "housing",
-	"alimentacao":       "food",
-	"transporte":        "transport",
-	"saude":             "health",
-	"educacao":          "education",
-	"lazer":             "leisure",
-	"assinaturas":       "subscriptions_services",
-	"impostos-taxas":    "taxes_and_fees",
-	"outras-despesas":   "other_expenses",
-	"vendas":            "sales",
-	"servicos":          "services_revenue",
-	"impostos-vendas":   "sales_taxes",
-	"custo-vendas":      "cost_of_sales",
-	"pessoal":           "payroll_and_charges",
-	"aluguel":           "rent",
-	"software":          "software_subscriptions",
-	"marketing":         "marketing",
-	"administrativas":   "administrative_expenses",
-	"tarifas-bancarias": "bank_fees",
+	"juros-multas":        "interest_and_fines",
+	"descontos-obtidos":   "discounts_obtained",
+	"salario":             "salary",
+	"rendimentos":         "investment_income",
+	"outras-receitas":     "other_income",
+	"moradia":             "housing",
+	"alimentacao":         "food",
+	"transporte":          "transport",
+	"saude":               "health",
+	"educacao":            "education",
+	"lazer":               "leisure",
+	"assinaturas":         "subscriptions_services",
+	"impostos-taxas":      "taxes_and_fees",
+	"outras-despesas":     "other_expenses",
+	"vendas":              "sales",
+	"servicos":            "services_revenue",
+	"impostos-vendas":     "sales_taxes",
+	"custo-vendas":        "cost_of_sales",
+	"pessoal":             "payroll_and_charges",
+	"aluguel":             "rent",
+	"software":            "software_subscriptions",
+	"marketing":           "marketing",
+	"administrativas":     "administrative_expenses",
+	"tarifas-bancarias":   "bank_fees",
+	"assinaturas-receita": "subscriptions_revenue",
+	"assinaturas-ctech":   "ctech_subscriptions",
 }
 
 func systemKey(id string) string { return categoryKeys[id] }
+
+// The categories billing's own invoices post under (spec § 3.8): what an
+// organization's paid invoices earn, and what a space pays CTech. Seeded with
+// every space; the posting rule also ensures them by id, so a space that
+// predates them, or whose person already used the name, still gets its bill.
+const (
+	CategorySubscriptionRevenue = "cat-assinaturas-receita"
+	CategoryCTechSubscriptions  = "cat-assinaturas-ctech"
+)
+
+// BillingCategory is the category a paid invoice posts under, by the side of the
+// invoice a space is on: revenue for the issuer, an expense for the payer. The
+// seeded defaults are built from it, so the two can never disagree.
+func BillingCategory(dir Direction) LedgerAccount {
+	if dir == Receivable {
+		return LedgerAccount{ID: CategorySubscriptionRevenue, Name: "Assinaturas", Class: ClassIncome,
+			Group: GroupGrossRevenue, SystemKey: systemKey("assinaturas-receita")}
+	}
+	return LedgerAccount{ID: CategoryCTechSubscriptions, Name: "Assinaturas CTech", Class: ClassExpense,
+		Group: GroupOperatingExpenses, SystemKey: systemKey("assinaturas-ctech")}
+}

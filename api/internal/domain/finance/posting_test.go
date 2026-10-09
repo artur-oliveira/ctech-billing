@@ -227,3 +227,51 @@ func TestSettlingAStatementBillClearsTheCard(t *testing.T) {
 		}
 	}
 }
+
+// Review Focus 2: a partial credit takes back exactly its amount, and recognise +
+// settle + credit nets the category and the cash account to what was kept.
+func TestCreditBillIsTheOppositeOfRecognisingAndSettling(t *testing.T) {
+	d := brcal.New(2026, time.March, 5)
+	for _, dir := range []Direction{Receivable, Payable} {
+		b := BillFacts{Direction: dir, Amount: 4990, CategoryID: "cat", AccountID: "bank"}
+		rec, _ := RecognizeBill(sys, b, d)
+		set, _ := SettleBill(sys, b, 4990, "", d)
+		credit, err := CreditBill(b, 1990, d)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if credit.Kind != KindAdjustment || credit.Adjusts != "" || len(credit.Legs) != 2 {
+			t.Fatalf("%s: credit = %+v", dir, credit)
+		}
+		net := balances(rec, set, credit)
+		if dir == Payable {
+			// The expense is a debit that stays at 3000; 3000 of cash left.
+			if net["cat"] != 3000 || net["bank"] != -3000 {
+				t.Errorf("payable nets = %v", net)
+			}
+		} else if net["cat"] != -3000 || net["bank"] != 3000 {
+			t.Errorf("receivable nets = %v", net)
+		}
+		if net[sys.Payables] != 0 || net[sys.Receivables] != 0 {
+			t.Errorf("%s: the credit left payables/receivables open: %v", dir, net)
+		}
+		for _, l := range credit.Legs {
+			if l.AccountID == "bank" && l.Flow != "cat" {
+				t.Errorf("%s: the cash leg's flow = %q, want the category", dir, l.Flow)
+			}
+		}
+	}
+}
+
+func TestCreditBillRefusesNothingAndMoreThanTheBill(t *testing.T) {
+	b := BillFacts{Direction: Receivable, Amount: 4990, CategoryID: "cat", AccountID: "bank"}
+	d := brcal.New(2026, time.March, 5)
+	for _, amount := range []billing.Cents{0, -1, 4991} {
+		if _, err := CreditBill(b, amount, d); !errors.Is(err, ErrInvalidTransaction) {
+			t.Errorf("CreditBill(%d) err = %v", amount, err)
+		}
+	}
+	if _, err := CreditBill(b, 4990, d); err != nil {
+		t.Errorf("crediting the whole bill: %v", err)
+	}
+}
