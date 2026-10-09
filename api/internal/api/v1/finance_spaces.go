@@ -3,6 +3,8 @@ package v1
 import (
 	"context"
 	"log/slog"
+	"slices"
+	"strings"
 
 	"github.com/gofiber/fiber/v3"
 
@@ -17,11 +19,16 @@ type spaceLister interface {
 }
 
 type spaceDTO struct {
-	Kind           string   `json:"kind"`
-	OrganizationID string   `json:"organization_id,omitempty"`
-	Label          string   `json:"label"`
-	Role           string   `json:"role,omitempty"`
-	Verbs          []string `json:"verbs"`
+	// Selector is what X-Billing-Space carries for this space: "personal" or
+	// "org:{id}". The console never builds one from anything else.
+	Selector    string     `json:"selector"`
+	Kind        space.Kind `json:"kind"`
+	DisplayName string     `json:"display_name"`
+	Role        string     `json:"role,omitempty"`
+	Verbs       []string   `json:"verbs"`
+	// ManagePeople is true for the owner of a personal workspace only: the one
+	// person ctech-account lets invite, change and remove there (ADR 0027).
+	ManagePeople bool `json:"manage_people"`
 }
 
 // mountSpaces registers GET /spaces. It is deliberately outside the route table
@@ -32,33 +39,56 @@ func mountSpaces(router fiber.Router, h *financeHandlers) {
 	router.Get("/spaces", middleware.RequireUserScope(middleware.ScopeFinanceRead), h.listSpaces)
 }
 
-// listSpaces answers the switcher. The list is INFORMATION: ResolveSpace
-// re-authorizes every finance request, so a stale or generous list cannot grant
-// access, and the person asked about is always the token's subject — never a
-// value from the request.
+// listSpaces answers the switcher: Pessoal, then the person's personal
+// workspaces, then their organizations, each group by name (spec § 5.1). The
+// list is INFORMATION: ResolveSpace re-authorizes every finance request, so a
+// stale or generous list cannot grant access, and the person asked about is
+// always the token's subject — never a value from the request.
 func (h *financeHandlers) listSpaces(c fiber.Ctx) error {
 	sub := middleware.GetClaims(c).Sub
 	out := struct {
 		Spaces                   []spaceDTO `json:"spaces"`
 		OrganizationsUnavailable bool       `json:"organizations_unavailable"`
-	}{Spaces: []spaceDTO{{Kind: "personal", Label: "Pessoal", Verbs: space.All.Names()}}}
+	}{Spaces: []spaceDTO{{Selector: "personal", Kind: space.KindPersonalDefault, DisplayName: "Pessoal", Verbs: space.All.Names()}}}
 
-	orgs, err := h.spaces.Organizations(c.Context(), sub)
+	workspaces, err := h.spaces.Organizations(c.Context(), sub)
 	if err != nil {
 		// The personal space needs no account; say the rest is unavailable rather
 		// than failing the whole answer.
-		slog.Warn("finance: listing organizations failed", "error", err)
+		slog.Warn("finance: listing workspaces failed", "error", err)
 		out.OrganizationsUnavailable = true
 		return c.JSON(out)
 	}
-	for _, o := range orgs {
-		verbs := space.VerbsForRole(o.Role)
-		if verbs == 0 {
+	var personal, orgs []spaceDTO
+	for _, w := range workspaces {
+		kind := space.WorkspaceKind(w.Kind)
+		verbs := space.VerbsFor(kind, w.Role)
+		if verbs == 0 || !space.IsOrganizationID(w.ID) {
 			continue // the resolver would answer 404 for it
 		}
-		out.Spaces = append(out.Spaces, spaceDTO{
-			Kind: "organization", OrganizationID: o.ID, Label: o.DisplayName, Role: o.Role, Verbs: verbs.Names(),
-		})
+		d := spaceDTO{
+			Selector: "org:" + w.ID, Kind: kind, DisplayName: w.DisplayName, Role: w.Role, Verbs: verbs.Names(),
+			ManagePeople: kind == space.KindPersonal && w.Role == "owner",
+		}
+		if kind == space.KindPersonal {
+			personal = append(personal, d)
+		} else {
+			orgs = append(orgs, d)
+		}
 	}
+	sortByName(personal)
+	sortByName(orgs)
+	out.Spaces = append(append(out.Spaces, personal...), orgs...)
 	return c.JSON(out)
+}
+
+// sortByName orders a group alphabetically, ignoring case, with the selector as
+// a tiebreak so two spaces of the same name keep one order.
+func sortByName(s []spaceDTO) {
+	slices.SortStableFunc(s, func(a, b spaceDTO) int {
+		if c := strings.Compare(strings.ToLower(a.DisplayName), strings.ToLower(b.DisplayName)); c != 0 {
+			return c
+		}
+		return strings.Compare(a.Selector, b.Selector)
+	})
 }

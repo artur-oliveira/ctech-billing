@@ -25,13 +25,14 @@ type members struct {
 	err   error
 }
 
-func (f *members) Membership(_ context.Context, org, user string) (string, bool, error) {
+// Membership answers organizations ("" kind, read as organization).
+func (f *members) Membership(_ context.Context, org, user string) (string, string, bool, error) {
 	f.calls++
 	if f.err != nil {
-		return "", false, f.err
+		return "", "", false, f.err
 	}
 	role, ok := f.m[org+"|"+user]
-	return role, ok, nil
+	return "", role, ok, nil
 }
 
 // spaceApp mounts the real chain: claims -> user scope -> ResolveSpace ->

@@ -2,6 +2,7 @@ package accountclient
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -25,7 +26,7 @@ func serve(t *testing.T, status int, body string) (*Client, *string) {
 
 func TestMembershipReadsRoleAndPath(t *testing.T) {
 	c, path := serve(t, 200, `{"member":true,"role":"admin"}`)
-	role, member, err := c.membershipWithToken(context.Background(), "tok", "org-1", "user-1")
+	_, role, member, err := c.membershipWithToken(context.Background(), "tok", "org-1", "user-1")
 	if err != nil || !member || role != "admin" {
 		t.Fatalf("got %q %v %v", role, member, err)
 	}
@@ -36,7 +37,7 @@ func TestMembershipReadsRoleAndPath(t *testing.T) {
 
 func TestANonMemberIsAnAnswerNotAnError(t *testing.T) {
 	c, _ := serve(t, 200, `{"member":false}`)
-	role, member, err := c.membershipWithToken(context.Background(), "tok", "o", "u")
+	_, role, member, err := c.membershipWithToken(context.Background(), "tok", "o", "u")
 	if err != nil || member || role != "" {
 		t.Fatalf("got %q %v %v", role, member, err)
 	}
@@ -45,7 +46,7 @@ func TestANonMemberIsAnAnswerNotAnError(t *testing.T) {
 func TestEveryNon200IsAnError(t *testing.T) {
 	for _, status := range []int{401, 403, 404, 429, 500, 503} {
 		c, _ := serve(t, status, `{"member":true,"role":"owner"}`)
-		if _, member, err := c.membershipWithToken(context.Background(), "tok", "o", "u"); err == nil || member {
+		if _, _, member, err := c.membershipWithToken(context.Background(), "tok", "o", "u"); err == nil || member {
 			t.Errorf("status %d: member=%v err=%v; a non-200 must be an error and never a grant", status, member, err)
 		}
 	}
@@ -53,14 +54,14 @@ func TestEveryNon200IsAnError(t *testing.T) {
 
 func TestMalformedBodyIsAnError(t *testing.T) {
 	c, _ := serve(t, 200, `<html>`)
-	if _, member, err := c.membershipWithToken(context.Background(), "tok", "o", "u"); err == nil || member {
+	if _, _, member, err := c.membershipWithToken(context.Background(), "tok", "o", "u"); err == nil || member {
 		t.Fatalf("member=%v err=%v", member, err)
 	}
 }
 
 func TestIdsAreEscapedIntoThePath(t *testing.T) {
 	c, path := serve(t, 200, `{"member":false}`)
-	_, _, _ = c.membershipWithToken(context.Background(), "tok", "a/../b", "u?x=1")
+	_, _, _, _ = c.membershipWithToken(context.Background(), "tok", "a/../b", "u?x=1")
 	if want := "/v1.0/internal/organizations/a%2F..%2Fb/members/u%3Fx=1"; *path != want {
 		t.Fatalf("request URI = %q, want %q", *path, want)
 	}
@@ -68,7 +69,7 @@ func TestIdsAreEscapedIntoThePath(t *testing.T) {
 
 func TestANilClientRefuses(t *testing.T) {
 	var c *Client
-	if _, member, err := c.Membership(context.Background(), "o", "u"); err == nil || member {
+	if _, _, member, err := c.Membership(context.Background(), "o", "u"); err == nil || member {
 		t.Fatalf("a nil client must refuse: member=%v err=%v", member, err)
 	}
 }
@@ -129,7 +130,7 @@ func TestEachQuestionMintsItsOwnScope(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 	c := New(Config{BaseURL: srv.URL, TokenURL: srv.URL + "/token", ClientID: "billing", ClientSecret: "s"})
-	if _, _, err := c.Membership(context.Background(), "o", "u"); err != nil {
+	if _, _, _, err := c.Membership(context.Background(), "o", "u"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := c.Organizations(context.Background(), "u"); err != nil {
@@ -137,5 +138,36 @@ func TestEachQuestionMintsItsOwnScope(t *testing.T) {
 	}
 	if !scopes[Scope] || !scopes[ListScope] || len(scopes) != 2 {
 		t.Fatalf("token scopes requested = %v, want exactly %q and %q, separately", scopes, Scope, ListScope)
+	}
+}
+
+func TestMembershipCarriesTheKind(t *testing.T) {
+	for body, want := range map[string][3]string{
+		`{"member":true,"role":"member","kind":"personal"}`: {"personal", "member", "true"},
+		`{"member":true,"role":"owner"}`:                    {"", "owner", "true"}, // before ctech-account sends kind
+		`{"member":false}`:                                  {"", "", "false"},
+		`{"member":false,"kind":"personal","role":"owner"}`: {"", "", "false"}, // a refusal carries nothing
+	} {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte(body))
+		}))
+		c := &Client{http: srv.Client(), baseURL: srv.URL}
+		kind, role, member, err := c.membershipWithToken(context.Background(), "tok", "o", "u")
+		srv.Close()
+		if err != nil || kind != want[0] || role != want[1] || fmt.Sprint(member) != want[2] {
+			t.Errorf("%s: kind %q role %q member %v err %v", body, kind, role, member, err)
+		}
+	}
+}
+
+func TestOrganizationsCarryTheKind(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"organizations":[{"id":"a","display_name":"Casa","role":"owner","kind":"personal"},{"id":"b","display_name":"Acme","role":"admin","kind":"organization"}]}`))
+	}))
+	defer srv.Close()
+	c := &Client{http: srv.Client(), baseURL: srv.URL}
+	got, err := c.organizationsWithToken(context.Background(), "tok", "u")
+	if err != nil || len(got) != 2 || got[0].Kind != "personal" || got[1].Kind != "organization" {
+		t.Fatalf("got %+v, %v", got, err)
 	}
 }

@@ -9,10 +9,13 @@ import (
 )
 
 // MembershipSource is the one question the resolver asks ctech-account.
-// A refusal is ("", false, nil) — "not a member" is an answer. Anything that
-// stops us from knowing is an error, and the resolver refuses (ADR 0025 rule 7).
+// A refusal is ("", "", false, nil) — "not a member" is an answer, and it
+// carries no kind (ctech-account never tells a non-member which ids are
+// spaces). kind is the workspace's, raw: "" when ctech-account did not send
+// one. Anything that stops us from knowing is an error, and the resolver
+// refuses (ADR 0025 rule 7).
 type MembershipSource interface {
-	Membership(ctx context.Context, organizationID, userID string) (role string, member bool, err error)
+	Membership(ctx context.Context, organizationID, userID string) (kind, role string, member bool, err error)
 }
 
 // MembershipTTLSeconds is how long an answer — positive or negative — is
@@ -35,6 +38,9 @@ func NewResolver(src MembershipSource, c cache.Backend) *Resolver {
 type cachedMembership struct {
 	Member bool   `json:"member"`
 	Role   string `json:"role"`
+	// Kind is raw, as ctech-account sent it. An entry written before 6.8 has
+	// none and reads as organization (WorkspaceKind).
+	Kind string `json:"kind,omitempty"`
 }
 
 // The key carries BOTH ids. Keyed by organization alone, one member's cached
@@ -63,11 +69,14 @@ func (r *Resolver) Resolve(ctx context.Context, sub string, sel Selector, livemo
 	if err != nil {
 		return ResolvedSpace{}, err
 	}
-	verbs := VerbsForRole(m.Role)
+	// The kind is normalised here, after the cache, so an entry written before
+	// kinds existed and an answer without one read the same way.
+	kind := WorkspaceKind(m.Kind)
+	verbs := VerbsFor(kind, m.Role)
 	if !m.Member || verbs == 0 {
 		return ResolvedSpace{}, ErrSpaceNotFound
 	}
-	return orgSpace(sel.OrganizationID, livemode, verbs), nil
+	return orgSpace(sel.OrganizationID, kind, livemode, verbs), nil
 }
 
 func (r *Resolver) membership(ctx context.Context, orgID, userID string) (cachedMembership, error) {
@@ -83,14 +92,14 @@ func (r *Resolver) membership(ctx context.Context, orgID, userID string) (cached
 	if r.src == nil {
 		return cachedMembership{}, ErrSpaceUnavailable
 	}
-	role, member, err := r.src.Membership(ctx, orgID, userID)
+	kind, role, member, err := r.src.Membership(ctx, orgID, userID)
 	if err != nil {
 		// Not cached: the answer would be "we do not know", and caching it turns
 		// a blip into a minute of refusals for people who are entitled.
 		slog.Warn("space: membership lookup failed", "organization", orgID, "error", err)
 		return cachedMembership{}, ErrSpaceUnavailable
 	}
-	m := cachedMembership{Member: member, Role: role}
+	m := cachedMembership{Member: member, Role: role, Kind: kind}
 	if r.cache != nil {
 		if raw, merr := json.Marshal(m); merr == nil {
 			// Best effort: a cache that cannot be written costs a round trip,
