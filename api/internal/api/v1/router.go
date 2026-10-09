@@ -51,6 +51,7 @@ type Deps struct {
 	FinanceBills *services.FinanceBills
 	FinanceJobs  *services.FinanceJobs
 	Recurrences  *repositories.RecurrenceRepository
+	Cards        *repositories.CardRepository
 	Ledger       *repositories.LedgerRepository
 	// SpaceLister feeds the console's space switcher (the same ctech-account
 	// client the resolver uses). Informational: the resolver still authorizes.

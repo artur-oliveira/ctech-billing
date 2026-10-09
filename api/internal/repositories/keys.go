@@ -66,6 +66,9 @@ const (
 	// (spec § 4).
 	TableBills       = "bills"
 	TableRecurrences = "recurrences"
+	// TableCards holds a space's cards (S → CARD#{id}) and, per card, its
+	// purchases, closed statements and statement items (spec § 4, 6.5).
+	TableCards = "cards"
 )
 
 // Index names.

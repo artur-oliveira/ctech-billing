@@ -14,7 +14,7 @@
  * (this is a development fixture, not the scheduler).
  */
 import type {
-  Account, AccountClass, Bill, CashFlowMonth, DREGroupLine, Direction, ExpressionJSON, FinanceSpaceEntry, ProjectionMonth,
+  Account, AccountClass, Bill, Card, CardStatement, CashFlowMonth, Purchase, StatementItem, DREGroupLine, Direction, ExpressionJSON, FinanceSpaceEntry, ProjectionMonth,
   Recurrence, StatementEntry, TxKind, Verb,
 } from "@/lib/api/financeTypes"
 
@@ -54,6 +54,11 @@ interface SpaceState {
   entries: MEntry[]
   reversed: Set<string>
   openings: Set<string>
+  cards: Card[]
+  purchases: (Purchase & {card: string; advanced: number[]})[]
+  /** Statement items, keyed by card and month like the API's ITEM rows. */
+  items: (StatementItem & {card: string; month: string; key: string})[]
+  closed: Map<string, {total: number; bill_id?: string}>
 }
 
 // ---- dates (civil, no Date parsing of ISO strings) ---------------------------
@@ -94,7 +99,11 @@ function seed(kind: "personal" | "org", mode: string): SpaceState {
     id, direction: dir, amount, account_id: "conta-corrente", category_id: category, description,
     competence_date: due, due_date: due, status: "forecast", origin: "manual", auto_settle: false, ...extra,
   })
-  const ledger = {entries: [] as MEntry[], reversed: new Set<string>(), openings: new Set<string>()}
+  const ledger = {
+    entries: [] as MEntry[], reversed: new Set<string>(), openings: new Set<string>(),
+    cards: [] as Card[], purchases: [] as SpaceState["purchases"], items: [] as SpaceState["items"],
+    closed: new Map<string, {total: number; bill_id?: string}>(),
+  }
   if (kind === "personal") {
     return {
       ...ledger,
@@ -378,6 +387,133 @@ function route(method: string, path: string, r: Req, s: SpaceState, can: (v: Ver
     a.archived = true
     return {status: 204, data: ""}
   }
+  // cards (the backend's rules, small: allocation floored at the open month,
+  // remainder on the first installment, close = frozen total + a statement bill)
+  const ymAdd = (ym: string, n: number) => {
+    const [y, m] = ym.split("-").map(Number)
+    const i = y * 12 + (m - 1) + n
+    return `${Math.floor(i / 12)}-${String((i % 12) + 1).padStart(2, "0")}`
+  }
+  const clampDay = (ym: string, day: number) => {
+    const [y, m] = ym.split("-").map(Number)
+    return `${ym}-${String(Math.min(day, daysIn(y, m))).padStart(2, "0")}`
+  }
+  const itemOut = (i: SpaceState["items"][number]): StatementItem => ({
+    purchase_id: i.purchase_id, description: i.description, category_id: i.category_id, date: i.date,
+    number: i.number, of: i.of, kind: i.kind, amount: i.amount,
+  })
+  const purchaseOut = (p: SpaceState["purchases"][number]): Purchase => ({
+    id: p.id, description: p.description, category_id: p.category_id, date: p.date, total: p.total,
+    installments: p.installments, refunded: p.refunded,
+  })
+  const statementOf = (c: Card, month: string): CardStatement => {
+    const closingDate = clampDay(month, c.closing_day)
+    const dueSame = clampDay(month, c.due_day)
+    const due = dueSame > closingDate ? dueSame : clampDay(ymAdd(month, 1), c.due_day)
+    const items = s.items.filter(i => i.card === c.id && i.month === month)
+      .map(itemOut).sort((a, b) => a.date.localeCompare(b.date))
+    const frozen = s.closed.get(`${c.id}|${month}`)
+    const bill = frozen?.bill_id ? s.bills.find(b => b.id === frozen.bill_id) : undefined
+    const status = frozen ? (bill?.status === "paid" ? "paid" : "closed") : month === c.open_month ? "open" : month > c.open_month ? "future" : "closed"
+    const total = frozen ? frozen.total : items.reduce((t, i) => t + i.amount, 0)
+    return {card_id: c.id, month, status, closing_date: closingDate, due_date: due, total, bill_id: frozen?.bill_id, items}
+  }
+  const cardMatch = path.match(/^\/cards\/([^/]+)(?:\/(statements|purchases|close)(?:\/([^/]+)(?:\/(refund|advance))?)?)?$/)
+  if (path === "/cards" && method === "get") return ok({data: s.cards, has_more: false})
+  if (path === "/cards" && method === "post") {
+    if (!can("finance.configure")) return forbidden()
+    const p = body<{name: string; closing_day: number; due_day: number; paying_account_id: string}>(r)
+    const c: Card = {id: nextId("card"), name: p.name, closing_day: p.closing_day, due_day: p.due_day,
+      paying_account_id: p.paying_account_id, open_month: today.slice(0, 7), balance: 0, archived: false}
+    s.cards.push(c)
+    s.accounts.push({id: c.id, name: c.name, class: "liability", system: false, archived: false, balance: 0})
+    return ok(c, 201)
+  }
+  if (cardMatch) {
+    const c = s.cards.find(x => x.id === cardMatch[1])
+    if (!c) return problem(404, "about:blank", "Not Found", "recurso não encontrado")
+    const [, , sub, arg, action] = cardMatch
+    if (!sub && method === "patch") {
+      if (!can("finance.configure")) return forbidden()
+      Object.assign(c, Object.fromEntries(Object.entries(body<Partial<Card>>(r)).filter(([, v]) => v !== undefined)))
+      return ok(c)
+    }
+    if (sub === "statements" && arg && method === "get") return ok(statementOf(c, arg))
+    if (sub === "purchases" && !arg && method === "get") {
+      return ok({data: s.purchases.filter(p => p.card === c.id).map(purchaseOut), has_more: false})
+    }
+    if (sub === "purchases" && !arg && method === "post") {
+      if (!can("finance.write")) return forbidden()
+      const p = body<{date: string; description: string; category_id: string; total: number; installments: number}>(r)
+      const base = Math.floor(p.total / p.installments)
+      let first = p.date.slice(0, 7)
+      if (Number(p.date.slice(8)) > Math.min(c.closing_day, daysIn(Number(first.slice(0, 4)), Number(first.slice(5))))) first = ymAdd(first, 1)
+      if (first < c.open_month) first = c.open_month
+      const id = nextId("p")
+      const installments = Array.from({length: p.installments}, (_, i) => ({
+        number: i + 1, amount: base + (i === 0 ? p.total - base * p.installments : 0), month: ymAdd(first, i),
+      }))
+      const purchase = {id, card: c.id, description: p.description, category_id: p.category_id, date: p.date, total: p.total, installments, refunded: false, advanced: [] as number[]}
+      s.purchases.push(purchase)
+      for (const inst of installments) {
+        s.items.push({card: c.id, month: inst.month, key: `${id}#${inst.number}`, purchase_id: id, description: p.description,
+          category_id: p.category_id, date: p.date, number: inst.number, of: p.installments, kind: "installment", amount: inst.amount})
+      }
+      c.balance -= p.total
+      const cat = s.accounts.find(a => a.id === p.category_id)
+      if (cat) cat.balance += p.total
+      return ok(purchaseOut(purchase), 201)
+    }
+    if (sub === "purchases" && arg && (action === "refund" || action === "advance")) {
+      if (!can("finance.write")) return forbidden()
+      const purchase = s.purchases.find(p => p.id === arg && p.card === c.id)
+      if (!purchase) return problem(404, "about:blank", "Not Found", "recurso não encontrado")
+      if (purchase.refunded) return problem(409, "/problems/invalid-transition", "Invalid Transition", "Esta compra já foi estornada.")
+      if (action === "advance") {
+        const later = purchase.installments.filter(i => i.month > c.open_month)
+        if (later.length === 0) return problem(409, "/problems/invalid-transition", "Invalid Transition", "Não há parcelas futuras para antecipar.")
+        s.items = s.items.filter(i => !(i.purchase_id === purchase.id && later.some(l => `${purchase.id}#${l.number}` === i.key)))
+        s.items.push({card: c.id, month: c.open_month, key: `${purchase.id}#adv`, purchase_id: purchase.id,
+          description: `Antecipação: ${purchase.description}`, category_id: purchase.category_id, date: today, kind: "advance",
+          amount: later.reduce((t, i) => t + i.amount, 0)})
+        for (const l of later) { l.month = c.open_month; purchase.advanced.push(l.number) }
+        return ok(purchaseOut(purchase))
+      }
+      const credit = purchase.installments.filter(i => i.month < c.open_month).reduce((t, i) => t + i.amount, 0)
+      s.items = s.items.filter(i => !(i.purchase_id === purchase.id && i.month >= c.open_month))
+      if (credit > 0) {
+        s.items.push({card: c.id, month: c.open_month, key: `${purchase.id}#refund`, purchase_id: purchase.id,
+          description: `Estorno: ${purchase.description}`, category_id: purchase.category_id, date: today, kind: "credit", amount: -credit})
+      }
+      purchase.refunded = true
+      c.balance += purchase.total
+      const cat = s.accounts.find(a => a.id === purchase.category_id)
+      if (cat) cat.balance -= purchase.total
+      return ok(purchaseOut(purchase))
+    }
+    if (sub === "close" && method === "post") {
+      if (!can("finance.write")) return forbidden()
+      const m = c.open_month
+      if (body<{month?: string}>(r).month !== m) {
+        return problem(409, "/problems/invalid-transition", "Invalid Transition", "Esta fatura não está aberta para fechamento.")
+      }
+      const st = statementOf(c, m)
+      let billId: string | undefined
+      if (st.total > 0) {
+        billId = `fatura-${c.id}-${m}`
+        s.bills.push({id: billId, direction: "payable", amount: st.total, account_id: c.paying_account_id, category_id: c.id,
+          description: `Fatura ${c.name} ${m}`, competence_date: st.closing_date, due_date: st.due_date, status: "forecast",
+          origin: "card_statement", origin_ref: `${c.id}#${m}`, auto_settle: false})
+      } else if (st.total < 0) {
+        s.items.push({card: c.id, month: ymAdd(m, 1), key: `carry#${m}`, purchase_id: "carry", description: "Crédito da fatura anterior",
+          date: st.closing_date, kind: "carry", amount: st.total})
+      }
+      s.closed.set(`${c.id}|${m}`, {total: st.total, bill_id: billId})
+      c.open_month = ymAdd(m, 1)
+      return ok(statementOf(c, m))
+    }
+  }
+
   // statement, transfers, reversals, reports
   const cash = (id: string) => s.accounts.some(a => a.id === id && a.class === "asset" && !a.system && !a.archived)
   const opening = path.match(/^\/accounts\/([^/]+)\/opening-balance$/)

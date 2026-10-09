@@ -35,6 +35,9 @@ describe("every finance call", () => {
     ["getStatement", () => finance.getStatement(ctx, "a1", "2026-03-01", "2026-04-01")],
     ["getCashFlow", () => finance.getCashFlow(ctx, "2026-01", "2026-03")],
     ["getDRE", () => finance.getDRE(ctx, "2026-01", "2026-03")],
+    ["listCards", () => finance.listCards(ctx)],
+    ["getCardStatement", () => finance.getCardStatement(ctx, "c1", "2026-03")],
+    ["listPurchases", () => finance.listPurchases(ctx, "c1")],
   ]
   const writes: [string, () => Promise<unknown>][] = [
     ["createBill", () => finance.createBill(ctx, {direction: "payable", amount: 100, account_id: "a", category_id: "c", due_date: "2026-03-10"}, "K")],
@@ -51,6 +54,12 @@ describe("every finance call", () => {
     ["createTransfer", () => finance.createTransfer(ctx, {from_account_id: "a", to_account_id: "b", amount: 1, date: "2026-03-01"}, "K")],
     ["reverseTransaction", () => finance.reverseTransaction(ctx, "t1", "K")],
     ["unsettleBill", () => finance.unsettleBill(ctx, "b1", "K")],
+    ["createCard", () => finance.createCard(ctx, {name: "Visa", closing_day: 3, due_day: 10, paying_account_id: "a"}, "K")],
+    ["patchCard", () => finance.patchCard(ctx, "c1", {due_day: 12}, "K")],
+    ["createPurchase", () => finance.createPurchase(ctx, "c1", {date: "2026-03-01", description: "TV", category_id: "c", total: 100, installments: 1}, "K")],
+    ["refundPurchase", () => finance.refundPurchase(ctx, "c1", "p1", "K")],
+    ["advancePurchase", () => finance.advancePurchase(ctx, "c1", "p1", "K")],
+    ["closeStatement", () => finance.closeStatement(ctx, "c1", "2026-03", "K")],
   ]
 
   it.each([...reads, ...writes])("%s sends the mode and the space", async (_name, call) => {
@@ -95,6 +104,9 @@ describe("financeKeys", () => {
 // A write without a key is a compile error, not a runtime surprise.
 // @ts-expect-error — createBill requires an idempotency key
 void (() => finance.createBill(ctx, {direction: "payable", amount: 1, account_id: "a", category_id: "c", due_date: "2026-03-10"}))
+
+// @ts-expect-error — a purchase requires an idempotency key
+void (() => finance.createPurchase(ctx, "c1", {date: "2026-03-01", description: "TV", category_id: "c", total: 100, installments: 1}))
 
 // @ts-expect-error — a transfer requires an idempotency key
 void (() => finance.createTransfer(ctx, {from_account_id: "a", to_account_id: "b", amount: 1, date: "2026-03-01"}))

@@ -16,6 +16,7 @@ const ACCOUNTS: Account[] = [
   {id: "sales", name: "Vendas", class: "income", dre_group: "gross_revenue", system: false, archived: false, balance: 0},
   {id: "tax", name: "Impostos", class: "expense", dre_group: "deductions", system: false, archived: false, balance: 0},
   {id: "rent", name: "Aluguel", class: "expense", dre_group: "operating_expenses", system: false, archived: true, balance: 0},
+  {id: "visa", name: "Visa", class: "liability", system: false, archived: false, balance: 0},
 ]
 const DRE_DATA: DRE = {
   months: ["2026-01", "2026-02"],
@@ -31,7 +32,7 @@ const CASH: CashFlow = {
   from: "2026-01", to: "2026-02", opening_cash: 100000, closing_cash: 340000,
   months: [
     {month: "2026-01", in: 500000, out: 180000, openings: 0, lines: [{category_id: "sales", amount: 500000}, {category_id: "rent", amount: -180000}]},
-    {month: "2026-02", in: 0, out: 80000, openings: 0, lines: [{category_id: "", amount: -80000}]},
+    {month: "2026-02", in: 0, out: 80000, openings: 0, lines: [{category_id: "", amount: -50000}, {category_id: "card:visa", amount: -30000}]},
   ],
 }
 
@@ -84,6 +85,7 @@ describe("F7 — relatórios", () => {
     expect(screen.getByRole("tab", {name: "Fluxo de caixa (caixa)"})).toHaveAttribute("aria-selected", "true")
     expect(await screen.findByRole("rowheader", {name: "Sem categoria"})).toBeInTheDocument()
     expect(screen.getByRole("rowheader", {name: "Entradas"})).toBeInTheDocument()
+    expect(screen.getByRole("rowheader", {name: "Fatura Visa"})).toBeInTheDocument()
     expect(screen.getByText("Saldo final")).toBeInTheDocument()
     expect(screen.getByText("R$ 3.400,00")).toBeInTheDocument()
     expect(screen.getByText(/Transferências entre suas contas não aparecem aqui/)).toBeInTheDocument()

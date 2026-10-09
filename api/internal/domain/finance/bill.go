@@ -99,7 +99,11 @@ func (b Bill) Validate() error {
 
 // Facts is the view the posting rules take.
 func (b Bill) Facts() BillFacts {
-	return BillFacts{Direction: b.Direction, Amount: b.Amount, CategoryID: b.CategoryID, AccountID: b.AccountID}
+	f := BillFacts{Direction: b.Direction, Amount: b.Amount, CategoryID: b.CategoryID, AccountID: b.AccountID}
+	if b.Origin == OriginCardStatement {
+		f.Clears = b.CategoryID // the card
+	}
+	return f
 }
 
 // CanEdit: a bill is editable only while it is a forecast.
@@ -116,6 +120,9 @@ func (b Bill) CanSettle() error {
 // CanCancel refuses a paid bill: it is corrected by reversing its settlement
 // first, so both stay visible.
 func (b Bill) CanCancel() error {
+	if b.Origin == OriginCardStatement {
+		return fmt.Errorf("%w: uma fatura fechada não é cancelada; uma correção entra na próxima fatura", ErrBillState)
+	}
 	switch b.Status {
 	case BillForecast:
 		return nil

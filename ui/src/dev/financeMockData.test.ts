@@ -105,3 +105,36 @@ describe("the finance mock's ledger facts", () => {
     expect(w("/accounts/poupanca/opening-balance", {amount: 500, date: day()}, "o2").status).toBe(409)
   })
 })
+
+describe("the finance mock's cards", () => {
+  const w = (url: string, data: unknown, key: string) =>
+    call({method: "post", url, headers: {...personal, "Idempotency-Key": key}, data})
+  const r = (url: string) => call({url, headers: personal}).data as never
+  const today = new Date()
+  const ym = (offset: number) => {
+    const d = new Date(today.getFullYear(), today.getMonth() + offset, 1)
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`
+  }
+  const card = () => (w("/cards", {name: "Visa", closing_day: 28, due_day: 5, paying_account_id: "conta-corrente"}, "c").data as {id: string}).id
+
+  it("bills a purchase in installments on the next statements and closes into a bill", () => {
+    const id = card()
+    const d = `${ym(0)}-01`
+    expect(w(`/cards/${id}/purchases`, {date: d, description: "TV", category_id: "mercado", total: 30000, installments: 3}, "p").status).toBe(201)
+    for (const i of [0, 1, 2]) expect((r(`/cards/${id}/statements/${ym(i)}`) as {total: number}).total).toBe(10000)
+    const closed = w(`/cards/${id}/close`, {month: ym(0)}, "x").data as {status: string; bill_id: string}
+    expect(closed.status).toBe("closed")
+    const open = call({url: "/bills", headers: personal, params: {direction: "payable"}}).data as {data: {id: string}[]}
+    expect(open.data.some(b => b.id === closed.bill_id)).toBe(true)
+  })
+
+  it("refund credits what was billed, advance moves the rest to the open statement", () => {
+    const id = card()
+    const p = (w(`/cards/${id}/purchases`, {date: `${ym(0)}-01`, description: "Sofá", category_id: "mercado", total: 30000, installments: 3}, "p").data as {id: string}).id
+    w(`/cards/${id}/close`, {month: ym(0)}, "x")
+    expect(w(`/cards/${id}/purchases/${p}/advance`, {}, "a").status).toBe(200)
+    expect((r(`/cards/${id}/statements/${ym(1)}`) as {total: number}).total).toBe(20000)
+    expect(w(`/cards/${id}/purchases/${p}/refund`, {}, "r").status).toBe(200)
+    expect((r(`/cards/${id}/statements/${ym(1)}`) as {total: number}).total).toBe(-10000)
+  })
+})

@@ -84,3 +84,18 @@ func TestFactsCarryWhatThePostingRulesNeed(t *testing.T) {
 		t.Fatalf("facts = %+v", f)
 	}
 }
+
+func TestAStatementBillIsNotCanceledAndClearsItsCard(t *testing.T) {
+	b := Bill{Direction: Payable, Amount: 1, AccountID: "bank", CategoryID: "visa", Status: BillForecast,
+		Origin: OriginCardStatement, OriginRef: "visa#2026-03"}
+	if err := b.CanCancel(); !errors.Is(err, ErrBillState) {
+		t.Fatalf("CanCancel = %v", err)
+	}
+	if f := b.Facts(); f.Clears != "visa" {
+		t.Fatalf("Facts().Clears = %q", f.Clears)
+	}
+	b.Origin = OriginManual
+	if f := b.Facts(); f.Clears != "" {
+		t.Fatalf("a manual bill clears payables, got %q", f.Clears)
+	}
+}

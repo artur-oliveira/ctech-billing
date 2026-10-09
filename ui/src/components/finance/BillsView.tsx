@@ -4,6 +4,7 @@ import limits from "@/lib/limits.json"
 import {Badge, Button, EmptyState, Field, Input, Skeleton, Switch} from "@aoctech/ui"
 import {useQuery, useQueryClient} from "@tanstack/react-query"
 import {AlertCircle, CalendarClock, Clock, Receipt} from "lucide-react"
+import Link from "next/link"
 import {useEffect, useState} from "react"
 
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
@@ -132,6 +133,7 @@ type Panel = "settle" | "edit" | "cancel" | null
 function BillRow({bill, accountName, accounts}: {bill: Bill; accountName?: string; accounts: Account[]}) {
   const {can} = useFinanceSpaces()
   const [panel, setPanel] = useState<Panel>(null)
+  const statement = bill.origin === "card_statement"
   const bucket = bill.bucket ?? "upcoming"
   const Icon = BADGE[bucket].icon
   return (
@@ -141,6 +143,7 @@ function BillRow({bill, accountName, accounts}: {bill: Bill; accountName?: strin
           <p className="truncate text-sm text-foreground">{bill.description || "Sem descrição"}</p>
           <p className="text-xs text-muted-foreground">
             Vence {shortDate(bill.due_date)}{accountName ? ` · ${accountName}` : ""}{bill.auto_settle ? ` · ${SETTLE_LABEL[bill.direction].autoNote}` : ""}
+            {statement && <> · Fatura do cartão · <Link href={`/console/finance/cards?card=${encodeURIComponent(bill.category_id)}`} className="underline-offset-4 hover:underline">Ver fatura</Link></>}
           </p>
         </div>
         <Badge tone={BADGE[bucket].tone}><Icon aria-hidden className="size-3"/>{BUCKET_LABEL[bucket]}</Badge>
@@ -154,7 +157,8 @@ function BillRow({bill, accountName, accounts}: {bill: Bill; accountName?: strin
           {can("finance.write") && (
             <>
               <Button size="sm" variant="ghost" aria-expanded={panel === "edit"} onClick={() => setPanel(panel === "edit" ? null : "edit")}>Editar</Button>
-              <Button size="sm" variant="ghost" aria-expanded={panel === "cancel"} onClick={() => setPanel(panel === "cancel" ? null : "cancel")}>Cancelar conta</Button>
+              {/* A statement is closed: corrected by a refund on the card, never canceled. */}
+              {!statement && <Button size="sm" variant="ghost" aria-expanded={panel === "cancel"} onClick={() => setPanel(panel === "cancel" ? null : "cancel")}>Cancelar conta</Button>}
             </>
           )}
         </div>
@@ -191,7 +195,7 @@ function FormError({error}: {error: unknown}) {
 // the field beside it (the one with a hint is taller).
 const inPanel = "mt-3 grid items-start gap-3 rounded-lg bg-surface p-3 sm:grid-cols-2 motion-safe:animate-in motion-safe:fade-in"
 
-function SettleForm({bill, accounts, onDone}: {bill: Bill; accounts: Account[]; onDone: () => void}) {
+export function SettleForm({bill, accounts, onDone}: {bill: Bill; accounts: Account[]; onDone: () => void}) {
   const [amountText, setAmountText] = useState(formatMoneyInput(bill.amount))
   const [date, setDate] = useState(todayIso())
   const [category, setCategory] = useState("")
@@ -255,6 +259,8 @@ function EditForm({bill, accounts, onDone}: {bill: Bill; accounts: Account[]; on
   const [account, setAccount] = useState(bill.account_id)
   const [autoSettle, setAutoSettle] = useState(bill.auto_settle)
   const edit = useFinanceMutation((c, body: BillPatch, key) => patchBill(c, bill.id, body, key), touched, onDone)
+  // A card statement's amount is its purchases' and its "category" is the card.
+  const statement = bill.origin === "card_statement"
   const amount = parseMoney(amountText)
   const cats = accounts.filter(a => a.class === (bill.direction === "payable" ? "expense" : "income") && !a.archived && !a.system)
   const assets = accounts.filter(a => a.class === "asset" && !a.archived && !a.system)
@@ -279,11 +285,13 @@ function EditForm({bill, accounts, onDone}: {bill: Bill; accounts: Account[]; on
       }}
     >
       <Field label="Descrição" htmlFor={`ed-${bill.id}`}><Input id={`ed-${bill.id}`} maxLength={limits.text.description} value={description} onChange={e => setDescription(e.target.value)}/></Field>
-      <Field label="Valor" htmlFor={`ev-${bill.id}`}><Input id={`ev-${bill.id}`} inputMode="decimal" value={amountText} onChange={e => setAmountText(maskMoney(e.target.value))} aria-invalid={amount === null}/></Field>
+      {!statement && <Field label="Valor" htmlFor={`ev-${bill.id}`}><Input id={`ev-${bill.id}`} inputMode="decimal" value={amountText} onChange={e => setAmountText(maskMoney(e.target.value))} aria-invalid={amount === null}/></Field>}
       <Field label="Vencimento" htmlFor={`eu-${bill.id}`}><DateField id={`eu-${bill.id}`} min={limits.minDate} max={addYearsIso(todayIso(), limits.maxFutureYears)} value={due} onValueChange={setDue}/></Field>
-      <Field label="Categoria" htmlFor={`ec-${bill.id}`}>
-        <Select id={`ec-${bill.id}`} value={category} onValueChange={setCategory} options={cats.map(a => ({value: a.id, label: a.name}))}/>
-      </Field>
+      {!statement && (
+        <Field label="Categoria" htmlFor={`ec-${bill.id}`}>
+          <Select id={`ec-${bill.id}`} value={category} onValueChange={setCategory} options={cats.map(a => ({value: a.id, label: a.name}))}/>
+        </Field>
+      )}
       <Field label={bill.direction === "payable" ? "Pagar com" : "Receber em"} htmlFor={`ea-${bill.id}`}>
         <Select id={`ea-${bill.id}`} value={account} onValueChange={setAccount} options={assets.map(a => ({value: a.id, label: a.name}))}/>
       </Field>

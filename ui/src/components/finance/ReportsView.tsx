@@ -32,6 +32,8 @@ const sum = (xs: number[]) => xs.reduce((t, x) => t + x, 0)
 
 function nameOf(accounts: Account[], id: string): string {
   if (id === "") return "Sem categoria"
+  // Paying a card's statement: one cash-flow line per card (6.5).
+  if (id.startsWith("card:")) return `Fatura ${accounts.find(a => a.id === id.slice(5))?.name ?? "do cartão"}`
   const a = accounts.find(x => x.id === id)
   if (!a) return "Categoria removida"
   return a.archived ? `${a.name} (arquivada)` : a.name

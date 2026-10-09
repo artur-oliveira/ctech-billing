@@ -50,6 +50,7 @@ type recurrenceStore interface {
 type FinanceJobs struct {
 	bills billStore
 	recs  recurrenceStore
+	cards cardCloser
 }
 
 func NewFinanceJobs(bills billStore, recs recurrenceStore) *FinanceJobs {

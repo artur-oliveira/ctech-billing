@@ -114,6 +114,21 @@ func FromError(err error) *Problem {
 	case errors.Is(err, finance.ErrBillState), errors.Is(err, repositories.ErrAlreadyReversed):
 		return New(409, TypeInvalidTransition, "Invalid Transition", err.Error())
 
+	case errors.Is(err, repositories.ErrCardMoved):
+		return New(409, TypeConcurrentUpdate, "Concurrent Update", "O cartão mudou enquanto você registrava. Tente de novo.")
+
+	case errors.Is(err, repositories.ErrPurchaseRefunded):
+		return New(409, TypeInvalidTransition, "Invalid Transition", "Esta compra já foi estornada.")
+
+	case errors.Is(err, repositories.ErrNotClosable):
+		return New(409, TypeInvalidTransition, "Invalid Transition", "Esta fatura não está aberta para fechamento.")
+
+	case errors.Is(err, repositories.ErrNothingToAdvance):
+		return New(409, TypeInvalidTransition, "Invalid Transition", "Não há parcelas futuras para antecipar.")
+
+	case errors.Is(err, finance.ErrInvalidCard), errors.Is(err, finance.ErrInvalidInstallments):
+		return Unprocessable(err.Error())
+
 	case errors.Is(err, repositories.ErrOpeningExists):
 		return New(409, TypeInvalidTransition, "Invalid Transition",
 			"Esta conta já tem saldo inicial. Estorne o atual para lançar outro.")

@@ -590,6 +590,11 @@ func (r *BillRepository) Edit(ctx context.Context, sp space.ResolvedSpace, billI
 	if !cur.CanEdit() {
 		return finance.Bill{}, fmt.Errorf("%w: only a forecast bill can be edited", finance.ErrBillState)
 	}
+	if cur.Origin == finance.OriginCardStatement &&
+		(e.Amount != nil && *e.Amount != cur.Amount || e.CategoryID != nil && *e.CategoryID != cur.CategoryID) {
+		// A statement's amount is its purchases', and its "category" is the card.
+		return finance.Bill{}, fmt.Errorf("%w: o valor de uma fatura vem das compras; corrija com um estorno", finance.ErrBillState)
+	}
 	next := *cur
 	if e.Amount != nil {
 		next.Amount = *e.Amount
@@ -620,7 +625,14 @@ func (r *BillRepository) Edit(ctx context.Context, sp space.ResolvedSpace, billI
 			return finance.Bill{}, err
 		}
 	}
-	if next.CategoryID != cur.CategoryID || next.AccountID != cur.AccountID {
+	switch {
+	case cur.Origin == finance.OriginCardStatement && next.AccountID != cur.AccountID:
+		// Its "category" is the card (a liability), not an expense: only the
+		// account that pays it is checked.
+		if err := r.ledger.activeCash(ctx, sp, next.AccountID); err != nil {
+			return finance.Bill{}, err
+		}
+	case cur.Origin != finance.OriginCardStatement && (next.CategoryID != cur.CategoryID || next.AccountID != cur.AccountID):
 		if err := r.checkBillAccounts(ctx, sp, next); err != nil {
 			return finance.Bill{}, err
 		}
@@ -741,4 +753,19 @@ func (r *BillRepository) Unsettle(ctx context.Context, sp space.ResolvedSpace, b
 	}
 	reopened.TransactionIDs = append(append([]string(nil), b.TransactionIDs...), plan.TxID)
 	return reopened, nil
+}
+
+// statementBillItem is the write that creates a card statement's bill
+// (scope decision 6 of the 6.5 plan): the bill row only, conditional on its
+// absence — a statement bill is not recognised, because the purchases already
+// put the expense in the DRE. Settling it clears the card (BillFacts.Clears).
+func (r *BillRepository) statementBillItem(sp space.ResolvedSpace, b finance.Bill, now time.Time) (types.TransactWriteItem, error) {
+	if err := b.Validate(); err != nil {
+		return types.TransactWriteItem{}, err
+	}
+	item, err := Encode(newBillItem(sp, b, now))
+	if err != nil {
+		return types.TransactWriteItem{}, err
+	}
+	return r.bills.BuildPutTxItemIfAbsent(item), nil
 }

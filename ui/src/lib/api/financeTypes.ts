@@ -242,3 +242,77 @@ export interface OpeningBalance {
   amount: Cents
   date: IsoDate
 }
+
+// --- 6.5: cards ------------------------------------------------------------------------
+
+export interface Card {
+  id: string
+  name: string
+  closing_day: number
+  due_day: number
+  paying_account_id: string
+  /** `YYYY-MM`: the first statement not yet closed. */
+  open_month: string
+  /** The card account's balance: negative is what is owed. */
+  balance: Cents
+  archived: boolean
+}
+
+export interface NewCard {
+  name: string
+  closing_day: number
+  due_day: number
+  paying_account_id: string
+}
+
+export interface CardPatch {
+  closing_day?: number
+  due_day?: number
+  paying_account_id?: string
+}
+
+export type StatementItemKind = "installment" | "credit" | "advance" | "carry"
+
+export interface StatementItem {
+  purchase_id: string
+  description: string
+  category_id?: string
+  date: IsoDate
+  /** 3 of 12; absent on a credit, an advance or a carry. */
+  number?: number
+  of?: number
+  kind: StatementItemKind
+  /** Positive charges, negative credits. */
+  amount: Cents
+}
+
+export type CardStatementStatus = "open" | "future" | "closed" | "paid"
+
+export interface CardStatement {
+  card_id: string
+  month: string
+  status: CardStatementStatus
+  closing_date: IsoDate
+  due_date: IsoDate
+  total: Cents
+  bill_id?: string
+  items: StatementItem[]
+}
+
+export interface Purchase {
+  id: string
+  description: string
+  category_id: string
+  date: IsoDate
+  total: Cents
+  installments: {number: number; amount: Cents; month: string}[]
+  refunded: boolean
+}
+
+export interface NewPurchase {
+  date: IsoDate
+  description: string
+  category_id: string
+  total: Cents
+  installments: number
+}

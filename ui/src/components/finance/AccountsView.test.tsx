@@ -25,6 +25,7 @@ const ACCOUNTS: Account[] = [
   {id: "pp", name: "Poupança", class: "asset", system: false, archived: false, balance: 0},
   {id: "sal", name: "Salário", class: "income", dre_group: "gross_revenue", system: false, archived: false, balance: 0},
   {id: "alu", name: "Aluguel", class: "expense", dre_group: "operating_expenses", system: false, archived: false, balance: 0},
+  {id: "visa", name: "Visa", class: "liability", system: false, archived: false, balance: -120000},
   {id: "old", name: "Assinaturas antigas", class: "expense", dre_group: "operating_expenses", system: false, archived: true, balance: 0},
 ]
 
@@ -125,6 +126,14 @@ describe("F8 — accounts", () => {
     renderWithQuery(<AccountsView/>)
     await userEvent.click(await screen.findByRole("button", {name: "Nova conta ou categoria"}))
     expect(screen.getByLabelText(/^Nome/)).toHaveAttribute("maxLength", "80")
+  })
+
+  it("lists cards with what they owe and a way to open them", async () => {
+    serve(ALL)
+    renderWithQuery(<AccountsView/>)
+    const visa = await row("Visa")
+    expect(within(visa).getByText(/Deve R\$\s1\.200,00/)).toBeInTheDocument()
+    expect(within(visa).getByRole("link", {name: "Abrir"})).toHaveAttribute("href", "/console/finance/cards?card=visa")
   })
 
   it("never offers an opening balance on a category", async () => {

@@ -152,6 +152,7 @@ func Build(ctx context.Context, cfg *config.Config, clock func() time.Time) (*fi
 		FinanceBills: services.NewFinanceBills(billRepo),
 		FinanceJobs:  services.NewFinanceJobs(billRepo, recRepo),
 		Recurrences:  recRepo,
+		Cards:        repositories.NewCardRepository(db, cfg),
 		Ledger:       ledgerRepo,
 		Spaces:       space.NewResolver(account, cacheBackend),
 		SpaceLister:  account,
@@ -456,5 +457,5 @@ func BuildFinanceJobs(ctx context.Context, cfg *config.Config) (*services.Financ
 	return services.NewFinanceJobs(
 		repositories.NewBillRepository(db, cfg),
 		repositories.NewRecurrenceRepository(db, cfg),
-	), nil
+	).WithCards(repositories.NewCardRepository(db, cfg)), nil
 }

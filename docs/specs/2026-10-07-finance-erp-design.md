@@ -284,6 +284,9 @@ Rules:
 - **Advance (antecipação):** moves remaining installments to the current open statement. It is an
   allocation change only; the DRE already holds the full amount.
 - A closed statement is not changed. A late correction lands on the next open statement.
+- A statement closes on its closing day (clamped to the month's end) and is due on the first due
+  day strictly after it. A statement whose total is negative (refunds exceeding charges) carries it
+  as a credit to the next one; a zero total closes with no bill.
 
 ### 3.7 Import and reconciliation
 
@@ -335,7 +338,7 @@ Every partition key begins with `S`.
 | `ledger_transactions` | `S` → `TX#{ulid}` (immutable header with legs embedded, origin, `adjusts`, memo, ref) · `S#ACCOUNT#{id}` → `ENTRY#{date}#{tx}#{leg}` (amount, kind, flow, memo, ref, reversal) · `S` → `REVERSAL#{tx}` marker | account statement by date range · trace from an entry to the fact that produced it and back |
 | `bills` | `S` → `BILL#{ulid}` · `OCCURRENCE#{recurrence}#{date}` (materialisation lock) | payables/receivables · sparse `open-index` (`S#{direction}` → due date), present only while `forecast`, so "a pagar", "a receber" and "vencidos" never read history · `schedule-index` for auto-settle |
 | `recurrences` | `S` → `RECURRENCE#{id}` | `schedule-index` (`{mode}#finance-materialize#{date}`) points at the next materialisation |
-| `cards` | `S#CARD#{id}` → `PURCHASE#{id}` (installments embedded) · `STATEMENT#{yyyy-mm}` · `STATEMENT#{yyyy-mm}#ITEM#{purchase}#{n}` | one statement with all its items: one prefix Query · `schedule-index` for closing |
+| `cards` | `S` → `CARD#{id}` (closing/due day, paying account, open month, version, close schedule key) · `S#CARD#{id}` → `PURCHASE#{id}` (installments embedded) · `STATEMENT#{yyyy-mm}` (written on close: frozen total, bill) · `STATEMENT#{yyyy-mm}#ITEM#{purchase}#{n}` | one statement with all its items: one prefix Query; an open statement's total is the sum of its items (no stored total, so a purchase never touches more than its own rows) · `schedule-index` (`{mode}#finance-close`) for closing |
 | `imports` | `S` → `IMPORT#{id}` and its lines · `FITID#{account}#{fitid}` (lock) | import idempotency by conditional write |
 
 `audit` and `idempotency` are the existing tables.
