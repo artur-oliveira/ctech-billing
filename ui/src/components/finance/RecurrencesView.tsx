@@ -433,7 +433,7 @@ function RecurrencePanel({editing, accounts, onDone}: {editing?: Recurrence; acc
         {confirmEnd && editing && (
           <div className="flex flex-wrap items-center gap-2 rounded-lg bg-surface p-3 text-sm motion-safe:animate-in motion-safe:fade-in">
             <p role="alert" className="w-full text-foreground">{t("bills.rec.endsConfirm")}</p>
-            <StillGoing rec={editing} end={lastPatch.current.end ?? ""}/>
+            <StillGoing rec={editing} end={endsAt ?? ""}/>
             <Button type="button" size="sm" variant="outline" onClick={() => setConfirmEnd(false)}>{t("bills.rec.back")}</Button>
             <Button type="button" size="sm" variant="danger" disabled={patch.isPending}
               onClick={() => patch.mutate({...lastPatch.current, archive: true})}>{t("bills.rec.endAndArchive")}</Button>
