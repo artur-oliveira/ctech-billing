@@ -67,6 +67,9 @@ interface SpaceState {
   imports: (ImportSummary & {id: string; lines_: Omit<ImportLine, "candidates">[]})[]
   locks: Set<string>
   mappings: Map<string, CsvMapping>
+  /** Bills the daily job paid (auto-settle), and those a statement line holds. */
+  autoPaid: Set<string>
+  linked: Set<string>
 }
 
 // ---- dates (civil, no Date parsing of ISO strings) ---------------------------
@@ -112,17 +115,23 @@ function seed(kind: "personal" | "org", mode: string): SpaceState {
     cards: [] as Card[], purchases: [] as SpaceState["purchases"], items: [] as SpaceState["items"],
     closed: new Map<string, {total: number; bill_id?: string}>(),
     imports: [] as SpaceState["imports"], locks: new Set<string>(), mappings: new Map<string, CsvMapping>(),
+    autoPaid: new Set<string>(), linked: new Set<string>(),
   }
   if (kind === "personal") {
     if (live) {
+      // The seeded import is old enough for its lines to show their last days.
+      const expires_at = `${addDays(today, 12)}T12:00:00Z`
       const lines: Omit<ImportLine, "candidates">[] = [
-        {n: 1, date: addDays(today, -1), amount: -42_590, description: "Compra no débito - Supermercado", status: "pending"},
-        {n: 2, date: addDays(today, -1), amount: -1_250, description: "Padaria", status: "pending"},
-        {n: 3, date: addDays(today, -2), amount: -5_000, description: "Transferência para poupança", status: "ignored"},
+        {n: 1, date: addDays(today, -1), amount: -42_590, description: "Compra no débito - Supermercado", status: "pending", expires_at},
+        {n: 2, date: addDays(today, -1), amount: -1_250, description: "Padaria", status: "pending", expires_at},
+        {n: 3, date: addDays(today, -2), amount: -5_000, description: "Transferência para poupança", status: "ignored", expires_at},
+        {n: 4, date: addDays(today, -3), amount: -3_990, description: "Débito automático - Streaming", status: "pending", expires_at},
       ]
+      // Paid by the job before the seeded history starts (the seed's entries are empty).
+      ledger.autoPaid.add("b-streaming")
       ledger.imports.push({
         id: "imp-seed", account_id: "conta-corrente", format: "ofx", created_at: `${today}T09:00:00Z`, from: addDays(today, -2), to: addDays(today, -1),
-        lines: 3, duplicates: 0, rejected_count: 0, rejected: [], pending: 2, lines_: lines,
+        lines: 4, duplicates: 0, rejected_count: 0, rejected: [], pending: 3, lines_: lines,
       })
       for (const l of lines) ledger.locks.add(`conta-corrente#seed-${l.n}`)
     }
@@ -142,6 +151,8 @@ function seed(kind: "personal" | "org", mode: string): SpaceState {
         bill("b-aluguel", "payable", 180_000, addDays(today, -3), "aluguel", "Aluguel do apartamento"),
         bill("b-mercado", "payable", 42_590, today, "mercado", "Compra do mês"),
         bill("b-internet", "payable", 11_990, addDays(today, 6), "aluguel", "Internet", {auto_settle: true}),
+        ...(live ? [bill("b-streaming", "payable", 3_990, addDays(today, -4), "aluguel", "Streaming",
+          {auto_settle: true, status: "paid", paid_date: addDays(today, -4)})] : []),
         bill("b-freela", "receivable", 350_000, addDays(today, 9), "salario", "Projeto freelance"),
       ],
       recurrences: [{
@@ -685,7 +696,7 @@ function route(method: string, path: string, r: Req, s: SpaceState, can: (v: Ver
   }
 
   // imports (F6)
-  const importMatch = path.match(/^\/imports\/([^/]+)(?:\/lines\/(\d+)\/(match|new|ignore|reopen))?$/)
+  const importMatch = path.match(/^\/imports\/([^/]+)(?:\/lines\/(\d+)\/(match|new|ignore|reopen|link))?$/)
   const mappingMatch = path.match(/^\/accounts\/([^/]+)\/csv-mapping$/)
   const summary = (i: SpaceState["imports"][number]): ImportSummary => {
     const {lines_, ...rest} = i
@@ -728,7 +739,8 @@ function route(method: string, path: string, r: Req, s: SpaceState, can: (v: Ver
         return
       }
       s.locks.add(key)
-      fresh.push({n: i + 1, date: l.date, amount: l.amount, description: l.description, status: "pending"})
+      fresh.push({n: i + 1, date: l.date, amount: l.amount, description: l.description, status: "pending",
+        expires_at: new Date(Date.now() + 90 * 86_400_000).toISOString()})
     })
     const dates = fresh.map(l => l.date).sort()
     const imp: SpaceState["imports"][number] = {
@@ -749,13 +761,19 @@ function route(method: string, path: string, r: Req, s: SpaceState, can: (v: Ver
     if (!imp) return problem(404, "about:blank", "Not Found", "recurso não encontrado", "resource_not_found")
     const [, , n, action] = importMatch
     if (!action && method === "get") {
+      const fits = (l: Omit<ImportLine, "candidates">, b: Bill) =>
+        b.account_id === imp.account_id && b.direction === (l.amount < 0 ? "payable" : "receivable") && b.amount === Math.abs(l.amount)
       const lines: ImportLine[] = imp.lines_.map(l => ({
         ...l,
-        candidates: l.status !== "pending" ? [] : s.bills
-          .filter(b => b.status === "forecast" && b.account_id === imp.account_id && b.direction === (l.amount < 0 ? "payable" : "receivable") &&
-            b.amount === Math.abs(l.amount) && Math.abs(daysBetween(l.date, b.due_date)) <= 5)
-          .sort((a, b) => Math.abs(daysBetween(l.date, a.due_date)) - Math.abs(daysBetween(l.date, b.due_date)) || a.due_date.localeCompare(b.due_date))
-          .slice(0, 5).map(withBucket),
+        candidates: l.status !== "pending" ? [] : [
+          ...s.bills
+            .filter(b => b.status === "forecast" && fits(l, b) && Math.abs(daysBetween(l.date, b.due_date)) <= 5)
+            .sort((a, b) => Math.abs(daysBetween(l.date, a.due_date)) - Math.abs(daysBetween(l.date, b.due_date)) || a.due_date.localeCompare(b.due_date))
+            .map(withBucket),
+          // Then bills auto-settle already paid, exact amount, that no line holds yet.
+          ...s.bills.filter(b => b.status === "paid" && b.paid_date && s.autoPaid.has(b.id) && !s.linked.has(b.id) && fits(l, b) &&
+            Math.abs(daysBetween(l.date, b.paid_date)) <= 5),
+        ].slice(0, 5),
       }))
       return ok({import: summary(imp), lines})
     }
@@ -768,7 +786,24 @@ function route(method: string, path: string, r: Req, s: SpaceState, can: (v: Ver
       line.status = "pending"
       return ok({line: {...line, candidates: []}})
     }
+    if (action === "link" && line.status === "linked" && line.bill_id === body<{bill_id: string}>(r).bill_id) {
+      return ok({line: {...line, candidates: []}, bill: s.bills.find(b => b.id === line.bill_id)})
+    }
     if (line.status !== "pending") return resolved()
+    if (action === "link") {
+      // Posts nothing: the job already paid the bill.
+      if (!can("finance.import") || !can("finance.write")) return forbidden()
+      const bill = s.bills.find(b => b.id === body<{bill_id: string}>(r).bill_id)
+      if (!bill) return problem(404, "about:blank", "Not Found", "recurso não encontrado", "resource_not_found")
+      if (bill.account_id !== imp.account_id || bill.direction !== (line.amount < 0 ? "payable" : "receivable") || bill.amount !== Math.abs(line.amount) ||
+        bill.status !== "paid" || !s.autoPaid.has(bill.id)) {
+        return problem(422, "about:blank", "Unprocessable", "mismatch", "line_bill_mismatch")
+      }
+      if (s.linked.has(bill.id)) return problem(409, "/problems/invalid-transition", "Invalid Transition", "já vinculada", "bill_already_linked")
+      s.linked.add(bill.id)
+      Object.assign(line, {status: "linked", bill_id: bill.id})
+      return ok({line: {...line, candidates: []}, bill})
+    }
     if (action === "ignore") {
       if (!can("finance.import")) return forbidden()
       line.status = "ignored"

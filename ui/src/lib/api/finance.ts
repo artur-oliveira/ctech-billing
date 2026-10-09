@@ -211,6 +211,9 @@ export const matchLine = (c: FinanceCtx, importId: string, n: number, body: {bil
 /** Creates a bill from the line and settles it at once. */
 export const newFromLine = (c: FinanceCtx, importId: string, n: number, body: {category_id: string; description?: string}, idempotencyKey: string) =>
   write<LineResult>(c, "POST", `${line(importId, n)}/new`, body, idempotencyKey)
+/** Ties a pending line to a bill auto-settle already paid: nothing is posted. */
+export const linkLine = (c: FinanceCtx, importId: string, n: number, body: {bill_id: string}, idempotencyKey: string) =>
+  write<LineResult>(c, "POST", `${line(importId, n)}/link`, body, idempotencyKey)
 export const ignoreLine = (c: FinanceCtx, importId: string, n: number, idempotencyKey: string) =>
   write<LineResult>(c, "POST", `${line(importId, n)}/ignore`, {}, idempotencyKey)
 export const reopenLine = (c: FinanceCtx, importId: string, n: number, idempotencyKey: string) =>

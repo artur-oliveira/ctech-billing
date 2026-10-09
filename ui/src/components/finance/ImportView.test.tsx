@@ -160,13 +160,85 @@ describe("F6 — importar extrato", () => {
     await waitFor(() => expect(save).toHaveBeenCalledWith(expect.anything(), "cc", expect.objectContaining({delimiter: ";", date_column: 1}), expect.any(String)))
   })
 
+  it("says, on the pending tab only, how long pending lines are kept", async () => {
+    serve(ALL)
+    renderWithQuery(<ImportView/>)
+    await screen.findByText("Pagamento aluguel")
+    const note = "Linhas pendentes ficam disponíveis por 90 dias após a importação."
+    expect(screen.getByText(note)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole("tab", {name: /Ignoradas/}))
+    await screen.findByText("Transferência entre contas")
+    expect(screen.queryByText(note)).not.toBeInTheDocument()
+  })
+
+  it("offers a bill auto-settle already paid as such, and links it instead of settling", async () => {
+    const paid: Bill = {...RENT, id: "auto", description: "Internet", status: "paid", paid_date: "2026-03-10", auto_settle: true}
+    serve(ALL)
+    vi.spyOn(finance, "getImport").mockResolvedValue({...DETAIL, lines: [{...DETAIL.lines[0], candidates: [paid]}, ...DETAIL.lines.slice(1)]})
+    const link = vi.spyOn(finance, "linkLine").mockResolvedValue({line: {...DETAIL.lines[0], status: "linked", bill_id: "auto"}})
+    const match = vi.spyOn(finance, "matchLine")
+    renderWithQuery(<ImportView/>)
+    const row = (await screen.findByText("Pagamento aluguel")).closest("li") as HTMLElement
+    expect(within(row).getByText(/Internet, já pago automaticamente em 10\/03/)).toBeInTheDocument()
+    expect(within(row).queryByRole("button", {name: "Dar baixa"})).not.toBeInTheDocument()
+    await userEvent.click(within(row).getByRole("button", {name: "Vincular"}))
+    await waitFor(() => expect(link).toHaveBeenCalledWith(expect.anything(), "imp1", 1, {bill_id: "auto"}, expect.any(String)))
+    expect(match).not.toHaveBeenCalled()
+  })
+
+  it("shows a linked line as reconciled", async () => {
+    serve(ALL)
+    vi.spyOn(finance, "getImport").mockResolvedValue({...DETAIL, lines: [{...DETAIL.lines[0], status: "linked", bill_id: "auto", candidates: []}]})
+    renderWithQuery(<ImportView/>)
+    await userEvent.click(await screen.findByRole("tab", {name: /Conciliadas/}))
+    const row = (await screen.findByText("Pagamento aluguel")).closest("li") as HTMLElement
+    expect(within(row).getByText("Vinculada ao pagamento automático")).toBeInTheDocument()
+  })
+
   it("shows a viewer the lines and no action", async () => {
     serve(["finance.read"])
     renderWithQuery(<ImportView/>)
     await screen.findByText("Pagamento aluguel")
     expect(screen.queryByLabelText("Arquivo do extrato")).not.toBeInTheDocument()
-    for (const name of ["Dar baixa", "Nova conta", "Ignorar", "Importar"]) {
+    for (const name of ["Dar baixa", "Vincular", "Nova conta", "Ignorar", "Importar"]) {
       expect(screen.queryByRole("button", {name})).not.toBeInTheDocument()
     }
+  })
+})
+
+describe("F6 — a pending line's last days", () => {
+  // Only Date is faked: the query client and user events keep real timers.
+  beforeEach(() => {
+    vi.useFakeTimers({toFake: ["Date"]})
+    vi.setSystemTime(new Date(2026, 5, 1, 9, 0)) // 1 June 2026, 09:00 local
+  })
+  afterEach(() => vi.useRealTimers())
+
+  // A line that expires at noon (local) on the given June day.
+  const expiring = (n: number, description: string, june: number): ImportDetail["lines"][number] =>
+    ({n, date: "2026-03-09", amount: -500, description, status: "pending", candidates: [], expires_at: new Date(2026, 5, june, 12).toISOString()})
+
+  it("warns in the last 15 days only, and reads right on the last day", async () => {
+    serve(ALL)
+    vi.spyOn(finance, "getImport").mockResolvedValue({...DETAIL, lines: [
+      expiring(1, "Sobra dezesseis", 17), // 16 days left: no badge
+      expiring(2, "Sobra quinze", 16), // 15 days left: badge
+      expiring(3, "Sobra um", 2), // tomorrow
+      expiring(4, "Sobra hoje", 1), // today, later on
+    ]})
+    renderWithQuery(<ImportView/>)
+    const row = async (text: string) => (await screen.findByText(text)).closest("li") as HTMLElement
+    expect(within(await row("Sobra dezesseis")).queryByText(/expira/)).not.toBeInTheDocument()
+    expect(within(await row("Sobra quinze")).getByText("expira em 15 dias")).toBeInTheDocument()
+    expect(within(await row("Sobra um")).getByText("expira em 1 dia")).toBeInTheDocument()
+    expect(within(await row("Sobra hoje")).getByText("expira hoje")).toBeInTheDocument()
+  })
+
+  it("does not warn on a line already reconciled", async () => {
+    serve(ALL)
+    vi.spyOn(finance, "getImport").mockResolvedValue({...DETAIL, lines: [{...expiring(1, "Feita", 2), status: "matched", bill_id: "rent"}]})
+    renderWithQuery(<ImportView/>)
+    await userEvent.click(await screen.findByRole("tab", {name: /Conciliadas/}))
+    expect(within(await screen.findByText("Feita").then(e => e.closest("li") as HTMLElement)).queryByText(/expira/)).not.toBeInTheDocument()
   })
 })

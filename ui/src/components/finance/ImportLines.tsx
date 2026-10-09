@@ -9,13 +9,16 @@ import {wholeSpace} from "@/components/finance/TransferPanel"
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
 import {Select} from "@/components/ui/Select"
 import {messageFor} from "@/lib/api/client"
-import {financeKeys, getImport, ignoreLine, listAccounts, matchLine, newFromLine, reopenLine} from "@/lib/api/finance"
-import type {Account, ImportLine} from "@/lib/api/financeTypes"
+import {financeKeys, getImport, ignoreLine, linkLine, listAccounts, matchLine, newFromLine, reopenLine} from "@/lib/api/finance"
+import type {Account, Bill, ImportLine} from "@/lib/api/financeTypes"
 import {accountName} from "@/lib/finance/accountName"
 import {useFinanceMutation} from "@/lib/finance/useFinanceMutation"
 import {useFinanceCtx, useFinanceSpaces} from "@/lib/finance/useFinanceSpaces"
-import {shortDate, signedMoney} from "@/lib/format"
+import {calendarDaysUntil, dayMonth, shortDate, signedMoney} from "@/lib/format"
 import limits from "@/lib/limits.json"
+
+/** A pending line shows when it expires in its last days only (it lives 90). */
+const EXPIRY_WARNING_DAYS = 15
 
 const TABS = ["pending", "done", "ignored"] as const
 type Tab = (typeof TABS)[number]
@@ -51,6 +54,7 @@ export function ImportLines({importId}: {importId: string}) {
         ))}
       </div>
       <div role="tabpanel" id="im-panel" aria-labelledby={`im-tab-${tab}`}>
+        {tab === "pending" && <p className="pb-2 text-xs text-muted-foreground">{t("finance.import.pendingKept")}</p>}
         {shown.length === 0 ? (
           <p className="py-6 text-center text-sm text-muted-foreground">{t(`finance.import.empty.${tab}`)}</p>
         ) : (
@@ -78,17 +82,28 @@ function LineRow({importId, line, accounts}: {importId: string; line: ImportLine
   const {can} = useFinanceSpaces()
   const canImport = can("finance.import")
   const canSettle = canImport && can("finance.write") && can("finance.settle")
+  // Linking posts nothing (auto-settle already paid the bill), so it needs no settle.
+  const canLink = canImport && can("finance.write")
   const [creating, setCreating] = useState(false)
   const [billId, setBillId] = useState(line.candidates[0]?.id ?? "")
   // A refusal (another tab decided this line, or the bill was paid elsewhere)
   // is shown, and the import is read again so the row tells the truth.
   const refresh = () => void client.invalidateQueries({queryKey: financeKeys.importDetail(ctx.mode, ctx.space, importId)})
   const match = useFinanceMutation((c, _: void, key) => matchLine(c, importId, line.n, {bill_id: billId}, key), wholeSpace, undefined, refresh)
+  const link = useFinanceMutation((c, _: void, key) => linkLine(c, importId, line.n, {bill_id: billId}, key), wholeSpace, undefined, refresh)
   const ignore = useFinanceMutation((c, _: void, key) => ignoreLine(c, importId, line.n, key), wholeSpace, undefined, refresh)
   const reopen = useFinanceMutation((c, _: void, key) => reopenLine(c, importId, line.n, key), wholeSpace, undefined, refresh)
-  const error = match.error ?? ignore.error ?? reopen.error
-  const busy = match.isPending || ignore.isPending || reopen.isPending
+  const error = match.error ?? link.error ?? ignore.error ?? reopen.error
+  const busy = match.isPending || link.isPending || ignore.isPending || reopen.isPending
   const candidate = line.candidates.find(b => b.id === billId)
+  // A candidate already paid is one auto-settle paid: the line is linked to it, not settled again.
+  const label = (b: Bill) => {
+    const description = b.description || t("finance.import.noDescription")
+    return b.status === "paid" && b.paid_date
+      ? t("finance.import.candidatePaid", {description, date: dayMonth(b.paid_date)})
+      : t("finance.import.candidate", {description, date: shortDate(b.due_date)})
+  }
+  const daysLeft = line.status === "pending" && line.expires_at ? calendarDaysUntil(line.expires_at) : undefined
 
   return (
     <li className="py-2.5">
@@ -97,9 +112,13 @@ function LineRow({importId, line, accounts}: {importId: string; line: ImportLine
           <p className="truncate text-sm text-foreground">{line.description || t("finance.import.noDescription")}</p>
           <p className="text-xs text-muted-foreground">{shortDate(line.date)}</p>
         </div>
+        {daysLeft !== undefined && daysLeft >= 0 && daysLeft <= EXPIRY_WARNING_DAYS && (
+          <Badge tone="attention">{daysLeft === 0 ? t("finance.import.expiresToday") : t("finance.import.expiresIn", {count: daysLeft})}</Badge>
+        )}
         <span data-numeric className="w-28 text-right text-sm tabular-nums">{signedMoney(line.amount)}</span>
         {line.status === "matched" && <Badge tone="neutral">{t("finance.import.matched")}</Badge>}
         {line.status === "created" && <Badge tone="neutral">{t("finance.import.created")}</Badge>}
+        {line.status === "linked" && <Badge tone="neutral">{t("finance.import.linked")}</Badge>}
         {line.status === "ignored" && canImport && (
           <Button size="sm" variant="ghost" disabled={busy} onClick={() => reopen.mutate()}>{t("finance.import.reopen")}</Button>
         )}
@@ -109,16 +128,18 @@ function LineRow({importId, line, accounts}: {importId: string; line: ImportLine
           {line.candidates.length === 0 ? (
             <p className="text-xs text-muted-foreground">{t("finance.import.noCandidate")}</p>
           ) : line.candidates.length === 1 && candidate ? (
-            <p className="text-sm text-foreground">{t("finance.import.candidate", {description: candidate.description || t("finance.import.noDescription"), date: shortDate(candidate.due_date)})}</p>
+            <p className="text-sm text-foreground">{label(candidate)}</p>
           ) : (
             <Field label={t("finance.import.which")} htmlFor={`im-bill-${line.n}`}>
               <Select id={`im-bill-${line.n}`} aria-label={t("finance.import.which")} value={billId} onValueChange={setBillId} className="w-72"
-                options={line.candidates.map(b => ({value: b.id, label: t("finance.import.candidate", {description: b.description || t("finance.import.noDescription"), date: shortDate(b.due_date)})}))}/>
+                options={line.candidates.map(b => ({value: b.id, label: label(b)}))}/>
             </Field>
           )}
           {(canImport || canSettle) && !creating && (
             <div className="flex flex-wrap gap-1">
-              {canSettle && candidate && <Button size="sm" variant="brand" disabled={busy} onClick={() => match.mutate()}>{t("finance.import.match")}</Button>}
+              {candidate?.status === "paid"
+                ? canLink && <Button size="sm" variant="brand" disabled={busy} onClick={() => link.mutate()}>{t("finance.import.link")}</Button>
+                : canSettle && candidate && <Button size="sm" variant="brand" disabled={busy} onClick={() => match.mutate()}>{t("finance.import.match")}</Button>}
               {canSettle && <Button size="sm" variant="outline" disabled={busy} onClick={() => setCreating(true)}>{t("finance.import.new")}</Button>}
               {canImport && <Button size="sm" variant="ghost" disabled={busy} onClick={() => ignore.mutate()}>{t("finance.import.ignore")}</Button>}
             </div>
