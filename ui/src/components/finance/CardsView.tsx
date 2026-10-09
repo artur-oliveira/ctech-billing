@@ -21,6 +21,7 @@ import type {Account, Card, CardStatement, CardStatementStatus, Purchase, Statem
 import {currentLocale} from "@/lib/i18n"
 import {monthShort} from "@/lib/finance/today"
 import {useFinanceMutation} from "@/lib/finance/useFinanceMutation"
+import {useCreateRequest} from "@/lib/finance/createRequest"
 import {useFinanceCtx, useFinanceSpaces} from "@/lib/finance/useFinanceSpaces"
 import {shortDate, signedMoney} from "@/lib/format"
 import {accountName} from "@/lib/finance/accountName"
@@ -52,7 +53,9 @@ export function CardsView({card: initial = ""}: {card?: string}) {
   const {can} = useFinanceSpaces()
   const [picked, setPicked] = useState(initial)
   const [month, setMonth] = useState<string | null>(null)
-  const [panel, setPanel] = useState<Panel>(null)
+  const [chosen, setChosen] = useState<Panel>(null)
+  const [asked, setAsked] = useState(false)
+  useCreateRequest("purchase", () => setAsked(true))
 
   const cards = useQuery({queryKey: financeKeys.cards(ctx.mode, ctx.space), queryFn: () => listCards(ctx)})
   const accounts = useQuery({queryKey: financeKeys.accounts(ctx.mode, ctx.space), queryFn: () => listAccounts(ctx)})
@@ -60,6 +63,12 @@ export function CardsView({card: initial = ""}: {card?: string}) {
   const card = active.find(c => c.id === picked) ?? active[0]
   const shown = month ?? card?.open_month ?? ""
   const all = accounts.data?.data ?? []
+  // The central action on a phone: a purchase on the card on screen, or the
+  // card itself when there is none to buy with yet.
+  const loaded = !cards.isLoading && !accounts.isLoading
+  const requested: Panel = asked && loaded ? (card ? "purchase" : can("finance.configure") ? "new-card" : null) : null
+  const panel = chosen ?? requested
+  const setPanel = (p: Panel) => { setChosen(p); setAsked(false) }
 
   if (cards.isLoading || accounts.isLoading) {
     return <div className="space-y-2" aria-busy><Skeleton className="h-8 w-64"/><Skeleton className="h-4 w-full"/></div>
@@ -94,7 +103,7 @@ export function CardsView({card: initial = ""}: {card?: string}) {
             options={active.map(c => ({value: c.id, label: c.name}))}/>
         </Field>
         <div className="flex flex-wrap gap-2">
-          {can("finance.write") && <Button variant="brand" size="sm" onClick={() => setPanel("purchase")}>{t("finance.cards.newPurchase")}</Button>}
+          {can("finance.write") && <Button variant="brand" size="sm" className="max-md:hidden" onClick={() => setPanel("purchase")}>{t("finance.cards.newPurchase")}</Button>}
           {can("finance.configure") && (
             <>
               <Button variant="ghost" size="sm" onClick={() => setPanel("edit-card")}>{t("finance.cards.edit")}</Button>

@@ -7,6 +7,7 @@ import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import {CardsView} from "@/components/finance/CardsView"
 import {renderWithQuery} from "@/components/finance/finance.test-utils"
 import * as finance from "@/lib/api/finance"
+import * as createRequest from "@/lib/finance/createRequest"
 import type {Account, Card, CardStatement, Purchase, Verb} from "@/lib/api/financeTypes"
 
 const ALL: Verb[] = ["finance.read", "finance.write", "finance.settle", "finance.import", "finance.configure"]
@@ -81,5 +82,21 @@ describe("F5 — cartões", () => {
     renderWithQuery(<CardsView/>)
     expect(await screen.findByText("Nenhum cartão ainda.")).toBeInTheDocument()
     expect(screen.getByRole("button", {name: "Novo cartão"})).toBeInTheDocument()
+  })
+})
+
+describe("the phone's central action", () => {
+  it("opens Nova compra on the card on screen, once the cards are known", async () => {
+    serve(ALL)
+    createRequest.requestCreate("purchase")
+    renderWithQuery(<CardsView/>)
+    expect(await screen.findByRole("dialog", {name: "Nova compra"})).toBeInTheDocument()
+  })
+
+  it("opens Novo cartão instead when there is no card to buy with", async () => {
+    serve(ALL, [])
+    createRequest.requestCreate("purchase")
+    renderWithQuery(<CardsView/>)
+    expect(await screen.findByRole("dialog", {name: "Novo cartão"})).toBeInTheDocument()
   })
 })

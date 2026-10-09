@@ -22,6 +22,7 @@ import {defaultModel, describeModel, type EditorModel, fromExpression, toExpress
 import {t} from "@/lib/i18n"
 import {addYearsIso, todayIso} from "@/lib/finance/today"
 import {useFinanceMutation} from "@/lib/finance/useFinanceMutation"
+import {useCreateRequest} from "@/lib/finance/createRequest"
 import {useFinanceCtx, useFinanceSpaces} from "@/lib/finance/useFinanceSpaces"
 import {money, shortDate} from "@/lib/format"
 import {useFieldErrors} from "@/lib/useFieldErrors"
@@ -51,6 +52,7 @@ export function RecurrencesView() {
   const ctx = useFinanceCtx()
   const {can} = useFinanceSpaces()
   const [panel, setPanel] = useState<{mode: "new"} | {mode: "edit"; rec: Recurrence} | null>(null)
+  useCreateRequest("recurrence", () => setPanel({mode: "new"}))
   const recs = useQuery({queryKey: financeKeys.recurrences(ctx.mode, ctx.space), queryFn: () => listRecurrences(ctx)})
   const accounts = useQuery({queryKey: financeKeys.accounts(ctx.mode, ctx.space), queryFn: () => listAccounts(ctx)})
   const names = new Map((accounts.data?.data ?? []).map(a => [a.id, accountName(a)]))
@@ -61,7 +63,7 @@ export function RecurrencesView() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-lg font-semibold tracking-[-0.01em] text-foreground">{t("bills.rec.title")}</h1>
         {can("finance.write") && (
-          <Button variant="brand" size="sm" onClick={() => setPanel({mode: "new"})}>{t("bills.rec.new")}</Button>
+          <Button variant="brand" size="sm" className="max-md:hidden" onClick={() => setPanel({mode: "new"})}>{t("bills.rec.new")}</Button>
         )}
       </div>
 

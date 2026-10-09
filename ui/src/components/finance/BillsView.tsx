@@ -21,6 +21,7 @@ import {bucketLabel} from "@/lib/finance/labels"
 import {addYearsIso, monthLabel, todayIso} from "@/lib/finance/today"
 import {useFinanceMutation} from "@/lib/finance/useFinanceMutation"
 import {type FinanceCtx} from "@/lib/api/finance"
+import {useCreateRequest} from "@/lib/finance/createRequest"
 import {useFinanceCtx, useFinanceSpaces} from "@/lib/finance/useFinanceSpaces"
 import {money, shortDate} from "@/lib/format"
 import {useFieldErrors} from "@/lib/useFieldErrors"
@@ -56,6 +57,7 @@ export function BillsView() {
   const {can} = useFinanceSpaces()
   const [direction, setDirection] = useState<Direction>("payable")
   const [creating, setCreating] = useState(false)
+  useCreateRequest("bill", () => setCreating(true))
 
   const bills = useQuery({queryKey: financeKeys.bills(ctx.mode, ctx.space, direction), queryFn: () => listBills(ctx, direction)})
   const accounts = useQuery({queryKey: financeKeys.accounts(ctx.mode, ctx.space), queryFn: () => listAccounts(ctx)})
@@ -72,7 +74,7 @@ export function BillsView() {
           options={(["payable", "receivable"] as Direction[]).map(d => ({value: d, label: t(`bills.direction.${d}`)}))}
         />
         {can("finance.write") && (
-          <Button variant="brand" size="sm" onClick={() => setCreating(true)}>{t("bills.list.new")}</Button>
+          <Button variant="brand" size="sm" className="max-md:hidden" onClick={() => setCreating(true)}>{t("bills.list.new")}</Button>
         )}
       </div>
 

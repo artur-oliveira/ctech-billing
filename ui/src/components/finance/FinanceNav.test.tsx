@@ -21,7 +21,7 @@ describe("FinanceNav", () => {
     expect(within(nav).getByRole("link", {name: "Resumo"})).not.toHaveAttribute("aria-current")
   })
 
-  it("offers the same sections as a picker on a phone", async () => {
+  it("offers the same sections as a picker on a tablet", async () => {
     render(<FinanceNav/>)
     const picker = screen.getByRole("combobox", {name: "Seção"})
     expect(picker).toHaveTextContent("Extrato")

@@ -16,6 +16,7 @@ import {archiveAccount, createAccount, financeKeys, getSettings, listAccounts, p
 import type {Account, AccountClass, DREGroup, OpeningBalance} from "@/lib/api/financeTypes"
 import {classLabel, dreGroupLabel, groupsForClass} from "@/lib/finance/labels"
 import {useFinanceMutation} from "@/lib/finance/useFinanceMutation"
+import {useCreateRequest} from "@/lib/finance/createRequest"
 import {useFinanceCtx, useFinanceSpaces} from "@/lib/finance/useFinanceSpaces"
 import {money} from "@/lib/format"
 import {todayIso} from "@/lib/finance/today"
@@ -44,6 +45,7 @@ export function AccountsView() {
   const configure = can("finance.configure")
   const [showArchived, setShowArchived] = useState(false)
   const [creating, setCreating] = useState(false)
+  useCreateRequest("account", () => setCreating(true))
 
   const q = useQuery({queryKey: financeKeys.accounts(ctx.mode, ctx.space), queryFn: () => listAccounts(ctx)})
   const accounts = (q.data?.data ?? []).filter(a => !a.system)
@@ -55,7 +57,7 @@ export function AccountsView() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-lg font-semibold tracking-[-0.01em] text-foreground">{t("finance.accounts.title")}</h1>
         {configure && (
-          <Button variant="brand" size="sm" onClick={() => setCreating(true)}>{t("finance.accounts.new")}</Button>
+          <Button variant="brand" size="sm" className="max-md:hidden" onClick={() => setCreating(true)}>{t("finance.accounts.new")}</Button>
         )}
       </div>
 

@@ -16,6 +16,7 @@ import type {Account, StatementEntry} from "@/lib/api/financeTypes"
 import {dateRange, type PresetId, PRESETS} from "@/lib/finance/periods"
 import {todayIso} from "@/lib/finance/today"
 import {useFinanceMutation} from "@/lib/finance/useFinanceMutation"
+import {useCreateRequest} from "@/lib/finance/createRequest"
 import {useFinanceCtx, useFinanceSpaces} from "@/lib/finance/useFinanceSpaces"
 import {shortDate, signedMoney} from "@/lib/format"
 import {currentLocale, t as tr} from "@/lib/i18n"
@@ -58,6 +59,7 @@ export function StatementView({account: initial = ""}: {account?: string}) {
   const [picked, setPicked] = useState(initial)
   const [preset, setPreset] = useState<PresetId>("this_month")
   const [transferring, setTransferring] = useState(false)
+  useCreateRequest("transfer", () => setTransferring(true))
 
   const accounts = useQuery({queryKey: financeKeys.accounts(ctx.mode, ctx.space), queryFn: () => listAccounts(ctx)})
   const all = accounts.data?.data ?? []
@@ -100,7 +102,7 @@ export function StatementView({account: initial = ""}: {account?: string}) {
           </Field>
         </div>
         {can("finance.write") && (
-          <Button variant="brand" size="sm" onClick={() => setTransferring(true)}>{t("finance.statement.newTransfer")}</Button>
+          <Button variant="brand" size="sm" className="max-md:hidden" onClick={() => setTransferring(true)}>{t("finance.statement.newTransfer")}</Button>
         )}
       </div>
 
