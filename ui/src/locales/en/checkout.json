@@ -1,0 +1,24 @@
+{
+  "title": "Pay invoice",
+  "invoice": "Invoice #{{number}}",
+  "untitled": "Invoice",
+  "from": "Charge from <b>{{merchant}}</b>",
+  "dueOn": "{{description}} · due {{date}}",
+  "payPix": "Pay {{amount}} with PIX",
+  "generating": "Generating code…",
+  "settled": {
+    "title": "Payment received",
+    "description": "Invoice paid in full."
+  },
+  "notOpen": "This invoice is closed for payment. Nothing was charged. Contact {{merchant}} if this is a mistake.",
+  "lines": "Items",
+  "proration": "Prorated for the days used",
+  "total": "Total",
+  "footer": "Payment processed by CTech.",
+  "terms": "Terms",
+  "privacy": "Privacy",
+  "invalid": {
+    "title": "Invalid link",
+    "description": "This link has expired. Nothing was charged. Ask the sender for a new one or sign in to your CTech account."
+  }
+}

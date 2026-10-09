@@ -45,7 +45,6 @@ function serve() {
   }
 }
 
-const EXPLAIN = /A DRE conta cada receita e despesa no mês a que pertence/
 
 beforeEach(() => window.localStorage.clear())
 afterEach(() => vi.restoreAllMocks())
@@ -64,7 +63,6 @@ describe("F7 — relatórios", () => {
     expect(within(net).getAllByRole("cell").map(c => c.textContent?.replace(/\s/g, " "))).toEqual(["R$ 4.700,00", "R$ 2.800,00", "R$ 7.500,00"])
     const rent = screen.getByRole("rowheader", {name: "Aluguel (arquivada)"}).closest("tr")!
     expect(within(rent).getAllByRole("cell")[0]).toHaveTextContent("−R$ 1.800,00")
-    expect(screen.getByText(EXPLAIN)).toBeInTheDocument()
   })
 
   it("keeps the period when switching to the cash flow", async () => {
@@ -72,29 +70,27 @@ describe("F7 — relatórios", () => {
     renderWithQuery(<ReportsView/>)
     await screen.findByRole("rowheader", {name: "Receita bruta"})
     await pick("Período", "Este mês")
-    await userEvent.click(screen.getByRole("tab", {name: "Fluxo de caixa (caixa)"}))
+    await userEvent.click(screen.getByRole("tab", {name: "Fluxo de caixa"}))
     const {from, to} = monthRange("this_month", todayIso())
     await waitFor(() => expect(cash).toHaveBeenCalledWith(expect.anything(), from, to))
     expect(screen.getByRole("combobox", {name: "Período"})).toHaveTextContent("Este mês")
-    expect(screen.getByText(EXPLAIN)).toBeInTheDocument()
   })
 
   it("opens on the cash flow when the link says so, and names what it leaves out", async () => {
     serve()
     renderWithQuery(<ReportsView view="cash"/>)
-    expect(screen.getByRole("tab", {name: "Fluxo de caixa (caixa)"})).toHaveAttribute("aria-selected", "true")
+    expect(screen.getByRole("tab", {name: "Fluxo de caixa"})).toHaveAttribute("aria-selected", "true")
     expect(await screen.findByRole("rowheader", {name: "Sem categoria"})).toBeInTheDocument()
     expect(screen.getByRole("rowheader", {name: "Entradas"})).toBeInTheDocument()
     expect(screen.getByRole("rowheader", {name: "Fatura Visa"})).toBeInTheDocument()
     expect(screen.getByText("Saldo final")).toBeInTheDocument()
     expect(screen.getByText("R$ 3.400,00")).toBeInTheDocument()
-    expect(screen.getByText(/Transferências entre suas contas não aparecem aqui/)).toBeInTheDocument()
     expect(screen.queryByRole("rowheader", {name: "Saldos iniciais lançados"})).not.toBeInTheDocument()
   })
 
   it("says so when nothing was posted in the period", async () => {
     serve().dre.mockResolvedValue({months: ["2026-01"], groups: [], result: [0], total: 0})
     renderWithQuery(<ReportsView/>)
-    expect(await screen.findByText("Nada lançado neste período.")).toBeInTheDocument()
+    expect(await screen.findByText("Nada neste período.")).toBeInTheDocument()
   })
 })

@@ -4,11 +4,13 @@ import limits from "@/lib/limits.json"
 import {Alert, Button, Field, Input, Modal, Skeleton} from "@aoctech/ui"
 import {useMutation, useQuery, useQueryClient} from "@tanstack/react-query"
 import {useState} from "react"
+import {useTranslation} from "react-i18next"
 import {toast} from "sonner"
 
 import {DunningPolicyCard} from "@/components/console/DunningPolicyCard"
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
 import {messageFor} from "@/lib/api/client"
+import {useFieldErrors} from "@/lib/useFieldErrors"
 import {
   consoleKeys,
   getConsoleSettings,
@@ -28,6 +30,7 @@ import {useMode} from "@/lib/console/useMode"
  * settings screen lying about what it controls.
  */
 export default function ConsoleSettingsPage() {
+  const {t} = useTranslation()
   const mode = useMode()
   const queryClient = useQueryClient()
 
@@ -41,6 +44,10 @@ export default function ConsoleSettingsPage() {
     onSuccess: () => queryClient.invalidateQueries({queryKey: consoleKeys.settings(mode)}),
   })
 
+  /** An enum code from the API, translated; an unknown one shows as itself. */
+  const settingValue = (group: "numberingValue" | "retentionValue", code: string) =>
+    t(`console.settings.${group}.${code}`, {defaultValue: code})
+
   if (query.isPending) return <SettingsSkeleton/>
   if (query.isError) return <ErrorBlock error={query.error} onRetry={query.refetch}/>
 
@@ -48,17 +55,17 @@ export default function ConsoleSettingsPage() {
 
   return (
     <div className="space-y-8">
-      <h1 className="text-lg font-semibold tracking-[-0.01em] text-foreground">Configurações</h1>
+      <h1 className="text-lg font-semibold tracking-[-0.01em] text-foreground">{t("console.settings.title")}</h1>
 
       <dl className="grid gap-x-6 gap-y-4 border-y border-border py-4 text-sm sm:grid-cols-3">
-        <Fact label="Organização" value={settings.organization.display_name}/>
-        <Fact label="Identificador" value={settings.organization.organization_id}/>
+        <Fact label={t("console.settings.organization")} value={settings.organization.display_name}/>
+        <Fact label={t("console.settings.identifier")} value={settings.organization.organization_id}/>
         <Fact
-          label="Cobrança"
-          value={settings.organization.can_charge ? "Liberada" : "Bloqueada"}
+          label={t("console.settings.billing")}
+          value={settings.organization.can_charge ? t("console.settings.billingOn") : t("console.settings.billingOff")}
         />
-        <Fact label="Numeração de faturas" value={settings.numbering}/>
-        <Fact label="Retenção" value={settings.retention}/>
+        <Fact label={t("console.settings.numbering")} value={settingValue("numberingValue", settings.numbering)}/>
+        <Fact label={t("console.settings.retention")} value={settingValue("retentionValue", settings.retention)}/>
       </dl>
 
       {settings.documents_enabled && (
@@ -66,10 +73,10 @@ export default function ConsoleSettingsPage() {
       )}
 
       <DunningPolicyCard
-        title="Política de cobrança"
-        description="O que acontece com uma fatura que ninguém pagou: quando lembrar, quando restringir o acesso e quando dar por perdida. Não é retentativa de cobrança; PIX é o cliente que paga, o billing não debita ninguém."
+        title={t("console.settings.dunningTitle")}
+        description={t("console.settings.dunningDescription")}
         policy={settings.dunning}
-        inheritLabel="a política padrão da CTech"
+        inheritLabel={t("console.settings.inherit")}
         onSave={steps => save.mutateAsync(steps)}
       />
     </div>
@@ -89,6 +96,7 @@ export default function ConsoleSettingsPage() {
  * wrong would be worse than printing what it was told.
  */
 function IssuerCard({issuer, mode}: { issuer: Issuer; mode: "live" | "test" }) {
+  const {t} = useTranslation()
   const queryClient = useQueryClient()
   const [editing, setEditing] = useState(false)
 
@@ -96,29 +104,25 @@ function IssuerCard({issuer, mode}: { issuer: Issuer; mode: "live" | "test" }) {
     <section aria-labelledby="emissor" className="space-y-3">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="space-y-1">
-          <h2 id="emissor" className="text-sm font-medium text-foreground">Emissor</h2>
-          <p className="max-w-prose text-sm text-muted-foreground">
-            O cabeçalho do PDF da fatura: quem está cobrando. Vale para os documentos gerados
-            daqui em diante.
-          </p>
+          <h2 id="emissor" className="text-sm font-medium text-foreground">{t("console.settings.issuer")}</h2>
+          <p className="max-w-prose text-sm text-muted-foreground">{t("console.settings.issuerNote")}</p>
         </div>
         <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
-          Editar emissor
+          {t("console.settings.editIssuer")}
         </Button>
       </div>
 
       {!issuer.legal_name && (
-        <Alert tone="warning" title="As faturas saem sem razão social">
-          O PDF é encabeçado pelo nome de exibição da organização, que é uma marca, não uma
-          empresa. Um contador vai pedir a razão social e o CNPJ.
+        <Alert tone="warning" title={t("console.settings.noLegalTitle")}>
+          {t("console.settings.noLegalBody")}
         </Alert>
       )}
 
       <dl className="grid gap-x-6 gap-y-4 border-y border-border py-4 text-sm sm:grid-cols-2">
-        <Fact label="Razão social" value={issuer.legal_name || "—"}/>
-        <Fact label="CNPJ" value={issuer.tax_id || "—"}/>
-        <Fact label="Endereço" value={issuer.address || "—"}/>
-        <Fact label="E-mail no documento" value={issuer.email || "—"}/>
+        <Fact label={t("console.settings.legalName")} value={issuer.legal_name || "—"}/>
+        <Fact label={t("console.settings.taxId")} value={issuer.tax_id || "—"}/>
+        <Fact label={t("console.settings.address")} value={issuer.address || "—"}/>
+        <Fact label={t("console.settings.email")} value={issuer.email || "—"}/>
       </dl>
 
       {editing && (
@@ -147,6 +151,7 @@ function IssuerEditor({
   onClose: () => void
   onSaved: () => void
 }) {
+  const {t} = useTranslation()
   const [form, setForm] = useState<IssuerInput>({
     legal_name: issuer.legal_name ?? "",
     tax_id: issuer.tax_id ?? "",
@@ -154,49 +159,55 @@ function IssuerEditor({
     email: issuer.email ?? "",
   })
 
+  const fe = useFieldErrors(["legal_name", "tax_id", "address", "email"], {keepOthers: false})
   const save = useMutation({
     mutationFn: () => setIssuer(form, mode),
     onSuccess: () => {
-      toast.success("Emissor salvo.")
+      toast.success(t("console.settings.saved"))
       onSaved()
     },
-    onError: error => toast.error(messageFor(error)),
+    onError: error => { if (!fe.set(error)) toast.error(messageFor(error)) },
   })
 
-  const field = (key: keyof IssuerInput) => ({
+  const field = (key: keyof IssuerInput, id: string) => ({
     value: form[key],
-    onChange: (event: React.ChangeEvent<HTMLInputElement>) =>
-      setForm({...form, [key]: event.target.value}),
+    onChange: (event: React.ChangeEvent<HTMLInputElement>) => {
+      setForm({...form, [key]: event.target.value})
+      fe.clear(key)
+    },
+    ...fe.props(key, id),
   })
 
   return (
     <Modal
       open
       onClose={onClose}
-      title="Emissor do documento"
-      description="Sai no cabeçalho de cada fatura em PDF. Documentos já gerados não mudam; eles foram entregues como estavam."
-      cancelLabel="Cancelar"
-      submitLabel="Salvar emissor"
+      title={t("console.settings.issuerTitle")}
+      description={t("console.settings.issuerBody")}
+      cancelLabel={t("common.cancel")}
+      submitLabel={t("console.settings.save")}
       loading={save.isPending}
-      onSubmit={() => save.mutate()}
+      onSubmit={() => { fe.reset(); save.mutate() }}
     >
       <div className="space-y-4">
-        <Field label="Razão social" htmlFor="issuer-legal-name">
-          <Input id="issuer-legal-name" maxLength={limits.text.legalName} placeholder="A O CARVALHO TECH LTDA" {...field("legal_name")}/>
+        <Field label={t("console.settings.legalName")} htmlFor="issuer-legal-name" error={fe.of("legal_name")}>
+          <Input id="issuer-legal-name" maxLength={limits.text.legalName} placeholder="A O CARVALHO TECH LTDA" {...field("legal_name", "issuer-legal-name")}/>
         </Field>
-        <Field label="CNPJ" htmlFor="issuer-tax-id">
-          <Input id="issuer-tax-id" maxLength={limits.text.taxID} placeholder="12.345.678/0001-90" {...field("tax_id")}/>
+        <Field label={t("console.settings.taxId")} htmlFor="issuer-tax-id" error={fe.of("tax_id")}>
+          <Input id="issuer-tax-id" maxLength={limits.text.taxID} placeholder="12.345.678/0001-90" {...field("tax_id", "issuer-tax-id")}/>
         </Field>
-        <Field label="Endereço" htmlFor="issuer-address">
-          <Input id="issuer-address" maxLength={limits.text.address} placeholder="Rua Exemplo, 100 • São Paulo/SP" {...field("address")}/>
+        <Field label={t("console.settings.address")} htmlFor="issuer-address" error={fe.of("address")}>
+          <Input id="issuer-address" maxLength={limits.text.address} placeholder="Rua Exemplo, 100 • São Paulo/SP" {...field("address", "issuer-address")}/>
         </Field>
         <Field
-          label="E-mail no documento"
+          label={t("console.settings.email")}
           htmlFor="issuer-email"
-          hint="Para onde o cliente escreve sobre a cobrança. Não é o remetente dos lembretes."
+          error={fe.of("email")}
+          hint={t("console.settings.emailHint")}
         >
-          <Input id="issuer-email" type="email" maxLength={limits.text.email} placeholder="cobranca@exemplo.com.br" {...field("email")}/>
+          <Input id="issuer-email" type="email" maxLength={limits.text.email} placeholder="cobranca@exemplo.com.br" {...field("email", "issuer-email")}/>
         </Field>
+        {fe.general && <p role="alert" className="text-sm text-danger">{fe.general}</p>}
       </div>
     </Modal>
   )

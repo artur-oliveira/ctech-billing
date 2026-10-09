@@ -1,13 +1,14 @@
 "use client"
 
 import {useQueryClient} from "@tanstack/react-query"
+import {useTranslation} from "react-i18next"
 
 import {setMode} from "@/lib/console/mode"
 import {useMode} from "@/lib/console/useMode"
 
 const OPTIONS = [
-  {id: "live", label: "Produção"},
-  {id: "test", label: "Teste"},
+  {id: "live", label: "console.mode.live"},
+  {id: "test", label: "console.mode.test"},
 ] as const
 
 /**
@@ -24,13 +25,14 @@ const OPTIONS = [
  * frame while its test counterpart loads.
  */
 export function ModeSwitch() {
+  const {t} = useTranslation()
   const mode = useMode()
   const queryClient = useQueryClient()
 
   return (
     <div
       role="group"
-      aria-label="Modo"
+      aria-label={t("console.mode.label")}
       className="flex items-center gap-0.5 rounded-lg border border-border bg-surface p-0.5"
     >
       {OPTIONS.map(option => {
@@ -53,7 +55,7 @@ export function ModeSwitch() {
                 : "text-muted-foreground hover:text-foreground"
             }`}
           >
-            {option.label}
+            {t(option.label)}
           </button>
         )
       })}

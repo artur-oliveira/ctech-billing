@@ -2,6 +2,7 @@
 
 import {Button} from "@aoctech/ui"
 import {useRouter} from "next/navigation"
+import {useTranslation} from "react-i18next"
 
 import {useAuth} from "@/lib/auth/AuthContext"
 
@@ -19,6 +20,7 @@ import {useAuth} from "@/lib/auth/AuthContext"
 export function LandingCta() {
   const {authenticated, loading, login} = useAuth()
   const router = useRouter()
+  const {t} = useTranslation()
 
   return (
     <Button
@@ -27,7 +29,7 @@ export function LandingCta() {
       disabled={loading}
       onClick={() => (authenticated ? router.push("/dashboard") : login("/dashboard"))}
     >
-      {loading ? "Carregando…" : authenticated ? "Ver minhas faturas" : "Entrar com a conta CTech"}
+      {loading ? t("common.loading") : authenticated ? t("landing.openApp") : t("landing.signIn")}
     </Button>
   )
 }

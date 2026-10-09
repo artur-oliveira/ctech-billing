@@ -7,6 +7,7 @@ import {toast} from "sonner"
 import {type FinanceCtx, financeKeys, getFinanceSpaces} from "@/lib/api/finance"
 import type {FinanceSpaceEntry, Verb} from "@/lib/api/financeTypes"
 import {PERSONAL, sameSpace, setSpace, type Space} from "@/lib/console/space"
+import {t} from "@/lib/i18n"
 import {useMode} from "@/lib/console/useMode"
 import {useSpace} from "@/lib/console/useSpace"
 
@@ -40,7 +41,7 @@ export function useFinanceSpaces() {
   useEffect(() => {
     if (!q.data || unavailable || current || space.kind === "personal") return
     setSpace(PERSONAL)
-    toast.info("Você não tem mais acesso a esse espaço. Mostrando Pessoal.")
+    toast.info(t("bills.spaces.lost"))
   }, [q.data, unavailable, current, space])
 
   const verbs = new Set<Verb>(current?.verbs ?? [])

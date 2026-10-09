@@ -5,12 +5,14 @@ import {useQuery} from "@tanstack/react-query"
 import {ChevronLeft, ChevronRight, FileText} from "lucide-react"
 import Link from "next/link"
 import {useState} from "react"
+import {useTranslation} from "react-i18next"
 
 import {InvoiceStatusBadge} from "@/components/console/InvoiceStatusBadge"
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
 import {consoleKeys, listConsoleInvoices} from "@/lib/api/console"
 import {useMode} from "@/lib/console/useMode"
 import {money, shortDate} from "@/lib/format"
+import {currentLocale} from "@/lib/i18n"
 
 /**
  * C2 — the invoice list, and the screen an operator lives in.
@@ -25,6 +27,7 @@ import {money, shortDate} from "@/lib/format"
  * still there for the tenant that outgrows one page.
  */
 export default function ConsoleInvoicesPage() {
+  const {t} = useTranslation()
   const mode = useMode()
   const today = new Date()
   const [year, setYear] = useState(today.getFullYear())
@@ -36,7 +39,7 @@ export default function ConsoleInvoicesPage() {
   })
 
   const invoices = query.data?.data ?? []
-  const label = new Intl.DateTimeFormat("pt-BR", {month: "long", year: "numeric"})
+  const label = new Intl.DateTimeFormat(currentLocale(), {month: "long", year: "numeric"})
     .format(new Date(year, month - 1, 1))
 
   function shift(by: number) {
@@ -48,19 +51,19 @@ export default function ConsoleInvoicesPage() {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
-        <h1 className="text-lg font-semibold tracking-[-0.01em] text-foreground">Faturas</h1>
+        <h1 className="text-lg font-semibold tracking-[-0.01em] text-foreground">{t("console.invoices.title")}</h1>
 
         {/* The period control is the filter, so it sits with the title rather
             than above the table: it decides what the table *is*, not how it is
             sorted. */}
         <div className="flex items-center gap-1">
-          <Button variant="outline" size="sm" aria-label="Mês anterior" onClick={() => shift(-1)}>
+          <Button variant="outline" size="sm" aria-label={t("console.invoices.prevMonth")} onClick={() => shift(-1)}>
             <ChevronLeft aria-hidden className="size-4"/>
           </Button>
-          <span className="min-w-40 text-center text-sm text-foreground first-letter:uppercase">
+          <span className="min-w-32 text-center text-sm text-foreground first-letter:uppercase">
             {label}
           </span>
-          <Button variant="outline" size="sm" aria-label="Próximo mês" onClick={() => shift(1)}>
+          <Button variant="outline" size="sm" aria-label={t("console.invoices.nextMonth")} onClick={() => shift(1)}>
             <ChevronRight aria-hidden className="size-4"/>
           </Button>
         </div>
@@ -72,8 +75,7 @@ export default function ConsoleInvoicesPage() {
       {!query.isPending && !query.isError && invoices.length === 0 && (
         <EmptyState
           icon={<FileText/>}
-          title="Nenhuma fatura neste mês"
-          description="As faturas aparecem aqui no dia em que são emitidas. Use as setas para olhar outro mês."
+          title={t("console.invoices.empty")}
         />
       )}
 
@@ -82,14 +84,14 @@ export default function ConsoleInvoicesPage() {
           <table className="w-full min-w-[46rem] border-collapse text-sm">
             <thead>
               <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                <th scope="col" className="w-28 py-2 pr-4 font-medium">Número</th>
-                <th scope="col" className="py-2 pr-4 font-medium">Cliente</th>
-                <th scope="col" className="w-56 py-2 pr-4 font-medium">Situação</th>
-                <th scope="col" className="w-52 py-2 pr-4 font-medium">Período</th>
-                <th scope="col" className="w-32 py-2 pr-4 font-medium">Vencimento</th>
-                <th scope="col" className="w-20 py-2 pr-4 text-right font-medium">Tent.</th>
-                <th scope="col" className="w-32 py-2 pr-4 text-right font-medium">Total</th>
-                <th scope="col" className="w-32 py-2 text-right font-medium">Em aberto</th>
+                <th scope="col" className="w-28 py-2 pr-4 font-medium">{t("console.invoices.number")}</th>
+                <th scope="col" className="py-2 pr-4 font-medium">{t("console.invoices.customer")}</th>
+                <th scope="col" className="w-56 py-2 pr-4 font-medium">{t("console.invoices.status")}</th>
+                <th scope="col" className="w-52 py-2 pr-4 font-medium">{t("console.invoices.period")}</th>
+                <th scope="col" className="w-32 py-2 pr-4 font-medium">{t("console.invoices.due")}</th>
+                <th scope="col" className="w-20 py-2 pr-4 text-right font-medium">{t("console.invoices.attempts")}</th>
+                <th scope="col" className="w-32 py-2 pr-4 text-right font-medium">{t("console.invoices.total")}</th>
+                <th scope="col" className="w-32 py-2 text-right font-medium">{t("console.invoices.open")}</th>
               </tr>
             </thead>
             <tbody>
@@ -106,7 +108,7 @@ export default function ConsoleInvoicesPage() {
                       data-numeric
                       className="font-medium text-brand-600 underline-offset-4 hover:underline"
                     >
-                      {invoice.number ? `nº ${invoice.number}` : "sem número"}
+                      {invoice.number ? t("console.invoices.numbered", {number: invoice.number}) : t("console.invoices.unnumbered")}
                     </Link>
                   </td>
                   <td className="max-w-0 truncate py-2 pr-4 text-foreground">
@@ -147,7 +149,7 @@ export default function ConsoleInvoicesPage() {
 
       {query.data?.has_more && (
         <p className="text-xs text-muted-foreground">
-          Este mês tem mais faturas do que cabem em uma página.
+          {t("console.invoices.hasMore")}
         </p>
       )}
     </div>

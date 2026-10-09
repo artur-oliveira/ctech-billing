@@ -5,6 +5,7 @@ import {useMutation, useQuery, useQueryClient} from "@tanstack/react-query"
 import {ChevronRight, Repeat} from "lucide-react"
 import Link from "next/link"
 import {useState} from "react"
+import {useTranslation} from "react-i18next"
 import {toast} from "sonner"
 
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
@@ -14,8 +15,11 @@ import {messageFor} from "@/lib/api/client"
 import {cancelSubscription, listSubscriptions, portalKeys} from "@/lib/api/portal"
 import type {Subscription} from "@/lib/api/types"
 import {longDate} from "@/lib/format"
+import {useDocumentTitle} from "@/lib/hooks/useDocumentTitle"
 
 export default function SubscriptionsPage() {
+  const {t} = useTranslation()
+  useDocumentTitle(t("portal.subscriptions.title"))
   const queryClient = useQueryClient()
   const [cancelling, setCancelling] = useState<Subscription | null>(null)
 
@@ -26,7 +30,7 @@ export default function SubscriptionsPage() {
     onSuccess: () => {
       void queryClient.invalidateQueries({queryKey: portalKeys.subscriptions})
       setCancelling(null)
-      toast.success("Assinatura encerrada no fim do período atual.")
+      toast.success(t("portal.subscription.cancelled"))
     },
     onError: error => toast.error(messageFor(error)),
   })
@@ -35,7 +39,7 @@ export default function SubscriptionsPage() {
 
   return (
     <div className="space-y-8">
-      <PageHeader title="Assinaturas"/>
+      <PageHeader title={t("portal.subscriptions.title")}/>
 
       {query.isPending && <SubscriptionsSkeleton/>}
       {query.isError && <ErrorBlock error={query.error} onRetry={query.refetch}/>}
@@ -43,8 +47,8 @@ export default function SubscriptionsPage() {
       {!query.isPending && !query.isError && subscriptions.length === 0 && (
         <EmptyState
           icon={<Repeat/>}
-          title="Você não tem assinaturas"
-          description="Planos contratados com a CTech aparecem aqui, com o valor e a data da próxima cobrança."
+          title={t("portal.subscriptions.empty.title")}
+          description={t("portal.subscriptions.empty.description")}
         />
       )}
 
@@ -76,7 +80,7 @@ export default function SubscriptionsPage() {
                     <StatusBadge state={s.state} tone={s.tone}/>
                   </div>
                   {s.metered ? (
-                    <span className="text-sm text-muted-foreground">Valor conforme o uso</span>
+                    <span className="text-sm text-muted-foreground">{t("portal.subscriptions.metered")}</span>
                   ) : (
                     s.amount != null && <Money cents={s.amount} currency={s.currency}/>
                   )}
@@ -84,8 +88,8 @@ export default function SubscriptionsPage() {
 
                 <p className="mt-4 text-sm text-muted-foreground">
                   {s.renews_on
-                    ? `Próxima cobrança em ${longDate(s.renews_on)}`
-                    : `Ativa até ${longDate(s.current_period.end)}`}
+                    ? t("portal.subscriptions.nextCharge", {date: longDate(s.renews_on)})
+                    : t("portal.subscriptions.activeUntil", {date: longDate(s.current_period.end)})}
                 </p>
               </Link>
 
@@ -99,7 +103,7 @@ export default function SubscriptionsPage() {
                   className="mt-4"
                   onClick={() => setCancelling(s)}
                 >
-                  Cancelar assinatura
+                  {t("portal.subscription.cancel")}
                 </Button>
               )}
             </li>
@@ -110,7 +114,7 @@ export default function SubscriptionsPage() {
       <Modal
         open={cancelling !== null}
         onClose={() => setCancelling(null)}
-        title="Cancelar esta assinatura?"
+        title={t("portal.subscription.cancelTitle")}
         // Period-end only, and the modal says so rather than letting somebody
         // discover it. The portal never offers immediate cancellation: mid-period
         // means money back, money back is a credit note, and that is a decision
@@ -120,11 +124,14 @@ export default function SubscriptionsPage() {
         // product name whose number nobody controls.
         description={
           cancelling
-            ? `Você mantém o acesso a ${cancelling.description} até ${longDate(cancelling.current_period.end)}. Não haverá nova cobrança depois disso.`
+            ? t("portal.subscription.cancelDescription", {
+                name: cancelling.description,
+                date: longDate(cancelling.current_period.end),
+              })
             : undefined
         }
-        cancelLabel="Manter assinatura"
-        submitLabel="Cancelar no fim do período"
+        cancelLabel={t("portal.subscription.keep")}
+        submitLabel={t("portal.subscription.cancel")}
         danger
         loading={cancel.isPending}
         onSubmit={() => cancelling && cancel.mutate(cancelling.id)}

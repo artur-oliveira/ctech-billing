@@ -129,3 +129,98 @@ func TestKeySeparatesTenantAndMode(t *testing.T) {
 		t.Fatal("two organizations share a key")
 	}
 }
+
+func TestParseLangFallsBackToPortuguese(t *testing.T) {
+	cases := map[string]Lang{
+		"": PTBR, "pt-BR": PTBR, "pt": PTBR, "fr": PTBR, "garbage": PTBR,
+		"en": EN, "EN": EN, "en-US": EN, "en-GB": EN, " en ": EN,
+	}
+	for in, want := range cases {
+		if got := ParseLang(in); got != want {
+			t.Errorf("ParseLang(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestRenderHTMLPortuguese(t *testing.T) {
+	html, _, err := renderHTML(issued())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"Fatura nº 1042", "Período de 01/03/2026 a 31/03/2026", "Vencimento em 10 de abril de 2026",
+		"Emitida por", "Cobrada de", "Descrição", "Unitário", "Proporcional aos dias usados",
+		"R$ 89,00", "R$ 113,00", "Total", "não é nota",
+	} {
+		if !strings.Contains(html, want) {
+			t.Errorf("pt-BR document is missing %q", want)
+		}
+	}
+}
+
+func TestRenderHTMLEnglish(t *testing.T) {
+	in := issued()
+	in.Lang = EN
+	in.Invoice.Subtotal = 123456789
+	in.Invoice.Discount = 1000
+	in.Invoice.Total = 123455789
+	html, _, err := renderHTML(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"Invoice no. 1042", "March 1, 2026 to March 31, 2026", "Due on April 10, 2026",
+		"Issued by", "Billed to", "Description", "Unit price", "Prorated for the days used",
+		"Subtotal", "Discount", "R$ 1,234,567.89", "R$ 89.00", "not a tax invoice",
+	} {
+		if !strings.Contains(html, want) {
+			t.Errorf("en document is missing %q", want)
+		}
+	}
+	for _, leak := range []string{"Fatura", "Vencimento", "Emitida", "Descrição", "Desconto", "R$ 89,00"} {
+		if strings.Contains(html, leak) {
+			t.Errorf("en document still contains Portuguese %q", leak)
+		}
+	}
+}
+
+func TestRenderBothLanguagesProducePDFs(t *testing.T) {
+	pt, err := Render(issued())
+	if err != nil {
+		t.Fatal(err)
+	}
+	in := issued()
+	in.Lang = EN
+	en, err := Render(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.HasPrefix(en, []byte("%PDF-")) || bytes.Equal(pt, en) {
+		t.Fatal("the English render is not a distinct PDF")
+	}
+}
+
+// The default language keeps the original key so documents stored before
+// languages existed stay reachable; other languages must not overwrite it.
+func TestKeyForKeepsDefaultKeyAndSuffixesOthers(t *testing.T) {
+	base := Key("org_1", true, "in_9")
+	if got := KeyFor("org_1", true, "in_9", PTBR); got != base {
+		t.Errorf("pt-BR key = %q, want the legacy %q", got, base)
+	}
+	if got := KeyFor("org_1", true, "in_9", ""); got != base {
+		t.Errorf("empty-language key = %q, want %q", got, base)
+	}
+	en := KeyFor("org_1", true, "in_9", EN)
+	if en == base || !strings.HasSuffix(en, "/in_9.en.pdf") {
+		t.Errorf("en key = %q", en)
+	}
+}
+
+func TestFilenameIsLocalized(t *testing.T) {
+	if got := Filename(PTBR, 1042); got != "fatura-1042.pdf" {
+		t.Errorf("pt-BR filename = %q", got)
+	}
+	if got := Filename(EN, 1042); got != "invoice-1042.pdf" {
+		t.Errorf("en filename = %q", got)
+	}
+}

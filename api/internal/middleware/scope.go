@@ -90,7 +90,7 @@ func RequireM2MScope(scope string) fiber.Handler {
 			return problem.Unauthorized("credenciais ausentes").Send(c)
 		}
 		if cl.SID != "" {
-			return problem.Forbidden("esta rota exige token de serviço (client_credentials)").Send(c)
+			return problem.Forbidden("this route requires a service token (client_credentials)").WithCode("service_token_required").Send(c)
 		}
 		if !cl.HasScope(scope) {
 			return problem.Forbidden("escopo insuficiente: " + scope).Send(c)

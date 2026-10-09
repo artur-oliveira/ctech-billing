@@ -6,6 +6,7 @@ import {ArrowLeft} from "lucide-react"
 import Link from "next/link"
 import {useSearchParams} from "next/navigation"
 import {Suspense, useState} from "react"
+import {useTranslation} from "react-i18next"
 import {toast} from "sonner"
 
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
@@ -40,6 +41,7 @@ export default function SubscriptionPage() {
 }
 
 function Detail() {
+  const {t} = useTranslation()
   const id = useSearchParams().get("id") ?? ""
   const queryClient = useQueryClient()
   const [confirming, setConfirming] = useState(false)
@@ -59,7 +61,7 @@ function Detail() {
       queryClient.setQueryData(portalKeys.subscription(id), fresh)
       void queryClient.invalidateQueries({queryKey: portalKeys.subscriptions})
       setConfirming(false)
-      toast.success("Assinatura encerrada no fim do período atual.")
+      toast.success(t("portal.subscription.cancelled"))
     },
     onError: error => toast.error(messageFor(error)),
   })
@@ -95,16 +97,16 @@ function Detail() {
       </header>
 
       <section aria-labelledby="plano" className="space-y-6">
-        <h2 id="plano" className="sr-only">Plano</h2>
+        <h2 id="plano" className="sr-only">{t("portal.subscription.plan")}</h2>
         {/* Stacked on a phone, opposed on a desktop. A justified row with a
             long value on the right is how "Calculado quando o período fecha"
             ran off a 390px screen. */}
         <div className="space-y-1">
           <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between sm:gap-6">
-            <span className="text-sm text-muted-foreground">Valor por período</span>
+            <span className="text-sm text-muted-foreground">{t("portal.subscription.perPeriod")}</span>
             {sub.metered ? (
               <span className="text-2xl font-semibold tracking-[-0.015em] text-foreground">
-                Conforme o uso
+                {t("portal.subscription.metered")}
               </span>
             ) : (
               sub.amount != null && (
@@ -114,7 +116,7 @@ function Detail() {
           </div>
           {sub.metered && (
             <p className="text-sm text-muted-foreground sm:text-right">
-              O valor é calculado quando o período fecha.
+              {t("portal.subscription.meteredNote")}
             </p>
           )}
         </div>
@@ -124,30 +126,30 @@ function Detail() {
             are several. */}
         <dl className="grid gap-x-6 gap-y-4 border-t border-border pt-6 sm:grid-cols-2">
           <Fact
-            label="Período atual"
+            label={t("portal.subscription.currentPeriod")}
             value={period(sub.current_period.start, sub.current_period.end)}
           />
           <Fact
-            label={sub.renews_on ? "Próxima cobrança" : "Acesso até"}
+            label={sub.renews_on ? t("portal.subscription.nextCharge") : t("portal.subscription.accessUntil")}
             value={longDate(sub.renews_on ?? sub.current_period.end)}
           />
-          {sub.since && <Fact label="Cliente desde" value={longDate(sub.since)}/>}
+          {sub.since && <Fact label={t("portal.subscription.since")} value={longDate(sub.since)}/>}
           {!sub.renews_on && sub.cancelable && (
-            <Fact label="Renovação" value="Cancelada; não haverá nova cobrança"/>
+            <Fact label={t("portal.subscription.renewal")} value={t("portal.subscription.renewalCancelled")}/>
           )}
         </dl>
       </section>
 
       <section aria-labelledby="historico" className="space-y-4">
         <h2 id="historico" className="text-sm font-medium text-muted-foreground">
-          Faturas deste plano
+          {t("portal.subscription.invoices")}
         </h2>
         {invoices.length === 0 ? (
           // Not an illustrated empty state: this block is one section of a
           // screen that is working fine, and a panel with an icon would make a
           // plan on its first month look broken.
           <p className="text-sm text-muted-foreground">
-            A primeira fatura aparece aqui quando o período atual fechar.
+            {t("portal.subscription.noInvoices")}
           </p>
         ) : (
           <ul className="-mx-3 divide-y divide-border">
@@ -161,7 +163,7 @@ function Detail() {
             href="/invoices"
             className="inline-block text-sm text-brand-600 underline-offset-4 hover:underline"
           >
-            Ver todas as faturas
+            {t("portal.subscription.seeInvoices")}
           </Link>
         )}
       </section>
@@ -171,7 +173,7 @@ function Detail() {
       {sub.cancelable && sub.renews_on && (
         <section className="border-t border-border pt-6">
           <Button variant="outline" onClick={() => setConfirming(true)}>
-            Cancelar assinatura
+            {t("portal.subscription.cancel")}
           </Button>
         </section>
       )}
@@ -179,10 +181,10 @@ function Detail() {
       <Modal
         open={confirming}
         onClose={() => setConfirming(false)}
-        title="Cancelar esta assinatura?"
-        description={`Você mantém o acesso a ${sub.description} até ${longDate(sub.current_period.end)}. Não haverá nova cobrança depois disso.`}
-        cancelLabel="Manter assinatura"
-        submitLabel="Cancelar no fim do período"
+        title={t("portal.subscription.cancelTitle")}
+        description={t("portal.subscription.cancelDescription", {name: sub.description, date: longDate(sub.current_period.end)})}
+        cancelLabel={t("portal.subscription.keep")}
+        submitLabel={t("portal.subscription.cancel")}
         danger
         loading={cancel.isPending}
         onSubmit={() => cancel.mutate()}
@@ -201,32 +203,34 @@ function Fact({label, value}: { label: string; value: string }) {
 }
 
 function NotFound() {
+  const {t} = useTranslation()
   return (
     <div className="space-y-6">
       <BackLink/>
       <div className="space-y-2">
         <h1 className="text-xl font-semibold tracking-[-0.01em] text-foreground">
-          Assinatura não encontrada
+          {t("portal.subscription.notFound.title")}
         </h1>
         <p className="text-sm text-muted-foreground">
-          Ela pode ter sido encerrada, ou o endereço pode estar incompleto.
+          {t("portal.subscription.notFound.description")}
         </p>
       </div>
       <Button variant="outline" render={<Link href="/subscriptions"/>}>
-        Ver todas as assinaturas
+        {t("portal.subscription.notFound.action")}
       </Button>
     </div>
   )
 }
 
 function BackLink() {
+  const {t} = useTranslation()
   return (
     <Link
       href="/subscriptions"
       className="inline-flex items-center gap-1.5 text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
     >
       <ArrowLeft aria-hidden className="size-3.5"/>
-      Assinaturas
+      {t("portal.subscription.back")}
     </Link>
   )
 }

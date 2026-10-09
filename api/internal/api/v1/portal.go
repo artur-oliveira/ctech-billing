@@ -108,7 +108,7 @@ func (h *portalHandlers) getSubscription(c fiber.Ctx) error {
 	if sub.CustomerID != customer.ID {
 		// 404 rather than 403: this tenant holds every portal user's data, so a
 		// 403 would confirm that somebody else's subscription exists under that id.
-		return problem.NotFound("assinatura não encontrada").Send(c)
+		return problem.NotFound("subscription not found").WithCode("subscription_not_found").Send(c)
 	}
 	view, err := h.describeSubscription(c, sub)
 	if err != nil {
@@ -242,7 +242,7 @@ func (h *portalHandlers) payInvoice(c fiber.Ctx) error {
 		return fail(c, err)
 	}
 	if inv.CustomerID != customer.ID || inv.Status == billing.InvoiceDraft {
-		return problem.NotFound("fatura não encontrada").Send(c)
+		return problem.NotFound("invoice not found").WithCode("invoice_not_found").Send(c)
 	}
 
 	session, _, err := h.collector.Pay(
@@ -286,7 +286,7 @@ func (h *portalHandlers) cancelSubscription(c fiber.Ctx) error {
 		return fail(c, err)
 	}
 	if sub.CustomerID != customer.ID {
-		return problem.NotFound("assinatura não encontrada").Send(c)
+		return problem.NotFound("subscription not found").WithCode("subscription_not_found").Send(c)
 	}
 	// Cancelling something already ending is not an error to the person who asked
 	// — they got what they wanted. It writes no second audit row either, because

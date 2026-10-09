@@ -6,6 +6,7 @@ import {ArrowLeft, Copy} from "lucide-react"
 import Link from "next/link"
 import {useSearchParams} from "next/navigation"
 import {Suspense, useState} from "react"
+import {useTranslation} from "react-i18next"
 import {toast} from "sonner"
 
 import {CreditNoteDialog} from "@/components/console/CreditNoteDialog"
@@ -49,6 +50,7 @@ export default function ConsoleInvoicePage() {
 }
 
 function Detail() {
+  const {t} = useTranslation()
   const id = useSearchParams().get("id") ?? ""
   const mode = useMode()
   const queryClient = useQueryClient()
@@ -75,13 +77,13 @@ function Detail() {
       onError: (error: unknown) => toast.error(messageFor(error)),
     })
 
-  const finalize = useMutation(write(invoiceId => finalizeInvoice(invoiceId, mode), "Fatura emitida."))
+  const finalize = useMutation(write(invoiceId => finalizeInvoice(invoiceId, mode), t("console.invoice.finalized")))
   const cancel = useMutation({
-    ...write(invoiceId => voidInvoice(invoiceId, mode), "Fatura anulada."),
+    ...write(invoiceId => voidInvoice(invoiceId, mode), t("console.invoice.voided")),
     onSettled: () => setVoiding(false),
   })
 
-  useDocumentTitle(query.data?.invoice.number ? `Fatura nº ${query.data.invoice.number}` : null)
+  useDocumentTitle(query.data?.invoice.number ? t("console.invoice.title", {number: query.data.invoice.number}) : null)
 
   if (id === "" || (query.isError && statusOf(query.error) === 404)) return <NotFound/>
   if (query.isPending) return <DetailSkeleton/>
@@ -112,12 +114,12 @@ function Detail() {
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="space-y-2">
             <h1 data-numeric className="text-lg font-semibold tracking-[-0.01em] text-foreground">
-              {invoice.number ? `Fatura nº ${invoice.number}` : "Fatura sem número"}
+              {invoice.number ? t("console.invoice.title", {number: invoice.number}) : t("console.invoice.untitled")}
             </h1>
             <div className="flex flex-wrap items-center gap-2">
               <InvoiceStatusBadge invoice={invoice}/>
               {fullyCredited && (
-                <span className="text-xs text-muted-foreground">Totalmente estornada</span>
+                <span className="text-xs text-muted-foreground">{t("console.invoice.fullyCredited")}</span>
               )}
             </div>
           </div>
@@ -125,12 +127,12 @@ function Detail() {
           <div className="flex flex-wrap items-center gap-2">
             {canFinalize && (
               <Button size="sm" onClick={() => finalize.mutate()} disabled={finalize.isPending}>
-                {finalize.isPending ? "Emitindo…" : "Emitir fatura"}
+                {finalize.isPending ? t("console.invoice.finalizing") : t("console.invoice.finalize")}
               </Button>
             )}
             {canCredit && (
               <Button variant="outline" size="sm" onClick={() => setCrediting(true)}>
-                Emitir nota de crédito
+                {t("console.invoice.creditNote")}
               </Button>
             )}
             {invoice.checkout_url && <CopyLink url={invoice.checkout_url}/>}
@@ -138,11 +140,11 @@ function Detail() {
                 the server refuses rather than rendering something that looks
                 official and refers to nothing. */}
             {invoice.status !== "DRAFT" && (
-              <DownloadPDF fetchLink={() => getConsoleInvoicePDF(invoice.id, mode)}/>
+              <DownloadPDF fetchLink={lang => getConsoleInvoicePDF(invoice.id, mode, lang)}/>
             )}
             {canVoid && (
               <Button variant="outline" size="sm" onClick={() => setVoiding(true)}>
-                Anular
+                {t("console.invoice.void")}
               </Button>
             )}
           </div>
@@ -153,43 +155,43 @@ function Detail() {
           número" is the product's own rule, and this row is where it is paid
           for: total, paid, credited, and what is left. */}
       <section aria-labelledby="valores" className="space-y-3">
-        <h2 id="valores" className="sr-only">Valores</h2>
+        <h2 id="valores" className="sr-only">{t("console.invoice.values")}</h2>
         <dl className="grid gap-x-6 gap-y-4 border-y border-border py-4 sm:grid-cols-4">
-          <Amount label="Total" cents={invoice.total} currency={invoice.currency} strong/>
-          <Amount label="Pago" cents={invoice.amount_paid} currency={invoice.currency}/>
-          <Amount label="Creditado" cents={credited} currency={invoice.currency}/>
-          <Amount label="Em aberto" cents={invoice.amount_due} currency={invoice.currency} strong/>
+          <Amount label={t("console.invoice.total")} cents={invoice.total} currency={invoice.currency} strong/>
+          <Amount label={t("console.invoice.paid")} cents={invoice.amount_paid} currency={invoice.currency}/>
+          <Amount label={t("console.invoice.credited")} cents={credited} currency={invoice.currency}/>
+          <Amount label={t("console.invoice.open")} cents={invoice.amount_due} currency={invoice.currency} strong/>
         </dl>
         <dl className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-3">
-          <Fact label="Período" value={period(invoice.period.start, invoice.period.end)}/>
-          <Fact label="Vencimento" value={longDate(invoice.due_date)}/>
+          <Fact label={t("console.invoice.period")} value={period(invoice.period.start, invoice.period.end)}/>
+          <Fact label={t("console.invoice.due")} value={longDate(invoice.due_date)}/>
           <Fact
-            label="Cliente"
+            label={t("console.invoice.customer")}
             value={customerName || invoice.customer_id}
             href={`/console/customer?id=${invoice.customer_id}`}
           />
           {invoice.subscription_id && (
             <Fact
-              label="Assinatura"
+              label={t("console.invoice.subscription")}
               value={invoice.subscription_id}
               href={`/console/subscription?id=${invoice.subscription_id}`}
             />
           )}
-          <Fact label="Tentativas de cobrança" value={String(invoice.attempt_count)}/>
+          <Fact label={t("console.invoice.attempts")} value={String(invoice.attempt_count)}/>
         </dl>
       </section>
 
       <section aria-labelledby="linhas" className="space-y-3">
-        <h2 id="linhas" className="text-sm font-medium text-muted-foreground">Linhas</h2>
+        <h2 id="linhas" className="text-sm font-medium text-muted-foreground">{t("console.invoice.lines")}</h2>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[36rem] border-collapse text-sm">
             <thead>
               <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                <th scope="col" className="py-2 pr-4 font-medium">Descrição</th>
-                <th scope="col" className="py-2 pr-4 font-medium">Período</th>
-                <th scope="col" className="py-2 pr-4 text-right font-medium">Qtd.</th>
-                <th scope="col" className="py-2 pr-4 text-right font-medium">Unitário</th>
-                <th scope="col" className="py-2 text-right font-medium">Valor</th>
+                <th scope="col" className="py-2 pr-4 font-medium">{t("console.invoice.description")}</th>
+                <th scope="col" className="py-2 pr-4 font-medium">{t("console.invoice.period")}</th>
+                <th scope="col" className="py-2 pr-4 text-right font-medium">{t("console.invoice.qty")}</th>
+                <th scope="col" className="py-2 pr-4 text-right font-medium">{t("console.invoice.unit")}</th>
+                <th scope="col" className="py-2 text-right font-medium">{t("console.invoice.amount")}</th>
               </tr>
             </thead>
             <tbody>
@@ -201,7 +203,7 @@ function Detail() {
                         the single most common "what is this charge?" question,
                         and the answer is always the same sentence. */}
                     {line.proration && (
-                      <span className="ml-2 text-xs text-muted-foreground">proporcional</span>
+                      <span className="ml-2 text-xs text-muted-foreground">{t("console.invoice.proration")}</span>
                     )}
                   </td>
                   <td data-numeric className="py-2 pr-4 text-muted-foreground">
@@ -228,7 +230,7 @@ function Detail() {
       {notes.length > 0 && (
         <section aria-labelledby="creditos" className="space-y-3">
           <h2 id="creditos" className="text-sm font-medium text-muted-foreground">
-            Notas de crédito
+            {t("console.invoice.creditNotes")}
           </h2>
           <ul className="divide-y divide-border border-y border-border">
             {notes.map(note => (
@@ -237,7 +239,7 @@ function Detail() {
                   <p className="text-sm text-foreground">{note.reason}</p>
                   <p className="text-xs text-muted-foreground">
                     {note.created_by} · {shortDate(note.created_at.slice(0, 10))}
-                    {note.refunded_externally && " · devolvido pelo wallet"}
+                    {note.refunded_externally && ` · ${t("console.invoice.refunded")}`}
                   </p>
                 </div>
                 <span data-numeric className="text-sm text-foreground">
@@ -254,14 +256,14 @@ function Detail() {
       <Modal
         open={voiding}
         onClose={() => setVoiding(false)}
-        title="Anular esta fatura?"
+        title={t("console.invoice.voidTitle")}
         description={
           invoice.status === "OPEN"
-            ? "A fatura deixa de ser cobrável e o cliente não pode mais pagá-la. Nada é apagado: ela continua visível, anulada, com todo o histórico."
-            : "O rascunho é anulado e nunca chega a ser emitido."
+            ? t("console.invoice.voidOpen")
+            : t("console.invoice.voidDraft")
         }
-        cancelLabel="Manter"
-        submitLabel="Anular fatura"
+        cancelLabel={t("console.invoice.keep")}
+        submitLabel={t("console.invoice.voidConfirm")}
         danger
         loading={cancel.isPending}
         onSubmit={() => cancel.mutate()}
@@ -326,6 +328,7 @@ function Fact({label, value, href}: { label: string; value: string; href?: strin
  * assembled it would be one invoice state away from sending somebody a 404.
  */
 function CopyLink({url}: { url: string }) {
+  const {t} = useTranslation()
   return (
     <Button
       variant="outline"
@@ -333,30 +336,31 @@ function CopyLink({url}: { url: string }) {
       onClick={async () => {
         try {
           await navigator.clipboard.writeText(url)
-          toast.success("Link de pagamento copiado.")
+          toast.success(t("console.invoice.linkCopied"))
         } catch {
           // Clipboard access can be refused (an insecure origin, a permission
           // policy). Saying so beats a button that silently does nothing.
-          toast.error("Não foi possível copiar. O link está no campo de endereço da fatura pública.")
+          toast.error(t("console.invoice.copyFailed"))
         }
       }}
     >
       <Copy aria-hidden className="size-3.5"/>
-      Copiar link
+      {t("console.invoice.copyLink")}
     </Button>
   )
 }
 
 function NotFound() {
+  const {t} = useTranslation()
   return (
     <div className="space-y-6">
       <BackLink/>
       <div className="space-y-2">
         <h1 className="text-lg font-semibold tracking-[-0.01em] text-foreground">
-          Fatura não encontrada
+          {t("console.invoice.notFound")}
         </h1>
         <p className="text-sm text-muted-foreground">
-          Ela pode pertencer ao outro modo; confira se você está em Produção ou Teste.
+          {t("console.wrongMode")}
         </p>
       </div>
     </div>
@@ -364,13 +368,14 @@ function NotFound() {
 }
 
 function BackLink() {
+  const {t} = useTranslation()
   return (
     <Link
       href="/console/invoices"
       className="inline-flex items-center gap-1.5 text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
     >
       <ArrowLeft aria-hidden className="size-3.5"/>
-      Faturas
+      {t("console.invoice.back")}
     </Link>
   )
 }

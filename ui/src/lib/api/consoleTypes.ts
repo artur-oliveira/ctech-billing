@@ -190,7 +190,9 @@ export interface ConsoleSettings {
   /** Facts, not fields: numbering has no options and retention is a constant.
    *  Published so the screen can state them rather than leave an operator
    *  guessing what it controls. */
+  /** Enum code (`sequential_per_year_gapless`); the words are the catalog's. */
   numbering: string
+  /** Enum code (`invoices_credit_notes_permanent_audit_5y`). */
   retention: string
 }
 

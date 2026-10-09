@@ -48,7 +48,7 @@ describe("F2 — a pagar e a receber", () => {
     const row = (await screen.findByText("Fatura Visa 2026-03")).closest("li") as HTMLElement
     expect(within(row).getByText(/Fatura do cartão/)).toBeInTheDocument()
     expect(within(row).getByRole("link", {name: "Ver fatura"})).toHaveAttribute("href", "/console/finance/cards?card=visa")
-    expect(within(row).queryByRole("button", {name: "Cancelar conta"})).not.toBeInTheDocument()
+    expect(within(row).queryByRole("button", {name: "Excluir"})).not.toBeInTheDocument()
     await userEvent.click(within(row).getByRole("button", {name: "Editar"}))
     expect(within(row).queryByLabelText(/^Valor/)).not.toBeInTheDocument()
     expect(within(row).queryByLabelText(/^Categoria/)).not.toBeInTheDocument()
@@ -140,7 +140,7 @@ describe("F2 — a pagar e a receber", () => {
     await pick("Categoria da diferença", "Juros", row)
     const calls = vi.mocked(finance.listBills).mock.calls.length
     await userEvent.click(within(row).getByRole("button", {name: "Confirmar pagamento"}))
-    await within(row).findByText(/mudou enquanto/i)
+    await within(row).findByText(/mudou/i)
     expect(within(row).getByLabelText("Valor pago")).toHaveValue("1.600,00")
     await waitFor(() => expect(vi.mocked(finance.listBills).mock.calls.length).toBeGreaterThan(calls))
   })
@@ -164,7 +164,7 @@ describe("F2 — a pagar e a receber", () => {
     await pick("Pagar com", "Conta corrente")
     await userEvent.click(screen.getAllByLabelText("Já foi pago")[0])
     expect(screen.queryByLabelText("Pagar automaticamente no vencimento")).toBeNull()
-    await userEvent.click(screen.getByRole("button", {name: "Registrar"}))
+    await userEvent.click(screen.getByRole("button", {name: "Criar"}))
     await waitFor(() => expect(settle).toHaveBeenCalledWith(expect.anything(), "new", {paid_date: todayIso()}, expect.any(String)))
     expect(create).toHaveBeenCalledTimes(1)
   })
@@ -188,6 +188,6 @@ describe("F2 — a pagar e a receber", () => {
   it("teaches the first step when there is nothing open", async () => {
     serve(ALL, [])
     renderWithQuery(<BillsView/>)
-    expect(await screen.findByText(/nenhuma conta a pagar em aberto/i)).toBeInTheDocument()
+    expect(await screen.findByText(/nada a pagar/i)).toBeInTheDocument()
   })
 })

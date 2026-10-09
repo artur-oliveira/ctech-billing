@@ -2,6 +2,8 @@ import Image from "next/image"
 import Link from "next/link"
 import type {ReactNode} from "react"
 
+import {LanguageSwitcher} from "@/components/LanguageSwitcher"
+
 /**
  * The whole-page states: not found, broken, under maintenance.
  *
@@ -21,6 +23,8 @@ export function StatusScreen({
   action?: ReactNode
 }) {
   return (
+    <>
+    <div className="absolute right-4 top-3"><LanguageSwitcher/></div>
     <main className="mx-auto flex min-h-dvh max-w-md flex-col items-center justify-center gap-4 px-6 py-16 text-center">
       <Link href="/" className="flex flex-col items-center gap-3">
         <Image
@@ -40,5 +44,6 @@ export function StatusScreen({
       <p className="max-w-[46ch] text-pretty text-sm text-muted-foreground">{description}</p>
       {action && <div className="mt-2">{action}</div>}
     </main>
+    </>
   )
 }

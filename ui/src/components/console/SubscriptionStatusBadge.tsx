@@ -1,6 +1,8 @@
 import {Badge} from "@aoctech/ui"
 import {AlertTriangle, Ban, CheckCircle2, Circle, Clock, PauseCircle} from "lucide-react"
 
+import {useTranslation} from "react-i18next"
+
 import type {SubscriptionStatus} from "@/lib/api/consoleTypes"
 
 /**
@@ -12,15 +14,6 @@ import type {SubscriptionStatus} from "@/lib/api/consoleTypes"
  * primeiro pagamento" is what an operator needs to read, because the question
  * they are answering is why a customer says nothing works.
  */
-const LABEL: Record<SubscriptionStatus, string> = {
-  INCOMPLETE: "Aguardando 1º pagamento",
-  TRIALING: "Em teste",
-  ACTIVE: "Ativa",
-  PAST_DUE: "Em atraso",
-  PAUSED: "Pausada",
-  CANCELED: "Encerrada",
-}
-
 const TONE = {
   INCOMPLETE: "attention",
   TRIALING: "positive",
@@ -43,12 +36,13 @@ export function SubscriptionStatusBadge({
   status,
   endingAtPeriodEnd,
 }: { status: SubscriptionStatus; endingAtPeriodEnd?: boolean }) {
+  const {t} = useTranslation()
   const Glyph = GLYPH[status] ?? Circle
   return (
     <span className="inline-flex items-center gap-1.5">
       <Badge tone={TONE[status]}>
         <Glyph aria-hidden/>
-        {LABEL[status] ?? status}
+        {t(`console.subscriptionStatus.${status}`, {defaultValue: status})}
       </Badge>
       {/* A second badge rather than a replaced status: it is still ACTIVE, and
           what changed is that it will not renew. Collapsing the two loses which
@@ -56,7 +50,7 @@ export function SubscriptionStatusBadge({
       {endingAtPeriodEnd && status !== "CANCELED" && (
         <Badge tone="attention">
           <Clock aria-hidden/>
-          Encerra no fim do período
+          {t("console.subscriptionStatus.endingAtPeriodEnd")}
         </Badge>
       )}
     </span>

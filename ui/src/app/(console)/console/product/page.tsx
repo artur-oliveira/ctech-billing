@@ -6,11 +6,13 @@ import {ArrowLeft} from "lucide-react"
 import Link from "next/link"
 import {useSearchParams} from "next/navigation"
 import {Suspense, useState} from "react"
+import {useTranslation} from "react-i18next"
 import {toast} from "sonner"
 
 import {DunningPolicyCard} from "@/components/console/DunningPolicyCard"
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
 import {messageFor, statusOf} from "@/lib/api/client"
+import {useFieldErrors} from "@/lib/useFieldErrors"
 import {
   archivePrice,
   consoleKeys,
@@ -21,7 +23,7 @@ import {
 import type {ConsolePrice, DunningStep} from "@/lib/api/consoleTypes"
 import {useMode} from "@/lib/console/useMode"
 import {money} from "@/lib/format"
-import {maskMoney, parseMoney} from "@/lib/money"
+import {maskMoney, moneyPlaceholder, parseMoney} from "@/lib/money"
 import {useDocumentTitle} from "@/lib/hooks/useDocumentTitle"
 
 /**
@@ -47,6 +49,7 @@ export default function ConsoleProductPage() {
 }
 
 function Detail() {
+  const {t} = useTranslation()
   const id = useSearchParams().get("id") ?? ""
   const mode = useMode()
   const queryClient = useQueryClient()
@@ -72,7 +75,7 @@ function Detail() {
   const archive = useMutation({
     mutationFn: (priceId: string) => archivePrice(priceId, mode),
     onSuccess: () => {
-      toast.success("Preço arquivado. Quem já assina continua no mesmo valor.")
+      toast.success(t("console.product.archivedDone"))
       refresh()
     },
     onError: error => toast.error(messageFor(error)),
@@ -103,31 +106,30 @@ function Detail() {
           <h1 className="text-lg font-semibold tracking-[-0.01em] text-foreground">
             {product.name}
           </h1>
-          <Button size="sm" onClick={() => setPricing(true)}>Novo preço</Button>
+          <Button size="sm" onClick={() => setPricing(true)}>{t("console.product.newPrice")}</Button>
         </div>
         {/* Said once, on the screen where it matters, rather than in a tooltip
             nobody opens. */}
         <p className="max-w-prose text-sm text-muted-foreground">
-          Um preço não pode ser editado. Para mudar o valor, crie um novo preço (quem já assina
-          continua no antigo) e arquive o anterior quando não quiser mais vendê-lo.
+          {t("console.product.note")}
         </p>
       </header>
 
       <section aria-labelledby="precos" className="space-y-3">
-        <h2 id="precos" className="text-sm font-medium text-muted-foreground">Preços</h2>
+        <h2 id="precos" className="text-sm font-medium text-muted-foreground">{t("console.product.prices")}</h2>
         {prices.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            Este produto ainda não tem preço, então não pode ser assinado.
+            {t("console.product.empty")}
           </p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[40rem] border-collapse text-sm">
               <thead>
                 <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                  <th scope="col" className="py-2 pr-4 font-medium">Preço</th>
-                  <th scope="col" className="py-2 pr-4 font-medium">Tipo</th>
-                  <th scope="col" className="py-2 pr-4 font-medium">Recorrência</th>
-                  <th scope="col" className="py-2 pr-4 text-right font-medium">Valor</th>
+                  <th scope="col" className="py-2 pr-4 font-medium">{t("console.product.price")}</th>
+                  <th scope="col" className="py-2 pr-4 font-medium">{t("console.product.type")}</th>
+                  <th scope="col" className="py-2 pr-4 font-medium">{t("console.product.recurrence")}</th>
+                  <th scope="col" className="py-2 pr-4 text-right font-medium">{t("console.product.amount")}</th>
                   <th scope="col" className="py-2 text-right font-medium"/>
                 </tr>
               </thead>
@@ -140,26 +142,26 @@ function Detail() {
                     <td className="py-2 pr-4 text-muted-foreground">
                       {price.id}
                       {price.archived && (
-                        <span className="ml-2 text-xs text-muted-foreground">arquivado</span>
+                        <span className="ml-2 text-xs text-muted-foreground">{t("console.product.archived")}</span>
                       )}
                     </td>
                     <td className="py-2 pr-4 text-muted-foreground">
-                      {price.type === "metered" ? "Por uso" : "Fixo"}
+                      {price.type === "metered" ? t("console.priceType.metered") : t("console.priceType.fixed")}
                     </td>
                     <td className="py-2 pr-4 text-muted-foreground">
-                      {intervalLabel(price.recurrence.interval)}
-                      {price.billing_timing === "arrears" ? " · no fim" : " · antecipado"}
+                      {t(`console.interval.${price.recurrence.interval}`, {defaultValue: price.recurrence.interval})}
+                      {` · ${price.billing_timing === "arrears" ? t("console.timing.shortArrears") : t("console.timing.shortAdvance")}`}
                     </td>
                     <td data-numeric className="py-2 pr-4 text-right text-foreground">
                       {money(price.unit_amount, price.currency)}
                       {price.type === "metered" && (
-                        <span className="text-muted-foreground"> /un.</span>
+                        <span className="text-muted-foreground"> {t("console.priceType.perUnit")}</span>
                       )}
                     </td>
                     <td className="py-2 text-right">
                       {!price.archived && (
                         <Button variant="outline" size="sm" onClick={() => setArchiving(price)}>
-                          Arquivar
+                          {t("console.product.archive")}
                         </Button>
                       )}
                     </td>
@@ -173,10 +175,10 @@ function Detail() {
 
       {product.dunning && (
         <DunningPolicyCard
-          title="Política de cobrança deste produto"
-          description="Sobrepõe a política da organização para faturas que cobram este produto. Uma assinatura que cobra produtos com políticas diferentes volta para a da organização; não há como escolher entre duas."
+          title={t("console.product.dunningTitle")}
+          description={t("console.product.dunningDescription")}
           policy={product.dunning}
-          inheritLabel="a política da organização"
+          inheritLabel={t("console.product.inherit")}
           onSave={steps => savePolicy.mutateAsync(steps)}
         />
       )}
@@ -194,10 +196,10 @@ function Detail() {
       <Modal
         open={archiving !== null}
         onClose={() => setArchiving(null)}
-        title="Arquivar este preço?"
-        description="Ele deixa de aparecer para novas assinaturas. Quem já assina continua pagando o mesmo valor; arquivar não muda contrato de ninguém."
-        cancelLabel="Manter"
-        submitLabel="Arquivar preço"
+        title={t("console.product.archiveTitle")}
+        description={t("console.product.archiveBody")}
+        cancelLabel={t("console.product.keep")}
+        submitLabel={t("console.product.archiveConfirm")}
         loading={archive.isPending}
         onSubmit={() => archiving && archive.mutate(archiving.id)}
       />
@@ -211,15 +213,17 @@ function NewPriceDialog({
   onClose,
   onCreated,
 }: { open: boolean; productId: string; onClose: () => void; onCreated: () => void }) {
+  const {t} = useTranslation()
   const mode = useMode()
   const [amount, setAmount] = useState("")
   const [type, setType] = useState<"fixed" | "metered">("fixed")
 
-  // A price may be zero (free); anything else goes through the same pt-BR parse
+  // A price may be zero (free); anything else goes through the same locale-aware parse
   // as every money field, never through a float.
-  const cents = /^0+(,0{0,2})?$/.test(amount.trim()) ? 0 : (parseMoney(amount) ?? -1)
+  const cents = /^0+([.,]0{0,2})?$/.test(amount.trim()) ? 0 : (parseMoney(amount) ?? -1)
   const valid = cents >= 0 && amount.trim() !== ""
 
+  const fe = useFieldErrors(["unit_amount"], {keepOthers: false})
   const create = useMutation({
     mutationFn: () =>
       createPrice(
@@ -236,28 +240,28 @@ function NewPriceDialog({
         mode,
       ),
     onSuccess: () => {
-      toast.success("Preço criado.")
+      toast.success(t("console.product.createdDone"))
       setAmount("")
       onCreated()
     },
-    onError: error => toast.error(messageFor(error)),
+    onError: error => { if (!fe.set(error)) toast.error(messageFor(error)) },
   })
 
   return (
     <Modal
       open={open}
       onClose={onClose}
-      title="Novo preço"
-      description="Mensal, em reais. Um preço criado não pode ser alterado depois."
-      cancelLabel="Cancelar"
-      submitLabel="Criar preço"
+      title={t("console.product.newTitle")}
+      description={t("console.product.newBody")}
+      cancelLabel={t("common.cancel")}
+      submitLabel={t("console.product.create")}
       submitDisabled={!valid}
       loading={create.isPending}
-      onSubmit={() => create.mutate()}
+      onSubmit={() => { fe.reset(); create.mutate() }}
     >
       <div className="space-y-4">
         <fieldset className="space-y-2">
-          <legend className="text-sm font-medium text-foreground">Tipo</legend>
+          <legend className="text-sm font-medium text-foreground">{t("console.product.type")}</legend>
           <div className="flex gap-4">
             {(["fixed", "metered"] as const).map(option => (
               <label key={option} className="flex items-center gap-2 text-sm text-foreground">
@@ -268,48 +272,48 @@ function NewPriceDialog({
                   onChange={() => setType(option)}
                   className="size-4 accent-[var(--color-brand-600)]"
                 />
-                {option === "fixed" ? "Valor fixo por período" : "Por unidade consumida"}
+                {option === "fixed" ? t("console.product.typeFixed") : t("console.product.typeMetered")}
               </label>
             ))}
           </div>
         </fieldset>
 
         <Field
-          label={type === "metered" ? "Valor por unidade" : "Valor por período"}
+          label={type === "metered" ? t("console.product.amountMetered") : t("console.product.amountFixed")}
           htmlFor="price-amount"
+          error={fe.of("unit_amount")}
           hint={
             type === "metered"
-              ? "Cobrado no fim do período, sobre o que foi reportado."
-              : "Cobrado no início de cada período."
+              ? t("console.product.hintMetered")
+              : t("console.product.hintFixed")
           }
         >
           <Input
             id="price-amount"
             inputMode="decimal"
             value={amount}
-            onChange={event => setAmount(maskMoney(event.target.value))}
-            placeholder="0,00"
+            {...fe.props("unit_amount", "price-amount")}
+            onChange={event => { setAmount(maskMoney(event.target.value)); fe.clear("unit_amount") }}
+            placeholder={moneyPlaceholder()}
           />
         </Field>
+        {fe.general && <p role="alert" className="text-sm text-danger">{fe.general}</p>}
       </div>
     </Modal>
   )
 }
 
-function intervalLabel(interval: string): string {
-  return {month: "mensal", year: "anual", week: "semanal", day: "diária"}[interval] ?? interval
-}
-
 function NotFound() {
+  const {t} = useTranslation()
   return (
     <div className="space-y-6">
       <BackLink/>
       <div className="space-y-2">
         <h1 className="text-lg font-semibold tracking-[-0.01em] text-foreground">
-          Produto não encontrado
+          {t("console.product.notFound")}
         </h1>
         <p className="text-sm text-muted-foreground">
-          Ele pode pertencer ao outro modo; confira se você está em Produção ou Teste.
+          {t("console.wrongMode")}
         </p>
       </div>
     </div>
@@ -317,13 +321,14 @@ function NotFound() {
 }
 
 function BackLink() {
+  const {t} = useTranslation()
   return (
     <Link
       href="/console/catalog"
       className="inline-flex items-center gap-1.5 text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
     >
       <ArrowLeft aria-hidden className="size-3.5"/>
-      Catálogo
+      {t("console.product.back")}
     </Link>
   )
 }

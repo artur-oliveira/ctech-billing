@@ -1,0 +1,212 @@
+{
+  "direction": {
+    "label": "Direção",
+    "payable": "A pagar",
+    "receivable": "A receber"
+  },
+  "noCategory": {
+    "expense": "Sem categoria de despesa. Crie em Contas.",
+    "income": "Sem categoria de receita. Crie em Contas."
+  },
+  "noAccount": "Sem conta. Crie em Contas.",
+  "common": {
+    "description": "Descrição",
+    "noDescription": "Sem descrição",
+    "amount": "Valor",
+    "date": "Data",
+    "category": "Categoria",
+    "due": "Vencimento",
+    "close": "Fechar",
+    "save": "Salvar",
+    "edit": "Editar",
+    "keep": "Manter",
+    "payWith": {
+      "payable": "Pagar com",
+      "receivable": "Receber em"
+    },
+    "auto": {
+      "payable": "Pagar automaticamente no vencimento",
+      "receivable": "Receber automaticamente no vencimento"
+    }
+  },
+  "list": {
+    "new": "Nova conta",
+    "newTitle": {
+      "payable": "Nova conta a pagar",
+      "receivable": "Nova conta a receber"
+    },
+    "empty": {
+      "payable": "Nada a pagar em aberto.",
+      "receivable": "Nada a receber em aberto."
+    },
+    "group": {
+      "overdue": "Vencidas",
+      "today": "Vencem hoje",
+      "upcoming": "A vencer"
+    }
+  },
+  "row": {
+    "due": "Vence {{date}}",
+    "statement": "Fatura do cartão",
+    "viewStatement": "Ver fatura",
+    "settle": {
+      "payable": "Pagar",
+      "receivable": "Receber"
+    },
+    "autoNote": {
+      "payable": "Pagamento automático",
+      "receivable": "Recebimento automático"
+    },
+    "delete": "Excluir"
+  },
+  "delete": {
+    "confirm": "Excluir “{{name}}”? Sai da lista e do resultado de {{month}}.",
+    "fallbackName": "esta conta"
+  },
+  "conflict": "Esta conta mudou. Atualizamos a lista; tente de novo.",
+  "settle": {
+    "confirm": {
+      "payable": "Confirmar pagamento",
+      "receivable": "Confirmar recebimento"
+    },
+    "date": {
+      "payable": "Data do pagamento",
+      "receivable": "Data do recebimento"
+    },
+    "amount": {
+      "payable": "Valor pago",
+      "receivable": "Valor recebido"
+    },
+    "diffCategory": "Categoria da diferença",
+    "more": "{{amount}} a mais que {{bill}}",
+    "less": "{{amount}} a menos que {{bill}}"
+  },
+  "new": {
+    "competence": "Competência (DRE)",
+    "competencePlaceholder": "Igual ao vencimento",
+    "paidNow": {
+      "payable": "Já foi pago",
+      "receivable": "Já foi recebido"
+    },
+    "paidOn": {
+      "payable": "Pago em",
+      "receivable": "Recebido em"
+    },
+    "create": "Criar",
+    "settleFailed": {
+      "payable": "Conta criada, mas o pagamento não foi registrado.",
+      "receivable": "Conta criada, mas o recebimento não foi registrado."
+    },
+    "retry": "Tentar de novo",
+    "leaveOpen": "Deixar em aberto"
+  },
+  "rec": {
+    "title": "Recorrências",
+    "new": "Nova recorrência",
+    "edit": "Editar recorrência",
+    "empty": "Nenhuma recorrência",
+    "emptyHint": "O que se repete vira conta sozinho.",
+    "customRule": "Regra personalizada",
+    "end": "Encerrar",
+    "endConfirm": "Encerrar? Para de gerar contas; as já geradas ficam.",
+    "confirm": "Confirmar",
+    "startsOn": "Começa em",
+    "endsOn": "Termina em",
+    "noEnd": "Não termina",
+    "editNote": "{{rule}}. Para mudar a regra, encerre e crie outra.",
+    "next": "Próximas datas",
+    "fixRule": "regra inválida.",
+    "calculating": "calculando…",
+    "paidOn": "(paga em {{date}})",
+    "moreOptions": "Mais opções",
+    "lessOptions": "Menos opções",
+    "weekend": "Se cair em fim de semana ou feriado",
+    "adjust": {
+      "roll_forward": "Vai para o próximo dia útil",
+      "none": "Mantém a data"
+    },
+    "create": "Criar"
+  },
+  "editor": {
+    "repeat": "Repetição",
+    "kind": {
+      "day_of_month": "Dia fixo do mês",
+      "workday_of_month": "Dia útil do mês",
+      "nth_weekday_of_month": "Dia da semana do mês",
+      "weekly": "Semanal",
+      "yearly": "Anual"
+    },
+    "dayOfMonth": "Dia do mês",
+    "workday": "Dia útil",
+    "which": "Qual",
+    "weekday": "Dia da semana",
+    "everyWeeks": "A cada quantas semanas",
+    "firstDate": "Primeira data",
+    "firstDateHint": "As semanas contam a partir dela.",
+    "month": "Mês",
+    "day": "Dia",
+    "nthWorkday": "{{ord}} dia útil",
+    "lastWorkday": "Último dia útil",
+    "last": "Última",
+    "exceptMonths": "Exceto nos meses",
+    "exceptDates": "Exceto nas datas",
+    "add": "Adicionar",
+    "remove": "Remover {{date}}"
+  },
+  "rule": {
+    "dayOfMonth": "Todo dia {{day}}",
+    "workday": "{{ord}} dia útil do mês",
+    "lastWorkday": "Último dia útil do mês",
+    "nthWeekday": "{{ord}} {{day}} do mês",
+    "lastWeekday": "Última {{day}} do mês",
+    "lastWeekdayMasc": "Último {{day}} do mês",
+    "weekly": "Toda {{day}}",
+    "weeklyMasc": "Todo {{day}}",
+    "weeklyEvery": "A cada {{every}} semanas, na {{day}}",
+    "weeklyEveryMasc": "A cada {{every}} semanas, no {{day}}",
+    "yearly": "Todo ano em {{day}} de {{month}}",
+    "except": "{{base}}; exceto {{parts}}",
+    "exceptMonths": "em {{months}}",
+    "exceptDates_one": "em {{count}} data",
+    "exceptDates_other": "em {{count}} datas"
+  },
+  "err": {
+    "day": "Escolha um dia entre 1 e 31.",
+    "workday": "Escolha entre o 1º e o 23º dia útil, ou o último.",
+    "nth": "Escolha entre a 1ª e a 4ª, ou a última.",
+    "weekday": "Escolha o dia da semana.",
+    "every": "Repita a cada 1 a 52 semanas.",
+    "anchor": "A primeira data deve ser {{day}}.",
+    "anchorDate": "A primeira data é inválida.",
+    "month": "Escolha o mês.",
+    "monthDay": "{{month}} não tem dia {{day}}.",
+    "allMonths": "Deixe ao menos um mês de fora da exceção.",
+    "maxDates": "No máximo {{max}} datas de exceção."
+  },
+  "purchase": {
+    "title": "Nova compra",
+    "installments": "Parcelas",
+    "cash": "à vista",
+    "cashOption": "À vista",
+    "each": "{{n}}× de {{amount}}",
+    "firstPlus": "{{first}} + {{n}}× de {{base}}",
+    "save": "Salvar"
+  },
+  "transfer": {
+    "title": "Nova transferência",
+    "from": "De",
+    "to": "Para",
+    "placeholder": "Transferência",
+    "submit": "Transferir"
+  },
+  "periods": {
+    "this_month": "Este mês",
+    "last_month": "Mês passado",
+    "last_3": "Últimos 3 meses",
+    "this_year": "Este ano",
+    "last_12": "Últimos 12 meses"
+  },
+  "spaces": {
+    "lost": "Você não tem mais acesso a esse espaço. Mostrando Pessoal."
+  }
+}

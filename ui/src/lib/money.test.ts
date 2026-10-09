@@ -1,6 +1,6 @@
 import {describe, expect, it} from "vitest"
 
-import {formatMoneyInput, maskMoney, parseMoney, parseSignedMoney} from "@/lib/money"
+import {formatMoneyInput, maskMoney, moneyPlaceholder, parseMoney, parseSignedMoney} from "@/lib/money"
 
 describe("parseMoney", () => {
   it.each([
@@ -80,5 +80,47 @@ describe("maskMoney", () => {
   it("never yields an amount parseMoney would refuse for size", () => {
     expect(parseMoney(maskMoney("99999999999,99"))).toBe(999_999_999_999)
     expect(parseMoney("10.000.000.000,00")).toBeNull()
+  })
+})
+
+describe("money in English", () => {
+  const en = "en" as const
+  it.each([
+    ["1,234.56", 123456],
+    ["1234.56", 123456],
+    ["0.5", 50],
+    ["10", 1000],
+    ["1,000", 100000],
+    ["R$ 10", 1000],
+  ])("reads %s as %i centavos", (text, cents) => {
+    expect(parseMoney(text, en)).toBe(cents)
+  })
+
+  it.each(["", "1.234,5", "1,234,56", "1.2.3", "10.999", "0.00", "12,34", "10,000,000,000.00"])("refuses %j", text => {
+    expect(parseMoney(text, en)).toBeNull()
+  })
+
+  it("prints, masks and round-trips in English notation", () => {
+    expect(formatMoneyInput(123456789, en)).toBe("1,234,567.89")
+    expect(formatMoneyInput(5, en)).toBe("0.05")
+    expect(maskMoney("1234567.891", {locale: en})).toBe("1,234,567.89")
+    expect(maskMoney(".5", {locale: en})).toBe("0.5")
+    expect(maskMoney("-1500.5", {locale: en, signed: true})).toBe("-1,500.5")
+    for (const cents of [1, 99, 123456, 100000000]) expect(parseMoney(formatMoneyInput(cents, en), en)).toBe(cents)
+    expect(parseSignedMoney("-1,500.00", en)).toBe(-150000)
+    expect(moneyPlaceholder(en)).toBe("0.00")
+    expect(moneyPlaceholder("pt-BR")).toBe("0,00")
+  })
+
+  it("follows the language in effect when none is passed", async () => {
+    const {changeAppLanguage} = await import("@/lib/i18n")
+    await changeAppLanguage("en")
+    try {
+      expect(parseMoney("1,234.56")).toBe(123456)
+      expect(formatMoneyInput(123456)).toBe("1,234.56")
+    } finally {
+      await changeAppLanguage("pt-BR")
+    }
+    expect(parseMoney("1.234,56")).toBe(123456)
   })
 })

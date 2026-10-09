@@ -2,15 +2,22 @@
 
 import axios, {type AxiosError, type InternalAxiosRequestConfig} from "axios"
 
+import {codeMessage, fieldErrorMessage, type FieldError} from "@/lib/errors"
+import {t} from "@/lib/i18n"
 import {USE_MOCK} from "@/lib/mockConfig"
 
-/** RFC 7807, as ctech-go-common/problem emits it. */
+/**
+ * RFC 7807, as ctech-go-common/problem emits it. `title`, `detail` and every
+ * `message` are English fallbacks for logs: what a reader sees is looked up by
+ * `code` (and `errors[].code`) in the `errors` catalog.
+ */
 export interface Problem {
   type: string
   title: string
   status: number
   detail?: string
-  errors?: { field: string; message: string; tag?: string }[]
+  code?: string
+  errors?: FieldError[]
 }
 
 let accessToken: string | null = null
@@ -136,18 +143,26 @@ apiClient.interceptors.response.use(undefined, async (error: AxiosError) => {
  * The message to show a person, from whatever the failure actually was.
  *
  * A thrown request is a device that lost its connection, and saying so is
- * both truer and more useful than "erro interno". A 5xx is ours to apologise
- * for. Everything else already carries a `detail` written for the reader.
+ * both truer and more useful than "erro interno". Everything the API refuses
+ * carries a stable `code`, mapped to catalog text; a validation failure shows
+ * its first field error, which is the actionable part. `title` and `detail`
+ * are English fallbacks and are never shown.
  */
 export function messageFor(error: unknown): string {
   const e = error as AxiosError<Problem>
   if (e?.code === "ERR_NETWORK" || e?.code === "ECONNABORTED") {
-    return "Não conseguimos falar com o servidor. Verifique sua conexão e tente de novo."
+    return t("auth.errors.network")
   }
   const problem = e?.response?.data
-  if (problem?.detail) return problem.detail
-  if (problem?.title) return problem.title
-  return "Algo deu errado do nosso lado. Tente de novo em instantes."
+  const first = problem?.errors?.[0]
+  if (first?.code) return fieldErrorMessage(first)
+  return codeMessage(problem?.code, e?.response?.status)
+}
+
+/** The field-level failures of a validation problem, already in reader text. */
+export function fieldErrorsOf(error: unknown): { field: string; message: string }[] {
+  const list = (error as AxiosError<Problem>)?.response?.data?.errors ?? []
+  return list.map(err => ({field: err.field, message: fieldErrorMessage(err)}))
 }
 
 export function statusOf(error: unknown): number | undefined {

@@ -1,11 +1,12 @@
+/** Labels are catalog keys, resolved with t() at render. */
 /** Invoicing: an operator's sections, shown only with an organization. */
 const INVOICING_NAV = [
-  {href: "/console/overview", label: "Visão geral"},
-  {href: "/console/invoices", label: "Faturas"},
-  {href: "/console/subscriptions", label: "Assinaturas"},
-  {href: "/console/customers", label: "Clientes"},
-  {href: "/console/catalog", label: "Catálogo"},
-  {href: "/console/settings", label: "Configurações"},
+  {href: "/console/overview", label: "console.nav.overview"},
+  {href: "/console/invoices", label: "console.nav.invoices"},
+  {href: "/console/subscriptions", label: "console.nav.subscriptions"},
+  {href: "/console/customers", label: "console.nav.customers"},
+  {href: "/console/catalog", label: "console.nav.catalog"},
+  {href: "/console/settings", label: "console.nav.settings"},
 ] as const
 
 /** Finance: everyone's, in a personal space or an organization's (ADR 0025). */
@@ -17,5 +18,5 @@ export const FINANCE_HREF = "/console/finance"
  * who has none and vanished on the 403 a moment later.
  */
 export function consoleNav(hasOrganization: boolean): {href: string; label: string}[] {
-  return [...(hasOrganization ? INVOICING_NAV : []), {href: FINANCE_HREF, label: "Finanças"}]
+  return [...(hasOrganization ? INVOICING_NAV : []), {href: FINANCE_HREF, label: "console.nav.finance"}]
 }

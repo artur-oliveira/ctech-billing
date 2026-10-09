@@ -75,7 +75,7 @@ func (h *portalHandlers) invoiceEvents(c fiber.Ctx) error {
 	// Same answer as getInvoice for the same reasons: another customer's invoice
 	// and a nonexistent one are indistinguishable from outside.
 	if inv.CustomerID != customer.ID || inv.Status == billing.InvoiceDraft {
-		return problem.NotFound("fatura não encontrada").Send(c)
+		return problem.NotFound("invoice not found").WithCode("invoice_not_found").Send(c)
 	}
 
 	// Everything the stream needs is copied out here. The writer below runs after

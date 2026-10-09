@@ -276,7 +276,7 @@ would show each of them all of the others.
 The `me` scopes are deliberately not the console's: `billing:my-invoices:read`
 reads *my* invoices, `billing:invoices:read` reads the organization's, and a
 consumer token is never one scope away from a merchant's customer list. Portal
-payloads carry no internal status, metadata or audit trail — "Vence em 3 dias",
+payloads carry no internal status, metadata or audit trail — `due_soon` with `days_until_due`,
 never `OPEN` — and a test asserts that on the wire.
 
 Portal cancellation is **at period end only**. A consumer cancelling mid-period

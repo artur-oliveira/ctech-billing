@@ -4,11 +4,11 @@ import {Button, Separator} from "@aoctech/ui"
 import {QRCodeSVG} from "qrcode.react"
 import {Check, Copy} from "lucide-react"
 import {useCallback, useEffect, useState} from "react"
+import {useTranslation} from "react-i18next"
 import {toast} from "sonner"
 
-import {Money} from "@/components/portal/Money"
 import type {Cents, PixPayment} from "@/lib/api/types"
-import {countdown} from "@/lib/format"
+import {countdown, money} from "@/lib/format"
 import {usePaymentStream} from "@/lib/hooks/usePaymentStream"
 
 /**
@@ -48,6 +48,7 @@ export function PixPanel({
   onRegenerate: () => void
   regenerating: boolean
 }) {
+  const {t} = useTranslation()
   const secondsLeft = useCountdown(payment.expires_at)
   const expired = secondsLeft <= 0
   const streamed = usePaymentStream(invoiceId ?? "", Boolean(invoiceId) && !expired)
@@ -62,10 +63,9 @@ export function PixPanel({
     return (
       <div className="rounded-xl border border-success/20 bg-success/5 px-5 py-6 text-center">
         <Check aria-hidden className="mx-auto size-6 text-success"/>
-        <p className="mt-3 font-medium text-foreground">Pagamento confirmado</p>
+        <p className="mt-3 font-medium text-foreground">{t("portal.pix.paid")}</p>
         <p className="mt-1 text-sm text-muted-foreground">
-          Recebemos <Money cents={amount} currency={currency} className="text-sm"/>. Nada mais a
-          fazer.
+          {t("portal.pix.paidAmount", {amount: money(amount, currency)})}
         </p>
       </div>
     )
@@ -77,12 +77,12 @@ export function PixPanel({
       // generate a new code and gives them nothing to press is a dead end with
       // instructions written on it.
       <div className="rounded-xl border border-border bg-surface px-5 py-6 text-center">
-        <p className="font-medium text-foreground">Este código PIX expirou</p>
+        <p className="font-medium text-foreground">{t("portal.pix.expired")}</p>
         <p className="mx-auto mt-1 max-w-[46ch] text-pretty text-sm text-muted-foreground">
-          Nada foi cobrado. Gere um novo código para pagar; o valor e a fatura são os mesmos.
+          {t("portal.pix.expiredHint")}
         </p>
         <Button className="mt-4" onClick={onRegenerate} disabled={regenerating}>
-          {regenerating ? "Gerando…" : "Gerar novo código"}
+          {regenerating ? t("portal.pix.generating") : t("portal.pix.regenerate")}
         </Button>
       </div>
     )
@@ -91,9 +91,9 @@ export function PixPanel({
   return (
     <div className="space-y-5 rounded-xl border border-border p-5 shadow-card">
       <div className="flex items-baseline justify-between gap-4">
-        <p className="text-sm font-medium text-foreground">Pague com PIX</p>
+        <p className="text-sm font-medium text-foreground">{t("portal.pix.title")}</p>
         <p data-numeric className="text-sm text-muted-foreground">
-          expira em {countdown(secondsLeft)}
+          {t("portal.pix.expiresIn", {time: countdown(secondsLeft)})}
         </p>
       </div>
 
@@ -107,7 +107,7 @@ export function PixPanel({
           marginSize={2}
           bgColor="#ffffff"
           fgColor="#211816"
-          title={`Código PIX da fatura, ${payment.pix_code.length} caracteres`}
+          title={t("portal.pix.qrTitle")}
         />
       </div>
 
@@ -115,7 +115,7 @@ export function PixPanel({
 
       <div className="space-y-2">
         <p className="text-sm text-muted-foreground">
-          Ou copie o código e cole no app do seu banco:
+          {t("portal.pix.orCopy")}
         </p>
         <CopyCode code={payment.pix_code}/>
       </div>
@@ -126,14 +126,15 @@ export function PixPanel({
         aria-live="polite"
       >
         {status === "lost" && invoiceId
-          ? "Não estamos conseguindo acompanhar em tempo real. Pode pagar assim mesmo; atualize a página depois."
-          : "Assim que o pagamento cair, esta tela avisa sozinha."}
+          ? t("portal.pix.lost")
+          : t("portal.pix.waiting")}
       </p>
     </div>
   )
 }
 
 function CopyCode({code}: { code: string }) {
+  const {t} = useTranslation()
   const [copied, setCopied] = useState(false)
 
   async function copy() {
@@ -144,7 +145,7 @@ function CopyCode({code}: { code: string }) {
     } catch {
       // Clipboard access can be denied outright, and telling somebody "copiado"
       // when nothing was copied is worse than telling them to select it.
-      toast.error("Não foi possível copiar. Selecione o código e copie manualmente.")
+      toast.error(t("portal.pix.copyFailed"))
     }
   }
 
@@ -156,7 +157,7 @@ function CopyCode({code}: { code: string }) {
       </code>
       <Button variant="outline" onClick={copy} className="shrink-0">
         {copied ? <Check aria-hidden/> : <Copy aria-hidden/>}
-        {copied ? "Copiado" : "Copiar"}
+        {copied ? t("portal.pix.copied") : t("portal.pix.copy")}
       </Button>
     </div>
   )

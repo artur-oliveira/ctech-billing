@@ -50,7 +50,7 @@ func (h *consoleHandlers) cancelSubscription(c fiber.Ctx) error {
 	t := middleware.GetTenant(c)
 	var req cancelSubscriptionRequest
 	if err := c.Bind().Body(&req); err != nil {
-		return problem.BadRequest("corpo inválido").Send(c)
+		return problem.BadRequest("invalid request body").WithCode("invalid_body").Send(c)
 	}
 	sub, err := h.subs.Get(c.Context(), t.OrganizationID, t.Livemode, c.Params("id"))
 	if err != nil {
@@ -106,12 +106,12 @@ func (h *consoleHandlers) listInvoices(c fiber.Ctx) error {
 	month := fiber.Query(c, "month", int(today.Month))
 	if month < 1 || month > 12 {
 		return problem.Validation([]problem.FieldError{
-			{Field: "month", Message: "entre 1 e 12", Tag: "range"},
+			fieldErr("month", "out_of_range", "between 1 and 12", "min", 1, "max", 12),
 		}).Send(c)
 	}
 	start, err := repositories.DecodeCursor(c.Query("cursor"))
 	if err != nil {
-		return problem.BadRequest("cursor inválido").Send(c)
+		return problem.BadRequest("invalid cursor").WithCode("invalid_cursor").Send(c)
 	}
 
 	page, err := h.invoices.ListByMonth(c.Context(), t.OrganizationID, t.Livemode, year, month, pageLimit, start)
@@ -231,7 +231,7 @@ func (h *consoleHandlers) creditInvoice(c fiber.Ctx) error {
 	t := middleware.GetTenant(c)
 	var req creditNoteRequest
 	if err := c.Bind().Body(&req); err != nil {
-		return problem.BadRequest("corpo inválido").Send(c)
+		return problem.BadRequest("invalid request body").WithCode("invalid_body").Send(c)
 	}
 	// The reason is required, and refused here rather than defaulted: a credit
 	// note with no reason is the one document nobody can explain a year later,
@@ -305,13 +305,13 @@ func (h *consoleHandlers) createProduct(c fiber.Ctx) error {
 	t := middleware.GetTenant(c)
 	var req createProductRequest
 	if err := c.Bind().Body(&req); err != nil {
-		return problem.BadRequest("corpo inválido").Send(c)
+		return problem.BadRequest("invalid request body").WithCode("invalid_body").Send(c)
 	}
 	ch := &checks{}
 	ch.text("name", req.Name, true, limits.ProductName)
 	ch.id("owner_key", req.OwnerKey, false)
 	if len(req.OwnerKey) > limits.OwnerKey {
-		ch.fail("owner_key", "no máximo 64 caracteres", "max")
+		ch.fail("owner_key", "too_long", "at most 64 characters", "max", limits.OwnerKey)
 	}
 	if len(ch.errs) > 0 {
 		return problem.Validation(ch.errs).Send(c)
@@ -348,7 +348,7 @@ func (h *consoleHandlers) createPrice(c fiber.Ctx) error {
 	t := middleware.GetTenant(c)
 	var req createPriceRequest
 	if err := c.Bind().Body(&req); err != nil {
-		return problem.BadRequest("corpo inválido").Send(c)
+		return problem.BadRequest("invalid request body").WithCode("invalid_body").Send(c)
 	}
 	ch := &checks{}
 	ch.price("unit_amount", req.UnitAmount)
@@ -381,8 +381,8 @@ func (h *consoleHandlers) createPrice(c fiber.Ctx) error {
 	// collect it (ADR 0004).
 	if price.ExceedsChargeCeiling() {
 		return problem.Unprocessable(
-			"o valor excede o teto de cobrança do wallet; uma fatura nesse valor seria emitida e não poderia ser paga",
-		).Send(c)
+			"the amount exceeds the wallet charge ceiling; an invoice for it would be issued and could not be paid",
+		).WithCode("amount_exceeds_charge_ceiling").Send(c)
 	}
 	if err := h.cat.CreatePrice(
 		c.Context(), price, actorOfUser(c), middleware.GetRequestID(c), h.now(),
@@ -421,7 +421,7 @@ func (h *consoleHandlers) listSubscriptions(c fiber.Ctx) error {
 	t := middleware.GetTenant(c)
 	start, err := repositories.DecodeCursor(c.Query("cursor"))
 	if err != nil {
-		return problem.BadRequest("cursor inválido").Send(c)
+		return problem.BadRequest("invalid cursor").WithCode("invalid_cursor").Send(c)
 	}
 	page, err := h.subs.List(c.Context(), t.OrganizationID, t.Livemode, pageLimit, start)
 	if err != nil {
@@ -474,7 +474,7 @@ func (h *consoleHandlers) listCustomers(c fiber.Ctx) error {
 	t := middleware.GetTenant(c)
 	start, err := repositories.DecodeCursor(c.Query("cursor"))
 	if err != nil {
-		return problem.BadRequest("cursor inválido").Send(c)
+		return problem.BadRequest("invalid cursor").WithCode("invalid_cursor").Send(c)
 	}
 	page, err := h.customers.List(c.Context(), t.OrganizationID, t.Livemode, pageLimit, start)
 	if err != nil {

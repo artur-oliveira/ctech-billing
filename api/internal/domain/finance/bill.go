@@ -121,7 +121,7 @@ func (b Bill) CanSettle() error {
 // first, so both stay visible.
 func (b Bill) CanCancel() error {
 	if b.Origin == OriginCardStatement {
-		return fmt.Errorf("%w: uma fatura fechada não é cancelada; uma correção entra na próxima fatura", ErrBillState)
+		return fmt.Errorf("%w: a closed statement is not canceled; a correction goes on the next statement", ErrBillState)
 	}
 	switch b.Status {
 	case BillForecast:

@@ -1,22 +1,23 @@
+"use client"
+
 import {Button} from "@aoctech/ui"
-import type {Metadata} from "next"
 import Link from "next/link"
+import {useTranslation} from "react-i18next"
 
 import {StatusScreen} from "@/components/StatusScreen"
 
-export const metadata: Metadata = {title: "Página não encontrada"}
-
 /**
  * 404. Almost always a mistyped or expired link rather than a bug, so it says
- * that plainly and offers the one destination that is certainly there. No
- * search box: this portal has four screens.
+ * that plainly and offers the one destination that is certainly there.
+ * Client component so it can translate; the tab title comes from the root layout.
  */
 export default function NotFound() {
+  const {t} = useTranslation()
   return (
     <StatusScreen
-      title="Esta página não existe"
-      description="O endereço pode estar incompleto, ou o link que você seguiu pode ter expirado. Nada foi cobrado e nenhuma fatura foi alterada."
-      action={<Button render={<Link href="/"/>}>Ir para o início</Button>}
+      title={t("auth.notFound.title")}
+      description={t("auth.notFound.description")}
+      action={<Button render={<Link href="/"/>}>{t("auth.notFound.home")}</Button>}
     />
   )
 }

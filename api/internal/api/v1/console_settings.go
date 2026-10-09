@@ -111,8 +111,8 @@ func (h *consoleHandlers) settings(c fiber.Ctx) error {
 		Dunning:   newDunningPolicyResponse(org.DunningPolicy),
 		Issuer:    newIssuerResponse(org),
 		Documents: h.documents.Enabled(),
-		Numbering: "sequencial por ano, sem lacunas",
-		Retention: "faturas e notas de crédito permanentes; auditoria por 5 anos",
+		Numbering: "sequential_per_year_gapless",
+		Retention: "invoices_credit_notes_permanent_audit_5y",
 	})
 }
 
@@ -126,7 +126,7 @@ func (h *consoleHandlers) setDunningPolicy(c fiber.Ctx) error {
 	org := middleware.GetOrganization(c)
 	var req dunningPolicyRequest
 	if err := c.Bind().Body(&req); err != nil {
-		return problem.BadRequest("corpo inválido").Send(c)
+		return problem.BadRequest("invalid request body").WithCode("invalid_body").Send(c)
 	}
 	if err := h.orgs.SetDunningPolicy(
 		c.Context(), org, req.schedule(), actorOfUser(c), middleware.GetRequestID(c), h.now(),
@@ -141,7 +141,7 @@ func (h *consoleHandlers) setProductDunningPolicy(c fiber.Ctx) error {
 	t := middleware.GetTenant(c)
 	var req dunningPolicyRequest
 	if err := c.Bind().Body(&req); err != nil {
-		return problem.BadRequest("corpo inválido").Send(c)
+		return problem.BadRequest("invalid request body").WithCode("invalid_body").Send(c)
 	}
 	product, err := h.cat.GetProduct(c.Context(), t.OrganizationID, t.Livemode, c.Params("id"))
 	if err != nil {
@@ -173,7 +173,7 @@ func (h *consoleHandlers) revealTaxID(c fiber.Ctx) error {
 		return fail(c, err)
 	}
 	if customer.TaxID == "" {
-		return problem.NotFound("este cliente não tem CPF/CNPJ cadastrado").Send(c)
+		return problem.NotFound("this customer has no tax ID on file").WithCode("customer_tax_id_missing").Send(c)
 	}
 	// Written **before** the value is returned. The other order loses the record
 	// whenever the response fails to reach the browser, which is exactly the

@@ -3,10 +3,12 @@
 import {Button, EmptyState, PageHeader, Skeleton} from "@aoctech/ui"
 import {useInfiniteQuery} from "@tanstack/react-query"
 import {Receipt} from "lucide-react"
+import {useTranslation} from "react-i18next"
 
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
 import {InvoiceRow} from "@/components/portal/InvoiceRow"
 import {listInvoices, portalKeys} from "@/lib/api/portal"
+import {useDocumentTitle} from "@/lib/hooks/useDocumentTitle"
 
 /**
  * P2 — Faturas. A list, and nothing else.
@@ -17,6 +19,8 @@ import {listInvoices, portalKeys} from "@/lib/api/portal"
  * that costs a tap on every visit and pays off on none.
  */
 export default function InvoicesPage() {
+  const {t} = useTranslation()
+  useDocumentTitle(t("portal.invoices.title"))
   const query = useInfiniteQuery({
     queryKey: portalKeys.invoicePages,
     queryFn: ({pageParam}) => listInvoices(pageParam),
@@ -30,7 +34,7 @@ export default function InvoicesPage() {
 
   return (
     <div className="space-y-8">
-      <PageHeader title="Faturas"/>
+      <PageHeader title={t("portal.invoices.title")}/>
 
       {query.isPending && <ListSkeleton/>}
 
@@ -39,8 +43,8 @@ export default function InvoicesPage() {
       {!query.isPending && !query.isError && invoices.length === 0 && (
         <EmptyState
           icon={<Receipt/>}
-          title="Nenhuma fatura ainda"
-          description="Assim que sua primeira cobrança for emitida, ela aparece aqui, com o que foi cobrado, quando vence e como pagar."
+          title={t("portal.invoices.empty.title")}
+          description={t("portal.invoices.empty.description")}
         />
       )}
 
@@ -59,7 +63,7 @@ export default function InvoicesPage() {
           onClick={() => query.fetchNextPage()}
           disabled={query.isFetchingNextPage}
         >
-          {query.isFetchingNextPage ? "Carregando…" : "Carregar mais"}
+          {query.isFetchingNextPage ? t("common.loading") : t("portal.invoices.loadMore")}
         </Button>
       )}
     </div>

@@ -76,7 +76,7 @@ export function settleInvoice(id: string) {
   if (!inv) return
   overrides.set(id, {
     ...inv,
-    state: "Paga",
+    state: "paid",
     tone: "positive",
     amount_paid: inv.total,
     amount_due: 0,
@@ -106,8 +106,10 @@ function checkoutView(inv: Invoice) {
   return {
     number: inv.number,
     description: inv.description,
+    ...(inv.extra_lines ? {extra_lines: inv.extra_lines} : {}),
     state: inv.state,
     tone: inv.tone,
+    days_until_due: inv.days_until_due,
     due_date: inv.due_date,
     amount_due: inv.amount_due,
     currency: inv.currency,
@@ -125,7 +127,9 @@ function fail(
   status: number,
   title: string,
   detail: string,
-  type = "about:blank"
+  type = "about:blank",
+  code?: string,
+  errors?: unknown
 ): never {
   const error = new Error(title) as Error & {
     isAxiosError: boolean
@@ -136,7 +140,7 @@ function fail(
   error.isAxiosError = true
   error.config = config
   error.response = {
-    data: {type, title, status, detail},
+    data: {type, title, status, detail, code, errors},
     status,
     statusText: title,
     headers: {},
@@ -172,7 +176,7 @@ export const mockAdapter: AxiosAdapter = async config => {
 
   if (scenario === "erro_de_rede") networkDown(config)
   if (scenario === "manutencao") {
-    fail(config, 503, "Em manutenção", "o serviço de cobranças está temporariamente indisponível")
+    fail(config, 503, "Em manutenção", "o serviço de cobranças está temporariamente indisponível", "about:blank", "service_unavailable")
   }
 
   // Answered before anything else that could 404: /maintenance polls this to
@@ -188,7 +192,8 @@ export const mockAdapter: AxiosAdapter = async config => {
       403,
       "Forbidden",
       "nenhuma conta de cobrança para este usuário",
-      "/problems/no-billing-account"
+      "/problems/no-billing-account",
+      "no_billing_account"
     )
   }
 
@@ -202,8 +207,8 @@ export const mockAdapter: AxiosAdapter = async config => {
       params: config.params as Record<string, unknown>,
     })
     if (res.status >= 400) {
-      const p = res.data as {type?: string; title?: string; detail?: string}
-      fail(config, res.status, p.title ?? "Error", p.detail ?? "", p.type)
+      const p = res.data as {type?: string; title?: string; detail?: string; code?: string; errors?: unknown}
+      fail(config, res.status, p.title ?? "Error", p.detail ?? "", p.type, p.code, p.errors)
     }
     return {...ok(config, res.data), status: res.status}
   }
@@ -219,7 +224,7 @@ export const mockAdapter: AxiosAdapter = async config => {
     // shell renders as an explanation and what keeps the portal's Console link
     // from appearing for somebody it would only frustrate.
     if (scenario === "sem_conta") {
-      fail(config, 403, "Forbidden", "nenhuma organização para este usuário")
+      fail(config, 403, "Forbidden", "nenhuma organização para este usuário", "about:blank", "no_organization")
     }
     const mode = (config.headers?.["X-Billing-Mode"] as string) === "test" ? "test" : "live"
     const invoices = consoleInvoices(mode)
@@ -274,7 +279,7 @@ export const mockAdapter: AxiosAdapter = async config => {
     const write = url.match(/\/v1\.0\/console\/invoices\/([^/]+)\/(finalize|void|credit-notes)$/)
     if (write && method === "post") {
       const inv = invoices.find(i => i.id === write[1])
-      if (!inv) fail(config, 404, "Não encontrada", "fatura não encontrada")
+      if (!inv) fail(config, 404, "Não encontrada", "fatura não encontrada", "about:blank", "invoice_not_found")
       switch (write[2]) {
         case "finalize":
           // Mutating the fixture in place is what makes the screen re-render
@@ -297,7 +302,7 @@ export const mockAdapter: AxiosAdapter = async config => {
     const detail = url.match(/\/v1\.0\/console\/invoices\/([^/]+)$/)
     if (detail) {
       const inv = invoices.find(i => i.id === detail[1])
-      if (!inv) fail(config, 404, "Não encontrada", "fatura não encontrada")
+      if (!inv) fail(config, 404, "Não encontrada", "fatura não encontrada", "about:blank", "invoice_not_found")
       return ok(config, consoleInvoiceDetail(inv))
     }
 
@@ -307,7 +312,7 @@ export const mockAdapter: AxiosAdapter = async config => {
     const customer = url.match(/\/v1\.0\/console\/customers\/([^/]+)$/)
     if (customer) {
       const found = consoleCustomers(mode).find(c => c.id === customer[1])
-      if (!found) fail(config, 404, "Não encontrado", "cliente não encontrado")
+      if (!found) fail(config, 404, "Não encontrado", "cliente não encontrado", "about:blank", "resource_not_found")
       return ok(config, consoleCustomerDetail(found))
     }
 
@@ -317,13 +322,13 @@ export const mockAdapter: AxiosAdapter = async config => {
     const subscription = url.match(/\/v1\.0\/console\/subscriptions\/([^/]+)$/)
     if (subscription) {
       const found = consoleSubscriptions(mode).find(s => s.id === subscription[1])
-      if (!found) fail(config, 404, "Não encontrada", "assinatura não encontrada")
+      if (!found) fail(config, 404, "Não encontrada", "assinatura não encontrada", "about:blank", "subscription_not_found")
       return ok(config, consoleSubscriptionDetail(found))
     }
     const subCancel = url.match(/\/v1\.0\/console\/subscriptions\/([^/]+)\/cancel$/)
     if (subCancel && method === "post") {
       const found = consoleSubscriptions(mode).find(s => s.id === subCancel[1])
-      if (!found) fail(config, 404, "Não encontrada", "assinatura não encontrada")
+      if (!found) fail(config, 404, "Não encontrada", "assinatura não encontrada", "about:blank", "subscription_not_found")
       const atPeriodEnd = JSON.parse((config.data as string) || "{}").at_period_end === true
       if (atPeriodEnd) {
         found.cancel_at_period_end = true
@@ -340,7 +345,7 @@ export const mockAdapter: AxiosAdapter = async config => {
     const product = url.match(/\/v1\.0\/console\/products\/([^/]+)$/)
     if (product && method === "get") {
       const found = consoleProduct(product[1])
-      if (!found) fail(config, 404, "Não encontrado", "produto não encontrado")
+      if (!found) fail(config, 404, "Não encontrado", "produto não encontrado", "about:blank", "resource_not_found")
       return ok(config, found)
     }
     // The catalogue writes answer with a plausible row rather than mutating the
@@ -358,7 +363,7 @@ export const mockAdapter: AxiosAdapter = async config => {
       return ok(config, {id: archive[1], archived: true})
     }
 
-    fail(config, 404, "Rota não mockada", `sem fixture para ${method.toUpperCase()} ${url}`)
+    fail(config, 404, "Rota não mockada", `sem fixture para ${method.toUpperCase()} ${url}`, "about:blank", "resource_not_found")
   }
 
   if (url.endsWith("/v1.0/portal/session")) {
@@ -382,17 +387,17 @@ export const mockAdapter: AxiosAdapter = async config => {
   const subDetail = url.match(/\/v1\.0\/portal\/subscriptions\/([^/]+)$/)
   if (subDetail) {
     const sub = fixture().subscriptions.find(s => s.id === subDetail[1])
-    if (!sub) fail(config, 404, "Não encontrada", "assinatura não encontrada")
+    if (!sub) fail(config, 404, "Não encontrada", "assinatura não encontrada", "about:blank", "subscription_not_found")
     return ok(config, {...sub, recent_invoices: invoices().filter(i => !i.payable)})
   }
 
   const cancel = url.match(/\/v1\.0\/portal\/subscriptions\/([^/]+)\/cancel$/)
   if (cancel && method === "post") {
     const sub = fixture().subscriptions.find(s => s.id === cancel[1])
-    if (!sub) fail(config, 404, "Não encontrado", "assinatura não encontrada")
+    if (!sub) fail(config, 404, "Não encontrado", "assinatura não encontrada", "about:blank", "subscription_not_found")
     return ok(config, {
       ...sub,
-      state: "Ativa até o fim do período",
+      state: "active_until_period_end",
       tone: "attention",
       renews_on: undefined,
     })
@@ -405,9 +410,9 @@ export const mockAdapter: AxiosAdapter = async config => {
   const pay = url.match(/\/v1\.0\/portal\/invoices\/([^/]+)\/pay$/)
   if (pay && method === "post") {
     const inv = invoices().find(i => i.id === pay[1])
-    if (!inv) fail(config, 404, "Não encontrado", "fatura não encontrada")
+    if (!inv) fail(config, 404, "Não encontrado", "fatura não encontrada", "about:blank", "invoice_not_found")
     if (!inv.payable) {
-      fail(config, 422, "Não pagável", "esta fatura não está aberta para pagamento")
+      fail(config, 422, "Não pagável", "esta fatura não está aberta para pagamento", "about:blank", "invoice_not_payable")
     }
     return ok(config, {
       invoice: inv,
@@ -426,7 +431,7 @@ export const mockAdapter: AxiosAdapter = async config => {
   const checkoutPay = url.match(/\/v1\.0\/checkout\/([^/]+)\/pay$/)
   if (checkoutPay && method === "post") {
     const inv = invoices().find(i => i.payable)
-    if (!inv) fail(config, 404, "Link inválido", "link inválido ou expirado")
+    if (!inv) fail(config, 404, "Not Found", "invalid or expired link", "/problems/invalid-link", "invalid_link")
     return ok(config, {
       merchant: MOCK_MERCHANT,
       invoice: checkoutView(inv),
@@ -441,7 +446,7 @@ export const mockAdapter: AxiosAdapter = async config => {
   const checkout = url.match(/\/v1\.0\/checkout\/([^/]+)$/)
   if (checkout) {
     const inv = invoices().find(i => i.payable) ?? invoices()[0]
-    if (!inv) fail(config, 404, "Link inválido", "link inválido ou expirado")
+    if (!inv) fail(config, 404, "Not Found", "invalid or expired link", "/problems/invalid-link", "invalid_link")
     return ok(config, {merchant: MOCK_MERCHANT, invoice: checkoutView(inv)})
   }
 
@@ -453,9 +458,9 @@ export const mockAdapter: AxiosAdapter = async config => {
   const detail = url.match(/\/v1\.0\/portal\/invoices\/([^/]+)$/)
   if (detail) {
     const inv = invoices().find(i => i.id === detail[1])
-    if (!inv) fail(config, 404, "Não encontrada", "fatura não encontrada")
+    if (!inv) fail(config, 404, "Não encontrada", "fatura não encontrada", "about:blank", "invoice_not_found")
     return ok(config, inv)
   }
 
-  fail(config, 404, "Rota não mockada", `sem fixture para ${method.toUpperCase()} ${url}`)
+  fail(config, 404, "Rota não mockada", `sem fixture para ${method.toUpperCase()} ${url}`, "about:blank", "resource_not_found")
 }

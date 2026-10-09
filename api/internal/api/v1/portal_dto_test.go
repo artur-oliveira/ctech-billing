@@ -25,7 +25,7 @@ func TestInvoiceStateNeverLeaksTheInternalStatus(t *testing.T) {
 
 	for _, status := range statuses {
 		inv := &billing.Invoice{Status: status, DueDate: today.AddDays(30)}
-		state, tone := invoiceState(inv, today)
+		state, tone, _ := invoiceState(inv, today)
 
 		if state == "" {
 			t.Errorf("status %q produced no phrase", status)
@@ -52,17 +52,22 @@ func TestInvoiceStateReadsTheDueDateAsAPerson(t *testing.T) {
 		inv  *billing.Invoice
 		want string
 		tone string
+		days int
 	}{
-		{"hoje", open(today), "Vence hoje", toneUrgent},
-		{"amanhã", open(today.AddDays(1)), "Vence amanhã", toneAttention},
-		{"esta semana", open(today.AddDays(3)), "Vence em 3 dias", toneAttention},
-		{"um dia vencida", open(today.AddDays(-1)), "Vencida há 1 dia", toneUrgent},
-		{"vencida", open(today.AddDays(-5)), "Vencida há 5 dias", toneUrgent},
-		{"longe", open(brcal.New(2026, time.April, 20)), "Vence em 20/04/2026", toneNeutral},
+		{"today", open(today), "due_today", toneUrgent, 0},
+		{"tomorrow", open(today.AddDays(1)), "due_tomorrow", toneAttention, 1},
+		{"this week", open(today.AddDays(3)), "due_soon", toneAttention, 3},
+		{"seven days", open(today.AddDays(7)), "due_soon", toneAttention, 7},
+		{"one day overdue", open(today.AddDays(-1)), "overdue", toneUrgent, -1},
+		{"overdue", open(today.AddDays(-5)), "overdue", toneUrgent, -5},
+		{"far", open(brcal.New(2026, time.April, 20)), "upcoming", toneNeutral, 41},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			state, tone := invoiceState(tc.inv, today)
+			state, tone, days := invoiceState(tc.inv, today)
+			if days != tc.days {
+				t.Errorf("days_until_due = %d, want %d", days, tc.days)
+			}
 			if state != tc.want {
 				t.Errorf("state = %q, want %q", state, tc.want)
 			}
@@ -78,11 +83,11 @@ func TestInvoiceStateReadsTheDueDateAsAPerson(t *testing.T) {
 func TestOverdueIsUrgentAndPaidIsNot(t *testing.T) {
 	today := brcal.New(2026, time.March, 10)
 
-	_, overdue := invoiceState(&billing.Invoice{Status: billing.InvoiceOpen, DueDate: today.AddDays(-1)}, today)
+	_, overdue, _ := invoiceState(&billing.Invoice{Status: billing.InvoiceOpen, DueDate: today.AddDays(-1)}, today)
 	if overdue != toneUrgent {
 		t.Errorf("an overdue invoice reads as %q", overdue)
 	}
-	_, paid := invoiceState(&billing.Invoice{Status: billing.InvoicePaid, DueDate: today.AddDays(-30)}, today)
+	_, paid, _ := invoiceState(&billing.Invoice{Status: billing.InvoicePaid, DueDate: today.AddDays(-30)}, today)
 	if paid != tonePositive {
 		t.Errorf("a paid invoice reads as %q", paid)
 	}
@@ -117,8 +122,8 @@ func TestEndingSubscriptionSaysSo(t *testing.T) {
 		Status:            billing.SubscriptionActive,
 		CancelAtPeriodEnd: true,
 	})
-	if state == "Ativa" {
-		t.Error("a subscription ending at period end must not read as plain Ativa")
+	if state != "active_until_period_end" {
+		t.Errorf("a subscription ending at period end read as %q", state)
 	}
 	if tone != toneAttention {
 		t.Errorf("tone = %q, want attention", tone)
@@ -156,14 +161,14 @@ func TestDescribeLinesSaysWhatTheInvoiceIsFor(t *testing.T) {
 	one := []billing.InvoiceItem{{Description: "DF-e Basic"}}
 	three := []billing.InvoiceItem{{Description: "DF-e Basic"}, {Description: "Extra"}, {Description: "Ajuste"}}
 
-	if got := describeLines(nil); got != "Fatura" {
-		t.Errorf("empty = %q", got)
+	if d, n := describeLines(nil); d != "" || n != 0 {
+		t.Errorf("empty = %q, %d", d, n)
 	}
-	if got := describeLines(one); got != "DF-e Basic" {
-		t.Errorf("single = %q", got)
+	if d, n := describeLines(one); d != "DF-e Basic" || n != 0 {
+		t.Errorf("single = %q, %d", d, n)
 	}
-	if got := describeLines(three); got != "DF-e Basic e mais 2" {
-		t.Errorf("many = %q", got)
+	if d, n := describeLines(three); d != "DF-e Basic" || n != 2 {
+		t.Errorf("many = %q, %d", d, n)
 	}
 }
 

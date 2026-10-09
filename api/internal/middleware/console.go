@@ -29,7 +29,7 @@ func RequireUserScope(scope string) fiber.Handler {
 			return problem.Unauthorized("credenciais ausentes").Send(c)
 		}
 		if cl.SID == "" {
-			return problem.Forbidden("esta rota exige sessão de usuário").Send(c)
+			return problem.Forbidden("this route requires a user session").WithCode("user_session_required").Send(c)
 		}
 		if !cl.HasScope(scope) {
 			return problem.Forbidden("escopo insuficiente: " + scope).Send(c)
@@ -70,9 +70,9 @@ func ResolveConsoleTenant(orgs *repositories.OrganizationRepository) fiber.Handl
 				// The same answer whether the person owns no organization or owns
 				// one only in the other mode. Distinguishing the two would let a
 				// signed-in stranger probe which organizations exist.
-				return problem.Forbidden("nenhuma organização para este usuário").Send(c)
+				return problem.Forbidden("no organization for this user").WithCode("no_organization").Send(c)
 			}
-			return problem.Internal("erro ao resolver organização").Send(c)
+			return problem.Internal("could not resolve organization").WithCode("organization_resolve_failed").Send(c)
 		}
 
 		c.Locals(OrganizationKey, org)

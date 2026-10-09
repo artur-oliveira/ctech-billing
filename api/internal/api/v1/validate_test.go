@@ -78,3 +78,35 @@ func TestIDEmailAndTaxIDChecks(t *testing.T) {
 		t.Fatalf("errors on %s", got)
 	}
 }
+
+func TestFieldErrorsCarryCodeAndParams(t *testing.T) {
+	c := &checks{}
+	c.text("name", strings.Repeat("a", 11), false, 10)
+	c.text("req", "", true, 10)
+	c.date("d", brcal.New(1999, time.December, 31), limits.MinDate, brcal.New(2026, time.October, 8))
+	c.id("id", "a b", true)
+	c.email("e", "nope", true)
+	want := []struct {
+		code string
+		key  string
+	}{{"too_long", "max"}, {"required", ""}, {"date_too_early", "min"}, {"invalid_id", ""}, {"invalid_email", ""}}
+	if len(c.errs) != len(want) {
+		t.Fatalf("got %d errors: %+v", len(c.errs), c.errs)
+	}
+	for i, w := range want {
+		if c.errs[i].Code != w.code {
+			t.Errorf("error %d code = %q, want %q", i, c.errs[i].Code, w.code)
+		}
+		if w.key != "" {
+			if _, ok := c.errs[i].Params[w.key]; !ok {
+				t.Errorf("error %d lacks param %q: %+v", i, w.key, c.errs[i].Params)
+			}
+		}
+		if c.errs[i].Message == "" {
+			t.Errorf("error %d has no fallback message", i)
+		}
+	}
+	if c.errs[0].Params["max"] != 10 {
+		t.Errorf("max param = %v", c.errs[0].Params["max"])
+	}
+}

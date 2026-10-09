@@ -1,6 +1,8 @@
 "use client"
 
 import {apiClient} from "@/lib/api/client"
+import {currentLocale} from "@/lib/i18n"
+import type {SupportedLocale} from "@/lib/locale"
 import type {
   ConsoleCustomer,
   ConsoleCustomerDetail,
@@ -247,10 +249,14 @@ export async function archivePrice(id: string, mode?: Mode): Promise<ConsolePric
   return data
 }
 
-export async function getConsoleInvoicePDF(id: string, mode?: Mode): Promise<DocumentLink> {
+export async function getConsoleInvoicePDF(
+  id: string,
+  mode?: Mode,
+  lang: SupportedLocale = currentLocale(),
+): Promise<DocumentLink> {
   const {data} = await apiClient.get<DocumentLink>(
     `/v1.0/console/invoices/${id}/pdf`,
-    modeHeaders(mode),
+    {...modeHeaders(mode), params: {lang}},
   )
   return data
 }

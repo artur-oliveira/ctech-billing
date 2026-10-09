@@ -5,6 +5,7 @@ import {Button, Drawer, EmptyState, Field, Input, Skeleton, Switch} from "@aocte
 import {useQuery} from "@tanstack/react-query"
 import {Repeat} from "lucide-react"
 import {useEffect, useRef, useState} from "react"
+import {useTranslation} from "react-i18next"
 
 import {ExceptionsFields, PatternFields} from "@/components/finance/ExpressionEditor"
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
@@ -17,23 +18,26 @@ import {
 } from "@/lib/api/finance"
 import type {Account, Adjust, Direction, NewRecurrence, Occurrence, Recurrence, RecurrencePatch} from "@/lib/api/financeTypes"
 import {defaultModel, describeModel, type EditorModel, fromExpression, toExpression, validate} from "@/lib/finance/expression"
+import {t} from "@/lib/i18n"
 import {addYearsIso, todayIso} from "@/lib/finance/today"
 import {useFinanceMutation} from "@/lib/finance/useFinanceMutation"
 import {useFinanceCtx, useFinanceSpaces} from "@/lib/finance/useFinanceSpaces"
 import {money, shortDate} from "@/lib/format"
-import {formatMoneyInput, maskMoney, parseMoney} from "@/lib/money"
+import {useFieldErrors} from "@/lib/useFieldErrors"
+import {formatMoneyInput, maskMoney, moneyPlaceholder, parseMoney} from "@/lib/money"
+import {accountName} from "@/lib/finance/accountName"
 
 const PREVIEW_COUNT = 6
 const DEBOUNCE_MS = 300
-const ADJUST_OPTIONS: {value: Adjust; label: string}[] = [
-  {value: "roll_forward", label: "Passa para o próximo dia útil"},
-  {value: "none", label: "Mantém a data"},
+const adjustOptions = (): {value: Adjust; label: string}[] => [
+  {value: "roll_forward", label: t("bills.rec.adjust.roll_forward")},
+  {value: "none", label: t("bills.rec.adjust.none")},
 ]
 const touched = (c: FinanceCtx) => [financeKeys.recurrences(c.mode, c.space), [...financeKeys.all(c.mode, c.space), "projection"]]
 
 function ruleOf(r: Recurrence): string {
   const model = fromExpression(r.expression)
-  return model ? describeModel(model) : "Regra personalizada"
+  return model ? describeModel(model) : t("bills.rec.customRule")
 }
 
 /**
@@ -42,25 +46,26 @@ function ruleOf(r: Recurrence): string {
  * confirmation, before anything is saved.
  */
 export function RecurrencesView() {
+  const {t} = useTranslation()
   const ctx = useFinanceCtx()
   const {can} = useFinanceSpaces()
   const [panel, setPanel] = useState<{mode: "new"} | {mode: "edit"; rec: Recurrence} | null>(null)
   const recs = useQuery({queryKey: financeKeys.recurrences(ctx.mode, ctx.space), queryFn: () => listRecurrences(ctx)})
   const accounts = useQuery({queryKey: financeKeys.accounts(ctx.mode, ctx.space), queryFn: () => listAccounts(ctx)})
-  const names = new Map((accounts.data?.data ?? []).map(a => [a.id, a.name]))
+  const names = new Map((accounts.data?.data ?? []).map(a => [a.id, accountName(a)]))
   const active = (recs.data?.data ?? []).filter(r => !r.archived)
 
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-lg font-semibold tracking-[-0.01em] text-foreground">Recorrências</h1>
+        <h1 className="text-lg font-semibold tracking-[-0.01em] text-foreground">{t("bills.rec.title")}</h1>
         {can("finance.write") && (
-          <Button variant="brand" size="sm" onClick={() => setPanel({mode: "new"})}>Nova recorrência</Button>
+          <Button variant="brand" size="sm" onClick={() => setPanel({mode: "new"})}>{t("bills.rec.new")}</Button>
         )}
       </div>
 
       <Drawer open={panel !== null} onClose={() => setPanel(null)} size="lg"
-        title={panel?.mode === "edit" ? "Editar recorrência" : "Nova recorrência"}>
+        title={panel?.mode === "edit" ? t("bills.rec.edit") : t("bills.rec.new")}>
         {panel && (
           <RecurrencePanel
             key={panel.mode === "edit" ? panel.rec.id : "new"}
@@ -78,8 +83,8 @@ export function RecurrencesView() {
       ) : active.length === 0 ? (
         <EmptyState
           icon={<Repeat/>}
-          title="Nenhuma recorrência"
-          description="Cadastre o que se repete (aluguel, salário, assinaturas) e as contas de cada mês aparecem sozinhas em A pagar e a receber."
+          title={t("bills.rec.empty")}
+          description={t("bills.rec.emptyHint")}
         />
       ) : (
         <ul className="divide-y divide-border border-y border-border">
@@ -93,6 +98,7 @@ export function RecurrencesView() {
 }
 
 function RecurrenceRow({rec, account, onEdit}: {rec: Recurrence; account?: string; onEdit: () => void}) {
+  const {t} = useTranslation()
   const {can} = useFinanceSpaces()
   const [confirming, setConfirming] = useState(false)
   const archive = useFinanceMutation((c, _: void, key) => archiveRecurrence(c, rec.id, key), touched, () => setConfirming(false))
@@ -100,25 +106,25 @@ function RecurrenceRow({rec, account, onEdit}: {rec: Recurrence; account?: strin
     <li className="py-2.5">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm text-foreground">{rec.description || "Sem descrição"}</p>
+          <p className="truncate text-sm text-foreground">{rec.description || t("bills.common.noDescription")}</p>
           <p className="text-xs text-muted-foreground">
-            {ruleOf(rec)}{account ? ` • ${account}` : ""}{rec.auto_settle ? ` • ${rec.direction === "payable" ? "Pagamento" : "Recebimento"} automático` : ""}
+            {ruleOf(rec)}{account ? ` • ${account}` : ""}{rec.auto_settle ? ` • ${t(`bills.row.autoNote.${rec.direction}`)}` : ""}
           </p>
         </div>
-        <span className="text-xs text-muted-foreground">{rec.direction === "payable" ? "A pagar" : "A receber"}</span>
-        <span data-numeric className="w-28 text-right text-sm tabular-nums">{money(rec.amount)}</span>
+        <span className="text-xs text-muted-foreground">{t(`bills.direction.${rec.direction}`)}</span>
+        <span data-numeric className="w-28 shrink-0 text-right text-sm tabular-nums">{money(rec.amount)}</span>
         {can("finance.write") && (
           <div className="flex gap-1">
-            <Button size="sm" variant="ghost" onClick={onEdit}>Editar</Button>
-            <Button size="sm" variant="ghost" aria-expanded={confirming} onClick={() => setConfirming(v => !v)}>Encerrar</Button>
+            <Button size="sm" variant="ghost" onClick={onEdit}>{t("bills.common.edit")}</Button>
+            <Button size="sm" variant="ghost" aria-expanded={confirming} onClick={() => setConfirming(v => !v)}>{t("bills.rec.end")}</Button>
           </div>
         )}
       </div>
       {confirming && (
         <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg bg-surface p-3 text-sm motion-safe:animate-in motion-safe:fade-in">
-          <p className="text-muted-foreground">Encerrar esta recorrência? Ela para de gerar contas; as contas já geradas continuam como estão.</p>
-          <Button size="sm" variant="outline" onClick={() => setConfirming(false)}>Manter</Button>
-          <Button size="sm" variant="danger" disabled={archive.isPending} onClick={() => archive.mutate()}>Confirmar</Button>
+          <p className="text-muted-foreground">{t("bills.rec.endConfirm")}</p>
+          <Button size="sm" variant="outline" onClick={() => setConfirming(false)}>{t("bills.common.keep")}</Button>
+          <Button size="sm" variant="danger" disabled={archive.isPending} onClick={() => archive.mutate()}>{t("bills.rec.confirm")}</Button>
           {archive.error && <p role="alert" className="w-full text-danger">{messageFor(archive.error)}</p>}
         </div>
       )}
@@ -157,6 +163,7 @@ function usePreview(ctx: FinanceCtx, model: EditorModel, start: string, end: str
 }
 
 function RecurrencePanel({editing, accounts, onDone}: {editing?: Recurrence; accounts: Account[]; onDone: () => void}) {
+  const {t} = useTranslation()
   const ctx = useFinanceCtx()
   const {can} = useFinanceSpaces()
   const [direction, setDirection] = useState<Direction>(editing?.direction ?? "payable")
@@ -176,8 +183,12 @@ function RecurrencePanel({editing, accounts, onDone}: {editing?: Recurrence; acc
   const cats = accounts.filter(a => a.class === (direction === "payable" ? "expense" : "income") && !a.archived && !a.system)
   const assets = accounts.filter(a => a.class === "asset" && !a.archived && !a.system)
 
-  const create = useFinanceMutation((c, body: NewRecurrence, key) => createRecurrence(c, body, key), touched, onDone)
-  const patch = useFinanceMutation((c, body: RecurrencePatch, key) => patchRecurrence(c, editing!.id, body, key), touched, onDone)
+  const [more, setMore] = useState(false)
+  // "end" only has a control on screen when editing or when more options is open;
+  // otherwise its error is shown as the general message.
+  const fe = useFieldErrors(["description", "amount", "category_id", "account_id", ...(editing ? [] : ["start"]), ...(editing || more ? ["end"] : [])])
+  const create = useFinanceMutation((c, body: NewRecurrence, key) => createRecurrence(c, body, key), touched, onDone, fe.set)
+  const patch = useFinanceMutation((c, body: RecurrencePatch, key) => patchRecurrence(c, editing!.id, body, key), touched, onDone, fe.set)
   const pending = create.isPending || patch.isPending
   const ready = amount !== null && category !== "" && account !== "" && errors.length === 0 && !pending
   const showAuto = can("finance.settle") || (editing?.auto_settle ?? false)
@@ -185,6 +196,7 @@ function RecurrencePanel({editing, accounts, onDone}: {editing?: Recurrence; acc
   function submit(e: React.FormEvent) {
     e.preventDefault()
     if (!ready) return
+    fe.reset()
     if (!editing) {
       create.mutate({
         direction, amount: amount!, category_id: category, account_id: account, description: description || undefined,
@@ -203,7 +215,6 @@ function RecurrencePanel({editing, accounts, onDone}: {editing?: Recurrence; acc
     patch.mutate(body)
   }
 
-  const [more, setMore] = useState(false)
   const nextDates = preview.occ.slice(0, PREVIEW_COUNT)
 
   return (
@@ -211,11 +222,11 @@ function RecurrencePanel({editing, accounts, onDone}: {editing?: Recurrence; acc
       <div className="flex flex-wrap items-center justify-between gap-3">
 
         {!editing && (
-          <div role="group" aria-label="Direção" className="flex items-center gap-0.5 rounded-lg border border-border bg-surface p-0.5">
+          <div role="group" aria-label={t("bills.direction.label")} className="flex items-center gap-0.5 rounded-lg border border-border bg-surface p-0.5">
             {(["payable", "receivable"] as Direction[]).map(d => (
               <button key={d} type="button" aria-pressed={direction === d} onClick={() => { setDirection(d); setCategory("") }}
                 className={`rounded-md px-3 py-1 text-sm ${direction === d ? "bg-background font-medium text-foreground shadow-sm" : "text-muted-foreground"}`}>
-                {d === "payable" ? "A pagar" : "A receber"}
+                {t(`bills.direction.${d}`)}
               </button>
             ))}
           </div>
@@ -223,46 +234,46 @@ function RecurrencePanel({editing, accounts, onDone}: {editing?: Recurrence; acc
       </div>
       <form className="space-y-4" onSubmit={submit}>
         <div className="grid items-start gap-x-4 gap-y-3 sm:grid-cols-2 [&>*]:min-w-0">
-          <Field label="Descrição" htmlFor="rc-desc" className="sm:col-span-2"><Input id="rc-desc" maxLength={limits.text.description} value={description} onChange={e => setDescription(e.target.value)}/></Field>
-          <Field label="Valor" htmlFor="rc-amount" required><Input id="rc-amount" inputMode="decimal" placeholder="0,00" value={amountText} onChange={e => setAmountText(maskMoney(e.target.value))}/></Field>
-          <Field label="Categoria" htmlFor="rc-cat" required hint={cats.length === 0 ? `Nenhuma categoria de ${direction === "payable" ? "despesa" : "receita"}. Crie uma em Contas.` : undefined}>
-            <Select id="rc-cat" value={category} onValueChange={setCategory} options={cats.map(a => ({value: a.id, label: a.name}))}/>
+          <Field label={t("bills.common.description")} htmlFor="rc-desc" error={fe.of("description")} className="sm:col-span-2"><Input id="rc-desc" maxLength={limits.text.description} value={description} {...fe.props("description", "rc-desc")} onChange={e => { setDescription(e.target.value); fe.clear("description") }}/></Field>
+          <Field label={t("bills.common.amount")} htmlFor="rc-amount" required error={fe.of("amount")}><Input id="rc-amount" inputMode="decimal" placeholder={moneyPlaceholder()} value={amountText} {...fe.props("amount", "rc-amount")} onChange={e => { setAmountText(maskMoney(e.target.value)); fe.clear("amount") }}/></Field>
+          <Field label={t("bills.common.category")} htmlFor="rc-cat" required error={fe.of("category_id")} hint={cats.length === 0 ? t(`bills.noCategory.${direction === "payable" ? "expense" : "income"}`) : undefined}>
+            <Select id="rc-cat" value={category} {...fe.props("category_id", "rc-cat")} onValueChange={v => { setCategory(v); fe.clear("category_id") }} options={cats.map(a => ({value: a.id, label: accountName(a)}))}/>
           </Field>
-          <Field label={direction === "payable" ? "Pagar com" : "Receber em"} htmlFor="rc-acct" required hint={assets.length === 0 ? "Nenhuma conta. Crie uma em Contas." : undefined}>
-            <Select id="rc-acct" value={account} onValueChange={setAccount} options={assets.map(a => ({value: a.id, label: a.name}))}/>
+          <Field label={t(`bills.common.payWith.${direction}`)} htmlFor="rc-acct" required error={fe.of("account_id")} hint={assets.length === 0 ? t("bills.noAccount") : undefined}>
+            <Select id="rc-acct" value={account} {...fe.props("account_id", "rc-acct")} onValueChange={v => { setAccount(v); fe.clear("account_id") }} options={assets.map(a => ({value: a.id, label: accountName(a)}))}/>
           </Field>
           {!editing && (
             <>
               <PatternFields model={model} start={start} errors={errors} onChange={setModel}/>
-              <Field label="Começa em" htmlFor="rc-start"><DateField id="rc-start" min={limits.minDate} max={addYearsIso(todayIso(), limits.maxFutureYears)} value={start} onValueChange={setStart}/></Field>
+              <Field label={t("bills.rec.startsOn")} htmlFor="rc-start" error={fe.of("start")}><DateField id="rc-start" min={limits.minDate} max={addYearsIso(todayIso(), limits.maxFutureYears)} value={start} invalid={!!fe.of("start")} onValueChange={v => { setStart(v); fe.clear("start") }}/></Field>
             </>
           )}
           {editing && (
-            <Field label="Termina em" htmlFor="rc-end-edit"><DateField id="rc-end-edit" min={start || limits.minDate} max={addYearsIso(start || todayIso(), limits.maxRecurrenceYears)} value={end} onValueChange={setEnd} placeholder="Não termina"/></Field>
+            <Field label={t("bills.rec.endsOn")} htmlFor="rc-end-edit" error={fe.of("end")}><DateField id="rc-end-edit" min={start || limits.minDate} max={addYearsIso(start || todayIso(), limits.maxRecurrenceYears)} value={end} invalid={!!fe.of("end")} onValueChange={v => { setEnd(v); fe.clear("end") }} placeholder={t("bills.rec.noEnd")}/></Field>
           )}
         </div>
 
         {editing ? (
           <p className="text-sm text-muted-foreground">
-            <span className="text-foreground">{ruleOf(editing)}.</span> Para mudar a regra, encerre esta recorrência e crie outra; as contas já geradas continuam como estão.
+            {t("bills.rec.editNote", {rule: ruleOf(editing)})}
           </p>
         ) : (
           <>
             <p className="text-sm" aria-live="polite">
-              <span className="font-medium text-foreground">Próximas datas: </span>
+              <span className="font-medium text-foreground">{t("bills.rec.next")}: </span>
               {errors.length > 0 ? (
-                <span className="text-muted-foreground">corrija a regra para ver as datas.</span>
+                <span className="text-muted-foreground">{t("bills.rec.fixRule")}</span>
               ) : preview.error ? (
                 <span role="alert" className="text-danger">{messageFor(preview.error)}</span>
               ) : nextDates.length === 0 ? (
-                <span className="text-muted-foreground">calculando…</span>
+                <span className="text-muted-foreground">{t("bills.rec.calculating")}</span>
               ) : (
                 <span className="tabular-nums text-foreground">
                   {nextDates.map((o, i) => (
                     <span key={o.nominal}>
                       {i > 0 && <span className="text-muted-foreground"> • </span>}
                       {shortDate(o.nominal)}
-                      {o.due !== o.nominal && <span className="text-muted-foreground">{` (paga em ${shortDate(o.due)})`}</span>}
+                      {o.due !== o.nominal && <span className="text-muted-foreground">{` ${t("bills.rec.paidOn", {date: shortDate(o.due)})}`}</span>}
                     </span>
                   ))}
                 </span>
@@ -272,13 +283,13 @@ function RecurrencePanel({editing, accounts, onDone}: {editing?: Recurrence; acc
             <div>
               <button type="button" aria-expanded={more} onClick={() => setMore(v => !v)}
                 className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline">
-                {more ? "Menos opções" : "Mais opções"}
+                {more ? t("bills.rec.lessOptions") : t("bills.rec.moreOptions")}
               </button>
               {more && (
                 <div className="mt-3 grid items-start gap-4 border-t border-border pt-4 sm:grid-cols-2">
-                  <Field label="Termina em" htmlFor="rc-end"><DateField id="rc-end" min={start || limits.minDate} max={addYearsIso(start || todayIso(), limits.maxRecurrenceYears)} value={end} onValueChange={setEnd} placeholder="Não termina"/></Field>
-                  <Field label="Se cair em fim de semana ou feriado" htmlFor="rc-adjust">
-                    <Select id="rc-adjust" value={adjust} onValueChange={v => setAdjust(v as Adjust)} options={ADJUST_OPTIONS}/>
+                  <Field label={t("bills.rec.endsOn")} htmlFor="rc-end" error={fe.of("end")}><DateField id="rc-end" min={start || limits.minDate} max={addYearsIso(start || todayIso(), limits.maxRecurrenceYears)} value={end} invalid={!!fe.of("end")} onValueChange={v => { setEnd(v); fe.clear("end") }} placeholder={t("bills.rec.noEnd")}/></Field>
+                  <Field label={t("bills.rec.weekend")} htmlFor="rc-adjust">
+                    <Select id="rc-adjust" value={adjust} onValueChange={v => setAdjust(v as Adjust)} options={adjustOptions()}/>
                   </Field>
                   <ExceptionsFields model={model} errors={errors} onChange={setModel}/>
                 </div>
@@ -291,16 +302,16 @@ function RecurrencePanel({editing, accounts, onDone}: {editing?: Recurrence; acc
           {showAuto && (
             <label className="flex items-center gap-2 text-sm">
               <Switch checked={autoSettle} onCheckedChange={setAutoSettle} disabled={!autoSettle && !can("finance.settle")}
-                aria-label={direction === "payable" ? "Pagar automaticamente no vencimento" : "Receber automaticamente no vencimento"}/>
-              {direction === "payable" ? "Pagar automaticamente no vencimento" : "Receber automaticamente no vencimento"}
+                aria-label={t(`bills.common.auto.${direction}`)}/>
+              {t(`bills.common.auto.${direction}`)}
             </label>
           )}
           <div className="flex gap-2">
-            <Button type="submit" variant="brand" size="sm" disabled={!ready}>{editing ? "Salvar" : "Criar recorrência"}</Button>
-            <Button type="button" variant="outline" size="sm" onClick={onDone}>Fechar</Button>
+            <Button type="submit" variant="brand" size="sm" disabled={!ready}>{editing ? t("bills.common.save") : t("bills.rec.create")}</Button>
+            <Button type="button" variant="outline" size="sm" onClick={onDone}>{t("bills.common.close")}</Button>
           </div>
         </div>
-        {(create.error || patch.error) && <p role="alert" className="text-sm text-danger">{messageFor(create.error ?? patch.error)}</p>}
+        {fe.general && <p role="alert" className="text-sm text-danger">{fe.general}</p>}
       </form>
     </div>
   )

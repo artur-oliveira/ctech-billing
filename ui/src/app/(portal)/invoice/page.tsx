@@ -6,6 +6,7 @@ import {ArrowLeft, Check} from "lucide-react"
 import Link from "next/link"
 import {useSearchParams} from "next/navigation"
 import {Suspense, useState} from "react"
+import {useTranslation} from "react-i18next"
 import {toast} from "sonner"
 
 import {DownloadPDF} from "@/components/DownloadPDF"
@@ -42,6 +43,7 @@ export default function InvoicePage() {
 }
 
 function Invoice() {
+  const {t} = useTranslation()
   const id = useSearchParams().get("id") ?? ""
   const queryClient = useQueryClient()
   const [payment, setPayment] = useState<PixPayment | null>(null)
@@ -66,7 +68,7 @@ function Invoice() {
 
   // Named by its number once there is one. Somebody paying two bills has two
   // tabs open, and "Fatura · CTech Billing" twice tells them nothing.
-  useDocumentTitle(query.data?.number ? `Fatura nº ${query.data.number}` : null)
+  useDocumentTitle(query.data?.number ? t("portal.invoice.title", {number: query.data.number}) : null)
 
   // A bare /invoice with no id is the same dead end as an invoice that does not
   // exist, and saying so beats a query that never fires under a spinner.
@@ -100,7 +102,7 @@ function Invoice() {
       <header className="space-y-3">
         <BackLink/>
         <p className="text-sm text-muted-foreground">
-          {invoice.number ? `Fatura nº ${invoice.number}` : "Fatura"}
+          {invoice.number ? t("portal.invoice.title", {number: invoice.number}) : t("portal.invoice.untitled")}
         </p>
         <h1>
           <Money
@@ -109,7 +111,7 @@ function Invoice() {
             size="hero"
           />
         </h1>
-        <StatusBadge state={invoice.state} tone={invoice.tone}/>
+        <StatusBadge state={invoice.state} tone={invoice.tone} days={invoice.days_until_due} dueDate={invoice.due_date}/>
         {/* One date, the one that matters now: the due date while anything is
             owed, the payment date once nothing is. Everything else about the
             document — number, period, the other date — is in Detalhes at the
@@ -120,9 +122,9 @@ function Invoice() {
         <p className="text-pretty text-sm text-muted-foreground">
           {settled
             ? invoice.paid_on
-              ? `Pago em ${longDate(invoice.paid_on)}`
-              : `Referente ao período de ${period(invoice.period.start, invoice.period.end)}`
-            : `Vencimento em ${longDate(invoice.due_date)}`}
+              ? t("portal.invoice.paidOn", {date: longDate(invoice.paid_on)})
+              : t("portal.invoice.forPeriod", {period: period(invoice.period.start, invoice.period.end)})
+            : t("portal.invoice.dueOn", {date: longDate(invoice.due_date)})}
         </p>
       </header>
 
@@ -147,8 +149,8 @@ function Invoice() {
       ) : invoice.payable ? (
         <Button block onClick={() => pay.mutate()} disabled={pay.isPending}>
           {pay.isPending
-            ? "Gerando o código…"
-            : `Pagar ${money(invoice.amount_due, invoice.currency)} com PIX`}
+            ? t("portal.invoice.generating")
+            : t("portal.invoice.payPix", {amount: money(invoice.amount_due, invoice.currency)})}
         </Button>
       ) : (
         <NotPayable invoice={invoice}/>
@@ -166,8 +168,8 @@ function Invoice() {
           file the invoice will scroll, because filing is a deliberate errand. */}
       <div className="flex justify-start">
         <DownloadPDF
-          fetchLink={() => getInvoicePDF(invoice.id)}
-          label="Baixar esta fatura em PDF"
+          fetchLink={lang => getInvoicePDF(invoice.id, lang)}
+          label={t("portal.invoice.downloadPdf")}
           variant="ghost"
         />
       </div>
@@ -176,32 +178,34 @@ function Invoice() {
 }
 
 function NotFound() {
+  const {t} = useTranslation()
   return (
     <div className="space-y-6">
       <BackLink/>
       <div className="space-y-2">
         <h1 className="text-xl font-semibold tracking-[-0.01em] text-foreground">
-          Fatura não encontrada
+          {t("portal.invoice.notFound.title")}
         </h1>
         <p className="text-sm text-muted-foreground">
-          Ela pode ter sido cancelada, ou o endereço pode estar incompleto.
+          {t("portal.invoice.notFound.description")}
         </p>
       </div>
       <Button variant="outline" render={<Link href="/invoices"/>}>
-        Ver todas as faturas
+        {t("portal.invoice.notFound.action")}
       </Button>
     </div>
   )
 }
 
 function BackLink() {
+  const {t} = useTranslation()
   return (
     <Link
       href="/invoices"
       className="inline-flex items-center gap-1.5 text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
     >
       <ArrowLeft aria-hidden className="size-3.5"/>
-      Faturas
+      {t("portal.invoice.back")}
     </Link>
   )
 }
@@ -214,12 +218,13 @@ function BackLink() {
  * same sentence — so the screen says it instead of a person saying it later.
  */
 function Lines({invoice}: { invoice: Invoice }) {
+  const {t} = useTranslation()
   if (!invoice.lines?.length) return null
 
   return (
     <section aria-labelledby="linhas" className="space-y-4">
       <h2 id="linhas" className="text-sm font-medium text-muted-foreground">
-        O que está sendo cobrado
+        {t("portal.invoice.lines")}
       </h2>
       <ul className="space-y-3">
         {invoice.lines.map((line, i) => (
@@ -228,7 +233,7 @@ function Lines({invoice}: { invoice: Invoice }) {
               <p className="text-sm text-foreground">{line.description}</p>
               {line.proration && (
                 <p className="mt-0.5 text-xs text-muted-foreground">
-                  Proporcional aos dias usados neste período
+                  {t("portal.invoice.proration")}
                 </p>
               )}
             </div>
@@ -238,12 +243,12 @@ function Lines({invoice}: { invoice: Invoice }) {
       </ul>
       <Separator/>
       <div className="flex items-baseline justify-between gap-4">
-        <span className="text-sm font-medium text-foreground">Total</span>
+        <span className="text-sm font-medium text-foreground">{t("portal.invoice.total")}</span>
         <Money cents={invoice.total} currency={invoice.currency}/>
       </div>
       {(invoice.amount_paid ?? 0) > 0 && invoice.amount_due > 0 && (
         <div className="flex items-baseline justify-between gap-4">
-          <span className="text-sm text-muted-foreground">Já pago</span>
+          <span className="text-sm text-muted-foreground">{t("portal.invoice.alreadyPaid")}</span>
           <span data-numeric className="text-sm text-muted-foreground">
             − {money(invoice.amount_paid!, invoice.currency)}
           </span>
@@ -263,14 +268,15 @@ function Lines({invoice}: { invoice: Invoice }) {
  * reason they write in instead.
  */
 function Facts({invoice}: { invoice: Invoice }) {
+  const {t} = useTranslation()
   return (
     <section aria-labelledby="detalhes" className="space-y-4 border-t border-border pt-6">
       <h2 id="detalhes" className="text-sm font-medium text-muted-foreground">
-        Detalhes
+        {t("portal.invoice.details")}
       </h2>
       <dl className="grid gap-x-6 gap-y-4 sm:grid-cols-2">
-        {invoice.number != null && <Fact label="Número" value={String(invoice.number)} numeric/>}
-        <Fact label="Período" value={period(invoice.period.start, invoice.period.end)}/>
+        {invoice.number != null && <Fact label={t("portal.invoice.number")} value={String(invoice.number)} numeric/>}
+        <Fact label={t("portal.invoice.period")} value={period(invoice.period.start, invoice.period.end)}/>
         {/* Whichever date the header did not use. The same date in both places
             reads as two facts, and the one this block owes the reader is the
             other one: what a paid invoice was due, or how an open one is paid.
@@ -278,9 +284,9 @@ function Facts({invoice}: { invoice: Invoice }) {
             does not say how a settled invoice was paid, and a zero-total one
             was not paid at all. */}
         {invoice.settled ? (
-          <Fact label="Vencimento" value={longDate(invoice.due_date)}/>
+          <Fact label={t("portal.invoice.due")} value={longDate(invoice.due_date)}/>
         ) : (
-          invoice.payable && <Fact label="Forma de pagamento" value="PIX"/>
+          invoice.payable && <Fact label={t("portal.invoice.method")} value="PIX"/>
         )}
       </dl>
     </section>
@@ -305,23 +311,19 @@ function Fact({label, value, numeric}: { label: string; value: string; numeric?:
  * not have to look twice to be sure it landed.
  */
 function Receipt({invoice}: { invoice: Invoice }) {
+  const {t} = useTranslation()
   return (
     <div className="flex items-start gap-3 rounded-xl bg-success px-5 py-4 text-background">
       <Check aria-hidden className="mt-0.5 size-5 shrink-0"/>
       <div className="space-y-1">
-        <p className="font-medium">Pagamento recebido</p>
+        <p className="font-medium">{t("portal.invoice.received")}</p>
         <p className="text-sm opacity-90">
           {/* A zero-total invoice is settled without a payment, so quoting an
               amount received would be inventing one. Both branches say the same
               thing — there is nothing left to do — in the words that are true. */}
-          {invoice.total === 0 ? (
-            "Nada a pagar nesta fatura."
-          ) : (
-            <>
-              <span data-numeric>{money(invoice.amount_paid ?? invoice.total, invoice.currency)}</span>
-              {" · esta fatura está quitada."}
-            </>
-          )}
+          {invoice.total === 0
+            ? t("portal.invoice.nothingToPay")
+            : t("portal.invoice.settled", {amount: money(invoice.amount_paid ?? invoice.total, invoice.currency)})}
         </p>
       </div>
     </div>
@@ -339,11 +341,12 @@ function Receipt({invoice}: { invoice: Invoice }) {
  * pagamento": the one reading that is both wrong and impossible to act on.
  */
 function NotPayable({invoice}: { invoice: Invoice }) {
-  const message = invoice.state.startsWith("Pendente")
-    ? "Esta fatura está em negociação. Fale com a gente para combinar como quitar; não há nada a pagar por aqui enquanto isso."
-    : invoice.state === "Cancelada"
-      ? "Esta fatura foi cancelada. Não há nada a pagar, e nenhum valor foi cobrado."
-      : "Esta fatura ainda está sendo preparada. Quando for emitida, o pagamento aparece aqui."
+  const {t} = useTranslation()
+  const message = invoice.state === "uncollectible"
+    ? t("portal.invoice.notPayable.negotiation")
+    : invoice.state === "void"
+      ? t("portal.invoice.notPayable.cancelled")
+      : t("portal.invoice.notPayable.preparing")
 
   return (
     <div className="rounded-xl border border-border bg-surface px-5 py-4">

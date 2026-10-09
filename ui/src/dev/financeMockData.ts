@@ -111,10 +111,10 @@ function seed(kind: "personal" | "org", mode: string): SpaceState {
       accounts: [
         acct("conta-corrente", "Conta corrente", "asset", live ? 842_315 : 50_000),
         acct("poupanca", "Poupança", "asset", live ? 1_250_000 : 0),
-        acct("salario", "Salário", "income", 0, {dre_group: "gross_revenue"}),
-        acct("aluguel", "Aluguel", "expense", 0, {dre_group: "operating_expenses"}),
+        acct("salario", "Salário", "income", 0, {dre_group: "gross_revenue", system_key: "salary"}),
+        acct("aluguel", "Aluguel", "expense", 0, {dre_group: "operating_expenses", system_key: "rent"}),
         acct("mercado", "Mercado", "expense", 0, {dre_group: "operating_expenses"}),
-        acct("juros", "Juros e multas", "expense", 0, {dre_group: "financial_result"}),
+        acct("juros", "Juros e multas", "expense", 0, {dre_group: "financial_result", system_key: "interest_and_fines"}),
         acct("assinaturas-antigas", "Assinaturas antigas", "expense", 0, {dre_group: "operating_expenses", archived: true}),
       ],
       bills: [
@@ -135,7 +135,7 @@ function seed(kind: "personal" | "org", mode: string): SpaceState {
     seq: 1,
     accounts: [
       acct("conta-corrente", "Conta PJ", "asset", live ? 4_120_000 : 0),
-      acct("vendas", "Vendas", "income", 0, {dre_group: "gross_revenue"}),
+      acct("vendas", "Vendas", "income", 0, {dre_group: "gross_revenue", system_key: "sales"}),
       acct("fornecedores", "Fornecedores", "expense", 0, {dre_group: "costs"}),
     ],
     bills: [bill("b-fornecedor", "payable", 980_000, addDays(today, 2), "fornecedores", "Fornecedor de insumos")],
@@ -153,8 +153,10 @@ export function resetFinanceMock() {
 
 // ---- helpers -------------------------------------------------------------------
 
-const problem = (status: number, type: string, title: string, detail: string): Res =>
-  ({status, data: {type, title, status, detail}})
+const problem = (
+  status: number, type: string, title: string, detail: string, code: string,
+  errors?: { field: string; code: string; message: string }[],
+): Res => ({status, data: {type, title, status, detail, code, ...(errors ? {errors} : {})}})
 const ok = (data: unknown, status = 200): Res => ({status, data})
 
 function header(r: Req, name: string): string | undefined {
@@ -205,11 +207,11 @@ export function financeMock(r: Req): Res {
 
   const mode = header(r, "X-Billing-Mode")
   const selector = header(r, "X-Billing-Space")
-  if (!mode || !selector) return problem(400, "about:blank", "Bad Request", "informe X-Billing-Mode e X-Billing-Space")
+  if (!mode || !selector) return problem(400, "about:blank", "Bad Request", "informe X-Billing-Mode e X-Billing-Space", "bad_request")
   const entry = selector === "personal"
     ? SPACES[0]
     : SPACES.find(s => `org:${s.organization_id}` === selector)
-  if (!entry) return problem(404, "/problems/space-not-found", "Space not found", "espaço não encontrado")
+  if (!entry) return problem(404, "/problems/space-not-found", "Space not found", "espaço não encontrado", "space_not_found")
   const can = (v: Verb) => entry.verbs.includes(v)
 
   const key = `${mode}|${selector}`
@@ -219,7 +221,7 @@ export function financeMock(r: Req): Res {
   const isWrite = method !== "get" && path !== "/recurrences/preview"
   if (isWrite) {
     const idem = header(r, "Idempotency-Key")
-    if (!idem) return problem(400, "about:blank", "Bad Request", "cabeçalho Idempotency-Key obrigatório")
+    if (!idem) return problem(400, "about:blank", "Bad Request", "cabeçalho Idempotency-Key obrigatório", "idempotency_key_required")
     const replayKey = `${key}|${method}|${path}|${idem}`
     const stored = replays.get(replayKey)
     if (stored) return stored
@@ -231,7 +233,7 @@ export function financeMock(r: Req): Res {
 }
 
 function route(method: string, path: string, r: Req, s: SpaceState, can: (v: Verb) => boolean): Res {
-  const forbidden = () => problem(403, "about:blank", "Forbidden", "seu papel não permite esta operação")
+  const forbidden = () => problem(403, "about:blank", "Forbidden", "seu papel não permite esta operação", "role_denied")
   const today = todayIso()
   const withBucket = (b: Bill): Bill =>
     b.status === "forecast" ? {...b, bucket: b.due_date < today ? "overdue" : b.due_date === today ? "today" : "upcoming"} : b
@@ -265,7 +267,7 @@ function route(method: string, path: string, r: Req, s: SpaceState, can: (v: Ver
     if (!can("finance.write")) return forbidden()
     const b = body<Partial<Bill>>(r)
     if (b.auto_settle && !can("finance.settle")) return forbidden()
-    if (!b.amount || b.amount <= 0) return problem(422, "about:blank", "Unprocessable", "amount must be positive")
+    if (!b.amount || b.amount <= 0) return problem(422, "about:blank", "Unprocessable", "amount must be positive", "validation_error", [{field: "amount", code: "required", message: "amount is required"}])
     const bill: Bill = {
       id: nextId("b"), direction: b.direction!, amount: b.amount, account_id: b.account_id!, category_id: b.category_id!,
       description: b.description, competence_date: b.competence_date ?? b.due_date!, due_date: b.due_date!,
@@ -276,16 +278,16 @@ function route(method: string, path: string, r: Req, s: SpaceState, can: (v: Ver
   }
   if (billMatch) {
     const bill = s.bills.find(b => b.id === billMatch[1])
-    if (!bill) return problem(404, "about:blank", "Not Found", "recurso não encontrado")
+    if (!bill) return problem(404, "about:blank", "Not Found", "recurso não encontrado", "resource_not_found")
     const action = billMatch[2]
     if (method === "get" && !action) return ok(withBucket(bill))
-    const transition = () => problem(409, "/problems/invalid-transition", "Invalid Transition", "esta conta mudou enquanto você a via")
+    const transition = () => problem(409, "/problems/invalid-transition", "Invalid Transition", "esta conta mudou enquanto você a via", "invalid_transition")
     if (action === "settle") {
       if (!can("finance.settle")) return forbidden()
       if (bill.status !== "forecast") return transition()
       const req = body<{paid_amount?: number; paid_date?: string; difference_category_id?: string}>(r)
       const paid = req.paid_amount ?? bill.amount
-      if (paid !== bill.amount && !req.difference_category_id) return problem(422, "about:blank", "Unprocessable", "a different amount needs a category for the gap")
+      if (paid !== bill.amount && !req.difference_category_id) return problem(422, "about:blank", "Unprocessable", "a different amount needs a category for the gap", "validation_error", [{field: "difference_category_id", code: "required", message: "difference category is required"}])
       const date = req.paid_date ?? today
       post([{
         account: bill.account_id, date, amount: bill.direction === "payable" ? -paid : paid, kind: "settlement",
@@ -342,7 +344,7 @@ function route(method: string, path: string, r: Req, s: SpaceState, can: (v: Ver
   }
   if (recMatch) {
     const rec = s.recurrences.find(x => x.id === recMatch[1])
-    if (!rec) return problem(404, "about:blank", "Not Found", "recurso não encontrado")
+    if (!rec) return problem(404, "about:blank", "Not Found", "recurso não encontrado", "resource_not_found")
     if (!can("finance.write")) return forbidden()
     if (path.endsWith("/archive")) {
       rec.archived = true
@@ -364,8 +366,9 @@ function route(method: string, path: string, r: Req, s: SpaceState, can: (v: Ver
       const open = s.bills.filter(b => b.status === "forecast" && (b.due_date.slice(0, 7) === month || (i === 0 && b.due_date.slice(0, 7) < month)))
       const sum = (d: Direction) => open.filter(b => b.direction === d).reduce((a, b) => a + b.amount, 0)
       // Beyond the two-month horizon, recurrences are virtual.
-      const virtual = i >= 2 ? s.recurrences.filter(x => !x.archived).reduce((a, x) => a + (x.direction === "payable" ? -x.amount : x.amount), 0) : 0
-      data.push({month, receivable: sum("receivable"), payable: sum("payable"), virtual})
+      const virtualOf = (d: Direction) => i >= 2 ? s.recurrences.filter(x => !x.archived && x.direction === d).reduce((a, x) => a + x.amount, 0) : 0
+      const virtual_receivable = virtualOf("receivable"), virtual_payable = virtualOf("payable")
+      data.push({month, receivable: sum("receivable"), payable: sum("payable"), virtual: virtual_receivable - virtual_payable, virtual_receivable, virtual_payable})
     }
     return ok({data, has_more: false})
   }
@@ -383,7 +386,7 @@ function route(method: string, path: string, r: Req, s: SpaceState, can: (v: Ver
   if (archive) {
     if (!can("finance.configure")) return forbidden()
     const a = s.accounts.find(x => x.id === archive[1])
-    if (!a) return problem(404, "about:blank", "Not Found", "recurso não encontrado")
+    if (!a) return problem(404, "about:blank", "Not Found", "recurso não encontrado", "resource_not_found")
     a.archived = true
     return {status: 204, data: ""}
   }
@@ -431,7 +434,7 @@ function route(method: string, path: string, r: Req, s: SpaceState, can: (v: Ver
   }
   if (cardMatch) {
     const c = s.cards.find(x => x.id === cardMatch[1])
-    if (!c) return problem(404, "about:blank", "Not Found", "recurso não encontrado")
+    if (!c) return problem(404, "about:blank", "Not Found", "recurso não encontrado", "resource_not_found")
     const [, , sub, arg, action] = cardMatch
     if (!sub && method === "patch") {
       if (!can("finance.configure")) return forbidden()
@@ -467,11 +470,11 @@ function route(method: string, path: string, r: Req, s: SpaceState, can: (v: Ver
     if (sub === "purchases" && arg && (action === "refund" || action === "advance")) {
       if (!can("finance.write")) return forbidden()
       const purchase = s.purchases.find(p => p.id === arg && p.card === c.id)
-      if (!purchase) return problem(404, "about:blank", "Not Found", "recurso não encontrado")
-      if (purchase.refunded) return problem(409, "/problems/invalid-transition", "Invalid Transition", "Esta compra já foi estornada.")
+      if (!purchase) return problem(404, "about:blank", "Not Found", "recurso não encontrado", "resource_not_found")
+      if (purchase.refunded) return problem(409, "/problems/invalid-transition", "Invalid Transition", "Esta compra já foi estornada.", "purchase_refunded")
       if (action === "advance") {
         const later = purchase.installments.filter(i => i.month > c.open_month)
-        if (later.length === 0) return problem(409, "/problems/invalid-transition", "Invalid Transition", "Não há parcelas futuras para antecipar.")
+        if (later.length === 0) return problem(409, "/problems/invalid-transition", "Invalid Transition", "Não há parcelas futuras para antecipar.", "nothing_to_advance")
         s.items = s.items.filter(i => !(i.purchase_id === purchase.id && later.some(l => `${purchase.id}#${l.number}` === i.key)))
         s.items.push({card: c.id, month: c.open_month, key: `${purchase.id}#adv`, purchase_id: purchase.id,
           description: `Antecipação: ${purchase.description}`, category_id: purchase.category_id, date: today, kind: "advance",
@@ -495,7 +498,7 @@ function route(method: string, path: string, r: Req, s: SpaceState, can: (v: Ver
       if (!can("finance.write")) return forbidden()
       const m = c.open_month
       if (body<{month?: string}>(r).month !== m) {
-        return problem(409, "/problems/invalid-transition", "Invalid Transition", "Esta fatura não está aberta para fechamento.")
+        return problem(409, "/problems/invalid-transition", "Invalid Transition", "Esta fatura não está aberta para fechamento.", "statement_not_closable")
       }
       const st = statementOf(c, m)
       let billId: string | undefined
@@ -520,8 +523,8 @@ function route(method: string, path: string, r: Req, s: SpaceState, can: (v: Ver
   if (opening && method === "post") {
     if (!can("finance.configure")) return forbidden()
     const id = opening[1]
-    if (!cash(id)) return problem(422, "about:blank", "Unprocessable", "conta ou categoria desconhecida neste espaço")
-    if (s.openings.has(id)) return problem(409, "/problems/invalid-transition", "Invalid Transition", "Esta conta já tem saldo inicial. Estorne o atual para lançar outro.")
+    if (!cash(id)) return problem(422, "about:blank", "Unprocessable", "conta ou categoria desconhecida neste espaço", "unknown_account")
+    if (s.openings.has(id)) return problem(409, "/problems/invalid-transition", "Invalid Transition", "Esta conta já tem saldo inicial. Estorne o atual para lançar outro.", "opening_balance_exists")
     const p = body<{amount: number; date: string}>(r)
     s.openings.add(id)
     return ok({transaction_id: post([{account: id, date: p.date, amount: p.amount, kind: "opening_balance", flow: "-", memo: "Saldo inicial"}])}, 201)
@@ -530,7 +533,7 @@ function route(method: string, path: string, r: Req, s: SpaceState, can: (v: Ver
     if (!can("finance.write")) return forbidden()
     const p = body<{from_account_id: string; to_account_id: string; amount: number; date: string; memo?: string}>(r)
     if (!cash(p.from_account_id) || !cash(p.to_account_id) || p.from_account_id === p.to_account_id) {
-      return problem(422, "about:blank", "Unprocessable", "conta ou categoria desconhecida neste espaço")
+      return problem(422, "about:blank", "Unprocessable", "conta ou categoria desconhecida neste espaço", "unknown_account")
     }
     const memo = p.memo || "Transferência"
     return ok({transaction_id: post([
@@ -542,18 +545,18 @@ function route(method: string, path: string, r: Req, s: SpaceState, can: (v: Ver
   if (rev && method === "post") {
     if (!can("finance.write")) return forbidden()
     const legs = s.entries.filter(e => e.tx === rev[1])
-    if (!legs.length) return problem(404, "about:blank", "Not Found", "recurso não encontrado")
+    if (!legs.length) return problem(404, "about:blank", "Not Found", "recurso não encontrado", "resource_not_found")
     if (legs[0].reversal || (legs[0].kind !== "transfer" && legs[0].kind !== "opening_balance")) {
-      return problem(409, "/problems/invalid-transition", "Invalid Transition", "Só transferências e saldos iniciais são estornados pelo extrato. Para um pagamento, use Desfazer pagamento.")
+      return problem(409, "/problems/invalid-transition", "Invalid Transition", "Só transferências e saldos iniciais são estornados pelo extrato. Para um pagamento, use Desfazer pagamento.", "not_reversible_entry")
     }
-    if (s.reversed.has(rev[1])) return problem(409, "/problems/invalid-transition", "Invalid Transition", "ledger: transaction already reversed")
+    if (s.reversed.has(rev[1])) return problem(409, "/problems/invalid-transition", "Invalid Transition", "ledger: transaction already reversed", "not_reversible_entry")
     if (legs[0].kind === "opening_balance") s.openings.delete(legs[0].account)
     return ok({transaction_id: reverse(rev[1])}, 201)
   }
   const stmt = path.match(/^\/accounts\/([^/]+)\/statement$/)
   if (stmt && method === "get") {
     const a = s.accounts.find(x => x.id === stmt[1] && x.class === "asset" && !x.system)
-    if (!a) return problem(404, "about:blank", "Not Found", "recurso não encontrado")
+    if (!a) return problem(404, "about:blank", "Not Found", "recurso não encontrado", "resource_not_found")
     const from = String(r.params?.from), to = String(r.params?.to)
     const since = s.entries.filter(e => e.account === a.id && e.date >= from).sort((x, y) => x.date.localeCompare(y.date))
     let bal = a.balance - since.reduce((t, e) => t + e.amount, 0)
@@ -620,5 +623,5 @@ function route(method: string, path: string, r: Req, s: SpaceState, can: (v: Ver
     return ok({default_receiving_account_id: s.defaultReceiving})
   }
 
-  return problem(404, "about:blank", "Not Found", "rota de finanças desconhecida no mock")
+  return problem(404, "about:blank", "Not Found", "rota de finanças desconhecida no mock", "resource_not_found")
 }

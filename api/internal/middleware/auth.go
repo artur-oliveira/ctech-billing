@@ -55,7 +55,7 @@ func (v *Verifier) Middleware() fiber.Handler {
 			// One message for every failure mode. Distinguishing "expired" from
 			// "wrong signature" from "unknown key" tells an attacker which of
 			// their guesses was closer.
-			return problem.Unauthorized("credenciais inválidas").Send(c)
+			return problem.Unauthorized("invalid credentials").WithCode("invalid_credentials").Send(c)
 		}
 		c.Locals(ClaimsKey, claims)
 		return c.Next()

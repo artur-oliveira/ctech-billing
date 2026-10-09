@@ -1,3 +1,5 @@
+import {currentLocale, t} from "@/lib/i18n"
+
 /**
  * Today as a civil `YYYY-MM-DD` in the reader's clock, built from the local
  * date parts — never `toISOString()`, which is UTC and is yesterday every
@@ -10,18 +12,16 @@ export function todayIso(now: Date = new Date()): string {
   return `${y}-${m}-${d}`
 }
 
-/** "março de 2026" for a civil date's month. */
+/** "março de 2026" / "March 2026" for a civil date's month. */
 export function monthLabel(iso: string): string {
   const [y, m] = iso.split("-").map(Number)
-  return new Intl.DateTimeFormat("pt-BR", {month: "long", year: "numeric"}).format(new Date(y, m - 1, 1))
+  return new Intl.DateTimeFormat(currentLocale(), {month: "long", year: "numeric"}).format(new Date(y, m - 1, 1))
 }
-
-const MONTHS = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"]
 
 /** "Mar/26" — a month in a table header or an axis, from `YYYY-MM`. */
 export function monthShort(ym: string): string {
   const [y, m] = ym.split("-")
-  return `${MONTHS[Number(m) - 1]}/${y.slice(2)}`
+  return `${t(`finance.monthShort.${Number(m)}`)}/${y.slice(2)}`
 }
 
 /** `iso` moved by n years, Feb 29 falling back to Feb 28 — civil arithmetic only. */

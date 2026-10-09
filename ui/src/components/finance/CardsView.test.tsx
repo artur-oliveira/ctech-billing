@@ -79,7 +79,7 @@ describe("F5 — cartões", () => {
   it("teaches the first step when there is no card", async () => {
     serve(ALL, [])
     renderWithQuery(<CardsView/>)
-    expect(await screen.findByText("Nenhum cartão ainda")).toBeInTheDocument()
+    expect(await screen.findByText("Nenhum cartão ainda.")).toBeInTheDocument()
     expect(screen.getByRole("button", {name: "Novo cartão"})).toBeInTheDocument()
   })
 })

@@ -1,0 +1,155 @@
+{
+  "nav": {
+    "label": "Sections",
+    "home": "Home",
+    "invoices": "Invoices",
+    "subscriptions": "Subscriptions",
+    "console": "Console",
+    "logout": "Sign out"
+  },
+  "dashboard": {
+    "empty": {
+      "title": "Nothing to pay",
+      "description": "Invoices and subscriptions show up here."
+    },
+    "owed": "Due",
+    "pay": "Pay {{amount}}",
+    "more": "and {{count}} more · {{amount}}",
+    "upToDate": "All paid up",
+    "nextFixed": "Next charge of {{amount}} on {{date}} · {{name}}",
+    "nextMetered": "Next charge based on usage on {{date}} · {{name}}",
+    "nothingOpen": "No open invoices.",
+    "subscriptions": "Subscriptions",
+    "seeAll": "See all",
+    "metered": "Based on usage"
+  },
+  "invoices": {
+    "title": "Invoices",
+    "empty": {
+      "title": "No invoices",
+      "description": "Your charges show up here."
+    },
+    "loadMore": "Load more"
+  },
+  "invoice": {
+    "title": "{{description}} and {{count}} more",
+    "untitled": "Invoice",
+    "back": "Invoices",
+    "paidOn": "Paid on {{date}}",
+    "forPeriod": "Period {{period}}",
+    "dueOn": "Due {{date}}",
+    "payPix": "Pay {{amount}} with PIX",
+    "generating": "Generating code…",
+    "downloadPdf": "Download PDF",
+    "notFound": {
+      "title": "Invoice not found",
+      "description": "It may have been cancelled.",
+      "action": "See invoices"
+    },
+    "lines": "Items",
+    "proration": "Prorated for the days used",
+    "total": "Total",
+    "alreadyPaid": "Already paid",
+    "details": "Details",
+    "number": "Number",
+    "period": "Period",
+    "due": "Due date",
+    "method": "Payment",
+    "received": "Payment received",
+    "nothingToPay": "Nothing to pay.",
+    "settled": "{{amount}} · paid in full",
+    "notPayable": {
+      "negotiation": "This invoice is being negotiated. Contact us to arrange payment.",
+      "cancelled": "This invoice was cancelled. Nothing to pay.",
+      "preparing": "This invoice is being prepared. Payment shows up here once it is issued."
+    }
+  },
+  "subscriptions": {
+    "title": "Subscriptions",
+    "empty": {
+      "title": "No subscriptions",
+      "description": "Your CTech plans show up here."
+    },
+    "metered": "Based on usage",
+    "nextCharge": "Next charge on {{date}}",
+    "activeUntil": "Active until {{date}}"
+  },
+  "subscription": {
+    "back": "Subscriptions",
+    "plan": "Plan",
+    "perPeriod": "Price per period",
+    "metered": "Based on usage",
+    "meteredNote": "Calculated at the end of the period.",
+    "currentPeriod": "Current period",
+    "nextCharge": "Next charge",
+    "accessUntil": "Access until",
+    "since": "Customer since",
+    "renewal": "Renewal",
+    "renewalCancelled": "Cancelled, no further charges",
+    "invoices": "Invoices",
+    "noInvoices": "The first invoice shows up at the end of the period.",
+    "seeInvoices": "See invoices",
+    "notFound": {
+      "title": "Subscription not found",
+      "description": "It may have ended.",
+      "action": "See subscriptions"
+    },
+    "cancel": "Cancel subscription",
+    "cancelTitle": "Cancel subscription?",
+    "cancelDescription": "You keep {{name}} until {{date}}. No further charges.",
+    "keep": "Keep",
+    "cancelled": "Subscription cancelled. Active until the end of the period."
+  },
+  "pix": {
+    "title": "Pay with PIX",
+    "expiresIn": "expires in {{time}}",
+    "qrTitle": "PIX QR code",
+    "orCopy": "Or copy the code:",
+    "copy": "Copy",
+    "copied": "Copied",
+    "copyFailed": "Could not copy. Select the code and copy it.",
+    "waiting": "Waiting for payment.",
+    "lost": "No live updates. If you already paid, reload the page.",
+    "paid": "Payment confirmed",
+    "paidAmount": "{{amount}} received.",
+    "expired": "Code expired",
+    "expiredHint": "Generate a new code. Nothing was charged.",
+    "regenerate": "Generate new code",
+    "generating": "Generating…"
+  },
+  "terms": {
+    "title": "Terms",
+    "description": "Confirm to continue.",
+    "agree": "I have read and agree to the CTech Billing <terms>Additional Terms</terms> and the <privacy>Privacy Policy</privacy>.",
+    "continue": "Continue",
+    "confirming": "Confirming…"
+  },
+  "noAccount": {
+    "title": "No charges yet",
+    "description": "Invoices and subscriptions show up here.",
+    "action": "See products"
+  },
+  "pdf": {
+    "download": "Download PDF",
+    "generating": "Generating…"
+  },
+  "status": {
+    "paid": "Paid",
+    "void": "Canceled",
+    "uncollectible": "Needs agreement",
+    "draft": "Draft",
+    "overdue_one": "{{count}} day overdue",
+    "overdue_other": "{{count}} days overdue",
+    "due_today": "Due today",
+    "due_tomorrow": "Due tomorrow",
+    "due_soon": "Due in {{count}} days",
+    "upcoming": "Due {{date}}",
+    "trialing": "Trial",
+    "past_due": "Payment due",
+    "paused": "Paused",
+    "canceled": "Ended",
+    "incomplete": "Awaiting confirmation",
+    "active_until_period_end": "Active until period end",
+    "active": "Active"
+  }
+}

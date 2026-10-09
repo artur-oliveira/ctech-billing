@@ -6,6 +6,7 @@ import {Toaster} from "sonner"
 
 import {MockControls} from "@/dev/MockControls"
 import {AuthProvider} from "@/lib/auth/AuthContext"
+import {I18nProvider} from "@/lib/I18nProvider"
 
 export function Providers({children}: { children: React.ReactNode }) {
   // Created in state, not at module scope: a module-level client is shared
@@ -30,6 +31,7 @@ export function Providers({children}: { children: React.ReactNode }) {
   )
 
   return (
+    <I18nProvider>
     <QueryClientProvider client={queryClient}>
       {/* Inside the query client, not outside: AuthProvider's boot-time refresh
           registers the function the axios client retries 401s with, and a query
@@ -38,5 +40,6 @@ export function Providers({children}: { children: React.ReactNode }) {
       <Toaster position="top-center" richColors closeButton/>
       <MockControls/>
     </QueryClientProvider>
+    </I18nProvider>
   )
 }

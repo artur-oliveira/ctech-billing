@@ -30,14 +30,14 @@ func ResolvePortalIdentity(customers *repositories.CustomerRepository, organizat
 			// No tenant zero configured. Not an error the caller caused, and not
 			// something to explain: an unconfigured portal is a portal that does
 			// not exist here.
-			return problem.NotFound("recurso não encontrado").Send(c)
+			return problem.NotFound("resource not found").WithCode("resource_not_found").Send(c)
 		}
 		cl := GetClaims(c)
 		if cl == nil {
 			return problem.Unauthorized("credenciais ausentes").Send(c)
 		}
 		if cl.SID == "" {
-			return problem.Forbidden("esta rota exige sessão de usuário").Send(c)
+			return problem.Forbidden("this route requires a user session").WithCode("user_session_required").Send(c)
 		}
 
 		customer, err := customers.GetByUser(c.Context(), organizationID, true, cl.Sub)
@@ -52,9 +52,9 @@ func ResolvePortalIdentity(customers *repositories.CustomerRepository, organizat
 				// doc comment lists — owning nothing, owning an organization, and
 				// buying from somebody else are indistinguishable from out here.
 				return problem.New(fiber.StatusForbidden, problem.TypeNoBillingAccount, "Forbidden",
-					"nenhuma conta de cobrança para este usuário").Send(c)
+					"no billing account for this user").Send(c)
 			}
-			return problem.Internal("erro ao resolver conta").Send(c)
+			return problem.Internal("could not resolve account").WithCode("account_resolve_failed").Send(c)
 		}
 		if customer.Anonymized {
 			// An erased customer keeps their invoices as documents (ADR 0009), but

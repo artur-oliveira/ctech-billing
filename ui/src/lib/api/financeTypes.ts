@@ -66,6 +66,9 @@ export interface ProjectionMonth {
   payable: Cents
   /** Net of recurrence occurrences not yet materialised — never mixed into the two above. */
   virtual: Cents
+  /** The two sides of `virtual`, both >= 0. Absent on an older API: derive them from the sign of `virtual`. */
+  virtual_receivable?: Cents
+  virtual_payable?: Cents
 }
 
 export interface Account {
@@ -74,6 +77,8 @@ export interface Account {
   class: AccountClass
   dre_group?: DREGroup
   system: boolean
+  /** Stable key of a default account or category; the UI translates its name while it is unchanged. */
+  system_key?: string
   archived: boolean
   balance: Cents
 }

@@ -1,0 +1,155 @@
+{
+  "nav": {
+    "label": "Seções",
+    "home": "Início",
+    "invoices": "Faturas",
+    "subscriptions": "Assinaturas",
+    "console": "Console",
+    "logout": "Sair"
+  },
+  "dashboard": {
+    "empty": {
+      "title": "Nada a pagar",
+      "description": "Faturas e assinaturas aparecem aqui."
+    },
+    "owed": "Em aberto",
+    "pay": "Pagar {{amount}}",
+    "more": "e mais {{count}} · {{amount}}",
+    "upToDate": "Tudo em dia",
+    "nextFixed": "Próxima cobrança de {{amount}} em {{date}} · {{name}}",
+    "nextMetered": "Próxima cobrança conforme o uso em {{date}} · {{name}}",
+    "nothingOpen": "Nenhuma fatura em aberto.",
+    "subscriptions": "Assinaturas",
+    "seeAll": "Ver todas",
+    "metered": "Conforme o uso"
+  },
+  "invoices": {
+    "title": "Faturas",
+    "empty": {
+      "title": "Nenhuma fatura",
+      "description": "Suas cobranças aparecem aqui."
+    },
+    "loadMore": "Carregar mais"
+  },
+  "invoice": {
+    "title": "{{description}} e mais {{count}}",
+    "untitled": "Fatura",
+    "back": "Faturas",
+    "paidOn": "Pago em {{date}}",
+    "forPeriod": "Período {{period}}",
+    "dueOn": "Vence em {{date}}",
+    "payPix": "Pagar {{amount}} com PIX",
+    "generating": "Gerando código…",
+    "downloadPdf": "Baixar PDF",
+    "notFound": {
+      "title": "Fatura não encontrada",
+      "description": "Ela pode ter sido cancelada.",
+      "action": "Ver faturas"
+    },
+    "lines": "Itens",
+    "proration": "Proporcional aos dias usados",
+    "total": "Total",
+    "alreadyPaid": "Já pago",
+    "details": "Detalhes",
+    "number": "Número",
+    "period": "Período",
+    "due": "Vencimento",
+    "method": "Pagamento",
+    "received": "Pagamento recebido",
+    "nothingToPay": "Nada a pagar.",
+    "settled": "{{amount}} · quitada",
+    "notPayable": {
+      "negotiation": "Fatura em negociação. Fale com a gente para combinar o pagamento.",
+      "cancelled": "Fatura cancelada. Nada a pagar.",
+      "preparing": "Fatura em preparação. O pagamento aparece aqui quando ela for emitida."
+    }
+  },
+  "subscriptions": {
+    "title": "Assinaturas",
+    "empty": {
+      "title": "Nenhuma assinatura",
+      "description": "Seus planos CTech aparecem aqui."
+    },
+    "metered": "Conforme o uso",
+    "nextCharge": "Próxima cobrança em {{date}}",
+    "activeUntil": "Ativa até {{date}}"
+  },
+  "subscription": {
+    "back": "Assinaturas",
+    "plan": "Plano",
+    "perPeriod": "Valor por período",
+    "metered": "Conforme o uso",
+    "meteredNote": "Calculado no fim do período.",
+    "currentPeriod": "Período atual",
+    "nextCharge": "Próxima cobrança",
+    "accessUntil": "Acesso até",
+    "since": "Cliente desde",
+    "renewal": "Renovação",
+    "renewalCancelled": "Cancelada, sem nova cobrança",
+    "invoices": "Faturas",
+    "noInvoices": "A primeira fatura aparece no fim do período.",
+    "seeInvoices": "Ver faturas",
+    "notFound": {
+      "title": "Assinatura não encontrada",
+      "description": "Ela pode ter sido encerrada.",
+      "action": "Ver assinaturas"
+    },
+    "cancel": "Cancelar assinatura",
+    "cancelTitle": "Cancelar assinatura?",
+    "cancelDescription": "Você mantém {{name}} até {{date}}. Sem nova cobrança depois.",
+    "keep": "Manter",
+    "cancelled": "Assinatura cancelada. Ativa até o fim do período."
+  },
+  "pix": {
+    "title": "Pagar com PIX",
+    "expiresIn": "expira em {{time}}",
+    "qrTitle": "QR code PIX",
+    "orCopy": "Ou copie o código:",
+    "copy": "Copiar",
+    "copied": "Copiado",
+    "copyFailed": "Não foi possível copiar. Selecione o código e copie.",
+    "waiting": "Aguardando pagamento.",
+    "lost": "Sem atualização em tempo real. Se já pagou, recarregue a página.",
+    "paid": "Pagamento confirmado",
+    "paidAmount": "{{amount}} recebido.",
+    "expired": "Código expirado",
+    "expiredHint": "Gere um novo código. Nada foi cobrado.",
+    "regenerate": "Gerar novo código",
+    "generating": "Gerando…"
+  },
+  "terms": {
+    "title": "Termos",
+    "description": "Confirme para continuar.",
+    "agree": "Li e concordo com os <terms>Termos Adicionais do CTech Billing</terms> e a <privacy>Política de Privacidade</privacy>.",
+    "continue": "Continuar",
+    "confirming": "Confirmando…"
+  },
+  "noAccount": {
+    "title": "Nenhuma cobrança ainda",
+    "description": "Faturas e assinaturas aparecem aqui.",
+    "action": "Ver produtos"
+  },
+  "pdf": {
+    "download": "Baixar PDF",
+    "generating": "Gerando…"
+  },
+  "status": {
+    "paid": "Paga",
+    "void": "Cancelada",
+    "uncollectible": "Pendente de acordo",
+    "draft": "Em preparação",
+    "overdue_one": "Vencida há {{count}} dia",
+    "overdue_other": "Vencida há {{count}} dias",
+    "due_today": "Vence hoje",
+    "due_tomorrow": "Vence amanhã",
+    "due_soon": "Vence em {{count}} dias",
+    "upcoming": "Vence em {{date}}",
+    "trialing": "Em teste",
+    "past_due": "Pagamento pendente",
+    "paused": "Pausada",
+    "canceled": "Encerrada",
+    "incomplete": "Aguardando confirmação",
+    "active_until_period_end": "Ativa até o fim do período",
+    "active": "Ativa"
+  }
+}

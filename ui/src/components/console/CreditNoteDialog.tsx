@@ -4,14 +4,16 @@ import limits from "@/lib/limits.json"
 import {Checkbox, Field, Input, Modal} from "@aoctech/ui"
 import {useMutation} from "@tanstack/react-query"
 import {useState} from "react"
+import {useTranslation} from "react-i18next"
 import {toast} from "sonner"
 
 import {messageFor} from "@/lib/api/client"
+import {useFieldErrors} from "@/lib/useFieldErrors"
 import {creditInvoice} from "@/lib/api/console"
 import type {ConsoleInvoice} from "@/lib/api/consoleTypes"
 import {useMode} from "@/lib/console/useMode"
 import {money} from "@/lib/format"
-import {maskMoney, parseMoney} from "@/lib/money"
+import {maskMoney, moneyPlaceholder, parseMoney} from "@/lib/money"
 
 /**
  * "Emitir nota de crédito", and the screen where immutability is taught rather
@@ -37,6 +39,7 @@ export function CreditNoteDialog({
   onClose: () => void
   onIssued: () => void
 }) {
+  const {t} = useTranslation()
   const mode = useMode()
   const remaining = Math.max(0, invoice.total - credited)
   const [amount, setAmount] = useState("")
@@ -46,6 +49,7 @@ export function CreditNoteDialog({
   const cents = parseMoney(amount) ?? 0
   const valid = cents > 0 && cents <= remaining && reason.trim() !== ""
 
+  const fe = useFieldErrors(["amount", "reason"], {keepOthers: false})
   const issue = useMutation({
     mutationFn: () =>
       creditInvoice(
@@ -54,7 +58,7 @@ export function CreditNoteDialog({
         mode,
       ),
     onSuccess: () => {
-      toast.success("Nota de crédito emitida.")
+      toast.success(t("console.credit.done"))
       setAmount("")
       setReason("")
       setRefunded(false)
@@ -63,45 +67,50 @@ export function CreditNoteDialog({
     // The server re-checks the ceiling against freshly read totals, so this is
     // the message that arrives when another operator credited the same invoice
     // between this dialog opening and being submitted.
-    onError: error => toast.error(messageFor(error)),
+    onError: error => { if (!fe.set(error)) toast.error(messageFor(error)) },
   })
 
   return (
     <Modal
       open={open}
       onClose={onClose}
-      title="Emitir nota de crédito"
-      description={`A fatura não é alterada: o crédito é um documento novo que aponta para ela. Ainda pode ser creditado ${money(remaining, invoice.currency)}.`}
-      cancelLabel="Cancelar"
-      submitLabel="Emitir crédito"
+      title={t("console.credit.title")}
+      description={t("console.credit.description", {amount: money(remaining, invoice.currency)})}
+      cancelLabel={t("common.cancel")}
+      submitLabel={t("console.credit.submit")}
       submitDisabled={!valid}
       loading={issue.isPending}
-      onSubmit={() => issue.mutate()}
+      onSubmit={() => { fe.reset(); issue.mutate() }}
     >
       <div className="space-y-4">
-        <Field label="Valor" htmlFor="credit-amount" hint={`Máximo ${money(remaining, invoice.currency)}`}>
+        <Field label={t("console.credit.amount")} htmlFor="credit-amount" error={fe.of("amount")} hint={t("console.credit.max", {amount: money(remaining, invoice.currency)})}>
           <Input
             id="credit-amount"
             inputMode="decimal"
-            placeholder="0,00"
+            placeholder={moneyPlaceholder()}
             value={amount}
-            onChange={event => setAmount(maskMoney(event.target.value))}
+            {...fe.props("amount", "credit-amount")}
+            onChange={event => { setAmount(maskMoney(event.target.value)); fe.clear("amount") }}
           />
         </Field>
 
         <Field
-          label="Motivo"
+          label={t("console.credit.reason")}
           htmlFor="credit-reason"
-          hint="Fica no histórico e é o que explica este crédito depois."
+          error={fe.of("reason")}
+          hint={t("console.credit.reasonHint")}
         >
           <Input
             id="credit-reason"
             maxLength={limits.text.reason}
             value={reason}
-            onChange={event => setReason(event.target.value)}
-            placeholder="Cobrança em duplicidade"
+            {...fe.props("reason", "credit-reason")}
+            onChange={event => { setReason(event.target.value); fe.clear("reason") }}
+            placeholder={t("console.credit.reasonPlaceholder")}
           />
         </Field>
+
+        {fe.general && <p role="alert" className="text-sm text-danger">{fe.general}</p>}
 
         {/* The label is written here rather than passed as a prop: the
             primitive is Base UI's bare Root, and the sentence under it is the
@@ -114,10 +123,9 @@ export function CreditNoteDialog({
             className="mt-0.5 shrink-0"
           />
           <span>
-            O dinheiro já foi devolvido pelo wallet
+            {t("console.credit.refunded")}
             <span className="mt-0.5 block text-xs text-muted-foreground">
-              O billing registra a devolução; ele não devolve. Marcar aqui sem devolver de fato
-              deixa o histórico dizendo algo que não aconteceu.
+              {t("console.credit.refundedNote")}
             </span>
           </span>
         </label>

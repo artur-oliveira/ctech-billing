@@ -29,8 +29,36 @@ type financeHandlers struct {
 	ledger *repositories.LedgerRepository
 	clock  func() time.Time
 	spaces spaceLister
-	// ensured holds the space keys this process has already created.
-	ensured sync.Map
+	// ensured runs a space's creation once per process, however many requests
+	// arrive together.
+	ensured ensureOnce
+}
+
+// ensureOnce runs a function once per key and remembers only success. Callers
+// for the same key wait for the one in flight instead of repeating its writes:
+// the app opens a space with several parallel requests, and each running the
+// creation transaction is what made them collide.
+type ensureOnce struct {
+	done  sync.Map // key -> struct{}
+	locks sync.Map // key -> *sync.Mutex
+}
+
+func (e *ensureOnce) do(key string, fn func() error) error {
+	if _, ok := e.done.Load(key); ok {
+		return nil
+	}
+	m, _ := e.locks.LoadOrStore(key, &sync.Mutex{})
+	mu := m.(*sync.Mutex)
+	mu.Lock()
+	defer mu.Unlock()
+	if _, ok := e.done.Load(key); ok {
+		return nil
+	}
+	if err := fn(); err != nil {
+		return err
+	}
+	e.done.Store(key, struct{}{})
+	return nil
 }
 
 func (h *financeHandlers) now() time.Time    { return h.clock() }
@@ -125,24 +153,17 @@ func registerFinance(v1 fiber.Router, d Deps, auth fiber.Handler, clock func() t
 // ensuringSpace creates the space (its settings row and system accounts) and
 // seeds its default categories before the first request that reaches this
 // process, a read included, so a space created before the defaults existed
-// gets them the first time it is opened. Both steps are idempotent; the
-// in-memory set only saves them on every later request, and a restart costs one
-// more. A role that may not write (a viewer) skips them and reads what exists.
+// gets them the first time it is opened. EnsureReady reads before it writes, so
+// a space that exists costs one read per process (and per restart), never a
+// write transaction; ensureOnce keeps parallel first requests from racing. A role that may not write (a viewer) skips them and reads what exists.
 func (h *financeHandlers) ensuringSpace(next fiber.Handler) fiber.Handler {
 	return func(c fiber.Ctx) error {
 		sp := middleware.GetSpace(c)
-		key := sp.PK()
-		if _, done := h.ensured.Load(key); !done {
-			err := h.ledger.EnsureSpace(c.Context(), sp, h.now())
-			if err == nil {
-				err = h.ledger.SeedCategories(c.Context(), sp, h.now())
-			}
-			switch {
-			case err == nil:
-				h.ensured.Store(key, struct{}{})
-			case !errors.Is(err, space.ErrDenied):
-				return fail(c, err)
-			}
+		err := h.ensured.do(sp.PK(), func() error {
+			return h.ledger.EnsureReady(c.Context(), sp, h.now())
+		})
+		if err != nil && !errors.Is(err, space.ErrDenied) {
+			return fail(c, err)
 		}
 		return next(c)
 	}
@@ -167,14 +188,14 @@ func decodeStrict(c fiber.Ctx, dst any) *problem.Problem {
 	dec := json.NewDecoder(bytes.NewReader(c.Body()))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(dst); err != nil {
-		return problem.BadRequest("corpo da requisição inválido: " + err.Error())
+		return problem.BadRequest("invalid request body: " + err.Error()).WithCode("invalid_body")
 	}
 	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
-		return problem.BadRequest("corpo da requisição inválido: conteúdo após o objeto JSON")
+		return problem.BadRequest("invalid request body: content after the JSON object").WithCode("invalid_body")
 	}
 	return nil
 }
 
-func fieldErr(field, msg, tag string) problem.FieldError {
-	return problem.FieldError{Field: field, Message: msg, Tag: tag}
+func fieldErr(field, code, msg string, params ...any) problem.FieldError {
+	return problem.Field(field, code, msg, params...)
 }

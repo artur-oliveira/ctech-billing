@@ -6,7 +6,9 @@ import Image from "next/image"
 import Link from "next/link"
 import {usePathname, useRouter} from "next/navigation"
 import {useEffect} from "react"
+import {useTranslation} from "react-i18next"
 
+import {LanguageSwitcher} from "@/components/LanguageSwitcher"
 import {ConsoleLink} from "@/components/portal/ConsoleLink"
 import {NoBillingAccount} from "@/components/portal/NoBillingAccount"
 import {TermsGate} from "@/components/portal/TermsGate"
@@ -15,9 +17,9 @@ import {getSession, portalKeys} from "@/lib/api/portal"
 import {useAuth} from "@/lib/auth/AuthContext"
 
 const NAV = [
-  {href: "/dashboard", label: "Início"},
-  {href: "/invoices", label: "Faturas"},
-  {href: "/subscriptions", label: "Assinaturas"},
+  {href: "/dashboard", labelKey: "portal.nav.home"},
+  {href: "/invoices", labelKey: "portal.nav.invoices"},
+  {href: "/subscriptions", labelKey: "portal.nav.subscriptions"},
 ] as const
 
 /**
@@ -40,6 +42,7 @@ const NAV = [
  * tenant switcher here would be asking them a question they cannot answer.
  */
 export default function PortalLayout({children}: LayoutProps<"/">) {
+  const {t} = useTranslation()
   const pathname = usePathname()
   const router = useRouter()
   const {authenticated, loading, logout} = useAuth()
@@ -86,8 +89,10 @@ export default function PortalLayout({children}: LayoutProps<"/">) {
               show, and "Sair" is the only thing they can do here. A screen with
               no way out is how somebody signed into the wrong account gets
               stuck. */}
-          {(session || noAccount) && (
-            <div className="flex min-w-0 items-center gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <LanguageSwitcher className="shrink-0"/>
+            {(session || noAccount) && (
+              <>
               {/* The way into the console, and only for somebody who has one.
                   The same person holds both hats and nothing on screen asks
                   which they are — but a link that led every customer to a 403
@@ -103,14 +108,15 @@ export default function PortalLayout({children}: LayoutProps<"/">) {
                 onClick={logout}
                 className="shrink-0 text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
               >
-                Sair
+                {t("portal.nav.logout")}
               </button>
-            </div>
-          )}
+              </>
+            )}
+          </div>
         </div>
         {/* Hidden with no billing account. Three tabs that all lead to the same
             empty state read as three broken screens. */}
-        <nav hidden={noAccount} className="mx-auto max-w-2xl px-4" aria-label="Seções">
+        <nav hidden={noAccount} className="mx-auto max-w-2xl px-4" aria-label={t("portal.nav.label")}>
           <ul className="-mb-px flex gap-1">
             {NAV.map(item => {
               const active =
@@ -128,7 +134,7 @@ export default function PortalLayout({children}: LayoutProps<"/">) {
                         : "border-transparent text-muted-foreground hover:text-foreground"
                     }`}
                   >
-                    {item.label}
+                    {t(item.labelKey)}
                   </Link>
                 </li>
               )

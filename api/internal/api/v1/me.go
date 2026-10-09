@@ -47,7 +47,7 @@ func (h *consoleHandlers) me(c fiber.Ctx) error {
 	if cl.SID == "" {
 		// A service token has neither identity. Answering with two nulls would
 		// suggest an integration might one day have them.
-		return problem.Forbidden("esta rota exige sessão de usuário").Send(c)
+		return problem.Forbidden("this route requires a user session").WithCode("user_session_required").Send(c)
 	}
 
 	var out meResponse

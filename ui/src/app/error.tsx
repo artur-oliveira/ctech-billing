@@ -2,6 +2,7 @@
 
 import {Button} from "@aoctech/ui"
 import {useEffect} from "react"
+import {useTranslation} from "react-i18next"
 
 import {StatusScreen} from "@/components/StatusScreen"
 
@@ -25,6 +26,7 @@ export default function Error({
   error: Error & { digest?: string }
   reset: () => void
 }) {
+  const {t} = useTranslation()
   useEffect(() => {
     // ponytail: console only. Wire to whatever the family settles on for
     // browser error reporting; nothing in ctech-* collects it today.
@@ -33,11 +35,11 @@ export default function Error({
 
   return (
     <StatusScreen
-      title="Algo quebrou desse lado"
-      description="Não foi você e nada foi cobrado. Tente de novo; se continuar, fale com a gente e informe o código abaixo."
+      title={t("auth.error.title")}
+      description={t("auth.error.description")}
       action={
         <div className="flex flex-col items-center gap-3">
-          <Button onClick={reset}>Tentar de novo</Button>
+          <Button onClick={reset}>{t("auth.error.retry")}</Button>
           {error.digest && (
             <code className="font-mono text-xs text-muted-foreground">{error.digest}</code>
           )}

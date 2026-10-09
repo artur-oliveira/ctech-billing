@@ -2,7 +2,7 @@ import type {Metadata} from "next"
 
 import {FinanceNav} from "@/components/finance/FinanceNav"
 
-export const metadata: Metadata = {title: "Finanças · Console"}
+export const metadata: Metadata = {title: "Finanças"}
 
 export default function Layout({children}: LayoutProps<"/console/finance">) {
   return (

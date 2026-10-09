@@ -6,6 +6,7 @@ import {ArrowLeft} from "lucide-react"
 import Link from "next/link"
 import {useSearchParams} from "next/navigation"
 import {Suspense, useState} from "react"
+import {useTranslation} from "react-i18next"
 import {toast} from "sonner"
 
 import {SubscriptionStatusBadge} from "@/components/console/SubscriptionStatusBadge"
@@ -35,6 +36,7 @@ export default function ConsoleSubscriptionPage() {
 }
 
 function Detail() {
+  const {t} = useTranslation()
   const id = useSearchParams().get("id") ?? ""
   const mode = useMode()
   const queryClient = useQueryClient()
@@ -49,7 +51,7 @@ function Detail() {
   const cancel = useMutation({
     mutationFn: (atPeriodEnd: boolean) => cancelConsoleSubscription(id, atPeriodEnd, mode),
     onSuccess: () => {
-      toast.success("Assinatura encerrada.")
+      toast.success(t("console.subscription.done"))
       void queryClient.invalidateQueries({queryKey: consoleKeys.subscription(mode, id)})
       void queryClient.invalidateQueries({queryKey: consoleKeys.subscriptions(mode)})
     },
@@ -87,11 +89,11 @@ function Detail() {
             <div className="flex flex-wrap gap-2">
               {!sub.cancel_at_period_end && (
                 <Button variant="outline" size="sm" onClick={() => setEnding("period-end")}>
-                  Encerrar no fim do período
+                  {t("console.subscription.endAtPeriodEnd")}
                 </Button>
               )}
               <Button variant="outline" size="sm" onClick={() => setEnding("now")}>
-                Encerrar agora
+                {t("console.subscription.endNow")}
               </Button>
             </div>
           )}
@@ -100,35 +102,35 @@ function Detail() {
 
       <dl className="grid gap-x-6 gap-y-4 border-y border-border py-4 text-sm sm:grid-cols-3">
         <Fact
-          label="Cliente"
+          label={t("console.subscription.customer")}
           value={sub.customer_id}
           href={`/console/customer?id=${sub.customer_id}`}
         />
-        <Fact label="Período atual" value={`${longDate(sub.current_period.start)} a ${longDate(sub.current_period.end)}`}/>
-        <Fact label="Âncora" value={longDate(sub.anchor)}/>
-        <Fact label="Acesso" value={sub.entitled ? "Liberado" : "Bloqueado"}/>
+        <Fact label={t("console.subscription.period")} value={t("common.periodRange", {start: longDate(sub.current_period.start), end: longDate(sub.current_period.end)})}/>
+        <Fact label={t("console.subscription.anchor")} value={longDate(sub.anchor)}/>
+        <Fact label={t("console.subscription.access")} value={sub.entitled ? t("console.subscription.allowed") : t("console.subscription.blocked")}/>
         <Fact
-          label="Cobrança"
-          value={sub.billing_timing === "arrears" ? "No fim do período" : "Antecipada"}
+          label={t("console.subscription.billing")}
+          value={sub.billing_timing === "arrears" ? t("console.timing.arrears") : t("console.timing.advance")}
         />
       </dl>
 
       <section aria-labelledby="itens" className="space-y-3">
-        <h2 id="itens" className="text-sm font-medium text-muted-foreground">Itens</h2>
+        <h2 id="itens" className="text-sm font-medium text-muted-foreground">{t("console.subscription.items")}</h2>
         <ul className="divide-y divide-border border-y border-border">
           {items.map(item => (
             <li key={item.id} className="flex flex-wrap items-baseline justify-between gap-3 py-2">
               <div className="min-w-0">
                 <p className="text-sm text-foreground">{item.price_id}</p>
                 <p className="text-xs text-muted-foreground">
-                  {item.price.type === "metered" ? "Por uso" : "Fixo"} · quantidade {item.quantity}
-                  {item.price.archived && " · preço arquivado"}
+                  {item.price.type === "metered" ? t("console.priceType.metered") : t("console.priceType.fixed")} · {t("console.subscription.quantity", {count: item.quantity})}
+                  {item.price.archived && ` · ${t("console.subscription.archivedPrice")}`}
                 </p>
               </div>
               <span data-numeric className="text-sm text-foreground">
                 {money(item.price.unit_amount, item.price.currency)}
                 {item.price.type === "metered" && (
-                  <span className="text-muted-foreground"> /un.</span>
+                  <span className="text-muted-foreground"> {t("console.priceType.perUnit")}</span>
                 )}
               </span>
             </li>
@@ -141,14 +143,14 @@ function Detail() {
       <Modal
         open={ending !== null}
         onClose={() => setEnding(null)}
-        title={ending === "now" ? "Encerrar agora?" : "Encerrar no fim do período?"}
+        title={ending === "now" ? t("console.subscription.nowTitle") : t("console.subscription.endTitle")}
         description={
           ending === "now"
-            ? "O acesso é cortado imediatamente, mesmo dentro de um período já pago. Se o cliente pagou por este mês, isso é caso de nota de crédito."
-            : `A assinatura continua valendo até ${longDate(sub.current_period.end)} e não gera nova cobrança depois disso.`
+            ? t("console.subscription.nowBody")
+            : t("console.subscription.endBody", {date: longDate(sub.current_period.end)})
         }
-        cancelLabel="Manter"
-        submitLabel={ending === "now" ? "Encerrar agora" : "Encerrar no fim do período"}
+        cancelLabel={t("console.subscription.keep")}
+        submitLabel={ending === "now" ? t("console.subscription.endNow") : t("console.subscription.endAtPeriodEnd")}
         danger={ending === "now"}
         loading={cancel.isPending}
         onSubmit={() => cancel.mutate(ending === "period-end")}
@@ -175,15 +177,16 @@ function Fact({label, value, href}: { label: string; value: string; href?: strin
 }
 
 function NotFound() {
+  const {t} = useTranslation()
   return (
     <div className="space-y-6">
       <BackLink/>
       <div className="space-y-2">
         <h1 className="text-lg font-semibold tracking-[-0.01em] text-foreground">
-          Assinatura não encontrada
+          {t("console.subscription.notFound")}
         </h1>
         <p className="text-sm text-muted-foreground">
-          Ela pode pertencer ao outro modo; confira se você está em Produção ou Teste.
+          {t("console.wrongMode")}
         </p>
       </div>
     </div>
@@ -191,13 +194,14 @@ function NotFound() {
 }
 
 function BackLink() {
+  const {t} = useTranslation()
   return (
     <Link
       href="/console/subscriptions"
       className="inline-flex items-center gap-1.5 text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
     >
       <ArrowLeft aria-hidden className="size-3.5"/>
-      Assinaturas
+      {t("console.subscription.back")}
     </Link>
   )
 }

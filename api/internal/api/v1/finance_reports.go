@@ -18,18 +18,37 @@ const (
 	maxStatementDays = 366
 )
 
+// rangeError is a refused from..to, carrying the stable code and params the
+// client translates; its Error() is the English fallback.
+type rangeError struct {
+	code   string
+	msg    string
+	params []any
+}
+
+func (e *rangeError) Error() string { return e.msg }
+
+// rangeFieldErr turns a parse*Range error into the field error for "from".
+func rangeFieldErr(err error) problem.FieldError {
+	var re *rangeError
+	if errors.As(err, &re) {
+		return fieldErr("from", re.code, re.msg, re.params...)
+	}
+	return fieldErr("from", "out_of_range", err.Error())
+}
+
 // parseMonthRange reads a report's from..to, both YYYY-MM and inclusive.
 func parseMonthRange(from, to string) (finance.Month, finance.Month, error) {
 	f, err1 := finance.ParseMonth(from)
 	t, err2 := finance.ParseMonth(to)
 	if err1 != nil || err2 != nil {
-		return f, t, errors.New("use YYYY-MM")
+		return f, t, &rangeError{code: "invalid_format", msg: "use YYYY-MM", params: []any{"format", "YYYY-MM"}}
 	}
 	if t.Compare(f) < 0 {
-		return f, t, errors.New("o fim é anterior ao início")
+		return f, t, &rangeError{code: "range_end_before_start", msg: "the end is before the start"}
 	}
 	if n := t.MonthsSince(f) + 1; n > maxReportMonths {
-		return f, t, fmt.Errorf("no máximo %d meses", maxReportMonths)
+		return f, t, &rangeError{code: "range_too_long", msg: fmt.Sprintf("at most %d months", maxReportMonths), params: []any{"max", maxReportMonths, "unit", "months"}}
 	}
 	return f, t, nil
 }
@@ -39,13 +58,13 @@ func parseDateRange(from, to string) (brcal.Date, brcal.Date, error) {
 	f, err1 := brcal.Parse(from)
 	t, err2 := brcal.Parse(to)
 	if err1 != nil || err2 != nil {
-		return f, t, errors.New("use YYYY-MM-DD")
+		return f, t, &rangeError{code: "invalid_format", msg: "use YYYY-MM-DD", params: []any{"format", "YYYY-MM-DD"}}
 	}
 	if !f.Before(t) {
-		return f, t, errors.New("o fim deve ser depois do início")
+		return f, t, &rangeError{code: "range_end_before_start", msg: "the end must be after the start"}
 	}
 	if f.DaysBetween(t) > maxStatementDays {
-		return f, t, fmt.Errorf("no máximo %d dias", maxStatementDays)
+		return f, t, &rangeError{code: "range_too_long", msg: fmt.Sprintf("at most %d days", maxStatementDays), params: []any{"max", maxStatementDays, "unit", "days"}}
 	}
 	return f, t, nil
 }
@@ -75,7 +94,7 @@ type dreDTO struct {
 func (h *financeHandlers) dre(c fiber.Ctx) error {
 	from, to, err := parseMonthRange(c.Query("from"), c.Query("to"))
 	if err != nil {
-		return problem.Validation([]problem.FieldError{fieldErr("from", err.Error(), "range")}).Send(c)
+		return problem.Validation([]problem.FieldError{rangeFieldErr(err)}).Send(c)
 	}
 	sp := middleware.GetSpace(c)
 	rows, err := h.ledger.Summaries(c.Context(), sp, from, to)
@@ -135,7 +154,7 @@ type cashFlowDTO struct {
 func (h *financeHandlers) cashFlow(c fiber.Ctx) error {
 	from, to, err := parseMonthRange(c.Query("from"), c.Query("to"))
 	if err != nil {
-		return problem.Validation([]problem.FieldError{fieldErr("from", err.Error(), "range")}).Send(c)
+		return problem.Validation([]problem.FieldError{rangeFieldErr(err)}).Send(c)
 	}
 	sp := middleware.GetSpace(c)
 	accounts, err := h.ledger.ListAccounts(c.Context(), sp)

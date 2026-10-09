@@ -1,21 +1,20 @@
 import type {Cents, IsoDate} from "@/lib/api/types"
+import {currentLocale, t} from "@/lib/i18n"
 
-const BRL = new Intl.NumberFormat("pt-BR", {
-  style: "currency",
-  currency: "BRL",
-  minimumFractionDigits: 2,
-})
-
-/** Centavos to "R$ 1.234,56". Integer arithmetic only — never a float. */
-export function money(cents: Cents, currency = "BRL"): string {
-  if (currency !== "BRL") {
-    return new Intl.NumberFormat("pt-BR", {style: "currency", currency}).format(cents / 100)
-  }
-  return BRL.format(cents / 100)
+/** Intl formatters per language, built once: the language is read at call time so a switch needs no reload. */
+const cache = new Map<string, Intl.NumberFormat | Intl.DateTimeFormat>()
+function intl<T extends Intl.NumberFormat | Intl.DateTimeFormat>(kind: string, make: (locale: string) => T): T {
+  const locale = currentLocale()
+  const key = `${locale}:${kind}`
+  let f = cache.get(key)
+  if (!f) cache.set(key, (f = make(locale)))
+  return f as T
 }
 
-const LONG = new Intl.DateTimeFormat("pt-BR", {day: "numeric", month: "long", year: "numeric"})
-const SHORT = new Intl.DateTimeFormat("pt-BR", {day: "2-digit", month: "2-digit", year: "numeric"})
+/** Centavos to "R$ 1.234,56" (pt-BR) or "R$1,234.56" (en). Integer arithmetic only, never a float. */
+export function money(cents: Cents, currency = "BRL"): string {
+  return intl(`money:${currency}`, l => new Intl.NumberFormat(l, {style: "currency", currency, minimumFractionDigits: 2})).format(cents / 100)
+}
 
 /**
  * `YYYY-MM-DD` is a civil date in São Paulo, so it is parsed as local noon
@@ -28,15 +27,17 @@ function civil(iso: IsoDate): Date {
 }
 
 /** "3 de março de 2026" — for a single date the reader is meant to remember. */
-export const longDate = (iso: IsoDate) => LONG.format(civil(iso))
+export const longDate = (iso: IsoDate) =>
+  intl("long", l => new Intl.DateTimeFormat(l, {day: "numeric", month: "long", year: "numeric"})).format(civil(iso))
 
 /** "03/03/2026" — for dates in a column. */
-export const shortDate = (iso: IsoDate) => SHORT.format(civil(iso))
+export const shortDate = (iso: IsoDate) =>
+  intl("short", l => new Intl.DateTimeFormat(l, {day: "2-digit", month: "2-digit", year: "numeric"})).format(civil(iso))
 
 /** "1 de mar a 31 de mar" — a billing period, without repeating the year. */
 export function period(start: IsoDate, end: IsoDate): string {
-  const f = new Intl.DateTimeFormat("pt-BR", {day: "numeric", month: "short"})
-  return `${f.format(civil(start))} a ${f.format(civil(end))}`
+  const f = intl("day-month", l => new Intl.DateTimeFormat(l, {day: "numeric", month: "short"}))
+  return t("common.periodRange", {start: f.format(civil(start)), end: f.format(civil(end))})
 }
 
 /** Seconds to "12:04", for a PIX expiry the reader is watching run out. */

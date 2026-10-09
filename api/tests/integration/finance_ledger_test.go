@@ -18,6 +18,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/aws/smithy-go/middleware"
 	"github.com/gofiber/fiber/v3"
 	"gopkg.aoctech.app/api-commons/cache"
@@ -552,5 +553,47 @@ func TestSeedingCategoriesIsOnceAndRespectsThePerson(t *testing.T) {
 	}
 	if _, err := r.GetAccount(ctx, personal, "cat-salario"); err != nil {
 		t.Fatalf("personal set: %v", err)
+	}
+}
+
+// A space seeded before system_key existed gets the key backfilled onto its
+// default rows without touching names or archived state.
+func TestSeedingBackfillsSystemKeys(t *testing.T) {
+	r := ledgerFor(t, testDB)
+	ctx, now := context.Background(), time.Now()
+	sp := jobSpace(t, newSpaceOrgID(), true)
+	if err := r.EnsureReady(ctx, sp, now); err != nil {
+		t.Fatal(err)
+	}
+	// Simulate a v1 space: strip the keys, rename one default, set seed back to 1.
+	rawUpdate := func(sk, expr string, vals map[string]types.AttributeValue) {
+		t.Helper()
+		in := &dynamodb.UpdateItemInput{
+			TableName: aws.String(repositories.TableName(testCfg, repositories.TableLedgerAccounts)),
+			Key: map[string]types.AttributeValue{
+				"pk": &types.AttributeValueMemberS{Value: sp.PK()},
+				"sk": &types.AttributeValueMemberS{Value: sk},
+			},
+			UpdateExpression: aws.String(expr),
+		}
+		if vals != nil {
+			in.ExpressionAttributeValues = vals
+		}
+		if _, err := testDB.UpdateItem(ctx, in); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, id := range []string{"cat-vendas", "sys-payables"} {
+		rawUpdate(repositories.LedgerAccountSK(id), "REMOVE system_key", nil)
+	}
+	rawUpdate(repositories.LedgerSpaceSK(), "SET seed_version = :v", map[string]types.AttributeValue{":v": &types.AttributeValueMemberN{Value: "1"}})
+	if err := r.SeedCategories(ctx, sp, now); err != nil {
+		t.Fatal(err)
+	}
+	for id, want := range map[string]string{"cat-vendas": "sales", "sys-payables": "payables", "cat-servicos": "services_revenue"} {
+		a, err := r.GetAccount(ctx, sp, id)
+		if err != nil || a.SystemKey != want {
+			t.Fatalf("%s: key %q err %v, want %q", id, a.SystemKey, err, want)
+		}
 	}
 }

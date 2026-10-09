@@ -41,6 +41,9 @@ type LedgerAccount struct {
 	// empty for asset, liability and equity accounts, which are not in the DRE.
 	Group  DREGroup
 	System bool
+	// SystemKey is the stable English key of a default account or category, so a
+	// client can translate its name. Empty for what the person created.
+	SystemKey string
 }
 
 // Validate refuses an account the ledger could not report on.
@@ -72,8 +75,8 @@ func validClass(c AccountClass) bool {
 func DefaultSystemAccounts() (SystemAccounts, []LedgerAccount) {
 	sys := SystemAccounts{Payables: "sys-payables", Receivables: "sys-receivables", OpeningBalance: "sys-opening"}
 	return sys, []LedgerAccount{
-		{ID: sys.Payables, Name: "Contas a pagar", Class: ClassLiability, System: true},
-		{ID: sys.Receivables, Name: "Contas a receber", Class: ClassAsset, System: true},
-		{ID: sys.OpeningBalance, Name: "Saldos iniciais", Class: ClassEquity, System: true},
+		{ID: sys.Payables, Name: "Contas a pagar", Class: ClassLiability, System: true, SystemKey: "payables"},
+		{ID: sys.Receivables, Name: "Contas a receber", Class: ClassAsset, System: true, SystemKey: "receivables"},
+		{ID: sys.OpeningBalance, Name: "Saldos iniciais", Class: ClassEquity, System: true, SystemKey: "opening_balance"},
 	}
 }

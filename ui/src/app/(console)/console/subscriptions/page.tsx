@@ -4,6 +4,7 @@ import {EmptyState, Skeleton} from "@aoctech/ui"
 import {useQuery} from "@tanstack/react-query"
 import {Repeat} from "lucide-react"
 import Link from "next/link"
+import {useTranslation} from "react-i18next"
 
 import {SubscriptionStatusBadge} from "@/components/console/SubscriptionStatusBadge"
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
@@ -21,6 +22,7 @@ import {shortDate} from "@/lib/format"
  * check every other CTech product calls.
  */
 export default function ConsoleSubscriptionsPage() {
+  const {t} = useTranslation()
   const mode = useMode()
   const query = useQuery({
     queryKey: consoleKeys.subscriptions(mode),
@@ -31,7 +33,7 @@ export default function ConsoleSubscriptionsPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-lg font-semibold tracking-[-0.01em] text-foreground">Assinaturas</h1>
+      <h1 className="text-lg font-semibold tracking-[-0.01em] text-foreground">{t("console.subscriptions.title")}</h1>
 
       {query.isPending && <RowsSkeleton/>}
       {query.isError && <ErrorBlock error={query.error} onRetry={query.refetch}/>}
@@ -39,8 +41,7 @@ export default function ConsoleSubscriptionsPage() {
       {!query.isPending && !query.isError && subscriptions.length === 0 && (
         <EmptyState
           icon={<Repeat/>}
-          title="Nenhuma assinatura"
-          description="Assinaturas criadas por uma integração ou pelo console aparecem aqui."
+          title={t("console.subscriptions.empty")}
         />
       )}
 
@@ -49,12 +50,12 @@ export default function ConsoleSubscriptionsPage() {
           <table className="w-full min-w-[44rem] border-collapse text-sm">
             <thead>
               <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                <th scope="col" className="py-2 pr-4 font-medium">Assinatura</th>
-                <th scope="col" className="py-2 pr-4 font-medium">Cliente</th>
-                <th scope="col" className="py-2 pr-4 font-medium">Situação</th>
-                <th scope="col" className="py-2 pr-4 font-medium">Período atual</th>
-                <th scope="col" className="py-2 pr-4 font-medium">Recorrência</th>
-                <th scope="col" className="py-2 font-medium">Acesso</th>
+                <th scope="col" className="py-2 pr-4 font-medium">{t("console.subscriptions.subscription")}</th>
+                <th scope="col" className="py-2 pr-4 font-medium">{t("console.subscriptions.customer")}</th>
+                <th scope="col" className="py-2 pr-4 font-medium">{t("console.subscriptions.status")}</th>
+                <th scope="col" className="py-2 pr-4 font-medium">{t("console.subscriptions.period")}</th>
+                <th scope="col" className="py-2 pr-4 font-medium">{t("console.subscriptions.recurrence")}</th>
+                <th scope="col" className="py-2 font-medium">{t("console.subscriptions.access")}</th>
               </tr>
             </thead>
             <tbody>
@@ -87,14 +88,14 @@ export default function ConsoleSubscriptionsPage() {
                   </td>
                   <td className="py-2 pr-4 text-muted-foreground">
                     {sub.recurrence.count === 1
-                      ? intervalLabel(sub.recurrence.interval)
-                      : `a cada ${sub.recurrence.count} ${intervalLabel(sub.recurrence.interval)}`}
+                      ? t(`console.interval.${sub.recurrence.interval}`, {defaultValue: sub.recurrence.interval})
+                      : t(`console.every.${sub.recurrence.interval}`, {count: sub.recurrence.count, defaultValue: sub.recurrence.interval})}
                   </td>
                   <td className="py-2">
                     {sub.entitled ? (
-                      <span className="text-foreground">Liberado</span>
+                      <span className="text-foreground">{t("console.subscriptions.allowed")}</span>
                     ) : (
-                      <span className="text-muted-foreground">Bloqueado</span>
+                      <span className="text-muted-foreground">{t("console.subscriptions.blocked")}</span>
                     )}
                   </td>
                 </tr>
@@ -105,10 +106,6 @@ export default function ConsoleSubscriptionsPage() {
       )}
     </div>
   )
-}
-
-function intervalLabel(interval: string): string {
-  return {month: "mensal", year: "anual", week: "semanal", day: "diária"}[interval] ?? interval
 }
 
 function RowsSkeleton() {

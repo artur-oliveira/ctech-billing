@@ -1,5 +1,6 @@
-import {screen, within} from "@testing-library/react"
+import {screen, waitFor, within} from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
+import {expect} from "vitest"
 import {QueryClient, QueryClientProvider} from "@tanstack/react-query"
 import {render} from "@testing-library/react"
 import type {ReactElement} from "react"
@@ -27,4 +28,18 @@ export async function optionsOf(label: string | RegExp, root?: HTMLElement): Pro
 export async function pick(label: string | RegExp, option: string, root?: HTMLElement) {
   await userEvent.click(selectByLabel(label, root))
   await userEvent.click(await screen.findByRole("option", {name: option}))
+}
+
+/**
+ * Opens a Select once and waits for its options to become `expected` (what a
+ * person sees once data has loaded). The poll only reads the open list: putting
+ * `optionsOf` inside waitFor re-opens and closes the popup on every retry, which
+ * under load outlasts waitFor's own timeout and made the test flaky.
+ */
+export async function expectOptionsEventually(label: string | RegExp, expected: string[], root?: HTMLElement) {
+  await userEvent.click(selectByLabel(label, root))
+  await waitFor(() => {
+    expect(screen.getAllByRole("option").map(o => o.textContent?.trim() ?? "")).toEqual(expected)
+  })
+  await userEvent.keyboard("{Escape}")
 }

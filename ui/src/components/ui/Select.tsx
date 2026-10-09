@@ -3,6 +3,7 @@
 import {cn} from "@aoctech/ui"
 import {Select as SelectPrimitive} from "@base-ui/react/select"
 import {Check, ChevronDown} from "lucide-react"
+import {useTranslation} from "react-i18next"
 
 export interface SelectOption {
   value: string
@@ -18,6 +19,7 @@ interface SelectProps {
   disabled?: boolean
   "aria-label"?: string
   "aria-invalid"?: boolean
+  "aria-describedby"?: string
   className?: string
 }
 
@@ -33,7 +35,9 @@ interface SelectProps {
  * Sized by the shell's density like every @aoctech/ui control (32px in the
  * compact console). Candidate for @aoctech/ui (ctech-ui has no Select yet).
  */
-export function Select({id, value, onValueChange, options, placeholder = "Escolha…", disabled, className, ...aria}: SelectProps) {
+export function Select({id, value, onValueChange, options, placeholder, disabled, className, ...aria}: SelectProps) {
+  const {t} = useTranslation()
+  const emptyLabel = placeholder ?? t("auth.select.placeholder")
   const labelOf = (v: string | null) => options.find(o => o.value === v)?.label
   return (
     <SelectPrimitive.Root
@@ -46,6 +50,7 @@ export function Select({id, value, onValueChange, options, placeholder = "Escolh
         id={id}
         aria-label={aria["aria-label"]}
         aria-invalid={aria["aria-invalid"]}
+        aria-describedby={aria["aria-describedby"]}
         data-slot="select-trigger"
         className={cn(
           "flex h-11 w-full items-center justify-between gap-2 rounded-lg border border-border bg-background px-3 text-left text-sm text-foreground outline-none",
@@ -56,7 +61,7 @@ export function Select({id, value, onValueChange, options, placeholder = "Escolh
         )}
       >
         <SelectPrimitive.Value className="min-w-0 truncate data-[placeholder]:text-muted-foreground">
-          {(v: string | null) => labelOf(v) ?? placeholder}
+          {(v: string | null) => labelOf(v) ?? emptyLabel}
         </SelectPrimitive.Value>
         <SelectPrimitive.Icon className="shrink-0 text-muted-foreground">
           <ChevronDown aria-hidden className="size-4"/>

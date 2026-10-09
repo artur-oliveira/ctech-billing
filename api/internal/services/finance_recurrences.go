@@ -178,6 +178,11 @@ type ProjectionMonth struct {
 	// forecast bill exists and can be edited, a virtual occurrence is a rule's
 	// promise, and the screen shows them differently.
 	Virtual billing.Cents
+	// VirtualReceivable and VirtualPayable are the two sides of Virtual, never
+	// negative: Virtual == VirtualReceivable - VirtualPayable. The in/out view
+	// of the projection needs them apart, and the net alone cannot give them back.
+	VirtualReceivable billing.Cents
+	VirtualPayable    billing.Cents
 }
 
 const maxProjectionMonths = 12
@@ -267,8 +272,10 @@ func (j *FinanceJobs) Project(ctx context.Context, sp space.ResolvedSpace, today
 			}
 			if r.Direction == finance.Receivable {
 				window[i].Virtual += r.Amount
+				window[i].VirtualReceivable += r.Amount
 			} else {
 				window[i].Virtual -= r.Amount
+				window[i].VirtualPayable += r.Amount
 			}
 		}
 	}

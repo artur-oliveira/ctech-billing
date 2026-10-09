@@ -5,6 +5,7 @@ import {useQuery} from "@tanstack/react-query"
 import {Landmark} from "lucide-react"
 import Link from "next/link"
 import {useState} from "react"
+import {useTranslation} from "react-i18next"
 
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
 import {TransferPanel, wholeSpace} from "@/components/finance/TransferPanel"
@@ -17,6 +18,8 @@ import {todayIso} from "@/lib/finance/today"
 import {useFinanceMutation} from "@/lib/finance/useFinanceMutation"
 import {useFinanceCtx, useFinanceSpaces} from "@/lib/finance/useFinanceSpaces"
 import {shortDate, signedMoney} from "@/lib/format"
+import {currentLocale, t as tr} from "@/lib/i18n"
+import {accountName} from "@/lib/finance/accountName"
 
 /** The day before a civil date, without reading it as UTC. */
 function dayBefore(iso: string): string {
@@ -28,10 +31,10 @@ function dayBefore(iso: string): string {
 function memoOf(e: StatementEntry): string {
   if (e.memo) return e.memo
   switch (e.kind) {
-    case "settlement": return e.amount > 0 ? "Recebimento" : "Pagamento"
-    case "transfer": return "Transferência"
-    case "opening_balance": return "Saldo inicial"
-    default: return "Lançamento"
+    case "settlement": return tr(e.amount > 0 ? "finance.statement.receipt" : "finance.statement.payment")
+    case "transfer": return tr("finance.statement.transfer")
+    case "opening_balance": return tr("finance.statement.opening")
+    default: return tr("finance.statement.entry")
   }
 }
 
@@ -39,7 +42,7 @@ function memoOf(e: StatementEntry): string {
 function cashAccounts(accounts: Account[]): Account[] {
   return accounts
     .filter(a => a.class === "asset" && !a.system)
-    .sort((a, b) => Number(a.archived) - Number(b.archived) || a.name.localeCompare(b.name, "pt-BR"))
+    .sort((a, b) => Number(a.archived) - Number(b.archived) || accountName(a).localeCompare(accountName(b), currentLocale()))
 }
 
 /**
@@ -49,6 +52,7 @@ function cashAccounts(accounts: Account[]): Account[] {
  * undone, which also puts its bill back in the open list.
  */
 export function StatementView({account: initial = ""}: {account?: string}) {
+  const {t} = useTranslation()
   const ctx = useFinanceCtx()
   const {can} = useFinanceSpaces()
   const [picked, setPicked] = useState(initial)
@@ -66,7 +70,7 @@ export function StatementView({account: initial = ""}: {account?: string}) {
     queryFn: ({signal}) => getStatement(ctx, accountId, from, to, signal),
     enabled: accountId !== "",
   })
-  const names = new Map(all.map(a => [a.id, a.name]))
+  const names = new Map(all.map(a => [a.id, accountName(a)]))
 
   if (accounts.isLoading) {
     return <div className="space-y-2" aria-busy><Skeleton className="h-8 w-64"/><Skeleton className="h-4 w-full"/><Skeleton className="h-4 w-4/5"/></div>
@@ -76,9 +80,8 @@ export function StatementView({account: initial = ""}: {account?: string}) {
     return (
       <EmptyState
         icon={<Landmark/>}
-        title="Nenhuma conta ainda"
-        description="Crie uma conta em Contas para ver o extrato."
-        action={<Button variant="outline" size="sm" render={<Link href="/console/finance/accounts"/>}>Ir para Contas</Button>}
+        title={t("finance.statement.noAccounts")}
+        action={<Button variant="outline" size="sm" render={<Link href="/console/finance/accounts"/>}>{t("finance.statement.createAccount")}</Button>}
       />
     )
   }
@@ -88,20 +91,20 @@ export function StatementView({account: initial = ""}: {account?: string}) {
     <div className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="flex flex-wrap items-end gap-3">
-          <Field label="Conta" htmlFor="st-account">
-            <Select id="st-account" aria-label="Conta" value={accountId} onValueChange={setPicked} className="w-56"
-              options={cash.map(a => ({value: a.id, label: a.archived ? `${a.name} (arquivada)` : a.name}))}/>
+          <Field label={t("finance.statement.account")} htmlFor="st-account">
+            <Select id="st-account" aria-label={t("finance.statement.account")} value={accountId} onValueChange={setPicked} className="w-56"
+              options={cash.map(a => ({value: a.id, label: a.archived ? t("finance.statement.archivedName", {name: accountName(a)}) : accountName(a)}))}/>
           </Field>
-          <Field label="Período" htmlFor="st-period">
-            <Select id="st-period" aria-label="Período" value={preset} onValueChange={v => setPreset(v as PresetId)} className="w-48" options={PRESETS}/>
+          <Field label={t("finance.statement.period")} htmlFor="st-period">
+            <Select id="st-period" aria-label={t("finance.statement.period")} value={preset} onValueChange={v => setPreset(v as PresetId)} className="w-48" options={PRESETS.map(p => ({value: p.value, label: t(`finance.presets.${p.value}`)}))}/>
           </Field>
         </div>
         {can("finance.write") && (
-          <Button variant="brand" size="sm" onClick={() => setTransferring(true)}>Nova transferência</Button>
+          <Button variant="brand" size="sm" onClick={() => setTransferring(true)}>{t("finance.statement.newTransfer")}</Button>
         )}
       </div>
 
-      <Drawer open={transferring} onClose={() => setTransferring(false)} title="Nova transferência" description="Entre duas das suas contas: não é receita nem despesa.">
+      <Drawer open={transferring} onClose={() => setTransferring(false)} title={t("finance.statement.newTransfer")}>
         <TransferPanel accounts={all} from={accountId} onDone={() => setTransferring(false)}/>
       </Drawer>
 
@@ -112,10 +115,10 @@ export function StatementView({account: initial = ""}: {account?: string}) {
           <div className="space-y-2" aria-busy><Skeleton className="h-5 w-48"/><Skeleton className="h-4 w-full"/><Skeleton className="h-4 w-4/5"/></div>
         )
       ) : (
-        <section aria-label="Lançamentos" className="space-y-2">
-          <BalanceLine label={`Saldo em ${shortDate(from)}`} amount={s.opening}/>
+        <section aria-label={t("finance.statement.entries")} className="space-y-2">
+          <BalanceLine label={t("finance.statement.balanceOn", {date: shortDate(from)})} amount={s.opening}/>
           {s.entries.length === 0 ? (
-            <p className="py-6 text-center text-sm text-muted-foreground">Nenhum lançamento neste período.</p>
+            <p className="py-6 text-center text-sm text-muted-foreground">{t("finance.statement.empty")}</p>
           ) : (
             <ul className="divide-y divide-border border-y border-border">
               {s.entries.map(e => (
@@ -123,7 +126,7 @@ export function StatementView({account: initial = ""}: {account?: string}) {
               ))}
             </ul>
           )}
-          <BalanceLine label={`Saldo em ${shortDate(dayBefore(to))}`} amount={s.closing}/>
+          <BalanceLine label={t("finance.statement.balanceOn", {date: shortDate(dayBefore(to))})} amount={s.closing}/>
         </section>
       )}
     </div>
@@ -142,6 +145,7 @@ function BalanceLine({label, amount}: {label: string; amount: number}) {
 type Action = "reverse" | "unsettle" | null
 
 function EntryRow({entry: e, category}: {entry: StatementEntry; category?: string}) {
+  const {t} = useTranslation()
   const {can} = useFinanceSpaces()
   const [action, setAction] = useState<Action>(null)
   const live = !e.reversal && !e.reversed
@@ -154,31 +158,31 @@ function EntryRow({entry: e, category}: {entry: StatementEntry; category?: strin
           <p className="truncate text-sm text-foreground">{memoOf(e)}</p>
           <p className="text-xs text-muted-foreground">{shortDate(e.date)}{category ? ` · ${category}` : ""}</p>
         </div>
-        {e.reversal && <Badge tone="neutral">Estorno</Badge>}
-        {e.reversed && <Badge tone="neutral">Estornado</Badge>}
+        {e.reversal && <Badge tone="neutral">{t("finance.statement.reversal")}</Badge>}
+        {e.reversed && <Badge tone="neutral">{t("finance.statement.reversed")}</Badge>}
         <span data-numeric className={`w-28 text-right text-sm tabular-nums ${e.reversed ? "text-muted-foreground line-through" : "text-foreground"}`}>
           {signedMoney(e.amount)}
         </span>
         <span data-numeric className="w-28 text-right text-sm tabular-nums text-muted-foreground">{signedMoney(e.balance)}</span>
         <div className="flex gap-1">
           {canReverse && (
-            <Button size="sm" variant="ghost" aria-expanded={action === "reverse"} onClick={() => setAction(action === "reverse" ? null : "reverse")}>Estornar</Button>
+            <Button size="sm" variant="ghost" aria-expanded={action === "reverse"} onClick={() => setAction(action === "reverse" ? null : "reverse")}>{t("finance.statement.reverse")}</Button>
           )}
           {canUnsettle && (
-            <Button size="sm" variant="ghost" aria-expanded={action === "unsettle"} onClick={() => setAction(action === "unsettle" ? null : "unsettle")}>Desfazer pagamento</Button>
+            <Button size="sm" variant="ghost" aria-expanded={action === "unsettle"} onClick={() => setAction(action === "unsettle" ? null : "unsettle")}>{t("finance.statement.undoPayment")}</Button>
           )}
         </div>
       </div>
       {action === "reverse" && canReverse && (
         <Confirm
-          text="Estornar este lançamento? O saldo volta ao que era."
+          text={t("finance.statement.reverseConfirm")}
           run={(c, key) => reverseTransaction(c, e.transaction_id, key)}
           onDone={() => setAction(null)}
         />
       )}
       {action === "unsettle" && canUnsettle && (
         <Confirm
-          text="A conta volta para A pagar e a receber e o pagamento automático fica desligado."
+          text={t("finance.statement.undoConfirm")}
           run={(c, key) => unsettleBill(c, e.bill_id!, key)}
           onDone={() => setAction(null)}
         />
@@ -188,12 +192,13 @@ function EntryRow({entry: e, category}: {entry: StatementEntry; category?: strin
 }
 
 function Confirm({text, run, onDone}: {text: string; run: (c: FinanceCtx, key: string) => Promise<unknown>; onDone: () => void}) {
+  const {t} = useTranslation()
   const m = useFinanceMutation((c, _: void, key) => run(c, key), wholeSpace, onDone)
   return (
     <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg bg-surface p-3 text-sm motion-safe:animate-in motion-safe:fade-in">
       <p className="text-muted-foreground">{text}</p>
-      <Button size="sm" variant="outline" onClick={onDone}>Voltar</Button>
-      <Button size="sm" variant="brand" disabled={m.isPending} onClick={() => m.mutate()}>Confirmar</Button>
+      <Button size="sm" variant="outline" onClick={onDone}>{t("finance.statement.back")}</Button>
+      <Button size="sm" variant="brand" disabled={m.isPending} onClick={() => m.mutate()}>{t("finance.statement.confirm")}</Button>
       {m.error ? <p role="alert" className="w-full text-sm text-danger">{messageFor(m.error)}</p> : null}
     </div>
   )

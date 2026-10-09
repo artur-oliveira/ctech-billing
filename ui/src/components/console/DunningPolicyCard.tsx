@@ -4,9 +4,12 @@ import {Button, Input, Modal} from "@aoctech/ui"
 import {useMutation} from "@tanstack/react-query"
 import {Plus, X} from "lucide-react"
 import {useState} from "react"
+import {useTranslation} from "react-i18next"
+import type {TFunction} from "i18next"
 import {toast} from "sonner"
 
 import {messageFor} from "@/lib/api/client"
+import {useFieldErrors} from "@/lib/useFieldErrors"
 import type {DunningAction, DunningPolicy, DunningStep} from "@/lib/api/consoleTypes"
 
 /**
@@ -22,11 +25,7 @@ import type {DunningAction, DunningPolicy, DunningStep} from "@/lib/api/consoleT
  * The schedule is copied onto an invoice when it is issued, so shortening the
  * policy has not just moved everybody's write-off date three weeks forward.
  */
-const ACTION_LABEL: Record<DunningAction, string> = {
-  remind: "Enviar lembrete",
-  escalate: "Restringir o acesso",
-  abandon: "Dar a dívida por perdida",
-}
+const ACTIONS: DunningAction[] = ["remind", "escalate", "abandon"]
 
 export function DunningPolicyCard({
   title,
@@ -44,6 +43,7 @@ export function DunningPolicyCard({
   inheritLabel: string
   onSave: (steps: DunningStep[]) => Promise<unknown>
 }) {
+  const {t} = useTranslation()
   const [editing, setEditing] = useState(false)
 
   return (
@@ -54,21 +54,21 @@ export function DunningPolicyCard({
           <p className="max-w-prose text-sm text-muted-foreground">{description}</p>
         </div>
         <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
-          Editar política
+          {t("console.dunning.edit")}
         </Button>
       </div>
 
       {!policy.custom && (
         <p className="text-xs text-muted-foreground">
-          Herdada • {inheritLabel}. Está em vigor do mesmo jeito.
+          {t("console.dunning.inherited", {label: inheritLabel})}
         </p>
       )}
 
       <ol className="divide-y divide-border border-y border-border">
         {policy.steps.map((step, i) => (
           <li key={i} className="flex items-baseline justify-between gap-4 py-2 text-sm">
-            <span className="text-foreground">{ACTION_LABEL[step.action] ?? step.action}</span>
-            <span data-numeric className="text-muted-foreground">{dayLabel(step.offset)}</span>
+            <span className="text-foreground">{t(`console.dunning.${step.action}`, {defaultValue: step.action})}</span>
+            <span data-numeric className="text-muted-foreground">{dayLabel(t, step.offset)}</span>
           </li>
         ))}
       </ol>
@@ -90,10 +90,10 @@ export function DunningPolicyCard({
   )
 }
 
-function dayLabel(offset: number): string {
-  if (offset === 0) return "no vencimento"
-  if (offset < 0) return `${-offset} dia${offset === -1 ? "" : "s"} antes do vencimento`
-  return `${offset} dia${offset === 1 ? "" : "s"} depois do vencimento`
+function dayLabel(t: TFunction, offset: number): string {
+  if (offset === 0) return t("console.dunning.onDue")
+  if (offset < 0) return t("console.dunning.before", {count: -offset})
+  return t("console.dunning.after", {count: offset})
 }
 
 function PolicyEditor({
@@ -107,29 +107,32 @@ function PolicyEditor({
   onClose: () => void
   onSave: (steps: DunningStep[]) => Promise<unknown>
 }) {
+  const {t} = useTranslation()
   const [steps, setSteps] = useState<DunningStep[]>(policy.steps)
 
+  // An error on "steps[2].offset" lands under the third row; one on "steps" as a whole is general.
+  const fe = useFieldErrors([...steps.map((_, i) => `steps[${i}]`), "steps"], {keepOthers: false})
   const save = useMutation({
     mutationFn: (next: DunningStep[]) => onSave(next),
     onSuccess: () => {
-      toast.success("Política salva. Vale para as próximas faturas emitidas.")
+      toast.success(t("console.dunning.saved"))
       onClose()
     },
     // The server re-validates: ordered days, at most one "dar por perdida" and
     // por último, nada de restringir acesso antes do vencimento.
-    onError: error => toast.error(messageFor(error)),
+    onError: error => { if (!fe.set(error)) toast.error(messageFor(error)) },
   })
 
   return (
     <Modal
       open
       onClose={onClose}
-      title="Política de cobrança"
-      description="Cada passo é um dia relativo ao vencimento. Vale para faturas emitidas daqui em diante; as que já estão sendo cobradas seguem a política com que foram emitidas."
-      cancelLabel="Cancelar"
-      submitLabel="Salvar política"
+      title={t("console.dunning.title")}
+      description={t("console.dunning.body")}
+      cancelLabel={t("common.cancel")}
+      submitLabel={t("console.dunning.save")}
       loading={save.isPending}
-      onSubmit={() => save.mutate(steps)}
+      onSubmit={() => { fe.reset(); save.mutate(steps) }}
       size="lg"
     >
       <div className="space-y-4">
@@ -137,36 +140,42 @@ function PolicyEditor({
           {steps.map((step, i) => (
             <li key={i} className="flex flex-wrap items-center gap-2">
               <Input
-                aria-label={`Dia do passo ${i + 1}`}
+                aria-label={t("console.dunning.stepDay", {n: i + 1})}
                 maxLength={3}
                 inputMode="numeric"
                 value={String(step.offset)}
-                onChange={event =>
+                {...fe.props(`steps[${i}]`, `dunning-step-${i}`)}
+                id={`dunning-step-${i}`}
+                onChange={event => {
                   setSteps(replace(steps, i, {...step, offset: Number(event.target.value) || 0}))
-                }
+                  fe.clear(`steps[${i}]`)
+                }}
                 className="w-24"
               />
               <select
-                aria-label={`Ação do passo ${i + 1}`}
+                aria-label={t("console.dunning.stepAction", {n: i + 1})}
                 value={step.action}
                 onChange={event =>
                   setSteps(replace(steps, i, {...step, action: event.target.value as DunningAction}))
                 }
-                className="h-9 min-w-52 rounded-lg border border-border bg-background px-2 text-sm text-foreground"
+                className="h-9 min-w-40 max-w-full rounded-lg border border-border bg-background px-2 text-sm text-foreground"
               >
-                {(Object.keys(ACTION_LABEL) as DunningAction[]).map(action => (
-                  <option key={action} value={action}>{ACTION_LABEL[action]}</option>
+                {ACTIONS.map(action => (
+                  <option key={action} value={action}>{t(`console.dunning.${action}`)}</option>
                 ))}
               </select>
-              <span className="text-xs text-muted-foreground">{dayLabel(step.offset)}</span>
+              <span className="text-xs text-muted-foreground">{dayLabel(t, step.offset)}</span>
               <Button
                 variant="ghost"
                 size="icon"
-                aria-label={`Remover passo ${i + 1}`}
-                onClick={() => setSteps(steps.filter((_, j) => j !== i))}
+                aria-label={t("console.dunning.stepRemove", {n: i + 1})}
+                onClick={() => { fe.reset(); setSteps(steps.filter((_, j) => j !== i)) }}
               >
                 <X aria-hidden className="size-4"/>
               </Button>
+              {fe.of(`steps[${i}]`) && (
+                <p id={`dunning-step-${i}-error`} role="alert" className="w-full text-sm text-danger">{fe.of(`steps[${i}]`)}</p>
+              )}
             </li>
           ))}
         </ul>
@@ -180,19 +189,21 @@ function PolicyEditor({
             }
           >
             <Plus aria-hidden className="size-3.5"/>
-            Adicionar passo
+            {t("console.dunning.add")}
           </Button>
           {/* Clearing is not "disable dunning" and must not read as it: an
               invoice that is never chased and never written off sits em aberto
               para sempre parecendo receita. */}
-          <Button variant="ghost" size="sm" onClick={() => setSteps([])}>
-            Voltar a herdar ({inheritLabel})
+          <Button variant="ghost" size="sm" onClick={() => { fe.reset(); setSteps([]) }}>
+            {t("console.dunning.reset", {label: inheritLabel})}
           </Button>
         </div>
 
+        {fe.general && <p role="alert" className="text-sm text-danger">{fe.general}</p>}
+
         {steps.length === 0 && (
           <p className="text-sm text-muted-foreground">
-            Sem passos próprios: as faturas vão seguir {inheritLabel}.
+            {t("console.dunning.none", {label: inheritLabel})}
           </p>
         )}
       </div>

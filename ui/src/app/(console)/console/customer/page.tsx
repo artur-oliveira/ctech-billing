@@ -6,6 +6,7 @@ import {ArrowLeft, Eye} from "lucide-react"
 import Link from "next/link"
 import {useSearchParams} from "next/navigation"
 import {Suspense, useState} from "react"
+import {useTranslation} from "react-i18next"
 import {toast} from "sonner"
 
 import {SubscriptionStatusBadge} from "@/components/console/SubscriptionStatusBadge"
@@ -40,6 +41,7 @@ export default function ConsoleCustomerPage() {
 }
 
 function Detail() {
+  const {t} = useTranslation()
   const id = useSearchParams().get("id") ?? ""
   const mode = useMode()
 
@@ -72,25 +74,22 @@ function Detail() {
           {customer.name}
         </h1>
         {customer.anonymized && (
-          <p className="text-sm text-muted-foreground">
-            Este cadastro foi anonimizado a pedido do titular. As faturas emitidas continuam
-            existindo; um documento não some porque alguém pediu para ser esquecido.
-          </p>
+          <p className="text-sm text-muted-foreground">{t("console.customer.anonymized")}</p>
         )}
       </header>
 
       <dl className="grid gap-x-6 gap-y-4 border-y border-border py-4 text-sm sm:grid-cols-3">
-        <Fact label="E-mail" value={customer.email || "—"}/>
+        <Fact label={t("console.customer.email")} value={customer.email || "—"}/>
         <TaxID customerId={customer.id} masked={customer.tax_id_masked}/>
-        <Fact label="Referência externa" value={customer.external_ref || "—"}/>
+        <Fact label={t("console.customer.externalRef")} value={customer.external_ref || "—"}/>
       </dl>
 
       <section aria-labelledby="assinaturas" className="space-y-3">
         <h2 id="assinaturas" className="text-sm font-medium text-muted-foreground">
-          Assinaturas
+          {t("console.customer.subscriptions")}
         </h2>
         {subscriptions.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Este cliente não tem assinaturas.</p>
+          <p className="text-sm text-muted-foreground">{t("console.customer.noSubscriptions")}</p>
         ) : (
           <ul className="divide-y divide-border border-y border-border">
             {subscriptions.map(sub => (
@@ -129,6 +128,7 @@ function Detail() {
  * otherwise.
  */
 function TaxID({customerId, masked}: { customerId: string; masked?: string }) {
+  const {t} = useTranslation()
   const mode = useMode()
   const queryClient = useQueryClient()
   const [full, setFull] = useState<string | null>(null)
@@ -144,11 +144,11 @@ function TaxID({customerId, masked}: { customerId: string; masked?: string }) {
     onError: error => toast.error(messageFor(error)),
   })
 
-  if (!masked) return <Fact label="CPF/CNPJ" value="—"/>
+  if (!masked) return <Fact label={t("console.customer.taxId")} value="—"/>
 
   return (
     <div className="space-y-1">
-      <dt className="text-xs text-muted-foreground">CPF/CNPJ</dt>
+      <dt className="text-xs text-muted-foreground">{t("console.customer.taxId")}</dt>
       <dd className="flex items-center gap-2">
         <span data-numeric className="text-foreground">{full ?? masked}</span>
         {full === null && (
@@ -159,12 +159,12 @@ function TaxID({customerId, masked}: { customerId: string; masked?: string }) {
             disabled={reveal.isPending}
           >
             <Eye aria-hidden className="size-3.5"/>
-            {reveal.isPending ? "Revelando…" : "Revelar"}
+            {reveal.isPending ? t("console.customer.revealing") : t("console.customer.reveal")}
           </Button>
         )}
       </dd>
       {full === null && (
-        <p className="text-xs text-muted-foreground">Revelar fica registrado no histórico.</p>
+        <p className="text-xs text-muted-foreground">{t("console.customer.revealNote")}</p>
       )}
     </div>
   )
@@ -180,15 +180,16 @@ function Fact({label, value, numeric}: { label: string; value: string; numeric?:
 }
 
 function NotFound() {
+  const {t} = useTranslation()
   return (
     <div className="space-y-6">
       <BackLink/>
       <div className="space-y-2">
         <h1 className="text-lg font-semibold tracking-[-0.01em] text-foreground">
-          Cliente não encontrado
+          {t("console.customer.notFound")}
         </h1>
         <p className="text-sm text-muted-foreground">
-          Ele pode pertencer ao outro modo; confira se você está em Produção ou Teste.
+          {t("console.wrongMode")}
         </p>
       </div>
     </div>
@@ -196,13 +197,14 @@ function NotFound() {
 }
 
 function BackLink() {
+  const {t} = useTranslation()
   return (
     <Link
       href="/console/customers"
       className="inline-flex items-center gap-1.5 text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
     >
       <ArrowLeft aria-hidden className="size-3.5"/>
-      Clientes
+      {t("console.customer.back")}
     </Link>
   )
 }

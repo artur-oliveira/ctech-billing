@@ -1,6 +1,8 @@
 "use client"
 
 import {apiClient} from "@/lib/api/client"
+import {currentLocale} from "@/lib/i18n"
+import type {SupportedLocale} from "@/lib/locale"
 import type {
   DocumentLink,
   Invoice,
@@ -104,8 +106,8 @@ export async function getInvoice(id: string): Promise<Invoice> {
  * readers open an invoice to pay it, not to file it, and rendering a PDF for
  * everybody who looks would be work nobody asked for.
  */
-export async function getInvoicePDF(id: string): Promise<DocumentLink> {
-  const {data} = await apiClient.get<DocumentLink>(`/v1.0/portal/invoices/${id}/pdf`)
+export async function getInvoicePDF(id: string, lang: SupportedLocale = currentLocale()): Promise<DocumentLink> {
+  const {data} = await apiClient.get<DocumentLink>(`/v1.0/portal/invoices/${id}/pdf`, {params: {lang}})
   return data
 }
 

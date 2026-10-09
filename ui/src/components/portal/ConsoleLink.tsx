@@ -2,6 +2,7 @@
 
 import {useQuery} from "@tanstack/react-query"
 import Link from "next/link"
+import {useTranslation} from "react-i18next"
 
 import {consoleKeys, getConsoleSession} from "@/lib/api/console"
 import {useAuth} from "@/lib/auth/AuthContext"
@@ -16,6 +17,7 @@ import {useAuth} from "@/lib/auth/AuthContext"
  * which needs no organization.
  */
 export function ConsoleLink() {
+  const {t} = useTranslation()
   const {authenticated} = useAuth()
 
   const {data} = useQuery({
@@ -36,7 +38,7 @@ export function ConsoleLink() {
       href={data ? "/console/overview" : "/console/finance"}
       className="shrink-0 text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
     >
-      Console
+      {t("portal.nav.console")}
     </Link>
   )
 }

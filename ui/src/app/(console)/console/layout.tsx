@@ -6,7 +6,9 @@ import Image from "next/image"
 import Link from "next/link"
 import {usePathname, useRouter} from "next/navigation"
 import {useEffect, useRef} from "react"
+import {useTranslation} from "react-i18next"
 
+import {LanguageSwitcher} from "@/components/LanguageSwitcher"
 import {ModeSwitch} from "@/components/console/ModeSwitch"
 import {NoOrganization} from "@/components/console/NoOrganization"
 import {SpaceSwitch} from "@/components/finance/SpaceSwitch"
@@ -36,6 +38,7 @@ import {useMode} from "@/lib/console/useMode"
  * (ADR 0011).
  */
 export default function ConsoleLayout({children}: LayoutProps<"/console">) {
+  const {t} = useTranslation()
   const pathname = usePathname()
   // The nav scrolls sideways without a visible bar on a phone, so the current
   // section is brought into view; only the row scrolls, never the page.
@@ -77,8 +80,8 @@ export default function ConsoleLayout({children}: LayoutProps<"/console">) {
   return (
     <div data-density="compact" className="min-h-dvh">
       <header className="border-b border-border">
-        <div className="mx-auto flex min-h-14 max-w-6xl flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-2">
-          <div className="flex min-w-0 items-center gap-4">
+        <div className="mx-auto flex min-h-14 max-w-6xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2">
+          <div className="order-1 flex min-w-0 items-center gap-4">
             <Link href="/console/overview" className="flex shrink-0 items-center gap-2.5">
               <Image
                 src="/android-chrome-192x192.png"
@@ -102,7 +105,7 @@ export default function ConsoleLayout({children}: LayoutProps<"/console">) {
             )}
           </div>
 
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="order-3 flex w-full min-w-0 flex-wrap items-center gap-x-3 gap-y-2 sm:order-2 sm:ml-auto sm:w-auto">
             {/* Space and mode side by side, so "Pessoal · Teste" reads as one
                 answer. The space only exists in Finanças: invoicing's
                 organization comes from the signed-in owner (ADR 0011). */}
@@ -115,20 +118,23 @@ export default function ConsoleLayout({children}: LayoutProps<"/console">) {
               href="/dashboard"
               className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
             >
-              Minhas cobranças
+              {t("console.shell.myBills")}
             </Link>
+          </div>
+          <div className="order-2 ml-auto flex items-center gap-3 sm:order-3 sm:ml-0">
+            <LanguageSwitcher/>
             <button
               type="button"
               onClick={logout}
               className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
             >
-              Sair
+              {t("console.shell.signOut")}
             </button>
           </div>
         </div>
 
-        <nav className="mx-auto max-w-6xl px-4" aria-label="Seções">
-          <ul ref={navRef} className="relative -mb-px flex gap-1 overflow-x-auto overscroll-x-contain scrollbar-none">
+        <nav className="mx-auto max-w-6xl px-4" aria-label={t("console.nav.label")}>
+          <ul ref={navRef} className="relative -mb-px flex gap-1 overflow-x-auto overscroll-x-contain scrollbar-none max-sm:[mask-image:linear-gradient(to_right,#000_calc(100%-1.5rem),transparent)]">
             {nav.map(item => {
               const active = pathname.startsWith(item.href)
               return (
@@ -142,7 +148,7 @@ export default function ConsoleLayout({children}: LayoutProps<"/console">) {
                         : "border-transparent text-muted-foreground hover:text-foreground"
                     }`}
                   >
-                    {item.label}
+                    {t(item.label)}
                   </Link>
                 </li>
               )
@@ -156,7 +162,7 @@ export default function ConsoleLayout({children}: LayoutProps<"/console">) {
           forgets that voids a real invoice believing it is a sandbox one. */}
       {mode === "test" && (
         <p className="bg-warning/12 border-b border-warning/30 px-4 py-2 text-center text-xs text-foreground">
-          Modo de teste; nada aqui cobra dinheiro de verdade.
+          {t("console.shell.testBanner")}
         </p>
       )}
 

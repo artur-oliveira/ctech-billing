@@ -180,7 +180,7 @@ func (r *CardRepository) AddPurchase(ctx context.Context, sp space.ResolvedSpace
 		return Purchase{}, err
 	}
 	if cat.Class != finance.ClassExpense || cat.System || cat.Archived {
-		return Purchase{}, fmt.Errorf("%w: a compra precisa de uma categoria de despesa ativa", finance.ErrInvalidTransaction)
+		return Purchase{}, fmt.Errorf("%w: the purchase needs an active expense category", finance.ErrInvalidTransaction)
 	}
 	plan, err := finance.AllocateInstallments(p.Total, len(p.Installments), p.Date, card.ClosingDay)
 	if err != nil {

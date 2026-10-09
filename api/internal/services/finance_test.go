@@ -314,6 +314,9 @@ func TestProjectKeepsVirtualOccurrencesApartFromForecastBills(t *testing.T) {
 		if got := byMonth[m]; got.Virtual != -150000 || got.Payable != 0 {
 			t.Errorf("%s = %+v, want virtual -150000 apart from the bills", m, got)
 		}
+		if got := byMonth[m]; got.VirtualPayable != 150000 || got.VirtualReceivable != 0 || got.Virtual != got.VirtualReceivable-got.VirtualPayable {
+			t.Errorf("%s = %+v: the two sides of virtual must add back to the net", m, got)
+		}
 	}
 	if byMonth[time.April].Virtual != 0 || byMonth[time.March].Virtual != 0 {
 		t.Error("an occurrence inside the horizon is a bill, not a virtual one")

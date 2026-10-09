@@ -4,6 +4,7 @@ import {Button} from "@aoctech/ui"
 import {useQuery} from "@tanstack/react-query"
 import {useRouter, useSearchParams} from "next/navigation"
 import {Suspense, useEffect} from "react"
+import {useTranslation} from "react-i18next"
 
 import {StatusScreen} from "@/components/StatusScreen"
 import {getHealth} from "@/lib/api/portal"
@@ -29,6 +30,7 @@ export default function Maintenance() {
 
 function MaintenanceScreen() {
   const router = useRouter()
+  const {t} = useTranslation()
   // `?from` is attacker-controlled — a link to /maintenance?from=… is a link
   // anybody can send. safeReturn is what keeps it same-site; see its test.
   const back = safeReturn(useSearchParams().get("from"), "/dashboard")
@@ -53,7 +55,7 @@ function MaintenanceScreen() {
     <Screen
       action={
         <Button variant="outline" onClick={() => void probe.refetch()} disabled={probe.isFetching}>
-          {probe.isFetching ? "Verificando…" : "Verificar agora"}
+          {probe.isFetching ? t("auth.maintenance.checking") : t("auth.maintenance.check")}
         </Button>
       }
     />
@@ -61,10 +63,11 @@ function MaintenanceScreen() {
 }
 
 function Screen({action}: { action?: React.ReactNode }) {
+  const {t} = useTranslation()
   return (
     <StatusScreen
-      title="Estamos em manutenção"
-      description="O sistema de cobranças está fora do ar por pouco tempo. Nenhuma fatura vence enquanto isso e nada foi cobrado. Esta página volta sozinha assim que terminarmos."
+      title={t("auth.maintenance.title")}
+      description={t("auth.maintenance.description")}
       action={action}
     />
   )
