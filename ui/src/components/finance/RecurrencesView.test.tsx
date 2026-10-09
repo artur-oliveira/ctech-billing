@@ -37,6 +37,14 @@ afterEach(() => {
 })
 
 describe("F4 — recorrências", () => {
+  it("says where to create a category when there is none, instead of a silent disabled button", async () => {
+    serve(["finance.read", "finance.write", "finance.settle", "finance.import", "finance.configure"])
+    vi.mocked(finance.listAccounts).mockResolvedValue({data: ACCOUNTS.filter(a => a.class === "asset"), has_more: false})
+    renderWithQuery(<RecurrencesView/>)
+    await userEvent.click(await screen.findByRole("button", {name: "Nova recorrência"}))
+    expect(await screen.findByText("Nenhuma categoria de despesa. Crie uma em Contas.")).toBeInTheDocument()
+  })
+
   it("lists each recurrence with its rule in words", async () => {
     serve(ALL)
     renderWithQuery(<RecurrencesView/>)

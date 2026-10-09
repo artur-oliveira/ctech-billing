@@ -220,10 +220,10 @@ function RecurrencePanel({editing, accounts, onDone}: {editing?: Recurrence; acc
         <div className="grid items-start gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Field label="Descrição" htmlFor="rc-desc" className="lg:col-span-2"><Input id="rc-desc" value={description} onChange={e => setDescription(e.target.value)}/></Field>
           <Field label="Valor" htmlFor="rc-amount" required><Input id="rc-amount" inputMode="decimal" placeholder="0,00" value={amountText} onChange={e => setAmountText(limitMoneyDecimals(e.target.value))}/></Field>
-          <Field label="Categoria" htmlFor="rc-cat">
+          <Field label="Categoria" htmlFor="rc-cat" required hint={cats.length === 0 ? `Nenhuma categoria de ${direction === "payable" ? "despesa" : "receita"}. Crie uma em Contas.` : undefined}>
             <Select id="rc-cat" value={category} onValueChange={setCategory} options={cats.map(a => ({value: a.id, label: a.name}))}/>
           </Field>
-          <Field label={direction === "payable" ? "Pagar com" : "Receber em"} htmlFor="rc-acct">
+          <Field label={direction === "payable" ? "Pagar com" : "Receber em"} htmlFor="rc-acct" required hint={assets.length === 0 ? "Nenhuma conta. Crie uma em Contas." : undefined}>
             <Select id="rc-acct" value={account} onValueChange={setAccount} options={assets.map(a => ({value: a.id, label: a.name}))}/>
           </Field>
           {!editing && (

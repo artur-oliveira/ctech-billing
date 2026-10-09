@@ -120,6 +120,59 @@ func (r *LedgerRepository) EnsureSpace(ctx context.Context, sp space.ResolvedSpa
 	return err
 }
 
+// seedVersion is the version of finance.DefaultCategories a space was seeded
+// with, kept on its SPACE row. Raising it seeds a space again (only what is
+// missing is added).
+const seedVersion = 1
+
+// SeedCategories adds the space's default categories (spec § 3.3), once per
+// seed version. Each is a conditional put, so one the person archived is never
+// brought back, and a default whose name the person already used is skipped
+// rather than duplicated.
+func (r *LedgerRepository) SeedCategories(ctx context.Context, sp space.ResolvedSpace, now time.Time) error {
+	if err := sp.Require(space.Write); err != nil {
+		return err
+	}
+	raw, err := r.accounts.GetItem(ctx, sp.PK(), LedgerSpaceSK())
+	if err != nil {
+		return err
+	}
+	if raw != nil {
+		it, err := Decode[struct {
+			Seed int `dynamodbav:"seed_version"`
+		}](raw)
+		if err != nil {
+			return err
+		}
+		if it.Seed >= seedVersion {
+			return nil
+		}
+	}
+	existing, err := r.ListAccounts(ctx, sp)
+	if err != nil {
+		return err
+	}
+	taken := make(map[string]bool, len(existing))
+	for _, a := range existing {
+		taken[strings.ToLower(strings.TrimSpace(a.Name))] = true
+	}
+	for _, a := range finance.DefaultCategories(sp.Personal()) {
+		if taken[strings.ToLower(a.Name)] {
+			continue
+		}
+		item, err := Encode(newAccountItem(sp, a, now))
+		if err != nil {
+			return err
+		}
+		err = r.accounts.TransactWrite(ctx, txItems(r.accounts.BuildPutTxItemIfAbsent(item)))
+		if err != nil && !onlyConditionFailed(err) {
+			return err
+		}
+	}
+	sk := LedgerSpaceSK()
+	return r.accounts.UpsertAttrs(ctx, sp.PK(), &sk, map[string]any{"seed_version": seedVersion, "updated_at": now.UTC().Format(time.RFC3339Nano)})
+}
+
 // CreateAccount adds an account or category to the space's chart.
 func (r *LedgerRepository) CreateAccount(ctx context.Context, sp space.ResolvedSpace, a finance.LedgerAccount, now time.Time) error {
 	if err := sp.Require(space.Configure); err != nil {

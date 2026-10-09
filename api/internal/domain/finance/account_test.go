@@ -51,3 +51,26 @@ func TestDefaultSystemAccounts(t *testing.T) {
 		t.Fatalf("classes: %+v", byID)
 	}
 }
+
+func TestDefaultCategoriesAreValidAndCoverTheSettlementGaps(t *testing.T) {
+	for _, personal := range []bool{true, false} {
+		seen := map[string]bool{}
+		names := map[string]bool{}
+		for _, a := range DefaultCategories(personal) {
+			if err := a.Validate(); err != nil || a.System || (a.Class != ClassIncome && a.Class != ClassExpense) || a.Group == "" {
+				t.Errorf("personal=%v: %+v: %v", personal, a, err)
+			}
+			if seen[a.ID] {
+				t.Errorf("personal=%v: duplicate id %s", personal, a.ID)
+			}
+			seen[a.ID], names[a.Name] = true, true
+		}
+		// Spec § 3.2: a settlement for a different amount needs somewhere to go.
+		if !names["Juros e multas"] || !names["Descontos obtidos"] {
+			t.Errorf("personal=%v: the settlement-gap categories are missing", personal)
+		}
+	}
+	if len(DefaultCategories(true)) == len(DefaultCategories(false)) && DefaultCategories(true)[0].Name == DefaultCategories(false)[0].Name {
+		t.Error("personal and organization spaces get different sets (spec § 3.3)")
+	}
+}
