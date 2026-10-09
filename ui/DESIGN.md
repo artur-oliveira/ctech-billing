@@ -152,8 +152,9 @@ remembering which screen it is on.
 **Touch overrides compact.** The console's 32px is for a mouse on a laptop. Under
 a coarse pointer, or a viewport under `sm`, a control is a 44px target again: one
 unlayered rule in `globals.css`, keyed on the `data-slot` every shared control
-carries (`button`, `input`, `select-trigger`, `segmented-item`, `date-field`, a
-switch's label), and a `touch:` variant for anything drawn by hand. It is still
+carries (`button`, `input`, `select-trigger`, `segmented-item`, a switch's
+label), and a `touch:` variant for anything without one: anything drawn by hand,
+and `DateField`, whose DatePicker trigger has no `data-slot`. It is still
 "decided by where a button is"; the where now includes the hand holding it.
 
 ## Depth is hairlines

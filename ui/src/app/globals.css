@@ -122,15 +122,15 @@
  * shared control already carries, so no call site has to remember it. It is
  * unlayered on purpose: it must beat `in-data-[density=compact]:h-8`, which
  * lives in the utilities layer. A min-height, not a height, so a control that
- * is already taller is left alone. Candidate for @aoctech/ui.
+ * is already taller is left alone. A control with no data-slot (DateField's
+ * DatePicker trigger) asks for `touch:min-h-11` itself. Candidate for @aoctech/ui.
  */
 @media (pointer: coarse), (max-width: 39.999rem) {
   [data-density="compact"] :is(
     [data-slot="button"],
     [data-slot="input"],
     [data-slot="select-trigger"],
-    [data-slot="segmented-item"],
-    [data-slot="date-field"] > button
+    [data-slot="segmented-item"]
   ) {
     min-height: 2.75rem;
   }

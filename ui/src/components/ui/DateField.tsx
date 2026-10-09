@@ -48,7 +48,9 @@ export function DateField({id, value, onValueChange, min, max, placeholder, disa
       max={max ? toDate(max) : undefined}
       placeholder={placeholder ?? t("auth.date.placeholder")}
       disabled={disabled}
-      className={invalid ? `${className ?? ""} border-danger ring-3 ring-danger/20`.trim() : className}
+      // The DatePicker's trigger carries no data-slot, so the global touch rule
+      // cannot reach it: the 44px target under touch is asked for here.
+      className={["touch:min-h-11", className, invalid && "border-danger ring-3 ring-danger/20"].filter(Boolean).join(" ")}
     />
   )
 }
