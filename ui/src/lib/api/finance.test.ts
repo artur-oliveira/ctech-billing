@@ -38,6 +38,9 @@ describe("every finance call", () => {
     ["listCards", () => finance.listCards(ctx)],
     ["getCardStatement", () => finance.getCardStatement(ctx, "c1", "2026-03")],
     ["listPurchases", () => finance.listPurchases(ctx, "c1")],
+    ["listImports", () => finance.listImports(ctx, "a1")],
+    ["getImport", () => finance.getImport(ctx, "i1")],
+    ["getCsvMapping", () => finance.getCsvMapping(ctx, "a1")],
   ]
   const writes: [string, () => Promise<unknown>][] = [
     ["createBill", () => finance.createBill(ctx, {direction: "payable", amount: 100, account_id: "a", category_id: "c", due_date: "2026-03-10"}, "K")],
@@ -60,6 +63,12 @@ describe("every finance call", () => {
     ["refundPurchase", () => finance.refundPurchase(ctx, "c1", "p1", "K")],
     ["advancePurchase", () => finance.advancePurchase(ctx, "c1", "p1", "K")],
     ["closeStatement", () => finance.closeStatement(ctx, "c1", "2026-03", "K")],
+    ["uploadImport", () => finance.uploadImport(ctx, {account_id: "a1", format: "ofx", content: "PE9GWD4="}, "K")],
+    ["matchLine", () => finance.matchLine(ctx, "i1", 1, {bill_id: "b1"}, "K")],
+    ["newFromLine", () => finance.newFromLine(ctx, "i1", 1, {category_id: "c"}, "K")],
+    ["ignoreLine", () => finance.ignoreLine(ctx, "i1", 1, "K")],
+    ["reopenLine", () => finance.reopenLine(ctx, "i1", 1, "K")],
+    ["putCsvMapping", () => finance.putCsvMapping(ctx, "a1", {delimiter: ";", decimal: ",", date_format: "dd/mm/yyyy", skip_rows: 1, date_column: 1, description_column: 2, amount_column: 3, debit_column: 0}, "K")],
   ]
 
   it.each([...reads, ...writes])("%s sends the mode and the space", async (_name, call) => {
@@ -110,6 +119,28 @@ void (() => finance.createPurchase(ctx, "c1", {date: "2026-03-01", description: 
 
 // @ts-expect-error — a transfer requires an idempotency key
 void (() => finance.createTransfer(ctx, {from_account_id: "a", to_account_id: "b", amount: 1, date: "2026-03-01"}))
+
+describe("the statement upload", () => {
+  it("posts the file as base64 with the account and the format in the body", async () => {
+    await finance.uploadImport(ctx, {account_id: "a1", format: "csv", content: "YQ=="}, "K")
+    expect(seen[0].method).toBe("POST")
+    expect(seen[0].url).toBe("/v1.0/console/finance/imports")
+    expect(seen[0].data).toEqual({account_id: "a1", format: "csv", content: "YQ=="})
+  })
+
+  it("reads a file's bytes as base64 without decoding them as text", async () => {
+    // "café" in Windows-1252: 0xE9 is not UTF-8, and must arrive unchanged.
+    const bytes = new Uint8Array([0x63, 0x61, 0x66, 0xe9])
+    expect(await finance.fileToBase64(new Blob([bytes]))).toBe("Y2Fm6Q==")
+  })
+
+  it("keys the imports under the space, so a write's invalidation refreshes them", () => {
+    const all = JSON.stringify(financeKeys.all("live", org)).slice(0, -1)
+    for (const k of [financeKeys.imports("live", org, "a1"), financeKeys.importDetail("live", org, "i1"), financeKeys.csvMapping("live", org, "a1")]) {
+      expect(JSON.stringify(k).startsWith(all)).toBe(true)
+    }
+  })
+})
 
 describe("report keys", () => {
   it("live under the space's key, so any write's invalidation refreshes them", () => {

@@ -15,7 +15,7 @@
  */
 import type {
   Account, AccountClass, Bill, Card, CardStatement, CashFlowMonth, Purchase, StatementItem, DREGroupLine, Direction, ExpressionJSON, FinanceSpaceEntry, ProjectionMonth,
-  Recurrence, StatementEntry, TxKind, Verb,
+  Recurrence, StatementEntry, TxKind, Verb, CsvMapping, ImportFormat, ImportLine, ImportSummary, RejectReason,
 } from "@/lib/api/financeTypes"
 
 export const FINANCE_MOCK_ORG = "0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b"
@@ -59,6 +59,10 @@ interface SpaceState {
   /** Statement items, keyed by card and month like the API's ITEM rows. */
   items: (StatementItem & {card: string; month: string; key: string})[]
   closed: Map<string, {total: number; bill_id?: string}>
+  /** Statement imports (F6): each with its lines; locks make a line import once per account. */
+  imports: (ImportSummary & {id: string; lines_: Omit<ImportLine, "candidates">[]})[]
+  locks: Set<string>
+  mappings: Map<string, CsvMapping>
 }
 
 // ---- dates (civil, no Date parsing of ISO strings) ---------------------------
@@ -103,8 +107,21 @@ function seed(kind: "personal" | "org", mode: string): SpaceState {
     entries: [] as MEntry[], reversed: new Set<string>(), openings: new Set<string>(),
     cards: [] as Card[], purchases: [] as SpaceState["purchases"], items: [] as SpaceState["items"],
     closed: new Map<string, {total: number; bill_id?: string}>(),
+    imports: [] as SpaceState["imports"], locks: new Set<string>(), mappings: new Map<string, CsvMapping>(),
   }
   if (kind === "personal") {
+    if (live) {
+      const lines: Omit<ImportLine, "candidates">[] = [
+        {n: 1, date: addDays(today, -1), amount: -42_590, description: "Compra no débito - Supermercado", status: "pending"},
+        {n: 2, date: addDays(today, -1), amount: -1_250, description: "Padaria", status: "pending"},
+        {n: 3, date: addDays(today, -2), amount: -5_000, description: "Transferência para poupança", status: "ignored"},
+      ]
+      ledger.imports.push({
+        id: "imp-seed", account_id: "conta-corrente", format: "ofx", created_at: `${today}T09:00:00Z`, from: addDays(today, -2), to: addDays(today, -1),
+        lines: 3, duplicates: 0, rejected_count: 0, rejected: [], pending: 2, lines_: lines,
+      })
+      for (const l of lines) ledger.locks.add(`conta-corrente#seed-${l.n}`)
+    }
     return {
       ...ledger,
       seq: 1,
@@ -166,6 +183,55 @@ function header(r: Req, name: string): string | undefined {
 
 function body<T>(r: Req): T {
   return (typeof r.data === "string" ? JSON.parse(r.data) : r.data ?? {}) as T
+}
+
+// ---- statements (mock-grade readers; the server's are the real ones) ------------
+
+function daysBetween(a: string, b: string): number {
+  const [ay, am, ad] = parts(a), [by, bm, bd] = parts(b)
+  return Math.round((Date.UTC(by, bm - 1, bd) - Date.UTC(ay, am - 1, ad)) / 86_400_000)
+}
+
+function mockAmount(s: string, decimal: "," | "." = "."): number | null {
+  const clean = s.replace(/\s|R\$/g, "").replace(decimal === "," ? /\./g : /,/g, "").replace(",", ".")
+  const n = Number(clean)
+  return clean !== "" && Number.isFinite(n) ? Math.round(n * 100) : null
+}
+
+function mockOFX(text: string) {
+  const lines: {date: string; amount: number; description: string; fitid?: string}[] = []
+  const rejected: {line: number; reason: RejectReason}[] = []
+  const field = (block: string, tag: string) => block.match(new RegExp(`<${tag}>([^<\r\n]*)`, "i"))?.[1].trim() ?? ""
+  ;[...text.matchAll(/<STMTTRN>([\s\S]*?)<\/STMTTRN>/gi)].forEach((m, i) => {
+    const d = field(m[1], "DTPOSTED")
+    const amount = mockAmount(field(m[1], "TRNAMT").replace(",", "."))
+    if (!/^\d{8}/.test(d)) return rejected.push({line: i + 1, reason: "invalid_date"})
+    if (amount === null) return rejected.push({line: i + 1, reason: "invalid_amount"})
+    if (amount === 0) return rejected.push({line: i + 1, reason: "zero_amount"})
+    lines.push({date: `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`, amount, description: field(m[1], "MEMO") || field(m[1], "NAME"), fitid: field(m[1], "FITID") || undefined})
+  })
+  return {lines, rejected}
+}
+
+function mockCSV(text: string, m: CsvMapping) {
+  const lines: {date: string; amount: number; description: string}[] = []
+  const rejected: {line: number; reason: RejectReason}[] = []
+  const sep = m.delimiter === "\t" ? "\t" : m.delimiter
+  text.split(/\r?\n/).forEach((row, i) => {
+    if (i < m.skip_rows || row.trim() === "") return
+    const cells = row.split(sep).map(c => c.replace(/^"|"$/g, "").trim())
+    const raw = cells[m.date_column - 1] ?? ""
+    const p = raw.split(/[/.-]/)
+    const date = m.date_format === "yyyy-mm-dd" ? `${p[0]}-${p[1]}-${p[2]}` : m.date_format === "mm/dd/yyyy" ? `${p[2]}-${p[0]}-${p[1]}` : `${p[2]}-${p[1]}-${p[0]}`
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return rejected.push({line: i + 1, reason: "invalid_date"})
+    const credit = mockAmount(cells[m.amount_column - 1] ?? "", m.decimal)
+    const debit = m.debit_column ? mockAmount(cells[m.debit_column - 1] ?? "", m.decimal) : null
+    const amount = m.debit_column ? (credit ? Math.abs(credit) : 0) - (debit ? Math.abs(debit) : 0) : credit
+    if (amount === null) return rejected.push({line: i + 1, reason: "invalid_amount"})
+    if (amount === 0) return rejected.push({line: i + 1, reason: "zero_amount"})
+    lines.push({date, amount, description: cells[m.description_column - 1] ?? ""})
+  })
+  return {lines, rejected}
 }
 
 // ---- occurrences (mock-grade) ----------------------------------------------------
@@ -614,6 +680,135 @@ function route(method: string, path: string, r: Req, s: SpaceState, can: (v: Ver
     })
     const closing_cash = out.reduce((t, m) => t + m.in - m.out + m.openings, opening_cash)
     return ok({from, to, opening_cash, closing_cash, months: out})
+  }
+
+  // imports (F6)
+  const importMatch = path.match(/^\/imports\/([^/]+)(?:\/lines\/(\d+)\/(match|new|ignore|reopen))?$/)
+  const mappingMatch = path.match(/^\/accounts\/([^/]+)\/csv-mapping$/)
+  const summary = (i: SpaceState["imports"][number]): ImportSummary => {
+    const {lines_, ...rest} = i
+    return {...rest, pending: lines_.filter(l => l.status === "pending").length}
+  }
+  if (path === "/imports" && method === "get") {
+    const account = r.params?.account_id
+    return ok({data: s.imports.filter(i => !account || i.account_id === account).map(summary).reverse(), has_more: false})
+  }
+  if (path === "/imports" && method === "post") {
+    if (!can("finance.import")) return forbidden()
+    const req = body<{account_id: string; format: ImportFormat; content: string}>(r)
+    if (!cash(req.account_id)) return problem(422, "about:blank", "Unprocessable", "conta desconhecida neste espaço", "unknown_account")
+    let text: string
+    try {
+      text = atob(req.content)
+    } catch {
+      return problem(422, "about:blank", "Unprocessable", "invalid body", "validation_error", [{field: "content", code: "invalid_format", message: "base64"}])
+    }
+    let parsed: {lines: {date: string; amount: number; description: string; fitid?: string}[]; rejected: {line: number; reason: RejectReason}[]}
+    if (req.format === "ofx") {
+      if (/<CCSTMTRS>/i.test(text)) return problem(422, "about:blank", "Unprocessable", "card statement", "statement_card_not_supported")
+      if (!/<OFX>/i.test(text)) return problem(422, "about:blank", "Unprocessable", "not an OFX file", "statement_unreadable")
+      parsed = mockOFX(text)
+    } else {
+      const m = s.mappings.get(req.account_id)
+      if (!m) return problem(422, "about:blank", "Unprocessable", "no CSV mapping", "csv_mapping_required")
+      parsed = mockCSV(text, m)
+    }
+    if (parsed.lines.length + parsed.rejected.length === 0) return problem(422, "about:blank", "Unprocessable", "no transactions", "statement_empty")
+    const seen = new Map<string, number>()
+    const fresh: Omit<ImportLine, "candidates">[] = []
+    let duplicates = 0
+    parsed.lines.forEach((l, i) => {
+      const ident = `${l.date}|${l.amount}|${l.description.toUpperCase()}`
+      seen.set(ident, (seen.get(ident) ?? 0) + 1)
+      const key = `${req.account_id}#${l.fitid ? `F:${l.fitid}` : `H:${ident}|${seen.get(ident)}`}`
+      if (s.locks.has(key)) {
+        duplicates++
+        return
+      }
+      s.locks.add(key)
+      fresh.push({n: i + 1, date: l.date, amount: l.amount, description: l.description, status: "pending"})
+    })
+    const dates = fresh.map(l => l.date).sort()
+    const imp: SpaceState["imports"][number] = {
+      id: nextId("imp"), account_id: req.account_id, format: req.format, created_at: new Date().toISOString(),
+      from: dates[0], to: dates[dates.length - 1], lines: fresh.length, duplicates,
+      rejected_count: parsed.rejected.length, rejected: parsed.rejected.slice(0, 50), pending: fresh.length, lines_: fresh,
+    }
+    if (fresh.length === 0) {
+      const {id: _drop, ...rest} = summary(imp)
+      void _drop
+      return ok(rest)
+    }
+    s.imports.push(imp)
+    return ok(summary(imp), 201)
+  }
+  if (importMatch) {
+    const imp = s.imports.find(i => i.id === importMatch[1])
+    if (!imp) return problem(404, "about:blank", "Not Found", "recurso não encontrado", "resource_not_found")
+    const [, , n, action] = importMatch
+    if (!action && method === "get") {
+      const lines: ImportLine[] = imp.lines_.map(l => ({
+        ...l,
+        candidates: l.status !== "pending" ? [] : s.bills
+          .filter(b => b.status === "forecast" && b.account_id === imp.account_id && b.direction === (l.amount < 0 ? "payable" : "receivable") &&
+            b.amount === Math.abs(l.amount) && Math.abs(daysBetween(l.date, b.due_date)) <= 5)
+          .sort((a, b) => Math.abs(daysBetween(l.date, a.due_date)) - Math.abs(daysBetween(l.date, b.due_date)) || a.due_date.localeCompare(b.due_date))
+          .slice(0, 5).map(withBucket),
+      }))
+      return ok({import: summary(imp), lines})
+    }
+    const line = imp.lines_.find(l => l.n === Number(n))
+    if (!line) return problem(404, "about:blank", "Not Found", "recurso não encontrado", "resource_not_found")
+    const resolved = () => problem(409, "/problems/invalid-transition", "Invalid Transition", "esta linha já foi conciliada", "line_already_reconciled")
+    if (action === "reopen") {
+      if (!can("finance.import")) return forbidden()
+      if (line.status !== "ignored") return resolved()
+      line.status = "pending"
+      return ok({line: {...line, candidates: []}})
+    }
+    if (line.status !== "pending") return resolved()
+    if (action === "ignore") {
+      if (!can("finance.import")) return forbidden()
+      line.status = "ignored"
+      return ok({line: {...line, candidates: []}})
+    }
+    if (!can("finance.import") || !can("finance.settle") || !can("finance.write")) return forbidden()
+    const dir: Direction = line.amount < 0 ? "payable" : "receivable"
+    const amount = Math.abs(line.amount)
+    if (action === "match") {
+      const req = body<{bill_id: string}>(r)
+      const bill = s.bills.find(b => b.id === req.bill_id)
+      if (!bill) return problem(404, "about:blank", "Not Found", "recurso não encontrado", "resource_not_found")
+      if (bill.account_id !== imp.account_id || bill.direction !== dir) return problem(422, "about:blank", "Unprocessable", "mismatch", "line_bill_mismatch")
+      if (bill.status !== "forecast") return problem(409, "/problems/invalid-transition", "Invalid Transition", "esta conta mudou enquanto você a via", "invalid_transition")
+      post([{account: bill.account_id, date: line.date, amount: line.amount, kind: "settlement", flow: bill.category_id, memo: bill.description ?? "Sem descrição", ref: `bill:${bill.id}`}])
+      Object.assign(bill, {status: "paid", paid_date: line.date})
+      Object.assign(line, {status: "matched", bill_id: bill.id})
+      return ok({line: {...line, candidates: []}, bill})
+    }
+    const req = body<{category_id: string; description?: string}>(r)
+    const cat = s.accounts.find(a => a.id === req.category_id)
+    if (!cat || cat.class !== (dir === "payable" ? "expense" : "income") || cat.archived) {
+      return problem(422, "about:blank", "Unprocessable", "a category of the line's direction", "invalid_bill")
+    }
+    const bill: Bill = {
+      id: nextId("b"), direction: dir, amount, account_id: imp.account_id, category_id: cat.id, description: req.description || line.description,
+      competence_date: line.date, due_date: line.date, paid_date: line.date, status: "paid", origin: "import", origin_ref: `${imp.id}#${line.n}`, auto_settle: false,
+    }
+    s.bills.push(bill)
+    post([{account: imp.account_id, date: line.date, amount: line.amount, kind: "settlement", flow: cat.id, memo: bill.description ?? "Sem descrição", ref: `bill:${bill.id}`}])
+    Object.assign(line, {status: "created", bill_id: bill.id})
+    return ok({line: {...line, candidates: []}, bill}, 201)
+  }
+  if (mappingMatch) {
+    if (method === "get") {
+      const m = s.mappings.get(mappingMatch[1])
+      return m ? ok(m) : problem(404, "about:blank", "Not Found", "recurso não encontrado", "resource_not_found")
+    }
+    if (!can("finance.import")) return forbidden()
+    const m = body<CsvMapping>(r)
+    s.mappings.set(mappingMatch[1], m)
+    return ok(m)
   }
 
   if (path === "/settings" && method === "get") return ok({default_receiving_account_id: s.defaultReceiving})

@@ -321,3 +321,71 @@ export interface NewPurchase {
   total: Cents
   installments: number
 }
+
+// --- import and reconciliation (F6) -------------------------------------------
+
+export type ImportFormat = "ofx" | "csv"
+export type LineStatus = "pending" | "matched" | "created" | "ignored"
+/** Why a line of the file was not imported; the rest of the file was. */
+export type RejectReason = "invalid_date" | "invalid_amount" | "zero_amount" | "balance_row"
+
+export interface ImportSummary {
+  /** Absent when the upload added nothing (the file was imported before). */
+  id?: string
+  account_id: string
+  format: ImportFormat
+  created_at: string
+  from?: IsoDate
+  to?: IsoDate
+  /** Lines this upload added. */
+  lines: number
+  /** Lines an earlier upload already holds. */
+  duplicates: number
+  rejected_count: number
+  rejected: {line: number; reason: RejectReason}[]
+  pending: number
+}
+
+export interface ImportLine {
+  n: number
+  date: IsoDate
+  /** Signed from the account's side: negative left it. */
+  amount: Cents
+  description: string
+  status: LineStatus
+  bill_id?: string
+  /** Open bills this line may settle, closest due date first (pending lines only). */
+  candidates: Bill[]
+}
+
+export interface ImportDetail {
+  import: ImportSummary
+  lines: ImportLine[]
+}
+
+export interface NewImport {
+  account_id: string
+  format: ImportFormat
+  /** The file's bytes, base64. */
+  content: string
+}
+
+export interface LineResult {
+  line: ImportLine
+  bill?: Bill
+}
+
+export type CsvDelimiter = ";" | "," | "\t"
+export type CsvDateFormat = "dd/mm/yyyy" | "yyyy-mm-dd" | "mm/dd/yyyy"
+
+/** How one account's CSV export is read. Columns are 1-based; debit_column 0 = one signed column. */
+export interface CsvMapping {
+  delimiter: CsvDelimiter
+  decimal: "," | "."
+  date_format: CsvDateFormat
+  skip_rows: number
+  date_column: number
+  description_column: number
+  amount_column: number
+  debit_column: number
+}
