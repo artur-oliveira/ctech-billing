@@ -22,6 +22,7 @@ import {defaultModel, describeModel, type EditorModel, fromExpression, toExpress
 import {t} from "@/lib/i18n"
 import {addYearsIso, todayIso} from "@/lib/finance/today"
 import {useFinanceMutation} from "@/lib/finance/useFinanceMutation"
+import {useCreateRequest} from "@/lib/finance/createRequest"
 import {useFinanceCtx, useFinanceSpaces} from "@/lib/finance/useFinanceSpaces"
 import {money, shortDate} from "@/lib/format"
 import {useFieldErrors} from "@/lib/useFieldErrors"
@@ -49,8 +50,12 @@ function ruleOf(r: Recurrence): string {
 export function RecurrencesView() {
   const {t} = useTranslation()
   const ctx = useFinanceCtx()
-  const {can} = useFinanceSpaces()
+  const {can, loading} = useFinanceSpaces()
   const [panel, setPanel] = useState<{mode: "new"} | {mode: "edit"; rec: Recurrence} | null>(null)
+  // The bar's request is a wish, not a permission: a role that may not create
+  // never sees the drawer, whenever the space's verbs arrive.
+  useCreateRequest("recurrence", () => { if (loading || can("finance.write")) setPanel({mode: "new"}) })
+  const shown = panel?.mode === "new" && !can("finance.write") ? null : panel
   const recs = useQuery({queryKey: financeKeys.recurrences(ctx.mode, ctx.space), queryFn: () => listRecurrences(ctx)})
   const accounts = useQuery({queryKey: financeKeys.accounts(ctx.mode, ctx.space), queryFn: () => listAccounts(ctx)})
   const names = new Map((accounts.data?.data ?? []).map(a => [a.id, accountName(a)]))
@@ -61,16 +66,16 @@ export function RecurrencesView() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-lg font-semibold tracking-[-0.01em] text-foreground">{t("bills.rec.title")}</h1>
         {can("finance.write") && (
-          <Button variant="brand" size="sm" onClick={() => setPanel({mode: "new"})}>{t("bills.rec.new")}</Button>
+          <Button variant="brand" size="sm" className="max-md:hidden" onClick={() => setPanel({mode: "new"})}>{t("bills.rec.new")}</Button>
         )}
       </div>
 
-      <Drawer open={panel !== null} onClose={() => setPanel(null)} size="lg"
-        title={panel?.mode === "edit" ? t("bills.rec.edit") : t("bills.rec.new")}>
-        {panel && (
+      <Drawer open={shown !== null} onClose={() => setPanel(null)} size="lg"
+        title={shown?.mode === "edit" ? t("bills.rec.edit") : t("bills.rec.new")}>
+        {shown && (
           <RecurrencePanel
-            key={panel.mode === "edit" ? panel.rec.id : "new"}
-            editing={panel.mode === "edit" ? panel.rec : undefined}
+            key={shown.mode === "edit" ? shown.rec.id : "new"}
+            editing={shown.mode === "edit" ? shown.rec : undefined}
             accounts={accounts.data?.data ?? []}
             onDone={() => setPanel(null)}
           />

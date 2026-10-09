@@ -65,7 +65,19 @@
     "cards": "Cards",
     "recurrences": "Recurrences",
     "reports": "Reports",
-    "accounts": "Accounts"
+    "accounts": "Accounts",
+    "billsShort": "Bills",
+    "more": "More",
+    "moreTitle": "More sections",
+    "groupLaunch": "Entries",
+    "groupManage": "Analysis and setup",
+    "create": {
+      "bill": "Add",
+      "purchase": "Purchase",
+      "recurrence": "Recurrence",
+      "transfer": "Transfer",
+      "account": "Account"
+    }
   },
   "space": {
     "label": "Space",

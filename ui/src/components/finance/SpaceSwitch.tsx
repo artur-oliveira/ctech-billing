@@ -1,6 +1,6 @@
 "use client"
 
-import {Button} from "@aoctech/ui"
+import {Plus} from "lucide-react"
 import {useTranslation} from "react-i18next"
 
 import {Select} from "@/components/ui/Select"
@@ -19,7 +19,11 @@ import {useFinanceSpaces} from "@/lib/finance/useFinanceSpaces"
  * so "Pessoal · Teste" is read as one thing.
  *
  * The shared styled Select (components/ui/Select), which shows the space's
- * name and never its "org:{id}" value once chosen.
+ * name and never its "org:{id}" value once chosen. "Novo espaço" is the list's
+ * last entry, behind a divider: creating a space is a way of answering "which
+ * space", so it lives where that question is asked, not as a second button
+ * beside it. Choosing it starts the ctech-account handoff and leaves the
+ * current space as it was.
  */
 export function SpaceSwitch() {
   const {t} = useTranslation()
@@ -30,25 +34,25 @@ export function SpaceSwitch() {
   const manage = current?.manage_people && space.kind === "organization" ? space.organizationId : null
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 max-sm:flex-1">
       <Select
         aria-label={t("finance.space.label")}
-        className="max-w-52"
+        className="min-w-36 max-w-56 max-sm:max-w-none max-sm:flex-1"
         value={spaceHeader(space)}
         onValueChange={v => setSpace(parseSpace(v))}
         options={spaces.length === 0
           ? [{value: "personal", label: t("finance.space.personal")}]
           : spaces.map(e => ({value: spaceHeader(spaceOf(e)), label: labelOf(e)}))}
+        actions={[{label: t("finance.space.new"), icon: <Plus/>, onSelect: () => handoff.startCreateSpace()}]}
       />
       {manage && (
         <a
           href={handoff.managePeopleURL(manage, window.location.origin)}
-          className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+          className="inline-flex items-center text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline touch:min-h-11"
         >
           {t("finance.space.managePeople")}
         </a>
       )}
-      <Button variant="ghost" size="sm" onClick={() => handoff.startCreateSpace()}>{t("finance.space.new")}</Button>
       {unavailable && <span className="text-xs text-muted-foreground">{t("finance.space.orgsUnavailable")}</span>}
     </div>
   )

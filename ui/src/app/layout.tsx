@@ -62,6 +62,11 @@ export const viewport: Viewport = {
   // that it will not be used.
   width: "device-width",
   initialScale: 1,
+  // Lets the page reach under the iPhone's home indicator, so the env()
+  // safe-area insets are non-zero and Finanças' bottom bar can pad itself clear
+  // of it. Without it the inset reads 0 and the bar's labels sit under the
+  // indicator.
+  viewportFit: "cover",
 }
 
 export default function RootLayout({children}: LayoutProps<"/">) {

@@ -7,6 +7,7 @@ import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import {pick, renderWithQuery} from "@/components/finance/finance.test-utils"
 import {StatementView} from "@/components/finance/StatementView"
 import * as finance from "@/lib/api/finance"
+import * as createRequest from "@/lib/finance/createRequest"
 import type {Account, Statement, StatementEntry, Verb} from "@/lib/api/financeTypes"
 import {dateRange} from "@/lib/finance/periods"
 import {todayIso} from "@/lib/finance/today"
@@ -126,5 +127,23 @@ describe("F3 — extrato", () => {
     renderWithQuery(<StatementView/>)
     expect(await screen.findByText("Nenhuma conta ainda.")).toBeInTheDocument()
     await waitFor(() => expect(screen.getByText("Criar conta").closest("a")).toHaveAttribute("href", "/console/finance/accounts"))
+  })
+})
+
+describe("the phone's central action", () => {
+  it("does not open Nova transferência for a role that cannot create", async () => {
+    serve(["finance.read"], {cc: () => statement([])})
+    createRequest.requestCreate("transfer")
+    renderWithQuery(<StatementView/>)
+    await screen.findByText("Nada neste período.")
+    await new Promise(r => setTimeout(r, 50))
+    expect(screen.queryByRole("dialog")).toBeNull()
+  })
+
+  it("opens Nova transferência, once the accounts are known", async () => {
+    serve(ALL, {cc: () => statement([])})
+    createRequest.requestCreate("transfer")
+    renderWithQuery(<StatementView/>)
+    expect(await screen.findByRole("dialog", {name: "Nova transferência"})).toBeInTheDocument()
   })
 })

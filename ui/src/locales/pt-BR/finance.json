@@ -65,7 +65,19 @@
     "cards": "Cartões",
     "recurrences": "Recorrências",
     "reports": "Relatórios",
-    "accounts": "Contas"
+    "accounts": "Contas",
+    "billsShort": "A pagar/receber",
+    "more": "Mais",
+    "moreTitle": "Mais seções",
+    "groupLaunch": "Lançamentos",
+    "groupManage": "Análise e cadastro",
+    "create": {
+      "bill": "Adicionar",
+      "purchase": "Nova compra",
+      "recurrence": "Recorrência",
+      "transfer": "Transferir",
+      "account": "Nova conta"
+    }
   },
   "space": {
     "label": "Espaço",

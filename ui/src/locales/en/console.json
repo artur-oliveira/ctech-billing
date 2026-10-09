@@ -10,8 +10,6 @@
   "finance": "Finance"
  },
  "shell": {
-  "myBills": "My bills",
-  "signOut": "Sign out",
   "testBanner": "Test mode. Nothing here charges real money."
  },
  "mode": {

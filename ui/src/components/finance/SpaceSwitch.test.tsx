@@ -1,6 +1,6 @@
 import "@testing-library/jest-dom/vitest"
 
-import {act, screen, waitFor} from "@testing-library/react"
+import {act, screen, waitFor, within} from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 
@@ -38,7 +38,7 @@ describe("SpaceSwitch", () => {
       organizations_unavailable: false,
     })
     renderWithQuery(<SpaceSwitch/>)
-    await expectOptionsEventually("Espaço", ["Pessoal", "Acme LTDA"])
+    await expectOptionsEventually("Espaço", ["Pessoal", "Acme LTDA", "Novo espaço"])
     // The trigger shows the space's NAME, never its "personal"/"org:…" value.
     expect(selectByLabel("Espaço")).toHaveTextContent("Pessoal")
     // No way to type an id: the control is a closed list.
@@ -54,7 +54,7 @@ describe("SpaceSwitch", () => {
       organizations_unavailable: false,
     })
     renderWithQuery(<SpaceSwitch/>)
-    await expectOptionsEventually("Espaço", ["Pessoal", "Acme LTDA"])
+    await expectOptionsEventually("Espaço", ["Pessoal", "Acme LTDA", "Novo espaço"])
     await pick("Espaço", "Acme LTDA")
     expect(getSpace()).toEqual({kind: "organization", organizationId: ACME})
     expect(selectByLabel("Espaço")).toHaveTextContent("Acme LTDA")
@@ -92,7 +92,7 @@ describe("SpaceSwitch", () => {
       organizations_unavailable: false,
     })
     renderWithQuery(<SpaceSwitch/>)
-    await expectOptionsEventually("Espaço", ["Pessoal", "Casa", "Acme LTDA"])
+    await expectOptionsEventually("Espaço", ["Pessoal", "Casa", "Acme LTDA", "Novo espaço"])
   })
 
   it("offers Gerenciar acesso only in a space whose people this person manages", async () => {
@@ -105,7 +105,7 @@ describe("SpaceSwitch", () => {
       organizations_unavailable: false,
     })
     renderWithQuery(<SpaceSwitch/>)
-    await expectOptionsEventually("Espaço", ["Pessoal", "Casa", "Acme LTDA"])
+    await expectOptionsEventually("Espaço", ["Pessoal", "Casa", "Acme LTDA", "Novo espaço"])
     expect(screen.queryByRole("link", {name: "Gerenciar acesso"})).toBeNull()
     await pick("Espaço", "Acme LTDA")
     expect(screen.queryByRole("link", {name: "Gerenciar acesso"})).toBeNull()
@@ -116,11 +116,29 @@ describe("SpaceSwitch", () => {
     expect(u.searchParams.get("id")).toBe(CASA)
   })
 
-  it("starts the create handoff from Novo espaço", async () => {
-    serve({spaces: [{selector: "personal", kind: "personal_default", display_name: "Pessoal", verbs: [...ALL], manage_people: false}], organizations_unavailable: false})
+  it("starts the create handoff from Novo espaço, the last entry of the space list", async () => {
+    serve({
+      spaces: [
+        {selector: "personal", kind: "personal_default", display_name: "Pessoal", verbs: [...ALL], manage_people: false},
+        {selector: `org:${ACME}`, kind: "organization", display_name: "Acme LTDA", role: "admin", verbs: [...ALL], manage_people: false},
+      ],
+      organizations_unavailable: false,
+    })
     const start = vi.spyOn(handoff, "startCreateSpace").mockImplementation(() => {})
     renderWithQuery(<SpaceSwitch/>)
-    await userEvent.click(await screen.findByRole("button", {name: "Novo espaço"}))
+    // No separate button beside the list any more.
+    await expectOptionsEventually("Espaço", ["Pessoal", "Acme LTDA", "Novo espaço"])
+    expect(screen.queryByRole("button", {name: "Novo espaço"})).toBeNull()
+
+    await userEvent.click(selectByLabel("Espaço"))
+    const listbox = await screen.findByRole("listbox")
+    // After the spaces (behind a divider a listbox draws as presentation).
+    const entries = within(listbox).getAllByRole("option")
+    expect(entries.at(-1)).toHaveAccessibleName("Novo espaço")
+    await userEvent.click(entries.at(-1)!)
     expect(start).toHaveBeenCalledTimes(1)
+    // Choosing it is not choosing a space: the current one stays.
+    expect(getSpace()).toEqual({kind: "personal"})
+    expect(selectByLabel("Espaço")).toHaveTextContent("Pessoal")
   })
 })

@@ -1,12 +1,13 @@
 import "@testing-library/jest-dom/vitest"
 
-import {screen, waitFor, within} from "@testing-library/react"
+import {act, screen, waitFor, within} from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 
 import {BillsView} from "@/components/finance/BillsView"
 import {optionsOf, pick, renderWithQuery} from "@/components/finance/finance.test-utils"
 import * as finance from "@/lib/api/finance"
+import * as createRequest from "@/lib/finance/createRequest"
 import type {Account, Bill, Verb} from "@/lib/api/financeTypes"
 import {todayIso} from "@/lib/finance/today"
 
@@ -277,5 +278,41 @@ describe("F2 — a pagar e a receber", () => {
     serve(ALL, [])
     renderWithQuery(<BillsView/>)
     expect(await screen.findByText(/nada a pagar/i)).toBeInTheDocument()
+  })
+})
+
+describe("the phone's central action", () => {
+  it("does not open Novo lançamento for a role that cannot create", async () => {
+    serve(["finance.read"], [])
+    createRequest.requestCreate("bill")
+    renderWithQuery(<BillsView/>)
+    await screen.findByText("Nada a pagar em aberto.")
+    await new Promise(r => setTimeout(r, 50))
+    expect(screen.queryByRole("dialog")).toBeNull()
+  })
+
+  it("opens Novo lançamento when it was asked for before the screen mounted", async () => {
+    serve(ALL, [])
+    createRequest.requestCreate("bill")
+    renderWithQuery(<BillsView/>)
+    expect(await screen.findByRole("dialog", {name: "Novo lançamento"})).toBeInTheDocument()
+  })
+
+  it("opens Novo lançamento when asked on the screen", async () => {
+    serve(ALL, [])
+    renderWithQuery(<BillsView/>)
+    await screen.findByText(/Nada a pagar|Nenhum/)
+    expect(screen.queryByRole("dialog")).toBeNull()
+    act(() => createRequest.requestCreate("bill"))
+    expect(await screen.findByRole("dialog", {name: "Novo lançamento"})).toBeInTheDocument()
+  })
+
+  it("ignores a request for another screen", async () => {
+    serve(ALL, [])
+    renderWithQuery(<BillsView/>)
+    act(() => createRequest.requestCreate("transfer"))
+    await new Promise(r => setTimeout(r, 0))
+    expect(screen.queryByRole("dialog")).toBeNull()
+    createRequest.takePendingCreate("transfer")
   })
 })

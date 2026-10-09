@@ -45,7 +45,8 @@ export function MockControls() {
   }
 
   return (
-    <div className="fixed bottom-4 left-4 z-[60] print:hidden">
+    // Above Finanças' bottom bar on a phone, so the dev chip never covers a tab.
+    <div className="fixed bottom-4 left-4 z-[60] max-md:bottom-[calc(5.25rem+env(safe-area-inset-bottom))] print:hidden">
       {open && (
         <ul className="mb-2 w-64 overflow-hidden rounded-lg border border-border bg-background shadow-modal">
           {MOCK_SCENARIOS.map(s => (

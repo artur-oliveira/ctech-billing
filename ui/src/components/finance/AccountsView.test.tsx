@@ -1,12 +1,13 @@
 import "@testing-library/jest-dom/vitest"
 
-import {screen, waitFor, within} from "@testing-library/react"
+import {act, screen, waitFor, within} from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 
 import {AccountsView} from "@/components/finance/AccountsView"
 import {optionsOf, pick, renderWithQuery} from "@/components/finance/finance.test-utils"
 import * as finance from "@/lib/api/finance"
+import * as createRequest from "@/lib/finance/createRequest"
 import type {Account, Verb} from "@/lib/api/financeTypes"
 
 // A name also appears as an <option> of the default-receiving select, so rows
@@ -253,5 +254,22 @@ describe("F8 — accounts", () => {
     vi.mocked(finance.listAccounts).mockRejectedValue({response: {status: 500, data: {title: "Erro"}}})
     renderWithQuery(<AccountsView/>)
     expect(await screen.findByRole("button", {name: "Tentar novamente"})).toBeInTheDocument()
+  })
+})
+
+describe("the phone's central action", () => {
+  it("does not open Nova conta for a role that cannot configure", async () => {
+    serve(["finance.read", "finance.write"])
+    createRequest.requestCreate("account")
+    renderWithQuery(<AccountsView/>)
+    await new Promise(r => setTimeout(r, 50))
+    expect(screen.queryByRole("dialog")).toBeNull()
+  })
+
+  it("opens Nova conta", async () => {
+    serve(ALL)
+    renderWithQuery(<AccountsView/>)
+    act(() => createRequest.requestCreate("account"))
+    expect(await screen.findByRole("dialog", {name: "Nova conta"})).toBeInTheDocument()
   })
 })

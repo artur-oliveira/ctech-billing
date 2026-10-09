@@ -8,6 +8,7 @@ import {usePathname, useRouter} from "next/navigation"
 import {useEffect, useRef} from "react"
 import {useTranslation} from "react-i18next"
 
+import {AccountMenu} from "@/components/AccountMenu"
 import {LanguageSwitcher} from "@/components/LanguageSwitcher"
 import {ModeSwitch} from "@/components/console/ModeSwitch"
 import {NoOrganization} from "@/components/console/NoOrganization"
@@ -49,7 +50,7 @@ export default function ConsoleLayout({children}: LayoutProps<"/console">) {
     if (ul && active) ul.scrollLeft = active.offsetLeft - (ul.clientWidth - active.offsetWidth) / 2
   }, [pathname])
   const router = useRouter()
-  const {authenticated, loading, logout} = useAuth()
+  const {authenticated, loading} = useAuth()
   const mode = useMode()
 
   const {data: session, error} = useQuery({
@@ -82,7 +83,7 @@ export default function ConsoleLayout({children}: LayoutProps<"/console">) {
       <header className="border-b border-border">
         <div className="mx-auto flex min-h-14 max-w-6xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2">
           <div className="order-1 flex min-w-0 items-center gap-4">
-            <Link href="/console/overview" className="flex shrink-0 items-center gap-2.5">
+            <Link href="/console/overview" className="flex shrink-0 items-center gap-2.5 touch:min-h-11">
               <Image
                 src="/android-chrome-192x192.png"
                 alt=""
@@ -105,31 +106,19 @@ export default function ConsoleLayout({children}: LayoutProps<"/console">) {
             )}
           </div>
 
-          <div className="order-3 flex w-full min-w-0 flex-wrap items-center gap-x-3 gap-y-2 sm:order-2 sm:ml-auto sm:w-auto">
+          <div className="order-3 flex w-full min-w-0 items-center gap-x-3 gap-y-2 sm:order-2 sm:ml-auto sm:w-auto">
             {/* Space and mode side by side, so "Pessoal · Teste" reads as one
                 answer. The space only exists in Finanças: invoicing's
                 organization comes from the signed-in owner (ADR 0011). */}
             {inFinance && <SpaceSwitch/>}
             <ModeSwitch/>
-            {/* The way back to the other shell, always. The same person holds
-                both, and making them retype a URL to look at their own bill is
-                the "which one are you" question this product does not ask. */}
-            <Link
-              href="/dashboard"
-              className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
-            >
-              {t("console.shell.myBills")}
-            </Link>
           </div>
-          <div className="order-2 ml-auto flex items-center gap-3 sm:order-3 sm:ml-0">
+          {/* The person, the way to the portal, and Sair, all behind the
+              avatar: the same person holds both shells, and the switch
+              between them happens in one place. */}
+          <div className="order-2 ml-auto flex items-center gap-2 sm:order-3 sm:ml-0">
             <LanguageSwitcher/>
-            <button
-              type="button"
-              onClick={logout}
-              className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
-            >
-              {t("console.shell.signOut")}
-            </button>
+            <AccountMenu view="console"/>
           </div>
         </div>
 
@@ -142,7 +131,7 @@ export default function ConsoleLayout({children}: LayoutProps<"/console">) {
                   <Link
                     href={item.href}
                     aria-current={active ? "page" : undefined}
-                    className={`inline-flex h-10 items-center whitespace-nowrap border-b-2 px-3 text-sm transition-colors ${
+                    className={`inline-flex h-10 touch:h-11 items-center whitespace-nowrap border-b-2 px-3 text-sm transition-colors ${
                       active
                         ? "border-brand-600 font-medium text-brand-600"
                         : "border-transparent text-muted-foreground hover:text-foreground"

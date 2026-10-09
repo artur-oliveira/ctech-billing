@@ -3,6 +3,7 @@
 import {cn} from "@aoctech/ui"
 import {Select as SelectPrimitive} from "@base-ui/react/select"
 import {Check, ChevronDown} from "lucide-react"
+import type {ReactNode} from "react"
 import {useTranslation} from "react-i18next"
 
 export interface SelectOption {
@@ -10,11 +11,26 @@ export interface SelectOption {
   label: string
 }
 
+/**
+ * Something to do rather than something to pick, listed after the options
+ * behind a divider: "Novo espaço" at the end of the spaces. Choosing it runs
+ * `onSelect` and leaves the value where it was.
+ */
+export interface SelectAction {
+  label: string
+  icon?: ReactNode
+  onSelect: () => void
+}
+
+/** The values action items answer to. No option value starts with a NUL. */
+const ACTION = "\u0000action:"
+
 interface SelectProps {
   id?: string
   value: string
   onValueChange: (value: string) => void
   options: SelectOption[]
+  actions?: SelectAction[]
   placeholder?: string
   disabled?: boolean
   "aria-label"?: string
@@ -35,7 +51,7 @@ interface SelectProps {
  * Sized by the shell's density like every @aoctech/ui control (32px in the
  * compact console). Candidate for @aoctech/ui (ctech-ui has no Select yet).
  */
-export function Select({id, value, onValueChange, options, placeholder, disabled, className, ...aria}: SelectProps) {
+export function Select({id, value, onValueChange, options, actions = [], placeholder, disabled, className, ...aria}: SelectProps) {
   const {t} = useTranslation()
   const emptyLabel = placeholder ?? t("auth.select.placeholder")
   const labelOf = (v: string | null) => options.find(o => o.value === v)?.label
@@ -43,7 +59,17 @@ export function Select({id, value, onValueChange, options, placeholder, disabled
     <SelectPrimitive.Root
       items={options}
       value={value === "" ? null : value}
-      onValueChange={v => onValueChange((v as string | null) ?? "")}
+      onValueChange={(v, details) => {
+        const picked = (v as string | null) ?? ""
+        if (picked.startsWith(ACTION)) {
+          // Only a deliberate press in the open list (a click, or Enter) runs
+          // an action. Base UI also types ahead on a closed, focused trigger,
+          // and "n" there must not start "Novo espaço" and leave the page.
+          if (details.reason === "item-press") actions[Number(picked.slice(ACTION.length))]?.onSelect()
+          return
+        }
+        onValueChange(picked)
+      }}
       disabled={disabled}
     >
       <SelectPrimitive.Trigger
@@ -81,12 +107,23 @@ export function Select({id, value, onValueChange, options, placeholder, disabled
                 <SelectPrimitive.Item
                   key={o.value}
                   value={o.value}
-                  className="flex cursor-default items-center justify-between gap-3 rounded-md px-2 py-1.5 text-foreground outline-none select-none data-[highlighted]:bg-surface data-[selected]:font-medium"
+                  className="flex cursor-default items-center justify-between gap-3 rounded-md px-2 py-1.5 text-foreground outline-none select-none touch:min-h-11 data-[highlighted]:bg-surface data-[selected]:font-medium"
                 >
                   <SelectPrimitive.ItemText>{o.label}</SelectPrimitive.ItemText>
                   <SelectPrimitive.ItemIndicator className="text-brand-600">
                     <Check aria-hidden className="size-4"/>
                   </SelectPrimitive.ItemIndicator>
+                </SelectPrimitive.Item>
+              ))}
+              {actions.length > 0 && <SelectPrimitive.Separator className="-mx-1 my-1 h-px bg-border"/>}
+              {actions.map((a, i) => (
+                <SelectPrimitive.Item
+                  key={`${ACTION}${i}`}
+                  value={`${ACTION}${i}`}
+                  className="flex cursor-default items-center gap-2 rounded-md px-2 py-1.5 text-foreground outline-none select-none touch:min-h-11 data-[highlighted]:bg-surface"
+                >
+                  {a.icon && <span aria-hidden className="flex size-4 shrink-0 items-center justify-center text-muted-foreground [&_svg]:size-4">{a.icon}</span>}
+                  <SelectPrimitive.ItemText>{a.label}</SelectPrimitive.ItemText>
                 </SelectPrimitive.Item>
               ))}
             </SelectPrimitive.List>

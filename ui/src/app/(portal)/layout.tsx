@@ -9,7 +9,7 @@ import {useEffect} from "react"
 import {useTranslation} from "react-i18next"
 
 import {LanguageSwitcher} from "@/components/LanguageSwitcher"
-import {ConsoleLink} from "@/components/portal/ConsoleLink"
+import {AccountMenu} from "@/components/AccountMenu"
 import {NoBillingAccount} from "@/components/portal/NoBillingAccount"
 import {TermsGate} from "@/components/portal/TermsGate"
 import {isNoBillingAccount} from "@/lib/api/client"
@@ -45,7 +45,7 @@ export default function PortalLayout({children}: LayoutProps<"/">) {
   const {t} = useTranslation()
   const pathname = usePathname()
   const router = useRouter()
-  const {authenticated, loading, logout} = useAuth()
+  const {authenticated, loading} = useAuth()
 
   const {data: session, error: sessionError} = useQuery({
     queryKey: portalKeys.session,
@@ -70,7 +70,7 @@ export default function PortalLayout({children}: LayoutProps<"/">) {
               the brand colour appears — after the primary button, the active
               nav item and the selected row. A header that renders the company
               name in body ink is a header that could belong to anybody. */}
-          <Link href="/dashboard" className="flex items-center gap-2.5">
+          <Link href="/dashboard" className="flex items-center gap-2.5 touch:min-h-11">
             <Image
               src="/android-chrome-192x192.png"
               alt=""
@@ -89,29 +89,12 @@ export default function PortalLayout({children}: LayoutProps<"/">) {
               show, and "Sair" is the only thing they can do here. A screen with
               no way out is how somebody signed into the wrong account gets
               stuck. */}
-          <div className="flex min-w-0 items-center gap-3">
+          {/* The person behind the avatar: the whole name and e-mail, the
+              switch to the console, and Sair. It holds three things now, so it
+              is a menu; it was plain text while Sair was its only entry. */}
+          <div className="flex min-w-0 items-center gap-2">
             <LanguageSwitcher className="shrink-0"/>
-            {(session || noAccount) && (
-              <>
-              {/* The way into the console, and only for somebody who has one.
-                  The same person holds both hats and nothing on screen asks
-                  which they are — but a link that led every customer to a 403
-                  would be asking exactly that. */}
-              <ConsoleLink/>
-              {session && (
-                <span className="truncate text-sm text-muted-foreground">{session.name}</span>
-              )}
-              {/* Plain text, not a menu. One item behind a chevron is a menu
-                  that exists to hide its only entry. */}
-              <button
-                type="button"
-                onClick={logout}
-                className="shrink-0 text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
-              >
-                {t("portal.nav.logout")}
-              </button>
-              </>
-            )}
+            {(session || noAccount) && <AccountMenu view="portal"/>}
           </div>
         </div>
         {/* Hidden with no billing account. Three tabs that all lead to the same

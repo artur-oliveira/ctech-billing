@@ -16,6 +16,7 @@ import {archiveAccount, createAccount, financeKeys, getSettings, listAccounts, p
 import type {Account, AccountClass, DREGroup, OpeningBalance} from "@/lib/api/financeTypes"
 import {classLabel, dreGroupLabel, groupsForClass} from "@/lib/finance/labels"
 import {useFinanceMutation} from "@/lib/finance/useFinanceMutation"
+import {useCreateRequest} from "@/lib/finance/createRequest"
 import {useFinanceCtx, useFinanceSpaces} from "@/lib/finance/useFinanceSpaces"
 import {money} from "@/lib/format"
 import {todayIso} from "@/lib/finance/today"
@@ -40,10 +41,13 @@ const SECTIONS: {key: "accounts" | "income" | "expense" | "cards"; classes: Acco
 export function AccountsView() {
   const {t} = useTranslation()
   const ctx = useFinanceCtx()
-  const {can, current} = useFinanceSpaces()
+  const {can, current, loading} = useFinanceSpaces()
   const configure = can("finance.configure")
   const [showArchived, setShowArchived] = useState(false)
   const [creating, setCreating] = useState(false)
+  // The bar's request is a wish, not a permission: a role that may not create
+  // never sees the drawer, whenever the space's verbs arrive.
+  useCreateRequest("account", () => { if (loading || configure) setCreating(true) })
 
   const q = useQuery({queryKey: financeKeys.accounts(ctx.mode, ctx.space), queryFn: () => listAccounts(ctx)})
   const accounts = (q.data?.data ?? []).filter(a => !a.system)
@@ -55,11 +59,11 @@ export function AccountsView() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-lg font-semibold tracking-[-0.01em] text-foreground">{t("finance.accounts.title")}</h1>
         {configure && (
-          <Button variant="brand" size="sm" onClick={() => setCreating(true)}>{t("finance.accounts.new")}</Button>
+          <Button variant="brand" size="sm" className="max-md:hidden" onClick={() => setCreating(true)}>{t("finance.accounts.new")}</Button>
         )}
       </div>
 
-      <Drawer open={creating} onClose={() => setCreating(false)} title={t("finance.accounts.new")}>
+      <Drawer open={creating && configure} onClose={() => setCreating(false)} title={t("finance.accounts.new")}>
         <AccountForm onDone={() => setCreating(false)}/>
       </Drawer>
 

@@ -7,6 +7,7 @@ import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import {RecurrencesView} from "@/components/finance/RecurrencesView"
 import {optionsOf, pick, renderWithQuery} from "@/components/finance/finance.test-utils"
 import * as finance from "@/lib/api/finance"
+import * as createRequest from "@/lib/finance/createRequest"
 import type {Account, Recurrence, Verb} from "@/lib/api/financeTypes"
 
 const ALL: Verb[] = ["finance.read", "finance.write", "finance.settle", "finance.import", "finance.configure"]
@@ -142,5 +143,22 @@ describe("F4 — recorrências", () => {
     await screen.findByText("Aluguel do apartamento")
     expect(screen.queryByRole("button", {name: "Nova recorrência"})).toBeNull()
     expect(screen.queryByRole("button", {name: "Editar"})).toBeNull()
+  })
+})
+
+describe("the phone's central action", () => {
+  it("does not open Nova recorrência for a role that cannot create", async () => {
+    serve(["finance.read"])
+    createRequest.requestCreate("recurrence")
+    renderWithQuery(<RecurrencesView/>)
+    await new Promise(r => setTimeout(r, 50))
+    expect(screen.queryByRole("dialog")).toBeNull()
+  })
+
+  it("opens Nova recorrência", async () => {
+    serve(ALL)
+    renderWithQuery(<RecurrencesView/>)
+    act(() => createRequest.requestCreate("recurrence"))
+    expect(await screen.findByRole("dialog", {name: "Nova recorrência"})).toBeInTheDocument()
   })
 })
