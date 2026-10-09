@@ -5,7 +5,7 @@ import userEvent from "@testing-library/user-event"
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 
 import {OverviewView} from "@/components/finance/OverviewView"
-import {pick, renderWithQuery} from "@/components/finance/finance.test-utils"
+import {renderWithQuery} from "@/components/finance/finance.test-utils"
 import * as finance from "@/lib/api/finance"
 import {todayIso} from "@/lib/finance/today"
 import type {Account, Bill, ProjectionMonth, Verb} from "@/lib/api/financeTypes"
@@ -129,8 +129,65 @@ describe("F1 — visão geral", () => {
     const projection = serve()
     renderWithQuery(<OverviewView/>)
     await waitFor(() => expect(projection).toHaveBeenCalledWith(expect.anything(), 6))
-    await pick("Período", "12 meses")
+    // A segmented control, not a dropdown: three choices, all in view.
+    const period = await screen.findByRole("group", {name: "Período"})
+    expect(within(period).getAllByRole("button").map(b => b.getAttribute("aria-label"))).toEqual(["3 meses", "6 meses", "12 meses"])
+    expect(within(period).getByRole("button", {name: "6 meses"})).toHaveAttribute("aria-pressed", "true")
+    await userEvent.click(within(period).getByRole("button", {name: "12 meses"}))
     await waitFor(() => expect(projection).toHaveBeenCalledWith(expect.anything(), 12))
+    expect(within(period).getByRole("button", {name: "12 meses"})).toHaveAttribute("aria-pressed", "true")
+  })
+
+  it("keeps the Saldo / Entradas e saídas switch on the table, and the table follows it", async () => {
+    serve()
+    vi.spyOn(finance, "getProjection").mockResolvedValue({data: [
+      {month: "2026-11", receivable: 350000, payable: 40000, virtual: 70000, virtual_receivable: 100000, virtual_payable: 30000},
+    ], has_more: false})
+    renderWithQuery(<OverviewView/>)
+    const block = await screen.findByRole("region", {name: "Projeção"})
+    await userEvent.click(await within(block).findByRole("button", {name: "Ver tabela"}))
+    expect(within(block).getByRole("button", {name: "Ver tabela"})).toHaveAttribute("aria-pressed", "true")
+    const flow = within(block).getByRole("button", {name: "Entradas e saídas"})
+    await userEvent.click(flow)
+    const table = within(block).getByRole("table")
+    expect(within(table).getAllByRole("columnheader").map(h => h.textContent)).toEqual(["Mês", "Entradas", "Saídas", "Resultado do mês"])
+    const nov = within(table).getByRole("row", {name: /nov/i})
+    // Recurrences are inside the totals, and the cell says how much of each.
+    expect(nov.textContent?.replace(/\s/g, " ")).toMatch(/R\$ 4\.500,00.*R\$ 1\.000,00 de recorrências.*R\$ 700,00.*R\$ 300,00 de recorrências.*R\$ 3\.800,00/)
+    await userEvent.click(within(block).getByRole("button", {name: "Saldo"}))
+    expect(within(within(block).getByRole("table")).getAllByRole("columnheader").map(h => h.textContent).at(-1)).toBe("Saldo projetado")
+  })
+
+  describe("on a phone", () => {
+    beforeEach(() => {
+      vi.stubGlobal("matchMedia", (query: string) => ({matches: query.includes("max-width"), media: query, addEventListener: () => undefined, removeEventListener: () => undefined}))
+    })
+    afterEach(() => vi.unstubAllGlobals())
+
+    it("lists the months instead of drawing the chart, and keeps the chart one tap away", async () => {
+      serve()
+      renderWithQuery(<OverviewView/>)
+      const block = await screen.findByRole("region", {name: "Projeção"})
+      const list = await within(block).findByRole("list", {name: "Projeção mês a mês"})
+      expect(block.querySelector("svg[role=img]")).toBeNull()
+      const rows = within(list).getAllByRole("listitem")
+      expect(rows.map(r => r.querySelector("[data-month]")?.textContent)).toEqual(["Out/26", "Nov/26", "Dez/26"])
+      expect(rows.map(r => r.querySelector("[data-value]")?.textContent?.replace(/\s/g, " "))).toEqual(["R$ 18.668,25", "R$ 21.768,25", "R$ 20.268,25"])
+      expect(rows[0].textContent?.replace(/\s/g, " ")).toMatch(/Entradas R\$ 0,00.*Saídas R\$ 2\.254,90/)
+      expect(within(block).getByRole("button", {name: "Ver lista"})).toHaveAttribute("aria-pressed", "true")
+      await userEvent.click(within(block).getByRole("button", {name: "Ver gráfico"}))
+      expect(block.querySelector("svg[role=img]")).not.toBeNull()
+      expect(within(block).queryByRole("list", {name: "Projeção mês a mês"})).toBeNull()
+    })
+
+    it("shows each month's result in the list when the view is Entradas e saídas", async () => {
+      serve()
+      renderWithQuery(<OverviewView/>)
+      const block = await screen.findByRole("region", {name: "Projeção"})
+      await userEvent.click(await within(block).findByRole("button", {name: "Entradas e saídas"}))
+      const list = await within(block).findByRole("list", {name: "Projeção mês a mês"})
+      expect(within(list).getAllByRole("listitem").map(r => r.querySelector("[data-value]")?.textContent?.replace(/\s/g, " "))).toEqual(["−R$ 2.254,90", "R$ 3.100,00", "−R$ 1.500,00"])
+    })
   })
 
   it("has no realised-result tile", async () => {

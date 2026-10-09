@@ -2,19 +2,21 @@
 
 import {Button, EmptyState, Skeleton} from "@aoctech/ui"
 import {useQuery} from "@tanstack/react-query"
-import {Landmark} from "lucide-react"
+import {BarChart3, Landmark, List, Table2} from "lucide-react"
 import Link from "next/link"
-import {useState} from "react"
+import {useRef, useState} from "react"
 import {useTranslation} from "react-i18next"
 
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
-import {Select} from "@/components/ui/Select"
+import {Segmented} from "@/components/ui/Segmented"
 import {financeKeys, getCashFlow, getProjection, listAccounts, listBills} from "@/lib/api/finance"
 import type {Bill, ProjectionMonth} from "@/lib/api/financeTypes"
 import {bucketLabel, directionLabel} from "@/lib/finance/labels"
 import {currentLocale} from "@/lib/i18n"
 import {monthShort, todayIso} from "@/lib/finance/today"
 import {useFinanceCtx} from "@/lib/finance/useFinanceSpaces"
+import {useElementWidth} from "@/lib/hooks/useElementWidth"
+import {NARROW, useMediaQuery} from "@/lib/hooks/useMediaQuery"
 import {money, shortDate, signedMoney} from "@/lib/format"
 import {accountName} from "@/lib/finance/accountName"
 
@@ -175,44 +177,67 @@ function project(start: number, data: ProjectionMonth[]): ProjectedMonth[] {
   })
 }
 
+type View = "balance" | "flow"
+type Display = "chart" | "rows"
+
+/**
+ * The projection, in the Saldo or the Entradas e saídas view, drawn as a chart
+ * or written out as rows. The view and the display are independent, so the
+ * rows always say what the chart would have: the same mode, in numbers.
+ *
+ * Rows are a table from `sm` up and a month list on a phone, where six columns
+ * do not fit and a 12-month chart's labels would collide. A phone opens on the
+ * list and a laptop on the chart; either can switch, so the two can be
+ * compared on the same screen.
+ */
 function Projection() {
   const {t} = useTranslation()
   const ctx = useFinanceCtx()
+  const narrow = useMediaQuery(NARROW)
   const [months, setMonths] = useState("6")
-  const [asTable, setAsTable] = useState(false)
-  const [view, setView] = useState<"balance" | "flow">("balance")
+  const [chosen, setDisplay] = useState<Display | null>(null)
+  const display: Display = chosen ?? (narrow ? "rows" : "chart")
+  const [view, setView] = useState<View>("balance")
   const q = useQuery({queryKey: financeKeys.projection(ctx.mode, ctx.space, Number(months)), queryFn: () => getProjection(ctx, Number(months))})
   const accounts = useQuery({queryKey: financeKeys.accounts(ctx.mode, ctx.space), queryFn: () => listAccounts(ctx)})
   const start = (accounts.data?.data ?? []).filter(a => a.class === "asset" && !a.system && !a.archived).reduce((s, a) => s + a.balance, 0)
   const data = project(start, q.data?.data ?? [])
   return (
-    <Block
-      title={t("finance.overview.projection")}
-      action={
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          {!asTable && (
-            <div role="group" aria-label={t("finance.overview.viewLabel")} className="flex w-full items-center gap-0.5 rounded-lg sm:w-auto border border-border bg-surface p-0.5">
-              {(["balance", "flow"] as const).map(v => (
-                <button
-                  key={v}
-                  type="button"
-                  aria-pressed={view === v}
-                  onClick={() => setView(v)}
-                  className={`flex-1 rounded-md px-3 py-1 text-sm transition-colors sm:flex-none ${view === v ? "bg-background font-medium text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
-                >
-                  {t(v === "balance" ? "finance.overview.viewBalance" : "finance.overview.viewFlow")}
-                </button>
-              ))}
-            </div>
-          )}
-          <div className="w-32"><Select aria-label={t("finance.overview.window")} value={months} onValueChange={setMonths} options={WINDOWS.map(w => ({value: w, label: t("finance.overview.months", {count: Number(w)})}))}/></div>
-          <Button variant="ghost" size="sm" onClick={() => setAsTable(v => !v)}>{asTable ? t("finance.overview.asChart") : t("finance.overview.asTable")}</Button>
-        </div>
-      }
-    >
+    <Block title={t("finance.overview.projection")}>
+      <div className="flex flex-wrap items-center gap-2">
+        <Segmented
+          label={t("finance.overview.viewLabel")}
+          value={view}
+          onValueChange={setView}
+          fill={narrow}
+          options={[
+            {value: "balance", label: t("finance.overview.viewBalance")},
+            {value: "flow", label: t("finance.overview.viewFlow")},
+          ]}
+        />
+        <Segmented
+          label={t("finance.overview.window")}
+          value={months}
+          onValueChange={setMonths}
+          className="sm:ml-auto"
+          options={WINDOWS.map(w => ({value: w, label: t("finance.overview.monthsShort", {count: Number(w)}), name: t("finance.overview.months", {count: Number(w)})}))}
+        />
+        <Segmented
+          label={t("finance.overview.display")}
+          value={display}
+          onValueChange={setDisplay}
+          className="ml-auto sm:ml-0"
+          options={[
+            {value: "chart", label: <BarChart3 aria-hidden className="size-4"/>, name: t("finance.overview.asChart")},
+            {value: "rows", label: narrow ? <List aria-hidden className="size-4"/> : <Table2 aria-hidden className="size-4"/>, name: t(narrow ? "finance.overview.asList" : "finance.overview.asTable")},
+          ]}
+        />
+      </div>
       {q.isLoading || accounts.isLoading ? <Skeleton className="h-40 w-full"/> : q.error || accounts.error ? (
         <ErrorBlock error={q.error ?? accounts.error} onRetry={() => { void q.refetch(); void accounts.refetch() }}/>
-      ) : asTable ? <ProjectionTable data={data}/> : view === "flow" ? <FlowChart data={data}/> : <ProjectionChart data={data}/>}
+      ) : display === "rows" ? (
+        narrow ? <MonthList data={data} view={view}/> : <ProjectionTable data={data} view={view}/>
+      ) : view === "flow" ? <FlowChart data={data}/> : <ProjectionChart data={data}/>}
       <p className="text-xs text-muted-foreground">
         {t("finance.overview.projectionNote", {balance: signedMoney(start)})}
       </p>
@@ -220,35 +245,113 @@ function Projection() {
   )
 }
 
-function ProjectionTable({data}: {data: ProjectedMonth[]}) {
+/** "R$ 1.000,00 de recorrências" under an amount that includes them; nothing when there are none. */
+function OfRecurrences({cents}: {cents: number}) {
   const {t} = useTranslation()
+  if (cents <= 0) return null
+  return <span className="block text-xs text-muted-foreground">{t("finance.overview.ofRecurrences", {amount: money(cents)})}</span>
+}
+
+function ProjectionTable({data, view}: {data: ProjectedMonth[]; view: View}) {
+  const {t} = useTranslation()
+  const th = "py-2 pl-4 text-right font-normal"
+  const td = "py-2 pl-4 text-right align-top"
   return (
     <div className="overflow-x-auto">
       <table className="w-full min-w-max text-sm tabular-nums">
         <thead>
           <tr className="border-b border-border text-left text-muted-foreground">
             <th className="py-2 pr-4 font-normal">{t("finance.overview.month")}</th>
-            <th className="py-2 pl-4 text-right font-normal">{directionLabel("receivable")}</th>
-            <th className="py-2 pl-4 text-right font-normal">{directionLabel("payable")}</th>
-            <th className="py-2 pl-4 text-right font-normal">{t("finance.overview.recurrences")}</th>
-            <th className="py-2 pl-4 text-right font-normal">{t("finance.overview.monthResult")}</th>
-            <th className="py-2 pl-4 text-right font-normal">{t("finance.overview.projected")}</th>
+            {view === "balance" ? (
+              <>
+                <th className={th}>{directionLabel("receivable")}</th>
+                <th className={th}>{directionLabel("payable")}</th>
+                <th className={th}>{t("finance.overview.recurrences")}</th>
+                <th className={th}>{t("finance.overview.monthResult")}</th>
+                <th className={th}>{t("finance.overview.projected")}</th>
+              </>
+            ) : (
+              <>
+                <th className={th}>{t("finance.overview.legendIn")}</th>
+                <th className={th}>{t("finance.overview.legendOut")}</th>
+                <th className={th}>{t("finance.overview.monthResult")}</th>
+              </>
+            )}
           </tr>
         </thead>
         <tbody>
           {data.map(m => (
             <tr key={m.month} className="border-b border-border">
-              <th scope="row" className="py-2 pr-4 text-left font-normal">{monthShort(m.month)}</th>
-              <td className="py-2 pl-4 text-right">{money(m.receivable)}</td>
-              <td className="py-2 pl-4 text-right">{money(m.payable)}</td>
-              <td className="py-2 pl-4 text-right">{signedMoney(m.virtual)}</td>
-              <td className="py-2 pl-4 text-right">{signedMoney(m.result)}</td>
-              <td className={`py-2 pl-4 text-right font-medium ${m.balance < 0 ? "text-danger" : ""}`}>{signedMoney(m.balance)}</td>
+              <th scope="row" className="py-2 pr-4 text-left align-top font-normal">{monthShort(m.month)}</th>
+              {view === "balance" ? (
+                <>
+                  <td className={td}>{money(m.receivable)}</td>
+                  <td className={td}>{money(m.payable)}</td>
+                  <td className={td}>{signedMoney(m.virtual)}</td>
+                  <td className={td}>{signedMoney(m.result)}</td>
+                  <td className={`${td} font-medium ${m.balance < 0 ? "text-danger" : ""}`}>{signedMoney(m.balance)}</td>
+                </>
+              ) : (
+                <>
+                  <td className={td}>{money(m.inflow)}<OfRecurrences cents={m.recIn}/></td>
+                  <td className={td}>{money(m.outflow)}<OfRecurrences cents={m.recOut}/></td>
+                  <td className={`${td} font-medium ${m.result < 0 ? "text-danger" : ""}`}>{signedMoney(m.result)}</td>
+                </>
+              )}
             </tr>
           ))}
         </tbody>
       </table>
     </div>
+  )
+}
+
+/**
+ * The projection on a phone: one row per month, the month's headline figure
+ * (the balance it ends on, or its result in the Entradas e saídas view) and a
+ * pair of thin bars for what comes in and goes out, on one scale across all
+ * the months so a heavy month reads as one. The bars are the chart's own
+ * encoding (green in, red out, the recurrences' share lighter) so switching to
+ * the chart changes the form and not the language; the figures carry the
+ * numbers, in ink, each beside its bar, and the bars are hidden from a
+ * screen reader.
+ */
+function MonthList({data, view}: {data: ProjectedMonth[]; view: View}) {
+  const {t} = useTranslation()
+  const max = Math.max(1, ...data.map(m => Math.max(m.inflow, m.outflow)))
+  const pct = (cents: number) => `${(cents / max) * 100}%`
+  return (
+    <ol aria-label={t("finance.overview.monthList")} className="divide-y divide-border border-y border-border">
+      {data.map(m => {
+        const value = view === "balance" ? m.balance : m.result
+        return (
+          <li key={m.month} className="space-y-1.5 py-2.5">
+            <div className="flex items-baseline justify-between gap-3">
+              <span data-month className="text-sm text-foreground">{monthShort(m.month)}</span>
+              <span data-value data-numeric className={`text-sm font-medium tabular-nums ${value < 0 ? "text-danger" : "text-foreground"}`}>{signedMoney(value)}</span>
+            </div>
+            <div data-numeric className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 text-xs tabular-nums text-muted-foreground">
+              <Bar total={m.inflow} recurring={m.recIn} width={pct(m.inflow)} tone="bg-success"/>
+              <span className="whitespace-nowrap text-right">{t("finance.overview.legendIn")} {money(m.inflow)}</span>
+              <Bar total={m.outflow} recurring={m.recOut} width={pct(m.outflow)} tone="bg-danger"/>
+              <span className="whitespace-nowrap text-right">{t("finance.overview.legendOut")} {money(m.outflow)}</span>
+            </div>
+          </li>
+        )
+      })}
+    </ol>
+  )
+}
+
+/** One thin bar from the row's left edge: the bills solid, the recurrences' share at the chart's 45%. */
+function Bar({total, recurring, width, tone}: {total: number; recurring: number; width: string; tone: string}) {
+  if (total <= 0) return <span aria-hidden className="h-1.5"/>
+  const bills = total - recurring
+  return (
+    <span aria-hidden className="flex h-1.5 min-w-0.5 gap-px overflow-hidden rounded-full" style={{width}}>
+      {bills > 0 && <span className={tone} style={{flexGrow: bills}}/>}
+      {recurring > 0 && <span className={`${tone} opacity-45`} style={{flexGrow: recurring}}/>}
+    </span>
   )
 }
 
@@ -261,6 +364,19 @@ function ProjectionTable({data}: {data: ProjectedMonth[]}) {
  */
 const compact = (cents: number) => new Intl.NumberFormat(currentLocale(), {style: "currency", currency: "BRL", notation: "compact", maximumFractionDigits: 1}).format(cents / 100)
 
+/**
+ * The chart's drawing box at its real width (640 until measured), so 11px
+ * labels stay 11px. Narrow: month labels thinned to every second or third when "Out/26" (about 36px) no longer fits its slot;
+ * each bar's title still names its month.
+ */
+function frame(measured: number, months: number) {
+  const W = measured > 0 ? measured : 640
+  // "R$ 30 mil" at 11px needs the full gutter at any width.
+  const LEFT = 64
+  const slot = (W - LEFT) / Math.max(1, months)
+  return {W, LEFT, every: Math.max(1, Math.ceil(40 / slot))}
+}
+
 /** A round step (1, 2 or 5 × a power of ten) that cuts the span into about four. */
 function niceStep(span: number): number {
   const raw = span / 4
@@ -270,7 +386,9 @@ function niceStep(span: number): number {
 
 function ProjectionChart({data}: {data: ProjectedMonth[]}) {
   const {t} = useTranslation()
-  const W = 640, H = 200, TOP = 10, BOTTOM = 22, LEFT = 64
+  const ref = useRef<HTMLElement>(null)
+  const {W, LEFT, every} = frame(useElementWidth(ref), data.length)
+  const H = 200, TOP = 10, BOTTOM = 22
   const step = niceStep(Math.max(100, Math.max(0, ...data.map(m => m.balance)) - Math.min(0, ...data.map(m => m.balance))))
   const lo = Math.floor(Math.min(0, ...data.map(m => m.balance)) / step) * step
   const hi = Math.max(step, Math.ceil(Math.max(0, ...data.map(m => m.balance)) / step) * step)
@@ -281,8 +399,8 @@ function ProjectionChart({data}: {data: ProjectedMonth[]}) {
   const slot = (W - LEFT) / Math.max(1, data.length)
   const bw = Math.min(36, slot * 0.5)
   return (
-    <figure className="space-y-2">
-      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={t("finance.overview.chartLabel", {count: data.length})} className="h-52 w-full">
+    <figure ref={ref} className="space-y-2">
+      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={t("finance.overview.chartLabel", {count: data.length})} className="h-auto w-full">
         {ticks.map(v => (
           <g key={v}>
             <line x1={LEFT} x2={W} y1={y(v)} y2={y(v)} className={v === 0 ? "stroke-border" : "stroke-border/50"} strokeWidth={1} strokeDasharray={v === 0 ? undefined : "2 3"}/>
@@ -297,7 +415,7 @@ function ProjectionChart({data}: {data: ProjectedMonth[]}) {
             <g key={m.month}>
               <title>{t("finance.overview.barTitle", {month: monthShort(m.month), balance: signedMoney(m.balance), receivable: money(m.receivable), payable: money(m.payable), recurrences: signedMoney(m.virtual)})}</title>
               <rect x={x} y={top} width={bw} height={Math.max(h, 1)} rx={2} className={m.balance < 0 ? "fill-danger" : "fill-brand-600"}/>
-              <text x={LEFT + i * slot + slot / 2} y={H - 6} textAnchor="middle" className="fill-muted-foreground text-[11px]">{monthShort(m.month)}</text>
+              {i % every === 0 && <text x={LEFT + i * slot + slot / 2} y={H - 6} textAnchor="middle" className="fill-muted-foreground text-[11px]">{monthShort(m.month)}</text>}
             </g>
           )
         })}
@@ -318,7 +436,9 @@ function ProjectionChart({data}: {data: ProjectedMonth[]}) {
  */
 function FlowChart({data}: {data: ProjectedMonth[]}) {
   const {t} = useTranslation()
-  const W = 640, H = 220, TOP = 10, BOTTOM = 22, LEFT = 64
+  const ref = useRef<HTMLElement>(null)
+  const {W, LEFT, every} = frame(useElementWidth(ref), data.length)
+  const H = 220, TOP = 10, BOTTOM = 22
   const maxIn = Math.max(0, ...data.map(m => m.inflow)), maxOut = Math.max(0, ...data.map(m => m.outflow))
   const step = niceStep(Math.max(100, maxIn + maxOut))
   const hi = Math.max(step, Math.ceil(maxIn / step) * step)
@@ -330,8 +450,8 @@ function FlowChart({data}: {data: ProjectedMonth[]}) {
   const slot = (W - LEFT) / Math.max(1, data.length)
   const bw = Math.min(36, slot * 0.5)
   return (
-    <figure className="space-y-2">
-      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={t("finance.overview.flowChartLabel", {count: data.length})} className="h-56 w-full">
+    <figure ref={ref} className="space-y-2">
+      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={t("finance.overview.flowChartLabel", {count: data.length})} className="h-auto w-full">
         {ticks.map(v => (
           <g key={v}>
             <line x1={LEFT} x2={W} y1={y(v)} y2={y(v)} className={v === 0 ? "stroke-border" : "stroke-border/50"} strokeWidth={1} strokeDasharray={v === 0 ? undefined : "2 3"}/>
@@ -351,7 +471,7 @@ function FlowChart({data}: {data: ProjectedMonth[]}) {
               {outBills > 0 && <rect x={x} y={zero} width={bw} height={outBills} className="fill-danger"/>}
               {outRec > 0 && <rect x={x} y={zero + outBills} width={bw} height={outRec} rx={2} className="fill-danger opacity-45"/>}
               <circle cx={cx} cy={y(m.result)} r={3.5} className="fill-foreground stroke-background" strokeWidth={1.5}/>
-              <text x={cx} y={H - 6} textAnchor="middle" className="fill-muted-foreground text-[11px]">{monthShort(m.month)}</text>
+              {i % every === 0 && <text x={cx} y={H - 6} textAnchor="middle" className="fill-muted-foreground text-[11px]">{monthShort(m.month)}</text>}
             </g>
           )
         })}
