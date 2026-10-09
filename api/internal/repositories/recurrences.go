@@ -15,8 +15,17 @@ import (
 	"gopkg.aoctech.app/billing/api/internal/domain/brcal"
 	"gopkg.aoctech.app/billing/api/internal/domain/finance"
 	"gopkg.aoctech.app/billing/api/internal/domain/id"
+	"gopkg.aoctech.app/billing/api/internal/patch"
 	"gopkg.aoctech.app/billing/api/internal/space"
 )
+
+// removeClause is an update expression's REMOVE part, or nothing.
+func removeClause(attrs []string) string {
+	if len(attrs) == 0 {
+		return ""
+	}
+	return " REMOVE " + strings.Join(attrs, ", ")
+}
 
 // ErrRecurrenceChanged is a materialisation that was built from a snapshot of a
 // recurrence that has since been archived or retargeted. The job skips it and
@@ -277,7 +286,9 @@ type RecurrencePatch struct {
 	AccountID   *string
 	Description *string
 	AutoSettle  *bool
-	End         *brcal.Date
+	// End: absent keeps it, null removes it (the rule has no end again and the
+	// job picks it up from its cursor), a date replaces it.
+	End patch.Optional[brcal.Date]
 	// Archive confirms that an End leaving nothing to come ends the recurrence:
 	// the end and the archive are then one conditional write. Without it, such
 	// an End is ErrRecurrenceWouldEnd.
@@ -320,13 +331,14 @@ func (r *RecurrenceRepository) Update(ctx context.Context, sp space.ResolvedSpac
 	if p.AutoSettle != nil {
 		rec.AutoSettle = *p.AutoSettle
 	}
-	if p.End != nil {
-		rec.Schedule.End = *p.End
+	if p.End.Present() {
+		// Null leaves the zero date: no end.
+		rec.Schedule.End, _ = p.End.Get()
 	}
 	// An auto-settling recurrence is a standing instruction the daily job carries
 	// out on the user's behalf; changing what it pays, from where, is settling.
 	// Turning auto_settle OFF only removes power and needs no extra verb.
-	endExtended := p.End != nil && !before.Schedule.End.IsZero() && (rec.Schedule.End.IsZero() || rec.Schedule.End.After(before.Schedule.End))
+	endExtended := p.End.Present() && !before.Schedule.End.IsZero() && (rec.Schedule.End.IsZero() || rec.Schedule.End.After(before.Schedule.End))
 	if rec.AutoSettle && (rec.Amount != before.Amount || rec.AccountID != before.AccountID || rec.CategoryID != before.CategoryID || endExtended) {
 		if err := sp.Require(space.Write | space.Settle); err != nil {
 			return err
@@ -345,7 +357,7 @@ func (r *RecurrenceRepository) Update(ctx context.Context, sp space.ResolvedSpac
 	if err != nil {
 		return err
 	}
-	if p.End != nil && !p.Archive && !rec.Archived && rec.Ended(cursor, brcal.FromTime(now)) {
+	if p.End.Present() && !p.Archive && !rec.Archived && rec.Ended(cursor, brcal.FromTime(now)) {
 		return ErrRecurrenceWouldEnd
 	}
 	if p.Archive {
@@ -368,18 +380,28 @@ func (r *RecurrenceRepository) Update(ctx context.Context, sp space.ResolvedSpac
 	set("account_id", str(rec.AccountID))
 	set("description", str(rec.Description))
 	set("auto_settle", &types.AttributeValueMemberBOOL{Value: rec.AutoSettle})
-	if p.End != nil {
+	var remove []string
+	switch {
+	case p.End.IsNull():
+		// Removed, never stored as "": the row reads like one that never had an end.
+		names["#end"] = "end"
+		remove = append(remove, "#end")
+	case p.End.Present():
 		set("end", str(rec.Schedule.End.String()))
 	}
 	if p.Archive {
 		set("archived", &types.AttributeValueMemberBOOL{Value: true})
 	}
-	remove := ""
+	// The job-index keys follow the rule as edited: an end cleared on a rule the
+	// job had finished puts it back on the list at its next date after the
+	// cursor (re-opened); an end that leaves nothing after the cursor takes it
+	// off. The cursor itself never moves here, so nothing already made is made
+	// again — and the OCCURRENCE# lock would refuse it if it were.
 	if pk, sk := scheduleKeysFor(sp, rec, cursor); pk != "" {
 		set("schedule_pk", str(pk))
 		set("schedule_sk", str(sk))
 	} else {
-		remove = " REMOVE schedule_pk, schedule_sk"
+		remove = append(remove, "schedule_pk", "schedule_sk")
 	}
 	cond := "attribute_exists(pk) AND attribute_not_exists(last_nominal)"
 	if !cursor.IsZero() {
@@ -388,7 +410,7 @@ func (r *RecurrenceRepository) Update(ctx context.Context, sp space.ResolvedSpac
 	}
 	sk := RecurrenceSK(recID)
 	err = r.recs.TransactWrite(ctx, txItems(r.recs.BuildRawUpdateTxItem(sp.PK(), &sk,
-		"SET "+strings.Join(sets, ", ")+remove, cond, names, values)))
+		"SET "+strings.Join(sets, ", ")+removeClause(remove), cond, names, values)))
 	if err != nil && onlyConditionFailed(err) {
 		return ErrConcurrentModification
 	}

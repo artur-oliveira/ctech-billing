@@ -10,6 +10,7 @@ import (
 	"gopkg.aoctech.app/billing/api/internal/domain/id"
 	"gopkg.aoctech.app/billing/api/internal/limits"
 	"gopkg.aoctech.app/billing/api/internal/middleware"
+	"gopkg.aoctech.app/billing/api/internal/patch"
 	"gopkg.aoctech.app/billing/api/internal/problem"
 )
 
@@ -117,18 +118,42 @@ func (h *financeHandlers) setPostCTechInvoices(c fiber.Ctx) error {
 	return c.JSON(map[string]bool{"post_ctech_invoices": *req.PostCTechInvoices})
 }
 
+// defaultReceivingRequest sets the default receiving account, or clears it with
+// an explicit null (the PATCH rule, package patch): with none, a space's only
+// active bank or cash account receives (6.7). Absent is a 422: a PUT that
+// names nothing is a client bug, not "keep".
+type defaultReceivingRequest struct {
+	DefaultReceivingAccountID patch.Optional[string] `json:"default_receiving_account_id"`
+}
+
+func (r defaultReceivingRequest) edit() (id string, clear bool, errs []problem.FieldError) {
+	ch := &checks{}
+	if r.DefaultReceivingAccountID.IsNull() {
+		return "", true, nil
+	}
+	v, _ := r.DefaultReceivingAccountID.Get()
+	ch.id("default_receiving_account_id", v, true)
+	return v, false, ch.errs
+}
+
 func (h *financeHandlers) setDefaultReceivingAccount(c fiber.Ctx) error {
-	var req settingsDTO
+	var req defaultReceivingRequest
 	if p := decodeStrict(c, &req); p != nil {
 		return p.Send(c)
 	}
-	ch := &checks{}
-	ch.id("default_receiving_account_id", req.DefaultReceivingAccountID, true)
-	if len(ch.errs) > 0 {
-		return problem.Validation(ch.errs).Send(c)
+	accountID, clear, errs := req.edit()
+	if len(errs) > 0 {
+		return problem.Validation(errs).Send(c)
 	}
-	if err := h.ledger.SetDefaultReceivingAccount(c.Context(), middleware.GetSpace(c), req.DefaultReceivingAccountID, h.now()); err != nil {
+	sp := middleware.GetSpace(c)
+	var err error
+	if clear {
+		err = h.ledger.ClearDefaultReceivingAccount(c.Context(), sp, h.now())
+	} else {
+		err = h.ledger.SetDefaultReceivingAccount(c.Context(), sp, accountID, h.now())
+	}
+	if err != nil {
 		return fail(c, err)
 	}
-	return c.JSON(settingsDTO{DefaultReceivingAccountID: req.DefaultReceivingAccountID})
+	return c.JSON(settingsDTO{DefaultReceivingAccountID: accountID})
 }

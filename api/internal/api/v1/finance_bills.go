@@ -8,6 +8,7 @@ import (
 	"gopkg.aoctech.app/billing/api/internal/domain/finance"
 	"gopkg.aoctech.app/billing/api/internal/limits"
 	"gopkg.aoctech.app/billing/api/internal/middleware"
+	"gopkg.aoctech.app/billing/api/internal/patch"
 	"gopkg.aoctech.app/billing/api/internal/problem"
 	"gopkg.aoctech.app/billing/api/internal/repositories"
 )
@@ -133,12 +134,12 @@ func (h *financeHandlers) listBills(c fiber.Ctx) error {
 }
 
 type patchBillRequest struct {
-	Amount      *billing.Cents `json:"amount"`
-	CategoryID  *string        `json:"category_id"`
-	AccountID   *string        `json:"account_id"`
-	Description *string        `json:"description"`
-	DueDate     *brcal.Date    `json:"due_date"`
-	AutoSettle  *bool          `json:"auto_settle"`
+	Amount      patch.Optional[billing.Cents] `json:"amount"`
+	CategoryID  patch.Optional[string]        `json:"category_id"`
+	AccountID   patch.Optional[string]        `json:"account_id"`
+	Description patch.Optional[string]        `json:"description"`
+	DueDate     patch.Optional[brcal.Date]    `json:"due_date"`
+	AutoSettle  patch.Optional[bool]          `json:"auto_settle"`
 }
 
 func (h *financeHandlers) patchBill(c fiber.Ctx) error {
@@ -146,37 +147,43 @@ func (h *financeHandlers) patchBill(c fiber.Ctx) error {
 	if p := decodeStrict(c, &req); p != nil {
 		return p.Send(c)
 	}
-	if errs := req.validate(h.today()); len(errs) > 0 {
+	edit, errs := req.edit(h.today())
+	if len(errs) > 0 {
 		return problem.Validation(errs).Send(c)
 	}
-	b, err := h.bills.Edit(c.Context(), middleware.GetSpace(c), c.Params("id"), repositories.BillEdit{
-		Amount: req.Amount, CategoryID: req.CategoryID, AccountID: req.AccountID,
-		Description: req.Description, Due: req.DueDate, AutoSettle: req.AutoSettle,
-	}, actorOfUser(c), middleware.GetRequestID(c), h.now())
+	b, err := h.bills.Edit(c.Context(), middleware.GetSpace(c), c.Params("id"), edit,
+		actorOfUser(c), middleware.GetRequestID(c), h.now())
 	if err != nil {
 		return fail(c, err)
 	}
 	return c.JSON(newBillDTO(b, h.today()))
 }
 
-func (r patchBillRequest) validate(today brcal.Date) []problem.FieldError {
+// edit validates the body under the PATCH rule (package patch): only the
+// description is optional, so it is the only field null clears.
+func (r patchBillRequest) edit(today brcal.Date) (repositories.BillEdit, []problem.FieldError) {
 	c := &checks{}
-	if r.Amount != nil {
-		c.amount("amount", *r.Amount)
+	if v, ok := required(c, "amount", r.Amount); ok {
+		c.amount("amount", v)
 	}
-	if r.CategoryID != nil {
-		c.id("category_id", *r.CategoryID, true)
+	if v, ok := required(c, "category_id", r.CategoryID); ok {
+		c.id("category_id", v, true)
 	}
-	if r.AccountID != nil {
-		c.id("account_id", *r.AccountID, true)
+	if v, ok := required(c, "account_id", r.AccountID); ok {
+		c.id("account_id", v, true)
 	}
-	if r.Description != nil {
-		c.text("description", *r.Description, false, limits.Description)
+	description := clearable(r.Description)
+	if description != nil {
+		c.text("description", *description, false, limits.Description)
 	}
-	if r.DueDate != nil {
-		c.date("due_date", *r.DueDate, limits.MinDate, limits.MaxDate(today))
+	if v, ok := required(c, "due_date", r.DueDate); ok {
+		c.date("due_date", v, limits.MinDate, limits.MaxDate(today))
 	}
-	return c.errs
+	required(c, "auto_settle", r.AutoSettle)
+	return repositories.BillEdit{
+		Amount: r.Amount.Ptr(), CategoryID: r.CategoryID.Ptr(), AccountID: r.AccountID.Ptr(),
+		Description: description, Due: r.DueDate.Ptr(), AutoSettle: r.AutoSettle.Ptr(),
+	}, c.errs
 }
 
 type settleBillRequest struct {
