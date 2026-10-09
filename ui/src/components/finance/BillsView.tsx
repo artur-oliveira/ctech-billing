@@ -9,8 +9,10 @@ import {useEffect, useState} from "react"
 import {useTranslation} from "react-i18next"
 import {toast} from "sonner"
 
+import {LedgerRow} from "@/components/finance/LedgerRow"
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
 import {DateField} from "@/components/ui/DateField"
+import {Segmented} from "@/components/ui/Segmented"
 import {Select} from "@/components/ui/Select"
 import {messageFor, statusOf} from "@/lib/api/client"
 import {cancelBill, createBill, financeKeys, listAccounts, listBills, patchBill, settleBill} from "@/lib/api/finance"
@@ -63,19 +65,12 @@ export function BillsView() {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div role="group" aria-label={t("bills.direction.label")} className="flex items-center gap-0.5 rounded-lg border border-border bg-surface p-0.5">
-          {(["payable", "receivable"] as Direction[]).map(d => (
-            <button
-              key={d}
-              type="button"
-              aria-pressed={direction === d}
-              onClick={() => setDirection(d)}
-              className={`rounded-md px-3 py-1 text-sm transition-colors ${direction === d ? "bg-background font-medium text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
-            >
-              {t(`bills.direction.${d}`)}
-            </button>
-          ))}
-        </div>
+        <Segmented
+          label={t("bills.direction.label")}
+          value={direction}
+          onValueChange={setDirection}
+          options={(["payable", "receivable"] as Direction[]).map(d => ({value: d, label: t(`bills.direction.${d}`)}))}
+        />
         {can("finance.write") && (
           <Button variant="brand" size="sm" onClick={() => setCreating(true)}>{t("bills.list.new")}</Button>
         )}
@@ -132,36 +127,35 @@ function BillRow({bill, accountName, accounts}: {bill: Bill; accountName?: strin
   const bucket = bill.bucket ?? "upcoming"
   const Icon = BADGE[bucket].icon
   return (
-    <li className="py-2.5">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-        <div className="min-w-0 flex-1 basis-40">
-          <p className="truncate text-sm text-foreground">{bill.description || t("bills.common.noDescription")}</p>
-          <p className="text-xs text-muted-foreground">
-            {t("bills.row.due", {date: shortDate(bill.due_date)})}{accountName ? ` · ${accountName}` : ""}{bill.auto_settle ? ` · ${t(`bills.row.autoNote.${bill.direction}`)}` : ""}
-            {statement && <> · {t("bills.row.statement")} · <Link href={`/console/finance/cards?card=${encodeURIComponent(bill.category_id)}`} className="underline-offset-4 hover:underline">{t("bills.row.viewStatement")}</Link></>}
-          </p>
-        </div>
-        <span className="hidden sm:inline-flex"><Badge tone={BADGE[bucket].tone}><Icon aria-hidden className="size-3"/>{bucketLabel(bucket)}</Badge></span>
-        <span data-numeric className="shrink-0 text-right text-sm tabular-nums text-foreground sm:w-28">{money(bill.amount)}</span>
-        <div className="flex basis-full flex-wrap gap-1 sm:basis-auto">
-          {can("finance.settle") && (
-            <Button size="sm" variant={panel === "settle" ? "outline" : "ghost"} aria-expanded={panel === "settle"} onClick={() => setPanel(panel === "settle" ? null : "settle")}>
-              {t(`bills.row.settle.${bill.direction}`)}
-            </Button>
-          )}
-          {can("finance.write") && (
-            <>
-              <Button size="sm" variant="ghost" aria-expanded={panel === "edit"} onClick={() => setPanel(panel === "edit" ? null : "edit")}>{t("bills.common.edit")}</Button>
-              {/* A statement is closed: corrected by a refund on the card, never canceled. */}
-              {!statement && <Button size="sm" variant="ghost" aria-expanded={panel === "cancel"} onClick={() => setPanel(panel === "cancel" ? null : "cancel")}>{t("bills.row.delete")}</Button>}
-            </>
-          )}
-        </div>
-      </div>
+    <LedgerRow
+      title={bill.description || t("bills.common.noDescription")}
+      meta={<>
+        {t("bills.row.due", {date: shortDate(bill.due_date)})}{accountName ? ` • ${accountName}` : ""}{bill.auto_settle ? ` • ${t(`bills.row.autoNote.${bill.direction}`)}` : ""}
+        {statement && <> • {t("bills.row.statement")} • <Link href={`/console/finance/cards?card=${encodeURIComponent(bill.category_id)}`} className="underline-offset-4 hover:underline">{t("bills.row.viewStatement")}</Link></>}
+      </>}
+      // On a phone the group heading (Vencidas, A vencer) already says it.
+      aside={<Badge tone={BADGE[bucket].tone}><Icon aria-hidden className="size-3"/>{bucketLabel(bucket)}</Badge>}
+      asideOnPhone={false}
+      amount={<span data-numeric>{money(bill.amount)}</span>}
+      actions={(can("finance.settle") || can("finance.write")) && <>
+        {can("finance.settle") && (
+          <Button size="sm" variant={panel === "settle" ? "outline" : "ghost"} aria-expanded={panel === "settle"} onClick={() => setPanel(panel === "settle" ? null : "settle")}>
+            {t(`bills.row.settle.${bill.direction}`)}
+          </Button>
+        )}
+        {can("finance.write") && (
+          <>
+            <Button size="sm" variant="ghost" aria-expanded={panel === "edit"} onClick={() => setPanel(panel === "edit" ? null : "edit")}>{t("bills.common.edit")}</Button>
+            {/* A statement is closed: corrected by a refund on the card, never canceled. */}
+            {!statement && <Button size="sm" variant="ghost" aria-expanded={panel === "cancel"} onClick={() => setPanel(panel === "cancel" ? null : "cancel")}>{t("bills.row.delete")}</Button>}
+          </>
+        )}
+      </>}
+    >
       {panel === "settle" && <SettleForm bill={bill} accounts={accounts} onDone={() => setPanel(null)}/>}
       {panel === "edit" && <EditForm bill={bill} accounts={accounts} onDone={() => setPanel(null)}/>}
       {panel === "cancel" && <CancelConfirm bill={bill} onDone={() => setPanel(null)}/>}
-    </li>
+    </LedgerRow>
   )
 }
 
@@ -402,8 +396,12 @@ function NewBillPanel({direction, accounts, onDone}: {direction: Direction; acco
         {/* What happens to the money: planned (which account, paid by itself on
             the due date or not) or already done, and then the section is the
             payment itself, named by direction, with its date and account. */}
-        <fieldset className="space-y-3 border-t border-border">
-          <legend className="float-left w-full pt-4 pb-1 text-sm font-medium text-foreground">
+        {/* The rule sits on a wrapper: on the fieldset itself the legend is
+            drawn into its border, and floating the legend out of it pushes the
+            grid fields beside it, off a phone's screen. */}
+        <div className="border-t border-border pt-4">
+        <fieldset className="space-y-3">
+          <legend className="mb-3 text-sm font-medium text-foreground">
             {paidNow ? t(`bills.new.section.${direction}`) : t("bills.new.section.plan")}
           </legend>
           {paidNow && (
@@ -421,6 +419,7 @@ function NewBillPanel({direction, accounts, onDone}: {direction: Direction; acco
             </label>
           )}
         </fieldset>
+        </div>
         <div className="flex flex-wrap gap-2">
           <Button type="submit" variant="brand" size="sm" disabled={!ready}>{t("bills.new.create")}</Button>
           <Button type="button" variant="outline" size="sm" onClick={onDone}>{t("bills.common.close")}</Button>

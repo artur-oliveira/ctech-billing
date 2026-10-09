@@ -6,6 +6,7 @@ import {useState} from "react"
 import {useTranslation} from "react-i18next"
 
 import {wholeSpace} from "@/components/finance/TransferPanel"
+import {LedgerRow} from "@/components/finance/LedgerRow"
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
 import {Select} from "@/components/ui/Select"
 import {messageFor} from "@/lib/api/client"
@@ -47,7 +48,7 @@ export function ImportLines({importId}: {importId: string}) {
     <section aria-label={t("finance.import.lines")} className="space-y-3">
       <div role="tablist" aria-label={t("finance.import.lines")} className="flex max-w-full flex-wrap items-center gap-0.5 rounded-lg border border-border bg-surface p-0.5">
         {TABS.map(x => (
-          <button key={x} type="button" role="tab" id={`im-tab-${x}`} aria-selected={tab === x} aria-controls="im-panel" onClick={() => setTab(x)}
+          <button key={x} type="button" role="tab" data-slot="segmented-item" id={`im-tab-${x}`} aria-selected={tab === x} aria-controls="im-panel" onClick={() => setTab(x)}
             className={`rounded-md px-3 py-1 text-sm transition-colors ${tab === x ? "bg-background font-medium text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>
             {t(`finance.import.tabs.${x}`)} <span className="tabular-nums">({lines.filter(l => tabOf(l) === x).length})</span>
           </button>
@@ -104,25 +105,23 @@ function LineRow({importId, line, accounts}: {importId: string; line: ImportLine
       : t("finance.import.candidate", {description, date: shortDate(b.due_date)})
   }
   const daysLeft = line.status === "pending" && line.expires_at ? calendarDaysUntil(line.expires_at) : undefined
+  const expiring = daysLeft !== undefined && daysLeft >= 0 && daysLeft <= EXPIRY_WARNING_DAYS
 
   return (
-    <li className="py-2.5">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm text-foreground">{line.description || t("finance.import.noDescription")}</p>
-          <p className="text-xs text-muted-foreground">{shortDate(line.date)}</p>
-        </div>
-        {daysLeft !== undefined && daysLeft >= 0 && daysLeft <= EXPIRY_WARNING_DAYS && (
-          <Badge tone="attention">{daysLeft === 0 ? t("finance.import.expiresToday") : t("finance.import.expiresIn", {count: daysLeft})}</Badge>
-        )}
-        <span data-numeric className="w-28 text-right text-sm tabular-nums">{signedMoney(line.amount)}</span>
+    <LedgerRow
+      title={line.description || t("finance.import.noDescription")}
+      meta={shortDate(line.date)}
+      aside={(expiring || line.status === "matched" || line.status === "created" || line.status === "linked") && <>
+        {expiring && <Badge tone="attention">{daysLeft === 0 ? t("finance.import.expiresToday") : t("finance.import.expiresIn", {count: daysLeft})}</Badge>}
         {line.status === "matched" && <Badge tone="neutral">{t("finance.import.matched")}</Badge>}
         {line.status === "created" && <Badge tone="neutral">{t("finance.import.created")}</Badge>}
         {line.status === "linked" && <Badge tone="neutral">{t("finance.import.linked")}</Badge>}
-        {line.status === "ignored" && canImport && (
-          <Button size="sm" variant="ghost" disabled={busy} onClick={() => reopen.mutate()}>{t("finance.import.reopen")}</Button>
-        )}
-      </div>
+      </>}
+      amount={<span data-numeric>{signedMoney(line.amount)}</span>}
+      actions={line.status === "ignored" && canImport && (
+        <Button size="sm" variant="ghost" disabled={busy} onClick={() => reopen.mutate()}>{t("finance.import.reopen")}</Button>
+      )}
+    >
       {line.status === "pending" && (
         <div className="mt-2 space-y-2">
           {line.candidates.length === 0 ? (
@@ -131,7 +130,7 @@ function LineRow({importId, line, accounts}: {importId: string; line: ImportLine
             <p className="text-sm text-foreground">{label(candidate)}</p>
           ) : (
             <Field label={t("finance.import.which")} htmlFor={`im-bill-${line.n}`}>
-              <Select id={`im-bill-${line.n}`} aria-label={t("finance.import.which")} value={billId} onValueChange={setBillId} className="w-72"
+              <Select id={`im-bill-${line.n}`} aria-label={t("finance.import.which")} value={billId} onValueChange={setBillId} className="w-full sm:w-72"
                 options={line.candidates.map(b => ({value: b.id, label: label(b)}))}/>
             </Field>
           )}
@@ -148,7 +147,7 @@ function LineRow({importId, line, accounts}: {importId: string; line: ImportLine
         </div>
       )}
       {error ? <p role="alert" className="mt-1 text-sm text-danger">{messageFor(error)}</p> : null}
-    </li>
+    </LedgerRow>
   )
 }
 

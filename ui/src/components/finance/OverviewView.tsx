@@ -9,6 +9,7 @@ import {useTranslation} from "react-i18next"
 
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
 import {Segmented} from "@/components/ui/Segmented"
+import {quietLink} from "@/components/ui/quietLink"
 import {financeKeys, getCashFlow, getProjection, listAccounts, listBills} from "@/lib/api/finance"
 import type {Bill, ProjectionMonth} from "@/lib/api/financeTypes"
 import {bucketLabel, directionLabel} from "@/lib/finance/labels"
@@ -97,7 +98,7 @@ function Realised() {
   const q = useQuery({queryKey: financeKeys.cashFlow(ctx.mode, ctx.space, month, month), queryFn: () => getCashFlow(ctx, month, month)})
   const m = q.data?.months[0]
   return (
-    <Block title={t("finance.overview.monthResult")} action={<Link href="/console/finance/reports?view=cash" className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline">{t("finance.overview.seeReports")}</Link>}>
+    <Block title={t("finance.overview.monthResult")} action={<Link href="/console/finance/reports?view=cash" className={quietLink}>{t("finance.overview.seeReports")}</Link>}>
       {q.isLoading ? <Skeleton className="h-20 w-full"/> : q.error || !m ? (
         <ErrorBlock error={q.error} onRetry={() => void q.refetch()}/>
       ) : (
@@ -126,7 +127,7 @@ function DueSoon() {
     .slice(0, DUE_SOON)
   const error = pay.error ?? rec.error
   return (
-    <Block title={t("finance.overview.dueSoon")} action={<Link href="/console/finance/bills" className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline">{t("finance.overview.seeAll")}</Link>}>
+    <Block title={t("finance.overview.dueSoon")} action={<Link href="/console/finance/bills" className={quietLink}>{t("finance.overview.seeAll")}</Link>}>
       {pay.isLoading || rec.isLoading ? <Skeleton className="h-20 w-full"/> : error ? (
         <ErrorBlock error={error} onRetry={() => { void pay.refetch(); void rec.refetch() }}/>
       ) : items.length === 0 ? (

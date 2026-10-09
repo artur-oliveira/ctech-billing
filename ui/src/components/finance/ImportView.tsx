@@ -129,7 +129,7 @@ function Upload({accountId, onImported, onNeedsColumns, onColumns}: {
     >
       <Field label={t("finance.import.file")} htmlFor="im-file" hint={t("finance.import.fileHint")}>
         <input id="im-file" type="file" accept=".ofx,.qfx,.csv,.txt"
-          className="block w-full max-w-md text-sm text-muted-foreground file:mr-3 file:rounded-md file:border file:border-border file:bg-surface file:px-3 file:py-1.5 file:text-sm file:text-foreground"
+          className="block w-full max-w-md text-sm text-muted-foreground file:mr-3 file:rounded-md file:border file:border-border file:bg-surface file:px-3 file:py-1.5 file:text-sm file:text-foreground touch:file:min-h-11"
           onChange={e => { setFile(e.target.files?.[0] ?? null); setDone(null); upload.reset(); upload.newIntent() }}/>
       </Field>
       <div className="flex flex-wrap items-center gap-2">
