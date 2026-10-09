@@ -232,27 +232,44 @@ function ProjectionTable({data}: {data: ProjectedMonth[]}) {
  * breakdown is in each bar's title and in the table view. Inline SVG, no chart
  * library.
  */
+const COMPACT = new Intl.NumberFormat("pt-BR", {style: "currency", currency: "BRL", notation: "compact", maximumFractionDigits: 1})
+
+/** A round step (1, 2 or 5 × a power of ten) that cuts the span into about four. */
+function niceStep(span: number): number {
+  const raw = span / 4
+  const pow = 10 ** Math.floor(Math.log10(raw))
+  return [1, 2, 5, 10].map(f => f * pow).find(s => s >= raw) ?? 10 * pow
+}
+
 function ProjectionChart({data}: {data: ProjectedMonth[]}) {
-  const W = 640, H = 200, TOP = 18, BOTTOM = 22
-  const hi = Math.max(0, ...data.map(m => m.balance))
-  const lo = Math.min(0, ...data.map(m => m.balance))
-  const span = Math.max(1, hi - lo)
-  const y = (v: number) => TOP + ((hi - v) / span) * (H - TOP - BOTTOM)
+  const W = 640, H = 200, TOP = 10, BOTTOM = 22, LEFT = 64
+  const step = niceStep(Math.max(100, Math.max(0, ...data.map(m => m.balance)) - Math.min(0, ...data.map(m => m.balance))))
+  const lo = Math.floor(Math.min(0, ...data.map(m => m.balance)) / step) * step
+  const hi = Math.max(step, Math.ceil(Math.max(0, ...data.map(m => m.balance)) / step) * step)
+  const ticks: number[] = []
+  for (let v = lo; v <= hi; v += step) ticks.push(v)
+  const y = (v: number) => TOP + ((hi - v) / (hi - lo)) * (H - TOP - BOTTOM)
   const zero = y(0)
-  const slot = W / Math.max(1, data.length)
+  const slot = (W - LEFT) / Math.max(1, data.length)
   const bw = Math.min(36, slot * 0.5)
   return (
     <figure className="space-y-2">
       <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Saldo projetado ao fim de cada um dos próximos ${data.length} meses`} className="h-52 w-full">
-        <line x1={0} x2={W} y1={zero} y2={zero} className="stroke-border" strokeWidth={1}/>
+        {ticks.map(v => (
+          <g key={v}>
+            <line x1={LEFT} x2={W} y1={y(v)} y2={y(v)} className={v === 0 ? "stroke-border" : "stroke-border/50"} strokeWidth={1} strokeDasharray={v === 0 ? undefined : "2 3"}/>
+            {/* Centavos: the formatter takes reais. */}
+            <text data-axis="y" x={LEFT - 8} y={y(v) + 4} textAnchor="end" className="fill-muted-foreground text-[11px]">{COMPACT.format(v / 100)}</text>
+          </g>
+        ))}
         {data.map((m, i) => {
-          const x = i * slot + slot / 2 - bw / 2
+          const x = LEFT + i * slot + slot / 2 - bw / 2
           const top = Math.min(y(m.balance), zero), h = Math.abs(y(m.balance) - zero)
           return (
             <g key={m.month}>
               <title>{`${monthShort(m.month)}: saldo projetado ${signedMoney(m.balance)} (a receber ${money(m.receivable)}, a pagar ${money(m.payable)}, recorrências ${signedMoney(m.virtual)})`}</title>
               <rect x={x} y={top} width={bw} height={Math.max(h, 1)} rx={2} className={m.balance < 0 ? "fill-danger" : "fill-brand-600"}/>
-              <text x={i * slot + slot / 2} y={H - 6} textAnchor="middle" className="fill-muted-foreground text-[11px]">{monthShort(m.month)}</text>
+              <text x={LEFT + i * slot + slot / 2} y={H - 6} textAnchor="middle" className="fill-muted-foreground text-[11px]">{monthShort(m.month)}</text>
             </g>
           )
         })}

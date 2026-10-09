@@ -83,6 +83,10 @@ describe("F1 — visão geral", () => {
     renderWithQuery(<OverviewView/>)
     const block = await screen.findByRole("region", {name: "Projeção"})
     await waitFor(() => expect(block.querySelector("svg title")?.textContent?.replace(/\s/g, " ")).toMatch(/^Out\/26: saldo projetado R\$ 18\.668,25 /))
+    // The Y axis says what the bars are in: R$, from zero up past the highest.
+    const ticks = [...block.querySelectorAll("svg [data-axis=y]")].map(t => t.textContent?.replace(/\s/g, " "))
+    expect(ticks[0]).toBe("R$ 0")
+    expect(ticks.at(-1)).toMatch(/^R\$ \d+ mil$/)
     await userEvent.click(within(block).getByRole("button", {name: "Ver como tabela"}))
     const rows = within(within(block).getByRole("table")).getAllByRole("row").slice(1)
     expect(rows.map(r => r.lastElementChild?.textContent?.replace(/\s/g, " "))).toEqual(["R$ 18.668,25", "R$ 21.768,25", "R$ 20.268,25"])
