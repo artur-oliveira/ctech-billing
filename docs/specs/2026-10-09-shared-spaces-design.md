@@ -166,7 +166,9 @@ Specified in `ctech-account/docs/specs/2026-10-09-personal-workspaces.md`. In sh
 3. Handoffs `/account/spaces/new` and `/account/spaces/{id}/people`, under the existing handoff rules.
 4. `kind` in the answers of `GET /internal/organizations/:id/members/:user_id` and
    `GET /internal/users/:user_id/organizations`.
-5. Other products' organization lists filter `kind = personal`.
+5. Organization lists filter `kind = personal`. **The DF-e needs no filter** — it never lists
+   workspaces, only its own companies, and a personal workspace has none; it checks the workspace kind
+   in depth on its company reach instead (`ctech-dfe/docs/specs/2026-10-09-personal-workspaces-in-dfe.md`).
 6. Account deletion: unchanged rules, applied to both kinds.
 
 **Deploy order:** ctech-account first (the field, the routes answering `kind`, the handoffs), then
