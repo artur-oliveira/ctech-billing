@@ -7,9 +7,12 @@ import {AlertCircle, CalendarClock, Clock, Receipt} from "lucide-react"
 import Link from "next/link"
 import {useEffect, useState} from "react"
 import {useTranslation} from "react-i18next"
+import {toast} from "sonner"
 
+import {LedgerRow} from "@/components/finance/LedgerRow"
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
 import {DateField} from "@/components/ui/DateField"
+import {Segmented} from "@/components/ui/Segmented"
 import {Select} from "@/components/ui/Select"
 import {messageFor, statusOf} from "@/lib/api/client"
 import {cancelBill, createBill, financeKeys, listAccounts, listBills, patchBill, settleBill} from "@/lib/api/finance"
@@ -62,19 +65,12 @@ export function BillsView() {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div role="group" aria-label={t("bills.direction.label")} className="flex items-center gap-0.5 rounded-lg border border-border bg-surface p-0.5">
-          {(["payable", "receivable"] as Direction[]).map(d => (
-            <button
-              key={d}
-              type="button"
-              aria-pressed={direction === d}
-              onClick={() => setDirection(d)}
-              className={`rounded-md px-3 py-1 text-sm transition-colors ${direction === d ? "bg-background font-medium text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
-            >
-              {t(`bills.direction.${d}`)}
-            </button>
-          ))}
-        </div>
+        <Segmented
+          label={t("bills.direction.label")}
+          value={direction}
+          onValueChange={setDirection}
+          options={(["payable", "receivable"] as Direction[]).map(d => ({value: d, label: t(`bills.direction.${d}`)}))}
+        />
         {can("finance.write") && (
           <Button variant="brand" size="sm" onClick={() => setCreating(true)}>{t("bills.list.new")}</Button>
         )}
@@ -114,7 +110,7 @@ export function BillsView() {
         </div>
 
       </div>
-      <Drawer open={creating} onClose={() => setCreating(false)} title={t(`bills.list.newTitle.${direction}`)}>
+      <Drawer open={creating} onClose={() => setCreating(false)} title={t("bills.list.newTitle")}>
         <NewBillPanel direction={direction} accounts={accounts.data?.data ?? []} onDone={() => setCreating(false)}/>
       </Drawer>
     </div>
@@ -131,36 +127,35 @@ function BillRow({bill, accountName, accounts}: {bill: Bill; accountName?: strin
   const bucket = bill.bucket ?? "upcoming"
   const Icon = BADGE[bucket].icon
   return (
-    <li className="py-2.5">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-        <div className="min-w-0 flex-1 basis-40">
-          <p className="truncate text-sm text-foreground">{bill.description || t("bills.common.noDescription")}</p>
-          <p className="text-xs text-muted-foreground">
-            {t("bills.row.due", {date: shortDate(bill.due_date)})}{accountName ? ` · ${accountName}` : ""}{bill.auto_settle ? ` · ${t(`bills.row.autoNote.${bill.direction}`)}` : ""}
-            {statement && <> · {t("bills.row.statement")} · <Link href={`/console/finance/cards?card=${encodeURIComponent(bill.category_id)}`} className="underline-offset-4 hover:underline">{t("bills.row.viewStatement")}</Link></>}
-          </p>
-        </div>
-        <span className="hidden sm:inline-flex"><Badge tone={BADGE[bucket].tone}><Icon aria-hidden className="size-3"/>{bucketLabel(bucket)}</Badge></span>
-        <span data-numeric className="shrink-0 text-right text-sm tabular-nums text-foreground sm:w-28">{money(bill.amount)}</span>
-        <div className="flex basis-full flex-wrap gap-1 sm:basis-auto">
-          {can("finance.settle") && (
-            <Button size="sm" variant={panel === "settle" ? "outline" : "ghost"} aria-expanded={panel === "settle"} onClick={() => setPanel(panel === "settle" ? null : "settle")}>
-              {t(`bills.row.settle.${bill.direction}`)}
-            </Button>
-          )}
-          {can("finance.write") && (
-            <>
-              <Button size="sm" variant="ghost" aria-expanded={panel === "edit"} onClick={() => setPanel(panel === "edit" ? null : "edit")}>{t("bills.common.edit")}</Button>
-              {/* A statement is closed: corrected by a refund on the card, never canceled. */}
-              {!statement && <Button size="sm" variant="ghost" aria-expanded={panel === "cancel"} onClick={() => setPanel(panel === "cancel" ? null : "cancel")}>{t("bills.row.delete")}</Button>}
-            </>
-          )}
-        </div>
-      </div>
+    <LedgerRow
+      title={bill.description || t("bills.common.noDescription")}
+      meta={<>
+        {t("bills.row.due", {date: shortDate(bill.due_date)})}{accountName ? ` • ${accountName}` : ""}{bill.auto_settle ? ` • ${t(`bills.row.autoNote.${bill.direction}`)}` : ""}
+        {statement && <> • {t("bills.row.statement")} • <Link href={`/console/finance/cards?card=${encodeURIComponent(bill.category_id)}`} className="underline-offset-4 hover:underline">{t("bills.row.viewStatement")}</Link></>}
+      </>}
+      // On a phone the group heading (Vencidas, A vencer) already says it.
+      aside={<Badge tone={BADGE[bucket].tone}><Icon aria-hidden className="size-3"/>{bucketLabel(bucket)}</Badge>}
+      asideOnPhone={false}
+      amount={<span data-numeric>{money(bill.amount)}</span>}
+      actions={(can("finance.settle") || can("finance.write")) && <>
+        {can("finance.settle") && (
+          <Button size="sm" variant={panel === "settle" ? "outline" : "ghost"} aria-expanded={panel === "settle"} onClick={() => setPanel(panel === "settle" ? null : "settle")}>
+            {t(`bills.row.settle.${bill.direction}`)}
+          </Button>
+        )}
+        {can("finance.write") && (
+          <>
+            <Button size="sm" variant="ghost" aria-expanded={panel === "edit"} onClick={() => setPanel(panel === "edit" ? null : "edit")}>{t("bills.common.edit")}</Button>
+            {/* A statement is closed: corrected by a refund on the card, never canceled. */}
+            {!statement && <Button size="sm" variant="ghost" aria-expanded={panel === "cancel"} onClick={() => setPanel(panel === "cancel" ? null : "cancel")}>{t("bills.row.delete")}</Button>}
+          </>
+        )}
+      </>}
+    >
       {panel === "settle" && <SettleForm bill={bill} accounts={accounts} onDone={() => setPanel(null)}/>}
       {panel === "edit" && <EditForm bill={bill} accounts={accounts} onDone={() => setPanel(null)}/>}
       {panel === "cancel" && <CancelConfirm bill={bill} onDone={() => setPanel(null)}/>}
-    </li>
+    </LedgerRow>
   )
 }
 
@@ -344,12 +339,26 @@ function NewBillPanel({direction, accounts, onDone}: {direction: Direction; acco
   // the second fails, the bill exists and the form offers to retry the payment.
   const [paidNow, setPaidNow] = useState(false)
   const [paidOn, setPaidOn] = useState(todayIso())
+  //
+  // The list is refreshed once, after the LAST step: a create that a settle
+  // follows invalidates nothing, or the refetch in between shows the bill open
+  // under "A pagar" for as long as the settle takes and then drops it. If the
+  // settle fails the bill really is open, so the list is refreshed then too,
+  // and the person is told: the panel (and its inline retry) may already be
+  // closed, and they would believe the bill was paid.
   const settle = useFinanceMutation(
-    (c, v: {id: string; body: Settlement}, key) => settleBill(c, v.id, v.body, key), touched, onDone,
+    (c, v: {id: string; body: Settlement}, key) => settleBill(c, v.id, v.body, key), touched,
+    () => { toast.success(t(`bills.new.settled.${direction}`)); onDone() },
+    () => { toast.error(t(`bills.new.settleError.${direction}`)) },
+    {invalidateOnError: true},
   )
   const fe = useFieldErrors(["description", "amount", "due_date", "competence_date", "category_id", "account_id"])
-  const create = useFinanceMutation((c, body: NewBill, key) => createBill(c, body, key), touched,
-    created => (paidNow ? settle.mutate({id: created.id, body: {paid_date: paidOn}}) : onDone()), fe.set)
+  const create = useFinanceMutation(
+    (c, v: {body: NewBill; paidOn?: string}, key) => createBill(c, v.body, key),
+    (c, _created, v) => (v.paidOn ? [] : touched(c)),
+    (created, v) => (v.paidOn ? settle.mutate({id: created.id, body: {paid_date: v.paidOn}}) : onDone()),
+    fe.set,
+  )
   const amount = parseMoney(amountText)
   const ready = amount !== null && category !== "" && account !== "" && due !== "" && !create.isPending && !create.isSuccess
 
@@ -362,8 +371,11 @@ function NewBillPanel({direction, accounts, onDone}: {direction: Direction; acco
           if (!ready) return
           fe.reset()
           create.mutate({
-            direction, amount: amount!, category_id: category, account_id: account, description: description || undefined,
-            due_date: due, competence_date: competence || undefined, auto_settle: (autoSettle && !paidNow) || undefined,
+            body: {
+              direction, amount: amount!, category_id: category, account_id: account, description: description || undefined,
+              due_date: due, competence_date: competence || undefined, auto_settle: (autoSettle && !paidNow) || undefined,
+            },
+            paidOn: paidNow ? paidOn : undefined,
           })
         }}
       >
@@ -376,26 +388,39 @@ function NewBillPanel({direction, accounts, onDone}: {direction: Direction; acco
         <Field label={t("bills.common.category")} htmlFor="nb-cat" required error={fe.of("category_id")} hint={cats.length === 0 ? t(`bills.noCategory.${direction === "payable" ? "expense" : "income"}`) : undefined}>
           <Select id="nb-cat" value={category} {...fe.props("category_id", "nb-cat")} onValueChange={v => { setCategory(v); fe.clear("category_id") }} options={cats.map(a => ({value: a.id, label: accountName(a)}))}/>
         </Field>
-        <Field label={t(`bills.common.payWith.${direction}`)} htmlFor="nb-acct" required error={fe.of("account_id")} hint={assets.length === 0 ? t("bills.noAccount") : undefined}>
-          <Select id="nb-acct" value={account} {...fe.props("account_id", "nb-acct")} onValueChange={v => { setAccount(v); fe.clear("account_id") }} options={assets.map(a => ({value: a.id, label: accountName(a)}))}/>
-        </Field>
         {can("finance.settle") && (
-          <label className="flex items-center gap-2 text-sm">
+          <label className="flex min-h-11 items-center gap-2 text-sm">
             <Switch checked={paidNow} onCheckedChange={setPaidNow} aria-label={t(`bills.new.paidNow.${direction}`)}/>
             {t(`bills.new.paidNow.${direction}`)}
           </label>
         )}
-        {paidNow && (
-          <Field label={t(`bills.new.paidOn.${direction}`)} htmlFor="nb-paid">
-            <DateField id="nb-paid" min={limits.minDate} max={todayIso()} value={paidOn} onValueChange={setPaidOn}/>
+        {/* What happens to the money: planned (which account, paid by itself on
+            the due date or not) or already done, and then the section is the
+            payment itself, named by direction, with its date and account. */}
+        {/* The rule sits on a wrapper: on the fieldset itself the legend is
+            drawn into its border, and floating the legend out of it pushes the
+            grid fields beside it, off a phone's screen. */}
+        <div className="border-t border-border pt-4">
+        <fieldset className="space-y-3">
+          <legend className="mb-3 text-sm font-medium text-foreground">
+            {paidNow ? t(`bills.new.section.${direction}`) : t("bills.new.section.plan")}
+          </legend>
+          {paidNow && (
+            <Field label={t(`bills.settle.date.${direction}`)} htmlFor="nb-paid">
+              <DateField id="nb-paid" min={limits.minDate} max={todayIso()} value={paidOn} onValueChange={setPaidOn}/>
+            </Field>
+          )}
+          <Field label={t(paidNow ? `bills.new.paidWith.${direction}` : `bills.common.payWith.${direction}`)} htmlFor="nb-acct" required error={fe.of("account_id")} hint={assets.length === 0 ? t("bills.noAccount") : undefined}>
+            <Select id="nb-acct" value={account} {...fe.props("account_id", "nb-acct")} onValueChange={v => { setAccount(v); fe.clear("account_id") }} options={assets.map(a => ({value: a.id, label: accountName(a)}))}/>
           </Field>
-        )}
-        {can("finance.settle") && !paidNow && (
-          <label className="flex items-center gap-2 text-sm">
-            <Switch checked={autoSettle} onCheckedChange={setAutoSettle} aria-label={t(`bills.common.auto.${direction}`)}/>
-            {t(`bills.common.auto.${direction}`)}
-          </label>
-        )}
+          {can("finance.settle") && !paidNow && (
+            <label className="flex min-h-11 items-center gap-2 text-sm">
+              <Switch checked={autoSettle} onCheckedChange={setAutoSettle} aria-label={t(`bills.common.auto.${direction}`)}/>
+              {t(`bills.common.auto.${direction}`)}
+            </label>
+          )}
+        </fieldset>
+        </div>
         <div className="flex flex-wrap gap-2">
           <Button type="submit" variant="brand" size="sm" disabled={!ready}>{t("bills.new.create")}</Button>
           <Button type="button" variant="outline" size="sm" onClick={onDone}>{t("bills.common.close")}</Button>

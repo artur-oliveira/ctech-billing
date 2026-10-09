@@ -8,6 +8,7 @@ import {useEffect, useRef, useState} from "react"
 import {useTranslation} from "react-i18next"
 
 import {ExceptionsFields, PatternFields} from "@/components/finance/ExpressionEditor"
+import {LedgerRow} from "@/components/finance/LedgerRow"
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
 import {DateField} from "@/components/ui/DateField"
 import {Select} from "@/components/ui/Select"
@@ -103,23 +104,21 @@ function RecurrenceRow({rec, account, onEdit}: {rec: Recurrence; account?: strin
   const [confirming, setConfirming] = useState(false)
   const archive = useFinanceMutation((c, _: void, key) => archiveRecurrence(c, rec.id, key), touched, () => setConfirming(false))
   return (
-    <li className="py-2.5">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm text-foreground">{rec.description || t("bills.common.noDescription")}</p>
-          <p className="text-xs text-muted-foreground">
-            {ruleOf(rec)}{account ? ` • ${account}` : ""}{rec.auto_settle ? ` • ${t(`bills.row.autoNote.${rec.direction}`)}` : ""}
-          </p>
-        </div>
-        <span className="text-xs text-muted-foreground">{t(`bills.direction.${rec.direction}`)}</span>
-        <span data-numeric className="w-28 shrink-0 text-right text-sm tabular-nums">{money(rec.amount)}</span>
-        {can("finance.write") && (
-          <div className="flex gap-1">
-            <Button size="sm" variant="ghost" onClick={onEdit}>{t("bills.common.edit")}</Button>
-            <Button size="sm" variant="ghost" aria-expanded={confirming} onClick={() => setConfirming(v => !v)}>{t("bills.rec.end")}</Button>
-          </div>
-        )}
-      </div>
+    <LedgerRow
+      title={rec.description || t("bills.common.noDescription")}
+      meta={<>
+        {/* A phone has no column for the direction, so the line says it. */}
+        <span className="sm:hidden">{t(`bills.direction.${rec.direction}`)} • </span>
+        {ruleOf(rec)}{account ? ` • ${account}` : ""}{rec.auto_settle ? ` • ${t(`bills.row.autoNote.${rec.direction}`)}` : ""}
+      </>}
+      aside={<span className="text-xs text-muted-foreground">{t(`bills.direction.${rec.direction}`)}</span>}
+      asideOnPhone={false}
+      amount={<span data-numeric>{money(rec.amount)}</span>}
+      actions={can("finance.write") && <>
+        <Button size="sm" variant="ghost" onClick={onEdit}>{t("bills.common.edit")}</Button>
+        <Button size="sm" variant="ghost" aria-expanded={confirming} onClick={() => setConfirming(v => !v)}>{t("bills.rec.end")}</Button>
+      </>}
+    >
       {confirming && (
         <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg bg-surface p-3 text-sm motion-safe:animate-in motion-safe:fade-in">
           <p className="text-muted-foreground">{t("bills.rec.endConfirm")}</p>
@@ -128,7 +127,7 @@ function RecurrenceRow({rec, account, onEdit}: {rec: Recurrence; account?: strin
           {archive.error && <p role="alert" className="w-full text-danger">{messageFor(archive.error)}</p>}
         </div>
       )}
-    </li>
+    </LedgerRow>
   )
 }
 

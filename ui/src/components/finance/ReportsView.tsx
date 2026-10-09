@@ -69,6 +69,7 @@ export function ReportsView({view: initial = "dre"}: {view?: ReportView}) {
               key={tab}
               type="button"
               role="tab"
+              data-slot="segmented-item"
               id={`tab-${tab}`}
               aria-selected={view === tab}
               aria-controls="report-panel"

@@ -4,6 +4,18 @@
    Without this line every @aoctech/ui component renders unstyled. */
 @source "../../node_modules/@aoctech/ui/dist";
 
+/* A finger, not a cursor: a coarse pointer at any width, or any viewport under
+   Tailwind's `sm`. The console's compact density is for a mouse on a laptop;
+   under `touch:` a control is a 44px target again. See DESIGN.md, "Touch". */
+@custom-variant touch {
+  @media (pointer: coarse) {
+    @slot;
+  }
+  @media (max-width: 39.999rem) {
+    @slot;
+  }
+}
+
 @theme {
     --font-sans: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
 
@@ -101,5 +113,30 @@
   scrollbar-width: none;
   &::-webkit-scrollbar {
     display: none;
+  }
+}
+
+/*
+ * Touch restores the 44px target inside the compact console (WCAG 2.5.5, and
+ * the platform guidelines on both phones). Keyed on the `data-slot` every
+ * shared control already carries, so no call site has to remember it. It is
+ * unlayered on purpose: it must beat `in-data-[density=compact]:h-8`, which
+ * lives in the utilities layer. A min-height, not a height, so a control that
+ * is already taller is left alone. A control with no data-slot (DateField's
+ * DatePicker trigger) asks for `touch:min-h-11` itself. Candidate for @aoctech/ui.
+ */
+@media (pointer: coarse), (max-width: 39.999rem) {
+  [data-density="compact"] :is(
+    [data-slot="button"],
+    [data-slot="input"],
+    [data-slot="select-trigger"],
+    [data-slot="segmented-item"]
+  ) {
+    min-height: 2.75rem;
+  }
+
+  /* A switch is drawn at 24px; its label is the target. */
+  [data-density="compact"] label:has(> [data-slot="switch"]) {
+    min-height: 2.75rem;
   }
 }

@@ -21,4 +21,13 @@ describe("DateField", () => {
     render(<DateField id="e" value="" onValueChange={() => {}} placeholder="Sem fim"/>)
     expect(screen.getByText("Sem fim")).toBeInTheDocument()
   })
+
+  // Measured in the browser by scratchpad audit.cjs; here the contract that
+  // makes it so. The DatePicker's trigger has no data-slot for the touch rule.
+  it("is a 44px target under touch, inside the compact console too", () => {
+    render(<div data-density="compact"><label htmlFor="t">Data</label><DateField id="t" value="" onValueChange={() => {}} className="w-40"/></div>)
+    const trigger = screen.getByLabelText("Data")
+    expect(trigger).toHaveClass("touch:min-h-11")
+    expect(trigger).toHaveClass("w-40")
+  })
 })
