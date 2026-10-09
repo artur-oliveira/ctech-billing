@@ -96,3 +96,11 @@ Additional and shared personal spaces are ctech-account workspaces of `kind: per
 `org:{id}` through this same resolver; verbs depend on kind and role. See
 [ADR 0027](0027-personal-workspaces-in-account.md). The default personal space (`USER#{sub}`) is
 unchanged and never shareable.
+
+## Amendment, 2026-10-09 — implemented for personal workspaces (6.8)
+
+The resolver, the single 404, the zero reads before membership and the 60 s cache are unchanged; the cache entry
+also stores the workspace's kind. The switcher's list (2026-10-08 amendment) now carries `selector`, `kind`,
+`display_name`, `role`, `verbs` and `manage_people`, with personal workspaces before organizations. **The portal
+selector** (2026-10-07 amendment) is still unbuilt; when it is built it lists `kind = organization` workspaces only,
+since a personal workspace has no CTech subscription of its own.

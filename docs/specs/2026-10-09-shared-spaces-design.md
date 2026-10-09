@@ -1,6 +1,6 @@
 # Spec — Shared and additional personal spaces
 
-Status: **Design approved, not implemented** · 2026-10-09 ·
+Status: **Implemented (6.8)** · 2026-10-09 · see the implementation amendment at the end ·
 Decision: [ADR 0027](../adr/0027-personal-workspaces-in-account.md) (extends
 [ADR 0025](../adr/0025-spaces-personal-and-organization.md)) ·
 Counterpart in ctech-account: `ctech-account/docs/specs/2026-10-09-personal-workspaces.md` ·
@@ -102,7 +102,7 @@ ctech-account's organization handoff spec). Billing redirects:
 ```
 Billing  "Novo espaço"
          state = 128 random bits → sessionStorage
-         browser → {ACCOUNTS}/account/spaces/new?client_id=billing&return_to={BILLING}/finance/spaces/created&state=…
+         browser → {ACCOUNTS}/account/spaces/new?client_id=billing&return_to={BILLING}/console/finance/spaces/created&state=…
 
 Account  validates (first-party client, registered origin), creates the workspace (kind personal,
          owner = the signed-in user)
@@ -119,7 +119,8 @@ gets back from the server, nothing is selected, and any request carrying it woul
 ### 5.3 Managing people — handoff
 
 "Gerenciar acesso" shows only when `manage_people` is true and opens
-`{ACCOUNTS}/account/spaces/{id}/people?client_id=billing&return_to=…&state=…`. Inviting, changing a
+`{ACCOUNTS}/account/spaces/people?id={id}&client_id=billing&return_to=…` (ctech-account's route as implemented;
+see the amendment). Inviting, changing a
 role, removing and transferring ownership all happen there. Billing does **not** show a member list: a
 copy here would be a second source for the question ctech-account answers.
 
@@ -200,3 +201,27 @@ Part of the definition of done, not a later hardening pass:
 - A member list inside billing.
 - Plan limits (§ 7).
 - Per-person permissions finer than the two levels.
+
+## Amendment, implementation (2026-10-09, 6.8)
+
+Settled by the implementation ([plan](../plans/2026-10-09-finance-6.8-shared-spaces.md)), against ctech-account
+PR #46 as merged-to-be:
+
+- **Upstream contract.** The membership route answers `{member, role, kind}`; a refusal is `{member:false}` with no
+  kind. The user-organizations route lists workspaces of **both** kinds, each with `kind` — billing splits them,
+  not ctech-account. Handoff validation reuses `GET /v1.0/organizations/handoff`.
+- **People route:** `/account/spaces/people?id={id}` (a static export has no dynamic segments). Billing sends
+  `client_id` and `return_to` and no `state`: nothing on that return is acted on.
+- **Return path:** `/console/finance/spaces/created` (Finanças lives under `/console`). The stored `state` is
+  single-use and is removed whatever the outcome. A missing stored state discards (stricter than ctech-dfe's
+  company handoff, which completes without one): a person whose browser refuses `sessionStorage` sees the new
+  space in the list, unselected.
+- **Kinds on the wire:** `personal_default` (Pessoal), `personal`, `organization` — in the list and in
+  `GET /console/finance/space`. `selector` is the only thing the console selects with; *Pessoal* is translated by
+  the console from its kind.
+- **Normalising the kind** happens once, in the resolver, after the cache: an absent kind (an old cache entry, a
+  ctech-account without kinds) is `organization`; any other unknown value is kept and grants nothing.
+- **Categories:** a personal workspace is seeded with the personal chart, like Pessoal.
+- **The 6.7 CTech-invoice switch** shows in Pessoal only — the one space the payer side posts to (§ 2).
+- **§ 5.1 "Finanças only"** needed no code: the invoicing sections follow the console session (ADR 0011), not the
+  finance space. **The portal selector** is not built yet; when it is, it must filter `kind = personal`.

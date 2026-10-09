@@ -724,12 +724,40 @@ gates nothing by plan.
       decode (pre-existing); the replay reads the note's time from its queue key instead.
       **Not built:** organization customers, the revenue projection from open invoices and renewals (computed on read, spec
       § 3.8), refusing "Desfazer pagamento" on a billing bill.
-- [ ] 6.8 Shared and additional personal spaces —
-      [spec](docs/specs/2026-10-09-shared-spaces-design.md), [ADR 0027](docs/adr/0027-personal-workspaces-in-account.md).
+- [x] 6.8 Shared and additional personal spaces —
+      [spec](docs/specs/2026-10-09-shared-spaces-design.md), [ADR 0027](docs/adr/0027-personal-workspaces-in-account.md),
+      [plan](docs/plans/2026-10-09-finance-6.8-shared-spaces.md).
       A ctech-account workspace of `kind: personal`, created and managed by handoff; verbs by kind and
       role; the resolver gains no path; the default personal space is never shareable. **Deploy
-      ctech-account first** (`ctech-account/docs/specs/2026-10-09-personal-workspaces.md`); ctech-dfe adds
+      ctech-account first** (PR #46, `ctech-account/docs/specs/2026-10-09-personal-workspaces.md`); ctech-dfe adds
       only a kind check on company reach (`ctech-dfe/docs/specs/2026-10-09-personal-workspaces-in-dfe.md`).
+      **Shape:** `MembershipSource.Membership` returns `(kind, role, member, err)`; the account client passes the
+      raw `kind` of both internal routes through (a refusal carries none, as upstream sends none); the 60 s cache
+      entry stores it under the same key; `space.WorkspaceKind` reads an absent kind as `organization` — once, in
+      the resolver, after the cache — so an old entry and a ctech-account without kinds both narrow, never widen.
+      `VerbsFor(kind, role)` replaced `VerbsForRole` (removed, so no caller can keep the organization table on a
+      personal workspace): `personal` owner/member all, viewer read; admin on `personal`, an unknown kind or role →
+      no verbs → the ordinary 404. `ResolvedSpace.Kind()` is `personal_default` / `personal` / `organization`;
+      `Personal()` still means `USER#{sub}` only. `GET /console/finance/spaces` answers `selector`, `kind`,
+      `display_name`, `role`, `verbs`, `manage_people` (owner of a personal workspace only): Pessoal, then
+      personal workspaces, then organizations, each by name (case-insensitive); entries with no verbs or a
+      non-canonical id are left out. `label` and `organization_id` were dropped; `GET /space` answers the three
+      kinds. Console: *Novo espaço* → `{ACCOUNTS}/account/spaces/new?client_id&return_to={BILLING}/console/finance/spaces/created&state`
+      (16 random bytes, `sessionStorage`, single-use); the return discards a missing or different state, and
+      selects `org:{id}` only if the reloaded server list holds it. *Gerenciar acesso* →
+      `/account/spaces/people?id={id}&client_id&return_to={BILLING}/console/finance`. The nine § 9 tests are named
+      in the plan's table (unit, gate, counting client, and end-to-end through the real client against a fake
+      ctech-account).
+      **Found on the way:** (1) a personal workspace would have been seeded with the *company* chart of
+      categories (`DefaultCategories(sp.Personal())` meant `USER#` only) — it now gets the personal chart;
+      `ForJob` reports `organization` for a workspace id, harmless because jobs never seed. (2) The 6.7
+      CTech-invoice switch showed in every space with `finance.configure`, though the payer side only ever posts to
+      Pessoal — it now shows in Pessoal only. (3) "Finanças only" in a personal workspace needed nothing: the
+      invoicing sections come from the console session (ADR 0011), never from the finance space. (4) The portal
+      selector of ADR 0025's amendment is not built, so there was nothing to filter; when it is, it must drop
+      `kind = personal` (ADR 0025 amended). (5) Deploy skew: the console reads the list's new fields only, so the
+      API should ship with or before the UI; an old console against the new API maps every workspace to Pessoal
+      (harmless, never a wider grant).
 
 **Still open in Phase 6 (recorded 2026-10-09):**
 - **After 6.7:** run `seed` in both modes after deploy (the link is in `api/tenants/ctech.json`); organization
