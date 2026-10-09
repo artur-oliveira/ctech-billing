@@ -412,7 +412,7 @@ func (s *FinanceInvoices) log(ctx context.Context, inv *billing.Invoice, fact st
 		case p.Result == PostingFailed:
 			slog.ErrorContext(ctx, "invoice not recorded in finance", append(attrs, "error", p.Err)...)
 		case p.Reason == "no_receiving_account":
-			slog.WarnContext(ctx, "invoice not recorded in finance: the space has no default receiving account", attrs...)
+			slog.WarnContext(ctx, "invoice not recorded in finance: no receiving account chosen and not exactly one bank or cash account", attrs...)
 		case p.Result == PostingSkipped:
 			slog.InfoContext(ctx, "invoice not recorded in finance", append(attrs, "reason", p.Reason)...)
 		default:

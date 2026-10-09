@@ -269,25 +269,49 @@ func (r *BillRepository) getConsistent(ctx context.Context, sp space.ResolvedSpa
 	return &b, nil
 }
 
-// receivingAccount is the space's default receiving account, if it is still an
-// active asset account the person holds.
+// receivingAccount is where a paid invoice's cash goes in this space: the
+// default receiving account (F8) if it is still an active asset account the
+// person holds; otherwise, when the space holds exactly one active bank or cash
+// account, that one (decided 2026-10-09). Zero or several candidates and no
+// usable choice is ErrNoReceivingAccount — never a guess between two.
+//
+// There is no account kind in the ledger: every active, non-system asset account
+// is a bank or cash account (cards are liabilities), so an investment account
+// counts as one.
 func (r *BillRepository) receivingAccount(ctx context.Context, sp space.ResolvedSpace) (string, error) {
 	settings, err := r.ledger.GetSettings(ctx, sp)
 	if err != nil {
 		return "", err
 	}
-	if settings.DefaultReceivingAccountID == "" {
-		return "", ErrNoReceivingAccount
+	if settings.DefaultReceivingAccountID != "" {
+		acct, err := r.ledger.getAccount(ctx, sp, settings.DefaultReceivingAccountID)
+		switch {
+		case err == nil && usableCash(*acct):
+			return acct.ID, nil
+		case err != nil && !errors.Is(err, ErrNotFound):
+			return "", err
+		}
 	}
-	acct, err := r.ledger.getAccount(ctx, sp, settings.DefaultReceivingAccountID)
-	if errors.Is(err, ErrNotFound) {
-		return "", ErrNoReceivingAccount
-	}
+	accounts, err := r.ledger.ListAccounts(ctx, sp)
 	if err != nil {
 		return "", err
 	}
-	if acct.Class != finance.ClassAsset || acct.System || acct.Archived {
-		return "", fmt.Errorf("%w: %s is not an active asset account", ErrNoReceivingAccount, acct.ID)
+	only := ""
+	for _, a := range accounts {
+		if !usableCash(a) {
+			continue
+		}
+		if only != "" {
+			return "", fmt.Errorf("%w: no usable default and more than one account to choose from", ErrNoReceivingAccount)
+		}
+		only = a.ID
 	}
-	return acct.ID, nil
+	if only == "" {
+		return "", ErrNoReceivingAccount
+	}
+	return only, nil
+}
+
+func usableCash(a AccountRow) bool {
+	return a.Class == finance.ClassAsset && !a.System && !a.Archived
 }

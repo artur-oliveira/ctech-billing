@@ -208,6 +208,55 @@ func TestAnArchivedReceivingAccountIsNoReceivingAccount(t *testing.T) {
 	}
 }
 
+// openSpace is a seeded space with the given asset accounts and no default
+// receiving account chosen.
+func openSpace(t *testing.T, accounts ...string) space.ResolvedSpace {
+	t.Helper()
+	sp := jobSpace(t, newSpaceOrgID(), true)
+	ledger := repositories.NewLedgerRepository(testDB, testCfg)
+	if err := ledger.EnsureReady(context.Background(), sp, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	for _, a := range accounts {
+		if err := ledger.CreateAccount(context.Background(), sp, finance.LedgerAccount{ID: a, Name: a, Class: finance.ClassAsset}, time.Now()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return sp
+}
+
+// User decision 3: with no receiving account chosen, a space holding exactly
+// one active bank or cash account receives there.
+func TestTheOnlyAccountReceivesWhenNoneIsChosen(t *testing.T) {
+	sp := openSpace(t, "wallet")
+	b, created, err := repositories.NewBillRepository(testDB, testCfg).RecordInvoice(context.Background(), sp, revenueFact("in_sole"), repositories.PostMeta{}, time.Now())
+	if err != nil || !created || b.AccountID != "wallet" {
+		t.Fatalf("bill = %+v created=%v err=%v", b, created, err)
+	}
+	// An archived default falls back the same way.
+	sp2 := invoiceSpace(t, newSpaceOrgID(), true)
+	ledger := repositories.NewLedgerRepository(testDB, testCfg)
+	if err := ledger.CreateAccount(context.Background(), sp2, finance.LedgerAccount{ID: "cash", Name: "Dinheiro", Class: finance.ClassAsset}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if err := ledger.ArchiveAccount(context.Background(), sp2, "bank", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	b, _, err = repositories.NewBillRepository(testDB, testCfg).RecordInvoice(context.Background(), sp2, revenueFact("in_sole2"), repositories.PostMeta{}, time.Now())
+	if err != nil || b.AccountID != "cash" {
+		t.Fatalf("archived default: bill = %+v, %v", b, err)
+	}
+}
+
+// User decision 3: two candidates and no choice is still no guess.
+func TestTwoAccountsAndNoChoiceGetNothing(t *testing.T) {
+	sp := openSpace(t, "bank", "cash")
+	_, _, err := repositories.NewBillRepository(testDB, testCfg).RecordInvoice(context.Background(), sp, revenueFact("in_two"), repositories.PostMeta{}, time.Now())
+	if !errors.Is(err, repositories.ErrNoReceivingAccount) {
+		t.Fatalf("err = %v, want ErrNoReceivingAccount", err)
+	}
+}
+
 // Review Focus 4: a space created before 6.7 (seed version 2, or never seeded)
 // has neither billing category.
 func TestASpaceSeededBeforeTheBillingCategoriesGetsThem(t *testing.T) {
