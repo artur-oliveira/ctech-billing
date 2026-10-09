@@ -15,6 +15,23 @@ func BillSK(id string) string     { return "BILL#" + id }
 func CardSK(id string) string     { return "CARD#" + id }
 func PurchaseSK(id string) string { return "PURCHASE#" + id }
 
+// ImportSK is an import's row in the space partition; its lines live in the
+// import's own partition (ImportPK), so listing imports never reads lines.
+func ImportSK(id string) string { return "IMPORT#" + id }
+func ImportPK(sp space.ResolvedSpace, importID string) string {
+	return sp.PK() + "#IMPORT#" + importID
+}
+
+// ImportLineSK orders an import's lines as the file had them.
+func ImportLineSK(n int) string { return fmt.Sprintf("LINE#%05d", n) }
+
+// ImportLockSK is the lock that makes one transaction import once into one
+// account: key is statement.Keys' ("F:" + FITID, or "H:" + a hash).
+func ImportLockSK(accountID, key string) string { return "FITID#" + accountID + "#" + key }
+
+// CSVMappingSK is an account's saved CSV column mapping.
+func CSVMappingSK(accountID string) string { return "CSVMAP#" + accountID }
+
 // StatementSK is a closed statement's row; ItemSK sorts a statement's items
 // right after it, so one prefix Query on StatementSK(m) returns both.
 func StatementSK(m finance.Month) string { return "STATEMENT#" + m.String() }

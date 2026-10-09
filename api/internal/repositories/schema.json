@@ -207,6 +207,12 @@
       { "name": "schedule-index", "hash_key": "schedule_pk", "range_key": "schedule_sk" }
     ]
   },
+  "imports": {
+    "hash_key": "pk",
+    "range_key": "sk",
+    "attributes": { "pk": "S", "sk": "S" },
+    "indexes": []
+  },
   "cards": {
     "hash_key": "pk",
     "range_key": "sk",
