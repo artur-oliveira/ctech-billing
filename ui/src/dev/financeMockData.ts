@@ -494,6 +494,9 @@ function route(method: string, path: string, r: Req, s: SpaceState, can: (v: Ver
     if (sub === "close" && method === "post") {
       if (!can("finance.write")) return forbidden()
       const m = c.open_month
+      if (body<{month?: string}>(r).month !== m) {
+        return problem(409, "/problems/invalid-transition", "Invalid Transition", "Esta fatura não está aberta para fechamento.")
+      }
       const st = statementOf(c, m)
       let billId: string | undefined
       if (st.total > 0) {

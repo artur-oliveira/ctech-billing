@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"gopkg.aoctech.app/billing/api/internal/domain/brcal"
 	"gopkg.aoctech.app/billing/api/internal/domain/finance"
@@ -59,5 +60,16 @@ func TestCardKeys(t *testing.T) {
 	}
 	if !strings.HasPrefix(CardPK(sp, "c"), sp.PK()) {
 		t.Error("a card partition must begin with its space")
+	}
+}
+
+func TestAStatementDescriptionFitsTheBillWhateverTheCardName(t *testing.T) {
+	m := finance.Month{Year: 2026, Month: time.March}
+	if got := statementDescription("Visa", m); got != "Fatura Visa 2026-03" {
+		t.Fatalf("got %q", got)
+	}
+	long := statementDescription(strings.Repeat("💳", 80), m)
+	if len(long) > 200 || !strings.HasSuffix(long, " 2026-03") || !utf8.ValidString(long) {
+		t.Fatalf("%d bytes, valid=%v: %q", len(long), utf8.ValidString(long), long)
 	}
 }

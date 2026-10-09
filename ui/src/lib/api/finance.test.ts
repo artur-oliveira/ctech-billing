@@ -59,7 +59,7 @@ describe("every finance call", () => {
     ["createPurchase", () => finance.createPurchase(ctx, "c1", {date: "2026-03-01", description: "TV", category_id: "c", total: 100, installments: 1}, "K")],
     ["refundPurchase", () => finance.refundPurchase(ctx, "c1", "p1", "K")],
     ["advancePurchase", () => finance.advancePurchase(ctx, "c1", "p1", "K")],
-    ["closeStatement", () => finance.closeStatement(ctx, "c1", "K")],
+    ["closeStatement", () => finance.closeStatement(ctx, "c1", "2026-03", "K")],
   ]
 
   it.each([...reads, ...writes])("%s sends the mode and the space", async (_name, call) => {

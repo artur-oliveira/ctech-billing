@@ -184,6 +184,7 @@ export const refundPurchase = (c: FinanceCtx, cardId: string, purchaseId: string
   write<Purchase>(c, "POST", `${card(cardId)}/purchases/${encodeURIComponent(purchaseId)}/refund`, {}, idempotencyKey)
 export const advancePurchase = (c: FinanceCtx, cardId: string, purchaseId: string, idempotencyKey: string) =>
   write<Purchase>(c, "POST", `${card(cardId)}/purchases/${encodeURIComponent(purchaseId)}/advance`, {}, idempotencyKey)
-/** Closes the open statement now, before its closing day. */
-export const closeStatement = (c: FinanceCtx, cardId: string, idempotencyKey: string) =>
-  write<CardStatement>(c, "POST", `${card(cardId)}/close`, {}, idempotencyKey)
+/** Closes the open statement (`month`, `YYYY-MM`) now, before its closing day. A month
+ *  that is not the open one is refused, so a repeated click cannot close the next. */
+export const closeStatement = (c: FinanceCtx, cardId: string, month: string, idempotencyKey: string) =>
+  write<CardStatement>(c, "POST", `${card(cardId)}/close`, {month}, idempotencyKey)

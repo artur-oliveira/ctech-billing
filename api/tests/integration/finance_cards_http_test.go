@@ -26,7 +26,7 @@ func TestPayingAStatementLeavesTheDREAlone(t *testing.T) {
 		BillID string `json:"bill_id"`
 		Items  []struct{ Number, Of int }
 	}
-	f.must(t, 200, "POST", "/cards/"+card.ID+"/close", `{}`, &st)
+	f.must(t, 200, "POST", "/cards/"+card.ID+"/close", `{"month":"2026-03"}`, &st)
 	if st.Status != "closed" || st.Total != 10000 || st.BillID == "" || len(st.Items) != 1 || st.Items[0].Of != 3 {
 		t.Fatalf("closed statement = %+v", st)
 	}
@@ -36,6 +36,10 @@ func TestPayingAStatementLeavesTheDREAlone(t *testing.T) {
 	if res := f.call(t, "POST", "/bills/"+st.BillID+"/cancel", `{}`); res.status != 409 {
 		t.Fatalf("canceling a statement bill = %d %s", res.status, res.body)
 	}
+	// The paying account of a closed statement can change (the card's did).
+	var savings struct{ ID string }
+	f.must(t, 201, "POST", "/accounts", `{"name":"Poupança","class":"asset"}`, &savings)
+	f.must(t, 200, "PATCH", "/bills/"+st.BillID, fmt.Sprintf(`{"account_id":%q}`, savings.ID), nil)
 	f.must(t, 200, "POST", "/bills/"+st.BillID+"/settle", `{"paid_date":"2026-03-10"}`, nil)
 	f.must(t, 200, "GET", "/cards/"+card.ID+"/statements/2026-03", "", &st)
 	if st.Status != "paid" {

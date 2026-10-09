@@ -75,6 +75,18 @@ type purchaseItem struct {
 	Installments []installmentItem `dynamodbav:"installments"`
 	TxID         string            `dynamodbav:"tx_id"`
 	Refunded     bool              `dynamodbav:"refunded,omitempty"`
+	// Rev moves on every change to Installments (an advance), so a refund or
+	// an advance acting on a stale read fails instead of deleting the wrong items.
+	Rev int64 `dynamodbav:"rev,omitempty"`
+}
+
+// purchaseGuard is the condition a write acting on a purchase as read carries:
+// not refunded, and its installments unchanged since (rev).
+func purchaseGuard(read purchaseItem) (string, map[string]types.AttributeValue) {
+	if read.Rev == 0 {
+		return "attribute_not_exists(refunded) AND attribute_not_exists(rev)", map[string]types.AttributeValue{}
+	}
+	return "attribute_not_exists(refunded) AND rev = :rev", map[string]types.AttributeValue{":rev": numberValue(read.Rev)}
 }
 
 type itemRow struct {
@@ -239,10 +251,19 @@ func (r *CardRepository) AddPurchase(ctx context.Context, sp space.ResolvedSpace
 	return p, nil
 }
 
+// getPurchaseItem reads a purchase strongly consistent: a refund or an advance
+// right after another must see its result, or it would act on a plan that no
+// longer matches the items.
 func (r *CardRepository) getPurchaseItem(ctx context.Context, sp space.ResolvedSpace, cardID, purchaseID string) (purchaseItem, error) {
-	raw, err := r.cards.GetItem(ctx, CardPK(sp, cardID), PurchaseSK(purchaseID))
+	res, err := r.cards.Query(ctx, QueryOpts{PK: CardPK(sp, cardID), SKPrefix: PurchaseSK(purchaseID), Limit: 1, ConsistentRead: true})
 	if err != nil {
 		return purchaseItem{}, err
+	}
+	var raw map[string]types.AttributeValue
+	for _, it := range res.Items {
+		if sk, ok := it["sk"].(*types.AttributeValueMemberS); ok && sk.Value == PurchaseSK(purchaseID) {
+			raw = it
+		}
 	}
 	if raw == nil {
 		return purchaseItem{}, ErrNotFound
@@ -420,8 +441,9 @@ func (r *CardRepository) Refund(ctx context.Context, sp space.ResolvedSpace, car
 	}
 	sk := PurchaseSK(p.ID)
 	purchaseIdx := len(items)
-	items = append(items, r.cards.BuildRawUpdateTxItem(pk, &sk, "SET refunded = :t, updated_at = :now", "attribute_not_exists(refunded)", nil,
-		map[string]types.AttributeValue{":t": &types.AttributeValueMemberBOOL{Value: true}, ":now": str(now.UTC().Format(time.RFC3339Nano))}))
+	guard, guardValues := purchaseGuard(row)
+	guardValues[":t"], guardValues[":now"] = &types.AttributeValueMemberBOOL{Value: true}, str(now.UTC().Format(time.RFC3339Nano))
+	items = append(items, r.cards.BuildRawUpdateTxItem(pk, &sk, "SET refunded = :t, updated_at = :now", guard, nil, guardValues))
 	cardIdx := len(items)
 	items = append(items, r.cardBump(sp, cardID, card.OpenMonth, now))
 	if err := r.cards.TransactWrite(ctx, items); err != nil {
@@ -429,9 +451,11 @@ func (r *CardRepository) Refund(ctx context.Context, sp space.ResolvedSpace, car
 		switch {
 		case !onlyConditionFailed(err):
 			return Purchase{}, err
-		case purchaseIdx < len(codes) && codes[purchaseIdx] == codeConditionFailed,
-			rev.MarkerIdx >= 0 && rev.MarkerIdx < len(codes) && codes[rev.MarkerIdx] == codeConditionFailed:
+		case rev.MarkerIdx >= 0 && rev.MarkerIdx < len(codes) && codes[rev.MarkerIdx] == codeConditionFailed:
 			return Purchase{}, ErrPurchaseRefunded
+		case purchaseIdx < len(codes) && codes[purchaseIdx] == codeConditionFailed:
+			// Refunded or advanced since it was read: read again.
+			return Purchase{}, ErrCardMoved
 		case cardIdx < len(codes) && codes[cardIdx] == codeConditionFailed:
 			return Purchase{}, ErrCardMoved
 		}

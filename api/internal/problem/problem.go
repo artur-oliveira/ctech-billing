@@ -120,6 +120,9 @@ func FromError(err error) *Problem {
 	case errors.Is(err, repositories.ErrPurchaseRefunded):
 		return New(409, TypeInvalidTransition, "Invalid Transition", "Esta compra já foi estornada.")
 
+	case errors.Is(err, repositories.ErrNotClosable):
+		return New(409, TypeInvalidTransition, "Invalid Transition", "Esta fatura não está aberta para fechamento.")
+
 	case errors.Is(err, repositories.ErrNothingToAdvance):
 		return New(409, TypeInvalidTransition, "Invalid Transition", "Não há parcelas futuras para antecipar.")
 

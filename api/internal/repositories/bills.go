@@ -625,7 +625,14 @@ func (r *BillRepository) Edit(ctx context.Context, sp space.ResolvedSpace, billI
 			return finance.Bill{}, err
 		}
 	}
-	if next.CategoryID != cur.CategoryID || next.AccountID != cur.AccountID {
+	switch {
+	case cur.Origin == finance.OriginCardStatement && next.AccountID != cur.AccountID:
+		// Its "category" is the card (a liability), not an expense: only the
+		// account that pays it is checked.
+		if err := r.ledger.activeCash(ctx, sp, next.AccountID); err != nil {
+			return finance.Bill{}, err
+		}
+	case cur.Origin != finance.OriginCardStatement && (next.CategoryID != cur.CategoryID || next.AccountID != cur.AccountID):
 		if err := r.checkBillAccounts(ctx, sp, next); err != nil {
 			return finance.Bill{}, err
 		}

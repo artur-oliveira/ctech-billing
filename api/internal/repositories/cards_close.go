@@ -74,8 +74,9 @@ func (r *CardRepository) Advance(ctx context.Context, sp space.ResolvedSpace, ca
 	}
 	sk := PurchaseSK(p.ID)
 	purchaseIdx := len(items)
-	items = append(items, r.cards.BuildRawUpdateTxItem(pk, &sk, "SET installments = :plan, updated_at = :now", "attribute_not_exists(refunded)", nil,
-		map[string]types.AttributeValue{":plan": plan, ":now": str(now.UTC().Format(time.RFC3339Nano))}))
+	guard, guardValues := purchaseGuard(row)
+	guardValues[":plan"], guardValues[":now"], guardValues[":one"] = plan, str(now.UTC().Format(time.RFC3339Nano)), numberValue(1)
+	items = append(items, r.cards.BuildRawUpdateTxItem(pk, &sk, "SET installments = :plan, updated_at = :now ADD rev :one", guard, nil, guardValues))
 	cardIdx := len(items)
 	items = append(items, r.cardBump(sp, cardID, card.OpenMonth, now))
 	if err := r.cards.TransactWrite(ctx, items); err != nil {
@@ -83,9 +84,9 @@ func (r *CardRepository) Advance(ctx context.Context, sp space.ResolvedSpace, ca
 		switch {
 		case !onlyConditionFailed(err):
 			return Purchase{}, err
-		case purchaseIdx < len(codes) && codes[purchaseIdx] == codeConditionFailed:
-			return Purchase{}, ErrPurchaseRefunded
-		case cardIdx < len(codes) && codes[cardIdx] == codeConditionFailed:
+		case purchaseIdx < len(codes) && codes[purchaseIdx] == codeConditionFailed,
+			cardIdx < len(codes) && codes[cardIdx] == codeConditionFailed:
+			// Refunded or advanced meanwhile, or the card moved: read again.
 			return Purchase{}, ErrCardMoved
 		}
 		return Purchase{}, ErrNothingToAdvance
@@ -115,7 +116,7 @@ func (r *CardRepository) CloseAt(ctx context.Context, sp space.ResolvedSpace, re
 		billID = idempotentID(sp, "statement", ref)
 		bill, err := r.bills.statementBillItem(sp, finance.Bill{
 			ID: billID, Direction: finance.Payable, Amount: s.Total, AccountID: read.PayingAccountID, CategoryID: read.ID,
-			Description: "Fatura " + read.Name + " " + m.String(), Competence: closing, Due: due,
+			Description: statementDescription(read.Name, m), Competence: closing, Due: due,
 			Status: finance.BillForecast, Origin: finance.OriginCardStatement, OriginRef: ref, PaymentGroup: ref,
 			// An empty list, not none: every later write guards on
 			// size(transaction_ids), which a missing attribute never satisfies.
@@ -191,9 +192,15 @@ func (r *CardRepository) CloseDue(ctx context.Context, sp space.ResolvedSpace, c
 	}
 }
 
+// ErrNotClosable is a "close now" of a month that is not the open one, or whose
+// period has not begun yet (the previous statement closes in the future).
+var ErrNotClosable = errors.New("cards: this statement is not open for closing")
+
 // CloseNow closes the open statement today, before its closing day (the
-// console's "Fechar fatura agora"), and returns it closed.
-func (r *CardRepository) CloseNow(ctx context.Context, sp space.ResolvedSpace, cardID string, now time.Time) (Statement, error) {
+// console's "Fechar fatura agora"), and returns it closed. The month is named
+// by the caller: a second click, a second tab or a replay finds it already
+// closed instead of closing the next statements early.
+func (r *CardRepository) CloseNow(ctx context.Context, sp space.ResolvedSpace, cardID string, month finance.Month, now time.Time) (Statement, error) {
 	if err := sp.Require(space.Write); err != nil {
 		return Statement{}, err
 	}
@@ -201,10 +208,14 @@ func (r *CardRepository) CloseNow(ctx context.Context, sp space.ResolvedSpace, c
 	if err != nil {
 		return Statement{}, err
 	}
-	if err := r.CloseAt(ctx, sp, card, brcal.FromTime(now), now); err != nil {
+	today := brcal.FromTime(now)
+	if card.OpenMonth != month || !today.After(finance.ClosingDate(month.Add(-1), card.ClosingDay)) {
+		return Statement{}, ErrNotClosable
+	}
+	if err := r.CloseAt(ctx, sp, card, today, now); err != nil {
 		return Statement{}, err
 	}
-	return r.GetStatement(ctx, sp, cardID, card.OpenMonth)
+	return r.GetStatement(ctx, sp, cardID, month)
 }
 
 // DueCard is a card whose open statement's closing day has arrived.
@@ -224,4 +235,17 @@ func (r *CardRepository) DueToClose(ctx context.Context, livemode bool, today br
 		out[i] = DueCard{Space: e.Space, CardID: e.ID}
 	}
 	return out, skipped, nil
+}
+
+// statementDescription names a statement bill within the bill's own limit,
+// counted in bytes there: a card name of multi-byte characters (an emoji) must
+// not make the bill invalid, or the card would never close again.
+func statementDescription(card string, m finance.Month) string {
+	suffix := " " + m.String()
+	name := card
+	for len("Fatura ")+len(name)+len(suffix) > 200 {
+		r := []rune(name)
+		name = string(r[:len(r)-1])
+	}
+	return "Fatura " + name + suffix
 }

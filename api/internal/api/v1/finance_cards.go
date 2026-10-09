@@ -267,8 +267,20 @@ func (h *financeHandlers) advancePurchase(c fiber.Ctx) error {
 	return c.JSON(newPurchaseDTO(p))
 }
 
+type closeRequest struct {
+	Month string `json:"month"`
+}
+
 func (h *financeHandlers) closeStatement(c fiber.Ctx) error {
-	s, err := h.cards.CloseNow(c.Context(), middleware.GetSpace(c), c.Params("id"), h.now())
+	var req closeRequest
+	if p := decodeStrict(c, &req); p != nil {
+		return p.Send(c)
+	}
+	m, err := finance.ParseMonth(req.Month)
+	if err != nil {
+		return problem.Validation([]problem.FieldError{fieldErr("month", "use YYYY-MM", "format")}).Send(c)
+	}
+	s, err := h.cards.CloseNow(c.Context(), middleware.GetSpace(c), c.Params("id"), m, h.now())
 	if err != nil {
 		return fail(c, err)
 	}

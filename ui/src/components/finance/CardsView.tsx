@@ -139,7 +139,7 @@ function StatementBlock({card, month, accounts, onMonth}: {card: Card; month: st
           {action === "close" && (
             <Confirm
               text={`Fechar a fatura de ${monthShort(month)} agora? Compras novas entram na próxima.`}
-              run={(c, key) => closeStatement(c, card.id, key)}
+              run={(c, key) => closeStatement(c, card.id, month, key)}
               onDone={() => setAction(null)}
             />
           )}

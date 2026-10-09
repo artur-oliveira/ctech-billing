@@ -272,3 +272,45 @@ func TestRefundCreditPlusRemovedIsTheTotal(t *testing.T) {
 		t.Fatalf("second refund: %v", err)
 	}
 }
+
+// "Fechar fatura agora" names the month it closes: a second click, a second tab
+// or a replay must not close the next statements early, and a statement whose
+// period has not begun (the previous one closed in the future) cannot close.
+func TestClosingNowClosesOnlyTheNamedOpenMonth(t *testing.T) {
+	f, _ := newCardsFixture(t)
+	ctx, now := context.Background(), time.Now()
+	card, err := f.cards.CreateCard(ctx, f.sp, "Elo", finance.Card{ClosingDay: 28, DueDay: 5, PayingAccountID: "bank"}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	open := card.OpenMonth
+	if _, err := f.cards.CloseNow(ctx, f.sp, card.ID, open.Add(1), now); !errors.Is(err, repositories.ErrNotClosable) {
+		t.Fatalf("closing a month that is not open: %v", err)
+	}
+	if _, err := f.cards.CloseNow(ctx, f.sp, card.ID, open, now); err != nil {
+		t.Fatal(err)
+	}
+	// The next statement's period starts after this month's closing day, which
+	// is still ahead (the card closes on the 28th).
+	if finance.ClosingDate(open, 28).After(brcal.FromTime(now)) {
+		if _, err := f.cards.CloseNow(ctx, f.sp, card.ID, open.Add(1), now); !errors.Is(err, repositories.ErrNotClosable) {
+			t.Fatalf("closing a statement whose period has not begun: %v", err)
+		}
+	}
+}
+
+func TestRefundAfterAdvanceLeavesNothingBilled(t *testing.T) {
+	f, card := newCardsFixture(t)
+	ctx := context.Background()
+	p := f.purchase(t, card.ID, brcal.New(2026, time.March, 1), 90000, 3)
+	if _, err := f.cards.Advance(ctx, f.sp, card.ID, p.ID, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.cards.Refund(ctx, f.sp, card.ID, p.ID, repositories.PostMeta{Actor: "u"}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	mar, _ := f.cards.GetStatement(ctx, f.sp, card.ID, finance.Month{Year: 2026, Month: time.March})
+	if mar.Total != 0 || len(mar.Items) != 0 {
+		t.Fatalf("March after advance then refund = %+v, want nothing billed", mar)
+	}
+}
