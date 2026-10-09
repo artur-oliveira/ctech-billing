@@ -66,3 +66,68 @@ func TestPayingAStatementLeavesTheDREAlone(t *testing.T) {
 		t.Fatalf("cash flow March = %+v", m)
 	}
 }
+
+type cardBrandView struct {
+	ID    string
+	Brand string
+	Last4 string
+}
+
+// UX batch 3: a card carries its brand (closed set) and optionally its last four
+// digits, set on create and changed or cleared on edit. They live on the card's
+// row in the cards table; nothing else about the card moves.
+func TestACardKeepsItsBrandAndLastFourDigits(t *testing.T) {
+	f := newFinanceEnv(t)
+	var bank struct{ ID string }
+	f.must(t, 201, "POST", "/accounts", `{"name":"Banco","class":"asset"}`, &bank)
+
+	var card cardBrandView
+	f.must(t, 201, "POST", "/cards", fmt.Sprintf(`{"name":"Nubank","closing_day":3,"due_day":10,"paying_account_id":%q,"brand":"mastercard","last4":"4242"}`, bank.ID), &card)
+	if card.Brand != "mastercard" || card.Last4 != "4242" {
+		t.Fatalf("created = %+v", card)
+	}
+	var list struct{ Data []cardBrandView }
+	f.must(t, 200, "GET", "/cards", "", &list)
+	if len(list.Data) != 1 || list.Data[0].Brand != "mastercard" || list.Data[0].Last4 != "4242" {
+		t.Fatalf("listed = %+v", list.Data)
+	}
+
+	var edited cardBrandView
+	f.must(t, 200, "PATCH", "/cards/"+card.ID, `{"brand":"elo","last4":""}`, &edited)
+	if edited.Brand != "elo" || edited.Last4 != "" {
+		t.Fatalf("edited = %+v, want elo with no digits", edited)
+	}
+	list.Data = nil // json keeps a reused element's field when the reply omits it
+	f.must(t, 200, "GET", "/cards", "", &list)
+	if list.Data[0].Brand != "elo" || list.Data[0].Last4 != "" {
+		t.Fatalf("after edit, listed = %+v", list.Data)
+	}
+	// A PATCH without them leaves them.
+	edited = cardBrandView{}
+	f.must(t, 200, "PATCH", "/cards/"+card.ID, `{"due_day":12}`, &edited)
+	if edited.Brand != "elo" {
+		t.Fatalf("a patch of the due day dropped the brand: %+v", edited)
+	}
+}
+
+func TestACardRefusesAnUnknownBrandAndAnythingButFourDigits(t *testing.T) {
+	f := newFinanceEnv(t)
+	var bank, card struct{ ID string }
+	f.must(t, 201, "POST", "/accounts", `{"name":"Banco","class":"asset"}`, &bank)
+	for _, c := range []struct{ body, field string }{
+		{`"brand":"discover"`, "brand"},
+		{`"last4":"12a4"`, "last4"},
+		{`"last4":"123"`, "last4"},
+	} {
+		res := f.call(t, "POST", "/cards", fmt.Sprintf(`{"name":"X","closing_day":3,"due_day":10,"paying_account_id":%q,%s}`, bank.ID, c.body))
+		var p struct{ Errors []struct{ Field string } }
+		res.decode(t, &p)
+		if res.status != 422 || len(p.Errors) != 1 || p.Errors[0].Field != c.field {
+			t.Errorf("create with %s = %d %s, want 422 on %s", c.body, res.status, res.body, c.field)
+		}
+	}
+	f.must(t, 201, "POST", "/cards", fmt.Sprintf(`{"name":"Y","closing_day":3,"due_day":10,"paying_account_id":%q}`, bank.ID), &card)
+	if res := f.call(t, "PATCH", "/cards/"+card.ID, `{"last4":"98765"}`); res.status != 422 {
+		t.Errorf("patch last4 98765 = %d %s, want 422", res.status, res.body)
+	}
+}

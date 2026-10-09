@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
@@ -49,9 +51,12 @@ type cardItem struct {
 	DueDay          int    `dynamodbav:"due_day"`
 	PayingAccountID string `dynamodbav:"paying_account_id"`
 	OpenMonth       string `dynamodbav:"open_month"`
-	Version         int64  `dynamodbav:"version"`
-	SchedulePK      string `dynamodbav:"schedule_pk,omitempty"`
-	ScheduleSK      string `dynamodbav:"schedule_sk,omitempty"`
+	// Brand and Last4 identify the card to the person (UX batch 3); optional.
+	Brand      string `dynamodbav:"brand,omitempty"`
+	Last4      string `dynamodbav:"last4,omitempty"`
+	Version    int64  `dynamodbav:"version"`
+	SchedulePK string `dynamodbav:"schedule_pk,omitempty"`
+	ScheduleSK string `dynamodbav:"schedule_sk,omitempty"`
 }
 
 func (i cardItem) card() (finance.Card, error) {
@@ -59,7 +64,8 @@ func (i cardItem) card() (finance.Card, error) {
 	if err != nil {
 		return finance.Card{}, fmt.Errorf("card %s has a malformed open month: %w", i.ID, err)
 	}
-	return finance.Card{ID: i.ID, ClosingDay: i.ClosingDay, DueDay: i.DueDay, PayingAccountID: i.PayingAccountID, OpenMonth: open}, nil
+	return finance.Card{ID: i.ID, ClosingDay: i.ClosingDay, DueDay: i.DueDay, PayingAccountID: i.PayingAccountID, OpenMonth: open,
+		Brand: finance.CardBrand(i.Brand), Last4: i.Last4}, nil
 }
 
 func closeScheduleSK(sp space.ResolvedSpace, c finance.Card) string {
@@ -92,7 +98,7 @@ func (r *CardRepository) CreateCard(ctx context.Context, sp space.ResolvedSpace,
 	cardRow, err := Encode(cardItem{
 		keys: newKeys(sp.PK(), CardSK(c.ID), RetentionPermanent, now),
 		ID:   c.ID, ClosingDay: c.ClosingDay, DueDay: c.DueDay, PayingAccountID: c.PayingAccountID,
-		OpenMonth: c.OpenMonth.String(), SchedulePK: ClosePK(sp.Livemode()), ScheduleSK: closeScheduleSK(sp, c),
+		OpenMonth: c.OpenMonth.String(), Brand: string(c.Brand), Last4: c.Last4, SchedulePK: ClosePK(sp.Livemode()), ScheduleSK: closeScheduleSK(sp, c),
 	})
 	if err != nil {
 		return CardRow{}, err
@@ -183,6 +189,8 @@ func (r *CardRepository) ListCards(ctx context.Context, sp space.ResolvedSpace) 
 type CardPatch struct {
 	ClosingDay, DueDay *int
 	PayingAccountID    *string
+	// Brand and Last4: nil keeps, "" clears.
+	Brand, Last4 *string
 }
 
 // UpdateCard changes when the card closes and is due and which account pays
@@ -208,16 +216,37 @@ func (r *CardRepository) UpdateCard(ctx context.Context, sp space.ResolvedSpace,
 		}
 		row.PayingAccountID = *p.PayingAccountID
 	}
+	if p.Brand != nil {
+		row.Brand = finance.CardBrand(*p.Brand)
+	}
+	if p.Last4 != nil {
+		row.Last4 = *p.Last4
+	}
 	if err := row.Card.Validate(); err != nil {
 		return CardRow{}, err
 	}
+	values := map[string]types.AttributeValue{
+		":c": numberValue(int64(row.ClosingDay)), ":d": numberValue(int64(row.DueDay)), ":p": str(row.PayingAccountID),
+		":ssk": str(closeScheduleSK(sp, row.Card)), ":now": str(now.UTC().Format(time.RFC3339Nano)),
+	}
+	set := "SET closing_day = :c, due_day = :d, paying_account_id = :p, schedule_sk = :ssk, updated_at = :now"
+	var remove []string
+	// An attribute cleared is removed, never stored as "", so the row reads the
+	// same as a card that never had it.
+	for attr, v := range map[string]string{"brand": string(row.Brand), "last4": row.Last4} {
+		if v == "" {
+			remove = append(remove, attr)
+			continue
+		}
+		set += ", " + attr + " = :" + attr
+		values[":"+attr] = str(v)
+	}
+	if len(remove) > 0 {
+		sort.Strings(remove)
+		set += " REMOVE " + strings.Join(remove, ", ")
+	}
 	sk := CardSK(cardID)
-	err = r.cards.TransactWrite(ctx, txItems(r.cards.BuildRawUpdateTxItem(sp.PK(), &sk,
-		"SET closing_day = :c, due_day = :d, paying_account_id = :p, schedule_sk = :ssk, updated_at = :now",
-		"attribute_exists(pk)", nil, map[string]types.AttributeValue{
-			":c": numberValue(int64(row.ClosingDay)), ":d": numberValue(int64(row.DueDay)), ":p": str(row.PayingAccountID),
-			":ssk": str(closeScheduleSK(sp, row.Card)), ":now": str(now.UTC().Format(time.RFC3339Nano)),
-		})))
+	err = r.cards.TransactWrite(ctx, txItems(r.cards.BuildRawUpdateTxItem(sp.PK(), &sk, set, "attribute_exists(pk)", nil, values)))
 	if err != nil {
 		return CardRow{}, err
 	}
