@@ -149,13 +149,37 @@ reads it: `comfortable` gives 44px targets (the portal, read on a phone),
 `size="console"` — height is decided by where a button is, not by each call site
 remembering which screen it is on.
 
-**Touch overrides compact.** The console's 32px is for a mouse on a laptop. Under
-a coarse pointer, or a viewport under `sm`, a control is a 44px target again: one
-unlayered rule in `globals.css`, keyed on the `data-slot` every shared control
-carries (`button`, `input`, `select-trigger`, `segmented-item`, a switch's
-label), and a `touch:` variant for anything without one: anything drawn by hand,
-and `DateField`, whose DatePicker trigger has no `data-slot`. It is still
-"decided by where a button is"; the where now includes the hand holding it.
+**Touch keeps the compact look and grows the target** (UX batch 4; it replaces
+batch 2's "touch overrides compact"). The console's 32px is for a mouse on a
+laptop. Under a coarse pointer, or a viewport under `sm`, a control is **drawn**
+at 36px (a segment at 32px inside its 38px group) and **hit** at 44 x 44px or
+more: an invisible `::after` centred on it, which only grows past the drawing
+on an axis where the control is under 44px. Drawing every control 44px tall
+(batch 2) made a phone screen mostly chrome; the finger needs the target, not
+the paint. One unlayered rule in `globals.css`, keyed on the `data-slot` every
+shared control carries (`button`, `select-trigger`, `segmented-item`, `input`),
+and the class `touch-target` for anything without one (DatePicker's trigger, a
+link drawn as a control). Rules that come with it:
+
+- **Neighbours never share a target.** Segments touch, so theirs grow up and
+  down only, and they keep a finger's width (`min-w-11`). Stacked controls keep
+  8px between them (`gap-y-2`): two 4px extensions meet and never overlap.
+- **An input is reached through its label.** An `<input>` cannot carry an
+  `::after`; a Field's label already focuses it, so the label's `::after`
+  covers the whole field, behind the input. Measured 36px drawn, 47px hit.
+- **A clipped container clips the target.** The tab row scrolls sideways, so
+  tabs stay 40px and their target grows 4px up into the row's padding. A list
+  row clips only while it is swiped.
+- **Roots.** The console's `[data-density=compact]`, and a dialog that holds
+  `[data-touch-compact]`: portaled drawers and modals are outside the density
+  root (their portal reads `comfortable`) and opt in through
+  `components/ui/ConsoleOverlay`. Batch 3's blanket `[role=dialog]` would now
+  shrink every dialog, the bottom bar's Mais sheet and the portal's modals
+  included, which are touch-sized on purpose and hold no marker. Select options and menu items
+  stay 44px rows: a list of targets with no gap needs its rows to be them.
+
+It is still "decided by where a button is"; the where includes the hand
+holding it. Candidate for `@aoctech/ui`, with the components.
 
 ## Depth is hairlines
 
@@ -279,6 +303,31 @@ description and the amount share the first line, the description wrapping to two
 than being cut, then the meta, then the aside and the actions on lines of their own. An aside
 that repeats a group heading (a bill's bucket badge under "Vencidas") is not shown on a phone;
 one that is the only place a fact appears (a recurrence's direction) moves into the meta line.
+Extrato and Contas are ledger rows too (UX batch 4): a statement line carries a second figure,
+the running balance, in its own column from `sm` and under the amount as "Saldo R$ …" on a
+phone; an account's name wraps beside its balance (it was cut to "Conta co…" at 375px), with
+the card's mark before it. Extrato's account and period share one row on a phone, their labels
+read only by a screen reader there (the chosen values say them).
+
+**A row's secondary actions are a swipe and a "⋯"** (UX batch 4). On a phone a row keeps only
+its primary action on its line (Pagar, Receber, Ver, Abrir). Edit, delete, end, reverse, undo a
+payment, refund, advance, opening balance and archive are revealed by a **left swipe**:
+neutral actions on `surface`, destructive ones on `danger` (the one saturated fill a list
+gets, and only while uncovered). The gesture is never the only way: a visible **"⋯"** beside
+the amount ("Mais ações: Aluguel") lists the same actions for a keyboard or a screen reader.
+Choosing one, either way, opens the row's own step: a confirmation for anything destructive,
+a form for an edit; nothing is done by the swipe itself. The gesture locks to an axis after
+8px (a vertical drag stays the page's scroll, `touch-action: pan-y`), changes state past 35%
+of the revealed width and snaps back otherwise, keeps one row open per page, closes on a
+press elsewhere or Escape, and follows `prefers-reduced-motion`. A laptop row is unchanged:
+the same actions are inline buttons. `useSwipeReveal` and `RowMenu` are candidates for
+`@aoctech/ui`.
+
+**An optional field can be emptied** (UX batch 4). An optional date has **Limpar** beside it
+while it has a value, named for the date ("Limpar data de término"); an optional select lists
+**Nenhuma** / **Nenhum** first (a card's brand, the default receiving account). A screen puts
+`""` in an edit for "nothing" and never drops an emptied field; `lib/api/finance` sends it as
+`null`, which the API reads as "clear" (absent is "keep").
 
 **Segmented, for every two-to-four-way switch.** Direction, projection view, period, chart or
 rows: `components/ui/Segmented`, a group of pressed buttons, full width on a phone when it is
@@ -294,17 +343,17 @@ paid from or received into.
 
 **Finanças on a phone is a bottom bar.** Under `md`, `@aoctech/ui`'s `BottomNav`
 (`FinanceBottomNav`) is Finanças' navigation; the section column and the tablet picker are not
-shown. Three tabs a person opens daily, **Resumo · A pagar/receber · Extrato**, and **Mais**, a
+shown. Three tabs a person opens daily, **Resumo · Agenda · Extrato**, and **Mais**, a
 sheet with the rest in two groups: *Lançamentos* (Recorrências, Cartões, Importar) and *Análise e
 cadastro* (Relatórios, Contas). Mais reads as current while one of its sections is on screen. The
 bar is touch-sized whatever `data-density` says. The console's own section row stays in the
 header; the bar is Finanças only. From `md` to `lg` Finanças is a picker; from `lg` a column.
 
 **The central action is always "create", and follows the screen.** It creates what the screen
-lists, in that screen's own drawer: A pagar/receber **Adicionar** (Novo lançamento), Cartões
+lists, in that screen's own drawer: Agenda **Adicionar** (Novo lançamento), Cartões
 **Nova compra** (or Novo cartão when there is no card yet), Recorrências **Recorrência**,
 Extrato **Transferir**, Contas **Nova conta**. Resumo, Importar and Relatórios have nothing of
-their own to create, so the action is **Adicionar** and it goes to A pagar/receber to do it,
+their own to create, so the action is **Adicionar** and it goes to Agenda to do it,
 where the new line is on screen once saved. The shell asks through a one-shot request
 (`lib/finance/createRequest`), never a URL parameter, so a reload or a shared link never reopens
 a drawer. A role that cannot create there gets no slot, not a disabled button. On a phone the
@@ -327,9 +376,15 @@ cobranças" link in the console. Console is offered to everyone signed in, since
 personal finance space; the operator probe only decides whether it opens on invoicing's overview
 or on Finanças. On a phone it stays in the header; the bottom bar never repeats it.
 
-**Shell controls are 44px under touch.** The mode switch is a segment (`data-slot`), and the
-console's section tabs, the logo links, the language switch and the avatar grow to 44px under
-`touch:`; on a desk with a mouse the console keeps 32px.
+**Shell controls under touch.** The space select (36px) and the mode switch (a segment, 32px)
+keep the compact look with 44px targets; the section tabs stay 40px with a 4px target above
+(see "Density"). The logo link, the language switch and the avatar, the header's icons, stay
+44px drawn. On a desk with a mouse the console keeps 32px.
+
+**The section is Agenda** (UX batch 4). "A pagar/receber" wrapped onto two lines in the bar.
+Agenda is the section's name everywhere it is named: the bar, the column, the tablet picker,
+the page title and the undo-payment confirmation ("A conta volta para a Agenda"); English says
+**Schedule**. Its two sides stay *A pagar* and *A receber*, the switch at the top of the page.
 
 ## Timelines, card marks and statement colours (UX batch 3, 2026-10-09)
 
@@ -353,8 +408,9 @@ option's name stays its label.
 due date, unpaid (a zero or credit statement, or a month before the card's first, owes nothing). Each badge has a
 glyph. No new tone: the four stay the family's closed set.
 
-**A link to a row marks it.** A pagar/receber reads `?direction=&bill=`, opens on that side, tints
+**A link to a row marks it.** Agenda reads `?direction=&bill=`, opens on that side, tints
 the row with `brand-50` (the selected row) and scrolls it into view.
 
-**Drawers are touch-sized too.** A Drawer is portaled out of `[data-density]`, so the touch rule
-also roots at `[role=dialog]`.
+**Drawers follow the touch rule too.** A Drawer is portaled out of `[data-density]`; since UX
+batch 4 a console drawer or modal opts in with a marker (`ConsoleOverlay`), not every
+`[role=dialog]` (see "Density").

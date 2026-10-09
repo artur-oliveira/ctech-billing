@@ -798,6 +798,24 @@ gates nothing by plan.
       `kind = personal` (ADR 0025 amended). (5) Deploy skew: the console reads the list's new fields only, so the
       API should ship with or before the UI; an old console against the new API maps every workspace to Pessoal
       (harmless, never a wider grant).
+- [x] **UX batch 4 (2026-10-09), phone polish and clearing fields.**
+      (1) **PATCH null clears.** `internal/patch.Optional[T]` (absent / null / value) on every finance edit body:
+      recurrences, bills, cards and `PUT /settings/default-receiving-account`. Absent keeps, an explicit `null`
+      clears an optional field (recurrence `end` and `description`, bill `description`, card `brand`/`last4` — `""`
+      still clears these two — and the default receiving account), `null` on a required field is a 422 `required`.
+      A cleared value is REMOVEd from the row. Clearing a recurrence's end recomputes its job-index keys from the
+      cursor, so the job re-opens it and makes the dates after the old end once (integration-tested, three runs);
+      it does not unarchive. Accounts and categories have no edit route, so nothing to clear. Spec § 6.
+      The console maps an emptied field to `null` in one place (`lib/api/finance` `patchBody`); optional dates have
+      **Limpar**, optional selects **Nenhuma** first. (2) **Touch:** compact controls are drawn 36px (segments 32px)
+      with an invisible ≥44px hit area (`::after`), segments vertical-only, inputs through their label; drawers and
+      console modals opt in through `ConsoleOverlay` instead of every `[role=dialog]`. (3) The bills section is
+      **Agenda** (en *Schedule*) everywhere. (4) Extrato: a real statement (opening balance + two settlements with
+      memos, mock `?finance=extrato_memos`) broke at 320/375px; its lines are now `LedgerRow`s with the running
+      balance, and the filters share one row. (5) Phone rows: secondary/destructive actions are a left swipe
+      (`useSwipeReveal`) and a visible "⋯" (`RowMenu`), each opening the row's confirmation; desktop unchanged.
+      (6) Contas uses `LedgerRow`, so names wrap. Candidates for the family: `patch.Optional` → ctech-go-common;
+      the swipe row, `RowMenu` and the hit-area rule → `@aoctech/ui`.
 
 **Still open in Phase 6 (recorded 2026-10-09):**
 - **After 6.7:** run `seed` in both modes after deploy (the link is in `api/tenants/ctech.json`); organization
