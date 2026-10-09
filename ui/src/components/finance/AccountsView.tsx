@@ -8,12 +8,13 @@ import Link from "next/link"
 import {useState} from "react"
 import {useTranslation} from "react-i18next"
 
+import {CardBrandMark, maskedLast4} from "@/components/finance/CardBrandMark"
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
 import {DateField} from "@/components/ui/DateField"
 import {Select} from "@/components/ui/Select"
 import {messageFor} from "@/lib/api/client"
-import {archiveAccount, createAccount, financeKeys, getSettings, listAccounts, postOpeningBalance, setDefaultReceivingAccount, setPostCTechInvoices} from "@/lib/api/finance"
-import type {Account, AccountClass, DREGroup, OpeningBalance} from "@/lib/api/financeTypes"
+import {archiveAccount, createAccount, financeKeys, getSettings, listAccounts, listCards, postOpeningBalance, setDefaultReceivingAccount, setPostCTechInvoices} from "@/lib/api/finance"
+import type {Account, AccountClass, Card, DREGroup, OpeningBalance} from "@/lib/api/financeTypes"
 import {classLabel, dreGroupLabel, groupsForClass} from "@/lib/finance/labels"
 import {useFinanceMutation} from "@/lib/finance/useFinanceMutation"
 import {useCreateRequest} from "@/lib/finance/createRequest"
@@ -53,6 +54,11 @@ export function AccountsView() {
   const accounts = (q.data?.data ?? []).filter(a => !a.system)
   const visible = accounts.filter(a => showArchived || !a.archived)
   const hasArchived = accounts.some(a => a.archived)
+  // A card's brand and last digits live on the card, not the account: read only
+  // when there is a card to show them on.
+  const hasCards = accounts.some(a => a.class === "liability")
+  const cards = useQuery({queryKey: financeKeys.cards(ctx.mode, ctx.space), queryFn: () => listCards(ctx), enabled: hasCards})
+  const cardOf = new Map((cards.data?.data ?? []).map(c => [c.id, c]))
 
   return (
     <div className="space-y-6">
@@ -85,7 +91,7 @@ export function AccountsView() {
               <section key={section.key} className="space-y-2" aria-labelledby={`sec-${section.key}`}>
                 <h2 id={`sec-${section.key}`} className="text-sm font-medium text-foreground">{t(`finance.accounts.sections.${section.key}`)}</h2>
                 <ul className="divide-y divide-border border-y border-border">
-                  {rows.map(a => <AccountRow key={a.id} account={a} configure={configure}/>)}
+                  {rows.map(a => <AccountRow key={a.id} account={a} card={cardOf.get(a.id)} configure={configure}/>)}
                 </ul>
               </section>
             )
@@ -105,7 +111,7 @@ export function AccountsView() {
   )
 }
 
-function AccountRow({account, configure}: {account: Account; configure: boolean}) {
+function AccountRow({account, card, configure}: {account: Account; card?: Card; configure: boolean}) {
   const {t} = useTranslation()
   const [confirming, setConfirming] = useState(false)
   const [opening, setOpening] = useState(false)
@@ -117,9 +123,13 @@ function AccountRow({account, configure}: {account: Account; configure: boolean}
   return (
     <li className={`py-2.5 ${account.archived ? "text-muted-foreground" : ""}`}>
       <div className="flex items-center justify-between gap-4">
-        <div className="min-w-0">
-          <p className="truncate text-sm text-foreground">{accountName(account)}</p>
-          {account.dre_group && <p className="text-xs text-muted-foreground">{dreGroupLabel(account.dre_group)}</p>}
+        <div className="flex min-w-0 items-center gap-3">
+          {account.class === "liability" && <CardBrandMark brand={card?.brand ?? "other"} className="text-muted-foreground"/>}
+          <div className="min-w-0">
+            <p className="truncate text-sm text-foreground">{accountName(account)}</p>
+            {account.dre_group && <p className="text-xs text-muted-foreground">{dreGroupLabel(account.dre_group)}</p>}
+            {card?.last4 && <p className="text-xs tabular-nums text-muted-foreground">{maskedLast4(card.last4)}</p>}
+          </div>
         </div>
         <div className="flex shrink-0 items-center gap-3">
           {account.class === "asset" && <span data-numeric className="text-sm tabular-nums">{money(account.balance)}</span>}

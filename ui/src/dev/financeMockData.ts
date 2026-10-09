@@ -134,6 +134,18 @@ function seed(kind: "personal" | "org", mode: string): SpaceState {
         lines: 4, duplicates: 0, rejected_count: 0, rejected: [], pending: 3, lines_: lines,
       })
       for (const l of lines) ledger.locks.add(`conta-corrente#seed-${l.n}`)
+      // A branded card with a purchase in 3× that began last month: last
+      // month's statement is closed and past due (Vencida), this one is open.
+      const [py, pm] = monthOffset(today, -1)
+      const ym = (n: number) => { const [y, m] = monthOffset(today, n); return `${y}-${String(m).padStart(2, "0")}` }
+      ledger.cards.push({id: "card-nubank", name: "Nubank", closing_day: 3, due_day: 10, paying_account_id: "conta-corrente",
+        open_month: ym(0), balance: -90_000, archived: false, brand: "mastercard", last4: "4242"})
+      ledger.purchases.push({id: "p-seed", card: "card-nubank", description: "Geladeira", category_id: "mercado", date: iso(py, pm, 2),
+        total: 90_000, refunded: false, advanced: [], installments: [0, 1, 2].map(i => ({number: i + 1, amount: 30_000, month: ym(i - 1)}))})
+      for (const i of [0, 1, 2]) {
+        ledger.items.push({card: "card-nubank", month: ym(i - 1), key: `p-seed#${i + 1}`, purchase_id: "p-seed", description: "Geladeira",
+          category_id: "mercado", date: iso(py, pm, 2), number: i + 1, of: 3, kind: "installment", amount: 30_000})
+      }
     }
     return {
       ...ledger,
@@ -146,6 +158,7 @@ function seed(kind: "personal" | "org", mode: string): SpaceState {
         acct("mercado", "Mercado", "expense", 0, {dre_group: "operating_expenses"}),
         acct("juros", "Juros e multas", "expense", 0, {dre_group: "financial_result", system_key: "interest_and_fines"}),
         acct("assinaturas-antigas", "Assinaturas antigas", "expense", 0, {dre_group: "operating_expenses", archived: true}),
+        ...(live ? [acct("card-nubank", "Nubank", "liability", -90_000)] : []),
       ],
       bills: [
         bill("b-aluguel", "payable", 180_000, addDays(today, -3), "aluguel", "Aluguel do apartamento"),
@@ -504,9 +517,10 @@ function route(method: string, path: string, r: Req, s: SpaceState, can: (v: Ver
   if (path === "/cards" && method === "get") return ok({data: s.cards, has_more: false})
   if (path === "/cards" && method === "post") {
     if (!can("finance.configure")) return forbidden()
-    const p = body<{name: string; closing_day: number; due_day: number; paying_account_id: string}>(r)
+    const p = body<{name: string; closing_day: number; due_day: number; paying_account_id: string; brand?: Card["brand"]; last4?: string}>(r)
     const c: Card = {id: nextId("card"), name: p.name, closing_day: p.closing_day, due_day: p.due_day,
-      paying_account_id: p.paying_account_id, open_month: today.slice(0, 7), balance: 0, archived: false}
+      paying_account_id: p.paying_account_id, open_month: today.slice(0, 7), balance: 0, archived: false,
+      ...(p.brand ? {brand: p.brand} : {}), ...(p.last4 ? {last4: p.last4} : {})}
     s.cards.push(c)
     s.accounts.push({id: c.id, name: c.name, class: "liability", system: false, archived: false, balance: 0})
     return ok(c, 201)
@@ -517,7 +531,10 @@ function route(method: string, path: string, r: Req, s: SpaceState, can: (v: Ver
     const [, , sub, arg, action] = cardMatch
     if (!sub && method === "patch") {
       if (!can("finance.configure")) return forbidden()
-      Object.assign(c, Object.fromEntries(Object.entries(body<Partial<Card>>(r)).filter(([, v]) => v !== undefined)))
+      const patch = body<Record<string, unknown>>(r)
+      Object.assign(c, Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined && v !== "")))
+      // An empty brand or last4 clears it, as the API does.
+      for (const k of ["brand", "last4"] as const) if (patch[k] === "") delete c[k]
       return ok(c)
     }
     if (sub === "statements" && arg && method === "get") return ok(statementOf(c, arg))

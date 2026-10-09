@@ -147,7 +147,8 @@
       "open": "Open",
       "future": "Upcoming",
       "closed": "Closed",
-      "paid": "Paid"
+      "paid": "Paid",
+      "overdue": "Overdue"
     },
     "closedOn": "Closed {{date}}",
     "closesOn": "Closes {{date}}",
@@ -166,7 +167,21 @@
     "noAccounts": "No accounts. Create one in Accounts.",
     "save": "Save",
     "create": "Create card",
-    "close": "Close"
+    "close": "Close",
+    "brands": {
+      "visa": "Visa",
+      "mastercard": "Mastercard",
+      "elo": "Elo",
+      "amex": "American Express",
+      "hipercard": "Hipercard",
+      "diners": "Diners Club",
+      "other": "Other"
+    },
+    "brand": "Brand",
+    "last4": "Last 4 digits",
+    "last4Hint": "Optional; only to recognise the card.",
+    "last4Invalid": "Enter the last 4 digits, or leave it blank.",
+    "cycle": "Closes on day {{closing}} • due on day {{due}}"
   },
   "overview": {
     "title": "Overview",

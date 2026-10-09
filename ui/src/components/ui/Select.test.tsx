@@ -88,4 +88,26 @@ describe("Select actions", () => {
     await userEvent.keyboard("{Enter}")
     expect(onSelect).toHaveBeenCalledTimes(1)
   })
+
+  // UX batch 3: a card brand is picked by its mark AND its name. The mark is
+  // decoration: the option's accessible name stays the label alone.
+  it("shows an option's icon beside its label, in the list and on the trigger", async () => {
+    const options = [
+      {value: "visa", label: "Visa", icon: <svg data-testid="mark-visa"/>},
+      {value: "elo", label: "Elo", icon: <svg data-testid="mark-elo"/>},
+    ]
+    function Brand() {
+      const [v, setV] = useState("visa")
+      return <><label htmlFor="b">Bandeira</label><Select id="b" value={v} onValueChange={setV} options={options}/></>
+    }
+    render(<Brand/>)
+    const trigger = screen.getByRole("combobox", {name: "Bandeira"})
+    expect(trigger).toHaveTextContent("Visa")
+    expect(trigger.querySelector("[data-testid=mark-visa]")).not.toBeNull()
+    await userEvent.click(trigger)
+    const elo = await screen.findByRole("option", {name: "Elo"})
+    expect(elo.querySelector("[data-testid=mark-elo]")?.closest("[aria-hidden]")).not.toBeNull()
+    await userEvent.click(elo)
+    expect(trigger.querySelector("[data-testid=mark-elo]")).not.toBeNull()
+  })
 })

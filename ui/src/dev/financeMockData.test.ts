@@ -128,6 +128,14 @@ describe("the finance mock's cards", () => {
     expect(open.data.some(b => b.id === closed.bill_id)).toBe(true)
   })
 
+  it("keeps a card's brand and last digits, and clears them with an empty string", () => {
+    const made = w("/cards", {name: "Nubank", closing_day: 3, due_day: 10, paying_account_id: "conta-corrente", brand: "elo", last4: "4242"}, "b").data as {id: string; brand?: string; last4?: string}
+    expect(made).toMatchObject({brand: "elo", last4: "4242"})
+    const edited = call({method: "patch", url: `/cards/${made.id}`, headers: {...personal, "Idempotency-Key": "e"}, data: {brand: "visa", last4: ""}}).data as {brand?: string; last4?: string}
+    expect(edited.brand).toBe("visa")
+    expect(edited.last4).toBeUndefined()
+  })
+
   it("refund credits what was billed, advance moves the rest to the open statement", () => {
     const id = card()
     const p = (w(`/cards/${id}/purchases`, {date: `${ym(0)}-01`, description: "Sofá", category_id: "mercado", total: 30000, installments: 3}, "p").data as {id: string}).id

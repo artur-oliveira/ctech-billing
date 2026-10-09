@@ -258,6 +258,9 @@ export interface OpeningBalance {
 
 // --- 6.5: cards ------------------------------------------------------------------------
 
+/** The network printed on a card (UX batch 3): the API's closed set. */
+export type CardBrand = "visa" | "mastercard" | "elo" | "amex" | "hipercard" | "diners" | "other"
+
 export interface Card {
   id: string
   name: string
@@ -269,6 +272,9 @@ export interface Card {
   /** The card account's balance: negative is what is owed. */
   balance: Cents
   archived: boolean
+  brand?: CardBrand
+  /** Exactly four digits, only to tell cards apart. */
+  last4?: string
 }
 
 export interface NewCard {
@@ -276,12 +282,18 @@ export interface NewCard {
   closing_day: number
   due_day: number
   paying_account_id: string
+  brand?: CardBrand
+  last4?: string
 }
 
 export interface CardPatch {
   closing_day?: number
   due_day?: number
   paying_account_id?: string
+  /** "" clears it. */
+  brand?: CardBrand | ""
+  /** "" clears it. */
+  last4?: string
 }
 
 export type StatementItemKind = "installment" | "credit" | "advance" | "carry"

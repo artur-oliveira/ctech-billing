@@ -43,6 +43,7 @@ function serve(verbs: Verb[], accounts = ACCOUNTS) {
   vi.spyOn(finance, "getFinanceSpaces").mockResolvedValue({spaces: [{selector: "personal", kind: "personal_default", display_name: "Pessoal", verbs, manage_people: false}], organizations_unavailable: false})
   vi.spyOn(finance, "listAccounts").mockResolvedValue({data: accounts, has_more: false})
   vi.spyOn(finance, "getSettings").mockResolvedValue({})
+  vi.spyOn(finance, "listCards").mockResolvedValue({data: [], has_more: false})
 }
 
 beforeEach(() => window.localStorage.clear())
@@ -227,6 +228,15 @@ describe("F8 — accounts", () => {
     const visa = await row("Visa")
     expect(within(visa).getByText(/Deve R\$\s1\.200,00/)).toBeInTheDocument()
     expect(within(visa).getByRole("link", {name: "Abrir"})).toHaveAttribute("href", "/console/finance/cards?card=visa")
+  })
+
+  it("shows a card's mark and last digits in the Cartões list", async () => {
+    serve(ALL)
+    vi.mocked(finance.listCards).mockResolvedValue({data: [{id: "visa", name: "Visa", closing_day: 3, due_day: 10, paying_account_id: "cc", open_month: "2026-03", balance: -120000, archived: false, brand: "visa", last4: "4242"}], has_more: false})
+    renderWithQuery(<AccountsView/>)
+    const visa = await row("Visa")
+    expect(await within(visa).findByText("•••• 4242")).toBeInTheDocument()
+    expect(visa.querySelector("svg[data-brand=visa]")).not.toBeNull()
   })
 
   it("never offers an opening balance on a category", async () => {
