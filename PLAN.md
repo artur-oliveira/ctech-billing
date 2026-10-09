@@ -674,8 +674,42 @@ gates nothing by plan.
       `planSettle`/`settleError` so another fact can commit with a settlement; (6) review: line text is
       bounded in bytes (what `Bill.Validate` counts) with control characters dropped. Not built: purging (ADR 0026's job
       is still unbuilt for every finance table, `imports` included).
-- [ ] 6.7 Billing integration — `invoice.paid` as revenue in the issuing organization and as an
-      expense in the paying customer's own space (personal or organization).
+- [x] 6.7 Billing integration — a paid invoice is revenue in the issuing organization's space and an
+      expense in the paying person's own space; a credit note on a paid invoice takes its amount back from both.
+      [Plan](docs/plans/2026-10-09-finance-6.7-billing-integration.md).
+      **Shape:** an in-process posting rule, `services.FinanceInvoices`, called by `Collector.settleInvoice` on
+      both its fresh and its repeat path (after the bus is told, last) and by the console's credit-note route. It
+      never fails, delays or rolls back the settlement: each side is logged (`posted`, `already_posted`,
+      `skipped` with a reason, `failed`), panics are contained in the rule and again in the collector. Each space
+      gets ONE `TransactWriteItems` (`BillRepository.RecordInvoice`): recognition at the invoice's period start and
+      settlement on `paid_at` (São Paulo day) of a bill `origin = billing_invoice` whose id is
+      `idempotentID(space, "billing-invoice", invoice)`, ADDs folded by `mergeAdds`, the bill put conditional — a
+      replay (webhook retried, webhook + reconciler, the repeat path) is one GetItem, a race is decided by the put
+      (a refused put answers "already recorded" even when the re-read misses it) and a conflict is retried. A
+      credit note is `finance.CreditBill` (the opposite of recognising and settling the credited amount, one
+      `adjustment`) with the transaction id `idempotentID(space, "billing-credit-note", note)`; it is not added to
+      the bill's transaction list, so "Desfazer pagamento" still reverses the settlement. Spaces come from stored
+      data only, through `space.ForInvoiceIssuer` / `ForInvoicePayer`, which a source-scan confines to
+      `services/finance_invoices.go` (Read|Write|Settle only). Each space key carries the invoice's mode. Cash goes
+      to the space's **default receiving account** (F8) on both sides; with none (or archived) nothing is written
+      there — that read comes first, so paying never creates a finance space for anybody. Seed version 3 adds
+      *Assinaturas* (income, `gross_revenue`, organization spaces) and *Assinaturas CTech* (expense, both); the
+      rule also ensures its category by id, archived or name-taken included. Zero-total invoices (ADR 0019) post
+      nothing.
+      **Found on the way:** (1) billing's tenants are not ctech-account organizations (tenant zero's id is
+      `ctech`), so "the issuing organization's space" had no key: `Organization.AccountOrganizationID`, set by the
+      tenant plan (`organization.account_organization_id`, validated as a canonical UUID), once — Apply links an
+      existing unlinked tenant (conditional, audited) and refuses a plan naming a different link. **Deploy step:**
+      put CTech's ctech-account organization id in `api/tenants/ctech.json` and run `seed` in both modes; until
+      then the issuer side logs `issuer_not_linked`. (2) The payer side is **tenant zero only**: `user_id` on a
+      third-party merchant's customer is that merchant's claim and must not write into a person's books.
+      (3) Organization customers (spec § 1) do not exist in code — nothing on `Customer` names an organization —
+      so today a DF-e subscription posts to its owner's personal space, which is what the customer record says
+      (ctech-dfe keys it on `USER_{sub}`). (4) No test-mode invoice is paid with money today
+      (`ErrTestModeNotPayable`); the rule is mode-agnostic and test spaces get test invoices.
+      **Not built:** a backfill for invoices paid while a space had no receiving account (or before the link),
+      organization customers, the revenue projection from open invoices and renewals (computed on read, spec
+      § 3.8), refusing "Desfazer pagamento" on a billing bill.
 - [ ] 6.8 Shared and additional personal spaces —
       [spec](docs/specs/2026-10-09-shared-spaces-design.md), [ADR 0027](docs/adr/0027-personal-workspaces-in-account.md).
       A ctech-account workspace of `kind: personal`, created and managed by handoff; verbs by kind and
@@ -684,7 +718,9 @@ gates nothing by plan.
       only a kind check on company reach (`ctech-dfe/docs/specs/2026-10-09-personal-workspaces-in-dfe.md`).
 
 **Still open in Phase 6 (recorded 2026-10-09):**
-- **6.7 billing integration**: not started.
+- **After 6.7:** link tenant zero (`account_organization_id` in `api/tenants/ctech.json`, then `seed` in both
+  modes); a backfill command for invoices paid before the link or while a space had no receiving account;
+  organization customers (spec § 1), which also needs ctech-dfe to move its subscription to the organization.
 - **Purge (ADR 0026)**: no code. ctech-account's account-deletion specs (2026-10-06) name billing
   as a participant with an eligibility check and a purge on `user.erase`; billing's side is unbuilt.
   Shared spaces (6.8) add personal workspaces to its scope.

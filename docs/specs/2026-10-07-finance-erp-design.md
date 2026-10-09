@@ -327,6 +327,20 @@ spaces for the credited amount.
 Revenue linked to a subscription is **only realised when an invoice is paid**. Its projection
 comes from billing: open invoices plus the subscription's next renewals, computed on read.
 
+**As built (6.7, 2026-10-09)** — [plan](../plans/2026-10-09-finance-6.7-billing-integration.md):
+- The issuing organization's space is found through `Organization.AccountOrganizationID`, a link to the
+  ctech-account organization set by the tenant plan (billing's tenant ids are not account ids:
+  tenant zero is `ctech`). An unlinked tenant posts nothing on the issuer side.
+- The payer side is **tenant zero only** (a third-party merchant's `user_id` is that merchant's claim)
+  and **person customers only**: organization customers are not modelled yet, so a customer with a
+  `user_id` posts to that person's personal space.
+- The cash account is the space's default receiving account **on both sides**. A space with none,
+  or with an archived one, gets nothing, and is not created by the posting.
+- Zero-total invoices post nothing. A credit note posts one adjustment (`finance.CreditBill`) dated
+  the note's day, in each space where the invoice was recorded and its bill is still paid.
+- Idempotent by the bill's id (space, invoice) and the credit's transaction id (space, note). The
+  settlement never fails because of finance; failures are logged per side.
+
 ## 4. Persistence
 
 Every table is `{env}_billing_{name}` and declared in `api/internal/repositories/schema.json`.
