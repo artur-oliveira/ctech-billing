@@ -46,6 +46,13 @@ type Organization struct {
 	// never a copy of the person.
 	OwnerUserID string `dynamodbav:"owner_user_id" json:"owner_user_id"`
 
+	// AccountOrganizationID is the ctech-account organization this tenant is
+	// (ADR 0021: billing references the platform organization). Today it decides
+	// one thing: the finance space a paid invoice's revenue posts to
+	// (spec § 3.8). Set by the tenant plan only, never by a route, and never on
+	// the wire.
+	AccountOrganizationID string `dynamodbav:"account_organization_id,omitempty" json:"-"`
+
 	// The issuer block: who the invoice PDF says is charging. Every field is
 	// optional and none of it is used for anything but the document — billing
 	// does not validate a CNPJ or check an address, because it is not the

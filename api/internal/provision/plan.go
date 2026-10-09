@@ -22,6 +22,7 @@ import (
 	"strings"
 
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
+	"gopkg.aoctech.app/billing/api/internal/space"
 )
 
 // Plan is one tenant, mode-independent.
@@ -72,6 +73,11 @@ type Organization struct {
 	// which is the only safe default — an organization that could collect money
 	// the moment somebody committed a JSON file is a gate that does not exist.
 	PayoutStatus billing.PayoutStatus `json:"payout_status,omitempty"`
+	// AccountOrganizationID is the ctech-account organization this tenant is: the
+	// finance space its paid invoices are recorded in (spec § 3.8). Optional. An
+	// existing tenant with none gets it once; a plan naming a different one than
+	// the tenant holds is refused rather than applied.
+	AccountOrganizationID string `json:"account_organization_id,omitempty"`
 }
 
 // Credential admits one ctech-account OAuth client to act for this tenant.
@@ -143,6 +149,9 @@ func (p *Plan) Validate() error {
 	case "", billing.PayoutNotConfigured, billing.PayoutPendingCustody, billing.PayoutEnabled:
 	default:
 		return fmt.Errorf("organization.payout_status %q is not a known status", p.Organization.PayoutStatus)
+	}
+	if link := p.Organization.AccountOrganizationID; link != "" && !space.IsOrganizationID(link) {
+		return fmt.Errorf("organization.account_organization_id %q is not a canonical lower-case ctech-account organization id", link)
 	}
 
 	seen := map[string]string{}

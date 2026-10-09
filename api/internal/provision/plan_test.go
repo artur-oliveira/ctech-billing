@@ -70,3 +70,18 @@ func TestParseRejects(t *testing.T) {
 		})
 	}
 }
+
+// The link names a finance space key (spec § 3.8), so a plan cannot write
+// anything a space key would refuse: not billing's own tenant id, not a key.
+func TestPlanRefusesAnAccountOrganizationThatIsNotAnID(t *testing.T) {
+	for _, link := range []string{"ctech", "USER#x", "0190A1B2-C3D4-7E5F-8A9B-0C1D2E3F4A5B"} {
+		_, err := Parse(strings.NewReader(`{"organization":{"id":"ctech","display_name":"CTech","account_organization_id":"` + link + `"}}`))
+		if err == nil || !strings.Contains(err.Error(), "account_organization_id") {
+			t.Errorf("link %q: err = %v", link, err)
+		}
+	}
+	p, err := Parse(strings.NewReader(`{"organization":{"id":"ctech","display_name":"CTech","account_organization_id":"0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b"}}`))
+	if err != nil || p.Organization.AccountOrganizationID != "0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b" {
+		t.Fatalf("plan = %+v, %v", p, err)
+	}
+}

@@ -301,6 +301,63 @@ func (r *OrganizationRepository) SetIssuer(
 	return nil
 }
 
+// ErrAccountOrganizationLinked is a tenant already linked to another
+// ctech-account organization. Moving a link moves where revenue is recorded;
+// that is an operator decision with its own review, not a plan re-applied.
+var ErrAccountOrganizationLinked = errors.New("organization is already linked to another account organization")
+
+// LinkAccountOrganization records which ctech-account organization this tenant
+// is (spec § 3.8: the finance space its paid invoices are recorded in). Once:
+// the update is conditional on there being no link yet, so two plans applied at
+// once cannot both win, and it is audited. Linking to the same id again is a
+// no-op. The caller validates the id's shape (space.IsOrganizationID).
+func (r *OrganizationRepository) LinkAccountOrganization(
+	ctx context.Context,
+	org *billing.Organization,
+	accountOrgID, actor, requestID string,
+	now time.Time,
+) error {
+	if org.AccountOrganizationID == accountOrgID {
+		return nil
+	}
+	if org.AccountOrganizationID != "" {
+		return fmt.Errorf("%w: %s is linked to %s", ErrAccountOrganizationLinked, org.ID, org.AccountOrganizationID)
+	}
+	if actor == "" {
+		return fmt.Errorf("repositories: linking %s needs an actor", org.ID)
+	}
+	auditItem, err := buildAuditItem(org.ID, org.Livemode, AuditEntry{
+		Entity:    EntityOrganization,
+		EntityID:  org.ID,
+		Action:    billing.AuditAccountOrganizationLinked,
+		Cause:     billing.CauseManual,
+		Actor:     actor,
+		RequestID: requestID,
+		After:     accountOrgID,
+	}, "", "", now)
+	if err != nil {
+		return err
+	}
+	update := r.base.BuildRawUpdateTxItem(
+		TenantPK(org.ID, org.Livemode), new(OrganizationSK()),
+		"SET account_organization_id = :a, updated_at = :now",
+		"attribute_exists(pk) AND attribute_not_exists(account_organization_id)", nil,
+		map[string]types.AttributeValue{
+			":a":   &types.AttributeValueMemberS{Value: accountOrgID},
+			":now": &types.AttributeValueMemberS{Value: now.UTC().Format(time.RFC3339Nano)},
+		},
+	)
+	err = r.base.TransactWrite(ctx, txItems(update, r.audit.BuildPutTxItemIfAbsent(auditItem)))
+	if onlyConditionFailed(err) {
+		return fmt.Errorf("%w: %s was linked while this plan was being applied", ErrAccountOrganizationLinked, org.ID)
+	}
+	if err != nil {
+		return err
+	}
+	org.AccountOrganizationID = accountOrgID
+	return nil
+}
+
 // sortedStrings keeps the generated expression deterministic, and so diffable
 // in a log — the same reason sortedKeys exists for a status change.
 func sortedStrings(m map[string]string) []string {
