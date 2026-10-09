@@ -6,16 +6,19 @@ import {
 } from "lucide-react"
 import Link from "next/link"
 import {usePathname, useRouter} from "next/navigation"
+import {useQuery} from "@tanstack/react-query"
 import {useEffect} from "react"
 import {useTranslation} from "react-i18next"
 
 import {currentFinanceSection} from "@/components/finance/FinanceNav"
+import {financeKeys, listCards} from "@/lib/api/finance"
 import type {Verb} from "@/lib/api/financeTypes"
 import {type CreateKind, dropCreateUnlessAt, requestCreate} from "@/lib/finance/createRequest"
-import {useFinanceSpaces} from "@/lib/finance/useFinanceSpaces"
+import {useFinanceCtx, useFinanceSpaces} from "@/lib/finance/useFinanceSpaces"
 
 const BASE = "/console/finance"
 const BILLS = `${BASE}/bills`
+const CARDS = `${BASE}/cards`
 
 const renderLink: RenderLink = props => <Link {...props}/>
 
@@ -65,11 +68,24 @@ export function FinanceBottomNav() {
     dropCreateUnlessAt(current)
   }, [current])
 
+  // Cartões: a purchase needs a card. With none yet the action is the card
+  // itself, which takes configure; a role that has neither gets no slot,
+  // never a button that does nothing. Same query and key as CardsView, so
+  // this reads its cache rather than asking twice.
+  const ctx = useFinanceCtx()
+  const cards = useQuery({
+    queryKey: financeKeys.cards(ctx.mode, ctx.space),
+    queryFn: () => listCards(ctx),
+    enabled: current === CARDS,
+  })
+  const noCard = current === CARDS && !(cards.data?.data ?? []).some(c => !c.archived)
+
   const own = CREATE[current]
-  const create = own ?? FALLBACK
-  const action: BottomNavAction | null = can(create.verb)
+  const create = noCard ? {kind: "purchase" as const, verb: "finance.configure" as const} : own ?? FALLBACK
+  const ready = current !== CARDS || cards.isSuccess
+  const action: BottomNavAction | null = ready && can(create.verb)
     ? {
-      label: t(`finance.nav.create.${create.kind}`),
+      label: noCard ? t("finance.cards.new") : t(`finance.nav.create.${create.kind}`),
       icon: ACTION_ICON[create.kind],
       onClick: () => {
         if (own) {

@@ -11,21 +11,24 @@ vi.mock("next/navigation", () => ({usePathname: () => nav.pathname, useRouter: (
 import {FinanceBottomNav} from "@/components/finance/FinanceBottomNav"
 import {renderWithQuery} from "@/components/finance/finance.test-utils"
 import * as finance from "@/lib/api/finance"
-import type {Verb} from "@/lib/api/financeTypes"
+import type {Card, Verb} from "@/lib/api/financeTypes"
 import * as create from "@/lib/finance/createRequest"
 
 const ALL: Verb[] = ["finance.read", "finance.write", "finance.settle", "finance.import", "finance.configure"]
 
-function serve(verbs: Verb[] = ALL) {
+const VISA: Card = {id: "visa", name: "Visa", closing_day: 3, due_day: 10, paying_account_id: "cc", open_month: "2026-03", balance: 0, archived: false}
+
+function serve(verbs: Verb[] = ALL, cards: Card[] = [VISA]) {
+  vi.spyOn(finance, "listCards").mockResolvedValue({data: cards, has_more: false})
   vi.spyOn(finance, "getFinanceSpaces").mockResolvedValue({
     spaces: [{selector: "personal", kind: "personal_default", display_name: "Pessoal", verbs, manage_people: false}],
     organizations_unavailable: false,
   })
 }
 
-function at(pathname: string, verbs: Verb[] = ALL) {
+function at(pathname: string, verbs: Verb[] = ALL, cards?: Card[]) {
   nav.pathname = pathname
-  serve(verbs)
+  serve(verbs, cards)
   return renderWithQuery(<FinanceBottomNav/>)
 }
 
@@ -98,6 +101,20 @@ describe("FinanceBottomNav", () => {
       await screen.findByRole("navigation", {name: "Navegação principal"})
       await new Promise(r => setTimeout(r, 0))
       expect(within(bar()).queryByRole("button", {name: "Adicionar"})).toBeNull()
+    })
+
+    it("on Cartões with no card yet, it is Novo cartão for a role that may configure", async () => {
+      const request = vi.spyOn(create, "requestCreate")
+      at("/console/finance/cards", ALL, [])
+      await userEvent.click(await within(bar()).findByRole("button", {name: "Novo cartão"}))
+      expect(request).toHaveBeenCalledWith("purchase")
+    })
+
+    it("on Cartões with no card and no configure, there is no action: a button that does nothing is worse", async () => {
+      at("/console/finance/cards", ["finance.read", "finance.write"], [])
+      await new Promise(r => setTimeout(r, 50))
+      expect(within(bar()).queryByRole("button", {name: "Nova compra"})).toBeNull()
+      expect(within(bar()).queryByRole("button", {name: "Novo cartão"})).toBeNull()
     })
 
     it("asks for configure, not write, for Nova conta", async () => {
