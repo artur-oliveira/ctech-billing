@@ -8,10 +8,15 @@ name: CI
 # requests for the same reason.
 on:
   pull_request:
-  push:
-    branches: [ main, staging, dev ]
 
-# Matches deploy.yml and the ci.yml in ctech-account and ctech-go-common.
+# Pull requests only, like ctech-account's ci.yml. A push to main, staging or dev
+# is a deploy, and deploy.yml runs its own gates before it ships: the API tests
+# (unit and integration, in api.yml) and the UI tests (ctech-cdk's
+# frontend-cloudflare.yml). Running this workflow on the same push repeated the
+# PR's checks on every merge — docs-only ones included, since this workflow has
+# no path filter.
+#
+# Concurrency matches deploy.yml and the ci.yml in ctech-account and ctech-go-common.
 # `cancel-in-progress: false` on purpose: a superseded CI run still tells you
 # whether the commit it was started for was good, and that is the commit
 # somebody may have already branched from.
