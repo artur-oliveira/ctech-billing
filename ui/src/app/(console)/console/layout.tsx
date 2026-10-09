@@ -13,20 +13,8 @@ import {SpaceSwitch} from "@/components/finance/SpaceSwitch"
 import {statusOf} from "@/lib/api/client"
 import {consoleKeys, getConsoleSession} from "@/lib/api/console"
 import {useAuth} from "@/lib/auth/AuthContext"
+import {consoleNav, FINANCE_HREF} from "@/lib/console/nav"
 import {useMode} from "@/lib/console/useMode"
-
-/** Invoicing: an operator's sections, shown only with an organization. */
-const INVOICING_NAV = [
-  {href: "/console/overview", label: "Visão geral"},
-  {href: "/console/invoices", label: "Faturas"},
-  {href: "/console/subscriptions", label: "Assinaturas"},
-  {href: "/console/customers", label: "Clientes"},
-  {href: "/console/catalog", label: "Catálogo"},
-  {href: "/console/settings", label: "Configurações"},
-] as const
-
-/** Finance: everyone's, in a personal space or an organization's (ADR 0025). */
-const FINANCE_HREF = "/console/finance"
 
 /**
  * The operator shell — the second of the two the app ships, and the same
@@ -84,7 +72,7 @@ export default function ConsoleLayout({children}: LayoutProps<"/console">) {
     if (noOrganization && pathname === "/console/overview") router.replace(FINANCE_HREF)
   }, [noOrganization, pathname, router])
 
-  const nav = [...(noOrganization ? [] : INVOICING_NAV), {href: FINANCE_HREF, label: "Finanças"}]
+  const nav = consoleNav(session !== undefined)
 
   return (
     <div data-density="compact" className="min-h-dvh">

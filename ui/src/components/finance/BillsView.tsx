@@ -6,6 +6,7 @@ import {AlertCircle, CalendarClock, Clock, Receipt} from "lucide-react"
 import {useEffect, useState} from "react"
 
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
+import {DateField} from "@/components/ui/DateField"
 import {Select} from "@/components/ui/Select"
 import {messageFor, statusOf} from "@/lib/api/client"
 import {cancelBill, createBill, financeKeys, listAccounts, listBills, patchBill, settleBill} from "@/lib/api/finance"
@@ -219,7 +220,7 @@ function SettleForm({bill, accounts, onDone}: {bill: Bill; accounts: Account[]; 
       }}
     >
       <Field label={bill.direction === "payable" ? "Data do pagamento" : "Data do recebimento"} htmlFor={`d-${bill.id}`}>
-        <Input id={`d-${bill.id}`} type="date" value={date} onChange={e => setDate(e.target.value)}/>
+        <DateField id={`d-${bill.id}`} value={date} onValueChange={setDate}/>
       </Field>
       <Field label={bill.direction === "payable" ? "Valor pago" : "Valor recebido"} htmlFor={`v-${bill.id}`}>
         <Input id={`v-${bill.id}`} inputMode="decimal" value={amountText} onChange={e => setAmountText(limitMoneyDecimals(e.target.value))} aria-invalid={paid === null}/>
@@ -278,7 +279,7 @@ function EditForm({bill, accounts, onDone}: {bill: Bill; accounts: Account[]; on
     >
       <Field label="Descrição" htmlFor={`ed-${bill.id}`}><Input id={`ed-${bill.id}`} value={description} onChange={e => setDescription(e.target.value)}/></Field>
       <Field label="Valor" htmlFor={`ev-${bill.id}`}><Input id={`ev-${bill.id}`} inputMode="decimal" value={amountText} onChange={e => setAmountText(limitMoneyDecimals(e.target.value))} aria-invalid={amount === null}/></Field>
-      <Field label="Vencimento" htmlFor={`eu-${bill.id}`}><Input id={`eu-${bill.id}`} type="date" value={due} onChange={e => setDue(e.target.value)}/></Field>
+      <Field label="Vencimento" htmlFor={`eu-${bill.id}`}><DateField id={`eu-${bill.id}`} value={due} onValueChange={setDue}/></Field>
       <Field label="Categoria" htmlFor={`ec-${bill.id}`}>
         <Select id={`ec-${bill.id}`} value={category} onValueChange={setCategory} options={cats.map(a => ({value: a.id, label: a.name}))}/>
       </Field>
@@ -345,9 +346,9 @@ function NewBillPanel({direction, accounts, onDone}: {direction: Direction; acco
       >
         <Field label="Descrição" htmlFor="nb-desc"><Input id="nb-desc" value={description} onChange={e => setDescription(e.target.value)} autoFocus/></Field>
         <Field label="Valor" htmlFor="nb-amount" required><Input id="nb-amount" inputMode="decimal" placeholder="0,00" value={amountText} onChange={e => setAmountText(limitMoneyDecimals(e.target.value))}/></Field>
-        <Field label="Vencimento" htmlFor="nb-due" required><Input id="nb-due" type="date" value={due} onChange={e => setDue(e.target.value)}/></Field>
+        <Field label="Vencimento" htmlFor="nb-due" required><DateField id="nb-due" value={due} onValueChange={setDue}/></Field>
         <Field label="Competência (DRE)" htmlFor="nb-comp" hint="Em branco, vale o vencimento.">
-          <Input id="nb-comp" type="date" value={competence} onChange={e => setCompetence(e.target.value)}/>
+          <DateField id="nb-comp" value={competence} onValueChange={setCompetence} placeholder="Igual ao vencimento"/>
         </Field>
         <Field label="Categoria" htmlFor="nb-cat" required hint={cats.length === 0 ? `Nenhuma categoria de ${direction === "payable" ? "despesa" : "receita"}. Crie uma em Contas.` : undefined}>
           <Select id="nb-cat" value={category} onValueChange={setCategory} options={cats.map(a => ({value: a.id, label: a.name}))}/>

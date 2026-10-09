@@ -6,6 +6,7 @@ import {Landmark} from "lucide-react"
 import {useState} from "react"
 
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
+import {DateField} from "@/components/ui/DateField"
 import {Select} from "@/components/ui/Select"
 import {messageFor} from "@/lib/api/client"
 import {archiveAccount, createAccount, financeKeys, getSettings, listAccounts, postOpeningBalance, setDefaultReceivingAccount} from "@/lib/api/finance"
@@ -154,7 +155,7 @@ function OpeningForm({account, onDone}: {account: Account; onDone: () => void}) 
         <Input id={`ob-${account.id}`} inputMode="decimal" placeholder="0,00" value={text} onChange={e => setText(limitMoneyDecimals(e.target.value))} autoFocus/>
       </Field>
       <Field label="Em" htmlFor={`obd-${account.id}`}>
-        <Input id={`obd-${account.id}`} type="date" value={date} onChange={e => setDate(e.target.value)}/>
+        <DateField id={`obd-${account.id}`} value={date} onValueChange={setDate}/>
       </Field>
       <div className="flex gap-2 sm:pt-6">
         <Button type="button" variant="outline" size="sm" onClick={onDone}>Fechar</Button>
@@ -190,7 +191,7 @@ function AccountForm({onDone}: {onDone: () => void}) {
   const chosenGroup = groups.includes(group as DREGroup) ? (group as DREGroup) : groups[0]
   return (
     <form
-      className="grid gap-3 border-y border-border py-4 sm:grid-cols-[2fr_1fr_1fr_auto] sm:items-end"
+      className="grid items-start gap-3 border-y border-border py-4 sm:grid-cols-2 lg:grid-cols-4"
       onSubmit={e => {
         e.preventDefault()
         if (!name.trim() || openingInvalid) return
@@ -208,24 +209,24 @@ function AccountForm({onDone}: {onDone: () => void}) {
           <Select id="acc-group" value={chosenGroup} onValueChange={v => setGroup(v as DREGroup)} options={groups.map(g => ({value: g, label: DRE_GROUP_LABEL[g]}))}/>
         </Field>
       ) : asset ? (
-        <div className="grid grid-cols-2 items-start gap-3">
+        <>
           <Field label="Saldo inicial (opcional)" htmlFor="acc-opening">
             <Input id="acc-opening" inputMode="decimal" placeholder="0,00" value={openingText} onChange={e => setOpeningText(limitMoneyDecimals(e.target.value))} aria-invalid={openingInvalid}/>
           </Field>
           {openingText.trim() !== "" && (
             <Field label="Em" htmlFor="acc-opening-date">
-              <Input id="acc-opening-date" type="date" value={openingDate} onChange={e => setOpeningDate(e.target.value)}/>
+              <DateField id="acc-opening-date" value={openingDate} onValueChange={setOpeningDate}/>
             </Field>
           )}
-        </div>
-      ) : <div/>}
-      <div className="flex gap-2">
+        </>
+      ) : null}
+      <div className="flex gap-2 sm:col-span-2 lg:col-span-4">
         <Button type="button" variant="outline" size="sm" onClick={onDone}>Cancelar</Button>
         <Button type="submit" variant="brand" size="sm" disabled={create.isPending || opening.isPending || create.isSuccess || !name.trim() || openingInvalid}>Criar</Button>
       </div>
-      {create.error && <p role="alert" className="text-sm text-danger sm:col-span-4">{messageFor(create.error)}</p>}
+      {create.error && <p role="alert" className="text-sm text-danger sm:col-span-2 lg:col-span-4">{messageFor(create.error)}</p>}
       {opening.error && opening.variables && (
-        <div role="alert" className="flex flex-wrap items-center gap-2 text-sm sm:col-span-4">
+        <div role="alert" className="flex flex-wrap items-center gap-2 text-sm sm:col-span-2 lg:col-span-4">
           <p className="text-danger">A conta foi criada, mas o saldo inicial não foi lançado.</p>
           <Button type="button" size="sm" variant="outline" disabled={opening.isPending} onClick={() => opening.mutate(opening.variables!)}>Tentar de novo</Button>
           <Button type="button" size="sm" variant="ghost" onClick={onDone}>Deixar sem saldo inicial</Button>

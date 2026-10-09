@@ -5,6 +5,7 @@ import {Button, Field, Input} from "@aoctech/ui"
 import {messageFor} from "@/lib/api/client"
 import {createTransfer, type FinanceCtx, financeKeys} from "@/lib/api/finance"
 import type {Account, NewTransfer} from "@/lib/api/financeTypes"
+import {DateField} from "@/components/ui/DateField"
 import {Select} from "@/components/ui/Select"
 import {todayIso} from "@/lib/finance/today"
 import {useFinanceMutation} from "@/lib/finance/useFinanceMutation"
@@ -50,7 +51,7 @@ export function TransferPanel({accounts, from: initialFrom = "", onDone}: {accou
         <Input id="tr-amount" inputMode="decimal" placeholder="0,00" value={amountText} onChange={e => setAmountText(limitMoneyDecimals(e.target.value))}/>
       </Field>
       <Field label="Data" htmlFor="tr-date">
-        <Input id="tr-date" type="date" value={date} onChange={e => setDate(e.target.value)}/>
+        <DateField id="tr-date" value={date} onValueChange={setDate}/>
       </Field>
       <Field label="Descrição" htmlFor="tr-memo">
         <Input id="tr-memo" maxLength={140} placeholder="Transferência" value={memo} onChange={e => setMemo(e.target.value)}/>
