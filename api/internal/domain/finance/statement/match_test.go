@@ -110,3 +110,38 @@ func TestCandidatesAreBounded(t *testing.T) {
 		t.Fatalf("%d candidates", len(got))
 	}
 }
+
+// A bill the recurrence's auto-settle already paid is offered to a line only
+// in the exact case: same account and direction, the exact amount, paid within
+// MatchWindow days of the line. A different amount (interest, a discount) is
+// not offered; the person ignores the line.
+func TestPaidCandidates(t *testing.T) {
+	paid := func(id string, dir finance.Direction, amount billing.Cents, paidOn int, acct string) finance.Bill {
+		return finance.Bill{ID: id, Direction: dir, Amount: amount, Due: day(1), PaidDate: day(paidOn), AccountID: acct, Status: finance.BillPaid}
+	}
+	open := paid("open", finance.Payable, 1000, 10, "bank")
+	open.Status, open.PaidDate = finance.BillForecast, brcal.Date{}
+	bills := []finance.Bill{
+		paid("far", finance.Payable, 1000, 16, "bank"),      // 6 days: out
+		paid("near", finance.Payable, 1000, 12, "bank"),     // 2 days
+		paid("exact", finance.Payable, 1000, 10, "bank"),    // 0 days (due is far: the paid date decides)
+		paid("other", finance.Payable, 1000, 10, "savings"), // other account
+		paid("interest", finance.Payable, 1050, 10, "bank"), // other amount
+		paid("in", finance.Receivable, 1000, 10, "bank"),    // other direction
+		paid("edge", finance.Payable, 1000, 5, "bank"),      // exactly 5 days: in
+		open,                                                // not paid
+	}
+	got := PaidCandidates("bank", Line{Date: day(10), Amount: -1000}, bills)
+	want := []string{"exact", "near", "edge"}
+	if len(got) != len(want) {
+		t.Fatalf("got %d candidates: %+v", len(got), got)
+	}
+	for i := range want {
+		if got[i].ID != want[i] {
+			t.Errorf("candidate %d = %s, want %s", i, got[i].ID, want[i])
+		}
+	}
+	if in := PaidCandidates("bank", Line{Date: day(10), Amount: 1000}, bills); len(in) != 1 || in[0].ID != "in" {
+		t.Fatalf("money in matches the paid receivable: %+v", in)
+	}
+}
