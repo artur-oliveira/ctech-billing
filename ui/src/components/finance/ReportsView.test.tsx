@@ -37,7 +37,7 @@ const CASH: CashFlow = {
 }
 
 function serve() {
-  vi.spyOn(finance, "getFinanceSpaces").mockResolvedValue({spaces: [{kind: "personal", label: "Pessoal", verbs: ALL}], organizations_unavailable: false})
+  vi.spyOn(finance, "getFinanceSpaces").mockResolvedValue({spaces: [{selector: "personal", kind: "personal_default", display_name: "Pessoal", verbs: ALL, manage_people: false}], organizations_unavailable: false})
   vi.spyOn(finance, "listAccounts").mockResolvedValue({data: ACCOUNTS, has_more: false})
   return {
     dre: vi.spyOn(finance, "getDRE").mockResolvedValue(DRE_DATA),

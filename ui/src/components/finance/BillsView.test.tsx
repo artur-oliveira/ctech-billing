@@ -27,7 +27,7 @@ const bill = (over: Partial<Bill>): Bill => ({
 })
 
 function serve(verbs: Verb[], bills: Bill[]) {
-  vi.spyOn(finance, "getFinanceSpaces").mockResolvedValue({spaces: [{kind: "personal", label: "Pessoal", verbs}], organizations_unavailable: false})
+  vi.spyOn(finance, "getFinanceSpaces").mockResolvedValue({spaces: [{selector: "personal", kind: "personal_default", display_name: "Pessoal", verbs, manage_people: false}], organizations_unavailable: false})
   vi.spyOn(finance, "listAccounts").mockResolvedValue({data: ACCOUNTS, has_more: false})
   vi.spyOn(finance, "listBills").mockImplementation(async (_c, dir) => ({data: bills.filter(b => b.direction === dir), has_more: false}))
 }

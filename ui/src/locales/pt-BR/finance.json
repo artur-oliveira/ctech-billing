@@ -70,7 +70,10 @@
   "space": {
     "label": "Espaço",
     "personal": "Pessoal",
-    "orgsUnavailable": "Organizações indisponíveis"
+    "orgsUnavailable": "Outros espaços indisponíveis",
+    "new": "Novo espaço",
+    "managePeople": "Gerenciar acesso",
+    "returning": "Voltando para Finanças…"
   },
   "accounts": {
     "title": "Contas",

@@ -70,7 +70,10 @@
   "space": {
     "label": "Space",
     "personal": "Personal",
-    "orgsUnavailable": "Organizations unavailable"
+    "orgsUnavailable": "Other spaces unavailable",
+    "new": "New space",
+    "managePeople": "Manage access",
+    "returning": "Returning to Finances…"
   },
   "accounts": {
     "title": "Accounts",

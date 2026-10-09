@@ -12,7 +12,7 @@ afterEach(() => vi.restoreAllMocks())
 describe("FinanceGate", () => {
   it("renders its children only when the current space holds the verb", async () => {
     vi.spyOn(finance, "getFinanceSpaces").mockResolvedValue({
-      spaces: [{kind: "personal", label: "Pessoal", verbs: ["finance.read"]}],
+      spaces: [{selector: "personal", kind: "personal_default", display_name: "Pessoal", verbs: ["finance.read"], manage_people: false}],
       organizations_unavailable: false,
     })
     renderWithQuery(

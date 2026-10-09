@@ -35,7 +35,7 @@ const DETAIL: ImportDetail = {
 }
 
 function serve(verbs: Verb[], accounts: Account[] = ACCOUNTS, imports: ImportSummary[] = [SUMMARY]) {
-  vi.spyOn(finance, "getFinanceSpaces").mockResolvedValue({spaces: [{kind: "personal", label: "Pessoal", verbs}], organizations_unavailable: false})
+  vi.spyOn(finance, "getFinanceSpaces").mockResolvedValue({spaces: [{selector: "personal", kind: "personal_default", display_name: "Pessoal", verbs, manage_people: false}], organizations_unavailable: false})
   vi.spyOn(finance, "listAccounts").mockResolvedValue({data: accounts, has_more: false})
   vi.spyOn(finance, "listImports").mockResolvedValue({data: imports, has_more: false})
   vi.spyOn(finance, "getImport").mockResolvedValue(DETAIL)

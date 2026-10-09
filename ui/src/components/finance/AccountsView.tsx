@@ -40,7 +40,7 @@ const SECTIONS: {key: "accounts" | "income" | "expense" | "cards"; classes: Acco
 export function AccountsView() {
   const {t} = useTranslation()
   const ctx = useFinanceCtx()
-  const {can} = useFinanceSpaces()
+  const {can, current} = useFinanceSpaces()
   const configure = can("finance.configure")
   const [showArchived, setShowArchived] = useState(false)
   const [creating, setCreating] = useState(false)
@@ -92,7 +92,9 @@ export function AccountsView() {
             </Button>
           )}
           {configure && <DefaultReceiving accounts={accounts}/>}
-          {configure && <PostCTechInvoices/>}
+          {/* The payer side of 6.7 posts to Pessoal only, never to a shared
+              space: anywhere else this switch would do nothing. */}
+          {configure && current?.kind === "personal_default" && <PostCTechInvoices/>}
         </>
       )}
     </div>

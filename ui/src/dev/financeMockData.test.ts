@@ -19,7 +19,7 @@ describe("the finance mock enforces the contract", () => {
   it("lists spaces without a space header", () => {
     const r = call({url: "/spaces", headers: {}})
     expect(r.status).toBe(200)
-    expect((r.data as {spaces: {kind: string}[]}).spaces[0].kind).toBe("personal")
+    expect((r.data as {spaces: {kind: string}[]}).spaces[0].kind).toBe("personal_default")
   })
 
   it("refuses a write without an Idempotency-Key and replays a repeated one", () => {

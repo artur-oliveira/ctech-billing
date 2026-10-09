@@ -89,12 +89,18 @@ export interface Settings {
   post_ctech_invoices?: boolean
 }
 
+/** personal_default is "Pessoal" (USER#{sub}); the other two are ctech-account workspaces (ADR 0027). */
+export type SpaceKind = "personal_default" | "personal" | "organization"
+
 export interface FinanceSpaceEntry {
-  kind: "personal" | "organization"
-  organization_id?: string
-  label: string
+  /** The X-Billing-Space value: "personal" or "org:{id}". */
+  selector: string
+  kind: SpaceKind
+  display_name: string
   role?: string
   verbs: Verb[]
+  /** The owner of a personal workspace: may open its people page in ctech-account. */
+  manage_people: boolean
 }
 
 export interface FinanceSpaces {
@@ -103,7 +109,7 @@ export interface FinanceSpaces {
 }
 
 export interface CurrentSpace {
-  kind: "personal" | "organization"
+  kind: SpaceKind
   organization_id?: string
   mode: "live" | "test"
   verbs: Verb[]
