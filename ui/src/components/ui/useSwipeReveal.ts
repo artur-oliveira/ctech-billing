@@ -102,6 +102,10 @@ export function useSwipeReveal(width: number, enabled = true): SwipeReveal {
     close,
     bind: {
       onPointerDown: e => {
+        // A new gesture: whatever the last one meant to swallow is over. A touch
+        // browser sends no click after a drag, so a flag left set would eat the
+        // next tap on this row (review fix).
+        swallowClick.current = false
         if (!enabled || width <= 0 || !isPhone() || (e.pointerType === "mouse" && e.button !== 0)) return
         // Pressing a closed row while another is open closes that one.
         if (!open && openRow !== null) setOpenRow(null)
@@ -127,8 +131,12 @@ export function useSwipeReveal(width: number, enabled = true): SwipeReveal {
       },
       onPointerUp: e => {
         const s = g.current
-        if (s && s.axis === "x" && s.moved) swallowClick.current = true
-        else if (s && s.axis === null && open) {
+        if (s && s.axis === "x" && s.moved) {
+          // A mouse or pen drag is followed by a click in this same task; a
+          // finger's is not. Drop the flag once that click has had its chance.
+          swallowClick.current = true
+          setTimeout(() => { swallowClick.current = false }, 0)
+        } else if (s && s.axis === null && open) {
           // A tap on an open row closes it instead of acting on what it hit.
           swallowClick.current = true
           g.current = null

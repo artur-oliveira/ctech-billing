@@ -91,6 +91,31 @@ describe("LedgerRow's actions on a phone", () => {
     expect(front("Aluguel")).toHaveAttribute("data-open", "false")
   })
 
+  // Review fix: a real touch browser fires no click after a drag, so a flag set
+  // to swallow that click must not outlive the gesture and eat the next tap.
+  // drag() sends pointer events only, never a click, as a phone does.
+  it("lets the next tap through after a swipe that opened the row and an action that closed it", async () => {
+    const pay = vi.fn()
+    render(<ul><LedgerRow title="Aluguel" amount="R$ 1.800,00" actions={<button type="button" onClick={pay}>Pagar</button>}
+      more={[{key: "del", label: "Excluir", destructive: true, onSelect: vi.fn()}]}/></ul>)
+    drag(front("Aluguel"), -160)
+    await userEvent.click(within(strip("Aluguel")).getByRole("button", {name: "Excluir"}))
+    expect(front("Aluguel")).toHaveAttribute("data-open", "false")
+    await userEvent.click(screen.getByRole("button", {name: "Pagar"}))
+    expect(pay).toHaveBeenCalledTimes(1)
+  })
+
+  it("lets the next tap through after a swipe that closed the row", async () => {
+    const pay = vi.fn()
+    render(<ul><LedgerRow title="Aluguel" amount="R$ 1.800,00" actions={<button type="button" onClick={pay}>Pagar</button>}
+      more={[{key: "del", label: "Excluir", destructive: true, onSelect: vi.fn()}]}/></ul>)
+    drag(front("Aluguel"), -160)
+    drag(front("Aluguel"), 160)
+    expect(front("Aluguel")).toHaveAttribute("data-open", "false")
+    await userEvent.click(screen.getByRole("button", {name: "Pagar"}))
+    expect(pay).toHaveBeenCalledTimes(1)
+  })
+
   it("closes an open row with Escape", () => {
     rows(() => [{key: "del", label: "Excluir", destructive: true, onSelect: vi.fn()}])
     drag(front("Aluguel"), -160)
