@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
 	"gopkg.aoctech.app/billing/api/internal/domain/brcal"
@@ -167,5 +169,26 @@ func TestParseAmount(t *testing.T) {
 		if got != c.want || ok != c.ok {
 			t.Errorf("parseAmount(%q, %q) = %d %v, want %d %v", c.in, c.dec, got, ok, c.want, c.ok)
 		}
+	}
+}
+
+// A bill's description is bounded in bytes (finance.Bill.Validate), and a
+// control character is refused by the API with a message about something the
+// person cannot see: a line's text must fit both before it can become a bill.
+func TestLineTextFitsABillDescription(t *testing.T) {
+	long := strings.Repeat("é", 150) // 150 runes, 300 bytes
+	p, err := ParseOFX(sgml(trn("DEBIT", "20260301", "-1.00", "1", "Padaria\x1b", "Caf\x00é "+long)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := p.Lines[0].Description
+	if len(d) > maxDescription || !utf8.ValidString(d) {
+		t.Fatalf("description is %d bytes (valid UTF-8: %v)", len(d), utf8.ValidString(d))
+	}
+	if strings.ContainsFunc(d, unicode.IsControl) {
+		t.Fatalf("description keeps a control character: %q", d)
+	}
+	if !strings.HasPrefix(d, "Café éé") {
+		t.Fatalf("description = %q", d[:20])
 	}
 }

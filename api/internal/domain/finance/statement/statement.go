@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
@@ -114,11 +115,27 @@ var cp1252 = [32]rune{
 	'�', '‘', '’', '“', '”', '•', '–', '—', '˜', '™', 'š', '›', 'œ', '�', 'ž', 'Ÿ',
 }
 
-// cleanText collapses whitespace and bounds the length.
+// cleanText drops control characters (a NUL or an escape the API would refuse
+// with a message about something nobody can see), collapses whitespace, and
+// bounds the length in BYTES — what finance.Bill.Validate counts — cutting on a
+// rune boundary so an accented text never ends in half a character.
 func cleanText(s string, max int) string {
+	s = strings.Map(func(r rune) rune {
+		switch {
+		case r == '\t' || r == '\n' || r == '\r':
+			return ' '
+		case unicode.IsControl(r) || r == utf8.RuneError:
+			return -1
+		}
+		return r
+	}, s)
 	s = strings.Join(strings.Fields(s), " ")
-	if utf8.RuneCountInString(s) > max {
-		s = string([]rune(s)[:max])
+	if len(s) > max {
+		cut := max
+		for cut > 0 && !utf8.RuneStart(s[cut]) {
+			cut--
+		}
+		s = strings.TrimSpace(s[:cut])
 	}
 	return s
 }
