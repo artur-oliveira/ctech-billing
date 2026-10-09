@@ -640,7 +640,35 @@ gates nothing by plan.
       missed days closes the months in order. A purchase dated in a closed month lands on the open one.
       **Out:** opening debt on a card, interest/IOF lines (6.6 import), card installments in F1's
       projection, business-day roll of due dates (the bill's due date is editable).
-- [ ] 6.6 Import and reconciliation — F6.
+- [x] 6.6 Import and reconciliation — F6 (upload OFX or CSV per bank/cash account; reconcile each line:
+      settle an open bill, create and settle a new one, ignore, undo an ignore), CSV columns saved per account.
+      [Plan](docs/plans/2026-10-09-finance-6.6-import-and-reconciliation.md).
+      **Shape:** a pure `domain/finance/statement` reads the bytes (OFX 1.x SGML and 2.x XML as one tag stream,
+      CSV via `encoding/csv` with the mapping); the bytes decide the charset (valid UTF-8 kept, else
+      Windows-1252), not the header. The upload is base64 inside JSON, so the browser never decodes the file and
+      the idempotency hash covers account and format. Signs: `TRNAMT` trusted except `DEBIT` (always out) and
+      `CREDIT` (always in). Bad lines are *rejected* with position and reason, the rest imports. New table
+      `imports`: `S → IMPORT#{id}` and `S#IMPORT#{id} → LINE#{n}` (TTL 90 days), `S → FITID#{account}#{key}`
+      (no TTL, ADR 0026), `S → CSVMAP#{account}`. Key = `F:{FITID}` when unique in the file, else
+      `H:` + hash(account, FITID, date, amount, description, ordinal among identical lines). Upload = chunks of 50
+      lines (lock put + line put); a held lock is a duplicate, read from the cancellation reasons, no pre-read.
+      An upload that adds nothing leaves no row (200, no id). Candidates are computed on read (open-index, same
+      account/direction/amount, ±5 days, closest first, ≤5). Each decision is ONE `TransactWriteItems`: the
+      settlement (or recognition + settlement of the new bill, ADDs on payables and the summary folded by
+      `mergeAdds`), the line (conditional on pending), its lock marked resolved, the import's resolved count.
+      Verbs: reads `finance.read`; upload/ignore/reopen/CSV columns `finance.import`; match/new
+      `finance.import|write|settle`.
+      **Ruled out: card statements** (`CCSTMTRS` refused): card lines are purchases/installments that would match
+      statement items, not bills, and "new" would be a purchase, not a bill. Interest/IOF on a card stays a 1×
+      purchase in F5; paying the card from the bank is a bank line that matches the statement bill.
+      **Found on the way:** (1) a lock with no TTL would block forever a transaction whose line expired
+      unreconciled after 90 days — the lock carries `line_expires` and may be re-claimed when unresolved and
+      expired; (2) a retried upload (same Idempotency-Key) must count its own lines as added, not duplicates — the
+      import id derives from the key and the lock condition reads the owner from the cancellation reason;
+      (3) DynamoDB returns TTL-expired items until it deletes them (up to ~48 h), so reads filter on `ttl`;
+      (4) real Brazilian OFX declares `CHARSET:1252` over UTF-8 bytes; (5) `Settle` was split into
+      `planSettle`/`settleError` so another fact can commit with a settlement. Not built: purging (ADR 0026's job
+      is still unbuilt for every finance table, `imports` included).
 - [ ] 6.7 Billing integration — `invoice.paid` as revenue in the issuing organization and as an
       expense in the paying customer's own space (personal or organization).
 - [ ] 6.8 Shared and additional personal spaces —
@@ -651,13 +679,12 @@ gates nothing by plan.
       only a kind check on company reach (`ctech-dfe/docs/specs/2026-10-09-personal-workspaces-in-dfe.md`).
 
 **Still open in Phase 6 (recorded 2026-10-09):**
-- **6.6 import and reconciliation**: not started (no OFX/FITID code, no `imports` table).
 - **6.7 billing integration**: not started.
 - **Purge (ADR 0026)**: no code. ctech-account's account-deletion specs (2026-10-06) name billing
   as a participant with an eligibility check and a purge on `user.erase`; billing's side is unbuilt.
   Shared spaces (6.8) add personal workspaces to its scope.
-- **Left out of 6.5:** opening debt on a card, interest/IOF lines (with 6.6), business-day roll of a
-  statement's due date.
+- **Left out of 6.5:** opening debt on a card, business-day roll of a statement's due date. Interest/IOF
+  lines were ruled out of 6.6 with card statement import (see 6.6): they are recorded as a 1× purchase.
 - **Userdata:** AL2023 is at ~15.9 KB of 16,384. The next timer moves the timers to an S3 asset.
 
 Cross-repo: ctech-account's account-deletion spec must emit the personal-space purge trigger

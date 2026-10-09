@@ -339,7 +339,7 @@ Every partition key begins with `S`.
 | `bills` | `S` → `BILL#{ulid}` · `OCCURRENCE#{recurrence}#{date}` (materialisation lock) | payables/receivables · sparse `open-index` (`S#{direction}` → due date), present only while `forecast`, so "a pagar", "a receber" and "vencidos" never read history · `schedule-index` for auto-settle |
 | `recurrences` | `S` → `RECURRENCE#{id}` | `schedule-index` (`{mode}#finance-materialize#{date}`) points at the next materialisation |
 | `cards` | `S` → `CARD#{id}` (closing/due day, paying account, open month, version, close schedule key) · `S#CARD#{id}` → `PURCHASE#{id}` (installments embedded) · `STATEMENT#{yyyy-mm}` (written on close: frozen total, bill) · `STATEMENT#{yyyy-mm}#ITEM#{purchase}#{n}` | one statement with all its items: one prefix Query; an open statement's total is the sum of its items (no stored total, so a purchase never touches more than its own rows) · `schedule-index` (`{mode}#finance-close`) for closing |
-| `imports` | `S` → `IMPORT#{id}` and its lines · `FITID#{account}#{fitid}` (lock) | import idempotency by conditional write |
+| `imports` | `S` → `IMPORT#{id}` (TTL 90 days) · `S#IMPORT#{id}` → `LINE#{n}` (its lines, TTL 90 days) · `S` → `FITID#{account}#{key}` (lock, no TTL; key `F:{fitid}` or `H:{hash}`, 6.6) · `S` → `CSVMAP#{account}` (CSV columns) | import idempotency by conditional write; listing imports never reads lines |
 
 `audit` and `idempotency` are the existing tables.
 
