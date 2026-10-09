@@ -180,6 +180,20 @@ describe("F1 — visão geral", () => {
       expect(within(block).queryByRole("list", {name: "Projeção mês a mês"})).toBeNull()
     })
 
+    // The bars are decoration (aria-hidden, no legend): what part of a month
+    // is recurrences must be said in words, as the table does, not by opacity.
+    it("says in words how much of each month's in and out is recurrences", async () => {
+      serve()
+      vi.spyOn(finance, "getProjection").mockResolvedValue({data: [
+        {month: "2026-11", receivable: 350000, payable: 40000, virtual: 70000, virtual_receivable: 100000, virtual_payable: 30000},
+      ], has_more: false})
+      renderWithQuery(<OverviewView/>)
+      const block = await screen.findByRole("region", {name: "Projeção"})
+      const list = await within(block).findByRole("list", {name: "Projeção mês a mês"})
+      const nov = within(list).getAllByRole("listitem")[0]
+      expect(nov.textContent?.replace(/\s/g, " ")).toMatch(/Entradas R\$ 4\.500,00.*R\$ 1\.000,00 de recorrências.*Saídas R\$ 700,00.*R\$ 300,00 de recorrências/)
+    })
+
     it("shows each month's result in the list when the view is Entradas e saídas", async () => {
       serve()
       renderWithQuery(<OverviewView/>)

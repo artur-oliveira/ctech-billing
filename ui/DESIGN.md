@@ -262,8 +262,10 @@ changes in its own batch.
 
 **A chart becomes a list, and stays one tap away.** Under `sm`, a chart whose x-axis is
 categories (the projection's months) opens as a list: one row per category, its headline
-figure on the right, and a thin bar per series in the chart's own encoding (green in, red out,
-the recurrences' share at 45%), each bar beside its amount. The chart is behind an icon toggle
+figure on the right, and a thin bar per series in the chart's colours (green in, red out), each
+beside its amount. The bars are decoration; any split the chart draws by shade (the recurrences'
+share) is said in words under the amount ("R$ 1.000,00 de recorrências"), never by opacity alone,
+since a list row has no legend. The chart is behind an icon toggle
 beside the period, never removed, so the two can be compared; on a laptop the chart is the
 default and the same toggle shows a table. Rows and chart always show the same view (Saldo or
 Entradas e saídas), and that switch never disappears with the chart. A chart that is shown

@@ -311,11 +311,11 @@ function ProjectionTable({data, view}: {data: ProjectedMonth[]; view: View}) {
  * The projection on a phone: one row per month, the month's headline figure
  * (the balance it ends on, or its result in the Entradas e saídas view) and a
  * pair of thin bars for what comes in and goes out, on one scale across all
- * the months so a heavy month reads as one. The bars are the chart's own
- * encoding (green in, red out, the recurrences' share lighter) so switching to
- * the chart changes the form and not the language; the figures carry the
- * numbers, in ink, each beside its bar, and the bars are hidden from a
- * screen reader.
+ * the months so a heavy month reads as one. The bars keep the chart's green in,
+ * red out, so switching to the chart changes the form and not the language.
+ * They are decoration, hidden from a screen reader: the figures beside them
+ * carry the numbers, in ink, and each says in words how much of it is
+ * recurrences, as the table does.
  */
 function MonthList({data, view}: {data: ProjectedMonth[]; view: View}) {
   const {t} = useTranslation()
@@ -331,11 +331,11 @@ function MonthList({data, view}: {data: ProjectedMonth[]; view: View}) {
               <span data-month className="text-sm text-foreground">{monthShort(m.month)}</span>
               <span data-value data-numeric className={`text-sm font-medium tabular-nums ${value < 0 ? "text-danger" : "text-foreground"}`}>{signedMoney(value)}</span>
             </div>
-            <div data-numeric className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 text-xs tabular-nums text-muted-foreground">
-              <Bar total={m.inflow} recurring={m.recIn} width={pct(m.inflow)} tone="bg-success"/>
-              <span className="whitespace-nowrap text-right">{t("finance.overview.legendIn")} {money(m.inflow)}</span>
-              <Bar total={m.outflow} recurring={m.recOut} width={pct(m.outflow)} tone="bg-danger"/>
-              <span className="whitespace-nowrap text-right">{t("finance.overview.legendOut")} {money(m.outflow)}</span>
+            <div data-numeric className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-1 text-xs tabular-nums text-muted-foreground">
+              <Bar total={m.inflow} width={pct(m.inflow)} tone="bg-success"/>
+              <span className="whitespace-nowrap text-right">{t("finance.overview.legendIn")} {money(m.inflow)}<OfRecurrences cents={m.recIn}/></span>
+              <Bar total={m.outflow} width={pct(m.outflow)} tone="bg-danger"/>
+              <span className="whitespace-nowrap text-right">{t("finance.overview.legendOut")} {money(m.outflow)}<OfRecurrences cents={m.recOut}/></span>
             </div>
           </li>
         )
@@ -344,16 +344,15 @@ function MonthList({data, view}: {data: ProjectedMonth[]; view: View}) {
   )
 }
 
-/** One thin bar from the row's left edge: the bills solid, the recurrences' share at the chart's 45%. */
-function Bar({total, recurring, width, tone}: {total: number; recurring: number; width: string; tone: string}) {
-  if (total <= 0) return <span aria-hidden className="h-1.5"/>
-  const bills = total - recurring
-  return (
-    <span aria-hidden className="flex h-1.5 min-w-0.5 gap-px overflow-hidden rounded-full" style={{width}}>
-      {bills > 0 && <span className={tone} style={{flexGrow: bills}}/>}
-      {recurring > 0 && <span className={`${tone} opacity-45`} style={{flexGrow: recurring}}/>}
-    </span>
-  )
+/**
+ * One thin bar from the row's left edge, aligned with its figure's first line.
+ * Decoration only: the figure beside it says the amount and, under it, how much
+ * of it is recurrences. The chart's lighter recurrences segment is not repeated
+ * here, where it had no legend and only its opacity to tell it apart.
+ */
+function Bar({total, width, tone}: {total: number; width: string; tone: string}) {
+  if (total <= 0) return <span aria-hidden className="mt-1.5 h-1.5"/>
+  return <span aria-hidden className={`mt-1.5 h-1.5 min-w-0.5 rounded-full ${tone}`} style={{width}}/>
 }
 
 /**
