@@ -79,6 +79,9 @@ jobs:
           filters: |
             infra:
               - 'terraform/**'
+              # Terraform reads the tables from this file: a new table or index
+              # is an edit here only, and must apply before the API that uses it.
+              - 'api/internal/repositories/schema.json'
               - '.github/workflows/infra.yml'
             scopes:
               - 'api/internal/oauthresource/scope-manifest.json'
