@@ -99,3 +99,21 @@ func TestTheFirstWriteCreatesTheSpace(t *testing.T) {
 	f.must(t, 201, "POST", "/accounts", `{"name":"Aluguel","class":"expense","dre_group":"operating_expenses"}`, &rent)
 	f.must(t, 201, "POST", "/bills", `{"direction":"payable","amount":100,"account_id":"`+bank.ID+`","category_id":"`+rent.ID+`","due_date":"2026-03-10"}`, nil)
 }
+
+// A space that already exists (created before defaults were seeded) gets them
+// the first time it is opened, a read included: the person sees categories on
+// Contas without having to write anything first.
+func TestOpeningASpaceSeedsItsDefaultCategories(t *testing.T) {
+	f := newFinanceEnv(t)
+	var accounts struct {
+		Data []struct{ Name string }
+	}
+	f.must(t, 200, "GET", "/accounts", "", &accounts)
+	found := false
+	for _, a := range accounts.Data {
+		found = found || a.Name == "Juros e multas"
+	}
+	if !found {
+		t.Fatalf("no default categories on first open: %+v", accounts.Data)
+	}
+}

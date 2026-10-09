@@ -495,3 +495,62 @@ func TestATransferWithOneKeyMovesMoneyOnce(t *testing.T) {
 		t.Fatalf("cash = %d, want 2500 (moved once)", got)
 	}
 }
+
+// A space starts with its default categories (spec § 3.3), once: a category
+// the person archived is not brought back, and one they already named the same
+// is not duplicated.
+func TestSeedingCategoriesIsOnceAndRespectsThePerson(t *testing.T) {
+	r := ledgerFor(t, testDB)
+	ctx, now := context.Background(), time.Now()
+	sp := jobSpace(t, newSpaceOrgID(), true)
+	if err := r.EnsureSpace(ctx, sp, now); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.CreateAccount(ctx, sp, finance.LedgerAccount{ID: "mine", Name: "aluguel", Class: finance.ClassExpense, Group: finance.GroupOperatingExpenses}, now); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.SeedCategories(ctx, sp, now); err != nil {
+		t.Fatal(err)
+	}
+	count := func() (n int, names map[string]int) {
+		rows, err := r.ListAccounts(ctx, sp)
+		if err != nil {
+			t.Fatal(err)
+		}
+		names = map[string]int{}
+		for _, a := range rows {
+			if !a.System {
+				n++
+				names[strings.ToLower(a.Name)]++
+			}
+		}
+		return n, names
+	}
+	n, names := count()
+	if names["aluguel"] != 1 || names["juros e multas"] != 1 || names["vendas"] != 1 {
+		t.Fatalf("organization chart after seeding = %v", names)
+	}
+	if err := r.ArchiveAccount(ctx, sp, "cat-vendas", now); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.SeedCategories(ctx, sp, now); err != nil {
+		t.Fatal(err)
+	}
+	if again, _ := count(); again != n {
+		t.Fatalf("second seeding changed the chart: %d -> %d", n, again)
+	}
+	acct, _ := r.GetAccount(ctx, sp, "cat-vendas")
+	if !acct.Archived {
+		t.Fatal("an archived default came back")
+	}
+	personal := jobSpace(t, "USER#seed-"+newSpaceOrgID(), true)
+	if err := r.EnsureSpace(ctx, personal, now); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.SeedCategories(ctx, personal, now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.GetAccount(ctx, personal, "cat-salario"); err != nil {
+		t.Fatalf("personal set: %v", err)
+	}
+}

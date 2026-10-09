@@ -108,25 +108,24 @@ func registerFinance(v1 fiber.Router, d Deps, auth fiber.Handler, clock func() t
 	idem := middleware.SpaceIdempotency(d.Idempotency, clock)
 	fin := v1.Group("/console/finance", auth)
 	mountSpaces(fin, h)
-	mountFinance(fin, d.Spaces, idem, func(r financeRoute) fiber.Handler {
-		if r.Write {
-			return h.ensuringSpace(r.Handler(h))
-		}
-		return r.Handler(h)
-	})
+	mountFinance(fin, d.Spaces, idem, func(r financeRoute) fiber.Handler { return h.ensuringSpace(r.Handler(h)) })
 }
 
-// ensuringSpace creates the space (its settings row and system accounts) before
-// the first write that reaches this process. EnsureSpace is idempotent, so the
-// in-memory set only saves the conditional write on every later request; a
-// restart costs one more. A role that may not write (configure only) skips it:
-// the write routes it can reach touch no system account.
+// ensuringSpace creates the space (its settings row and system accounts) and
+// seeds its default categories before the first request that reaches this
+// process, a read included, so a space created before the defaults existed
+// gets them the first time it is opened. Both steps are idempotent; the
+// in-memory set only saves them on every later request, and a restart costs one
+// more. A role that may not write (a viewer) skips them and reads what exists.
 func (h *financeHandlers) ensuringSpace(next fiber.Handler) fiber.Handler {
 	return func(c fiber.Ctx) error {
 		sp := middleware.GetSpace(c)
 		key := sp.PK()
 		if _, done := h.ensured.Load(key); !done {
 			err := h.ledger.EnsureSpace(c.Context(), sp, h.now())
+			if err == nil {
+				err = h.ledger.SeedCategories(c.Context(), sp, h.now())
+			}
 			switch {
 			case err == nil:
 				h.ensured.Store(key, struct{}{})

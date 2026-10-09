@@ -349,10 +349,10 @@ function NewBillPanel({direction, accounts, onDone}: {direction: Direction; acco
         <Field label="Competência (DRE)" htmlFor="nb-comp" hint="Em branco, vale o vencimento.">
           <Input id="nb-comp" type="date" value={competence} onChange={e => setCompetence(e.target.value)}/>
         </Field>
-        <Field label="Categoria" htmlFor="nb-cat">
+        <Field label="Categoria" htmlFor="nb-cat" required hint={cats.length === 0 ? `Nenhuma categoria de ${direction === "payable" ? "despesa" : "receita"}. Crie uma em Contas.` : undefined}>
           <Select id="nb-cat" value={category} onValueChange={setCategory} options={cats.map(a => ({value: a.id, label: a.name}))}/>
         </Field>
-        <Field label={direction === "payable" ? "Pagar com" : "Receber em"} htmlFor="nb-acct">
+        <Field label={direction === "payable" ? "Pagar com" : "Receber em"} htmlFor="nb-acct" required hint={assets.length === 0 ? "Nenhuma conta. Crie uma em Contas." : undefined}>
           <Select id="nb-acct" value={account} onValueChange={setAccount} options={assets.map(a => ({value: a.id, label: a.name}))}/>
         </Field>
         {can("finance.settle") && (
