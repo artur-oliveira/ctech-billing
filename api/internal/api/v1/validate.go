@@ -135,10 +135,3 @@ func (c *checks) taxID(field, v string, required, checkDigits bool) {
 		c.fail(field, "CPF ou CNPJ inválido", "taxid")
 	}
 }
-
-// intRange: an integer within [min, max].
-func (c *checks) intRange(field string, v, min, max int) {
-	if v < min || v > max {
-		c.fail(field, fmt.Sprintf("entre %d e %d", min, max), "range")
-	}
-}
