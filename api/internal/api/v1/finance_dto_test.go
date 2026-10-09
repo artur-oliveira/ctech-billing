@@ -46,7 +46,7 @@ func TestAnUnknownFieldIsRefused(t *testing.T) {
 }
 
 func TestCreateBillValidationNamesTheFields(t *testing.T) {
-	errs := createBillRequest{}.validate()
+	errs := createBillRequest{}.validate(brcal.New(2026, time.October, 8))
 	fields := map[string]bool{}
 	for _, e := range errs {
 		fields[e.Field] = true
@@ -61,17 +61,17 @@ func TestCreateBillValidationNamesTheFields(t *testing.T) {
 func TestARecurrenceExpressionIsValidatedLikeAStoredOne(t *testing.T) {
 	good := scheduleRequest{Expression: []byte(`{"kind":"day_of_month","day":10}`)}
 	good.Start = parseDate(t, "2026-01-01")
-	if _, errs := good.schedule(); len(errs) != 0 {
+	if _, errs := good.schedule(brcal.New(2026, time.October, 8)); len(errs) != 0 {
 		t.Fatalf("a valid schedule was refused: %v", errs)
 	}
 	bad := scheduleRequest{Expression: []byte(`{"kind":"day_of_month","day":40}`)}
 	bad.Start = parseDate(t, "2026-01-01")
-	if _, errs := bad.schedule(); len(errs) == 0 {
+	if _, errs := bad.schedule(brcal.New(2026, time.October, 8)); len(errs) == 0 {
 		t.Fatal("day 40 was accepted")
 	}
 	excludeOnly := scheduleRequest{Expression: []byte(`{"kind":"months_of_year","months":[12]}`)}
 	excludeOnly.Start = parseDate(t, "2026-01-01")
-	if _, errs := excludeOnly.schedule(); len(errs) == 0 {
+	if _, errs := excludeOnly.schedule(brcal.New(2026, time.October, 8)); len(errs) == 0 {
 		t.Fatal("an exclusion-only kind was accepted as a schedule")
 	}
 }
@@ -158,12 +158,53 @@ func TestTransferValidationNamesTheFields(t *testing.T) {
 	if code := decodeProbe(t, `{"from_account_id":"a","to_account_id":"a","amount":0,"date":"x"}`, &req); code != 200 {
 		t.Fatalf("decode %d", code)
 	}
-	errs := req.validate()
+	errs := req.validate(brcal.New(2026, time.October, 8))
 	want := map[string]bool{"to_account_id": true, "amount": true, "date": true}
 	for _, e := range errs {
 		delete(want, e.Field)
 	}
 	if len(want) != 0 {
 		t.Fatalf("missing field errors: %v (got %+v)", want, errs)
+	}
+}
+
+func TestBillValidationBoundsEveryField(t *testing.T) {
+	today := brcal.New(2026, time.October, 8)
+	tooFar := today.AddYears(11)
+	r := createBillRequest{
+		Direction: "payable", Amount: 1_000_000_000_000, AccountID: "a#b", CategoryID: "",
+		Description: strings.Repeat("x", 201), DueDate: brcal.New(1999, time.January, 1), CompetenceDate: &tooFar,
+	}
+	got := map[string]bool{}
+	for _, e := range r.validate(today) {
+		got[e.Field] = true
+	}
+	for _, f := range []string{"amount", "account_id", "category_id", "description", "due_date", "competence_date"} {
+		if !got[f] {
+			t.Errorf("%s not refused (got %v)", f, got)
+		}
+	}
+}
+
+func TestATransferIsNotDatedInTheFuture(t *testing.T) {
+	today := brcal.New(2026, time.October, 8)
+	r := transferRequest{FromAccountID: "a", ToAccountID: "b", Amount: 100, Date: "2026-10-09", Memo: "ok"}
+	errs := r.validate(today)
+	if len(errs) != 1 || errs[0].Field != "date" {
+		t.Fatalf("errs = %+v", errs)
+	}
+	r.Date = "2026-10-08"
+	if errs := r.validate(today); len(errs) != 0 {
+		t.Fatalf("today refused: %+v", errs)
+	}
+}
+
+func TestARecurrenceEndsWithinFiftyYearsOfItsStart(t *testing.T) {
+	today := brcal.New(2026, time.October, 8)
+	end := brcal.New(2077, time.January, 1)
+	s := scheduleRequest{Expression: []byte(`{"kind":"day_of_month","day":10}`), Start: brcal.New(2026, time.November, 1), End: &end}
+	_, errs := s.schedule(today)
+	if len(errs) != 1 || errs[0].Field != "end" {
+		t.Fatalf("errs = %+v", errs)
 	}
 }

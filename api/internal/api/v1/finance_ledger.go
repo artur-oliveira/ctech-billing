@@ -2,19 +2,17 @@ package v1
 
 import (
 	"strings"
-	"unicode/utf8"
 
 	"github.com/gofiber/fiber/v3"
 
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
 	"gopkg.aoctech.app/billing/api/internal/domain/brcal"
 	"gopkg.aoctech.app/billing/api/internal/domain/finance"
+	"gopkg.aoctech.app/billing/api/internal/limits"
 	"gopkg.aoctech.app/billing/api/internal/middleware"
 	"gopkg.aoctech.app/billing/api/internal/problem"
 	"gopkg.aoctech.app/billing/api/internal/repositories"
 )
-
-const maxMemo = 140
 
 type entryDTO struct {
 	TransactionID string        `json:"transaction_id"`
@@ -108,16 +106,17 @@ func (h *financeHandlers) openingBalance(c fiber.Ctx) error {
 	if p := decodeStrict(c, &req); p != nil {
 		return p.Send(c)
 	}
-	var errs []problem.FieldError
-	if req.Amount == 0 {
-		errs = append(errs, fieldErr("amount", "informe um valor diferente de zero", "ne"))
-	}
+	ch := &checks{}
+	ch.signedAmount("amount", req.Amount)
 	date, e := parseDay("date", req.Date)
 	if e != nil {
-		errs = append(errs, *e)
+		ch.errs = append(ch.errs, *e)
+	} else {
+		// What an account held before the ledger began: never in the future.
+		ch.date("date", date, limits.MinDate, h.today())
 	}
-	if len(errs) > 0 {
-		return problem.Validation(errs).Send(c)
+	if len(ch.errs) > 0 {
+		return problem.Validation(ch.errs).Send(c)
 	}
 	txID, err := h.ledger.PostOpeningBalance(c.Context(), middleware.GetSpace(c), c.Params("id"), req.Amount, date, h.postMeta(c, ""), h.now())
 	if err != nil {
@@ -134,27 +133,22 @@ type transferRequest struct {
 	Memo          string        `json:"memo"`
 }
 
-func (r transferRequest) validate() []problem.FieldError {
-	var errs []problem.FieldError
-	if r.FromAccountID == "" {
-		errs = append(errs, fieldErr("from_account_id", "obrigatório", "required"))
+func (r transferRequest) validate(today brcal.Date) []problem.FieldError {
+	c := &checks{}
+	c.id("from_account_id", r.FromAccountID, true)
+	c.id("to_account_id", r.ToAccountID, true)
+	if r.ToAccountID != "" && r.ToAccountID == r.FromAccountID {
+		c.fail("to_account_id", "escolha uma conta diferente da de origem", "nefield")
 	}
-	switch {
-	case r.ToAccountID == "":
-		errs = append(errs, fieldErr("to_account_id", "obrigatório", "required"))
-	case r.ToAccountID == r.FromAccountID:
-		errs = append(errs, fieldErr("to_account_id", "escolha uma conta diferente da de origem", "nefield"))
+	c.amount("amount", r.Amount)
+	if d, e := parseDay("date", r.Date); e != nil {
+		c.errs = append(c.errs, *e)
+	} else {
+		// Money already moved: a transfer is recorded on or before today.
+		c.date("date", d, limits.MinDate, today)
 	}
-	if r.Amount <= 0 {
-		errs = append(errs, fieldErr("amount", "informe um valor em centavos maior que zero", "gt"))
-	}
-	if _, e := parseDay("date", r.Date); e != nil {
-		errs = append(errs, *e)
-	}
-	if utf8.RuneCountInString(r.Memo) > maxMemo {
-		errs = append(errs, fieldErr("memo", "no máximo 140 caracteres", "max"))
-	}
-	return errs
+	c.text("memo", r.Memo, false, limits.Memo)
+	return c.errs
 }
 
 func (h *financeHandlers) transfer(c fiber.Ctx) error {
@@ -162,7 +156,7 @@ func (h *financeHandlers) transfer(c fiber.Ctx) error {
 	if p := decodeStrict(c, &req); p != nil {
 		return p.Send(c)
 	}
-	if errs := req.validate(); len(errs) > 0 {
+	if errs := req.validate(h.today()); len(errs) > 0 {
 		return problem.Validation(errs).Send(c)
 	}
 	date, _ := brcal.Parse(req.Date)

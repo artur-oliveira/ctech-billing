@@ -4,6 +4,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
+	"gopkg.aoctech.app/billing/api/internal/limits"
 	"gopkg.aoctech.app/billing/api/internal/middleware"
 	"gopkg.aoctech.app/billing/api/internal/problem"
 )
@@ -72,9 +73,16 @@ func (h *consoleHandlers) setIssuer(c fiber.Ctx) error {
 	if err := c.Bind().Body(&req); err != nil {
 		return problem.BadRequest("corpo inválido").Send(c)
 	}
-	if len(req.LegalName) > maxIssuerField || len(req.TaxID) > maxIssuerField ||
-		len(req.Address) > maxIssuerAddress || len(req.Email) > maxIssuerField {
-		return problem.BadRequest("um dos campos do emissor é longo demais para caber no documento").Send(c)
+	// Every field is optional (an empty one falls back to the organization's
+	// own data on the PDF); what is given must fit the document and be valid —
+	// a CPF/CNPJ with its check digits, typed by a person here.
+	ch := &checks{}
+	ch.text("legal_name", req.LegalName, false, limits.LegalName)
+	ch.taxID("tax_id", req.TaxID, false, true)
+	ch.text("address", req.Address, false, limits.Address)
+	ch.email("email", req.Email, false)
+	if len(ch.errs) > 0 {
+		return problem.Validation(ch.errs).Send(c)
 	}
 	if err := h.orgs.SetIssuer(
 		c.Context(), org,
@@ -87,8 +95,6 @@ func (h *consoleHandlers) setIssuer(c fiber.Ctx) error {
 }
 
 const (
-	maxIssuerField   = 120
-	maxIssuerAddress = 240
 	// invoicePDFTTLSeconds mirrors invoicepdf.DownloadTTL. Published as seconds
 	// because a client cannot import a Go duration.
 	invoicePDFTTLSeconds = 300

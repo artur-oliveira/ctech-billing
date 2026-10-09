@@ -6,6 +6,7 @@ import (
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
 	"gopkg.aoctech.app/billing/api/internal/domain/brcal"
 	"gopkg.aoctech.app/billing/api/internal/domain/finance"
+	"gopkg.aoctech.app/billing/api/internal/limits"
 	"gopkg.aoctech.app/billing/api/internal/middleware"
 	"gopkg.aoctech.app/billing/api/internal/problem"
 	"gopkg.aoctech.app/billing/api/internal/repositories"
@@ -56,24 +57,20 @@ type createBillRequest struct {
 	AutoSettle     bool          `json:"auto_settle"`
 }
 
-func (r createBillRequest) validate() []problem.FieldError {
-	var errs []problem.FieldError
+func (r createBillRequest) validate(today brcal.Date) []problem.FieldError {
+	c := &checks{}
 	if r.Direction != string(finance.Payable) && r.Direction != string(finance.Receivable) {
-		errs = append(errs, fieldErr("direction", "use payable ou receivable", "oneof"))
+		c.fail("direction", "use payable ou receivable", "oneof")
 	}
-	if r.Amount <= 0 {
-		errs = append(errs, fieldErr("amount", "informe um valor em centavos maior que zero", "gt"))
+	c.amount("amount", r.Amount)
+	c.id("account_id", r.AccountID, true)
+	c.id("category_id", r.CategoryID, true)
+	c.text("description", r.Description, false, limits.Description)
+	c.date("due_date", r.DueDate, limits.MinDate, limits.MaxDate(today))
+	if r.CompetenceDate != nil && !r.CompetenceDate.IsZero() {
+		c.date("competence_date", *r.CompetenceDate, limits.MinDate, limits.MaxDate(today))
 	}
-	if r.AccountID == "" {
-		errs = append(errs, fieldErr("account_id", "obrigatório", "required"))
-	}
-	if r.CategoryID == "" {
-		errs = append(errs, fieldErr("category_id", "obrigatório", "required"))
-	}
-	if r.DueDate.IsZero() {
-		errs = append(errs, fieldErr("due_date", "obrigatório", "required"))
-	}
-	return errs
+	return c.errs
 }
 
 func (h *financeHandlers) createBill(c fiber.Ctx) error {
@@ -81,7 +78,7 @@ func (h *financeHandlers) createBill(c fiber.Ctx) error {
 	if p := decodeStrict(c, &req); p != nil {
 		return p.Send(c)
 	}
-	if errs := req.validate(); len(errs) > 0 {
+	if errs := req.validate(h.today()); len(errs) > 0 {
 		return problem.Validation(errs).Send(c)
 	}
 	competence := req.DueDate
@@ -149,8 +146,8 @@ func (h *financeHandlers) patchBill(c fiber.Ctx) error {
 	if p := decodeStrict(c, &req); p != nil {
 		return p.Send(c)
 	}
-	if req.Amount != nil && *req.Amount <= 0 {
-		return problem.Validation([]problem.FieldError{fieldErr("amount", "informe um valor em centavos maior que zero", "gt")}).Send(c)
+	if errs := req.validate(h.today()); len(errs) > 0 {
+		return problem.Validation(errs).Send(c)
 	}
 	b, err := h.bills.Edit(c.Context(), middleware.GetSpace(c), c.Params("id"), repositories.BillEdit{
 		Amount: req.Amount, CategoryID: req.CategoryID, AccountID: req.AccountID,
@@ -160,6 +157,26 @@ func (h *financeHandlers) patchBill(c fiber.Ctx) error {
 		return fail(c, err)
 	}
 	return c.JSON(newBillDTO(b, h.today()))
+}
+
+func (r patchBillRequest) validate(today brcal.Date) []problem.FieldError {
+	c := &checks{}
+	if r.Amount != nil {
+		c.amount("amount", *r.Amount)
+	}
+	if r.CategoryID != nil {
+		c.id("category_id", *r.CategoryID, true)
+	}
+	if r.AccountID != nil {
+		c.id("account_id", *r.AccountID, true)
+	}
+	if r.Description != nil {
+		c.text("description", *r.Description, false, limits.Description)
+	}
+	if r.DueDate != nil {
+		c.date("due_date", *r.DueDate, limits.MinDate, limits.MaxDate(today))
+	}
+	return c.errs
 }
 
 type settleBillRequest struct {
@@ -174,11 +191,20 @@ func (h *financeHandlers) settleBill(c fiber.Ctx) error {
 		return p.Send(c)
 	}
 	sp := middleware.GetSpace(c)
+	ch := &checks{}
+	if req.PaidAmount != nil {
+		ch.amount("paid_amount", *req.PaidAmount)
+	}
+	if req.PaidDate != nil {
+		// Paying is cash that already moved: never in the future.
+		ch.date("paid_date", *req.PaidDate, limits.MinDate, h.today())
+	}
+	ch.id("difference_category_id", req.DifferenceCategoryID, false)
+	if len(ch.errs) > 0 {
+		return problem.Validation(ch.errs).Send(c)
+	}
 	var paid billing.Cents
 	if req.PaidAmount != nil {
-		if *req.PaidAmount <= 0 {
-			return problem.Validation([]problem.FieldError{fieldErr("paid_amount", "informe um valor em centavos maior que zero", "gt")}).Send(c)
-		}
 		paid = *req.PaidAmount
 		if req.DifferenceCategoryID == "" {
 			// A different amount needs a category for the gap (interest, discount).

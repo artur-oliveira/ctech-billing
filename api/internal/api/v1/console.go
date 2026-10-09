@@ -5,6 +5,7 @@ import (
 
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
 	"gopkg.aoctech.app/billing/api/internal/domain/id"
+	"gopkg.aoctech.app/billing/api/internal/limits"
 	"gopkg.aoctech.app/billing/api/internal/middleware"
 	"gopkg.aoctech.app/billing/api/internal/problem"
 	"gopkg.aoctech.app/billing/api/internal/repositories"
@@ -232,11 +233,16 @@ func (h *consoleHandlers) creditInvoice(c fiber.Ctx) error {
 	if err := c.Bind().Body(&req); err != nil {
 		return problem.BadRequest("corpo inválido").Send(c)
 	}
-	if req.Reason == "" {
-		// Required, and refused here rather than defaulted: a credit note with no
-		// reason is the one document nobody can explain a year later, and every
-		// default this could invent would be a sentence a person did not write.
-		return problem.BadRequest("informe o motivo do crédito").Send(c)
+	// The reason is required, and refused here rather than defaulted: a credit
+	// note with no reason is the one document nobody can explain a year later,
+	// and every default this could invent would be a sentence a person did not
+	// write. The amount's ceiling is the invoice's remaining balance (domain).
+	ch := &checks{}
+	ch.amount("amount", req.Amount)
+	ch.text("reason", req.Reason, true, limits.Reason)
+	ch.text("external_refund_ref", req.ExternalRefundRef, false, limits.ExternalRef)
+	if len(ch.errs) > 0 {
+		return problem.Validation(ch.errs).Send(c)
 	}
 	inv, err := h.invoices.Get(c.Context(), t.OrganizationID, t.Livemode, c.Params("id"))
 	if err != nil {
@@ -301,10 +307,14 @@ func (h *consoleHandlers) createProduct(c fiber.Ctx) error {
 	if err := c.Bind().Body(&req); err != nil {
 		return problem.BadRequest("corpo inválido").Send(c)
 	}
-	if req.Name == "" {
-		return problem.Validation([]problem.FieldError{
-			{Field: "name", Message: "obrigatório", Tag: "required"},
-		}).Send(c)
+	ch := &checks{}
+	ch.text("name", req.Name, true, limits.ProductName)
+	ch.id("owner_key", req.OwnerKey, false)
+	if len(req.OwnerKey) > limits.OwnerKey {
+		ch.fail("owner_key", "no máximo 64 caracteres", "max")
+	}
+	if len(ch.errs) > 0 {
+		return problem.Validation(ch.errs).Send(c)
 	}
 
 	product := &billing.Product{
@@ -339,6 +349,12 @@ func (h *consoleHandlers) createPrice(c fiber.Ctx) error {
 	var req createPriceRequest
 	if err := c.Bind().Body(&req); err != nil {
 		return problem.BadRequest("corpo inválido").Send(c)
+	}
+	ch := &checks{}
+	ch.price("unit_amount", req.UnitAmount)
+	ch.id("product_id", req.ProductID, true)
+	if len(ch.errs) > 0 {
+		return problem.Validation(ch.errs).Send(c)
 	}
 	// Read first: a price pointing at a product that does not exist bills
 	// nothing and is discovered at invoice generation, weeks later.

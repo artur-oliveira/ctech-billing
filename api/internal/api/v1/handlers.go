@@ -12,6 +12,7 @@ import (
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
 	"gopkg.aoctech.app/billing/api/internal/domain/brcal"
 	"gopkg.aoctech.app/billing/api/internal/domain/id"
+	"gopkg.aoctech.app/billing/api/internal/limits"
 	"gopkg.aoctech.app/billing/api/internal/middleware"
 	"gopkg.aoctech.app/billing/api/internal/problem"
 	"gopkg.aoctech.app/billing/api/internal/repositories"
@@ -97,8 +98,18 @@ func (h *handlers) createCustomerAs(c fiber.Ctx, actor string) error {
 	if err := c.Bind().Body(&req); err != nil {
 		return problem.BadRequest("corpo inválido").Send(c)
 	}
-	if req.Name == "" {
-		return problem.Validation([]problem.FieldError{{Field: "name", Message: "obrigatório", Tag: "required"}}).Send(c)
+	// Integrators already in production call this: lengths, an email's shape and
+	// a document's shape are checked, never a CPF's check digits (test data with
+	// made-up documents is legitimate in test mode, and refusing it overnight
+	// would break them).
+	ch := &checks{}
+	ch.text("name", req.Name, true, limits.CustomerName)
+	ch.email("email", req.Email, false)
+	ch.taxID("tax_id", req.TaxID, false, false)
+	ch.text("external_ref", req.ExternalRef, false, limits.ExternalRef)
+	ch.text("user_id", req.UserID, false, limits.ExternalRef)
+	if len(ch.errs) > 0 {
+		return problem.Validation(ch.errs).Send(c)
 	}
 
 	customer := &billing.Customer{
@@ -142,6 +153,12 @@ func (h *handlers) createSubscription(c fiber.Ctx) error {
 	if len(req.Items) == 0 {
 		fieldErrs = append(fieldErrs, problem.FieldError{Field: "items", Message: "informe ao menos um preço", Tag: "required"})
 	}
+	if len(req.Items) > limits.MaxSubscriptionItems {
+		fieldErrs = append(fieldErrs, fieldErr("items", fmt.Sprintf("no máximo %d itens", limits.MaxSubscriptionItems), "max"))
+	}
+	if req.NetDays < 0 || req.NetDays > limits.MaxNetDays {
+		fieldErrs = append(fieldErrs, fieldErr("net_days", fmt.Sprintf("entre 0 e %d dias", limits.MaxNetDays), "range"))
+	}
 	for i, it := range req.Items {
 		if it.PriceID == "" {
 			fieldErrs = append(fieldErrs, problem.FieldError{
@@ -149,6 +166,9 @@ func (h *handlers) createSubscription(c fiber.Ctx) error {
 				Message: "obrigatório",
 				Tag:     "required",
 			})
+		}
+		if it.Quantity > limits.MaxUsageQuantity {
+			fieldErrs = append(fieldErrs, fieldErr(fmt.Sprintf("items[%d].quantity", i), fmt.Sprintf("no máximo %d", limits.MaxUsageQuantity), "max"))
 		}
 	}
 	if len(fieldErrs) > 0 {
@@ -164,6 +184,11 @@ func (h *handlers) createSubscription(c fiber.Ctx) error {
 			}).Send(c)
 		}
 		anchor = parsed
+		ch := &checks{}
+		ch.date("anchor", anchor, limits.MinDate, limits.MaxDate(brcal.FromTime(h.now())))
+		if len(ch.errs) > 0 {
+			return problem.Validation(ch.errs).Send(c)
+		}
 	}
 
 	// The customer must exist in this tenant. Checking here rather than letting
@@ -269,6 +294,12 @@ func (h *handlers) changePlan(c fiber.Ctx, actor string) error {
 				Tag:     "required",
 			})
 		}
+		if it.Quantity > limits.MaxUsageQuantity {
+			fieldErrs = append(fieldErrs, fieldErr(fmt.Sprintf("items[%d].quantity", i), fmt.Sprintf("no máximo %d", limits.MaxUsageQuantity), "max"))
+		}
+	}
+	if len(req.Items) > limits.MaxSubscriptionItems {
+		fieldErrs = append(fieldErrs, fieldErr("items", fmt.Sprintf("no máximo %d itens", limits.MaxSubscriptionItems), "max"))
 	}
 	if req.Effective != "" && req.Effective != effectiveNow {
 		fieldErrs = append(fieldErrs, problem.FieldError{
@@ -320,10 +351,13 @@ func (h *handlers) reportUsage(c fiber.Ctx) error {
 	if err := c.Bind().Body(&req); err != nil {
 		return problem.BadRequest("corpo inválido").Send(c)
 	}
-	if req.IdempotencyKey == "" {
-		return problem.Validation([]problem.FieldError{
-			{Field: "idempotency_key", Message: "obrigatório", Tag: "required"},
-		}).Send(c)
+	ch := &checks{}
+	ch.text("idempotency_key", req.IdempotencyKey, true, 255)
+	if req.Quantity < 0 || req.Quantity > limits.MaxUsageQuantity {
+		ch.fail("quantity", fmt.Sprintf("entre 0 e %d", limits.MaxUsageQuantity), "range")
+	}
+	if len(ch.errs) > 0 {
+		return problem.Validation(ch.errs).Send(c)
 	}
 
 	sub, err := h.subs.Get(c.Context(), t.OrganizationID, t.Livemode, req.SubscriptionID)
@@ -350,6 +384,13 @@ func (h *handlers) reportUsage(c fiber.Ctx) error {
 		if err != nil {
 			return problem.Validation([]problem.FieldError{
 				{Field: "occurred_at", Message: "use RFC 3339", Tag: "format"},
+			}).Send(c)
+		}
+		// Usage is reported as it happens: a timestamp more than a day ahead, or
+		// before 2000, is a clock or a unit error, not usage.
+		if parsed.Before(limits.MinDate.Time()) || parsed.After(h.now().Add(24*time.Hour)) {
+			return problem.Validation([]problem.FieldError{
+				{Field: "occurred_at", Message: "fora do intervalo aceito", Tag: "range"},
 			}).Send(c)
 		}
 		occurred = parsed

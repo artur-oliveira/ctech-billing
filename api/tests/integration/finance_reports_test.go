@@ -12,7 +12,8 @@ type reportsFixture struct {
 }
 
 // seedReports: bank with an opening of 1.000,00 on Mar 1, a payable of 300,00
-// (rent) settled Mar 10, a transfer of 100,00 bank to cash on Mar 12.
+// (rent) settled Mar 8, a transfer of 100,00 bank to cash on Mar 9 (the test
+// clock is Mar 10: cash that moved is never dated in the future).
 func seedReports(t *testing.T, f financeEnv) reportsFixture {
 	t.Helper()
 	var fx reportsFixture
@@ -27,8 +28,8 @@ func seedReports(t *testing.T, f financeEnv) reportsFixture {
 	var bill struct{ ID string }
 	f.must(t, 201, "POST", "/bills", fmt.Sprintf(`{"direction":"payable","amount":30000,"account_id":%q,"category_id":%q,"description":"Aluguel","due_date":"2026-03-10"}`, fx.bank, fx.rent), &bill)
 	fx.bill = bill.ID
-	f.must(t, 200, "POST", "/bills/"+fx.bill+"/settle", `{"paid_date":"2026-03-10"}`, nil)
-	f.must(t, 201, "POST", "/transfers", fmt.Sprintf(`{"from_account_id":%q,"to_account_id":%q,"amount":10000,"date":"2026-03-12"}`, fx.bank, fx.cash), nil)
+	f.must(t, 200, "POST", "/bills/"+fx.bill+"/settle", `{"paid_date":"2026-03-08"}`, nil)
+	f.must(t, 201, "POST", "/transfers", fmt.Sprintf(`{"from_account_id":%q,"to_account_id":%q,"amount":10000,"date":"2026-03-09"}`, fx.bank, fx.cash), nil)
 	return fx
 }
 
