@@ -196,6 +196,39 @@ describe("F2 — a pagar e a receber", () => {
     expect(within(group).getByRole("combobox", {name: account})).toBeInTheDocument()
   })
 
+  // The bug: the create's own invalidation refetched the list while the
+  // settle was still in flight, so the bill flashed under "A pagar" and then
+  // vanished. A bill created already paid must go straight to its final state.
+  it("never shows a bill created already paid in the open list, and confirms it", async () => {
+    let server: Bill[] = []
+    serve(ALL, [])
+    vi.mocked(finance.listBills).mockImplementation(async (_c, dir) => ({data: server.filter(b => b.direction === dir && b.status !== "paid"), has_more: false}))
+    vi.spyOn(finance, "createBill").mockImplementation(async () => {
+      server = [bill({id: "new", description: "Conta de luz", status: "forecast"})]
+      return server[0]
+    })
+    let release: () => void = () => undefined
+    vi.spyOn(finance, "settleBill").mockImplementation(() => new Promise(r => (release = () => {
+      server = [bill({id: "new", description: "Conta de luz", status: "paid"})]
+      r(server[0])
+    })))
+    renderWithQuery(<BillsView/>)
+    await userEvent.click(await screen.findByRole("button", {name: "Adicionar"}))
+    await userEvent.type(screen.getByLabelText(/^Descrição/), "Conta de luz")
+    await userEvent.type(screen.getByLabelText(/^Valor/), "50,00")
+    await pick("Categoria", "Aluguel")
+    await userEvent.click(screen.getAllByLabelText("Já foi pago")[0])
+    await pick("Pago com", "Conta corrente")
+    await userEvent.click(screen.getByRole("button", {name: "Criar"}))
+    await waitFor(() => expect(finance.settleBill).toHaveBeenCalled())
+    await new Promise(r => setTimeout(r, 50))
+    expect(screen.queryByText("Conta de luz", {selector: "li *"})).toBeNull()
+    release()
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Pagamento registrado"))
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
+    expect(screen.queryByText("Conta de luz", {selector: "li *"})).toBeNull()
+  })
+
   it("shows the auto-settle switch only to a role that may settle", async () => {
     serve(["finance.read", "finance.write"], [])
     renderWithQuery(<BillsView/>)

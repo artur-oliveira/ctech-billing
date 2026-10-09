@@ -94,6 +94,10 @@
       "payable": "Pago com",
       "receivable": "Recebido em"
     },
+    "settled": {
+      "payable": "Pagamento registrado",
+      "receivable": "Recebimento registrado"
+    },
     "create": "Criar",
     "settleFailed": {
       "payable": "Conta criada, mas o pagamento não foi registrado.",

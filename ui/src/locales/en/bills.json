@@ -94,6 +94,10 @@
       "payable": "Paid from",
       "receivable": "Received into"
     },
+    "settled": {
+      "payable": "Payment recorded",
+      "receivable": "Receipt recorded"
+    },
     "create": "Create",
     "settleFailed": {
       "payable": "Bill created, but the payment was not recorded.",

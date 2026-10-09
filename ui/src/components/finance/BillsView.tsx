@@ -7,6 +7,7 @@ import {AlertCircle, CalendarClock, Clock, Receipt} from "lucide-react"
 import Link from "next/link"
 import {useEffect, useState} from "react"
 import {useTranslation} from "react-i18next"
+import {toast} from "sonner"
 
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
 import {DateField} from "@/components/ui/DateField"
@@ -344,12 +345,25 @@ function NewBillPanel({direction, accounts, onDone}: {direction: Direction; acco
   // the second fails, the bill exists and the form offers to retry the payment.
   const [paidNow, setPaidNow] = useState(false)
   const [paidOn, setPaidOn] = useState(todayIso())
+  //
+  // The list is refreshed once, after the LAST step: a create that a settle
+  // follows invalidates nothing, or the refetch in between shows the bill open
+  // under "A pagar" for as long as the settle takes and then drops it. If the
+  // settle fails the bill really is open, so the list is refreshed then too.
+  const client = useQueryClient()
+  const ctx = useFinanceCtx()
   const settle = useFinanceMutation(
-    (c, v: {id: string; body: Settlement}, key) => settleBill(c, v.id, v.body, key), touched, onDone,
+    (c, v: {id: string; body: Settlement}, key) => settleBill(c, v.id, v.body, key), touched,
+    () => { toast.success(t(`bills.new.settled.${direction}`)); onDone() },
+    () => { for (const key of touched(ctx)) void client.invalidateQueries({queryKey: key}) },
   )
   const fe = useFieldErrors(["description", "amount", "due_date", "competence_date", "category_id", "account_id"])
-  const create = useFinanceMutation((c, body: NewBill, key) => createBill(c, body, key), touched,
-    created => (paidNow ? settle.mutate({id: created.id, body: {paid_date: paidOn}}) : onDone()), fe.set)
+  const create = useFinanceMutation(
+    (c, v: {body: NewBill; paidOn?: string}, key) => createBill(c, v.body, key),
+    (c, _created, v) => (v.paidOn ? [] : touched(c)),
+    (created, v) => (v.paidOn ? settle.mutate({id: created.id, body: {paid_date: v.paidOn}}) : onDone()),
+    fe.set,
+  )
   const amount = parseMoney(amountText)
   const ready = amount !== null && category !== "" && account !== "" && due !== "" && !create.isPending && !create.isSuccess
 
@@ -362,8 +376,11 @@ function NewBillPanel({direction, accounts, onDone}: {direction: Direction; acco
           if (!ready) return
           fe.reset()
           create.mutate({
-            direction, amount: amount!, category_id: category, account_id: account, description: description || undefined,
-            due_date: due, competence_date: competence || undefined, auto_settle: (autoSettle && !paidNow) || undefined,
+            body: {
+              direction, amount: amount!, category_id: category, account_id: account, description: description || undefined,
+              due_date: due, competence_date: competence || undefined, auto_settle: (autoSettle && !paidNow) || undefined,
+            },
+            paidOn: paidNow ? paidOn : undefined,
           })
         }}
       >

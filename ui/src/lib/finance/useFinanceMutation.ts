@@ -10,12 +10,17 @@ import {useFinanceCtx} from "@/lib/finance/useFinanceSpaces"
  * Every finance write goes through here, so no dialog re-implements:
  *  - one Idempotency-Key per intent, kept across retries, renewed on success;
  *  - invalidating only the CURRENT (mode, space)'s keys, never another's.
+ *
+ * `invalidate` also sees the result and what was submitted, so a write that is
+ * only the first half of an intent can leave the cache alone: refetching
+ * between the halves paints a state the person never asked for (a bill
+ * created already paid flashed in the open list until its settle landed).
  * The 404 space-not-found fallback is in finance.ts and needs nothing here.
  */
 export function useFinanceMutation<V, R>(
   run: (ctx: FinanceCtx, vars: V, idempotencyKey: string) => Promise<R>,
-  invalidate: (ctx: FinanceCtx) => QueryKey[],
-  onSuccess?: (result: R) => void,
+  invalidate: (ctx: FinanceCtx, result: R, vars: V) => QueryKey[],
+  onSuccess?: (result: R, vars: V) => void,
   onError?: (error: Error) => void,
 ) {
   const ctx = useFinanceCtx()
@@ -23,10 +28,10 @@ export function useFinanceMutation<V, R>(
   const intent = useIntent()
   const mutation = useMutation({
     mutationFn: (vars: V) => run(ctx, vars, intent.key()),
-    onSuccess: result => {
+    onSuccess: (result, vars) => {
       intent.done()
-      for (const key of invalidate(ctx)) void client.invalidateQueries({queryKey: key})
-      onSuccess?.(result)
+      for (const key of invalidate(ctx, result, vars)) void client.invalidateQueries({queryKey: key})
+      onSuccess?.(result, vars)
     },
     onError,
   })
