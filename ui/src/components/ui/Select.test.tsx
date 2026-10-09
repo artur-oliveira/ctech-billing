@@ -89,6 +89,26 @@ describe("Select actions", () => {
     expect(onSelect).toHaveBeenCalledTimes(1)
   })
 
+  // UX batch 4: an optional choice can be undone. "Nenhuma" is an option like
+  // any other, first in the list; choosing it gives back "", and the trigger
+  // then names it rather than showing the placeholder.
+  it("offers a none option first on an optional select, and empties the value", async () => {
+    const change = vi.fn()
+    function Optional() {
+      const [v, setV] = useState("visa")
+      return <><label htmlFor="o">Bandeira</label><Select id="o" value={v} none="Nenhuma" onValueChange={x => { change(x); setV(x) }}
+        options={[{value: "visa", label: "Visa"}, {value: "elo", label: "Elo"}]}/></>
+    }
+    render(<Optional/>)
+    const trigger = screen.getByRole("combobox", {name: "Bandeira"})
+    await userEvent.click(trigger)
+    const names = (await screen.findAllByRole("option")).map(o => o.textContent?.trim())
+    expect(names).toEqual(["Nenhuma", "Visa", "Elo"])
+    await userEvent.click(screen.getByRole("option", {name: "Nenhuma"}))
+    expect(change).toHaveBeenCalledWith("")
+    expect(trigger).toHaveTextContent("Nenhuma")
+  })
+
   // UX batch 3: a card brand is picked by its mark AND its name. The mark is
   // decoration: the option's accessible name stays the label alone.
   it("shows an option's icon beside its label, in the list and on the trigger", async () => {

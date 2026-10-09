@@ -188,7 +188,8 @@ export interface RecurrencePatch {
   account_id?: string
   description?: string
   auto_settle?: boolean
-  end?: IsoDate
+  /** "" removes the end (sent as null): the recurrence has no end again. So does "" on description. */
+  end?: IsoDate | ""
   /** Confirms an end that leaves nothing to come: saved and archived in one write.
    *  Without it the API answers 422 `recurrence_would_end` and saves nothing. */
   archive?: boolean
@@ -312,9 +313,9 @@ export interface CardPatch {
   closing_day?: number
   due_day?: number
   paying_account_id?: string
-  /** "" clears it. */
+  /** "" clears it (sent as null, lib/api/finance patchBody). */
   brand?: CardBrand | ""
-  /** "" clears it. */
+  /** "" clears it (sent as null, lib/api/finance patchBody). */
   last4?: string
 }
 

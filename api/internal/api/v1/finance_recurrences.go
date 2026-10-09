@@ -11,6 +11,7 @@ import (
 	"gopkg.aoctech.app/billing/api/internal/domain/finance"
 	"gopkg.aoctech.app/billing/api/internal/limits"
 	"gopkg.aoctech.app/billing/api/internal/middleware"
+	"gopkg.aoctech.app/billing/api/internal/patch"
 	"gopkg.aoctech.app/billing/api/internal/problem"
 	"gopkg.aoctech.app/billing/api/internal/repositories"
 )
@@ -144,15 +145,42 @@ func (h *financeHandlers) listRecurrences(c fiber.Ctx) error {
 }
 
 type patchRecurrenceRequest struct {
-	Amount      *billing.Cents `json:"amount"`
-	CategoryID  *string        `json:"category_id"`
-	AccountID   *string        `json:"account_id"`
-	Description *string        `json:"description"`
-	AutoSettle  *bool          `json:"auto_settle"`
-	End         *brcal.Date    `json:"end"`
+	Amount      patch.Optional[billing.Cents] `json:"amount"`
+	CategoryID  patch.Optional[string]        `json:"category_id"`
+	AccountID   patch.Optional[string]        `json:"account_id"`
+	Description patch.Optional[string]        `json:"description"`
+	AutoSettle  patch.Optional[bool]          `json:"auto_settle"`
+	End         patch.Optional[brcal.Date]    `json:"end"`
 	// Archive confirms an end that leaves nothing to come: the edit and the
 	// archive are one write. Without it such an end is 422 recurrence_would_end.
 	Archive bool `json:"archive"`
+}
+
+// edit validates the body under the PATCH rule (package patch): absent keeps,
+// null clears the end or the description, null on anything else is required.
+func (r patchRecurrenceRequest) edit(today brcal.Date) (repositories.RecurrencePatch, []problem.FieldError) {
+	ch := &checks{}
+	if v, ok := required(ch, "amount", r.Amount); ok {
+		ch.amount("amount", v)
+	}
+	if v, ok := required(ch, "category_id", r.CategoryID); ok {
+		ch.id("category_id", v, true)
+	}
+	if v, ok := required(ch, "account_id", r.AccountID); ok {
+		ch.id("account_id", v, true)
+	}
+	required(ch, "auto_settle", r.AutoSettle)
+	description := clearable(r.Description)
+	if description != nil {
+		ch.text("description", *description, false, limits.Description)
+	}
+	if v, ok := r.End.Get(); ok {
+		ch.date("end", v, limits.MinDate, today.AddYears(limits.MaxRecurrenceYears))
+	}
+	return repositories.RecurrencePatch{
+		Amount: r.Amount.Ptr(), CategoryID: r.CategoryID.Ptr(), AccountID: r.AccountID.Ptr(),
+		Description: description, AutoSettle: r.AutoSettle.Ptr(), End: r.End, Archive: r.Archive,
+	}, ch.errs
 }
 
 func (h *financeHandlers) patchRecurrence(c fiber.Ctx) error {
@@ -160,30 +188,12 @@ func (h *financeHandlers) patchRecurrence(c fiber.Ctx) error {
 	if p := decodeStrict(c, &req); p != nil {
 		return p.Send(c)
 	}
-	ch := &checks{}
-	if req.Amount != nil {
-		ch.amount("amount", *req.Amount)
-	}
-	if req.CategoryID != nil {
-		ch.id("category_id", *req.CategoryID, true)
-	}
-	if req.AccountID != nil {
-		ch.id("account_id", *req.AccountID, true)
-	}
-	if req.Description != nil {
-		ch.text("description", *req.Description, false, limits.Description)
-	}
-	if req.End != nil && !req.End.IsZero() {
-		ch.date("end", *req.End, limits.MinDate, h.today().AddYears(limits.MaxRecurrenceYears))
-	}
-	if len(ch.errs) > 0 {
-		return problem.Validation(ch.errs).Send(c)
+	edit, errs := req.edit(h.today())
+	if len(errs) > 0 {
+		return problem.Validation(errs).Send(c)
 	}
 	sp := middleware.GetSpace(c)
-	if err := h.recs.Update(c.Context(), sp, c.Params("id"), repositories.RecurrencePatch{
-		Amount: req.Amount, CategoryID: req.CategoryID, AccountID: req.AccountID,
-		Description: req.Description, AutoSettle: req.AutoSettle, End: req.End, Archive: req.Archive,
-	}, h.now()); err != nil {
+	if err := h.recs.Update(c.Context(), sp, c.Params("id"), edit, h.now()); err != nil {
 		return fail(c, err)
 	}
 	rec, err := h.recs.Get(c.Context(), sp, c.Params("id"))

@@ -55,18 +55,20 @@
     "this_year": "Este ano",
     "last_12": "Últimos 12 meses"
   },
+  "row": {
+    "more": "Mais ações: {{name}}"
+  },
   "nav": {
     "section": "Seção",
     "label": "Finanças",
     "overview": "Resumo",
-    "bills": "A pagar e a receber",
+    "bills": "Agenda",
     "statement": "Extrato",
     "import": "Importar",
     "cards": "Cartões",
     "recurrences": "Recorrências",
     "reports": "Relatórios",
     "accounts": "Contas",
-    "billsShort": "A pagar/receber",
     "more": "Mais",
     "moreTitle": "Mais seções",
     "groupLaunch": "Lançamentos",
@@ -178,6 +180,7 @@
       "other": "Outra"
     },
     "brand": "Bandeira",
+    "noBrand": "Nenhuma",
     "last4": "Últimos 4 dígitos",
     "last4Hint": "Opcional; só para reconhecer o cartão.",
     "last4Invalid": "Digite os 4 últimos dígitos, ou deixe em branco.",
@@ -268,13 +271,14 @@
     "newTransfer": "Nova transferência",
     "entries": "Lançamentos",
     "balanceOn": "Saldo em {{date}}",
+    "balance": "Saldo",
     "empty": "Nada neste período.",
     "reversal": "Estorno",
     "reversed": "Estornado",
     "reverse": "Estornar",
     "undoPayment": "Desfazer pagamento",
     "reverseConfirm": "Estornar este lançamento? O saldo volta ao que era.",
-    "undoConfirm": "A conta volta para A pagar e a receber e o pagamento automático é desligado.",
+    "undoConfirm": "A conta volta para a Agenda e o pagamento automático é desligado.",
     "back": "Voltar",
     "confirm": "Confirmar"
   },

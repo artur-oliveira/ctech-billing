@@ -1,13 +1,14 @@
 "use client"
 
 import limits from "@/lib/limits.json"
-import {Button, Drawer, EmptyState, Field, Input, Skeleton, Switch} from "@aoctech/ui"
+import {Button, EmptyState, Field, Input, Skeleton, Switch} from "@aoctech/ui"
 import {useQuery} from "@tanstack/react-query"
 import {ChevronDown, Repeat} from "lucide-react"
 import Link from "next/link"
 import {useEffect, useId, useRef, useState} from "react"
 import {useTranslation} from "react-i18next"
 
+import {Drawer} from "@/components/ui/ConsoleOverlay"
 import {ExceptionsFields, PatternFields} from "@/components/finance/ExpressionEditor"
 import {LedgerRow} from "@/components/finance/LedgerRow"
 import {OccurrenceTimeline, type TimelineEntry} from "@/components/finance/OccurrenceTimeline"
@@ -126,16 +127,16 @@ function RecurrenceRow({rec, account, onEdit}: {rec: Recurrence; account?: strin
       aside={<span className="text-xs text-muted-foreground">{t(`bills.direction.${rec.direction}`)}</span>}
       asideOnPhone={false}
       amount={<span data-numeric>{money(rec.amount)}</span>}
-      actions={<>
+      actions={
         <Button size="sm" variant="ghost" aria-expanded={open} aria-controls={detailId} onClick={() => setOpen(v => !v)}>
           {t("bills.rec.view")}
           <ChevronDown aria-hidden className={`size-4 transition-transform duration-200 ease-out motion-reduce:transition-none ${open ? "rotate-180" : ""}`}/>
         </Button>
-        {can("finance.write") && <>
-          <Button size="sm" variant="ghost" onClick={onEdit}>{t("bills.common.edit")}</Button>
-          <Button size="sm" variant="ghost" aria-expanded={confirming} onClick={() => setConfirming(v => !v)}>{t("bills.rec.end")}</Button>
-        </>}
-      </>}
+      }
+      more={can("finance.write") ? [
+        {key: "edit", label: t("bills.common.edit"), onSelect: onEdit},
+        {key: "end", label: t("bills.rec.end"), destructive: true, expanded: confirming, onSelect: () => setConfirming(v => !v)},
+      ] : []}
     >
       {open && <RecurrenceDetail id={detailId} rec={rec}/>}
       {confirming && (
@@ -164,7 +165,7 @@ function RecurrenceDetail({id, rec}: {id: string; rec: Recurrence}) {
     key: o.bill_id, nominal: o.nominal, due: o.due, kind: o.state, amount: money(o.amount),
     state: o.state === "paid" && o.paid_date ? t("bills.rec.state.paidOn", {date: shortDate(o.paid_date)}) : t(`bills.rec.state.${o.state}`),
     action: o.state === "overdue"
-      ? <Link href={`/console/finance/bills?direction=${rec.direction}&bill=${encodeURIComponent(o.bill_id)}`} className="inline-flex items-center text-sm text-foreground underline underline-offset-4 hover:text-brand-700 touch:min-h-11">{t(`bills.rec.openBill.${rec.direction}`)}</Link>
+      ? <Link href={`/console/finance/bills?direction=${rec.direction}&bill=${encodeURIComponent(o.bill_id)}`} className="inline-flex items-center text-sm text-foreground underline underline-offset-4 hover:text-brand-700 touch-target">{t(`bills.rec.openBill.${rec.direction}`)}</Link>
       : undefined,
   })
   const next: TimelineEntry[] = [
@@ -215,7 +216,7 @@ function StillGoing({rec, end}: {rec: Recurrence; end: string}) {
     <div className="w-full space-y-1 text-muted-foreground">
       <p>
         {t("bills.rec.stillGoing", {count: going.length, dates})}{" "}
-        <Link href={`/console/finance/bills?direction=${rec.direction}`} className="inline-flex items-center text-foreground underline underline-offset-4 hover:text-brand-700 touch:min-h-11">
+        <Link href={`/console/finance/bills?direction=${rec.direction}`} className="inline-flex items-center text-foreground underline underline-offset-4 hover:text-brand-700 touch-target">
           {t(`bills.rec.openBill.${rec.direction}`)}
         </Link>
       </p>
@@ -325,7 +326,8 @@ function RecurrencePanel({editing, accounts, onDone}: {editing?: Recurrence; acc
     if (account !== editing.account_id) body.account_id = account
     if (description !== (editing.description ?? "")) body.description = description
     if (autoSettle !== editing.auto_settle) body.auto_settle = autoSettle
-    if (end && end !== (editing.end ?? "")) body.end = end
+    // Emptied is sent as "": the API layer turns it into null, which removes the end.
+    if (end !== (editing.end ?? "")) body.end = end
     if (Object.keys(body).length === 0) return onDone()
     lastPatch.current = body
     if (body.end && body.end === endsAt) {
@@ -384,7 +386,7 @@ function RecurrencePanel({editing, accounts, onDone}: {editing?: Recurrence; acc
             </>
           )}
           {editing && (
-            <Field label={t("bills.rec.endsOn")} htmlFor="rc-end-edit" error={fe.of("end")}><DateField id="rc-end-edit" min={start || limits.minDate} max={addYearsIso(start || todayIso(), limits.maxRecurrenceYears)} value={end} invalid={!!fe.of("end")} onValueChange={v => { setEnd(v); fe.clear("end") }} placeholder={t("bills.rec.noEnd")}/></Field>
+            <Field label={t("bills.rec.endsOn")} htmlFor="rc-end-edit" error={fe.of("end")}><DateField id="rc-end-edit" min={start || limits.minDate} max={addYearsIso(start || todayIso(), limits.maxRecurrenceYears)} value={end} invalid={!!fe.of("end")} onValueChange={v => { setEnd(v); fe.clear("end") }} placeholder={t("bills.rec.noEnd")} clearLabel={t("bills.rec.clearEnd")}/></Field>
           )}
         </div>
 
@@ -393,6 +395,11 @@ function RecurrencePanel({editing, accounts, onDone}: {editing?: Recurrence; acc
             <p className="text-sm text-muted-foreground">
               {t("bills.rec.editNote", {rule: ruleOf(editing)})}
             </p>
+            {/* An end that had passed, cleared or moved later: the server resumes
+                the rule from the current month, never backfilling the gap. */}
+            {editing.end && editing.end < todayIso() && (end === "" || end > editing.end) && (
+              <p role="status" className="text-sm text-foreground">{t("bills.rec.reopenNote")}</p>
+            )}
             {previewList}
           </>
         ) : (
@@ -401,12 +408,12 @@ function RecurrencePanel({editing, accounts, onDone}: {editing?: Recurrence; acc
 
             <div>
               <button type="button" aria-expanded={more} onClick={() => setMore(v => !v)}
-                className="inline-flex items-center text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline touch:min-h-11">
+                className="inline-flex items-center text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline touch-target">
                 {more ? t("bills.rec.lessOptions") : t("bills.rec.moreOptions")}
               </button>
               {more && (
                 <div className="mt-3 grid items-start gap-4 border-t border-border pt-4 sm:grid-cols-2">
-                  <Field label={t("bills.rec.endsOn")} htmlFor="rc-end" error={fe.of("end")}><DateField id="rc-end" min={start || limits.minDate} max={addYearsIso(start || todayIso(), limits.maxRecurrenceYears)} value={end} invalid={!!fe.of("end")} onValueChange={v => { setEnd(v); fe.clear("end") }} placeholder={t("bills.rec.noEnd")}/></Field>
+                  <Field label={t("bills.rec.endsOn")} htmlFor="rc-end" error={fe.of("end")}><DateField id="rc-end" min={start || limits.minDate} max={addYearsIso(start || todayIso(), limits.maxRecurrenceYears)} value={end} invalid={!!fe.of("end")} onValueChange={v => { setEnd(v); fe.clear("end") }} placeholder={t("bills.rec.noEnd")} clearLabel={t("bills.rec.clearEnd")}/></Field>
                   <Field label={t("bills.rec.weekend")} htmlFor="rc-adjust">
                     <Select id="rc-adjust" value={adjust} onValueChange={v => setAdjust(v as Adjust)} options={adjustOptions()}/>
                   </Field>

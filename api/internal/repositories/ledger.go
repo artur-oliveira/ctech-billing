@@ -447,6 +447,24 @@ func (r *LedgerRepository) SetDefaultReceivingAccount(ctx context.Context, sp sp
 	})
 }
 
+// ClearDefaultReceivingAccount removes the space's default receiving account
+// (UX batch 4): a paid CTech invoice then goes to the space's only active bank
+// or cash account, or nowhere (6.7). Removed, never stored as "". A space with
+// no settings row yet has nothing to clear.
+func (r *LedgerRepository) ClearDefaultReceivingAccount(ctx context.Context, sp space.ResolvedSpace, now time.Time) error {
+	if err := sp.Require(space.Configure); err != nil {
+		return err
+	}
+	sk := LedgerSpaceSK()
+	err := r.accounts.TransactWrite(ctx, txItems(r.accounts.BuildRawUpdateTxItem(sp.PK(), &sk,
+		"SET updated_at = :now REMOVE default_receiving_account_id", "attribute_exists(pk)", nil,
+		map[string]types.AttributeValue{":now": &types.AttributeValueMemberS{Value: now.UTC().Format(time.RFC3339Nano)}})))
+	if err != nil && onlyConditionFailed(err) {
+		return nil
+	}
+	return err
+}
+
 // ListAccounts returns the chart: one Query on the space partition.
 func (r *LedgerRepository) ListAccounts(ctx context.Context, sp space.ResolvedSpace) ([]AccountRow, error) {
 	if err := sp.Require(space.Read); err != nil {

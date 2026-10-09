@@ -81,6 +81,7 @@
   "new": {
     "competence": "Accrual date (P&L)",
     "competencePlaceholder": "Same as due date",
+    "clearCompetence": "Clear accrual date",
     "paidNow": {
       "payable": "Already paid",
       "receivable": "Already received"
@@ -123,6 +124,8 @@
     "startsOn": "Starts on",
     "endsOn": "Ends on",
     "noEnd": "Never ends",
+    "clearEnd": "Clear end date",
+    "reopenNote": "The recurrence continues from this month; the dates between the old end and today are not created.",
     "editNote": "{{rule}}. To change the rule, end this one and create another.",
     "next": "Next dates",
     "fixRule": "invalid rule.",

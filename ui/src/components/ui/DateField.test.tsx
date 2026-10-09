@@ -17,17 +17,36 @@ describe("DateField", () => {
     expect(change).toHaveBeenCalledWith("2026-03-15")
   })
 
+  // UX batch 4: an optional date can be emptied, by a visible button whose
+  // name says which date it clears and contains its visible word.
+  it("offers Limpar on an optional date with a value, and gives back an empty date", async () => {
+    const change = vi.fn()
+    const {rerender} = render(<DateField id="c" value="2026-12-10" onValueChange={change} clearLabel="Limpar data de término"/>)
+    const clear = screen.getByRole("button", {name: "Limpar data de término"})
+    expect(clear).toHaveTextContent("Limpar")
+    await userEvent.click(clear)
+    expect(change).toHaveBeenCalledWith("")
+    rerender(<DateField id="c" value="" onValueChange={change} clearLabel="Limpar data de término"/>)
+    expect(screen.queryByRole("button", {name: "Limpar data de término"})).not.toBeInTheDocument()
+  })
+
+  it("offers no Limpar on a required date", () => {
+    render(<DateField id="r" value="2026-12-10" onValueChange={() => {}}/>)
+    expect(screen.queryByRole("button", {name: /Limpar/})).not.toBeInTheDocument()
+  })
+
   it("shows the placeholder when empty", () => {
     render(<DateField id="e" value="" onValueChange={() => {}} placeholder="Sem fim"/>)
     expect(screen.getByText("Sem fim")).toBeInTheDocument()
   })
 
-  // Measured in the browser by scratchpad audit.cjs; here the contract that
-  // makes it so. The DatePicker's trigger has no data-slot for the touch rule.
-  it("is a 44px target under touch, inside the compact console too", () => {
+  // Measured in the browser (scratchpad b4/shoot.cjs: 36px drawn, 44px hit);
+  // here the contract that makes it so. The DatePicker's trigger has no
+  // data-slot, so it asks for the touch rule by class (UX batch 4).
+  it("asks for the touch rule (compact look, 44px target), inside the compact console too", () => {
     render(<div data-density="compact"><label htmlFor="t">Data</label><DateField id="t" value="" onValueChange={() => {}} className="w-40"/></div>)
     const trigger = screen.getByLabelText("Data")
-    expect(trigger).toHaveClass("touch:min-h-11")
+    expect(trigger).toHaveClass("touch-target")
     expect(trigger).toHaveClass("w-40")
   })
 })

@@ -48,7 +48,7 @@ export function SpaceSwitch() {
       {manage && (
         <a
           href={handoff.managePeopleURL(manage, window.location.origin)}
-          className="inline-flex items-center text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline touch:min-h-11"
+          className="inline-flex items-center text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline touch-target"
         >
           {t("finance.space.managePeople")}
         </a>

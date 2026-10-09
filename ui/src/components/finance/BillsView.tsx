@@ -1,7 +1,7 @@
 "use client"
 
 import limits from "@/lib/limits.json"
-import {Badge, Button, Drawer, EmptyState, Field, Input, Skeleton, Switch} from "@aoctech/ui"
+import {Badge, Button, EmptyState, Field, Input, Skeleton, Switch} from "@aoctech/ui"
 import {useQuery, useQueryClient} from "@tanstack/react-query"
 import {AlertCircle, CalendarClock, Clock, Receipt} from "lucide-react"
 import Link from "next/link"
@@ -9,6 +9,7 @@ import {useEffect, useState} from "react"
 import {useTranslation} from "react-i18next"
 import {toast} from "sonner"
 
+import {Drawer} from "@/components/ui/ConsoleOverlay"
 import {LedgerRow} from "@/components/finance/LedgerRow"
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
 import {DateField} from "@/components/ui/DateField"
@@ -144,20 +145,16 @@ function BillRow({bill, current, accountName, accounts}: {bill: Bill; current?: 
       aside={<Badge tone={BADGE[bucket].tone}><Icon aria-hidden className="size-3"/>{bucketLabel(bucket)}</Badge>}
       asideOnPhone={false}
       amount={<span data-numeric>{money(bill.amount)}</span>}
-      actions={(can("finance.settle") || can("finance.write")) && <>
-        {can("finance.settle") && (
-          <Button size="sm" variant={panel === "settle" ? "outline" : "ghost"} aria-expanded={panel === "settle"} onClick={() => setPanel(panel === "settle" ? null : "settle")}>
-            {t(`bills.row.settle.${bill.direction}`)}
-          </Button>
-        )}
-        {can("finance.write") && (
-          <>
-            <Button size="sm" variant="ghost" aria-expanded={panel === "edit"} onClick={() => setPanel(panel === "edit" ? null : "edit")}>{t("bills.common.edit")}</Button>
-            {/* A statement is closed: corrected by a refund on the card, never canceled. */}
-            {!statement && <Button size="sm" variant="ghost" aria-expanded={panel === "cancel"} onClick={() => setPanel(panel === "cancel" ? null : "cancel")}>{t("bills.row.delete")}</Button>}
-          </>
-        )}
-      </>}
+      actions={can("finance.settle") && (
+        <Button size="sm" variant={panel === "settle" ? "outline" : "ghost"} aria-expanded={panel === "settle"} onClick={() => setPanel(panel === "settle" ? null : "settle")}>
+          {t(`bills.row.settle.${bill.direction}`)}
+        </Button>
+      )}
+      more={can("finance.write") ? [
+        {key: "edit", label: t("bills.common.edit"), expanded: panel === "edit", onSelect: () => setPanel(panel === "edit" ? null : "edit")},
+        // A statement is closed: corrected by a refund on the card, never canceled.
+        ...(statement ? [] : [{key: "cancel", label: t("bills.row.delete"), destructive: true, expanded: panel === "cancel", onSelect: () => setPanel(panel === "cancel" ? null : "cancel")}]),
+      ] : []}
     >
       {panel === "settle" && <SettleForm bill={bill} accounts={accounts} onDone={() => setPanel(null)}/>}
       {panel === "edit" && <EditForm bill={bill} accounts={accounts} onDone={() => setPanel(null)}/>}
@@ -390,7 +387,7 @@ function NewBillPanel({direction, accounts, onDone}: {direction: Direction; acco
         <Field label={t("bills.common.amount")} htmlFor="nb-amount" required error={fe.of("amount")}><Input id="nb-amount" inputMode="decimal" placeholder={moneyPlaceholder()} value={amountText} {...fe.props("amount", "nb-amount")} onChange={e => { setAmountText(maskMoney(e.target.value)); fe.clear("amount") }}/></Field>
         <Field label={t("bills.common.due")} htmlFor="nb-due" required error={fe.of("due_date")}><DateField id="nb-due" min={limits.minDate} max={addYearsIso(todayIso(), limits.maxFutureYears)} value={due} invalid={!!fe.of("due_date")} onValueChange={v => { setDue(v); fe.clear("due_date") }}/></Field>
         <Field label={t("bills.new.competence")} htmlFor="nb-comp" error={fe.of("competence_date")}>
-          <DateField id="nb-comp" min={limits.minDate} max={addYearsIso(todayIso(), limits.maxFutureYears)} value={competence} invalid={!!fe.of("competence_date")} onValueChange={v => { setCompetence(v); fe.clear("competence_date") }} placeholder={t("bills.new.competencePlaceholder")}/>
+          <DateField id="nb-comp" min={limits.minDate} max={addYearsIso(todayIso(), limits.maxFutureYears)} value={competence} invalid={!!fe.of("competence_date")} onValueChange={v => { setCompetence(v); fe.clear("competence_date") }} placeholder={t("bills.new.competencePlaceholder")} clearLabel={t("bills.new.clearCompetence")}/>
         </Field>
         <Field label={t("bills.common.category")} htmlFor="nb-cat" required error={fe.of("category_id")} hint={cats.length === 0 ? t(`bills.noCategory.${direction === "payable" ? "expense" : "income"}`) : undefined}>
           <Select id="nb-cat" value={category} {...fe.props("category_id", "nb-cat")} onValueChange={v => { setCategory(v); fe.clear("category_id") }} options={cats.map(a => ({value: a.id, label: accountName(a)}))}/>

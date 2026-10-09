@@ -30,7 +30,8 @@ interface SegmentedProps<V extends string> {
  * A small set of mutually exclusive choices, all in view: a group of pressed
  * buttons. The one control behind every two-to-four-way switch in the console
  * (direction, projection view, period), so they size alike: 28px under a
- * mouse, a 44px target under `touch:`. Candidate for @aoctech/ui.
+ * mouse; under touch 32px drawn with a 44px target (globals.css). Candidate
+ * for @aoctech/ui.
  */
 export function Segmented<V extends string>({label, value, onValueChange, options, fill, className}: SegmentedProps<V>) {
   return (
@@ -51,7 +52,10 @@ export function Segmented<V extends string>({label, value, onValueChange, option
             onClick={() => onValueChange(o.value)}
             className={cn(
               "inline-flex h-7 min-w-7 items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-3 text-sm transition-colors duration-150 motion-reduce:transition-none",
-              "touch:h-auto touch:min-h-11 touch:min-w-11",
+              // Height and the 44px target under touch: globals.css (32px drawn,
+              // the target grown up and down). Width stays a finger's here,
+              // since a segment's target cannot grow into its neighbour.
+              "touch:h-auto touch:min-w-11",
               fill && "flex-1",
               on ? "bg-background font-medium text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
             )}

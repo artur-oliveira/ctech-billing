@@ -55,18 +55,20 @@
     "this_year": "This year",
     "last_12": "Last 12 months"
   },
+  "row": {
+    "more": "More actions: {{name}}"
+  },
   "nav": {
     "section": "Section",
     "label": "Finance",
     "overview": "Overview",
-    "bills": "To pay and to receive",
+    "bills": "Schedule",
     "statement": "Statement",
     "import": "Import",
     "cards": "Cards",
     "recurrences": "Recurrences",
     "reports": "Reports",
     "accounts": "Accounts",
-    "billsShort": "Bills",
     "more": "More",
     "moreTitle": "More sections",
     "groupLaunch": "Entries",
@@ -178,6 +180,7 @@
       "other": "Other"
     },
     "brand": "Brand",
+    "noBrand": "None",
     "last4": "Last 4 digits",
     "last4Hint": "Optional; only to recognise the card.",
     "last4Invalid": "Enter the last 4 digits, or leave it blank.",
@@ -268,13 +271,14 @@
     "newTransfer": "New transfer",
     "entries": "Entries",
     "balanceOn": "Balance on {{date}}",
+    "balance": "Balance",
     "empty": "Nothing in this period.",
     "reversal": "Reversal",
     "reversed": "Reversed",
     "reverse": "Reverse",
     "undoPayment": "Undo payment",
     "reverseConfirm": "Reverse this entry? The balance goes back to what it was.",
-    "undoConfirm": "The bill goes back to To pay and to receive and auto-pay is turned off.",
+    "undoConfirm": "The bill goes back to the Schedule and auto-pay is turned off.",
     "back": "Back",
     "confirm": "Confirm"
   },

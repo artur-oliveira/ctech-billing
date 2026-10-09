@@ -64,7 +64,7 @@ export function CardForm({card, accounts, onDone}: {card?: Card; accounts: Accou
         </Field>
       )}
       <Field label={t("finance.cards.brand")} htmlFor="cd-brand" error={fe.of("brand")}>
-        <Select id="cd-brand" aria-label={t("finance.cards.brand")} value={brand} {...fe.props("brand", "cd-brand")} onValueChange={v => { setBrand(v as CardBrand); fe.clear("brand") }} options={brandOptions()}/>
+        <Select id="cd-brand" aria-label={t("finance.cards.brand")} value={brand} {...fe.props("brand", "cd-brand")} onValueChange={v => { setBrand(v as CardBrand | ""); fe.clear("brand") }} none={t("finance.cards.noBrand")} options={brandOptions()}/>
       </Field>
       <Field label={t("finance.cards.last4")} htmlFor="cd-last4" error={last4Error ?? fe.of("last4")} hint={t("finance.cards.last4Hint")}>
         <Input id="cd-last4" inputMode="numeric" autoComplete="off" maxLength={4} placeholder="1234" value={last4} {...fe.props("last4", "cd-last4")} aria-invalid={!!(last4Error ?? fe.of("last4"))}

@@ -16,7 +16,7 @@ describe("FinanceNav", () => {
     render(<FinanceNav/>)
     const nav = screen.getByRole("navigation", {name: "Finanças"})
     const links = within(nav).getAllByRole("link")
-    expect(links.map(l => l.textContent)).toEqual(["Resumo", "A pagar e a receber", "Extrato", "Importar", "Cartões", "Recorrências", "Relatórios", "Contas"])
+    expect(links.map(l => l.textContent)).toEqual(["Resumo", "Agenda", "Extrato", "Importar", "Cartões", "Recorrências", "Relatórios", "Contas"])
     expect(within(nav).getByRole("link", {name: "Extrato"})).toHaveAttribute("aria-current", "page")
     expect(within(nav).getByRole("link", {name: "Resumo"})).not.toHaveAttribute("aria-current")
   })

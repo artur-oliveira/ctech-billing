@@ -26,7 +26,7 @@ const renderLink: RenderLink = props => <Link {...props}/>
  * What the central button creates on each screen: the thing that screen
  * lists, opened in the screen's own drawer. A screen with nothing of its own
  * to create (Resumo, Importar, Relatórios) adds a lançamento, the most
- * frequent write in Finanças, and goes to A pagar/receber to do it, so the new
+ * frequent write in Finanças, and goes to Agenda to do it, so the new
  * line is on screen once it is saved.
  */
 const CREATE: Record<string, {kind: CreateKind; verb: Verb}> = {
@@ -62,7 +62,7 @@ export function FinanceBottomNav() {
   const {can} = useFinanceSpaces()
   const current = currentFinanceSection(pathname)
   const is = (href: string) => current === href
-  // Resumo's Adicionar is bound for A pagar/receber; landing anywhere else
+  // Resumo's Adicionar is bound for Agenda; landing anywhere else
   // first (a tap on Extrato mid-navigation) abandons it.
   useEffect(() => {
     dropCreateUnlessAt(current)
@@ -111,7 +111,7 @@ export function FinanceBottomNav() {
       action={action}
       items={[
         {label: t("finance.nav.overview"), icon: <House/>, href: BASE, active: is(BASE)},
-        {label: t("finance.nav.billsShort"), icon: <Receipt/>, href: BILLS, active: is(BILLS)},
+        {label: t("finance.nav.bills"), icon: <Receipt/>, href: BILLS, active: is(BILLS)},
         {label: t("finance.nav.statement"), icon: <ScrollText/>, href: `${BASE}/statement`, active: is(`${BASE}/statement`)},
         {
           type: "more",

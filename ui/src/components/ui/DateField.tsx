@@ -1,6 +1,7 @@
 "use client"
 
-import {DatePicker} from "@aoctech/ui"
+import {Button, DatePicker} from "@aoctech/ui"
+import {X} from "lucide-react"
 import {useTranslation} from "react-i18next"
 
 import {normalizeLocale} from "@/lib/locale"
@@ -28,6 +29,12 @@ interface DateFieldProps {
   className?: string
   /** Marks the trigger as failing validation (the message itself is the Field's). */
   invalid?: boolean
+  /**
+   * Makes the date optional: a "Limpar" button beside it, while it has a value,
+   * gives back "". This is its accessible name, naming the date and holding the
+   * visible word ("Limpar data de término").
+   */
+  clearLabel?: string
 }
 
 /**
@@ -36,9 +43,9 @@ interface DateFieldProps {
  * date itself and none can shift one by a timezone. Labelled by a Field's
  * `htmlFor` through `id`, like any input.
  */
-export function DateField({id, value, onValueChange, min, max, placeholder, disabled, className, invalid}: DateFieldProps) {
+export function DateField({id, value, onValueChange, min, max, placeholder, disabled, className, invalid, clearLabel}: DateFieldProps) {
   const {t, i18n} = useTranslation()
-  return (
+  const picker = (
     <DatePicker
       id={id}
       locale={normalizeLocale(i18n.language)}
@@ -49,8 +56,24 @@ export function DateField({id, value, onValueChange, min, max, placeholder, disa
       placeholder={placeholder ?? t("auth.date.placeholder")}
       disabled={disabled}
       // The DatePicker's trigger carries no data-slot, so the global touch rule
-      // cannot reach it: the 44px target under touch is asked for here.
-      className={["touch:min-h-11", className, invalid && "border-danger ring-3 ring-danger/20"].filter(Boolean).join(" ")}
+      // cannot find it by slot: `touch-target` asks for the compact look and
+      // the 44px target under touch (globals.css).
+      className={["touch-target", className, invalid && "border-danger ring-3 ring-danger/20"].filter(Boolean).join(" ")}
     />
+  )
+  if (!clearLabel) return picker
+  // An optional date (UX batch 4): once it has a value, a visible way back to
+  // none. The calendar has no "no date" day, and a saved end date that could
+  // not be removed was the bug that asked for this.
+  return (
+    <div className="flex min-w-0 items-center gap-2 [&>:first-child]:min-w-0 [&>:first-child]:flex-1">
+      {picker}
+      {value !== "" && !disabled && (
+        <Button type="button" variant="ghost" size="sm" aria-label={clearLabel} onClick={() => onValueChange("")}
+          className="shrink-0 text-muted-foreground">
+          <X aria-hidden className="size-3.5"/>{t("auth.date.clear")}
+        </Button>
+      )}
+    </div>
   )
 }

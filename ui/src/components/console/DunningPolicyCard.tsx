@@ -1,6 +1,6 @@
 "use client"
 
-import {Button, Input, Modal} from "@aoctech/ui"
+import {Button, Input} from "@aoctech/ui"
 import {useMutation} from "@tanstack/react-query"
 import {Plus, X} from "lucide-react"
 import {useState} from "react"
@@ -8,6 +8,7 @@ import {useTranslation} from "react-i18next"
 import type {TFunction} from "i18next"
 import {toast} from "sonner"
 
+import {Modal} from "@/components/ui/ConsoleOverlay"
 import {messageFor} from "@/lib/api/client"
 import {useFieldErrors} from "@/lib/useFieldErrors"
 import type {DunningAction, DunningPolicy, DunningStep} from "@/lib/api/consoleTypes"

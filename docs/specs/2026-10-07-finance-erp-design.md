@@ -435,6 +435,23 @@ Under `/v1.0/console/finance/*`:
 As elsewhere in the console, holding a scope is not permission: every route resolves the space and
 the caller's verbs.
 
+**Partial updates (UX batch 4).** Every edit body (`PATCH /bills/:id`, `/recurrences/:id`,
+`/cards/:id`, and `PUT /settings/default-receiving-account`) reads each field in three states
+(`patch.Optional`): **absent keeps** what is stored, **an explicit JSON `null` clears** an optional
+field, a value replaces it. Optional fields: a recurrence's `end` and `description`, a bill's
+`description`, a card's `brand` and `last4` (an empty string still clears these two, as in batch 3),
+the space's default receiving account. `null` on a required field (amount, category, account, due
+date, closing/due day, paying account, `auto_settle`) is a 422 `required` naming it, never "keep".
+A cleared value is removed from the row, not stored as `""`. Clearing a recurrence's end, or moving
+it later, re-opens the rule **from the current horizon**: when its cursor lies before the first day
+of the current month (the old end passed long ago), the cursor moves forward to the day before it,
+so the job makes only this month's and later occurrences. The dates between the old end and this
+month are not made, so nothing is back-dated and nothing is auto-settled for them. The cursor never
+moves back, so nothing already made is made again (and the `OCCURRENCE#` lock would refuse it). A
+rule still running is untouched. Clearing the end does not unarchive an archived rule. The console
+says so before saving ("continua a partir deste mês"). Accounts and categories
+have no edit route (only create and archive), so they have nothing to clear.
+
 ### 6.1 Verbs (ADR 0023: reach in ctech-account, verbs in the product)
 
 | Verb | Allows |

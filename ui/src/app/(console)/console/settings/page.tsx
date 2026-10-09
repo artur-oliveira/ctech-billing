@@ -1,7 +1,7 @@
 "use client"
 
 import limits from "@/lib/limits.json"
-import {Alert, Button, Field, Input, Modal, Skeleton} from "@aoctech/ui"
+import {Alert, Button, Field, Input, Skeleton} from "@aoctech/ui"
 import {useMutation, useQuery, useQueryClient} from "@tanstack/react-query"
 import {useState} from "react"
 import {useTranslation} from "react-i18next"
@@ -9,6 +9,7 @@ import {toast} from "sonner"
 
 import {DunningPolicyCard} from "@/components/console/DunningPolicyCard"
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
+import {Modal} from "@/components/ui/ConsoleOverlay"
 import {messageFor} from "@/lib/api/client"
 import {useFieldErrors} from "@/lib/useFieldErrors"
 import {

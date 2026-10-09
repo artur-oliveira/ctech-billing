@@ -273,7 +273,8 @@ describe("F8 — accounts", () => {
     await userEvent.click(within(li).getByRole("button", {name: "Arquivar"}))
     expect(within(li).getByText(/histórico fica/i)).toBeInTheDocument()
     expect(archive).not.toHaveBeenCalled()
-    await userEvent.click(within(li).getByRole("button", {name: "Arquivar"}))
+    // The row's Arquivar stays (expanded); the confirmation has its own.
+    await userEvent.click(within(within(li).getByText(/histórico fica/i).parentElement!).getByRole("button", {name: "Arquivar"}))
     await waitFor(() => expect(archive).toHaveBeenCalledWith(expect.anything(), "pp", expect.any(String)))
   })
 
@@ -290,7 +291,7 @@ describe("F8 — accounts", () => {
     serve(ALL)
     renderWithQuery(<AccountsView/>)
     await row("Conta corrente")
-    expect(await optionsOf("Conta padrão de recebimento")).toEqual(["Conta corrente", "Poupança"])
+    expect(await optionsOf("Conta padrão de recebimento")).toEqual(["Nenhuma", "Conta corrente", "Poupança"])
   })
 
   it("posts CTech invoices by default and lets an admin turn it off", async () => {
@@ -373,5 +374,22 @@ describe("the phone's central action", () => {
     renderWithQuery(<AccountsView/>)
     act(() => createRequest.requestCreate("account"))
     expect(await screen.findByRole("dialog", {name: "Nova conta"})).toBeInTheDocument()
+  })
+})
+
+// UX batch 4: at 375px "Conta corrente" was cut to "Conta co…". A row of Contas
+// is a ledger row: the name wraps (two lines on a phone), its balance beside
+// it, and Saldo inicial and Arquivar are also in the row's "⋯".
+describe("F8 — an account row on a phone", () => {
+  it("wraps the name instead of cutting it, and lists its actions in ⋯", async () => {
+    serve(ALL)
+    renderWithQuery(<AccountsView/>)
+    const li = await row("Conta corrente")
+    const name = within(li).getByText("Conta corrente")
+    expect(name).not.toHaveClass("truncate")
+    expect(name).toHaveClass("line-clamp-2")
+    expect(name).toHaveAttribute("title", "Conta corrente")
+    await userEvent.click(within(li).getByRole("button", {name: "Mais ações: Conta corrente"}))
+    expect((await screen.findAllByRole("menuitem")).map(i => i.textContent)).toEqual(["Saldo inicial", "Arquivar"])
   })
 })

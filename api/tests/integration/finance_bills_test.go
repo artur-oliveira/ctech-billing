@@ -13,6 +13,7 @@ import (
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
 	"gopkg.aoctech.app/billing/api/internal/domain/brcal"
 	"gopkg.aoctech.app/billing/api/internal/domain/finance"
+	"gopkg.aoctech.app/billing/api/internal/patch"
 	"gopkg.aoctech.app/billing/api/internal/repositories"
 	"gopkg.aoctech.app/billing/api/internal/space"
 )
@@ -530,17 +531,17 @@ func TestAWriterCannotExtendAnAutoSettlingRecurrencesEnd(t *testing.T) {
 	rec, recs := f.recurrence(t, 10, true)
 	writer := space.Narrow(f.sp, space.Read|space.Write)
 	end := brcal.New(2026, time.December, 31)
-	if err := recs.Update(ctx, f.sp, rec.ID, repositories.RecurrencePatch{End: &end}, now); err != nil {
+	if err := recs.Update(ctx, f.sp, rec.ID, repositories.RecurrencePatch{End: patch.Of(end)}, now); err != nil {
 		t.Fatal(err)
 	}
-	later, never := brcal.New(2030, time.December, 31), brcal.Date{}
-	for name, e := range map[string]*brcal.Date{"a later end": &later, "no end": &never} {
+	// Clearing the end (null, UX batch 4) extends it forever.
+	for name, e := range map[string]patch.Optional[brcal.Date]{"a later end": patch.Of(brcal.New(2030, time.December, 31)), "no end": patch.Null[brcal.Date]()} {
 		if err := recs.Update(ctx, writer, rec.ID, repositories.RecurrencePatch{End: e}, now); !errors.Is(err, space.ErrDenied) {
 			t.Errorf("a writer extended the end (%s): %v", name, err)
 		}
 	}
 	sooner := brcal.New(2026, time.June, 30)
-	if err := recs.Update(ctx, writer, rec.ID, repositories.RecurrencePatch{End: &sooner}, now); err != nil {
+	if err := recs.Update(ctx, writer, rec.ID, repositories.RecurrencePatch{End: patch.Of(sooner)}, now); err != nil {
 		t.Fatalf("shortening is removing power and must be allowed: %v", err)
 	}
 }

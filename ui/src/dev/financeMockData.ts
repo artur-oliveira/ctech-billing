@@ -17,6 +17,7 @@ import type {
   Account, AccountClass, Bill, Card, CardStatement, CashFlowMonth, Purchase, StatementItem, DREGroupLine, Direction, ExpressionJSON, FinanceSpaceEntry, ProjectionMonth,
   Recurrence, StatementEntry, TxKind, Verb, CsvMapping, ImportFormat, ImportLine, ImportSummary, RejectReason,
 } from "@/lib/api/financeTypes"
+import {STATEMENT_WITH_MEMOS, STATEMENT_WITH_MEMOS_ACCOUNTS} from "@/dev/fixtures/statementWithMemos"
 
 export const FINANCE_MOCK_ORG = "0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b"
 /** A personal workspace this person owns (ADR 0027): every verb, manages its people. */
@@ -188,6 +189,19 @@ function seed(kind: "personal" | "org", mode: string): SpaceState {
   }
 }
 
+/** A scenario's additions to Pessoal · Produção. */
+function withScenario(s: SpaceState, scenario: FinanceScenario, personalLive: boolean): SpaceState {
+  if (scenario !== "extrato_memos" || !personalLive) return s
+  s.accounts.push(...STATEMENT_WITH_MEMOS_ACCOUNTS)
+  for (const e of STATEMENT_WITH_MEMOS.entries) {
+    s.entries.push({
+      account: STATEMENT_WITH_MEMOS.account_id, tx: e.transaction_id, date: e.date, amount: e.amount, kind: e.kind,
+      flow: e.category_id ?? "-", memo: e.memo, ref: e.bill_id ? `bill:${e.bill_id}` : undefined,
+    })
+  }
+  return s
+}
+
 const state = new Map<string, SpaceState>()
 const replays = new Map<string, Res>()
 
@@ -211,6 +225,49 @@ function header(r: Req, name: string): string | undefined {
 
 function body<T>(r: Req): T {
   return (typeof r.data === "string" ? JSON.parse(r.data) : r.data ?? {}) as T
+}
+
+/**
+ * The API's PATCH rule (UX batch 4): an absent field keeps, null clears (the
+ * key leaves the row, as the API removes the attribute), a value replaces.
+ */
+function applyPatch(target: object, patch: object) {
+  const t = target as Record<string, unknown>
+  for (const [k, v] of Object.entries(patch)) {
+    if (v === undefined) continue
+    if (v === null) delete t[k]
+    else t[k] = v
+  }
+}
+
+// ---- scenarios -------------------------------------------------------------------
+
+/**
+ * Finance fixtures beyond the default seed, picked with `?finance=<id>` (kept in
+ * localStorage, like the portal's `?scenario=`). `extrato_memos` adds the
+ * production statement that broke Extrato on a phone (UX batch 4) to Pessoal ·
+ * Produção.
+ */
+export type FinanceScenario = "padrao" | "extrato_memos"
+const FINANCE_SCENARIOS: FinanceScenario[] = ["padrao", "extrato_memos"]
+const SCENARIO_KEY = "ctech-billing-finance-scenario"
+let scenarioOverride: FinanceScenario | null = null
+
+export function setFinanceScenario(s: FinanceScenario) {
+  scenarioOverride = s
+  try { window.localStorage.setItem(SCENARIO_KEY, s) } catch { /* no storage: the override holds */ }
+}
+
+function financeScenario(): FinanceScenario {
+  if (typeof window !== "undefined") {
+    try {
+      const fromUrl = new URLSearchParams(window.location.search).get("finance") as FinanceScenario | null
+      if (fromUrl && FINANCE_SCENARIOS.includes(fromUrl)) window.localStorage.setItem(SCENARIO_KEY, fromUrl)
+      const stored = window.localStorage.getItem(SCENARIO_KEY) as FinanceScenario | null
+      if (stored && FINANCE_SCENARIOS.includes(stored)) return stored
+    } catch { /* fall through */ }
+  }
+  return scenarioOverride ?? "padrao"
 }
 
 // ---- statements (mock-grade readers; the server's are the real ones) ------------
@@ -306,8 +363,9 @@ export function financeMock(r: Req): Res {
   if (!entry) return problem(404, "/problems/space-not-found", "Space not found", "espaço não encontrado", "space_not_found")
   const can = (v: Verb) => entry.verbs.includes(v)
 
-  const key = `${mode}|${selector}`
-  if (!state.has(key)) state.set(key, seed(entry.kind === "organization" ? "org" : "personal", mode))
+  const scenario = financeScenario()
+  const key = `${mode}|${selector}|${scenario}`
+  if (!state.has(key)) state.set(key, withScenario(seed(entry.kind === "organization" ? "org" : "personal", mode), scenario, entry.kind === "personal_default" && mode === "live"))
   const s = state.get(key)!
 
   const isWrite = method !== "get" && path !== "/recurrences/preview"
@@ -407,7 +465,7 @@ function route(method: string, path: string, r: Req, s: SpaceState, can: (v: Ver
       if (bill.status !== "forecast") return transition()
       const p = body<Partial<Bill>>(r)
       if (p.auto_settle === true && !bill.auto_settle && !can("finance.settle")) return forbidden()
-      Object.assign(bill, Object.fromEntries(Object.entries(p).filter(([, v]) => v !== undefined)))
+      applyPatch(bill, p)
       return ok(withBucket(bill))
     }
   }
@@ -471,7 +529,7 @@ function route(method: string, path: string, r: Req, s: SpaceState, can: (v: Ver
         return problem(422, "about:blank", "Unprocessable", "this end date leaves the recurrence with no occurrence to come", "recurrence_would_end")
       }
       const {archive, ...rest} = p
-      Object.assign(rec, Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined)))
+      applyPatch(rec, rest)
       if (archive) rec.archived = true
       return ok(rec)
     }
@@ -561,9 +619,9 @@ function route(method: string, path: string, r: Req, s: SpaceState, can: (v: Ver
     if (!sub && method === "patch") {
       if (!can("finance.configure")) return forbidden()
       const patch = body<Record<string, unknown>>(r)
-      Object.assign(c, Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined && v !== "")))
-      // An empty brand or last4 clears it, as the API does.
-      for (const k of ["brand", "last4"] as const) if (patch[k] === "") delete c[k]
+      // An empty brand or last4 clears it too, as the API still accepts.
+      for (const k of ["brand", "last4"] as const) if (patch[k] === "") patch[k] = null
+      applyPatch(c, patch)
       return ok(c)
     }
     if (sub === "statements" && arg && method === "get") return ok(statementOf(c, arg))
@@ -902,8 +960,11 @@ function route(method: string, path: string, r: Req, s: SpaceState, can: (v: Ver
   }
   if (path === "/settings/default-receiving-account") {
     if (!can("finance.configure")) return forbidden()
-    s.defaultReceiving = body<{default_receiving_account_id: string}>(r).default_receiving_account_id
-    return ok({default_receiving_account_id: s.defaultReceiving})
+    // null clears it (the PATCH rule); absent is the API's 422.
+    const id = body<{default_receiving_account_id?: string | null}>(r).default_receiving_account_id
+    if (id === undefined) return problem(422, "about:blank", "Unprocessable", "required", "validation_error", [{field: "default_receiving_account_id", code: "required", message: "required"}])
+    s.defaultReceiving = id ?? undefined
+    return ok(id ? {default_receiving_account_id: id} : {})
   }
 
   return problem(404, "about:blank", "Not Found", "rota de finanças desconhecida no mock", "resource_not_found")

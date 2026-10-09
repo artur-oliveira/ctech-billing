@@ -8,6 +8,7 @@ import (
 	"gopkg.aoctech.app/billing/api/internal/domain/finance"
 	"gopkg.aoctech.app/billing/api/internal/limits"
 	"gopkg.aoctech.app/billing/api/internal/middleware"
+	"gopkg.aoctech.app/billing/api/internal/patch"
 	"gopkg.aoctech.app/billing/api/internal/problem"
 	"gopkg.aoctech.app/billing/api/internal/repositories"
 )
@@ -166,12 +167,39 @@ func (h *financeHandlers) createCard(c fiber.Ctx) error {
 }
 
 type cardPatchRequest struct {
-	ClosingDay      *int    `json:"closing_day"`
-	DueDay          *int    `json:"due_day"`
-	PayingAccountID *string `json:"paying_account_id"`
-	// Brand and Last4: absent keeps, "" clears.
-	Brand *string `json:"brand"`
-	Last4 *string `json:"last4"`
+	ClosingDay      patch.Optional[int]    `json:"closing_day"`
+	DueDay          patch.Optional[int]    `json:"due_day"`
+	PayingAccountID patch.Optional[string] `json:"paying_account_id"`
+	// Brand and Last4: absent keeps, null clears ("" also clears, as in batch 3).
+	Brand patch.Optional[string] `json:"brand"`
+	Last4 patch.Optional[string] `json:"last4"`
+}
+
+// edit validates the body under the PATCH rule (package patch).
+func (r cardPatchRequest) edit() (repositories.CardPatch, []problem.FieldError) {
+	ch := &checks{}
+	day := func(field string, o patch.Optional[int]) {
+		if v, ok := required(ch, field, o); ok && (v < 1 || v > 31) {
+			ch.fail(field, "out_of_range", "a day between 1 and 31", "min", 1, "max", 31)
+		}
+	}
+	day("closing_day", r.ClosingDay)
+	day("due_day", r.DueDay)
+	if v, ok := required(ch, "paying_account_id", r.PayingAccountID); ok {
+		ch.id("paying_account_id", v, true)
+	}
+	brand, last4 := clearable(r.Brand), clearable(r.Last4)
+	b, l := "", ""
+	if brand != nil {
+		b = *brand
+	}
+	if last4 != nil {
+		l = *last4
+	}
+	cardIdentity(ch, b, l)
+	return repositories.CardPatch{
+		ClosingDay: r.ClosingDay.Ptr(), DueDay: r.DueDay.Ptr(), PayingAccountID: r.PayingAccountID.Ptr(), Brand: brand, Last4: last4,
+	}, ch.errs
 }
 
 func (h *financeHandlers) patchCard(c fiber.Ctx) error {
@@ -179,29 +207,11 @@ func (h *financeHandlers) patchCard(c fiber.Ctx) error {
 	if p := decodeStrict(c, &req); p != nil {
 		return p.Send(c)
 	}
-	ch := &checks{}
-	if req.ClosingDay != nil && (*req.ClosingDay < 1 || *req.ClosingDay > 31) {
-		ch.fail("closing_day", "out_of_range", "a day between 1 and 31", "min", 1, "max", 31)
+	edit, errs := req.edit()
+	if len(errs) > 0 {
+		return problem.Validation(errs).Send(c)
 	}
-	if req.DueDay != nil && (*req.DueDay < 1 || *req.DueDay > 31) {
-		ch.fail("due_day", "out_of_range", "a day between 1 and 31", "min", 1, "max", 31)
-	}
-	if req.PayingAccountID != nil {
-		ch.id("paying_account_id", *req.PayingAccountID, true)
-	}
-	brand, last4 := "", ""
-	if req.Brand != nil {
-		brand = *req.Brand
-	}
-	if req.Last4 != nil {
-		last4 = *req.Last4
-	}
-	cardIdentity(ch, brand, last4)
-	if len(ch.errs) > 0 {
-		return problem.Validation(ch.errs).Send(c)
-	}
-	row, err := h.cards.UpdateCard(c.Context(), middleware.GetSpace(c), c.Params("id"),
-		repositories.CardPatch{ClosingDay: req.ClosingDay, DueDay: req.DueDay, PayingAccountID: req.PayingAccountID, Brand: req.Brand, Last4: req.Last4}, h.now())
+	row, err := h.cards.UpdateCard(c.Context(), middleware.GetSpace(c), c.Params("id"), edit, h.now())
 	if err != nil {
 		return fail(c, err)
 	}

@@ -7,7 +7,7 @@ import {useEffect, useRef} from "react"
  * lives in the screen. This is the one wire between them.
  *
  * A request is held until the screen that owns that kind takes it, so it
- * survives a navigation: on Resumo the action goes to A pagar/receber and the
+ * survives a navigation: on Resumo the action goes to Agenda and the
  * request is waiting when BillsView mounts. Held for one kind at a time, taken
  * once, and only briefly: a request nobody took within a few seconds is
  * dropped, and the shell drops it as soon as the person lands anywhere but

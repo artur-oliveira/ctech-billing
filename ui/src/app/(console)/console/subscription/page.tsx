@@ -1,6 +1,6 @@
 "use client"
 
-import {Button, Modal, Skeleton} from "@aoctech/ui"
+import {Button, Skeleton} from "@aoctech/ui"
 import {useMutation, useQuery, useQueryClient} from "@tanstack/react-query"
 import {ArrowLeft} from "lucide-react"
 import Link from "next/link"
@@ -9,6 +9,7 @@ import {Suspense, useState} from "react"
 import {useTranslation} from "react-i18next"
 import {toast} from "sonner"
 
+import {Modal} from "@/components/ui/ConsoleOverlay"
 import {SubscriptionStatusBadge} from "@/components/console/SubscriptionStatusBadge"
 import {Timeline} from "@/components/console/Timeline"
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
