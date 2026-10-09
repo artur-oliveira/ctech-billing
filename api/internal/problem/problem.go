@@ -13,6 +13,7 @@ import (
 
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
 	"gopkg.aoctech.app/billing/api/internal/domain/finance"
+	"gopkg.aoctech.app/billing/api/internal/domain/finance/statement"
 	"gopkg.aoctech.app/billing/api/internal/repositories"
 	"gopkg.aoctech.app/billing/api/internal/space"
 )
@@ -190,6 +191,27 @@ func FromError(err error) *Problem {
 	case errors.Is(err, repositories.ErrNotManual):
 		return New(409, TypeInvalidTransition, "Invalid Transition",
 			"Only transfers and opening balances are reversed from the statement. For a payment, use Undo payment.").WithCode("not_reversible_entry")
+
+	case errors.Is(err, repositories.ErrLineResolved):
+		return New(409, TypeInvalidTransition, "Invalid Transition", "This statement line was already reconciled.").WithCode("line_already_reconciled")
+	case errors.Is(err, repositories.ErrLineMismatch):
+		return Unprocessable("the bill is not of this line's account or direction").WithCode("line_bill_mismatch")
+	case errors.Is(err, statement.ErrCardStatement):
+		return Unprocessable(err.Error()).WithCode("statement_card_not_supported")
+	case errors.Is(err, statement.ErrManyAccounts):
+		return Unprocessable(err.Error()).WithCode("statement_many_accounts")
+	case errors.Is(err, statement.ErrCurrency):
+		return Unprocessable(err.Error()).WithCode("statement_currency")
+	case errors.Is(err, statement.ErrTooLarge), errors.Is(err, statement.ErrTooMany):
+		return Unprocessable(err.Error()).WithCode("statement_too_large")
+	case errors.Is(err, statement.ErrEmpty):
+		return Unprocessable(err.Error()).WithCode("statement_empty")
+	case errors.Is(err, statement.ErrUnreadable):
+		return Unprocessable(err.Error()).WithCode("statement_unreadable")
+	case errors.Is(err, statement.ErrNoMapping):
+		return Unprocessable(err.Error()).WithCode("csv_mapping_required")
+	case errors.Is(err, statement.ErrInvalidMapping):
+		return Unprocessable(err.Error()).WithCode("invalid_csv_mapping")
 
 	case errors.Is(err, repositories.ErrUnknownAccount):
 		return Unprocessable("unknown account or category in this space").WithCode("unknown_account")

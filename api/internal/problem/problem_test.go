@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"gopkg.aoctech.app/billing/api/internal/domain/finance"
+	"gopkg.aoctech.app/billing/api/internal/domain/finance/statement"
 	"gopkg.aoctech.app/billing/api/internal/repositories"
 )
 
@@ -74,5 +75,25 @@ func TestFromErrorIsEnglishAndCoded(t *testing.T) {
 	}
 	if got := FromError(errors.New("boom")); got.Code != "internal_server_error" || got.Status != 500 {
 		t.Errorf("unknown error = %+v", got)
+	}
+}
+
+func TestImportErrorsHaveTheirCodes(t *testing.T) {
+	for err, want := range map[error]string{
+		repositories.ErrLineResolved:                             "line_already_reconciled",
+		repositories.ErrLineMismatch:                             "line_bill_mismatch",
+		statement.ErrCardStatement:                               "statement_card_not_supported",
+		statement.ErrManyAccounts:                                "statement_many_accounts",
+		statement.ErrCurrency:                                    "statement_currency",
+		statement.ErrTooLarge:                                    "statement_too_large",
+		statement.ErrTooMany:                                     "statement_too_large",
+		statement.ErrEmpty:                                       "statement_empty",
+		fmt.Errorf("%w: no <OFX>", statement.ErrUnreadable):      "statement_unreadable",
+		statement.ErrNoMapping:                                   "csv_mapping_required",
+		fmt.Errorf("%w: delimiter", statement.ErrInvalidMapping): "invalid_csv_mapping",
+	} {
+		if p := FromError(err); p.Code != want || p.Status >= 500 {
+			t.Errorf("%v: %d %q, want %q", err, p.Status, p.Code, want)
+		}
 	}
 }
