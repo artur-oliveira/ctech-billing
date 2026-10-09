@@ -4,8 +4,8 @@ import {toast} from "sonner"
 
 import {apiClient, isSpaceNotFound} from "@/lib/api/client"
 import type {
-  Account, Bill, BillPatch, CashFlow, CurrentSpace, Direction, DRE, FinanceSpaces, ListResponse, NewAccount, NewBill,
-  NewRecurrence, NewTransfer, Occurrence, OpeningBalance, PreviewInput, ProjectionMonth, Recurrence, RecurrencePatch,
+  Account, Bill, BillPatch, Card, CardPatch, CardStatement, CashFlow, CurrentSpace, Direction, DRE, FinanceSpaces, ListResponse, NewAccount, NewBill,
+  NewCard, NewPurchase, NewRecurrence, NewTransfer, Purchase, Occurrence, OpeningBalance, PreviewInput, ProjectionMonth, Recurrence, RecurrencePatch,
   Settings, Settlement, Statement,
 } from "@/lib/api/financeTypes"
 import {getSpace, PERSONAL, type Space, setSpace, spaceHeader} from "@/lib/console/space"
@@ -83,6 +83,10 @@ export const financeKeys = {
     ["finance", mode, spaceHeader(space), "statement", accountId, from, to] as const,
   cashFlow: (mode: Mode, space: Space, from: string, to: string) => ["finance", mode, spaceHeader(space), "cash-flow", from, to] as const,
   dre: (mode: Mode, space: Space, from: string, to: string) => ["finance", mode, spaceHeader(space), "dre", from, to] as const,
+  cards: (mode: Mode, space: Space) => ["finance", mode, spaceHeader(space), "cards"] as const,
+  cardStatement: (mode: Mode, space: Space, cardId: string, month: string) =>
+    ["finance", mode, spaceHeader(space), "card-statement", cardId, month] as const,
+  purchases: (mode: Mode, space: Space, cardId: string) => ["finance", mode, spaceHeader(space), "purchases", cardId] as const,
   spaces: () => ["finance", "spaces"] as const,
 }
 
@@ -160,3 +164,26 @@ export const reverseTransaction = (c: FinanceCtx, txId: string, idempotencyKey: 
 /** Months `YYYY-MM`, both inclusive. */
 export const getCashFlow = (c: FinanceCtx, from: string, to: string) => read<CashFlow>(c, "/reports/cash-flow", {from, to})
 export const getDRE = (c: FinanceCtx, from: string, to: string) => read<DRE>(c, "/reports/dre", {from, to})
+
+// --- cards --------------------------------------------------------------------------
+
+const card = (id: string) => `/cards/${encodeURIComponent(id)}`
+
+export const listCards = (c: FinanceCtx) => read<ListResponse<Card>>(c, "/cards")
+export const createCard = (c: FinanceCtx, body: NewCard, idempotencyKey: string) =>
+  write<Card>(c, "POST", "/cards", body, idempotencyKey)
+export const patchCard = (c: FinanceCtx, id: string, body: CardPatch, idempotencyKey: string) =>
+  write<Card>(c, "PATCH", card(id), body, idempotencyKey)
+/** `month` is `YYYY-MM`. */
+export const getCardStatement = (c: FinanceCtx, cardId: string, month: string) =>
+  read<CardStatement>(c, `${card(cardId)}/statements/${encodeURIComponent(month)}`)
+export const listPurchases = (c: FinanceCtx, cardId: string) => read<ListResponse<Purchase>>(c, `${card(cardId)}/purchases`)
+export const createPurchase = (c: FinanceCtx, cardId: string, body: NewPurchase, idempotencyKey: string) =>
+  write<Purchase>(c, "POST", `${card(cardId)}/purchases`, body, idempotencyKey)
+export const refundPurchase = (c: FinanceCtx, cardId: string, purchaseId: string, idempotencyKey: string) =>
+  write<Purchase>(c, "POST", `${card(cardId)}/purchases/${encodeURIComponent(purchaseId)}/refund`, {}, idempotencyKey)
+export const advancePurchase = (c: FinanceCtx, cardId: string, purchaseId: string, idempotencyKey: string) =>
+  write<Purchase>(c, "POST", `${card(cardId)}/purchases/${encodeURIComponent(purchaseId)}/advance`, {}, idempotencyKey)
+/** Closes the open statement now, before its closing day. */
+export const closeStatement = (c: FinanceCtx, cardId: string, idempotencyKey: string) =>
+  write<CardStatement>(c, "POST", `${card(cardId)}/close`, {}, idempotencyKey)
