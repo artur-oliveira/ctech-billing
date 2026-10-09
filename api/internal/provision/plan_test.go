@@ -1,6 +1,7 @@
 package provision
 
 import (
+	"os"
 	"strings"
 	"testing"
 )
@@ -68,6 +69,24 @@ func TestParseRejects(t *testing.T) {
 				t.Fatalf("Parse accepted %s", name)
 			}
 		})
+	}
+}
+
+// Tenant zero's plan is the file seed applies: it must parse, and it must link
+// CTech's billing tenant to CTech's ctech-account organization ("A O CARVALHO
+// TECH"), or its revenue never reaches Finanças (spec § 3.8).
+func TestTenantZeroPlanLinksCTechsAccountOrganization(t *testing.T) {
+	f, err := os.Open("../../tenants/ctech.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	p, err := Parse(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Organization.ID != "ctech" || p.Organization.AccountOrganizationID != "01a04ed6-1af9-745e-bcf7-d3b66fe52321" {
+		t.Fatalf("organization = %+v", p.Organization)
 	}
 }
 

@@ -2,7 +2,8 @@
   "organization": {
     "id": "ctech",
     "display_name": "CTech",
-    "payout_status": "enabled"
+    "payout_status": "enabled",
+    "account_organization_id": "01a04ed6-1af9-745e-bcf7-d3b66fe52321"
   },
   "credentials": [
     {
