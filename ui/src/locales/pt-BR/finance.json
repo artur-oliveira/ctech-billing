@@ -55,6 +55,9 @@
     "this_year": "Este ano",
     "last_12": "Últimos 12 meses"
   },
+  "row": {
+    "more": "Mais ações: {{name}}"
+  },
   "nav": {
     "section": "Seção",
     "label": "Finanças",
@@ -268,6 +271,7 @@
     "newTransfer": "Nova transferência",
     "entries": "Lançamentos",
     "balanceOn": "Saldo em {{date}}",
+    "balance": "Saldo",
     "empty": "Nada neste período.",
     "reversal": "Estorno",
     "reversed": "Estornado",

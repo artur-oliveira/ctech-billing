@@ -2,13 +2,13 @@
 
 import limits from "@/lib/limits.json"
 import {Button, EmptyState, Field, Input, Skeleton, Switch} from "@aoctech/ui"
-import {Drawer} from "@/components/ui/ConsoleOverlay"
 import {useQuery} from "@tanstack/react-query"
 import {ChevronDown, Repeat} from "lucide-react"
 import Link from "next/link"
 import {useEffect, useId, useRef, useState} from "react"
 import {useTranslation} from "react-i18next"
 
+import {Drawer} from "@/components/ui/ConsoleOverlay"
 import {ExceptionsFields, PatternFields} from "@/components/finance/ExpressionEditor"
 import {LedgerRow} from "@/components/finance/LedgerRow"
 import {OccurrenceTimeline, type TimelineEntry} from "@/components/finance/OccurrenceTimeline"
@@ -127,16 +127,16 @@ function RecurrenceRow({rec, account, onEdit}: {rec: Recurrence; account?: strin
       aside={<span className="text-xs text-muted-foreground">{t(`bills.direction.${rec.direction}`)}</span>}
       asideOnPhone={false}
       amount={<span data-numeric>{money(rec.amount)}</span>}
-      actions={<>
+      actions={
         <Button size="sm" variant="ghost" aria-expanded={open} aria-controls={detailId} onClick={() => setOpen(v => !v)}>
           {t("bills.rec.view")}
           <ChevronDown aria-hidden className={`size-4 transition-transform duration-200 ease-out motion-reduce:transition-none ${open ? "rotate-180" : ""}`}/>
         </Button>
-        {can("finance.write") && <>
-          <Button size="sm" variant="ghost" onClick={onEdit}>{t("bills.common.edit")}</Button>
-          <Button size="sm" variant="ghost" aria-expanded={confirming} onClick={() => setConfirming(v => !v)}>{t("bills.rec.end")}</Button>
-        </>}
-      </>}
+      }
+      more={can("finance.write") ? [
+        {key: "edit", label: t("bills.common.edit"), onSelect: onEdit},
+        {key: "end", label: t("bills.rec.end"), destructive: true, expanded: confirming, onSelect: () => setConfirming(v => !v)},
+      ] : []}
     >
       {open && <RecurrenceDetail id={detailId} rec={rec}/>}
       {confirming && (

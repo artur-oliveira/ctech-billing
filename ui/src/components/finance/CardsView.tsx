@@ -1,15 +1,16 @@
 "use client"
 
 import {Badge, Button, EmptyState, Field, Skeleton} from "@aoctech/ui"
-import {Drawer} from "@/components/ui/ConsoleOverlay"
 import {useQuery} from "@tanstack/react-query"
 import {AlertCircle, ChevronLeft, ChevronRight, CircleCheck, CircleDot, Clock, CreditCard, Lock} from "lucide-react"
 import {useState} from "react"
 import {useTranslation} from "react-i18next"
 
+import {Drawer} from "@/components/ui/ConsoleOverlay"
 import {SettleForm} from "@/components/finance/BillsView"
 import {CardBrandMark, maskedLast4} from "@/components/finance/CardBrandMark"
 import {CardForm} from "@/components/finance/CardForm"
+import {LedgerRow} from "@/components/finance/LedgerRow"
 import {PurchasePanel} from "@/components/finance/PurchasePanel"
 import {wholeSpace} from "@/components/finance/TransferPanel"
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
@@ -258,22 +259,16 @@ function ItemRow({item, card, purchase, category}: {item: StatementItem; card: C
   const actionable = item.kind === "installment" && purchase && !purchase.refunded && can("finance.write")
   const canAdvance = actionable && purchase.installments.some(i => i.month > card.open_month)
   return (
-    <li className="py-2.5">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm text-foreground">{item.description}</p>
-          <p className="text-xs text-muted-foreground">
-            {shortDate(item.date)}{item.number && item.of ? ` · ${item.number}/${item.of}` : ""}{category ? ` · ${category}` : ""}
-          </p>
-        </div>
-        <span data-numeric className="w-28 text-right text-sm tabular-nums">{signedMoney(item.amount)}</span>
-        {actionable && (
-          <div className="flex gap-1">
-            {canAdvance && <Button size="sm" variant="ghost" onClick={() => setAction("advance")}>{t("finance.cards.advance")}</Button>}
-            <Button size="sm" variant="ghost" onClick={() => setAction("refund")}>{t("finance.cards.refund")}</Button>
-          </div>
-        )}
-      </div>
+    // UX batch 4: a purchase's actions are a left swipe or "⋯" on a phone, each asking first.
+    <LedgerRow
+      title={item.description}
+      meta={<>{shortDate(item.date)}{item.number && item.of ? ` • ${item.number}/${item.of}` : ""}{category ? ` • ${category}` : ""}</>}
+      amount={<span data-numeric>{signedMoney(item.amount)}</span>}
+      more={actionable ? [
+        ...(canAdvance ? [{key: "advance", label: t("finance.cards.advance"), expanded: action === "advance", onSelect: () => setAction("advance")}] : []),
+        {key: "refund", label: t("finance.cards.refund"), destructive: true, expanded: action === "refund", onSelect: () => setAction("refund")},
+      ] : []}
+    >
       {action === "refund" && purchase && (
         <Confirm
           text={t("finance.cards.refundConfirm")}
@@ -288,7 +283,7 @@ function ItemRow({item, card, purchase, category}: {item: StatementItem; card: C
           onDone={() => setAction(null)}
         />
       )}
-    </li>
+    </LedgerRow>
   )
 }
 

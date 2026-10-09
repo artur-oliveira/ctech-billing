@@ -2,7 +2,6 @@
 
 import limits from "@/lib/limits.json"
 import {Button, buttonVariants, EmptyState, Field, Input, Skeleton, Switch} from "@aoctech/ui"
-import {Drawer} from "@/components/ui/ConsoleOverlay"
 import {useQuery} from "@tanstack/react-query"
 import {CircleCheck, FileUp, Landmark} from "lucide-react"
 import Link from "next/link"
@@ -10,6 +9,8 @@ import {useState} from "react"
 import {useTranslation} from "react-i18next"
 
 import {CardBrandMark, maskedLast4} from "@/components/finance/CardBrandMark"
+import {Drawer} from "@/components/ui/ConsoleOverlay"
+import {LedgerRow} from "@/components/finance/LedgerRow"
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
 import {DateField} from "@/components/ui/DateField"
 import {Select} from "@/components/ui/Select"
@@ -121,35 +122,33 @@ function AccountRow({account, card, configure}: {account: Account; card?: Card; 
     c => [financeKeys.accounts(c.mode, c.space)],
     () => setConfirming(false),
   )
+  const isCard = account.class === "liability"
+  const meta = [
+    account.dre_group ? dreGroupLabel(account.dre_group) : "",
+    card?.last4 ? maskedLast4(card.last4) : "",
+    account.archived ? t("finance.accounts.archived") : "",
+  ].filter(Boolean)
   return (
-    <li className={`py-2.5 ${account.archived ? "text-muted-foreground" : ""}`}>
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex min-w-0 items-center gap-3">
-          {account.class === "liability" && <CardBrandMark brand={card?.brand ?? "other"} className="text-muted-foreground"/>}
-          <div className="min-w-0">
-            <p className="truncate text-sm text-foreground">{accountName(account)}</p>
-            {account.dre_group && <p className="text-xs text-muted-foreground">{dreGroupLabel(account.dre_group)}</p>}
-            {card?.last4 && <p className="text-xs tabular-nums text-muted-foreground">{maskedLast4(card.last4)}</p>}
-          </div>
-        </div>
-        <div className="flex shrink-0 items-center gap-3">
-          {account.class === "asset" && <span data-numeric className="text-sm tabular-nums">{money(account.balance)}</span>}
-          {account.class === "liability" && (
-            <>
-              {/* A card's balance is a credit: negative is what is owed. */}
-              <span data-numeric className="text-sm tabular-nums">{account.balance < 0 ? t("finance.accounts.owed", {amount: money(-account.balance)}) : money(account.balance)}</span>
-              <Link href={`/console/finance/cards?card=${encodeURIComponent(account.id)}`} className="inline-flex items-center text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline touch-target">{t("finance.accounts.open")}</Link>
-            </>
-          )}
-          {account.archived && <span className="text-xs">{t("finance.accounts.archived")}</span>}
-          {configure && account.class === "asset" && !account.archived && !opening && (
-            <Button variant="ghost" size="sm" onClick={() => setOpening(true)}>{t("finance.accounts.openingBalance")}</Button>
-          )}
-          {configure && !account.archived && !confirming && (
-            <Button variant="ghost" size="sm" onClick={() => setConfirming(true)}>{t("finance.accounts.archive")}</Button>
-          )}
-        </div>
-      </div>
+    // A ledger row (UX batch 4): on a phone the name wraps beside its balance
+    // instead of being cut to "Conta co…", and Saldo inicial and Arquivar are a
+    // left swipe or "⋯", each asking first.
+    <LedgerRow
+      title={accountName(account)}
+      muted={account.archived}
+      leading={isCard ? <CardBrandMark brand={card?.brand ?? "other"} className="text-muted-foreground"/> : undefined}
+      meta={meta.length > 0 ? <span className="tabular-nums">{meta.join(" • ")}</span> : undefined}
+      // A card's balance is a credit: negative is what is owed.
+      amount={account.class === "asset" ? <span data-numeric>{money(account.balance)}</span>
+        : isCard ? <span data-numeric>{account.balance < 0 ? t("finance.accounts.owed", {amount: money(-account.balance)}) : money(account.balance)}</span>
+          : null}
+      actions={isCard && (
+        <Link href={`/console/finance/cards?card=${encodeURIComponent(account.id)}`} className="inline-flex items-center px-2.5 text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline touch-target">{t("finance.accounts.open")}</Link>
+      )}
+      more={configure && !account.archived ? [
+        ...(account.class === "asset" ? [{key: "opening", label: t("finance.accounts.openingBalance"), expanded: opening, onSelect: () => setOpening(v => !v)}] : []),
+        {key: "archive", label: t("finance.accounts.archive"), destructive: true, expanded: confirming, onSelect: () => setConfirming(v => !v)},
+      ] : []}
+    >
       {confirming && (
         <div className="mt-2 flex flex-wrap items-center gap-2 text-sm motion-safe:animate-in motion-safe:fade-in">
           <p className="text-muted-foreground">{t("finance.accounts.archiveConfirm", {name: accountName(account)})}</p>
@@ -159,7 +158,7 @@ function AccountRow({account, card, configure}: {account: Account; card?: Card; 
         </div>
       )}
       {opening && <OpeningForm account={account} onDone={() => setOpening(false)}/>}
-    </li>
+    </LedgerRow>
   )
 }
 

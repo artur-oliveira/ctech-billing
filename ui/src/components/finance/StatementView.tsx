@@ -1,13 +1,14 @@
 "use client"
 
-import {Badge, Button, EmptyState, Field, Skeleton} from "@aoctech/ui"
-import {Drawer} from "@/components/ui/ConsoleOverlay"
+import {Badge, Button, EmptyState, Skeleton} from "@aoctech/ui"
 import {useQuery} from "@tanstack/react-query"
 import {Landmark} from "lucide-react"
 import Link from "next/link"
 import {useState} from "react"
 import {useTranslation} from "react-i18next"
 
+import {Drawer} from "@/components/ui/ConsoleOverlay"
+import {LedgerRow} from "@/components/finance/LedgerRow"
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
 import {TransferPanel, wholeSpace} from "@/components/finance/TransferPanel"
 import {Select} from "@/components/ui/Select"
@@ -95,14 +96,19 @@ export function StatementView({account: initial = ""}: {account?: string}) {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
-        <div className="flex flex-wrap items-end gap-3">
-          <Field label={t("finance.statement.account")} htmlFor="st-account">
-            <Select id="st-account" aria-label={t("finance.statement.account")} value={accountId} onValueChange={setPicked} className="w-56"
+        {/* One row on a phone too (UX batch 4): the account takes what the
+            period leaves, and the labels, which the chosen values already
+            say ("Conta corrente", "Este mês"), are for a screen reader there. */}
+        <div className="grid w-full grid-cols-[minmax(0,1fr)_minmax(0,8.75rem)] items-end gap-2 sm:flex sm:w-auto sm:gap-3">
+          <div className="flex min-w-0 flex-col gap-1.5">
+            <label htmlFor="st-account" className="text-sm font-medium text-foreground max-sm:sr-only">{t("finance.statement.account")}</label>
+            <Select id="st-account" aria-label={t("finance.statement.account")} value={accountId} onValueChange={setPicked} className="sm:w-56"
               options={cash.map(a => ({value: a.id, label: a.archived ? t("finance.statement.archivedName", {name: accountName(a)}) : accountName(a)}))}/>
-          </Field>
-          <Field label={t("finance.statement.period")} htmlFor="st-period">
-            <Select id="st-period" aria-label={t("finance.statement.period")} value={preset} onValueChange={v => setPreset(v as PresetId)} className="w-48" options={PRESETS.map(p => ({value: p.value, label: t(`finance.presets.${p.value}`)}))}/>
-          </Field>
+          </div>
+          <div className="flex min-w-0 flex-col gap-1.5">
+            <label htmlFor="st-period" className="text-sm font-medium text-foreground max-sm:sr-only">{t("finance.statement.period")}</label>
+            <Select id="st-period" aria-label={t("finance.statement.period")} value={preset} onValueChange={v => setPreset(v as PresetId)} className="sm:w-48" options={PRESETS.map(p => ({value: p.value, label: t(`finance.presets.${p.value}`)}))}/>
+          </div>
         </div>
         {can("finance.write") && (
           <Button variant="brand" size="sm" className="max-md:hidden" onClick={() => setTransferring(true)}>{t("finance.statement.newTransfer")}</Button>
@@ -156,28 +162,26 @@ function EntryRow({entry: e, category}: {entry: StatementEntry; category?: strin
   const live = !e.reversal && !e.reversed
   const canReverse = live && (e.kind === "transfer" || e.kind === "opening_balance") && can("finance.write")
   const canUnsettle = live && e.kind === "settlement" && !!e.bill_id && can("finance.settle")
+  const toggle = (a: Exclude<Action, null>) => () => setAction(action === a ? null : a)
   return (
-    <li className="py-2.5">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm text-foreground">{memoOf(e)}</p>
-          <p className="text-xs text-muted-foreground">{shortDate(e.date)}{category ? ` · ${category}` : ""}</p>
-        </div>
+    // A ledger line (UX batch 4): on a phone the memo wraps beside the amount,
+    // the date and category under it, the running balance under the amount; a
+    // reversal or an undo is a left swipe or "⋯", each asking first.
+    <LedgerRow
+      title={memoOf(e)}
+      meta={<>{shortDate(e.date)}{category ? ` • ${category}` : ""}</>}
+      aside={(e.reversal || e.reversed) && <>
         {e.reversal && <Badge tone="neutral">{t("finance.statement.reversal")}</Badge>}
         {e.reversed && <Badge tone="neutral">{t("finance.statement.reversed")}</Badge>}
-        <span data-numeric className={`w-28 text-right text-sm tabular-nums ${e.reversed ? "text-muted-foreground line-through" : "text-foreground"}`}>
-          {signedMoney(e.amount)}
-        </span>
-        <span data-numeric className="w-28 text-right text-sm tabular-nums text-muted-foreground">{signedMoney(e.balance)}</span>
-        <div className="flex gap-1">
-          {canReverse && (
-            <Button size="sm" variant="ghost" aria-expanded={action === "reverse"} onClick={() => setAction(action === "reverse" ? null : "reverse")}>{t("finance.statement.reverse")}</Button>
-          )}
-          {canUnsettle && (
-            <Button size="sm" variant="ghost" aria-expanded={action === "unsettle"} onClick={() => setAction(action === "unsettle" ? null : "unsettle")}>{t("finance.statement.undoPayment")}</Button>
-          )}
-        </div>
-      </div>
+      </>}
+      amount={<span data-numeric className={e.reversed ? "text-muted-foreground line-through" : undefined}>{signedMoney(e.amount)}</span>}
+      balance={<span data-numeric>{signedMoney(e.balance)}</span>}
+      balanceLabel={t("finance.statement.balance")}
+      more={[
+        ...(canReverse ? [{key: "reverse", label: t("finance.statement.reverse"), destructive: true, expanded: action === "reverse", onSelect: toggle("reverse")}] : []),
+        ...(canUnsettle ? [{key: "unsettle", label: t("finance.statement.undoPayment"), destructive: true, expanded: action === "unsettle", onSelect: toggle("unsettle")}] : []),
+      ]}
+    >
       {action === "reverse" && canReverse && (
         <Confirm
           text={t("finance.statement.reverseConfirm")}
@@ -192,7 +196,7 @@ function EntryRow({entry: e, category}: {entry: StatementEntry; category?: strin
           onDone={() => setAction(null)}
         />
       )}
-    </li>
+    </LedgerRow>
   )
 }
 

@@ -5,7 +5,7 @@ import userEvent from "@testing-library/user-event"
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 
 import {BillsView} from "@/components/finance/BillsView"
-import {optionsOf, pick, renderWithQuery} from "@/components/finance/finance.test-utils"
+import {optionsOf, pick, renderWithQuery, serveFinanceMock} from "@/components/finance/finance.test-utils"
 import * as finance from "@/lib/api/finance"
 import * as createRequest from "@/lib/finance/createRequest"
 import type {Account, Bill, Verb} from "@/lib/api/financeTypes"
@@ -327,5 +327,22 @@ describe("the phone's central action", () => {
     await new Promise(r => setTimeout(r, 0))
     expect(screen.queryByRole("dialog")).toBeNull()
     createRequest.takePendingCreate("transfer")
+  })
+})
+
+// UX batch 4: on a phone a bill keeps Pagar on its line; Editar and Excluir are
+// a left swipe or the row's "⋯", and Excluir still asks first.
+describe("Agenda — a bill's secondary actions", () => {
+  it("lists Editar and Excluir in ⋯, and Excluir opens its confirmation without deleting", async () => {
+    const sent = serveFinanceMock()
+    renderWithQuery(<BillsView/>)
+    const li = (await screen.findByText("Compra do mês")).closest("li")!
+    expect(within(li).getByRole("button", {name: "Pagar"})).toBeInTheDocument()
+    await userEvent.click(within(li).getByRole("button", {name: "Mais ações: Compra do mês"}))
+    const items = await screen.findAllByRole("menuitem")
+    expect(items.map(i => i.textContent)).toEqual(["Editar", "Excluir"])
+    await userEvent.click(items[1])
+    expect(await within(li).findByText(/Excluir “Compra do mês”\?/)).toBeInTheDocument()
+    expect(sent.some(r => r.url.endsWith("/cancel"))).toBe(false)
   })
 })

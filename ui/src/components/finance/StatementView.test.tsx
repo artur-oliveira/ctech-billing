@@ -5,6 +5,7 @@ import userEvent from "@testing-library/user-event"
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 
 import {pick, renderWithQuery} from "@/components/finance/finance.test-utils"
+import {STATEMENT_WITH_MEMOS, STATEMENT_WITH_MEMOS_ACCOUNTS} from "@/dev/fixtures/statementWithMemos"
 import {StatementView} from "@/components/finance/StatementView"
 import * as finance from "@/lib/api/finance"
 import * as createRequest from "@/lib/finance/createRequest"
@@ -145,5 +146,46 @@ describe("the phone's central action", () => {
     createRequest.requestCreate("transfer")
     renderWithQuery(<StatementView/>)
     expect(await screen.findByRole("dialog", {name: "Nova transferência"})).toBeInTheDocument()
+  })
+})
+
+// UX batch 4: the production statement that broke Extrato on a phone. Each
+// line is a ledger row: the whole memo (never cut to "Sal…"), the date and
+// category under it, the amount, and the running balance named "Saldo"; the
+// reversal and the undo are in the row's "⋯" (and its swipe), asking first.
+describe("F3 — the statement with memos, as a phone reads it", () => {
+  it("draws each line as a ledger row with its memo, date, category, amount and balance", async () => {
+    vi.spyOn(finance, "getFinanceSpaces").mockResolvedValue({spaces: [{selector: "personal", kind: "personal_default", display_name: "Pessoal", verbs: ALL, manage_people: false}], organizations_unavailable: false})
+    vi.spyOn(finance, "listAccounts").mockResolvedValue({data: STATEMENT_WITH_MEMOS_ACCOUNTS, has_more: false})
+    vi.spyOn(finance, "getStatement").mockResolvedValue(STATEMENT_WITH_MEMOS)
+    renderWithQuery(<StatementView account={STATEMENT_WITH_MEMOS.account_id}/>)
+
+    const pix = await rowOf("Pix mãe")
+    expect(within(pix).getByText("Pix mãe")).toHaveAttribute("title", "Pix mãe")
+    expect(within(pix).getByText("09/10/2026 • Outras receitas")).toBeInTheDocument()
+    expect(within(pix).getByText(/^R\$\s210,00$/)).toBeInTheDocument()
+    // Under the amount on a phone, and its own column from sm (named for a screen reader there).
+    expect(within(pix).getByText((_, el) => el?.tagName === "P" && el.textContent?.replace(/\s+/g, " ").trim() === "Saldo R$ 8.939,00")).toBeInTheDocument()
+    expect(within(pix).getByText("Saldo", {selector: ".sr-only"}).parentElement).toHaveTextContent(/8\.939,00/)
+
+    const mikael = await rowOf("Transferência Mikael")
+    expect(within(mikael).getByText("09/10/2026 • Lazer")).toBeInTheDocument()
+    expect(within(mikael).getByText(/38,69$/)).toBeInTheDocument()
+
+    const opening = await rowOf("Saldo inicial")
+    await userEvent.click(within(opening).getByRole("button", {name: "Mais ações: Saldo inicial"}))
+    await userEvent.click(await screen.findByRole("menuitem", {name: "Estornar"}))
+    expect(within(opening).getByText(/Estornar este lançamento/)).toBeInTheDocument()
+  })
+
+  it("keeps the account and the period on one row, each still named", async () => {
+    vi.spyOn(finance, "getFinanceSpaces").mockResolvedValue({spaces: [{selector: "personal", kind: "personal_default", display_name: "Pessoal", verbs: ALL, manage_people: false}], organizations_unavailable: false})
+    vi.spyOn(finance, "listAccounts").mockResolvedValue({data: STATEMENT_WITH_MEMOS_ACCOUNTS, has_more: false})
+    vi.spyOn(finance, "getStatement").mockResolvedValue(STATEMENT_WITH_MEMOS)
+    renderWithQuery(<StatementView account={STATEMENT_WITH_MEMOS.account_id}/>)
+    const account = await screen.findByRole("combobox", {name: "Conta"})
+    const period = screen.getByRole("combobox", {name: "Período"})
+    expect(account.parentElement!.parentElement).toBe(period.parentElement!.parentElement)
+    expect(account.parentElement!.parentElement).toHaveClass("grid-cols-[minmax(0,1fr)_minmax(0,8.75rem)]")
   })
 })

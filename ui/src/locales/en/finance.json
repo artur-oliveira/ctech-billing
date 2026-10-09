@@ -55,6 +55,9 @@
     "this_year": "This year",
     "last_12": "Last 12 months"
   },
+  "row": {
+    "more": "More actions: {{name}}"
+  },
   "nav": {
     "section": "Section",
     "label": "Finance",
@@ -268,6 +271,7 @@
     "newTransfer": "New transfer",
     "entries": "Entries",
     "balanceOn": "Balance on {{date}}",
+    "balance": "Balance",
     "empty": "Nothing in this period.",
     "reversal": "Reversal",
     "reversed": "Reversed",
