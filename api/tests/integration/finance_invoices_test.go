@@ -507,6 +507,100 @@ func TestACreditNoteOnAPaidInvoiceTakesTheAmountBackInBothSpaces(t *testing.T) {
 	}
 }
 
+// race runs fn n times at once and returns how many returned nil.
+func race(n int, fn func(i int) error) (ok int, errs []error) {
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	start := make(chan struct{})
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			<-start
+			err := fn(i)
+			mu.Lock()
+			defer mu.Unlock()
+			if err == nil {
+				ok++
+			} else {
+				errs = append(errs, err)
+			}
+		}(i)
+	}
+	close(start)
+	wg.Wait()
+	return ok, errs
+}
+
+// I2 (review): two operators crediting R$ 30,00 each on a R$ 49,90 paid invoice
+// at the same moment. Both read "nothing credited yet"; only one may write.
+// Pre-dates 6.7 (the guard checked the status only), and 6.7 turned the second
+// note into money taken out of two ledgers.
+func TestConcurrentCreditNotesCannotSumPastTheInvoice(t *testing.T) {
+	ctx := ctxT(t)
+	org := newOrg(t, true)
+	invoices := repositories.NewInvoiceRepository(testDB, testCfg)
+	inv := newDraftInvoice(t, org, "gen_"+id.New())
+	due := brcal.New(2026, time.March, 10)
+	if _, err := invoices.Finalize(ctx, inv, due, due, billing.CauseScheduler, "scheduler", "req", now()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := invoices.Transition(ctx, inv, billing.InvoicePaid, billing.CauseReconciliation, "reconciler", "req", now()); err != nil {
+		t.Fatal(err)
+	}
+	credits := repositories.NewCreditNoteRepository(testDB, testCfg)
+	ok, _ := race(6, func(i int) error {
+		snapshot := *inv
+		return credits.Issue(ctx, &billing.CreditNote{
+			ID: id.NewWithPrefix(id.PrefixCreditNote), InvoiceID: inv.ID, Amount: 3000, Reason: "duplicada",
+		}, &snapshot, "user:op", "req", now())
+	})
+	total, err := credits.TotalCredited(ctx, org.ID, true, inv.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok != 1 || total != 3000 {
+		t.Fatalf("%d notes issued, %d credited on a total of %d", ok, total, inv.Total)
+	}
+	// A later note within what is left still goes through.
+	if err := credits.Issue(ctx, &billing.CreditNote{ID: id.NewWithPrefix(id.PrefixCreditNote), InvoiceID: inv.ID, Amount: 1990, Reason: "resto"}, inv, "user:op", "req", now()); err != nil {
+		t.Fatalf("the remaining 1990: %v", err)
+	}
+}
+
+// I2 (review): the finance side guards the sum too, so whatever reaches it,
+// the credits on one bill never exceed the bill.
+func TestConcurrentFinanceCreditsCannotSumPastTheBill(t *testing.T) {
+	sp := invoiceSpace(t, newSpaceOrgID(), true)
+	bills := repositories.NewBillRepository(testDB, testCfg)
+	ctx := context.Background()
+	if _, _, err := bills.RecordInvoice(ctx, sp, revenueFact("in_sum"), repositories.PostMeta{}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	posted := 0
+	var mu sync.Mutex
+	_, errs := race(6, func(i int) error {
+		p, err := bills.RecordInvoiceCredit(ctx, sp, "in_sum", "cn_sum_"+string(rune('a'+i)), 3000, brcal.New(2026, time.March, 20), repositories.PostMeta{}, time.Now())
+		if p {
+			mu.Lock()
+			posted++
+			mu.Unlock()
+		}
+		return err
+	})
+	if posted != 1 {
+		t.Fatalf("%d credits of 3000 posted on a bill of 4990 (errors %v)", posted, errs)
+	}
+	for _, err := range errs {
+		if !errors.Is(err, finance.ErrInvalidTransaction) {
+			t.Errorf("a refused credit: err = %v, want ErrInvalidTransaction", err)
+		}
+	}
+	if got := balance(t, repositories.NewLedgerRepository(testDB, testCfg), sp, "bank"); got != 1990 {
+		t.Fatalf("bank = %d, want 1990", got)
+	}
+}
+
 func contains(xs []string, x string) bool {
 	for _, s := range xs {
 		if s == x {

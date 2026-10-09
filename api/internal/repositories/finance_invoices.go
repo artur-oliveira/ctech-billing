@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
@@ -155,6 +157,12 @@ func (r *BillRepository) recordInvoiceOnce(ctx context.Context, sp space.Resolve
 // amount, dated the note's day, as one transaction whose id derives from
 // (space, note) — a second post finds its header and posts nothing (false, nil).
 //
+// The credits on one bill never sum past it: the bill's `credited` moves by
+// compare-and-set in the same write, so two notes racing on one bill cannot
+// both commit, and the loser re-reads and is refused when the rest no longer
+// covers it (finance.ErrInvalidTransaction). A conflict is retried like
+// RecordInvoice's.
+//
 // The credit is not added to the bill's transaction list: "Desfazer pagamento"
 // reverses the bill's last transaction, which must stay its settlement. An
 // invoice never recorded here is ErrNotFound; a bill no longer paid (reopened in
@@ -163,16 +171,41 @@ func (r *BillRepository) RecordInvoiceCredit(ctx context.Context, sp space.Resol
 	if err := sp.Require(space.Read | space.Write | space.Settle); err != nil {
 		return false, err
 	}
-	b, err := r.get(ctx, sp, InvoiceBillID(sp, invoiceID))
+	for attempt := 1; ; attempt++ {
+		posted, again, err := r.recordInvoiceCreditOnce(ctx, sp, invoiceID, creditNoteID, amount, date, meta, now)
+		if !again {
+			return posted, err
+		}
+		if attempt == recordAttempts {
+			return false, fmt.Errorf("%w: the bill for invoice %s kept changing while it was credited: %v", ErrConcurrentModification, invoiceID, err)
+		}
+		select {
+		case <-ctx.Done():
+			return false, ctx.Err()
+		case <-time.After(time.Duration(attempt) * 25 * time.Millisecond):
+		}
+	}
+}
+
+// recordInvoiceCreditOnce is one attempt; again reports a write that lost a race
+// (the bill's credited moved, or a conflict) and should be tried from a fresh
+// read.
+func (r *BillRepository) recordInvoiceCreditOnce(ctx context.Context, sp space.ResolvedSpace, invoiceID, creditNoteID string, amount billing.Cents, date brcal.Date, meta PostMeta, now time.Time) (posted, again bool, err error) {
+	billID := InvoiceBillID(sp, invoiceID)
+	b, err := r.getConsistent(ctx, sp, billID)
 	if err != nil {
-		return false, err
+		return false, false, err
 	}
 	if b.Status != finance.BillPaid {
-		return false, fmt.Errorf("%w: the invoice's bill is %s", finance.ErrBillState, b.Status)
+		return false, false, fmt.Errorf("%w: the invoice's bill is %s", finance.ErrBillState, b.Status)
+	}
+	if amount > b.Amount-b.Credited {
+		return false, false, fmt.Errorf("%w: a credit of %s on a bill of %s with %s already credited",
+			finance.ErrInvalidTransaction, amount, b.Amount, b.Credited)
 	}
 	tx, err := finance.CreditBill(b.Facts(), amount, date)
 	if err != nil {
-		return false, err
+		return false, false, err
 	}
 	meta = billMeta(meta, *b)
 	meta.Origin = "billing_credit_note"
@@ -180,15 +213,60 @@ func (r *BillRepository) RecordInvoiceCredit(ctx context.Context, sp space.Resol
 	meta.txID = idempotentID(sp, "billing-credit-note", creditNoteID)
 	plan, err := r.ledger.planPost(sp, tx, meta, now)
 	if err != nil {
-		return false, err
+		return false, false, err
 	}
-	if err := r.bills.TransactWrite(ctx, plan.Items); err != nil {
-		if codes := cancellationCodes(err); len(codes) > 0 && codes[0] == codeConditionFailed {
-			return false, nil // the header exists: this note was already recorded
+	cond := "#status = :paid AND #cr = :before"
+	if b.Credited == 0 {
+		cond = "#status = :paid AND (attribute_not_exists(#cr) OR #cr = :before)"
+	}
+	sk := BillSK(billID)
+	guard := r.bills.BuildRawUpdateTxItem(sp.PK(), &sk, "SET #cr = :after, updated_at = :now", cond,
+		map[string]string{"#status": "status", "#cr": "credited"},
+		map[string]types.AttributeValue{
+			":paid":   str(string(finance.BillPaid)),
+			":before": numberValue(int64(b.Credited)),
+			":after":  numberValue(int64(b.Credited + amount)),
+			":now":    r.stamp(now),
+		})
+	items := append(append([]types.TransactWriteItem(nil), plan.Items...), guard)
+	if err := r.bills.TransactWrite(ctx, items); err != nil {
+		codes := cancellationCodes(err)
+		switch {
+		case len(codes) > 0 && codes[0] == codeConditionFailed:
+			return false, false, nil // the header exists: this note was already recorded
+		case len(codes) == len(items) && codes[len(items)-1] == codeConditionFailed, retryableCancel(err):
+			return false, true, err // another credit (or an unsettle) moved the bill first
 		}
-		return false, classifyPostCancel(err, -1)
+		return false, false, classifyPostCancel(err, -1)
 	}
-	return true, nil
+	return true, false, nil
+}
+
+// getConsistent reads a bill with a strongly consistent read: a credit compares
+// against the bill's credited total, and a stale one would only lose the race.
+func (r *BillRepository) getConsistent(ctx context.Context, sp space.ResolvedSpace, billID string) (*finance.Bill, error) {
+	out, err := r.bills.QueryRaw(ctx, &dynamodb.QueryInput{
+		KeyConditionExpression: aws.String("pk = :pk AND sk = :sk"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":pk": str(sp.PK()), ":sk": str(BillSK(billID)),
+		},
+		ConsistentRead: aws.Bool(true),
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(out.Items) == 0 {
+		return nil, fmt.Errorf("%w: bill %s", ErrNotFound, billID)
+	}
+	it, err := Decode[billItem](out.Items[0])
+	if err != nil {
+		return nil, err
+	}
+	b, err := it.bill()
+	if err != nil {
+		return nil, err
+	}
+	return &b, nil
 }
 
 // receivingAccount is the space's default receiving account, if it is still an
