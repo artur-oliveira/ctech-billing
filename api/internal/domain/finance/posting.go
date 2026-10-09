@@ -60,10 +60,10 @@ func RecognizeBill(sys SystemAccounts, b BillFacts, competence brcal.Date) (Tran
 	}
 	if b.Direction == Payable {
 		return NewTransaction(KindRecognition, competence,
-			Leg{b.CategoryID, b.Amount}, Leg{sys.Payables, -b.Amount})
+			Leg{AccountID: b.CategoryID, Amount: b.Amount}, Leg{AccountID: sys.Payables, Amount: -b.Amount})
 	}
 	return NewTransaction(KindRecognition, competence,
-		Leg{sys.Receivables, b.Amount}, Leg{b.CategoryID, -b.Amount})
+		Leg{AccountID: sys.Receivables, Amount: b.Amount}, Leg{AccountID: b.CategoryID, Amount: -b.Amount})
 }
 
 // SettleBill records the cash side, at the payment date: this is what puts it in
@@ -87,16 +87,16 @@ func SettleBill(sys SystemAccounts, b BillFacts, paid billing.Cents, differenceC
 	if b.Direction == Payable {
 		// payables ↓ by the bill; cash ↓ by what left; the gap is an expense
 		// (paid more: interest) or a gain (paid less: discount).
-		legs = []Leg{{sys.Payables, b.Amount}, {b.AccountID, -paid}}
+		legs = []Leg{{AccountID: sys.Payables, Amount: b.Amount}, {AccountID: b.AccountID, Amount: -paid, Flow: b.CategoryID}}
 		if diff != 0 {
-			legs = append(legs, Leg{differenceCategoryID, diff})
+			legs = append(legs, Leg{AccountID: differenceCategoryID, Amount: diff})
 		}
 	} else {
 		// cash ↑ by what arrived; receivables ↓ by the bill; the gap is a gain
 		// (received more) or an expense (received less).
-		legs = []Leg{{b.AccountID, paid}, {sys.Receivables, -b.Amount}}
+		legs = []Leg{{AccountID: b.AccountID, Amount: paid, Flow: b.CategoryID}, {AccountID: sys.Receivables, Amount: -b.Amount}}
 		if diff != 0 {
-			legs = append(legs, Leg{differenceCategoryID, -diff})
+			legs = append(legs, Leg{AccountID: differenceCategoryID, Amount: -diff})
 		}
 	}
 	return NewTransaction(KindSettlement, date, legs...)
@@ -111,7 +111,7 @@ func Transfer(fromAccountID, toAccountID string, amount billing.Cents, date brca
 	if fromAccountID == toAccountID {
 		return Transaction{}, fmt.Errorf("%w: a transfer needs two different accounts", ErrInvalidTransaction)
 	}
-	return NewTransaction(KindTransfer, date, Leg{toAccountID, amount}, Leg{fromAccountID, -amount})
+	return NewTransaction(KindTransfer, date, Leg{AccountID: toAccountID, Amount: amount, Flow: FlowNone}, Leg{AccountID: fromAccountID, Amount: -amount, Flow: FlowNone})
 }
 
 // CardPurchase records a purchase on a card for its **full** amount on the
@@ -122,7 +122,7 @@ func CardPurchase(cardAccountID, categoryID string, total billing.Cents, date br
 	if total <= 0 {
 		return Transaction{}, fmt.Errorf("%w: a purchase must be positive", ErrInvalidTransaction)
 	}
-	return NewTransaction(KindCardPurchase, date, Leg{categoryID, total}, Leg{cardAccountID, -total})
+	return NewTransaction(KindCardPurchase, date, Leg{AccountID: categoryID, Amount: total}, Leg{AccountID: cardAccountID, Amount: -total})
 }
 
 // PayStatement records paying a card statement from an asset account.
@@ -130,7 +130,7 @@ func PayStatement(cardAccountID, payingAccountID string, amount billing.Cents, d
 	if amount <= 0 {
 		return Transaction{}, fmt.Errorf("%w: a statement payment must be positive", ErrInvalidTransaction)
 	}
-	return NewTransaction(KindStatementPayment, date, Leg{cardAccountID, amount}, Leg{payingAccountID, -amount})
+	return NewTransaction(KindStatementPayment, date, Leg{AccountID: cardAccountID, Amount: amount}, Leg{AccountID: payingAccountID, Amount: -amount})
 }
 
 // OpeningBalance records what an account held before the ledger began. amount
@@ -140,7 +140,7 @@ func OpeningBalance(sys SystemAccounts, accountID string, amount billing.Cents, 
 	if amount == 0 {
 		return Transaction{}, fmt.Errorf("%w: a zero opening balance is no transaction", ErrInvalidTransaction)
 	}
-	return NewTransaction(KindOpeningBalance, date, Leg{accountID, amount}, Leg{sys.OpeningBalance, -amount})
+	return NewTransaction(KindOpeningBalance, date, Leg{AccountID: accountID, Amount: amount, Flow: FlowNone}, Leg{AccountID: sys.OpeningBalance, Amount: -amount})
 }
 
 // AdjustBill is the net effect of editing a forecast bill's amount or category:
@@ -174,7 +174,7 @@ func AdjustBill(sys SystemAccounts, was, next BillFacts, competence brcal.Date) 
 	legs := make([]Leg, 0, len(order))
 	for _, acct := range order {
 		if net[acct] != 0 {
-			legs = append(legs, Leg{acct, net[acct]})
+			legs = append(legs, Leg{AccountID: acct, Amount: net[acct]})
 		}
 	}
 	if len(legs) < 2 {
@@ -193,7 +193,7 @@ func CancelBill(sys SystemAccounts, facts BillFacts, competence brcal.Date) (Tra
 	}
 	legs := make([]Leg, len(rec.Legs))
 	for i, l := range rec.Legs {
-		legs[i] = Leg{l.AccountID, -l.Amount}
+		legs[i] = Leg{AccountID: l.AccountID, Amount: -l.Amount, Flow: l.Flow}
 	}
 	return NewTransaction(KindAdjustment, competence, legs...)
 }

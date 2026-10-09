@@ -9,8 +9,8 @@ import (
 
 func TestNewTransactionRefusesLegsThatWrapInt64(t *testing.T) {
 	cases := map[string][]Leg{
-		"three legs wrapping to zero": {{"a", math.MaxInt64}, {"b", math.MaxInt64}, {"c", 2}},
-		"two credits of MinInt64":     {{"a", math.MinInt64}, {"b", math.MinInt64}},
+		"three legs wrapping to zero": {{AccountID: "a", Amount: math.MaxInt64}, {AccountID: "b", Amount: math.MaxInt64}, {AccountID: "c", Amount: 2}},
+		"two credits of MinInt64":     {{AccountID: "a", Amount: math.MinInt64}, {AccountID: "b", Amount: math.MinInt64}},
 	}
 	for name, legs := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -45,7 +45,7 @@ func TestScheduleValidateRefusesExpressionsThatWouldPanic(t *testing.T) {
 }
 
 func TestNewTransactionRefusesTheSameAccountTwice(t *testing.T) {
-	_, err := NewTransaction(KindTransfer, d(2026, time.March, 2), Leg{"a", 100}, Leg{"a", -100})
+	_, err := NewTransaction(KindTransfer, d(2026, time.March, 2), Leg{AccountID: "a", Amount: 100}, Leg{AccountID: "a", Amount: -100})
 	if !errors.Is(err, ErrInvalidTransaction) {
 		t.Fatalf("err = %v, want ErrInvalidTransaction", err)
 	}
@@ -75,7 +75,7 @@ func TestLedgerAccountIDsSortInsideTheSummaryRange(t *testing.T) {
 }
 
 func TestNewTransactionRefusesAnUnknownKind(t *testing.T) {
-	_, err := NewTransaction(TxKind("whatever"), d(2026, time.March, 2), Leg{"a", 1}, Leg{"b", -1})
+	_, err := NewTransaction(TxKind("whatever"), d(2026, time.March, 2), Leg{AccountID: "a", Amount: 1}, Leg{AccountID: "b", Amount: -1})
 	if !errors.Is(err, ErrInvalidTransaction) {
 		t.Fatalf("err = %v", err)
 	}
