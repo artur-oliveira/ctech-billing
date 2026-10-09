@@ -30,6 +30,7 @@ var allTables = []string{
 	TableLedgerTransactions,
 	TableBills,
 	TableRecurrences,
+	TableCards,
 }
 
 func TestEveryTableConstantHasASchema(t *testing.T) {
@@ -132,7 +133,9 @@ func TestTheSweepIndexIsOnlyWhereASweepReads(t *testing.T) {
 	// queues are read by cmd/deliver, which is cross-tenant for the same reason
 	// the sweep is: a delivery backlog spans every tenant that has one, and the
 	// job holds no credential to scope it by.
-	want := []string{TableBills, TableInvoices, TableRecurrences, TableSubscriptions, TableWebhooks}
+	// `cards` is read by cmd/finance's statement close (6.5), cross-tenant like
+	// the other finance steps.
+	want := []string{TableBills, TableCards, TableInvoices, TableRecurrences, TableSubscriptions, TableWebhooks}
 	slices.Sort(want)
 	if !slices.Equal(withSweep, want) {
 		t.Errorf("tables with %s: got %v, want %v", IndexSchedule, withSweep, want)

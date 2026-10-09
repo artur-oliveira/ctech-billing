@@ -11,8 +11,20 @@ import (
 	"gopkg.aoctech.app/billing/api/internal/space"
 )
 
-func BillSK(id string) string       { return "BILL#" + id }
-func RecurrenceSK(id string) string { return "RECURRENCE#" + id }
+func BillSK(id string) string     { return "BILL#" + id }
+func CardSK(id string) string     { return "CARD#" + id }
+func PurchaseSK(id string) string { return "PURCHASE#" + id }
+
+// StatementSK is a closed statement's row; ItemSK sorts a statement's items
+// right after it, so one prefix Query on StatementSK(m) returns both.
+func StatementSK(m finance.Month) string { return "STATEMENT#" + m.String() }
+func ItemSK(m finance.Month, purchaseID, tag string) string {
+	return StatementSK(m) + "#ITEM#" + purchaseID + "#" + tag
+}
+
+// CardPK is one card's partition: its purchases, statements and items.
+func CardPK(sp space.ResolvedSpace, cardID string) string { return sp.PK() + "#CARD#" + cardID }
+func RecurrenceSK(id string) string                       { return "RECURRENCE#" + id }
 
 // OccurrenceSK is the materialisation lock row: (recurrence, nominal day).
 func OccurrenceSK(recurrenceID string, nominal brcal.Date) string {
@@ -34,6 +46,7 @@ func OpenSK(due brcal.Date, id string) string { return due.String() + "#" + id }
 // the next run instead of needing its own -date.
 func MaterialisePK(livemode bool) string { return Mode(livemode) + "#finance-materialize" }
 func AutoSettlePK(livemode bool) string  { return Mode(livemode) + "#finance-autosettle" }
+func ClosePK(livemode bool) string       { return Mode(livemode) + "#finance-close" }
 
 // ScheduleSK is {date}#{owner}#{id}. The owner (an organization id or USER#sub)
 // lets the job rebuild the row's space with space.ForJob; neither the owner nor

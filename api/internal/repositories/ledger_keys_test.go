@@ -39,3 +39,25 @@ func TestEveryLedgerPartitionBeginsWithTheSpaceKey(t *testing.T) {
 		t.Fatal("entry partition does not begin with the space key")
 	}
 }
+
+func TestCardKeys(t *testing.T) {
+	sp, err := space.ForJob("USER#u1", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mar := finance.Month{Year: 2026, Month: time.March}
+	for got, want := range map[string]string{
+		ItemSK(mar, "P1", "01"): "STATEMENT#2026-03#ITEM#P1#01",
+		StatementSK(mar):        "STATEMENT#2026-03",
+		CardSK("c"):             "CARD#c",
+		PurchaseSK("p"):         "PURCHASE#p",
+		ClosePK(true):           "live#finance-close",
+	} {
+		if got != want {
+			t.Errorf("%q, want %q", got, want)
+		}
+	}
+	if !strings.HasPrefix(CardPK(sp, "c"), sp.PK()) {
+		t.Error("a card partition must begin with its space")
+	}
+}
