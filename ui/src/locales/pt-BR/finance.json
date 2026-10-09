@@ -61,6 +61,7 @@
     "overview": "Resumo",
     "bills": "A pagar e a receber",
     "statement": "Extrato",
+    "import": "Importar",
     "cards": "Cartões",
     "recurrences": "Recorrências",
     "reports": "Relatórios",
@@ -262,5 +263,86 @@
     "marketing": "Marketing",
     "administrative_expenses": "Despesas administrativas",
     "bank_fees": "Tarifas bancárias"
+  },
+  "import": {
+    "account": "Conta",
+    "noAccounts": "Nenhuma conta para importar.",
+    "noAccountsHint": "Crie uma conta corrente ou de dinheiro em Contas e volte aqui.",
+    "upload": "Enviar extrato",
+    "file": "Arquivo do extrato",
+    "fileHint": "OFX ou CSV, até 1 MB. O arquivo não fica guardado; os lançamentos ficam 90 dias para você conciliar.",
+    "submit": "Importar",
+    "columns": "Colunas do CSV",
+    "added_one": "{{count}} lançamento novo",
+    "added_other": "{{count}} lançamentos novos",
+    "duplicates_one": "{{count}} já importado antes",
+    "duplicates_other": "{{count}} já importados antes",
+    "rejected_one": "{{count}} linha não lida",
+    "rejected_other": "{{count}} linhas não lidas",
+    "nothingNew": "Nada novo: este extrato já foi importado.",
+    "history": "Importações",
+    "noImports": "Nenhuma importação nesta conta ainda.",
+    "period": "{{from}} a {{to}}",
+    "waiting_one": "{{count}} a conciliar",
+    "waiting_other": "{{count}} a conciliar",
+    "allDone": "tudo conciliado",
+    "lines": "Lançamentos do extrato",
+    "tabs": {
+      "pending": "A conciliar",
+      "done": "Conciliadas",
+      "ignored": "Ignoradas"
+    },
+    "empty": {
+      "pending": "Nada a conciliar neste extrato.",
+      "done": "Nenhum lançamento conciliado ainda.",
+      "ignored": "Nenhum lançamento ignorado."
+    },
+    "noDescription": "Sem descrição",
+    "candidate": "Parece ser: {{description}}, vence {{date}}",
+    "which": "Qual conta é",
+    "noCandidate": "Nenhuma conta em aberto com este valor perto desta data.",
+    "match": "Dar baixa",
+    "new": "Nova conta",
+    "ignore": "Ignorar",
+    "reopen": "Desfazer",
+    "matched": "Baixa dada",
+    "created": "Conta criada e paga",
+    "category": "Categoria",
+    "description": "Descrição",
+    "create": "Criar e dar baixa",
+    "back": "Voltar",
+    "noCategory": {
+      "expense": "Nenhuma categoria de despesa. Crie uma em Contas.",
+      "income": "Nenhuma categoria de receita. Crie uma em Contas."
+    },
+    "rejectedLine": "Linha {{line}}: {{reason}}",
+    "reasons": {
+      "invalid_date": "data ilegível",
+      "invalid_amount": "valor ilegível",
+      "zero_amount": "valor zero",
+      "balance_row": "linha de saldo"
+    },
+    "mapping": {
+      "delimiter": "Separador",
+      "semicolon": "Ponto e vírgula (;)",
+      "comma": "Vírgula (,)",
+      "tab": "Tabulação",
+      "decimal": "Casas decimais",
+      "decimalComma": "Vírgula (1.234,56)",
+      "decimalDot": "Ponto (1,234.56)",
+      "dateFormat": "Formato da data",
+      "formats": {
+        "ddmmyyyy": "dia/mês/ano",
+        "yyyymmdd": "ano-mês-dia",
+        "mmddyyyy": "mês/dia/ano"
+      },
+      "skipRows": "Linhas de cabeçalho",
+      "dateColumn": "Coluna da data",
+      "descriptionColumn": "Coluna da descrição",
+      "amountColumn": "Coluna do valor",
+      "debitColumn": "Coluna das saídas",
+      "debitHint": "Só se o banco separa entradas e saídas em duas colunas.",
+      "save": "Salvar colunas"
+    }
   }
 }

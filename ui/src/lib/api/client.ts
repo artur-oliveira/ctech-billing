@@ -199,6 +199,11 @@ export function isSpaceUnavailable(error: unknown): boolean {
 }
 
 /** The selected organization space is not (or no longer) the reader's. */
+/** The problem's stable code, for a screen that reacts to one refusal in particular. */
+export function problemCode(error: unknown): string | undefined {
+  return (error as AxiosError<Problem>)?.response?.data?.code
+}
+
 export function isSpaceNotFound(error: unknown): boolean {
   return (error as AxiosError<Problem>)?.response?.data?.type === SPACE_NOT_FOUND
 }

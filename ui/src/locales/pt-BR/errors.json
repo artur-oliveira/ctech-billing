@@ -63,7 +63,17 @@
     "conflict": "Isto mudou enquanto você via. Atualize e tente de novo.",
     "unprocessable_entity": "Confira os dados e tente de novo.",
     "too_many_requests": "Muitas tentativas. Aguarde um pouco e tente de novo.",
-    "validation_error": "Confira os campos e tente de novo."
+    "validation_error": "Confira os campos e tente de novo.",
+    "line_already_reconciled": "Este lançamento já foi conciliado. A lista foi atualizada.",
+    "line_bill_mismatch": "Essa conta não é desta conta bancária ou não é do mesmo tipo (pagar ou receber).",
+    "statement_card_not_supported": "Extratos de cartão ainda não são importados. Importe o extrato da conta corrente.",
+    "statement_many_accounts": "O arquivo traz mais de uma conta. Exporte uma conta por arquivo.",
+    "statement_currency": "O extrato não está em reais.",
+    "statement_too_large": "O arquivo é grande demais (até 1 MB e 2.000 lançamentos).",
+    "statement_empty": "O arquivo não tem lançamentos.",
+    "statement_unreadable": "Não foi possível ler o arquivo. Confira se é um OFX ou CSV do banco.",
+    "csv_mapping_required": "Diga primeiro quais colunas do CSV são a data, a descrição e o valor.",
+    "invalid_csv_mapping": "As colunas do CSV não estão certas."
   },
   "field": {
     "required": "Obrigatório.",
