@@ -696,19 +696,33 @@ gates nothing by plan.
       *Assinaturas* (income, `gross_revenue`, organization spaces) and *Assinaturas CTech* (expense, both); the
       rule also ensures its category by id, archived or name-taken included. Zero-total invoices (ADR 0019) post
       nothing.
+      **Review fixes and decisions (2026-10-09):** (I1) a posting that could not be written is no longer lost — a
+      paid invoice joins `{mode}#FINANCE_POSTING` (invoices schedule-index) in the write that makes it PAID, a credit
+      note on a paid invoice joins `{mode}#FINANCE_CREDIT` in its own write, the rule takes them off once every side
+      is settled, and `cmd/reconcile` runs `FinanceInvoices.Replay` hourly for 30 days (a retry, not a backfill: none
+      is needed, billing has only issued zero-total invoices). (I2, older than 6.7) concurrent credit notes could sum
+      past the invoice: `credited_total` on the invoice and `credited` on the finance bill now move by
+      compare-and-set. Decisions: tenant zero linked to `01a04ed6-1af9-745e-bcf7-d3b66fe52321` (A O CARVALHO TECH)
+      in `api/tenants/ctech.json`; with no usable default, a space's **only** active bank or cash account receives;
+      a per-space setting *Lançar minhas faturas da CTech automaticamente neste espaço* (on by default,
+      `finance.configure`, audited, F8 toggle) gates the payer side; "Desfazer pagamento" stays allowed.
+      **Deploy step:** after deploying, apply the tenant plan in **both** modes of each environment, from `api/`,
+      as `.github/workflows/README.md` describes: `go run ./cmd/seed -file tenants/ctech.json -mode test`, then
+      `-mode live` (with `FIELD_ENCRYPTION_KEY`, `TABLE_PREFIX={env}_billing`, `AWS_REGION`, `WEBHOOK_SECRET_DFE`
+      set). Apply links the existing `ctech` tenant once (audited); until then the issuer side logs
+      `issuer_not_linked` and stays queued for 30 days.
       **Found on the way:** (1) billing's tenants are not ctech-account organizations (tenant zero's id is
       `ctech`), so "the issuing organization's space" had no key: `Organization.AccountOrganizationID`, set by the
       tenant plan (`organization.account_organization_id`, validated as a canonical UUID), once — Apply links an
-      existing unlinked tenant (conditional, audited) and refuses a plan naming a different link. **Deploy step:**
-      put CTech's ctech-account organization id in `api/tenants/ctech.json` and run `seed` in both modes; until
-      then the issuer side logs `issuer_not_linked`. (2) The payer side is **tenant zero only**: `user_id` on a
+      existing unlinked tenant (conditional, audited) and refuses a plan naming a different link. (2) The payer side is **tenant zero only**: `user_id` on a
       third-party merchant's customer is that merchant's claim and must not write into a person's books.
       (3) Organization customers (spec § 1) do not exist in code — nothing on `Customer` names an organization —
       so today a DF-e subscription posts to its owner's personal space, which is what the customer record says
       (ctech-dfe keys it on `USER_{sub}`). (4) No test-mode invoice is paid with money today
       (`ErrTestModeNotPayable`); the rule is mode-agnostic and test spaces get test invoices.
-      **Not built:** a backfill for invoices paid while a space had no receiving account (or before the link),
-      organization customers, the revenue projection from open invoices and renewals (computed on read, spec
+      (5) a credit note's `created_at` collides with its row's own `created_at` attribute and does not survive a
+      decode (pre-existing); the replay reads the note's time from its queue key instead.
+      **Not built:** organization customers, the revenue projection from open invoices and renewals (computed on read, spec
       § 3.8), refusing "Desfazer pagamento" on a billing bill.
 - [ ] 6.8 Shared and additional personal spaces —
       [spec](docs/specs/2026-10-09-shared-spaces-design.md), [ADR 0027](docs/adr/0027-personal-workspaces-in-account.md).
@@ -718,9 +732,8 @@ gates nothing by plan.
       only a kind check on company reach (`ctech-dfe/docs/specs/2026-10-09-personal-workspaces-in-dfe.md`).
 
 **Still open in Phase 6 (recorded 2026-10-09):**
-- **After 6.7:** link tenant zero (`account_organization_id` in `api/tenants/ctech.json`, then `seed` in both
-  modes); a backfill command for invoices paid before the link or while a space had no receiving account;
-  organization customers (spec § 1), which also needs ctech-dfe to move its subscription to the organization.
+- **After 6.7:** run `seed` in both modes after deploy (the link is in `api/tenants/ctech.json`); organization
+  customers (spec § 1), which also needs ctech-dfe to move its subscription to the organization.
 - **Purge (ADR 0026)**: no code. ctech-account's account-deletion specs (2026-10-06) name billing
   as a participant with an eligibility check and a purge on `user.erase`; billing's side is unbuilt.
   Shared spaces (6.8) add personal workspaces to its scope.

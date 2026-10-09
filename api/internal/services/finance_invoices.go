@@ -243,6 +243,9 @@ type ReplayResult struct {
 // transaction id — so a side already recorded costs one read. Anything older
 // than FinanceReplayWindow is taken off the queue with a warning instead.
 //
+// It is a retry, not a backfill: it sees only invoices and notes queued by this
+// code, i.e. paid or issued after it shipped, and only for FinanceReplayWindow.
+//
 // Cross-tenant by design (ADR 0002): reachable only from cmd/reconcile.
 func (s *FinanceInvoices) Replay(ctx context.Context, livemode bool, now time.Time) ReplayResult {
 	var res ReplayResult

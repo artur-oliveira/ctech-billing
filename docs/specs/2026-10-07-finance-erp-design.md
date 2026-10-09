@@ -334,8 +334,17 @@ comes from billing: open invoices plus the subscription's next renewals, compute
 - The payer side is **tenant zero only** (a third-party merchant's `user_id` is that merchant's claim)
   and **person customers only**: organization customers are not modelled yet, so a customer with a
   `user_id` posts to that person's personal space.
-- The cash account is the space's default receiving account **on both sides**. A space with none,
-  or with an archived one, gets nothing, and is not created by the posting.
+- The cash account is the space's default receiving account **on both sides**. With none (or an
+  archived one), a space holding **exactly one** active bank or cash account receives there; with
+  zero or several candidates it gets nothing (a warning), and it is not created by the posting.
+- **"Lançar minhas faturas da CTech automaticamente neste espaço"** (`post_ctech_invoices` on the
+  space's `SPACE` row, on when absent, changed with `finance.configure`, audited): when off, the
+  payer side (the invoice and its credit notes) writes nothing in that space. The issuer side is
+  CTech's own books and is never affected. Future postings only: turning it off deletes nothing and
+  turning it on replays nothing older; the replay pass reads it at replay time. Only personal spaces
+  are payers today.
+- Tenant zero (`ctech`) is linked to CTech's ctech-account organization
+  `01a04ed6-1af9-745e-bcf7-d3b66fe52321` in `api/tenants/ctech.json`.
 - Zero-total invoices post nothing. A credit note posts one adjustment (`finance.CreditBill`) dated
   the note's day, in each space where the invoice was recorded and its bill is still paid.
 - Idempotent by the bill's id (space, invoice) and the credit's transaction id (space, note). The
