@@ -3,9 +3,7 @@
     "label": "Seções",
     "home": "Início",
     "invoices": "Faturas",
-    "subscriptions": "Assinaturas",
-    "console": "Console",
-    "logout": "Sair"
+    "subscriptions": "Assinaturas"
   },
   "dashboard": {
     "empty": {

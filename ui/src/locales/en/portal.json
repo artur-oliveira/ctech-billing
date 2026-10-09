@@ -3,9 +3,7 @@
     "label": "Sections",
     "home": "Home",
     "invoices": "Invoices",
-    "subscriptions": "Subscriptions",
-    "console": "Console",
-    "logout": "Sign out"
+    "subscriptions": "Subscriptions"
   },
   "dashboard": {
     "empty": {

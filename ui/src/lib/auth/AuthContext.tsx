@@ -140,10 +140,12 @@ export function AuthProvider({children}: { children: ReactNode }) {
   const onCallback = useCallback(
     (accessToken: string, idToken: string | null) => {
       adopt(accessToken)
-      // first_name alone, not the full name: the header is a greeting, and
-      // `username` is a login handle rather than something to greet somebody by.
+      // The whole name: the account menu shows it uncut, and "Ana" alone is
+      // not enough to tell two accounts apart. `username` is the last resort,
+      // a login handle rather than a name.
       const claims = idToken ? decodeIdToken(idToken) : null
-      const display = claims?.first_name ?? claims?.username ?? null
+      const full = [claims?.first_name, claims?.last_name].filter(Boolean).join(" ")
+      const display = full || claims?.username || null
       if (display) {
         setName(display)
         window.localStorage.setItem(NAME_KEY, display)
