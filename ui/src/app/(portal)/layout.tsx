@@ -70,7 +70,7 @@ export default function PortalLayout({children}: LayoutProps<"/">) {
               the brand colour appears — after the primary button, the active
               nav item and the selected row. A header that renders the company
               name in body ink is a header that could belong to anybody. */}
-          <Link href="/dashboard" className="flex items-center gap-2.5">
+          <Link href="/dashboard" className="flex items-center gap-2.5 touch:min-h-11">
             <Image
               src="/android-chrome-192x192.png"
               alt=""

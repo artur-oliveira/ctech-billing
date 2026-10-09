@@ -41,6 +41,8 @@ export function ModeSwitch() {
           <button
             key={option.id}
             type="button"
+            // A segment like any other: 44px under touch (globals.css), 24px on a desk.
+            data-slot="segmented-item"
             aria-pressed={active}
             onClick={() => {
               if (active) return

@@ -18,7 +18,7 @@ export function LanguageSwitcher({className = ""}: { className?: string }) {
         void changeAppLanguage(next)
       }}
       aria-label={t("common.changeLanguage", {language: next === "en" ? "English" : "Português"})}
-      className={`inline-flex h-9 min-w-9 items-center justify-center gap-1.5 rounded-md px-2 text-xs font-medium uppercase text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring ${className}`}
+      className={`inline-flex h-9 min-w-9 touch:h-11 touch:min-w-11 items-center justify-center gap-1.5 rounded-md px-2 text-xs font-medium uppercase text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring ${className}`}
     >
       <Languages className="size-4" aria-hidden="true"/>
       {next === "en" ? "EN" : "PT"}

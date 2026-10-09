@@ -83,7 +83,7 @@ export default function ConsoleLayout({children}: LayoutProps<"/console">) {
       <header className="border-b border-border">
         <div className="mx-auto flex min-h-14 max-w-6xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2">
           <div className="order-1 flex min-w-0 items-center gap-4">
-            <Link href="/console/overview" className="flex shrink-0 items-center gap-2.5">
+            <Link href="/console/overview" className="flex shrink-0 items-center gap-2.5 touch:min-h-11">
               <Image
                 src="/android-chrome-192x192.png"
                 alt=""
@@ -131,7 +131,7 @@ export default function ConsoleLayout({children}: LayoutProps<"/console">) {
                   <Link
                     href={item.href}
                     aria-current={active ? "page" : undefined}
-                    className={`inline-flex h-10 items-center whitespace-nowrap border-b-2 px-3 text-sm transition-colors ${
+                    className={`inline-flex h-10 touch:h-11 items-center whitespace-nowrap border-b-2 px-3 text-sm transition-colors ${
                       active
                         ? "border-brand-600 font-medium text-brand-600"
                         : "border-transparent text-muted-foreground hover:text-foreground"
