@@ -150,6 +150,9 @@ type patchRecurrenceRequest struct {
 	Description *string        `json:"description"`
 	AutoSettle  *bool          `json:"auto_settle"`
 	End         *brcal.Date    `json:"end"`
+	// Archive confirms an end that leaves nothing to come: the edit and the
+	// archive are one write. Without it such an end is 422 recurrence_would_end.
+	Archive bool `json:"archive"`
 }
 
 func (h *financeHandlers) patchRecurrence(c fiber.Ctx) error {
@@ -179,7 +182,7 @@ func (h *financeHandlers) patchRecurrence(c fiber.Ctx) error {
 	sp := middleware.GetSpace(c)
 	if err := h.recs.Update(c.Context(), sp, c.Params("id"), repositories.RecurrencePatch{
 		Amount: req.Amount, CategoryID: req.CategoryID, AccountID: req.AccountID,
-		Description: req.Description, AutoSettle: req.AutoSettle, End: req.End,
+		Description: req.Description, AutoSettle: req.AutoSettle, End: req.End, Archive: req.Archive,
 	}, h.now()); err != nil {
 		return fail(c, err)
 	}
@@ -199,6 +202,83 @@ func (h *financeHandlers) archiveRecurrence(c fiber.Ctx) error {
 		return fail(c, err)
 	}
 	return c.SendStatus(fiber.StatusNoContent)
+}
+
+// occurrenceHistoryLimit is how many made bills F4's detail shows: a year of a
+// monthly rule, which is what a person checks ("did I pay the last ones?").
+const occurrenceHistoryLimit = 12
+
+// occurrenceUpcomingCount is how many dates still to be made it shows.
+const occurrenceUpcomingCount = 6
+
+type occurrenceBillDTO struct {
+	Nominal brcal.Date    `json:"nominal"`
+	Due     brcal.Date    `json:"due"`
+	BillID  string        `json:"bill_id"`
+	Amount  billing.Cents `json:"amount"`
+	// State is paid, forecast, overdue (a forecast past its due date) or
+	// skipped (the occurrence's bill was cancelled).
+	State    string      `json:"state"`
+	PaidDate *brcal.Date `json:"paid_date,omitempty"`
+}
+
+type recurrenceOccurrencesDTO struct {
+	History  []occurrenceBillDTO `json:"history"`
+	Upcoming []occurrenceDTO     `json:"upcoming"`
+}
+
+func occurrenceState(b finance.Bill, today brcal.Date) string {
+	switch {
+	case b.Status == finance.BillPaid:
+		return "paid"
+	case b.Status == finance.BillCanceled:
+		return "skipped"
+	case b.Due.Before(today):
+		return "overdue"
+	default:
+		return "forecast"
+	}
+}
+
+// recurrenceOccurrences is F4's inline detail (UX batch 3): the latest bills the
+// recurrence made, each with its state, and the next dates the rule will make,
+// computed on read from after the job's cursor (never before today). An
+// archived recurrence has no next dates. Everything is read inside the resolved
+// space: another space's id is the ordinary 404.
+func (h *financeHandlers) recurrenceOccurrences(c fiber.Ctx) error {
+	sp := middleware.GetSpace(c)
+	rec, cursor, err := h.recs.GetWithCursor(c.Context(), sp, c.Params("id"))
+	if err != nil {
+		return fail(c, err)
+	}
+	made, err := h.bills.ForRecurrence(c.Context(), sp, rec.ID, occurrenceHistoryLimit)
+	if err != nil {
+		return fail(c, err)
+	}
+	today := h.today()
+	out := recurrenceOccurrencesDTO{History: make([]occurrenceBillDTO, 0, len(made)), Upcoming: []occurrenceDTO{}}
+	for _, m := range made {
+		d := occurrenceBillDTO{Nominal: m.Nominal, Due: m.Bill.Due, BillID: m.Bill.ID, Amount: m.Bill.Amount, State: occurrenceState(m.Bill, today)}
+		if !m.Bill.PaidDate.IsZero() {
+			paid := m.Bill.PaidDate
+			d.PaidDate = &paid
+		}
+		out.History = append(out.History, d)
+	}
+	if !rec.Archived {
+		from := today
+		if !cursor.IsZero() && cursor.AddDays(1).After(from) {
+			from = cursor.AddDays(1)
+		}
+		occ, err := finance.Preview(rec.Schedule, from, occurrenceUpcomingCount)
+		if err != nil {
+			return fail(c, err)
+		}
+		for _, o := range occ {
+			out.Upcoming = append(out.Upcoming, occurrenceDTO{Nominal: o.Nominal, Due: o.Due})
+		}
+	}
+	return c.JSON(out)
 }
 
 type previewRequest struct {
