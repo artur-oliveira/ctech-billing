@@ -80,7 +80,7 @@ func main() {
 	}
 }
 
-// run performs both steps for one mode and returns every error message.
+// run performs every step for one mode and returns every error message.
 func run(ctx context.Context, job *services.FinanceJobs, livemode bool, date brcal.Date, now time.Time) []error {
 	mode := "test"
 	if livemode {
@@ -93,6 +93,7 @@ func run(ctx context.Context, job *services.FinanceJobs, livemode bool, date brc
 	}{
 		{"materialise", func() services.JobResult { return job.Materialise(ctx, livemode, date, now) }},
 		{"auto-settle", func() services.JobResult { return job.AutoSettle(ctx, livemode, date, now) }},
+		{"close-statements", func() services.JobResult { return job.CloseStatements(ctx, livemode, date, now) }},
 	} {
 		started := time.Now()
 		res := step.do()

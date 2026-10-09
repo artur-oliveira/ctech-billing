@@ -388,3 +388,32 @@ func TestARecurrenceChangedUnderTheJobIsSkippedNotFailed(t *testing.T) {
 		t.Fatalf("the cursor moved to %s although the recurrence changed under the job", recs.cursors["r1"])
 	}
 }
+
+// ---- CloseStatements -------------------------------------------------------------
+
+type fakeCards struct {
+	due    []repositories.DueCard
+	closed []string
+	fail   string
+}
+
+func (f *fakeCards) DueToClose(context.Context, bool, brcal.Date, int) ([]repositories.DueCard, int, error) {
+	return f.due, 0, nil
+}
+
+func (f *fakeCards) CloseDue(_ context.Context, _ space.ResolvedSpace, cardID string, _ brcal.Date, _ time.Time) (int, error) {
+	if cardID == f.fail {
+		return 0, errors.New("dynamodb: throttled")
+	}
+	f.closed = append(f.closed, cardID)
+	return 1, nil
+}
+
+func TestCloseStatementsClosesEveryDueCardAndSurvivesOneFailure(t *testing.T) {
+	sp := testSpace(t)
+	cards := &fakeCards{due: []repositories.DueCard{{Space: sp, CardID: "a"}, {Space: sp, CardID: "b"}, {Space: sp, CardID: "c"}}, fail: "b"}
+	res := NewFinanceJobs(newFakeBills(), newFakeRecs()).WithCards(cards).CloseStatements(context.Background(), true, day(2026, time.March, 3), time.Now())
+	if res.Examined != 3 || res.Done != 2 || res.Failed != 1 || len(cards.closed) != 2 {
+		t.Fatalf("res = %+v, closed = %v", res, cards.closed)
+	}
+}

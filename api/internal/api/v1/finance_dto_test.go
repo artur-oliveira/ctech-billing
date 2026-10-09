@@ -208,3 +208,38 @@ func TestARecurrenceEndsWithinFiftyYearsOfItsStart(t *testing.T) {
 		t.Fatalf("errs = %+v", errs)
 	}
 }
+
+func TestPurchaseValidationNamesTheFields(t *testing.T) {
+	var req purchaseRequest
+	if code := decodeProbe(t, `{"total":0,"installments":49,"date":"x","description":""}`, &req); code != 200 {
+		t.Fatalf("decode %d", code)
+	}
+	got := map[string]bool{}
+	for _, e := range req.validate(brcal.New(2026, time.October, 8)) {
+		got[e.Field] = true
+	}
+	for _, f := range []string{"total", "installments", "date", "description", "category_id"} {
+		if !got[f] {
+			t.Errorf("%s not refused (got %v)", f, got)
+		}
+	}
+	future := purchaseRequest{Date: "2026-10-09", Description: "TV", CategoryID: "c", Total: 100, Installments: 1}
+	if errs := future.validate(brcal.New(2026, time.October, 8)); len(errs) != 1 || errs[0].Field != "date" {
+		t.Errorf("a purchase dated tomorrow: %+v", errs)
+	}
+	tiny := purchaseRequest{Date: "2026-10-08", Description: "TV", CategoryID: "c", Total: 2, Installments: 3}
+	if errs := tiny.validate(brcal.New(2026, time.October, 8)); len(errs) != 1 || errs[0].Field != "installments" {
+		t.Errorf("3 installments of R$ 0,02: %+v", errs)
+	}
+}
+
+func TestCardValidationBoundsTheDays(t *testing.T) {
+	r := cardRequest{Name: "Visa", ClosingDay: 0, DueDay: 32, PayingAccountID: "bank"}
+	got := map[string]bool{}
+	for _, e := range r.validate() {
+		got[e.Field] = true
+	}
+	if !got["closing_day"] || !got["due_day"] || len(got) != 2 {
+		t.Fatalf("errors = %v", got)
+	}
+}

@@ -117,6 +117,9 @@ func (r *CardRepository) CloseAt(ctx context.Context, sp space.ResolvedSpace, re
 			ID: billID, Direction: finance.Payable, Amount: s.Total, AccountID: read.PayingAccountID, CategoryID: read.ID,
 			Description: "Fatura " + read.Name + " " + m.String(), Competence: closing, Due: due,
 			Status: finance.BillForecast, Origin: finance.OriginCardStatement, OriginRef: ref, PaymentGroup: ref,
+			// An empty list, not none: every later write guards on
+			// size(transaction_ids), which a missing attribute never satisfies.
+			TransactionIDs: []string{},
 		}, now)
 		if err != nil {
 			return err

@@ -590,6 +590,11 @@ func (r *BillRepository) Edit(ctx context.Context, sp space.ResolvedSpace, billI
 	if !cur.CanEdit() {
 		return finance.Bill{}, fmt.Errorf("%w: only a forecast bill can be edited", finance.ErrBillState)
 	}
+	if cur.Origin == finance.OriginCardStatement &&
+		(e.Amount != nil && *e.Amount != cur.Amount || e.CategoryID != nil && *e.CategoryID != cur.CategoryID) {
+		// A statement's amount is its purchases', and its "category" is the card.
+		return finance.Bill{}, fmt.Errorf("%w: o valor de uma fatura vem das compras; corrija com um estorno", finance.ErrBillState)
+	}
 	next := *cur
 	if e.Amount != nil {
 		next.Amount = *e.Amount

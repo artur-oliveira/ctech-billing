@@ -25,6 +25,7 @@ type financeHandlers struct {
 	bills  *services.FinanceBills
 	jobs   *services.FinanceJobs
 	recs   *repositories.RecurrenceRepository
+	cards  *repositories.CardRepository
 	ledger *repositories.LedgerRepository
 	clock  func() time.Time
 	spaces spaceLister
@@ -74,6 +75,16 @@ func financeRoutes() []financeRoute {
 		{"POST", "/accounts/:id/opening-balance", space.Configure, true, func(h *financeHandlers) fiber.Handler { return h.openingBalance }},
 		{"POST", "/transfers", space.Write, true, func(h *financeHandlers) fiber.Handler { return h.transfer }},
 		{"POST", "/transactions/:id/reverse", space.Write, true, func(h *financeHandlers) fiber.Handler { return h.reverse }},
+		// cards
+		{"GET", "/cards", space.Read, false, func(h *financeHandlers) fiber.Handler { return h.listCards }},
+		{"POST", "/cards", space.Configure, true, func(h *financeHandlers) fiber.Handler { return h.createCard }},
+		{"PATCH", "/cards/:id", space.Configure, true, func(h *financeHandlers) fiber.Handler { return h.patchCard }},
+		{"GET", "/cards/:id/statements/:month", space.Read, false, func(h *financeHandlers) fiber.Handler { return h.cardStatement }},
+		{"GET", "/cards/:id/purchases", space.Read, false, func(h *financeHandlers) fiber.Handler { return h.listPurchases }},
+		{"POST", "/cards/:id/purchases", space.Write, true, func(h *financeHandlers) fiber.Handler { return h.createPurchase }},
+		{"POST", "/cards/:id/purchases/:pid/refund", space.Write, true, func(h *financeHandlers) fiber.Handler { return h.refundPurchase }},
+		{"POST", "/cards/:id/purchases/:pid/advance", space.Write, true, func(h *financeHandlers) fiber.Handler { return h.advancePurchase }},
+		{"POST", "/cards/:id/close", space.Write, true, func(h *financeHandlers) fiber.Handler { return h.closeStatement }},
 		{"GET", "/reports/dre", space.Read, false, func(h *financeHandlers) fiber.Handler { return h.dre }},
 		{"GET", "/reports/cash-flow", space.Read, false, func(h *financeHandlers) fiber.Handler { return h.cashFlow }},
 		{"GET", "/settings", space.Read, false, func(h *financeHandlers) fiber.Handler { return h.getSettings }},
@@ -104,7 +115,7 @@ func registerFinance(v1 fiber.Router, d Deps, auth fiber.Handler, clock func() t
 	if d.Spaces == nil {
 		return
 	}
-	h := &financeHandlers{bills: d.FinanceBills, jobs: d.FinanceJobs, recs: d.Recurrences, ledger: d.Ledger, clock: clock, spaces: d.SpaceLister}
+	h := &financeHandlers{bills: d.FinanceBills, jobs: d.FinanceJobs, recs: d.Recurrences, cards: d.Cards, ledger: d.Ledger, clock: clock, spaces: d.SpaceLister}
 	idem := middleware.SpaceIdempotency(d.Idempotency, clock)
 	fin := v1.Group("/console/finance", auth)
 	mountSpaces(fin, h)
