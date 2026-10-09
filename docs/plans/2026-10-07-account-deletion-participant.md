@@ -32,16 +32,16 @@
 
 - **R1 No payment-gateway erasure.** Billing never talks to a payment rail and never stores card data, PIX keys or gateway customers (ARCHITECTURE § 2, § 9). It asks ctech-wallet to collect a PIX charge. Inventory § 8's "payment gateway used by billing" is therefore *none*; the Asaas side is wallet's. *Cost if wrong:* a future card rail adds one step to `Eraser.Purge`.
 - **R2 No NFS-e here.** Billing issues none (`ctech-dfe` is the suggested issuer). What stays is the invoice aggregate: invoice, lines, payment attempts, checkout sessions, credit notes, the S3 PDF, the audit rows and the canceled subscription. None has a TTL or all have ADR 0009's. *Cost if wrong:* none. The retained set only shrinks if legal says so.
-- **R3 Two blockers only:**
-  - `billing.invoice_open`: a live tenant-zero invoice that is `OPEN` with an amount due. Overdue is a count in `detail`, not a separate code.
+- **R3 Three blockers:**
+  - `billing.invoice_open`: a live tenant-zero invoice that is `OPEN` with an amount due. Overdue is a count in `detail`, not a separate code. `action_url` is the portal's invoice list.
+  - `billing.invoice_uncollectible`: a live tenant-zero invoice written off as `UNCOLLECTIBLE` with an amount due. User decision 2026-10-08: a written-off debt still blocks. It gets a **separate code**, not a branch of `invoice_open`, because the remedy differs. The portal cannot collect it (`Invoice.Payable` needs `OPEN`), so the person settles it through support, and the blocker carries no `action_url`.
   - `billing.tenant_owner`: the person owns a live billing tenant (`Organization.OwnerUserID`). Deleting them would orphan its console.
 
   Not blockers:
-  - *Subscriptions:* every live status (`INCOMPLETE`, `TRIALING`, `ACTIVE`, `PAST_DUE`, `PAUSED`) has an immediate `CANCELED` edge under `CauseCustomer`, so "cannot be cancelled now" cannot happen; the purge cancels them.
+  - *Subscriptions:* every live status (`INCOMPLETE`, `TRIALING`, `ACTIVE`, `PAST_DUE`, `PAUSED`) has an immediate `CANCELED` edge under `CauseCustomer`, so "cannot be cancelled now" cannot happen; the purge cancels them. Cancellation is immediate and credits nothing for the unused period (user decision 2026-10-08).
   - *Payment in dispute:* billing has no dispute state. A PIX MED/chargeback is wallet's blocker.
-  - *`UNCOLLECTIBLE` invoices:* written off, and the portal cannot pay one (`Invoice.Payable` needs `OPEN`).
 
-  *Cost if wrong:* an account with a written-off CTech debt is deleted. The invoice is retained, so the debt stays provable. Open question 1.
+  *Cost if wrong:* `invoice_uncollectible` clears only when support records the payment (`CauseManualPayment`), so a person who cannot pay through the portal stays blocked until support acts.
 - **R4 Only tenant zero is erased** (`PORTAL_ORGANIZATION_ID`, both modes). A customer in another tenant that carries a `user_id` is that merchant's record, and the merchant is the controller. It is reachable only through a per-tenant pointer: there is no cross-tenant index, and the IAM policy denies Scan. *Cost if wrong:* a `user_id` GSI and a loop over it.
 - **R5 Anonymize in place, keep the pointer.** `CustomerRepository.Anonymize` is the existing ADR 0009 path. The `CUSTOMER_USER#{sub}` pointer and `user_id` stay: the sub is opaque, and the pointer is what makes the portal answer "conta encerrada". *Cost if wrong:* service-scoped re-consent must clear them, which is that plan's job.
 - **R6 The lock is one choke point:** `Verifier.Middleware`, for every session token (non-empty `sid`).
@@ -60,12 +60,15 @@
   - the queue name from `ENVIRONMENT` (`{env}-ctech-billing-erasure`, resolved with `GetQueueUrl`);
   - the ack URL from `ACCOUNT_BASE_URL`;
   - the revocation Valkey URL from `VALKEY_URL` without its DB path;
-  - the portal invoices URL from `CHECKOUT_BASE_URL`'s origin.
+  - the portal invoices URL from `CHECKOUT_BASE_URL`'s origin;
+  - the erasure client's id and secret (R16): the consumer reads them at start from SSM paths derived from `ENVIRONMENT`, unless `ERASURE_CLIENT_ID`/`ERASURE_CLIENT_SECRET` are set.
 
-  *Cost if wrong:* a Go↔Terraform naming coupling, the same kind `TABLE_PREFIX` already has.
+  terraform/README says the next AL2023 template addition must first move the timer units to S3. Reading two parameters in Go avoids that migration.
+
+  *Cost if wrong:* a Go↔Terraform naming coupling, the same kind `TABLE_PREFIX` already has, plus one new SDK module (`service/ssm`).
 - **R10 The consumer runs in the API process.** Both processes on every instance run it; SQS hands each message to one.
-  - It starts only when the ctech-account client is configured and DynamoDB is not local.
-  - A missing queue is logged and the API keeps serving.
+  - It starts only when ctech-account's URLs are configured and DynamoDB is not local.
+  - A missing queue, or an erasure client still holding Terraform's `SET-OUT-OF-BAND` placeholder, is logged, and the API keeps serving.
 
   *Cost if wrong:* a misconfigured environment never acks, and ctech-account alarms after 48 h.
 - **R11 The purge is a new `SpacePurger`, not a `LedgerRepository` method.** `TestLedgerRepositoryHasNoEditPath` keeps meaning "no edit path". The space is built with `space.ForJob`, injected from `cmd/server`, so `TestForJobIsNotCalledFromInternal` stays untouched.
@@ -78,7 +81,12 @@
 - **R13 Tombstones never expire** (`erasedTTL` 0). Billing keeps invoices with no TTL, so it may meet the sub forever.
 - **R14 Valkey: no per-user deletion.** Billing's DB 3 holds the JWKS, service tokens and 60 s membership cache entries, nothing personal beyond a sub inside a 60 s key. *Cost if wrong:* 60 s.
 - **R15 Blockers are live-mode only.** Test money is not owed. The purge still covers both modes.
-- **R16 The acks use billing's existing ctech-account client** (`ACCOUNT_CLIENT_ID`, the membership client) with a second token manager for `internal:account:erasure-ack`. ctech-account matches acks on `azp`, so that client id is the one in its `ERASURE_PARTICIPANTS`.
+- **R16 The acks use a dedicated confidential client** (user decision 2026-10-08), not billing's membership client. Its only grant is `internal:account:erasure-ack`. A leaked membership credential therefore cannot ack an erasure, and this client cannot read memberships.
+  - Config: `ERASURE_CLIENT_ID`/`ERASURE_CLIENT_SECRET`, falling back to the SecureStrings `/ctech-billing/{env}/billing/erasure-client-id` and `…/erasure-client-secret`.
+  - Terraform declares both SecureStrings with a `SET-OUT-OF-BAND` placeholder and `ignore_changes`, like the collection secrets.
+  - The operator creates the client in ctech-account, grants it the scope, and writes both values with `aws ssm put-parameter --overwrite`.
+  - ctech-account matches acks on `azp`, so this client's id is the `client_id` in its `ERASURE_PARTICIPANTS`.
+  - The token URL is the existing `ACCOUNT_TOKEN_URL`.
 - **R17 Queue visibility timeout 900 s, `maxReceiveCount` 5, DLQ alarm > 0.** The slowest purge reads tenant zero's whole invoice range once (`AllByCustomer`). 900 s is far above twice that today.
 
 ## Global Constraints
@@ -97,7 +105,8 @@
   - SNS topic: `{env}-account-user-erasure`, ARN in SSM `/ctech/{env}/account/erasure-topic-arn`.
   - Subscription: `FilterPolicy {"services":["billing"]}`, `filter_policy_scope = "MessageAttributes"`, raw delivery on.
 - **State table:** `{prefix}_erasure_state`, partition key `pk` (S), TTL attribute `ttl`, declared in `schema.json` (so Terraform creates it).
-- **Blocker codes** are stable and translated by the account UI, so they are never renamed: `billing.invoice_open`, `billing.tenant_owner`.
+- **Blocker codes** are stable and translated by the account UI, so they are never renamed: `billing.invoice_open`, `billing.invoice_uncollectible`, `billing.tenant_owner`.
+- **Deployment check (user decision 2026-10-08):** ctech-account mints the eligibility token with `iss` = its issuer URL. That must equal billing's `CTECH_ISSUER_URL` (`/ctech-account/{env}/app-url`), and `aud` must equal billing's `SERVICE_AUDIENCE`. Verify both in dev before billing is added to `ERASURE_PARTICIPANTS` (Task 11, PLAN.md operator item).
 - **DynamoDB:** no `Scan` anywhere (the IAM policy denies it). Batch deletes are at most 25 keys per `BatchWriteItem`.
 - **Retained:** invoices and everything under `INVOICE#`, canceled subscriptions, audit rows (except personal-space finance audit), invoice PDFs. **Anonymized:** the tenant-zero customer. **Erased:** personal finance spaces and the finance spaces of `organizations[]`.
 - **Rollout gate:** legal validation of the inventory (overview § 9 step 1) comes before ctech-account adds `billing` to `ERASURE_PARTICIPANTS` in prod. This code ships dark until then: no message reaches billing's queue.
@@ -1227,7 +1236,7 @@ git commit -m "feat(api): SpacePurger erases a finance space, resumable (ADR 002
 **Interfaces:**
 - Consumes: the repository methods from Tasks 4–5, `CustomerRepository.GetByUser`/`Anonymize`, `OrganizationRepository.GetByOwner`, `SubscriptionRepository.Transition`, and `erasure.Blocker`/`Ack`/`Message`/`ResultDone`/`ResultBlocked`.
 - Produces:
-  - `services.BlockerInvoiceOpen = "billing.invoice_open"` and `services.BlockerTenantOwner = "billing.tenant_owner"`
+  - `services.BlockerInvoiceOpen = "billing.invoice_open"`, `services.BlockerInvoiceUncollectible = "billing.invoice_uncollectible"` and `services.BlockerTenantOwner = "billing.tenant_owner"`
   - `services.NewEraser(customers *repositories.CustomerRepository, subs *repositories.SubscriptionRepository, invoices *repositories.InvoiceRepository, orgs *repositories.OrganizationRepository, portalOrganizationID, invoicesURL string) *Eraser`
   - `(*Eraser).WithPurge(p *repositories.SpacePurger, spaceFor func(owner string, livemode bool) (space.ResolvedSpace, error)) *Eraser`
   - `(*Eraser).Blockers(ctx context.Context, sub string) ([]erasure.Blocker, error)`
@@ -1371,6 +1380,34 @@ func TestOwningATenantBlocksErasure(t *testing.T) {
 		t.Fatalf("blockers = %+v, %v; want %s for %s", blockers, err, services.BlockerTenantOwner, e.org.ID)
 	}
 }
+
+// A written-off CTech debt still blocks deletion (user decision 2026-10-08).
+// It gets its own code and no action_url, because the portal cannot collect
+// it. The purge's re-check refuses too, and changes nothing.
+func TestAWrittenOffInvoiceBlocksErasure(t *testing.T) {
+	ctx := ctxT(t)
+	e := newPortal(t)
+	inv := newInvoiceFor(t, e.org, e.customer.ID)
+	finalizeInvoice(t, inv)
+	if _, err := repositories.NewInvoiceRepository(testDB, testCfg).Transition(ctx, inv, billing.InvoiceUncollectible,
+		billing.CauseDunningExhausted, "test", "req_setup", now()); err != nil {
+		t.Fatal(err)
+	}
+
+	blockers, err := eraserFor(e).Blockers(ctx, e.userID)
+	if err != nil || len(blockers) != 1 || blockers[0].Code != services.BlockerInvoiceUncollectible ||
+		blockers[0].ActionURL != "" || blockers[0].Detail["amount_cents"] != int64(4990) || blockers[0].Detail["count"] != 1 {
+		t.Fatalf("blockers = %+v, %v; want one %s for 4990 with no action_url", blockers, err, services.BlockerInvoiceUncollectible)
+	}
+	ack, err := eraserFor(e).Purge(ctx, eraseMessage(e.userID))
+	if err != nil || ack.Result != erasure.ResultBlocked {
+		t.Fatalf("purge = %+v, %v; want blocked", ack, err)
+	}
+	c, err := repositories.NewCustomerRepository(testDB, testCfg).Get(ctx, e.org.ID, true, e.customer.ID)
+	if err != nil || c.Anonymized {
+		t.Fatalf("a blocked purge anonymized the customer: %+v, %v", c, err)
+	}
+}
 ```
 
 - [ ] **Step 2: Run them to verify they fail**
@@ -1404,6 +1441,11 @@ const (
 	// BlockerInvoiceOpen is a live tenant-zero invoice still owed. The person
 	// pays it in the portal (action_url) and asks again.
 	BlockerInvoiceOpen = "billing.invoice_open"
+	// BlockerInvoiceUncollectible is a live tenant-zero invoice that dunning
+	// wrote off with an amount still due. A written-off debt still blocks (user
+	// decision 2026-10-08). The portal cannot collect it, so support records the
+	// payment (CauseManualPayment), and the blocker has no action_url.
+	BlockerInvoiceUncollectible = "billing.invoice_uncollectible"
 	// BlockerTenantOwner is a person who owns a billing tenant. Erasing them
 	// would leave its console with nobody to reach it. Support moves the owner.
 	BlockerTenantOwner = "billing.tenant_owner"
@@ -1479,24 +1521,38 @@ func (e *Eraser) Blockers(ctx context.Context, sub string) ([]erasure.Blocker, e
 	if err != nil {
 		return nil, err
 	}
-	var count, overdue int
-	var due billing.Cents
+	var open, overdue, writtenOff int
+	var openDue, writtenOffDue billing.Cents
 	today := brcal.Today()
 	for _, inv := range invoices {
-		if inv.Status != billing.InvoiceOpen || inv.AmountDue() <= 0 {
+		if inv.AmountDue() <= 0 {
 			continue
 		}
-		count++
-		due += inv.AmountDue()
-		if inv.IsOverdue(today) {
-			overdue++
+		switch inv.Status {
+		case billing.InvoiceOpen:
+			open++
+			openDue += inv.AmountDue()
+			if inv.IsOverdue(today) {
+				overdue++
+			}
+		case billing.InvoiceUncollectible:
+			writtenOff++
+			writtenOffDue += inv.AmountDue()
 		}
 	}
-	if count > 0 {
+	if open > 0 {
 		out = append(out, erasure.Blocker{
 			Code:      BlockerInvoiceOpen,
-			Detail:    map[string]any{"count": count, "overdue": overdue, "amount_cents": int64(due)},
+			Detail:    map[string]any{"count": open, "overdue": overdue, "amount_cents": int64(openDue)},
 			ActionURL: e.invoicesURL,
+		})
+	}
+	if writtenOff > 0 {
+		// No action_url: the portal cannot collect a written-off invoice
+		// (Invoice.Payable needs OPEN). Support records the payment.
+		out = append(out, erasure.Blocker{
+			Code:   BlockerInvoiceUncollectible,
+			Detail: map[string]any{"count": writtenOff, "amount_cents": int64(writtenOffDue)},
 		})
 	}
 	return out, nil
@@ -1593,7 +1649,7 @@ func (e *Eraser) eraseCustomer(ctx context.Context, live bool, m erasure.Message
 - [ ] **Step 4: Run the suites**
 
 Run: `go vet ./... && go test ./internal/services/ -count=1 && make test-integration`
-Expected: `ok`, and PASS for `TestPurgeIsRefusedWhileAnInvoiceIsOpenAndChangesNothing`, `TestPurgeErasesThePersonAndKeepsTheDocuments` and `TestOwningATenantBlocksErasure`.
+Expected: `ok`, and PASS for `TestPurgeIsRefusedWhileAnInvoiceIsOpenAndChangesNothing`, `TestPurgeErasesThePersonAndKeepsTheDocuments`, `TestOwningATenantBlocksErasure` and `TestAWrittenOffInvoiceBlocksErasure`.
 
 - [ ] **Step 5: Commit**
 
@@ -1974,19 +2030,26 @@ git commit -m "feat(api): the finance job skips spaces locked or erased by accou
 
 ---
 
-### Task 9: Run the consumer beside the API
+### Task 9: Run the consumer beside the API, with its own client
 
 **Files:**
-- Modify: `api/internal/app/erasure.go` (`BuildErasureConsumer`, `erasureQueueName`)
+- Modify: `api/internal/config/config.go` (`ErasureClientID`, `ErasureClientSecret`)
+- Modify: `api/internal/app/erasure.go` (`BuildErasureConsumer`, `erasureQueueName`, `erasureClientParams`, `usableErasureClient`, `erasureCredentials`)
 - Modify: `api/internal/app/erasure_test.go`
 - Modify: `api/cmd/server/main.go`
-- Modify: `api/go.mod`, `api/go.sum` (`aws-sdk-go-v2/service/sqs` becomes a direct requirement)
+- Modify: `api/go.mod`, `api/go.sum`:
+  - `aws-sdk-go-v2/service/sqs` becomes a direct requirement;
+  - `aws-sdk-go-v2/service/ssm` is new, from the AWS SDK family billing already pins.
 
 **Interfaces:**
 - Consumes: `erasure.NewConsumer`, `erasure.NewAckClient`, `erasure.NewStore`, `oauth2client.New`, `newEraser` (Task 7), `(*Eraser).WithPurge`/`Purge` (Task 6), `repositories.NewSpacePurger` (Task 5).
 - Produces:
+  - `config.Config.ErasureClientID` (`ERASURE_CLIENT_ID`) and `config.Config.ErasureClientSecret` (`ERASURE_CLIENT_SECRET`)
   - `app.BuildErasureConsumer(ctx context.Context, cfg *config.Config, spaceFor func(owner string, livemode bool) (space.ResolvedSpace, error)) (*erasure.Consumer, error)`
-  - `app.erasureQueueName(env string) string` = `{env}-ctech-billing-erasure`, matched by Task 10's Terraform
+  - `app.erasureQueueName(env string) string` = `{env}-ctech-billing-erasure`
+  - `app.erasureClientParams(env string) (id, secret string)` = `/ctech-billing/{env}/billing/erasure-client-{id,secret}`
+
+  Task 10's Terraform matches both names.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1994,20 +2057,28 @@ Append to `api/internal/app/erasure_test.go` and add the imports `"context"` and
 
 ```go
 // terraform/billing/erasure.tf names the queue "${local.name}-erasure" with
-// local.name = "${var.environment}-ctech-billing". Change both or neither.
-func TestErasureQueueNameMatchesTerraform(t *testing.T) {
+// local.name = "${var.environment}-ctech-billing", and the client parameters
+// "${local.ssm_prefix}/erasure-client-{id,secret}" with
+// local.ssm_prefix = "/ctech-billing/${var.environment}/billing".
+// Change both sides or neither.
+func TestErasureNamesMatchTerraform(t *testing.T) {
 	if got := erasureQueueName("prod"); got != "prod-ctech-billing-erasure" {
 		t.Fatalf("erasureQueueName(prod) = %q", got)
+	}
+	id, secret := erasureClientParams("prod")
+	if id != "/ctech-billing/prod/billing/erasure-client-id" || secret != "/ctech-billing/prod/billing/erasure-client-secret" {
+		t.Fatalf("erasureClientParams(prod) = %q, %q", id, secret)
 	}
 }
 
 // A laptop with real AWS credentials and a local DynamoDB must never consume
 // dev's queue into a local table.
-func TestNoConsumerWithoutAnAccountClientOrAgainstALocalTable(t *testing.T) {
-	full := config.Config{Env: "dev", AccountBaseURL: "https://a", AccountTokenURL: "https://a/t", AccountClientID: "c", AccountClientSecret: "s"}
+func TestNoConsumerWithoutCtechAccountOrAgainstALocalTable(t *testing.T) {
+	full := config.Config{Env: "dev", AccountBaseURL: "https://a", AccountTokenURL: "https://a/t",
+		ErasureClientID: "billing-erasure", ErasureClientSecret: "s"}
 	for name, cfg := range map[string]config.Config{
-		"no account client": {Env: "dev"},
-		"local dynamodb":    func() config.Config { c := full; c.DynamoDBEndpoint = "http://localhost:8124"; return c }(),
+		"no ctech-account": {Env: "dev"},
+		"local dynamodb":   func() config.Config { c := full; c.DynamoDBEndpoint = "http://localhost:8124"; return c }(),
 	} {
 		c, err := BuildErasureConsumer(context.Background(), &cfg, nil)
 		if c != nil || err != nil {
@@ -2015,14 +2086,40 @@ func TestNoConsumerWithoutAnAccountClientOrAgainstALocalTable(t *testing.T) {
 		}
 	}
 }
+
+func TestAnUnsetErasureClientIsRefused(t *testing.T) {
+	for _, pair := range [][2]string{{"", ""}, {"SET-OUT-OF-BAND", "SET-OUT-OF-BAND"}, {"billing-erasure", ""}} {
+		if err := usableErasureClient(pair[0], pair[1]); err == nil {
+			t.Errorf("client %q/%q accepted; a placeholder must never mint a token", pair[0], pair[1])
+		}
+	}
+	if err := usableErasureClient("billing-erasure", "s3cret"); err != nil {
+		t.Fatalf("a real client was refused: %v", err)
+	}
+}
 ```
 
 - [ ] **Step 2: Run them to verify they fail**
 
-Run: `go test ./internal/app/ -run 'TestErasureQueueName|TestNoConsumer'`
-Expected: FAIL, `undefined: erasureQueueName`, `undefined: BuildErasureConsumer`.
+Run: `go test ./internal/app/ -run 'TestErasureNames|TestNoConsumer|TestAnUnsetErasureClient'`
+Expected: FAIL, `undefined: erasureQueueName`, `undefined: BuildErasureConsumer`, `unknown field ErasureClientID`.
 
 - [ ] **Step 3: Implement**
+
+`config.go`, after `AccountClientSecret`:
+
+```go
+	// The confidential client that acks account-deletion purges to ctech-account
+	// (scope internal:account:erasure-ack and nothing else). It is dedicated so
+	// that the membership credential above cannot ack an erasure, and this one
+	// cannot read memberships.
+	//
+	// Empty means "read them from SSM": /ctech-billing/{env}/billing/erasure-client-{id,secret},
+	// declared by terraform/billing/erasure.tf. The consumer reads them at start
+	// rather than through the userdata, which is at its 16 KiB ceiling.
+	ErasureClientID     string `env:"ERASURE_CLIENT_ID"`
+	ErasureClientSecret string `env:"ERASURE_CLIENT_SECRET"`
+```
 
 `app/erasure.go`:
 - Replace the import block with:
@@ -2030,6 +2127,7 @@ Expected: FAIL, `undefined: erasureQueueName`, `undefined: BuildErasureConsumer`
 ```go
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -2041,6 +2139,7 @@ import (
 	awscfg "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
+	"github.com/aws/aws-sdk-go-v2/service/ssm"
 	"gopkg.aoctech.app/api-commons/cache"
 	"gopkg.aoctech.app/api-commons/erasure"
 	"gopkg.aoctech.app/api-commons/oauth2client"
@@ -2067,6 +2166,43 @@ const erasureAckScope = "internal:account:erasure-ack"
 // ceiling (terraform/README).
 func erasureQueueName(env string) string { return env + "-ctech-billing-erasure" }
 
+// erasureClientParams are terraform/billing/erasure.tf's SecureStrings for the
+// dedicated ack client.
+func erasureClientParams(env string) (id, secret string) {
+	prefix := "/ctech-billing/" + env + "/billing/erasure-client-"
+	return prefix + "id", prefix + "secret"
+}
+
+// usableErasureClient refuses an empty pair or Terraform's placeholder.
+func usableErasureClient(id, secret string) error {
+	if id == "" || secret == "" || id == "SET-OUT-OF-BAND" || secret == "SET-OUT-OF-BAND" {
+		return errors.New("the erasure client is not set (ERASURE_CLIENT_ID/SECRET or its SSM parameters)")
+	}
+	return nil
+}
+
+// erasureCredentials returns the dedicated ack client: from the environment
+// when set, otherwise from its two SSM SecureStrings.
+func erasureCredentials(ctx context.Context, awsConf aws.Config, cfg *config.Config) (string, string, error) {
+	if cfg.ErasureClientID != "" || cfg.ErasureClientSecret != "" {
+		return cfg.ErasureClientID, cfg.ErasureClientSecret, usableErasureClient(cfg.ErasureClientID, cfg.ErasureClientSecret)
+	}
+	idName, secretName := erasureClientParams(cfg.Env)
+	out, err := ssm.NewFromConfig(awsConf).GetParameters(ctx, &ssm.GetParametersInput{
+		Names:          []string{idName, secretName},
+		WithDecryption: aws.Bool(true),
+	})
+	if err != nil {
+		return "", "", fmt.Errorf("reading the erasure client from SSM: %w", err)
+	}
+	values := map[string]string{}
+	for _, p := range out.Parameters {
+		values[aws.ToString(p.Name)] = aws.ToString(p.Value)
+	}
+	id, secret := values[idName], values[secretName]
+	return id, secret, usableErasureClient(id, secret)
+}
+
 // BuildErasureConsumer wires billing's side of the account-deletion saga: the
 // SQS consumer that locks, purges and acks (api-commons/erasure).
 //
@@ -2075,16 +2211,20 @@ func erasureQueueName(env string) string { return env + "-ctech-billing-erasure"
 // forbidden under internal/ (TestForJobIsNotCalledFromInternal).
 //
 // It returns (nil, nil) where there is nothing to consume for: no ctech-account
-// client (a laptop, the integration tests), or a local DynamoDB.
+// URLs (a laptop, the integration tests), or a local DynamoDB. It returns an
+// error, which the caller logs, for a missing queue or an unset erasure client.
 func BuildErasureConsumer(ctx context.Context, cfg *config.Config, spaceFor func(owner string, livemode bool) (space.ResolvedSpace, error)) (*erasure.Consumer, error) {
-	if cfg.AccountBaseURL == "" || cfg.AccountTokenURL == "" || cfg.AccountClientID == "" ||
-		cfg.AccountClientSecret == "" || cfg.DynamoDBEndpoint != "" {
-		slog.Warn("account erasure consumer not started: no ctech-account client, or a local DynamoDB")
+	if cfg.AccountBaseURL == "" || cfg.AccountTokenURL == "" || cfg.DynamoDBEndpoint != "" {
+		slog.Warn("account erasure consumer not started: no ctech-account URLs, or a local DynamoDB")
 		return nil, nil
 	}
 	awsConf, err := awscfg.LoadDefaultConfig(ctx, awscfg.WithRegion(cfg.AWSRegion))
 	if err != nil {
 		return nil, fmt.Errorf("aws config: %w", err)
+	}
+	clientID, clientSecret, err := erasureCredentials(ctx, awsConf, cfg)
+	if err != nil {
+		return nil, err
 	}
 	queues := sqs.NewFromConfig(awsConf)
 	name := erasureQueueName(cfg.Env)
@@ -2099,7 +2239,7 @@ func BuildErasureConsumer(ctx context.Context, cfg *config.Config, spaceFor func
 	hc := &http.Client{Timeout: 10 * time.Second}
 	acks := erasure.NewAckClient(hc,
 		strings.TrimSuffix(cfg.AccountBaseURL, "/")+"/v1.0/internal/erasure/ack",
-		oauth2client.New(hc, newCache(cfg), cfg.AccountTokenURL, cfg.AccountClientID, cfg.AccountClientSecret, erasureAckScope))
+		oauth2client.New(hc, newCache(cfg), cfg.AccountTokenURL, clientID, clientSecret, erasureAckScope))
 	eraser := newEraser(db, cfg).WithPurge(repositories.NewSpacePurger(db, cfg), spaceFor)
 	return erasure.NewConsumer(queues, aws.ToString(q.QueueUrl), erasureService,
 		erasure.NewStore(db, cfg.TablePrefix, 0), eraser.Purge, acks), nil
@@ -2179,23 +2319,23 @@ func main() {
 }
 ```
 
-Then run `go mod tidy` (from `api/`), which promotes `github.com/aws/aws-sdk-go-v2/service/sqs` from indirect to direct.
+Then run `go get github.com/aws/aws-sdk-go-v2/service/ssm && go mod tidy` (from `api/`). That adds `service/ssm` and promotes `github.com/aws/aws-sdk-go-v2/service/sqs` from indirect to direct.
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
-Run: `go mod tidy && go build ./... && go test ./... -race -count=1 && go test ./internal/space/ -run TestForJobIsNotCalledFromInternal -count=1`
+Run: `go get github.com/aws/aws-sdk-go-v2/service/ssm && go mod tidy && go build ./... && go test ./... -race -count=1 && go test ./internal/space/ -run TestForJobIsNotCalledFromInternal -count=1`
 Expected: `ok` everywhere. The ForJob guard still passes, because the only new call is in `cmd/server`.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add go.mod go.sum internal/app/erasure.go internal/app/erasure_test.go cmd/server/main.go
-git commit -m "feat(api): run the account-erasure consumer beside the API"
+git add go.mod go.sum internal/config/config.go internal/app/erasure.go internal/app/erasure_test.go cmd/server/main.go
+git commit -m "feat(api): run the account-erasure consumer beside the API, with a dedicated ack client"
 ```
 
 ---
 
-### Task 10: Terraform — queue, DLQ, subscription, alarm, IAM
+### Task 10: Terraform — queue, DLQ, subscription, alarm, IAM, ack-client parameters
 
 The state table needs nothing here: `dynamodb.tf` already creates every key of `schema.json` (Task 2), and `table_access` already covers every table in that set. Run commands from the repo root.
 
@@ -2204,7 +2344,7 @@ The state table needs nothing here: `dynamodb.tf` already creates every key of `
 
 **Interfaces:**
 - Consumes: `local.name`, `local.alerts_topic_arn`, `aws_iam_role.billing`, SSM `/ctech/{env}/account/erasure-topic-arn` (written by ctech-account's `iam-stack.ts`).
-- Produces: queue `{env}-ctech-billing-erasure` (the name `app.erasureQueueName` derives), DLQ `{env}-ctech-billing-erasure-dlq`, the SNS subscription, alarm `{env}-ctech-billing-erasure-dlq`.
+- Produces: queue `{env}-ctech-billing-erasure` (the name `app.erasureQueueName` derives), DLQ `{env}-ctech-billing-erasure-dlq`, the SNS subscription, alarm `{env}-ctech-billing-erasure-dlq`, SecureStrings `/ctech-billing/{env}/billing/erasure-client-{id,secret}` (the paths `app.erasureClientParams` derives).
 
 - [ ] **Step 1: Write the file**
 
@@ -2318,6 +2458,31 @@ resource "aws_iam_role_policy" "erasure_consume" {
   role   = aws_iam_role.billing.id
   policy = data.aws_iam_policy_document.erasure_consume.json
 }
+
+# The dedicated confidential client that acks purges to ctech-account. Its only
+# grant is internal:account:erasure-ack, kept apart from the membership client.
+# The service reads both values at start (internal/app/erasure.go,
+# erasureClientParams), not through the userdata.
+#
+# Same discipline as the collection secrets: Terraform creates the parameters
+# and never their values. The operator creates the client in ctech-account and
+# runs `aws ssm put-parameter --overwrite` for each value. Until then the
+# consumer logs that the client is unset and does not start. The role already
+# reads and decrypts everything under local.ssm_prefix (iam.tf, ssm_read).
+resource "aws_ssm_parameter" "erasure_client" {
+  for_each = {
+    id     = "${local.ssm_prefix}/erasure-client-id"
+    secret = "${local.ssm_prefix}/erasure-client-secret"
+  }
+
+  name  = each.value
+  type  = "SecureString"
+  value = "SET-OUT-OF-BAND"
+
+  lifecycle {
+    ignore_changes = [value]
+  }
+}
 ```
 
 - [ ] **Step 2: Validate**
@@ -2329,7 +2494,7 @@ Expected: no `fmt` output, then `Success! The configuration is valid.`
 
 ```bash
 git add terraform/billing/erasure.tf
-git commit -m "feat(infra): erasure queue, DLQ, filtered subscription and alarm for billing"
+git commit -m "feat(infra): erasure queue, DLQ, filtered subscription, alarm and ack-client parameters for billing"
 ```
 
 ---
@@ -2351,12 +2516,12 @@ Billing is a participant in ctech-account's erasure saga
 | Piece | Where |
 |---|---|
 | Eligibility: `GET /v1.0/internal/erasure/eligibility/:sub`, scope `internal:billing:erasure-eligibility` (minted by ctech-account only; not in the scope manifest) | `internal/api/v1/erasure.go` |
-| Blockers: `billing.invoice_open` (a live tenant-zero invoice still owed, with `count`, `overdue` and `amount_cents`, and the portal's `/invoices` as `action_url`), `billing.tenant_owner` (the person owns a billing tenant) | `services.Eraser.Blockers` |
+| Blockers: `billing.invoice_open` (a live tenant-zero invoice still owed, with `count`, `overdue` and `amount_cents`, and the portal's `/invoices` as `action_url`), `billing.invoice_uncollectible` (a written-off invoice still owed, with `count` and `amount_cents` and no `action_url`, because support records that payment), `billing.tenant_owner` (the person owns a billing tenant) | `services.Eraser.Blockers` |
 | Lock: every session token of a locked or erased `sub` gets 403 `/problems/account-locked`, on every route | `middleware.RefuseLocked`, inside `Verifier.Middleware` |
 | Token cut-off: the jwtverify revocation list, read from Valkey **DB 0** (`VALKEY_URL` without its DB path) | `internal/app/erasure.go` |
 | Purge: re-checks the blockers; cancels the person's tenant-zero subscriptions now, clears their metadata, anonymizes the customer in place; deletes their personal finance spaces (live and test) and those of every organization in `organizations[]` | `services.Eraser.Purge`, `repositories.SpacePurger` |
 | Kept: invoices, lines, payment attempts, credit notes, invoice PDFs, the canceled subscriptions, audit rows (except a personal space's finance audit) | ADR 0009, ADR 0026 |
-| Consumer: SQS `{env}-ctech-billing-erasure` (+ `-dlq`), run in the API process, acks to `{ACCOUNT_BASE_URL}/v1.0/internal/erasure/ack` with `internal:account:erasure-ack` | `app.BuildErasureConsumer`, `terraform/billing/erasure.tf` |
+| Consumer: SQS `{env}-ctech-billing-erasure` (+ `-dlq`), run in the API process, acks to `{ACCOUNT_BASE_URL}/v1.0/internal/erasure/ack` with a **dedicated** client holding only `internal:account:erasure-ack` (`ERASURE_CLIENT_ID`/`SECRET`, or the SecureStrings `/ctech-billing/{env}/billing/erasure-client-{id,secret}`) | `app.BuildErasureConsumer`, `terraform/billing/erasure.tf` |
 | State and tombstones: `{env}_billing_erasure_state` | `api-commons/erasure.Store` |
 
 The daily finance job skips any space whose owner is locked or erased (`services.ErasedSpace`).
@@ -2392,11 +2557,15 @@ Cross-repo: the personal-space purge trigger exists. Billing consumes ctech-acco
 ## Account deletion (LGPD) — billing as a saga participant
 Plan: [`docs/plans/2026-10-07-account-deletion-participant.md`](docs/plans/2026-10-07-account-deletion-participant.md).
 - [x] api-commons v1.13.1; `erasure_state` table; lock on every session route; revocation list (DB 0)
-- [x] Eligibility route and blockers (`billing.invoice_open`, `billing.tenant_owner`)
+- [x] Eligibility route and blockers (`billing.invoice_open`, `billing.invoice_uncollectible`, `billing.tenant_owner`)
 - [x] Purge: subscriptions canceled, customer anonymized, personal and erased-organization finance
       spaces deleted (`SpacePurger`, every table classified by a test); the finance job skips erased spaces
 - [x] Consumer in the API process; queue, DLQ, filtered subscription, alarm (`terraform/billing/erasure.tf`)
-- [ ] Operator: grant `internal:account:erasure-ack` to billing's ctech-account client and add billing to
+- [ ] Operator:
+  - create billing's dedicated erasure client in ctech-account with only `internal:account:erasure-ack`;
+  - write its id and secret to `/ctech-billing/{env}/billing/erasure-client-{id,secret}` (`aws ssm put-parameter --overwrite`);
+  - check in dev that ctech-account's minted eligibility token has `iss` = billing's `CTECH_ISSUER_URL` and `aud` = `SERVICE_AUDIENCE`;
+  - and add billing to
       ctech-account's `ERASURE_PARTICIPANTS`, **after** the legal validation of the data inventory
 - [ ] Later: organization customers (`CUSTOMER_ORG#`, ADR 0025 amendment) once they exist; service-scoped
       unlink (`Store.Clear` on re-consent) once ctech-account builds it
@@ -2452,7 +2621,7 @@ The state table is `schema.json`'s `erasure_state`.
 
 ```markdown
 | `/ctech/{env}/account/erasure-topic-arn` (the account-deletion topic) | ctech-account (CDK) | `terraform/billing/erasure.tf` |
-| Billing's ctech-account client (`account-client-id`) granted `internal:account:erasure-ack`, and a `billing` entry in ctech-account's `ERASURE_PARTICIPANTS` (`url` = billing's internal base URL + `/v1.0`, `audience` = billing's `SERVICE_AUDIENCE`, `client_id` = that client) | ctech-account, operator, after legal validation | account deletion |
+| A dedicated confidential client in ctech-account holding only `internal:account:erasure-ack`, its id and secret written to `/ctech-billing/{env}/billing/erasure-client-{id,secret}` (Terraform creates the placeholders), and a `billing` entry in ctech-account's `ERASURE_PARTICIPANTS` (`url` = billing's internal base URL + `/v1.0`, `audience` = billing's `SERVICE_AUDIENCE`, `client_id` = that client). **Deployment check:** the eligibility token ctech-account mints has `iss` = billing's `CTECH_ISSUER_URL` | ctech-account, operator, after legal validation | account deletion |
 ```
 
 - [ ] **Step 8: Commit**
@@ -2471,14 +2640,14 @@ git commit -m "docs: billing as an account-deletion saga participant"
     - `service`: `billing`
     - `url`: `https://billing[-env].internal.aoctech.app/v1.0`, with the scheme account uses for its other internal base URLs
     - `audience`: billing's `SERVICE_AUDIENCE` (`https://billing[-env].aoctech.app`)
-    - `client_id`: billing's existing `account-client-id`
-  - Grants `internal:account:erasure-ack` to that client.
+    - `client_id`: billing's **dedicated erasure client** (R16), created for this purpose
+  - Grants that client `internal:account:erasure-ack` and nothing else. The operator writes its id and secret to billing's SSM placeholders.
   - Its minted eligibility token's `iss` must equal billing's `CTECH_ISSUER_URL` (`/ctech-account/{env}/app-url`), the check its phase-3 plan already asks for.
-  - Its UI translates `billing.invoice_open` and `billing.tenant_owner`.
+  - Its UI translates `billing.invoice_open`, `billing.invoice_uncollectible` and `billing.tenant_owner`.
   - The data inventory § 6 / § 8 should record:
     - no payment gateway in billing;
     - the table list (`{env}_billing_*`, `schema.json`);
-    - the two blocker codes;
+    - the three blocker codes;
     - no subscription or dispute blocker (R3).
   - Gated on the legal validation of the matrix.
 - **ctech-go-common:** none in code. Its `CLAUDE.md` consumer list should say `ctech-billing/api (v1.13.1)`.
