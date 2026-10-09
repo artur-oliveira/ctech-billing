@@ -5,6 +5,7 @@ package integration
 import (
 	"context"
 	"errors"
+	"gopkg.aoctech.app/billing/api/internal/domain/billing"
 	"testing"
 	"time"
 
@@ -74,4 +75,65 @@ func TestACardIsALiabilityAccountWithItsSettings(t *testing.T) {
 		t.Fatalf("update = %+v, %v", up, err)
 	}
 	_ = brcal.Date{}
+}
+func TestAPurchaseInInstallmentsPostsOnceAndBillsMonthly(t *testing.T) {
+	f, card := newCardsFixture(t)
+	ctx := context.Background()
+	p, err := f.cards.AddPurchase(ctx, f.sp, card.ID, repositories.Purchase{
+		Description: "Geladeira", CategoryID: "food", Date: brcal.New(2026, time.March, 5), Total: 120000,
+		Installments: make([]finance.Installment, 3),
+	}, repositories.PostMeta{Actor: "u"}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// After the closing day (3rd): first installment on April.
+	if p.Installments[0].Statement != (finance.Month{Year: 2026, Month: time.April}) {
+		t.Fatalf("first statement = %v", p.Installments[0].Statement)
+	}
+	if f.ledgerBal(t, "food") != 120000 || f.ledgerBal(t, card.ID) != -120000 {
+		t.Fatal("the purchase must post its full amount once")
+	}
+	s, err := f.cards.GetStatement(ctx, f.sp, card.ID, finance.Month{Year: 2026, Month: time.May})
+	if err != nil || s.Status != "future" || s.Total != 40000 || len(s.Items) != 1 || s.Items[0].Number != 2 || s.Items[0].Of != 3 {
+		t.Fatalf("May = %+v, %v", s, err)
+	}
+	if s.DueDate != brcal.New(2026, time.May, 10) || s.ClosingDate != brcal.New(2026, time.May, 3) {
+		t.Fatalf("May dates = %s / %s", s.ClosingDate, s.DueDate)
+	}
+}
+
+func TestRefundingAnUnbilledPurchaseRemovesItsInstallments(t *testing.T) {
+	f, card := newCardsFixture(t)
+	ctx := context.Background()
+	p := f.purchase(t, card.ID, brcal.New(2026, time.March, 1), 90000, 3) // March, April, May; nothing closed
+	got, err := f.cards.Refund(ctx, f.sp, card.ID, p.ID, repositories.PostMeta{Actor: "u"}, time.Now())
+	if err != nil || !got.Refunded {
+		t.Fatalf("refund = %+v, %v", got, err)
+	}
+	for _, m := range []time.Month{time.March, time.April, time.May} {
+		s, _ := f.cards.GetStatement(ctx, f.sp, card.ID, finance.Month{Year: 2026, Month: m})
+		if len(s.Items) != 0 {
+			t.Fatalf("%s still bills %+v (nothing was billed, so no credit either)", m, s.Items)
+		}
+	}
+	if f.ledgerBal(t, "food") != 0 || f.ledgerBal(t, card.ID) != 0 {
+		t.Fatal("the refund must reverse the purchase")
+	}
+	if _, err := f.cards.Refund(ctx, f.sp, card.ID, p.ID, repositories.PostMeta{Actor: "u"}, time.Now()); !errors.Is(err, repositories.ErrPurchaseRefunded) {
+		t.Fatalf("second refund: %v", err)
+	}
+}
+func (f cardsFixture) ledgerBal(t *testing.T, id string) billing.Cents {
+	return balance(t, f.ledger, f.sp, id)
+}
+
+func (f cardsFixture) purchase(t *testing.T, cardID string, d brcal.Date, total billing.Cents, n int) repositories.Purchase {
+	t.Helper()
+	p, err := f.cards.AddPurchase(context.Background(), f.sp, cardID, repositories.Purchase{
+		Description: "Compra", CategoryID: "food", Date: d, Total: total, Installments: make([]finance.Installment, n),
+	}, repositories.PostMeta{Actor: "u"}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return p
 }
