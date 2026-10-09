@@ -115,6 +115,15 @@ func Build(ctx context.Context, cfg *config.Config, clock func() time.Time) (*fi
 	// scopes exist, and it has to be able to ask before it holds one.
 	oauthresource.Register(app, cfg.ServiceAudience, cfg.CtechIssuerURL)
 
+	// One ctech-account client, one token cache, for the resolver and the
+	// switcher. accountclient.New returns a typed nil when the credential is not
+	// configured; that is safe in both places: a nil *Client answers every call
+	// with an error, which the resolver reads as "unavailable" and the switcher
+	// as "organizations unavailable".
+	account := accountclient.New(accountclient.Config{
+		BaseURL: cfg.AccountBaseURL, TokenURL: cfg.AccountTokenURL,
+		ClientID: cfg.AccountClientID, ClientSecret: cfg.AccountClientSecret, Cache: cacheBackend,
+	})
 	billRepo := repositories.NewBillRepository(db, cfg)
 	recRepo := repositories.NewRecurrenceRepository(db, cfg)
 	ledgerRepo := repositories.NewLedgerRepository(db, cfg)
@@ -144,12 +153,10 @@ func Build(ctx context.Context, cfg *config.Config, clock func() time.Time) (*fi
 		FinanceJobs:  services.NewFinanceJobs(billRepo, recRepo),
 		Recurrences:  recRepo,
 		Ledger:       ledgerRepo,
-		Spaces: space.NewResolver(accountclient.New(accountclient.Config{
-			BaseURL: cfg.AccountBaseURL, TokenURL: cfg.AccountTokenURL,
-			ClientID: cfg.AccountClientID, ClientSecret: cfg.AccountClientSecret, Cache: cacheBackend,
-		}), cacheBackend),
-		Verifier: middleware.NewVerifier(cfg.CtechJWKSURL, cfg.ServiceAudience, cfg.CtechIssuerURL, cacheBackend),
-		Clock:    clock,
+		Spaces:       space.NewResolver(account, cacheBackend),
+		SpaceLister:  account,
+		Verifier:     middleware.NewVerifier(cfg.CtechJWKSURL, cfg.ServiceAudience, cfg.CtechIssuerURL, cacheBackend),
+		Clock:        clock,
 
 		PortalOrganizationID: cfg.PortalOrganizationID,
 		SettlementBus:        bus,

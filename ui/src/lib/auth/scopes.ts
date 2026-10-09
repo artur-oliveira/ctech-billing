@@ -36,6 +36,10 @@ const PORTAL_SCOPES = [
  * ctech-account clamps the request to what the client holds and fails the flow
  * rather than downgrading it, so a scope named here and missing there breaks
  * sign-in for everybody — the portal included.
+ *
+ * The finance scopes are asked for by the same login and hold nothing alone:
+ * the API resolves the space (personal or an organization) and the verbs the
+ * person has in it on every request (ADR 0025).
  */
 const CONSOLE_SCOPES = [
   "billing:organization:read",
@@ -47,6 +51,8 @@ const CONSOLE_SCOPES = [
   "billing:customers:write",
   "billing:products:read",
   "billing:products:write",
+  "billing:finance:read",
+  "billing:finance:write",
 ] as const
 
 export const OAUTH_SCOPE = [...IDENTITY_SCOPES, ...PORTAL_SCOPES, ...CONSOLE_SCOPES].join(" ")

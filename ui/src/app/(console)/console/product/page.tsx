@@ -107,8 +107,8 @@ function Detail() {
         {/* Said once, on the screen where it matters, rather than in a tooltip
             nobody opens. */}
         <p className="max-w-prose text-sm text-muted-foreground">
-          Um preço não pode ser editado. Para mudar o valor, crie um novo preço — quem já assina
-          continua no antigo — e arquive o anterior quando não quiser mais vendê-lo.
+          Um preço não pode ser editado. Para mudar o valor, crie um novo preço (quem já assina
+          continua no antigo) e arquive o anterior quando não quiser mais vendê-lo.
         </p>
       </header>
 
@@ -173,7 +173,7 @@ function Detail() {
       {product.dunning && (
         <DunningPolicyCard
           title="Política de cobrança deste produto"
-          description="Sobrepõe a política da organização para faturas que cobram este produto. Uma assinatura que cobra produtos com políticas diferentes volta para a da organização — não há como escolher entre duas."
+          description="Sobrepõe a política da organização para faturas que cobram este produto. Uma assinatura que cobra produtos com políticas diferentes volta para a da organização; não há como escolher entre duas."
           policy={product.dunning}
           inheritLabel="a política da organização"
           onSave={steps => savePolicy.mutateAsync(steps)}
@@ -194,7 +194,7 @@ function Detail() {
         open={archiving !== null}
         onClose={() => setArchiving(null)}
         title="Arquivar este preço?"
-        description="Ele deixa de aparecer para novas assinaturas. Quem já assina continua pagando o mesmo valor — arquivar não muda contrato de ninguém."
+        description="Ele deixa de aparecer para novas assinaturas. Quem já assina continua pagando o mesmo valor; arquivar não muda contrato de ninguém."
         cancelLabel="Manter"
         submitLabel="Arquivar preço"
         loading={archive.isPending}
@@ -306,7 +306,7 @@ function NotFound() {
           Produto não encontrado
         </h1>
         <p className="text-sm text-muted-foreground">
-          Ele pode pertencer ao outro modo — confira se você está em Produção ou Teste.
+          Ele pode pertencer ao outro modo; confira se você está em Produção ou Teste.
         </p>
       </div>
     </div>

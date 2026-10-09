@@ -28,7 +28,7 @@ export default function LoginPage() {
   return (
     <StatusScreen
       title="Entre para ver suas faturas"
-      description="Sua sessão expirou ou ainda não começou. Usamos a mesma conta CTech de todos os outros serviços — nenhuma senha é digitada aqui."
+      description="Sua sessão expirou ou ainda não começou. Usamos a mesma conta CTech de todos os outros serviços; nenhuma senha é digitada aqui."
       action={
         <Button onClick={() => login("/dashboard")} disabled={loading || authenticated}>
           {loading ? "Verificando…" : "Entrar com a conta CTech"}

@@ -131,7 +131,7 @@ function CheckoutScreen() {
       ) : (
         <div className="rounded-xl border border-border bg-surface px-5 py-4">
           <p className="text-pretty text-sm text-foreground">
-            Esta fatura não está aberta para pagamento. Nada foi cobrado — fale com {merchant} se
+            Esta fatura não está aberta para pagamento. Nada foi cobrado; fale com {merchant} se
             você acha que isso está errado.
           </p>
         </div>

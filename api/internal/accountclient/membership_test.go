@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -78,5 +79,63 @@ func TestNewNeedsTheWholeCredential(t *testing.T) {
 	}
 	if New(Config{BaseURL: "https://x", TokenURL: "https://x/t", ClientID: "i", ClientSecret: "s"}) == nil {
 		t.Fatal("a complete credential produced no client")
+	}
+}
+
+func TestOrganizationsReadsTheListAndEscapesTheUser(t *testing.T) {
+	c, path := serve(t, 200, `{"organizations":[{"id":"o1","display_name":"Acme","role":"admin"},{"id":"o2","display_name":"Beta","role":"viewer"}]}`)
+	got, err := c.organizationsWithToken(context.Background(), "tok", "u?1")
+	if err != nil || len(got) != 2 || got[0].Role != "admin" || got[1].DisplayName != "Beta" {
+		t.Fatalf("got %+v, %v", got, err)
+	}
+	if want := "/v1.0/internal/users/u%3F1/organizations"; *path != want {
+		t.Fatalf("request URI = %q, want %q", *path, want)
+	}
+}
+
+func TestOrganizationsFailsClosed(t *testing.T) {
+	for _, status := range []int{401, 403, 404, 500, 503} {
+		c, _ := serve(t, status, `{"organizations":[]}`)
+		if _, err := c.organizationsWithToken(context.Background(), "tok", "u"); err == nil {
+			t.Errorf("status %d was read as an empty list", status)
+		}
+	}
+	var nilClient *Client
+	if _, err := nilClient.Organizations(context.Background(), "u"); err == nil {
+		t.Error("a nil client answered")
+	}
+}
+
+// Listing a user's organizations is its own scope at ctech-account, and it is
+// fetched with its own token: if that scope has not been granted yet, the
+// membership checks — which authorize every org-space request — must keep
+// working on theirs.
+func TestEachQuestionMintsItsOwnScope(t *testing.T) {
+	scopes := map[string]bool{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/token" {
+			_ = r.ParseForm()
+			scopes[r.Form.Get("scope")] = true
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"access_token":"tok","token_type":"Bearer","expires_in":3600}`))
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if strings.Contains(r.URL.Path, "/members/") {
+			_, _ = w.Write([]byte(`{"member":false}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"organizations":[]}`))
+	}))
+	t.Cleanup(srv.Close)
+	c := New(Config{BaseURL: srv.URL, TokenURL: srv.URL + "/token", ClientID: "billing", ClientSecret: "s"})
+	if _, _, err := c.Membership(context.Background(), "o", "u"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Organizations(context.Background(), "u"); err != nil {
+		t.Fatal(err)
+	}
+	if !scopes[Scope] || !scopes[ListScope] || len(scopes) != 2 {
+		t.Fatalf("token scopes requested = %v, want exactly %q and %q, separately", scopes, Scope, ListScope)
 	}
 }

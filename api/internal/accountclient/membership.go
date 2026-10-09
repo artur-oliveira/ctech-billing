@@ -23,6 +23,13 @@ import (
 // Scope is what the membership route requires; this client holds nothing else.
 const Scope = "internal:account:org-member"
 
+// ListScope is what listing a user's organizations requires — its own scope at
+// ctech-account, because enumerating a person's workspaces is a wider grant than
+// checking one membership. It is minted on its own token (listTokens) so a
+// missing grant for it degrades the space switcher, never the membership checks
+// that authorize every organization-space request.
+const ListScope = "internal:account:user-organizations"
+
 const (
 	requestTimeout = 6 * time.Second
 	maxBody        = 8 << 10
@@ -39,9 +46,10 @@ type Config struct {
 
 // Client asks ctech-account about organization membership.
 type Client struct {
-	http    *http.Client
-	tokens  *oauth2client.TokenManager
-	baseURL string
+	http       *http.Client
+	tokens     *oauth2client.TokenManager // Scope
+	listTokens *oauth2client.TokenManager // ListScope
+	baseURL    string
 }
 
 // New builds a client, or returns nil when the service credential is not
@@ -52,9 +60,10 @@ func New(cfg Config) *Client {
 	}
 	hc := &http.Client{Timeout: requestTimeout}
 	return &Client{
-		http:    hc,
-		tokens:  oauth2client.New(hc, cfg.Cache, cfg.TokenURL, cfg.ClientID, cfg.ClientSecret, Scope),
-		baseURL: strings.TrimSuffix(cfg.BaseURL, "/"),
+		http:       hc,
+		tokens:     oauth2client.New(hc, cfg.Cache, cfg.TokenURL, cfg.ClientID, cfg.ClientSecret, Scope),
+		listTokens: oauth2client.New(hc, cfg.Cache, cfg.TokenURL, cfg.ClientID, cfg.ClientSecret, ListScope),
+		baseURL:    strings.TrimSuffix(cfg.BaseURL, "/"),
 	}
 }
 
@@ -110,4 +119,52 @@ func (c *Client) membershipWithToken(ctx context.Context, token, organizationID,
 		return "", false, nil
 	}
 	return out.Role, true, nil
+}
+
+// Organization is one workspace a person belongs to, as ctech-account lists it.
+type Organization struct {
+	ID          string `json:"id"`
+	DisplayName string `json:"display_name"`
+	Role        string `json:"role"`
+}
+
+// Organizations lists the organizations userID belongs to, with their role in
+// each, for the console's space switcher. It is information only: every request
+// is still authorized by Membership, so a stale or generous list grants nothing.
+// Like Membership it fails closed — a nil client, a non-200 and an unreadable
+// body are errors, never an empty list.
+func (c *Client) Organizations(ctx context.Context, userID string) ([]Organization, error) {
+	if c == nil {
+		return nil, fmt.Errorf("ctech-account client is not configured")
+	}
+	token, err := c.listTokens.Get(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("minting a service token: %w", err)
+	}
+	return c.organizationsWithToken(ctx, token, userID)
+}
+
+func (c *Client) organizationsWithToken(ctx context.Context, token, userID string) ([]Organization, error) {
+	path := fmt.Sprintf("%s/v1.0/internal/users/%s/organizations", c.baseURL, url.PathEscape(userID))
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, fmt.Errorf("building the organizations request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Accept", "application/json")
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("calling ctech-account: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("ctech-account answered %d", resp.StatusCode)
+	}
+	var out struct {
+		Organizations []Organization `json:"organizations"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxBody)).Decode(&out); err != nil {
+		return nil, fmt.Errorf("decoding the organizations answer: %w", err)
+	}
+	return out.Organizations, nil
 }

@@ -79,7 +79,7 @@ export function PixPanel({
       <div className="rounded-xl border border-border bg-surface px-5 py-6 text-center">
         <p className="font-medium text-foreground">Este código PIX expirou</p>
         <p className="mx-auto mt-1 max-w-[46ch] text-pretty text-sm text-muted-foreground">
-          Nada foi cobrado. Gere um novo código para pagar — o valor e a fatura são os mesmos.
+          Nada foi cobrado. Gere um novo código para pagar; o valor e a fatura são os mesmos.
         </p>
         <Button className="mt-4" onClick={onRegenerate} disabled={regenerating}>
           {regenerating ? "Gerando…" : "Gerar novo código"}
@@ -126,7 +126,7 @@ export function PixPanel({
         aria-live="polite"
       >
         {status === "lost" && invoiceId
-          ? "Não estamos conseguindo acompanhar em tempo real. Pode pagar assim mesmo — atualize a página depois."
+          ? "Não estamos conseguindo acompanhar em tempo real. Pode pagar assim mesmo; atualize a página depois."
           : "Assim que o pagamento cair, esta tela avisa sozinha."}
       </p>
     </div>

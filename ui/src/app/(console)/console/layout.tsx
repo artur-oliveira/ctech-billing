@@ -9,12 +9,14 @@ import {useEffect} from "react"
 
 import {ModeSwitch} from "@/components/console/ModeSwitch"
 import {NoOrganization} from "@/components/console/NoOrganization"
+import {SpaceSwitch} from "@/components/finance/SpaceSwitch"
 import {statusOf} from "@/lib/api/client"
 import {consoleKeys, getConsoleSession} from "@/lib/api/console"
 import {useAuth} from "@/lib/auth/AuthContext"
 import {useMode} from "@/lib/console/useMode"
 
-const NAV = [
+/** Invoicing: an operator's sections, shown only with an organization. */
+const INVOICING_NAV = [
   {href: "/console/overview", label: "Visão geral"},
   {href: "/console/invoices", label: "Faturas"},
   {href: "/console/subscriptions", label: "Assinaturas"},
@@ -22,6 +24,9 @@ const NAV = [
   {href: "/console/catalog", label: "Catálogo"},
   {href: "/console/settings", label: "Configurações"},
 ] as const
+
+/** Finance: everyone's, in a personal space or an organization's (ADR 0025). */
+const FINANCE_HREF = "/console/finance"
 
 /**
  * The operator shell — the second of the two the app ships, and the same
@@ -55,19 +60,28 @@ export default function ConsoleLayout({children}: LayoutProps<"/console">) {
     retry: false,
   })
 
-  // Signed in, no organization. Decided from the session alone rather than per
-  // screen: every route below answers the same 403, so the alternative is the
-  // same message four times under a nav whose every tab leads back to it.
+  // Signed in, no organization: the invoicing sections are not theirs, but
+  // Finanças is — everyone has a personal space. Decided from the session alone
+  // rather than per screen.
   const noOrganization = statusOf(error) === 403 || statusOf(error) === 404
+  const inFinance = pathname === FINANCE_HREF || pathname.startsWith(FINANCE_HREF + "/")
 
   useEffect(() => {
     if (!loading && !authenticated) router.replace("/login")
   }, [loading, authenticated, router])
 
+  // The console's default landing is invoicing's overview; a person with no
+  // organization lands on their finances instead of on an explanation.
+  useEffect(() => {
+    if (noOrganization && pathname === "/console/overview") router.replace(FINANCE_HREF)
+  }, [noOrganization, pathname, router])
+
+  const nav = [...(noOrganization ? [] : INVOICING_NAV), {href: FINANCE_HREF, label: "Finanças"}]
+
   return (
     <div data-density="compact" className="min-h-dvh">
       <header className="border-b border-border">
-        <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-4 px-4">
+        <div className="mx-auto flex min-h-14 max-w-6xl flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-2">
           <div className="flex min-w-0 items-center gap-4">
             <Link href="/console/overview" className="flex shrink-0 items-center gap-2.5">
               <Image
@@ -82,15 +96,22 @@ export default function ConsoleLayout({children}: LayoutProps<"/console">) {
                 <span className="ml-1.5 font-normal text-muted-foreground">Billing</span>
               </span>
             </Link>
-            {session && (
+            {/* In Finanças the space switcher names the space; the invoicing
+                organization's name here would read as the space and contradict
+                it ("CTech Tecnologia" beside "Pessoal"). */}
+            {session && !inFinance && (
               <span className="truncate border-l border-border pl-4 text-sm text-foreground">
                 {session.display_name}
               </span>
             )}
           </div>
 
-          <div className="flex shrink-0 items-center gap-3">
-            {!noOrganization && <ModeSwitch/>}
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Space and mode side by side, so "Pessoal · Teste" reads as one
+                answer. The space only exists in Finanças: invoicing's
+                organization comes from the signed-in owner (ADR 0011). */}
+            {inFinance && <SpaceSwitch/>}
+            <ModeSwitch/>
             {/* The way back to the other shell, always. The same person holds
                 both, and making them retype a URL to look at their own bill is
                 the "which one are you" question this product does not ask. */}
@@ -110,16 +131,16 @@ export default function ConsoleLayout({children}: LayoutProps<"/console">) {
           </div>
         </div>
 
-        <nav hidden={noOrganization} className="mx-auto max-w-6xl px-4" aria-label="Seções">
-          <ul className="-mb-px flex gap-1">
-            {NAV.map(item => {
+        <nav className="mx-auto max-w-6xl px-4" aria-label="Seções">
+          <ul className="-mb-px flex gap-1 overflow-x-auto">
+            {nav.map(item => {
               const active = pathname.startsWith(item.href)
               return (
                 <li key={item.href}>
                   <Link
                     href={item.href}
                     aria-current={active ? "page" : undefined}
-                    className={`inline-flex h-10 items-center border-b-2 px-3 text-sm transition-colors ${
+                    className={`inline-flex h-10 items-center whitespace-nowrap border-b-2 px-3 text-sm transition-colors ${
                       active
                         ? "border-brand-600 font-medium text-brand-600"
                         : "border-transparent text-muted-foreground hover:text-foreground"
@@ -137,16 +158,16 @@ export default function ConsoleLayout({children}: LayoutProps<"/console">) {
       {/* The test-mode band. Deliberately the loudest thing on the page after
           the danger colour: every number below it is fake, and an operator who
           forgets that voids a real invoice believing it is a sandbox one. */}
-      {!noOrganization && mode === "test" && (
+      {mode === "test" && (
         <p className="bg-warning/12 border-b border-warning/30 px-4 py-2 text-center text-xs text-foreground">
-          Modo de teste — nada aqui cobra dinheiro de verdade.
+          Modo de teste; nada aqui cobra dinheiro de verdade.
         </p>
       )}
 
       <main className="mx-auto max-w-6xl px-4 py-8 pb-20">
         {loading || !authenticated ? (
           <ShellSkeleton/>
-        ) : noOrganization ? (
+        ) : noOrganization && !inFinance ? (
           <NoOrganization/>
         ) : (
           children

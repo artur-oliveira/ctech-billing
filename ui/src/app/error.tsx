@@ -34,7 +34,7 @@ export default function Error({
   return (
     <StatusScreen
       title="Algo quebrou desse lado"
-      description="Não foi você e nada foi cobrado. Tente de novo — se continuar, fale com a gente e informe o código abaixo."
+      description="Não foi você e nada foi cobrado. Tente de novo; se continuar, fale com a gente e informe o código abaixo."
       action={
         <div className="flex flex-col items-center gap-3">
           <Button onClick={reset}>Tentar de novo</Button>

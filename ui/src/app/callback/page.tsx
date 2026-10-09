@@ -30,12 +30,12 @@ export default function CallbackPage() {
 function messageFor(error: string): string {
   switch (error) {
     case "access_denied":
-      return "Você cancelou a entrada. Nada foi alterado — pode tentar de novo quando quiser."
+      return "Você cancelou a entrada. Nada foi alterado; pode tentar de novo quando quiser."
     case "login_required":
     case "interaction_required":
       return "Sua sessão expirou antes de terminar. Entre de novo."
     default:
-      return "Não conseguimos concluir a entrada. Tente de novo — se continuar, fale com a gente."
+      return "Não conseguimos concluir a entrada. Tente de novo; se continuar, fale com a gente."
   }
 }
 

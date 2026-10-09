@@ -66,7 +66,7 @@ export default function ConsoleSettingsPage() {
 
       <DunningPolicyCard
         title="Política de cobrança"
-        description="O que acontece com uma fatura que ninguém pagou: quando lembrar, quando restringir o acesso e quando dar por perdida. Não é retentativa de cobrança — PIX é o cliente que paga, o billing não debita ninguém."
+        description="O que acontece com uma fatura que ninguém pagou: quando lembrar, quando restringir o acesso e quando dar por perdida. Não é retentativa de cobrança; PIX é o cliente que paga, o billing não debita ninguém."
         policy={settings.dunning}
         inheritLabel="a política padrão da CTech"
         onSave={steps => save.mutateAsync(steps)}
@@ -108,7 +108,7 @@ function IssuerCard({issuer, mode}: { issuer: Issuer; mode: "live" | "test" }) {
 
       {!issuer.legal_name && (
         <Alert tone="warning" title="As faturas saem sem razão social">
-          O PDF é encabeçado pelo nome de exibição da organização — que é uma marca, não uma
+          O PDF é encabeçado pelo nome de exibição da organização, que é uma marca, não uma
           empresa. Um contador vai pedir a razão social e o CNPJ.
         </Alert>
       )}
@@ -173,7 +173,7 @@ function IssuerEditor({
       open
       onClose={onClose}
       title="Emissor do documento"
-      description="Sai no cabeçalho de cada fatura em PDF. Documentos já gerados não mudam — eles foram entregues como estavam."
+      description="Sai no cabeçalho de cada fatura em PDF. Documentos já gerados não mudam; eles foram entregues como estavam."
       cancelLabel="Cancelar"
       submitLabel="Salvar emissor"
       loading={save.isPending}
@@ -187,7 +187,7 @@ function IssuerEditor({
           <Input id="issuer-tax-id" placeholder="12.345.678/0001-90" {...field("tax_id")}/>
         </Field>
         <Field label="Endereço" htmlFor="issuer-address">
-          <Input id="issuer-address" placeholder="Rua Exemplo, 100 — São Paulo/SP" {...field("address")}/>
+          <Input id="issuer-address" placeholder="Rua Exemplo, 100 • São Paulo/SP" {...field("address")}/>
         </Field>
         <Field
           label="E-mail no documento"

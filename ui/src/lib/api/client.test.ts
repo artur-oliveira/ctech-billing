@@ -1,4 +1,4 @@
-import {describe, expect, it} from "vitest"
+import {describe, expect, it, vi} from "vitest"
 
 import {isNoBillingAccount} from "./client"
 
@@ -30,5 +30,30 @@ describe("isNoBillingAccount", () => {
     for (const error of [undefined, null, new Error("Network Error"), {response: {status: 502}}]) {
       expect(isNoBillingAccount(error)).toBe(false)
     }
+  })
+})
+
+// Review Focus 5 (6.3b): an organization space answers 503 space-unavailable
+// when ctech-account is down, while the personal space keeps working. Sending
+// the whole app to /maintenance would take the working half down with it.
+describe("the 503 rule", () => {
+  async function reject503(data: unknown) {
+    const {apiClient} = await import("./client")
+    const replace = vi.fn()
+    vi.stubGlobal("location", {...window.location, pathname: "/console/finance", search: "", replace})
+    const handler = (apiClient.interceptors.response as unknown as {handlers: {rejected: (e: unknown) => Promise<unknown>}[]}).handlers[0].rejected
+    await handler({response: {status: 503, data}, config: {}}).catch(() => undefined)
+    vi.unstubAllGlobals()
+    return replace
+  }
+
+  it("does not redirect to maintenance for space-unavailable", async () => {
+    const replace = await reject503({type: "/problems/space-unavailable", status: 503})
+    expect(replace).not.toHaveBeenCalled()
+  })
+
+  it("still redirects any other 503", async () => {
+    const replace = await reject503({type: "about:blank", status: 503})
+    expect(replace).toHaveBeenCalledWith(expect.stringMatching(/^\/maintenance\?from=/))
   })
 })

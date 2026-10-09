@@ -405,8 +405,10 @@ In the personal space, the user holds every verb.
 The console no longer requires an organization: every signed-in user has a personal space, so the
 portal's "Console" link shows for everyone.
 
-The space selector at the top lists *Pessoal* first, then the organizations from ctech-account's
-`GET /v1.0/organizations`, which already carries name and role.
+The space selector at the top lists *Pessoal* first, then the user's organizations from billing's
+`GET /console/finance/spaces`, which reads them from ctech-account's service route
+`/internal/users/:user_id/organizations` (`GET /v1.0/organizations` is first-party-only; ADR 0025,
+amendment 2026-10-08).
 - In the personal space the console shows **Finanças** only.
 - Invoices, subscriptions, customers and catalogue appear in organization spaces.
 

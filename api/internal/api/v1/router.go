@@ -52,7 +52,10 @@ type Deps struct {
 	FinanceJobs  *services.FinanceJobs
 	Recurrences  *repositories.RecurrenceRepository
 	Ledger       *repositories.LedgerRepository
-	Clock        func() time.Time
+	// SpaceLister feeds the console's space switcher (the same ctech-account
+	// client the resolver uses). Informational: the resolver still authorizes.
+	SpaceLister spaceLister
+	Clock       func() time.Time
 	// PortalOrganizationID is tenant zero (ADR 0012). Empty disables the portal:
 	// its routes 404 rather than falling back to some other organization.
 	PortalOrganizationID string

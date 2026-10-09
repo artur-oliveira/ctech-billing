@@ -26,6 +26,7 @@ type financeHandlers struct {
 	recs   *repositories.RecurrenceRepository
 	ledger *repositories.LedgerRepository
 	clock  func() time.Time
+	spaces spaceLister
 }
 
 func (h *financeHandlers) now() time.Time    { return h.clock() }
@@ -93,9 +94,11 @@ func registerFinance(v1 fiber.Router, d Deps, auth fiber.Handler, clock func() t
 	if d.Spaces == nil {
 		return
 	}
-	h := &financeHandlers{bills: d.FinanceBills, jobs: d.FinanceJobs, recs: d.Recurrences, ledger: d.Ledger, clock: clock}
+	h := &financeHandlers{bills: d.FinanceBills, jobs: d.FinanceJobs, recs: d.Recurrences, ledger: d.Ledger, clock: clock, spaces: d.SpaceLister}
 	idem := middleware.SpaceIdempotency(d.Idempotency, clock)
-	mountFinance(v1.Group("/console/finance", auth), d.Spaces, idem, func(r financeRoute) fiber.Handler { return r.Handler(h) })
+	fin := v1.Group("/console/finance", auth)
+	mountSpaces(fin, h)
+	mountFinance(fin, d.Spaces, idem, func(r financeRoute) fiber.Handler { return r.Handler(h) })
 }
 
 // mountFinance registers every route of the table with its chain. The tests call

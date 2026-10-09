@@ -15,7 +15,7 @@ const TERMS_URL = "https://accounts.aoctech.app/terms"
  * and stays out of every crawler's reach.
  */
 export const metadata: Metadata = {
-  title: {absolute: "CTech Billing — suas faturas e assinaturas"},
+  title: {absolute: "CTech Billing • suas faturas e assinaturas"},
   description:
     "Portal de cobranças da CTech. Veja faturas em aberto, pague com PIX em segundos e acompanhe suas assinaturas.",
   robots: {index: true, follow: true},

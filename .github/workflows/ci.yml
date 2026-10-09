@@ -73,11 +73,23 @@ jobs:
       # The trade is deliberate and worth naming: a new release can turn CI red
       # on a day nobody changed code. That is a morning's annoyance; running a
       # linter a year out of date is a class of bug nobody is looking for.
+      # Built against the newest x/tools rather than run with `go run …@latest`:
+      # staticcheck's own go.mod pins an x/tools that cannot read a newer Go
+      # patch's export data ("export data version 5 is greater than maximum
+      # supported version 4" on go1.27.2), so a toolchain bump breaks the linter
+      # before staticcheck releases.
+      - name: Build staticcheck
+        run: |
+          dir=$(mktemp -d)
+          (cd "$dir" && go mod init staticcheck >/dev/null 2>&1 \
+            && go get honnef.co/go/tools/cmd/staticcheck@latest golang.org/x/tools@latest \
+            && go build -o "$RUNNER_TEMP/staticcheck" honnef.co/go/tools/cmd/staticcheck)
+
       - name: Staticcheck
-        run: go run honnef.co/go/tools/cmd/staticcheck@latest ./...
+        run: $RUNNER_TEMP/staticcheck ./...
 
       - name: Staticcheck (integration tag)
-        run: go run honnef.co/go/tools/cmd/staticcheck@latest -tags integration ./...
+        run: $RUNNER_TEMP/staticcheck -tags integration ./...
 
       # govulncheck reports only vulnerabilities this code can actually reach,
       # not every advisory touching the dependency tree. That is what makes it

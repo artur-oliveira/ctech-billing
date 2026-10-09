@@ -7,23 +7,13 @@ import {consoleKeys, getConsoleSession} from "@/lib/api/console"
 import {useAuth} from "@/lib/auth/AuthContext"
 
 /**
- * The portal's way into the console.
+ * The portal's way into the console — for everyone now.
  *
- * It renders **only for somebody who actually has an organization**, and that
- * is the whole reason it is a component with a query rather than a link in the
- * shell's markup. Everybody who signs in is a customer; only some are also
- * operators, and provisioning is manual (assessment D4). A permanent "Console"
- * link would send the majority to a screen explaining that the product they
- * clicked is not theirs — which is the "which one are you?" question this app
- * is built not to ask.
- *
- * The probe is the console's own session route, so the answer is the server's:
- * a 403 or 404 means no organization and the link stays absent. It is asked
- * once per tab and shares the console's own query key, so opening the console
- * afterwards renders from a warm cache.
- *
- * A failure is silence, not an error. This is a shortcut; nobody's bill depends
- * on it.
+ * Every signed-in person has a personal finance space (ADR 0025), so the
+ * console is no longer only for operators. The session probe still decides
+ * WHERE the link lands: an operator on invoicing's overview, everybody else
+ * on Finanças. A failed probe is not an error; the link then opens Finanças,
+ * which needs no organization.
  */
 export function ConsoleLink() {
   const {authenticated} = useAuth()
@@ -39,11 +29,11 @@ export function ConsoleLink() {
     staleTime: Infinity,
   })
 
-  if (!data) return null
+  if (!authenticated) return null
 
   return (
     <Link
-      href="/console/overview"
+      href={data ? "/console/overview" : "/console/finance"}
       className="shrink-0 text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
     >
       Console

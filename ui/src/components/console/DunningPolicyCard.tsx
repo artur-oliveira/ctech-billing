@@ -60,7 +60,7 @@ export function DunningPolicyCard({
 
       {!policy.custom && (
         <p className="text-xs text-muted-foreground">
-          Herdada — {inheritLabel}. Está em vigor do mesmo jeito.
+          Herdada • {inheritLabel}. Está em vigor do mesmo jeito.
         </p>
       )}
 
@@ -125,7 +125,7 @@ function PolicyEditor({
       open
       onClose={onClose}
       title="Política de cobrança"
-      description="Cada passo é um dia relativo ao vencimento. Vale para faturas emitidas daqui em diante — as que já estão sendo cobradas seguem a política com que foram emitidas."
+      description="Cada passo é um dia relativo ao vencimento. Vale para faturas emitidas daqui em diante; as que já estão sendo cobradas seguem a política com que foram emitidas."
       cancelLabel="Cancelar"
       submitLabel="Salvar política"
       loading={save.isPending}

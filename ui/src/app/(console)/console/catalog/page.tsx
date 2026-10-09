@@ -158,7 +158,7 @@ function NewProductDialog({
         <Field
           label="Produto dono"
           htmlFor="product-owner"
-          hint="Qual serviço da CTech recebe os webhooks deste produto — dfe, poker. Deixe vazio se a organização é dona do próprio catálogo."
+          hint="Qual serviço da CTech recebe os webhooks deste produto (dfe, poker). Deixe vazio se a organização é dona do próprio catálogo."
         >
           <Input
             id="product-owner"

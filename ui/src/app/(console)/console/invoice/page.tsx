@@ -356,7 +356,7 @@ function NotFound() {
           Fatura não encontrada
         </h1>
         <p className="text-sm text-muted-foreground">
-          Ela pode pertencer ao outro modo — confira se você está em Produção ou Teste.
+          Ela pode pertencer ao outro modo; confira se você está em Produção ou Teste.
         </p>
       </div>
     </div>
