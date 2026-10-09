@@ -106,7 +106,7 @@ function Table({months, children}: {months: string[]; children: React.ReactNode}
         <thead>
           <tr className="border-b border-border text-muted-foreground">
             <th className="sticky left-0 bg-background py-2 pr-4 text-left font-normal">&nbsp;</th>
-            {months.map(m => <th key={m} className="py-2 pl-4 text-right font-normal capitalize">{monthShort(m)}</th>)}
+            {months.map(m => <th key={m} className="py-2 pl-4 text-right font-normal">{monthShort(m)}</th>)}
             <th className="py-2 pl-4 text-right font-normal">Total</th>
           </tr>
         </thead>

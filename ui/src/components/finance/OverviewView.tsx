@@ -29,7 +29,7 @@ const WINDOWS = [
 export function OverviewView() {
   return (
     <div className="space-y-8">
-      <h1 className="text-lg font-semibold tracking-[-0.01em] text-foreground">Visão geral</h1>
+      <h1 className="text-lg font-semibold tracking-[-0.01em] text-foreground">Resumo</h1>
       <div className="grid items-start gap-8 lg:grid-cols-3">
         <Balances/>
         <Realised/>
@@ -184,7 +184,7 @@ function ProjectionTable({data}: {data: ProjectionMonth[]}) {
       <tbody>
         {data.map(m => (
           <tr key={m.month} className="border-b border-border">
-            <th scope="row" className="py-2 text-left font-normal capitalize">{monthShort(m.month)}</th>
+            <th scope="row" className="py-2 text-left font-normal">{monthShort(m.month)}</th>
             <td className="py-2 text-right">{money(m.receivable)}</td>
             <td className="py-2 text-right">{money(m.payable)}</td>
             <td className="py-2 text-right">{money(m.virtual)}</td>
@@ -223,7 +223,7 @@ function ProjectionChart({data}: {data: ProjectionMonth[]}) {
               {vUp > 0 && <rect x={x + 0.5} y={MID - rec - vUp} width={bw - 1} height={vUp} className="fill-none stroke-success" strokeWidth={1} strokeDasharray="3 2"/>}
               {pay > 0 && <rect x={x} y={MID} width={bw} height={pay} className="fill-foreground/70"/>}
               {vDown > 0 && <rect x={x + 0.5} y={MID + pay} width={bw - 1} height={vDown} className="fill-none stroke-foreground/70" strokeWidth={1} strokeDasharray="3 2"/>}
-              <text x={i * slot + slot / 2} y={H - PAD} textAnchor="middle" className="fill-muted-foreground text-[11px] capitalize">{monthShort(m.month)}</text>
+              <text x={i * slot + slot / 2} y={H - PAD} textAnchor="middle" className="fill-muted-foreground text-[11px]">{monthShort(m.month)}</text>
             </g>
           )
         })}
