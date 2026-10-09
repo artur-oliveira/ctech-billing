@@ -6,6 +6,7 @@ import {useQuery} from "@tanstack/react-query"
 import {Landmark} from "lucide-react"
 import Link from "next/link"
 import {useState} from "react"
+import {useTranslation} from "react-i18next"
 
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
 import {DateField} from "@/components/ui/DateField"
@@ -13,18 +14,20 @@ import {Select} from "@/components/ui/Select"
 import {messageFor} from "@/lib/api/client"
 import {archiveAccount, createAccount, financeKeys, getSettings, listAccounts, postOpeningBalance, setDefaultReceivingAccount} from "@/lib/api/finance"
 import type {Account, AccountClass, DREGroup, OpeningBalance} from "@/lib/api/financeTypes"
-import {CLASS_LABEL, DRE_GROUP_LABEL, groupsForClass} from "@/lib/finance/labels"
+import {classLabel, dreGroupLabel, groupsForClass} from "@/lib/finance/labels"
 import {useFinanceMutation} from "@/lib/finance/useFinanceMutation"
 import {useFinanceCtx, useFinanceSpaces} from "@/lib/finance/useFinanceSpaces"
 import {money} from "@/lib/format"
 import {todayIso} from "@/lib/finance/today"
-import {maskMoney, parseSignedMoney} from "@/lib/money"
+import {useFieldErrors} from "@/lib/useFieldErrors"
+import {maskMoney, moneyPlaceholder, parseSignedMoney} from "@/lib/money"
+import {accountName} from "@/lib/finance/accountName"
 
-const SECTIONS: {title: string; classes: AccountClass[]}[] = [
-  {title: "Contas", classes: ["asset"]},
-  {title: "Receitas", classes: ["income"]},
-  {title: "Despesas", classes: ["expense"]},
-  {title: "Cartões", classes: ["liability"]},
+const SECTIONS: {key: "accounts" | "income" | "expense" | "cards"; classes: AccountClass[]}[] = [
+  {key: "accounts", classes: ["asset"]},
+  {key: "income", classes: ["income"]},
+  {key: "expense", classes: ["expense"]},
+  {key: "cards", classes: ["liability"]},
 ]
 
 /**
@@ -35,6 +38,7 @@ const SECTIONS: {title: string; classes: AccountClass[]}[] = [
  * archiving hides an account from new activity and keeps its history.
  */
 export function AccountsView() {
+  const {t} = useTranslation()
   const ctx = useFinanceCtx()
   const {can} = useFinanceSpaces()
   const configure = can("finance.configure")
@@ -49,13 +53,13 @@ export function AccountsView() {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-lg font-semibold tracking-[-0.01em] text-foreground">Contas e categorias</h1>
+        <h1 className="text-lg font-semibold tracking-[-0.01em] text-foreground">{t("finance.accounts.title")}</h1>
         {configure && (
-          <Button variant="brand" size="sm" onClick={() => setCreating(true)}>Nova conta ou categoria</Button>
+          <Button variant="brand" size="sm" onClick={() => setCreating(true)}>{t("finance.accounts.new")}</Button>
         )}
       </div>
 
-      <Drawer open={creating} onClose={() => setCreating(false)} title="Nova conta ou categoria">
+      <Drawer open={creating} onClose={() => setCreating(false)} title={t("finance.accounts.new")}>
         <AccountForm onDone={() => setCreating(false)}/>
       </Drawer>
 
@@ -66,8 +70,7 @@ export function AccountsView() {
       ) : accounts.length === 0 ? (
         <EmptyState
           icon={<Landmark/>}
-          title="Nenhuma conta ainda"
-          description="Crie a primeira conta (corrente, poupança, dinheiro) e as categorias de receita e despesa para registrar contas a pagar e a receber."
+          title={t("finance.accounts.empty")}
         />
       ) : (
         <>
@@ -75,8 +78,8 @@ export function AccountsView() {
             const rows = visible.filter(a => section.classes.includes(a.class))
             if (rows.length === 0) return null
             return (
-              <section key={section.title} className="space-y-2" aria-labelledby={`sec-${section.title}`}>
-                <h2 id={`sec-${section.title}`} className="text-sm font-medium text-foreground">{section.title}</h2>
+              <section key={section.key} className="space-y-2" aria-labelledby={`sec-${section.key}`}>
+                <h2 id={`sec-${section.key}`} className="text-sm font-medium text-foreground">{t(`finance.accounts.sections.${section.key}`)}</h2>
                 <ul className="divide-y divide-border border-y border-border">
                   {rows.map(a => <AccountRow key={a.id} account={a} configure={configure}/>)}
                 </ul>
@@ -85,7 +88,7 @@ export function AccountsView() {
           })}
           {hasArchived && (
             <Button variant="ghost" size="sm" onClick={() => setShowArchived(v => !v)}>
-              {showArchived ? "Ocultar arquivadas" : "Mostrar arquivadas"}
+              {showArchived ? t("finance.accounts.hideArchived") : t("finance.accounts.showArchived")}
             </Button>
           )}
           {configure && <DefaultReceiving accounts={accounts}/>}
@@ -96,6 +99,7 @@ export function AccountsView() {
 }
 
 function AccountRow({account, configure}: {account: Account; configure: boolean}) {
+  const {t} = useTranslation()
   const [confirming, setConfirming] = useState(false)
   const [opening, setOpening] = useState(false)
   const archive = useFinanceMutation(
@@ -107,32 +111,32 @@ function AccountRow({account, configure}: {account: Account; configure: boolean}
     <li className={`py-2.5 ${account.archived ? "text-muted-foreground" : ""}`}>
       <div className="flex items-center justify-between gap-4">
         <div className="min-w-0">
-          <p className="truncate text-sm text-foreground">{account.name}</p>
-          {account.dre_group && <p className="text-xs text-muted-foreground">{DRE_GROUP_LABEL[account.dre_group]}</p>}
+          <p className="truncate text-sm text-foreground">{accountName(account)}</p>
+          {account.dre_group && <p className="text-xs text-muted-foreground">{dreGroupLabel(account.dre_group)}</p>}
         </div>
         <div className="flex shrink-0 items-center gap-3">
           {account.class === "asset" && <span data-numeric className="text-sm tabular-nums">{money(account.balance)}</span>}
           {account.class === "liability" && (
             <>
               {/* A card's balance is a credit: negative is what is owed. */}
-              <span data-numeric className="text-sm tabular-nums">{account.balance < 0 ? `Deve ${money(-account.balance)}` : money(account.balance)}</span>
-              <Link href={`/console/finance/cards?card=${encodeURIComponent(account.id)}`} className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline">Abrir</Link>
+              <span data-numeric className="text-sm tabular-nums">{account.balance < 0 ? t("finance.accounts.owed", {amount: money(-account.balance)}) : money(account.balance)}</span>
+              <Link href={`/console/finance/cards?card=${encodeURIComponent(account.id)}`} className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline">{t("finance.accounts.open")}</Link>
             </>
           )}
-          {account.archived && <span className="text-xs">Arquivada</span>}
+          {account.archived && <span className="text-xs">{t("finance.accounts.archived")}</span>}
           {configure && account.class === "asset" && !account.archived && !opening && (
-            <Button variant="ghost" size="sm" onClick={() => setOpening(true)}>Saldo inicial</Button>
+            <Button variant="ghost" size="sm" onClick={() => setOpening(true)}>{t("finance.accounts.openingBalance")}</Button>
           )}
           {configure && !account.archived && !confirming && (
-            <Button variant="ghost" size="sm" onClick={() => setConfirming(true)}>Arquivar</Button>
+            <Button variant="ghost" size="sm" onClick={() => setConfirming(true)}>{t("finance.accounts.archive")}</Button>
           )}
         </div>
       </div>
       {confirming && (
         <div className="mt-2 flex flex-wrap items-center gap-2 text-sm motion-safe:animate-in motion-safe:fade-in">
-          <p className="text-muted-foreground">Arquivar “{account.name}”? Ela sai das listas; nada é apagado e o histórico continua.</p>
-          <Button size="sm" variant="outline" onClick={() => setConfirming(false)}>Cancelar</Button>
-          <Button size="sm" variant="brand" disabled={archive.isPending} onClick={() => archive.mutate(account.id)}>Confirmar</Button>
+          <p className="text-muted-foreground">{t("finance.accounts.archiveConfirm", {name: accountName(account)})}</p>
+          <Button size="sm" variant="outline" onClick={() => setConfirming(false)}>{t("finance.accounts.cancel")}</Button>
+          <Button size="sm" variant="brand" disabled={archive.isPending} onClick={() => archive.mutate(account.id)}>{t("finance.accounts.archive")}</Button>
           {archive.error && <p role="alert" className="w-full text-danger">{messageFor(archive.error)}</p>}
         </div>
       )}
@@ -147,12 +151,15 @@ function AccountRow({account, configure}: {account: Account; configure: boolean}
  * refused by the server, which says how to correct it.
  */
 function OpeningForm({account, onDone}: {account: Account; onDone: () => void}) {
+  const {t} = useTranslation()
   const [text, setText] = useState("")
   const [date, setDate] = useState(todayIso())
+  const fe = useFieldErrors(["amount", "date"])
   const post = useFinanceMutation(
     (c, body: OpeningBalance, key) => postOpeningBalance(c, account.id, body, key),
     c => [financeKeys.all(c.mode, c.space)],
     onDone,
+    fe.set,
   )
   const amount = parseSignedMoney(text)
   return (
@@ -160,25 +167,28 @@ function OpeningForm({account, onDone}: {account: Account; onDone: () => void}) 
       className="mt-2 grid items-start gap-3 rounded-lg bg-surface p-3 sm:grid-cols-[1fr_1fr_auto] motion-safe:animate-in motion-safe:fade-in"
       onSubmit={e => {
         e.preventDefault()
-        if (amount !== null) post.mutate({amount, date})
+        if (amount === null) return
+        fe.reset()
+        post.mutate({amount, date})
       }}
     >
-      <Field label="Valor" htmlFor={`ob-${account.id}`}>
-        <Input id={`ob-${account.id}`} inputMode="decimal" placeholder="0,00" value={text} onChange={e => setText(maskMoney(e.target.value, {signed: true}))} autoFocus/>
+      <Field label={t("finance.accounts.amount")} htmlFor={`ob-${account.id}`} error={fe.of("amount")}>
+        <Input id={`ob-${account.id}`} inputMode="decimal" placeholder={moneyPlaceholder()} value={text} {...fe.props("amount", `ob-${account.id}`)} onChange={e => { setText(maskMoney(e.target.value, {signed: true})); fe.clear("amount") }} autoFocus/>
       </Field>
-      <Field label="Em" htmlFor={`obd-${account.id}`}>
-        <DateField id={`obd-${account.id}`} min={limits.minDate} max={todayIso()} value={date} onValueChange={setDate}/>
+      <Field label={t("finance.accounts.on")} htmlFor={`obd-${account.id}`} error={fe.of("date")}>
+        <DateField id={`obd-${account.id}`} min={limits.minDate} max={todayIso()} value={date} invalid={!!fe.of("date")} onValueChange={v => { setDate(v); fe.clear("date") }}/>
       </Field>
       <div className="flex gap-2 sm:pt-6">
-        <Button type="button" variant="outline" size="sm" onClick={onDone}>Fechar</Button>
-        <Button type="submit" variant="brand" size="sm" disabled={amount === null || post.isPending}>Lançar</Button>
+        <Button type="button" variant="outline" size="sm" onClick={onDone}>{t("finance.accounts.close")}</Button>
+        <Button type="submit" variant="brand" size="sm" disabled={amount === null || post.isPending}>{t("finance.accounts.save")}</Button>
       </div>
-      {post.error ? <p role="alert" className="text-sm text-danger sm:col-span-3">{messageFor(post.error)}</p> : null}
+      {fe.general ? <p role="alert" className="text-sm text-danger sm:col-span-3">{fe.general}</p> : null}
     </form>
   )
 }
 
 function AccountForm({onDone}: {onDone: () => void}) {
+  const {t} = useTranslation()
   const [name, setName] = useState("")
   const [cls, setCls] = useState<AccountClass>("asset")
   const groups = groupsForClass(cls)
@@ -195,10 +205,12 @@ function AccountForm({onDone}: {onDone: () => void}) {
     c => [financeKeys.all(c.mode, c.space)],
     onDone,
   )
+  const fe = useFieldErrors(["name", "class", "dre_group"])
   const create = useFinanceMutation(
     (c, body: {name: string; class: AccountClass; dre_group?: DREGroup}, key) => createAccount(c, body, key),
     c => [financeKeys.accounts(c.mode, c.space)],
     created => (openingAmount ? opening.mutate({id: created.id, body: {amount: openingAmount, date: openingDate}}) : onDone()),
+    fe.set,
   )
   const chosenGroup = groups.includes(group as DREGroup) ? (group as DREGroup) : groups[0]
   return (
@@ -207,41 +219,42 @@ function AccountForm({onDone}: {onDone: () => void}) {
       onSubmit={e => {
         e.preventDefault()
         if (!name.trim() || openingInvalid) return
+        fe.reset()
         create.mutate({name: name.trim(), class: cls, ...(chosenGroup ? {dre_group: chosenGroup} : {})})
       }}
     >
-      <Field label="Nome" htmlFor="acc-name" required>
-        <Input id="acc-name" maxLength={limits.text.accountName} value={name} onChange={e => setName(e.target.value)} autoFocus/>
+      <Field label={t("finance.accounts.name")} htmlFor="acc-name" required error={fe.of("name")}>
+        <Input id="acc-name" maxLength={limits.text.accountName} value={name} {...fe.props("name", "acc-name")} onChange={e => { setName(e.target.value); fe.clear("name") }} autoFocus/>
       </Field>
-      <Field label="Tipo" htmlFor="acc-class">
-        <Select id="acc-class" value={cls} onValueChange={v => setCls(v as AccountClass)} options={(["asset", "income", "expense"] as AccountClass[]).map(c => ({value: c, label: CLASS_LABEL[c]}))}/>
+      <Field label={t("finance.accounts.type")} htmlFor="acc-class" error={fe.of("class")}>
+        <Select id="acc-class" value={cls} {...fe.props("class", "acc-class")} onValueChange={v => { setCls(v as AccountClass); fe.clear("class") }} options={(["asset", "income", "expense"] as AccountClass[]).map(c => ({value: c, label: classLabel(c)}))}/>
       </Field>
       {groups.length > 0 ? (
-        <Field label="Grupo na DRE" htmlFor="acc-group">
-          <Select id="acc-group" value={chosenGroup} onValueChange={v => setGroup(v as DREGroup)} options={groups.map(g => ({value: g, label: DRE_GROUP_LABEL[g]}))}/>
+        <Field label={t("finance.accounts.dreGroup")} htmlFor="acc-group" error={fe.of("dre_group")}>
+          <Select id="acc-group" value={chosenGroup} {...fe.props("dre_group", "acc-group")} onValueChange={v => { setGroup(v as DREGroup); fe.clear("dre_group") }} options={groups.map(g => ({value: g, label: dreGroupLabel(g)}))}/>
         </Field>
       ) : asset ? (
         <>
-          <Field label="Saldo inicial (opcional)" htmlFor="acc-opening">
-            <Input id="acc-opening" inputMode="decimal" placeholder="0,00" value={openingText} onChange={e => setOpeningText(maskMoney(e.target.value, {signed: true}))} aria-invalid={openingInvalid}/>
+          <Field label={t("finance.accounts.openingOptional")} htmlFor="acc-opening">
+            <Input id="acc-opening" inputMode="decimal" placeholder={moneyPlaceholder()} value={openingText} onChange={e => setOpeningText(maskMoney(e.target.value, {signed: true}))} aria-invalid={openingInvalid}/>
           </Field>
           {openingText.trim() !== "" && (
-            <Field label="Em" htmlFor="acc-opening-date">
+            <Field label={t("finance.accounts.on")} htmlFor="acc-opening-date">
               <DateField id="acc-opening-date" min={limits.minDate} max={todayIso()} value={openingDate} onValueChange={setOpeningDate}/>
             </Field>
           )}
         </>
       ) : null}
       <div className="flex gap-2 sm:col-span-2">
-        <Button type="button" variant="outline" size="sm" onClick={onDone}>Cancelar</Button>
-        <Button type="submit" variant="brand" size="sm" disabled={create.isPending || opening.isPending || create.isSuccess || !name.trim() || openingInvalid}>Criar</Button>
+        <Button type="button" variant="outline" size="sm" onClick={onDone}>{t("finance.accounts.cancel")}</Button>
+        <Button type="submit" variant="brand" size="sm" disabled={create.isPending || opening.isPending || create.isSuccess || !name.trim() || openingInvalid}>{t("finance.accounts.create")}</Button>
       </div>
-      {create.error && <p role="alert" className="text-sm text-danger sm:col-span-2">{messageFor(create.error)}</p>}
+      {fe.general && <p role="alert" className="text-sm text-danger sm:col-span-2">{fe.general}</p>}
       {opening.error && opening.variables && (
         <div role="alert" className="flex flex-wrap items-center gap-2 text-sm sm:col-span-2">
-          <p className="text-danger">A conta foi criada, mas o saldo inicial não foi lançado.</p>
-          <Button type="button" size="sm" variant="outline" disabled={opening.isPending} onClick={() => opening.mutate(opening.variables!)}>Tentar de novo</Button>
-          <Button type="button" size="sm" variant="ghost" onClick={onDone}>Deixar sem saldo inicial</Button>
+          <p className="text-danger">{t("finance.accounts.openingFailed")}</p>
+          <Button type="button" size="sm" variant="outline" disabled={opening.isPending} onClick={() => opening.mutate(opening.variables!)}>{t("common.tryAgain")}</Button>
+          <Button type="button" size="sm" variant="ghost" onClick={onDone}>{t("finance.accounts.skipOpening")}</Button>
         </div>
       )}
     </form>
@@ -249,6 +262,7 @@ function AccountForm({onDone}: {onDone: () => void}) {
 }
 
 function DefaultReceiving({accounts}: {accounts: Account[]}) {
+  const {t} = useTranslation()
   const ctx = useFinanceCtx()
   const settings = useQuery({queryKey: financeKeys.settings(ctx.mode, ctx.space), queryFn: () => getSettings(ctx)})
   const save = useFinanceMutation(
@@ -258,15 +272,15 @@ function DefaultReceiving({accounts}: {accounts: Account[]}) {
   const options = accounts.filter(a => a.class === "asset" && !a.archived)
   return (
     <section className="space-y-2 border-t border-border pt-4">
-      <Field label="Conta padrão de recebimento" htmlFor="default-receiving" hint="Onde as contas a receber caem quando ninguém escolhe outra.">
+      <Field label={t("finance.accounts.defaultReceiving")} htmlFor="default-receiving">
         <div className="max-w-xs">
           <Select
             id="default-receiving"
             value={settings.data?.default_receiving_account_id ?? ""}
             onValueChange={v => v && save.mutate(v)}
             disabled={save.isPending}
-            placeholder="Nenhuma"
-            options={options.map(a => ({value: a.id, label: a.name}))}
+            placeholder={t("finance.accounts.none")}
+            options={options.map(a => ({value: a.id, label: accountName(a)}))}
           />
         </div>
       </Field>

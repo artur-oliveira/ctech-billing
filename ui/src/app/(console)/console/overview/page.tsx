@@ -3,11 +3,13 @@
 import {Skeleton} from "@aoctech/ui"
 import {useQuery} from "@tanstack/react-query"
 import Link from "next/link"
+import {useTranslation} from "react-i18next"
 
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
 import {consoleKeys, getConsoleOverview} from "@/lib/api/console"
 import {useMode} from "@/lib/console/useMode"
 import {money} from "@/lib/format"
+import {currentLocale} from "@/lib/i18n"
 
 /**
  * C1 — "algo precisa de mim hoje?"
@@ -24,6 +26,7 @@ import {money} from "@/lib/format"
  * who opens the list.
  */
 export default function ConsoleOverviewPage() {
+  const {t} = useTranslation()
   const mode = useMode()
   const today = new Date()
   const year = today.getFullYear()
@@ -34,7 +37,7 @@ export default function ConsoleOverviewPage() {
     queryFn: () => getConsoleOverview(year, month, mode),
   })
 
-  const label = new Intl.DateTimeFormat("pt-BR", {month: "long", year: "numeric"})
+  const label = new Intl.DateTimeFormat(currentLocale(), {month: "long", year: "numeric"})
     .format(new Date(year, month - 1, 1))
 
   if (query.isPending) return <OverviewSkeleton/>
@@ -47,56 +50,54 @@ export default function ConsoleOverviewPage() {
   return (
     <div className="space-y-8">
       <div className="space-y-1">
-        <h1 className="text-lg font-semibold tracking-[-0.01em] text-foreground">Visão geral</h1>
+        <h1 className="text-lg font-semibold tracking-[-0.01em] text-foreground">{t("console.overview.title")}</h1>
         <p className="text-sm text-muted-foreground first-letter:uppercase">{label}</p>
       </div>
 
       <dl className="grid gap-x-6 gap-y-6 border-y border-border py-5 sm:grid-cols-3">
-        <Amount label="Recebido no mês" cents={data.received}/>
-        <Amount label="Em aberto, no prazo" cents={data.open}/>
-        <Amount label="Vencido" cents={data.overdue} urgent={data.overdue > 0}/>
+        <Amount label={t("console.overview.received")} cents={data.received}/>
+        <Amount label={t("console.overview.upcoming")} cents={data.open}/>
+        <Amount label={t("console.overview.overdue")} cents={data.overdue} urgent={data.overdue > 0}/>
       </dl>
 
       <section aria-labelledby="acoes" className="space-y-3">
-        <h2 id="acoes" className="text-sm font-medium text-muted-foreground">
-          {quiet ? "Nada pedindo atenção" : "Precisa de você"}
-        </h2>
-
         {quiet ? (
-          <p className="text-sm text-muted-foreground">
-            Nenhuma fatura vencida, nenhum rascunho parado e nada em aberto neste mês.
-          </p>
+          <p id="acoes" className="text-sm text-muted-foreground">{t("console.overview.quiet")}</p>
         ) : (
+          <>
+          <h2 id="acoes" className="text-sm font-medium text-muted-foreground">
+            {t("console.overview.attention")}
+          </h2>
           <ul className="divide-y divide-border border-y border-border">
             {data.overdue_count > 0 && (
               <Item
                 href="/console/invoices"
-                title={`${data.overdue_count} fatura${data.overdue_count === 1 ? "" : "s"} vencida${data.overdue_count === 1 ? "" : "s"}`}
-                detail={`${money(data.overdue)} em atraso. A cobrança automática continua, mas quem paga é o cliente.`}
+                title={t("console.overview.overdueInvoices", {count: data.overdue_count})}
+                detail={t("console.overview.overdueDetail", {amount: money(data.overdue)})}
               />
             )}
             {data.drafts > 0 && (
               <Item
                 href="/console/invoices"
-                title={`${data.drafts} rascunho${data.drafts === 1 ? "" : "s"} sem emitir`}
-                detail="Uma fatura em rascunho não é cobrada de ninguém e nada vai emiti-la sozinho; abra e emita."
+                title={t("console.overview.drafts", {count: data.drafts})}
+                detail={t("console.overview.draftsDetail")}
               />
             )}
             {data.uncollectible > 0 && (
               <Item
                 href="/console/invoices"
-                title={`${data.uncollectible} dada${data.uncollectible === 1 ? "" : "s"} por perdida${data.uncollectible === 1 ? "" : "s"}`}
-                detail="Fim da política de cobrança. Continua devida; o que mudou é que o billing parou de esperar."
+                title={t("console.overview.uncollectible", {count: data.uncollectible})}
+                detail={t("console.overview.uncollectibleDetail")}
               />
             )}
           </ul>
+          </>
         )}
       </section>
 
       {!data.complete && (
         <p className="text-xs text-muted-foreground">
-          Este mês tem mais faturas do que cabem em uma leitura, então os valores acima somam as{" "}
-          {data.counted} primeiras. A lista de faturas mostra todas.
+          {t("console.overview.partial", {counted: data.counted})}
         </p>
       )}
     </div>

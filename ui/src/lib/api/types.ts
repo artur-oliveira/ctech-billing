@@ -37,10 +37,15 @@ export interface InvoiceLine {
 export interface Invoice {
   id: string
   number?: number
+  /** The first line's raw description; "" when the invoice has no lines. */
   description: string
-  /** Already a sentence: "Vence em 3 dias". Never format this. */
+  /** Lines beyond the first; omitted when 0. */
+  extra_lines?: number
+  /** Enum code (paid, overdue, due_soon...): the words live in the catalog. */
   state: string
   tone: Tone
+  /** Days until due; negative once overdue. */
+  days_until_due: number
   due_date: IsoDate
   total: Cents
   amount_paid?: Cents
@@ -134,8 +139,10 @@ export interface ListResponse<T> {
 export interface CheckoutInvoice {
   number?: number
   description: string
+  extra_lines?: number
   state: string
   tone: Tone
+  days_until_due: number
   due_date: IsoDate
   amount_due: Cents
   currency: string

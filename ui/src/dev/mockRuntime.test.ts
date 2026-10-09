@@ -23,7 +23,7 @@ describe("scenario selection", () => {
     setScenario("vencida")
     const {data} = await get<ListResponse<Invoice>>("/v1.0/portal/invoices")
     expect(data.data[0].tone).toBe("urgent")
-    expect(data.data[0].state).toContain("Vencida")
+    expect(data.data[0].state).toBe("overdue")
   })
 
   it("promotes ?scenario= to storage so client navigation does not lose it", async () => {
@@ -32,7 +32,7 @@ describe("scenario selection", () => {
 
     window.history.replaceState({}, "", "/invoices")
     const {data} = await get<ListResponse<Invoice>>("/v1.0/portal/invoices")
-    expect(data.data[0].state).toBe("Paga")
+    expect(data.data[0].state).toBe("paid")
   })
 })
 
@@ -57,7 +57,7 @@ describe("paying", () => {
     settleInvoice("inv_mock_0042")
 
     const {data} = await get<Invoice>("/v1.0/portal/invoices/inv_mock_0042")
-    expect(data.state).toBe("Paga")
+    expect(data.state).toBe("paid")
     expect(data.amount_due).toBe(0)
     expect(data.payable).toBe(false)
   })

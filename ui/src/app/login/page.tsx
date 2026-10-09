@@ -2,6 +2,7 @@
 
 import {Button} from "@aoctech/ui"
 import {useEffect} from "react"
+import {useTranslation} from "react-i18next"
 
 import {StatusScreen} from "@/components/StatusScreen"
 import {useAuth} from "@/lib/auth/AuthContext"
@@ -20,6 +21,7 @@ import {useAuth} from "@/lib/auth/AuthContext"
  */
 export default function LoginPage() {
   const {authenticated, loading, login} = useAuth()
+  const {t} = useTranslation()
 
   useEffect(() => {
     if (!loading && authenticated) window.location.replace("/dashboard")
@@ -27,11 +29,11 @@ export default function LoginPage() {
 
   return (
     <StatusScreen
-      title="Entre para ver suas faturas"
-      description="Sua sessão expirou ou ainda não começou. Usamos a mesma conta CTech de todos os outros serviços; nenhuma senha é digitada aqui."
+      title={t("auth.login.title")}
+      description={t("auth.login.description")}
       action={
         <Button onClick={() => login("/dashboard")} disabled={loading || authenticated}>
-          {loading ? "Verificando…" : "Entrar com a conta CTech"}
+          {loading ? t("auth.login.checking") : t("auth.login.signIn")}
         </Button>
       }
     />

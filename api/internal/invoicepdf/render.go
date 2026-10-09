@@ -28,7 +28,6 @@ import (
 	"github.com/carlos7ags/folio/document"
 
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
-	"gopkg.aoctech.app/billing/api/internal/domain/brcal"
 )
 
 // Issuer is who is charging. Every field beyond the name is optional — an
@@ -59,6 +58,8 @@ type Input struct {
 	Lines    []billing.InvoiceItem
 	Issuer   Issuer
 	Customer Customer
+	// Lang is the document language; the zero value renders PTBR.
+	Lang Lang
 }
 
 // Render produces the PDF bytes.
@@ -72,16 +73,15 @@ func Render(in Input) ([]byte, error) {
 		return nil, fmt.Errorf("invoicepdf: invoice %s has no number — it has not been issued", in.Invoice.ID)
 	}
 
-	v := newView(in)
-	var html bytes.Buffer
-	if err := tmpl.Execute(&html, v); err != nil {
-		return nil, fmt.Errorf("invoicepdf: rendering the template: %w", err)
+	html, v, err := renderHTML(in)
+	if err != nil {
+		return nil, err
 	}
 
 	doc := document.NewDocument(document.PageSizeA4)
-	doc.Info.Title = "Fatura nº " + v.Number
+	doc.Info.Title = v.Title
 	doc.Info.Author = v.Issuer.Name
-	if err := doc.AddHTML(html.String(), nil); err != nil {
+	if err := doc.AddHTML(html, nil); err != nil {
 		return nil, fmt.Errorf("invoicepdf: converting to PDF: %w", err)
 	}
 
@@ -92,10 +92,23 @@ func Render(in Input) ([]byte, error) {
 	return out.Bytes(), nil
 }
 
+// renderHTML executes the template for the input's language.
+func renderHTML(in Input) (string, view, error) {
+	v := newView(in)
+	var html bytes.Buffer
+	if err := tmpl.Execute(&html, v); err != nil {
+		return "", v, fmt.Errorf("invoicepdf: rendering the template: %w", err)
+	}
+	return html.String(), v, nil
+}
+
 // view is the template's vocabulary: strings, already formatted. Money and
 // dates are rendered here and nowhere else, so the PDF cannot disagree with the
 // screen about what an amount is.
 type view struct {
+	T           messages
+	Title       string
+	PeriodLine  string
 	Number      string
 	Period      string
 	DueDate     string
@@ -119,48 +132,35 @@ type lineView struct {
 
 func newView(in Input) view {
 	inv := in.Invoice
+	m := in.Lang.msgs()
+	number := fmt.Sprintf("%d", inv.Number)
+	period := m.period(inv.Period.Start, inv.Period.End)
+	due := m.date(inv.DueDate)
 	out := view{
-		Number:      fmt.Sprintf("%d", inv.Number),
-		Period:      formatPeriod(inv.Period.Start, inv.Period.End),
-		DueDate:     formatDate(inv.DueDate),
+		T:           m,
+		Title:       fmt.Sprintf(m.Title, number),
+		PeriodLine:  fmt.Sprintf(m.PeriodLine, period, due),
+		Number:      number,
+		Period:      period,
+		DueDate:     due,
 		Issuer:      in.Issuer,
 		Customer:    in.Customer,
-		Subtotal:    inv.Subtotal.String(),
-		Discount:    inv.Discount.String(),
-		Total:       inv.Total.String(),
+		Subtotal:    m.money(inv.Subtotal),
+		Discount:    m.money(inv.Discount),
+		Total:       m.money(inv.Total),
 		HasDiscount: inv.Discount != 0,
 	}
 	for _, line := range in.Lines {
 		out.Lines = append(out.Lines, lineView{
 			Description: line.Description,
-			Period:      formatPeriod(line.Period.Start, line.Period.End),
+			Period:      m.period(line.Period.Start, line.Period.End),
 			Quantity:    fmt.Sprintf("%d", line.Quantity),
-			UnitAmount:  line.UnitAmount.String(),
-			Amount:      line.Amount.String(),
+			UnitAmount:  m.money(line.UnitAmount),
+			Amount:      m.money(line.Amount),
 			Proration:   line.Proration,
 		})
 	}
 	return out
-}
-
-var months = [...]string{
-	"janeiro", "fevereiro", "março", "abril", "maio", "junho",
-	"julho", "agosto", "setembro", "outubro", "novembro", "dezembro",
-}
-
-func formatDate(d brcal.Date) string {
-	if d.IsZero() {
-		return ""
-	}
-	return fmt.Sprintf("%d de %s de %d", d.Day, months[int(d.Month)-1], d.Year)
-}
-
-func formatPeriod(start, end brcal.Date) string {
-	if start.IsZero() || end.IsZero() {
-		return ""
-	}
-	return fmt.Sprintf("%02d/%02d/%04d a %02d/%02d/%04d",
-		start.Day, int(start.Month), start.Year, end.Day, int(end.Month), end.Year)
 }
 
 // The document. Deliberately plain: an invoice is read, filed and often printed
@@ -183,22 +183,22 @@ var tmpl = template.Must(template.New("invoice").Parse(`
   .total-row td { border-top: 1px solid #1a1a1a; padding-top: 5pt; font-size: 11pt; }
 </style>
 
-<h1>Fatura nº {{.Number}}</h1>
-<p class="muted small">Período de {{.Period}} · Vencimento em {{.DueDate}}</p>
+<h1>{{.Title}}</h1>
+<p class="muted small">{{.PeriodLine}}</p>
 
 <div class="rule"></div>
 
 <table>
   <tr>
     <td style="width:50%; border-bottom:none; padding-top:0">
-      <span class="small muted">Emitida por</span><br/>
+      <span class="small muted">{{.T.IssuedBy}}</span><br/>
       <strong>{{with .Issuer.LegalName}}{{.}}{{else}}{{$.Issuer.Name}}{{end}}</strong>
       {{with .Issuer.TaxID}}<br/><span class="small">CNPJ {{.}}</span>{{end}}
       {{with .Issuer.Address}}<br/><span class="small muted">{{.}}</span>{{end}}
       {{with .Issuer.Email}}<br/><span class="small muted">{{.}}</span>{{end}}
     </td>
     <td style="width:50%; border-bottom:none; padding-top:0">
-      <span class="small muted">Cobrada de</span><br/>
+      <span class="small muted">{{.T.BilledTo}}</span><br/>
       <strong>{{.Customer.Name}}</strong>
       {{with .Customer.TaxID}}<br/><span class="small">CPF/CNPJ {{.}}</span>{{end}}
       {{with .Customer.Email}}<br/><span class="small muted">{{.}}</span>{{end}}
@@ -210,15 +210,15 @@ var tmpl = template.Must(template.New("invoice").Parse(`
 
 <table>
   <tr>
-    <th>Descrição</th>
-    <th>Período</th>
-    <th class="r">Qtd.</th>
-    <th class="r">Unitário</th>
-    <th class="r">Valor</th>
+    <th>{{.T.Description}}</th>
+    <th>{{.T.Period}}</th>
+    <th class="r">{{.T.Quantity}}</th>
+    <th class="r">{{.T.UnitAmount}}</th>
+    <th class="r">{{.T.Amount}}</th>
   </tr>
   {{range .Lines}}
   <tr>
-    <td>{{.Description}}{{if .Proration}}<br/><span class="small muted">Proporcional aos dias usados</span>{{end}}</td>
+    <td>{{.Description}}{{if .Proration}}<br/><span class="small muted">{{$.T.Prorated}}</span>{{end}}</td>
     <td class="small muted">{{.Period}}</td>
     <td class="r">{{.Quantity}}</td>
     <td class="r">{{.UnitAmount}}</td>
@@ -235,24 +235,23 @@ var tmpl = template.Must(template.New("invoice").Parse(`
   {{if .HasDiscount}}
   <tr>
     <td style="width:70%"></td>
-    <td class="r" style="width:15%">Subtotal</td>
+    <td class="r" style="width:15%">{{.T.Subtotal}}</td>
     <td class="r" style="width:15%">{{.Subtotal}}</td>
   </tr>
   <tr>
     <td></td>
-    <td class="r">Desconto</td>
+    <td class="r">{{.T.Discount}}</td>
     <td class="r">−{{.Discount}}</td>
   </tr>
   {{end}}
   <tr class="total-row">
     <td style="width:70%; border-top:none"></td>
-    <td class="r" style="width:15%"><strong>Total</strong></td>
+    <td class="r" style="width:15%"><strong>{{.T.Total}}</strong></td>
     <td class="r" style="width:15%"><strong>{{.Total}}</strong></td>
   </tr>
 </table>
 
 <p class="small muted" style="margin-top:14pt">
-  Documento gerado por CTech Billing. É o demonstrativo da cobrança, não é nota
-  fiscal.
+  {{.T.Footer}}
 </p>
 `))

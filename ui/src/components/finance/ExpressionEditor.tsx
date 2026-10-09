@@ -5,26 +5,28 @@ import limits from "@/lib/limits.json"
 import {Button, Field, Input} from "@aoctech/ui"
 import {X} from "lucide-react"
 import {useState} from "react"
+import {useTranslation} from "react-i18next"
 
 import {DateField} from "@/components/ui/DateField"
 import {Select} from "@/components/ui/Select"
 import {
-  defaultAnchor, type EditorModel, MONTH_LABEL, type ModelError, type Pattern,
+  defaultAnchor, type EditorModel, type ModelError, monthName, ordinal, type Pattern,
 } from "@/lib/finance/expression"
-import {WEEKDAY_LABEL} from "@/lib/finance/labels"
+import {weekdayLabel} from "@/lib/finance/labels"
 import {shortDate} from "@/lib/format"
+import {t} from "@/lib/i18n"
 
-const KIND_OPTIONS: {value: Pattern["kind"]; label: string}[] = [
-  {value: "day_of_month", label: "Todo mês, num dia fixo"},
-  {value: "workday_of_month", label: "Todo mês, num dia útil"},
-  {value: "nth_weekday_of_month", label: "Todo mês, num dia da semana"},
-  {value: "weekly", label: "Semanal"},
-  {value: "yearly", label: "Anual"},
+// Option lists are built at render, never at import: the language can change.
+const kindOptions = (): {value: Pattern["kind"]; label: string}[] =>
+  (["day_of_month", "workday_of_month", "nth_weekday_of_month", "weekly", "yearly"] as const)
+    .map(value => ({value, label: t(`bills.editor.kind.${value}`)}))
+const weekdayOptions = () => [0, 1, 2, 3, 4, 5, 6].map(i => ({value: String(i), label: weekdayLabel(i) ?? ""}))
+const monthOptions = () => Array.from({length: 12}, (_, i) => ({value: String(i + 1), label: monthName(i + 1)}))
+const workdayOptions = () => [
+  ...Array.from({length: 23}, (_, i) => ({value: String(i + 1), label: t("bills.editor.nthWorkday", {ord: ordinal(i + 1)})})),
+  {value: "-1", label: t("bills.editor.lastWorkday")},
 ]
-const WEEKDAYS = WEEKDAY_LABEL.map((label, i) => ({value: String(i), label}))
-const MONTHS = MONTH_LABEL.map((label, i) => ({value: String(i + 1), label}))
-const WORKDAYS = [...Array.from({length: 23}, (_, i) => ({value: String(i + 1), label: `${i + 1}º dia útil`})), {value: "-1", label: "Último dia útil"}]
-const NTH = [...[1, 2, 3, 4].map(n => ({value: String(n), label: `${n}ª`})), {value: "-1", label: "Última"}]
+const nthOptions = () => [...[1, 2, 3, 4].map(n => ({value: String(n), label: ordinal(n, true)})), {value: "-1", label: t("bills.editor.last")}]
 
 function patternFor(kind: Pattern["kind"], start: string, prev: Pattern): Pattern {
   const day = Number(start.split("-")[2]) || 10
@@ -50,53 +52,54 @@ interface EditorProps {
  * back to the last day; the preview shows it, so no hint is needed here.
  */
 export function PatternFields({model, start, errors, onChange}: EditorProps) {
+  const {t} = useTranslation()
   const p = model.pattern
   const err = (field: string) => errors.find(e => e.field === field)?.message
   const setPattern = (next: Pattern) => onChange({...model, pattern: next})
   return (
     <>
-      <Field label="Repetição" htmlFor="rx-kind">
-        <Select id="rx-kind" value={p.kind} onValueChange={k => setPattern(patternFor(k as Pattern["kind"], start, p))} options={KIND_OPTIONS}/>
+      <Field label={t("bills.editor.repeat")} htmlFor="rx-kind">
+        <Select id="rx-kind" value={p.kind} onValueChange={k => setPattern(patternFor(k as Pattern["kind"], start, p))} options={kindOptions()}/>
       </Field>
 
       {p.kind === "day_of_month" && (
-        <Field label="Dia do mês" htmlFor="rx-day" error={err("day")}>
+        <Field label={t("bills.editor.dayOfMonth")} htmlFor="rx-day" error={err("day")}>
           <Input id="rx-day" maxLength={2} inputMode="numeric" value={Number.isNaN(p.day) ? "" : String(p.day)} onChange={e => setPattern({...p, day: Number.parseInt(e.target.value, 10)})} aria-invalid={!!err("day")}/>
         </Field>
       )}
 
       {p.kind === "workday_of_month" && (
-        <Field label="Dia útil" htmlFor="rx-n" error={err("n")}>
-          <Select id="rx-n" value={String(p.n)} onValueChange={v => setPattern({...p, n: Number(v)})} options={WORKDAYS}/>
+        <Field label={t("bills.editor.workday")} htmlFor="rx-n" error={err("n")}>
+          <Select id="rx-n" value={String(p.n)} onValueChange={v => setPattern({...p, n: Number(v)})} options={workdayOptions()}/>
         </Field>
       )}
 
       {p.kind === "nth_weekday_of_month" && (
         <>
-          <Field label="Qual" htmlFor="rx-nth" error={err("n")}>
-            <Select id="rx-nth" value={String(p.n)} onValueChange={v => setPattern({...p, n: Number(v)})} options={NTH}/>
+          <Field label={t("bills.editor.which")} htmlFor="rx-nth" error={err("n")}>
+            <Select id="rx-nth" value={String(p.n)} onValueChange={v => setPattern({...p, n: Number(v)})} options={nthOptions()}/>
           </Field>
-          <Field label="Dia da semana" htmlFor="rx-wd" error={err("weekday")}>
-            <Select id="rx-wd" value={String(p.weekday)} onValueChange={v => setPattern({...p, weekday: Number(v)})} options={WEEKDAYS}/>
+          <Field label={t("bills.editor.weekday")} htmlFor="rx-wd" error={err("weekday")}>
+            <Select id="rx-wd" value={String(p.weekday)} onValueChange={v => setPattern({...p, weekday: Number(v)})} options={weekdayOptions()}/>
           </Field>
         </>
       )}
 
       {p.kind === "weekly" && (
         <>
-          <Field label="Dia da semana" htmlFor="rx-wd" error={err("weekday")}>
+          <Field label={t("bills.editor.weekday")} htmlFor="rx-wd" error={err("weekday")}>
             <Select
               id="rx-wd"
               value={String(p.weekday)}
               onValueChange={v => setPattern({...p, weekday: Number(v), anchor: defaultAnchor(Number(v), start)})}
-              options={WEEKDAYS}
+              options={weekdayOptions()}
             />
           </Field>
-          <Field label="A cada quantas semanas" htmlFor="rx-every" error={err("every")}>
+          <Field label={t("bills.editor.everyWeeks")} htmlFor="rx-every" error={err("every")}>
             <Input id="rx-every" maxLength={2} inputMode="numeric" value={Number.isNaN(p.every) ? "" : String(p.every)} onChange={e => setPattern({...p, every: Number.parseInt(e.target.value, 10)})} aria-invalid={!!err("every")}/>
           </Field>
           {p.every > 1 && (
-            <Field label="Primeira data" htmlFor="rx-anchor" error={err("anchor")} hint="As semanas contam a partir dela.">
+            <Field label={t("bills.editor.firstDate")} htmlFor="rx-anchor" error={err("anchor")} hint={t("bills.editor.firstDateHint")}>
               <DateField id="rx-anchor" min={limits.minDate} max={addYearsIso(todayIso(), limits.maxRecurrenceYears)} value={p.anchor} onValueChange={anchor => setPattern({...p, anchor})}/>
             </Field>
           )}
@@ -105,10 +108,10 @@ export function PatternFields({model, start, errors, onChange}: EditorProps) {
 
       {p.kind === "yearly" && (
         <>
-          <Field label="Mês" htmlFor="rx-month" error={err("month")}>
-            <Select id="rx-month" value={String(p.month)} onValueChange={v => setPattern({...p, month: Number(v)})} options={MONTHS}/>
+          <Field label={t("bills.editor.month")} htmlFor="rx-month" error={err("month")}>
+            <Select id="rx-month" value={String(p.month)} onValueChange={v => setPattern({...p, month: Number(v)})} options={monthOptions()}/>
           </Field>
-          <Field label="Dia" htmlFor="rx-yday" error={err("day")}>
+          <Field label={t("bills.editor.day")} htmlFor="rx-yday" error={err("day")}>
             <Input id="rx-yday" maxLength={2} inputMode="numeric" value={Number.isNaN(p.day) ? "" : String(p.day)} onChange={e => setPattern({...p, day: Number.parseInt(e.target.value, 10)})} aria-invalid={!!err("day")}/>
           </Field>
         </>
@@ -119,14 +122,15 @@ export function PatternFields({model, start, errors, onChange}: EditorProps) {
 
 /** The exceptions (whole months, single dates), shown under "Mais opções". */
 export function ExceptionsFields({model, errors, onChange}: Omit<EditorProps, "start">) {
+  const {t} = useTranslation()
   const err = (field: string) => errors.find(e => e.field === field)?.message
   const [newDate, setNewDate] = useState("")
   return (
     <div className="space-y-3">
       <fieldset className="space-y-2">
-        <legend className="text-sm font-medium text-foreground">Exceto nos meses</legend>
+        <legend className="text-sm font-medium text-foreground">{t("bills.editor.exceptMonths")}</legend>
         <div className="flex flex-wrap gap-1">
-          {MONTH_LABEL.map((label, i) => {
+          {monthOptions().map(({label}, i) => {
             const month = i + 1
             const on = model.exceptions.months.includes(month)
             return (
@@ -146,7 +150,7 @@ export function ExceptionsFields({model, errors, onChange}: Omit<EditorProps, "s
       </fieldset>
 
       <div className="space-y-2">
-        <Field label="Exceto nas datas" htmlFor="rx-date-add">
+        <Field label={t("bills.editor.exceptDates")} htmlFor="rx-date-add">
           <div className="flex gap-2">
             <DateField id="rx-date-add" min={limits.minDate} max={addYearsIso(todayIso(), limits.maxRecurrenceYears)} value={newDate} onValueChange={setNewDate}/>
             <Button
@@ -159,7 +163,7 @@ export function ExceptionsFields({model, errors, onChange}: Omit<EditorProps, "s
                 setNewDate("")
               }}
             >
-              Adicionar
+              {t("bills.editor.add")}
             </Button>
           </div>
         </Field>
@@ -170,7 +174,7 @@ export function ExceptionsFields({model, errors, onChange}: Omit<EditorProps, "s
                 {shortDate(d)}
                 <button
                   type="button"
-                  aria-label={`Remover ${shortDate(d)}`}
+                  aria-label={t("bills.editor.remove", {date: shortDate(d)})}
                   onClick={() => onChange({...model, exceptions: {...model.exceptions, dates: model.exceptions.dates.filter(x => x !== d)}})}
                   className="text-muted-foreground hover:text-foreground"
                 >

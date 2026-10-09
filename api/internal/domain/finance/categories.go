@@ -6,10 +6,10 @@ package finance
 // idempotent; the person renames, archives or adds to them like any other.
 func DefaultCategories(personal bool) []LedgerAccount {
 	in := func(id, name string, g DREGroup) LedgerAccount {
-		return LedgerAccount{ID: "cat-" + id, Name: name, Class: ClassIncome, Group: g}
+		return LedgerAccount{ID: "cat-" + id, Name: name, Class: ClassIncome, Group: g, SystemKey: systemKey(id)}
 	}
 	out := func(id, name string, g DREGroup) LedgerAccount {
-		return LedgerAccount{ID: "cat-" + id, Name: name, Class: ClassExpense, Group: g}
+		return LedgerAccount{ID: "cat-" + id, Name: name, Class: ClassExpense, Group: g, SystemKey: systemKey(id)}
 	}
 	gaps := []LedgerAccount{
 		out("juros-multas", "Juros e multas", GroupFinancialResult),
@@ -46,3 +46,34 @@ func DefaultCategories(personal bool) []LedgerAccount {
 		out("outras-despesas", "Outras despesas", GroupOther),
 	}, gaps...)
 }
+
+// categoryKeys maps a default category id (without the "cat-" prefix) to its
+// stable system key. "rendimentos" and "outras-despesas" are shared by both sets.
+var categoryKeys = map[string]string{
+	"juros-multas":      "interest_and_fines",
+	"descontos-obtidos": "discounts_obtained",
+	"salario":           "salary",
+	"rendimentos":       "investment_income",
+	"outras-receitas":   "other_income",
+	"moradia":           "housing",
+	"alimentacao":       "food",
+	"transporte":        "transport",
+	"saude":             "health",
+	"educacao":          "education",
+	"lazer":             "leisure",
+	"assinaturas":       "subscriptions_services",
+	"impostos-taxas":    "taxes_and_fees",
+	"outras-despesas":   "other_expenses",
+	"vendas":            "sales",
+	"servicos":          "services_revenue",
+	"impostos-vendas":   "sales_taxes",
+	"custo-vendas":      "cost_of_sales",
+	"pessoal":           "payroll_and_charges",
+	"aluguel":           "rent",
+	"software":          "software_subscriptions",
+	"marketing":         "marketing",
+	"administrativas":   "administrative_expenses",
+	"tarifas-bancarias": "bank_fees",
+}
+
+func systemKey(id string) string { return categoryKeys[id] }

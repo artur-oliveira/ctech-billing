@@ -64,12 +64,14 @@ type AccountRow struct {
 
 type accountItem struct {
 	keys
-	ID      string               `dynamodbav:"id"`
-	Name    string               `dynamodbav:"name"`
-	Class   finance.AccountClass `dynamodbav:"class"`
-	Group   finance.DREGroup     `dynamodbav:"dre_group,omitempty"`
-	System  bool                 `dynamodbav:"system,omitempty"`
-	Balance int64                `dynamodbav:"balance"`
+	ID     string               `dynamodbav:"id"`
+	Name   string               `dynamodbav:"name"`
+	Class  finance.AccountClass `dynamodbav:"class"`
+	Group  finance.DREGroup     `dynamodbav:"dre_group,omitempty"`
+	System bool                 `dynamodbav:"system,omitempty"`
+	// SystemKey marks a default account so clients can translate its name.
+	SystemKey string `dynamodbav:"system_key,omitempty"`
+	Balance   int64  `dynamodbav:"balance"`
 	// Archived hides an account from new activity; it is never deleted, because
 	// its entries and reports must keep resolving.
 	Archived bool `dynamodbav:"archived,omitempty"`
@@ -77,7 +79,7 @@ type accountItem struct {
 
 func (i accountItem) row() AccountRow {
 	return AccountRow{
-		LedgerAccount: finance.LedgerAccount{ID: i.ID, Name: i.Name, Class: i.Class, Group: i.Group, System: i.System},
+		LedgerAccount: finance.LedgerAccount{ID: i.ID, Name: i.Name, Class: i.Class, Group: i.Group, System: i.System, SystemKey: i.SystemKey},
 		Balance:       billing.Cents(i.Balance),
 		Archived:      i.Archived,
 	}
@@ -86,7 +88,7 @@ func (i accountItem) row() AccountRow {
 func newAccountItem(sp space.ResolvedSpace, a finance.LedgerAccount, now time.Time) accountItem {
 	return accountItem{
 		keys: newKeys(sp.PK(), LedgerAccountSK(a.ID), RetentionPermanent, now),
-		ID:   a.ID, Name: a.Name, Class: a.Class, Group: a.Group, System: a.System,
+		ID:   a.ID, Name: a.Name, Class: a.Class, Group: a.Group, System: a.System, SystemKey: a.SystemKey,
 	}
 }
 
@@ -120,10 +122,69 @@ func (r *LedgerRepository) EnsureSpace(ctx context.Context, sp space.ResolvedSpa
 	return err
 }
 
+// EnsureReady makes the space usable: its settings row and system accounts exist
+// and its default categories are seeded. It is what the finance routes call, a
+// GET included, so the common case must be a read.
+//
+// One GetItem of the SPACE row decides: when it is there at the current seed
+// version nothing is written. The creation transaction (four conditional puts)
+// only runs for a space that does not exist yet; running it on every request,
+// as EnsureSpace alone did, spent write capacity on puts that were bound to
+// fail their condition, and parallel first requests cancelled each other with
+// TransactionConflict. A conflict is not a verdict: another request is creating
+// the same rows, so look again after a short wait instead of failing the read.
+func (r *LedgerRepository) EnsureReady(ctx context.Context, sp space.ResolvedSpace, now time.Time) error {
+	if err := sp.Require(space.Write); err != nil {
+		return err
+	}
+	const attempts = 4
+	for attempt := 1; ; attempt++ {
+		ready, exists, err := r.spaceState(ctx, sp)
+		if err != nil {
+			return err
+		}
+		if ready {
+			return nil
+		}
+		if !exists {
+			err = r.EnsureSpace(ctx, sp, now)
+			if err != nil && retryableCancel(err) && attempt < attempts {
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case <-time.After(time.Duration(attempt) * 25 * time.Millisecond):
+				}
+				continue
+			}
+			if err != nil {
+				return err
+			}
+		}
+		return r.SeedCategories(ctx, sp, now)
+	}
+}
+
+// spaceState reads the SPACE row: whether it exists and whether it is seeded at
+// the current version.
+func (r *LedgerRepository) spaceState(ctx context.Context, sp space.ResolvedSpace) (ready, exists bool, err error) {
+	raw, err := r.accounts.GetItem(ctx, sp.PK(), LedgerSpaceSK())
+	if err != nil || raw == nil {
+		return false, false, err
+	}
+	it, err := Decode[struct {
+		Seed int `dynamodbav:"seed_version"`
+	}](raw)
+	if err != nil {
+		return false, true, err
+	}
+	return it.Seed >= seedVersion, true, nil
+}
+
 // seedVersion is the version of finance.DefaultCategories a space was seeded
 // with, kept on its SPACE row. Raising it seeds a space again (only what is
 // missing is added).
-const seedVersion = 1
+// Version 2 backfills system_key onto the defaults seeded by version 1.
+const seedVersion = 2
 
 // SeedCategories adds the space's default categories (spec § 3.3), once per
 // seed version. Each is a conditional put, so one the person archived is never
@@ -152,12 +213,25 @@ func (r *LedgerRepository) SeedCategories(ctx context.Context, sp space.Resolved
 	if err != nil {
 		return err
 	}
-	taken := make(map[string]bool, len(existing))
+	taken := make(map[string]string, len(existing)) // name -> id
+	byID := make(map[string]AccountRow, len(existing))
 	for _, a := range existing {
-		taken[strings.ToLower(strings.TrimSpace(a.Name))] = true
+		taken[strings.ToLower(strings.TrimSpace(a.Name))] = a.ID
+		byID[a.ID] = a
 	}
-	for _, a := range finance.DefaultCategories(sp.Personal()) {
-		if taken[strings.ToLower(a.Name)] {
+	_, system := finance.DefaultSystemAccounts()
+	for _, a := range append(system, finance.DefaultCategories(sp.Personal())...) {
+		if cur, ok := byID[a.ID]; ok {
+			// Already there (seeded by an older version): only the missing key is
+			// added; its name, group and archived state are the person's.
+			if cur.SystemKey == "" && a.SystemKey != "" {
+				if err := r.backfillSystemKey(ctx, sp, a, now); err != nil {
+					return err
+				}
+			}
+			continue
+		}
+		if a.System || taken[strings.ToLower(a.Name)] != "" {
 			continue
 		}
 		item, err := Encode(newAccountItem(sp, a, now))
@@ -171,6 +245,22 @@ func (r *LedgerRepository) SeedCategories(ctx context.Context, sp space.Resolved
 	}
 	sk := LedgerSpaceSK()
 	return r.accounts.UpsertAttrs(ctx, sp.PK(), &sk, map[string]any{"seed_version": seedVersion, "updated_at": now.UTC().Format(time.RFC3339Nano)})
+}
+
+// backfillSystemKey sets system_key on an existing default row that lacks it.
+// Conditional, so a concurrent process or a later run is a no-op.
+func (r *LedgerRepository) backfillSystemKey(ctx context.Context, sp space.ResolvedSpace, a finance.LedgerAccount, now time.Time) error {
+	sk := LedgerAccountSK(a.ID)
+	err := r.accounts.TransactWrite(ctx, txItems(r.accounts.BuildRawUpdateTxItem(sp.PK(), &sk,
+		"SET system_key = :k, updated_at = :now", "attribute_exists(pk) AND attribute_not_exists(system_key)", nil,
+		map[string]types.AttributeValue{
+			":k":   &types.AttributeValueMemberS{Value: a.SystemKey},
+			":now": &types.AttributeValueMemberS{Value: now.UTC().Format(time.RFC3339Nano)},
+		})))
+	if err != nil && !onlyConditionFailed(err) {
+		return err
+	}
+	return nil
 }
 
 // CreateAccount adds an account or category to the space's chart.
@@ -476,7 +566,25 @@ func cancellationCodes(err error) []string {
 const (
 	codeNone            = "None"
 	codeConditionFailed = "ConditionalCheckFailed"
+	codeConflict        = "TransactionConflict"
 )
+
+// retryableCancel reports a cancellation caused by another transaction touching
+// the same items: at least one TransactionConflict, and nothing worse among the
+// reasons. Whether the write would succeed was not decided, so it can be retried.
+func retryableCancel(err error) bool {
+	seen := false
+	for _, c := range cancellationCodes(err) {
+		switch c {
+		case "", codeNone, codeConditionFailed:
+		case codeConflict:
+			seen = true
+		default:
+			return false
+		}
+	}
+	return seen
+}
 
 // onlyConditionFailed reports a cancellation whose every non-trivial reason is a
 // failed condition. A conflict or a throttle among the reasons is not "it already

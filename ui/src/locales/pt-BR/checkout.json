@@ -1,0 +1,24 @@
+{
+  "title": "Pagar fatura",
+  "invoice": "Fatura nº {{number}}",
+  "untitled": "Fatura",
+  "from": "Cobrança de <b>{{merchant}}</b>",
+  "dueOn": "{{description}} · vence em {{date}}",
+  "payPix": "Pagar {{amount}} com PIX",
+  "generating": "Gerando código…",
+  "settled": {
+    "title": "Pagamento recebido",
+    "description": "Fatura quitada."
+  },
+  "notOpen": "Fatura fechada para pagamento. Nada foi cobrado. Fale com {{merchant}} se for engano.",
+  "lines": "Itens",
+  "proration": "Proporcional aos dias usados",
+  "total": "Total",
+  "footer": "Pagamento processado pela CTech.",
+  "terms": "Termos",
+  "privacy": "Privacidade",
+  "invalid": {
+    "title": "Link inválido",
+    "description": "O link expirou. Nada foi cobrado. Peça um novo a quem enviou ou entre na sua conta CTech."
+  }
+}

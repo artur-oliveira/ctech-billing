@@ -2,15 +2,17 @@
  * Report periods. Months are `YYYY-MM` strings and the arithmetic is on numbers,
  * never on `new Date("YYYY-MM-DD")` (which reads a civil date as UTC midnight).
  */
+import {t} from "@/lib/i18n"
+
 export type PresetId = "this_month" | "last_month" | "last_3" | "this_year" | "last_12"
 
-export const PRESETS: {value: PresetId; label: string}[] = [
-  {value: "this_month", label: "Este mês"},
-  {value: "last_month", label: "Mês passado"},
-  {value: "last_3", label: "Últimos 3 meses"},
-  {value: "this_year", label: "Este ano"},
-  {value: "last_12", label: "Últimos 12 meses"},
-]
+const IDS: PresetId[] = ["this_month", "last_month", "last_3", "this_year", "last_12"]
+
+/** Select options; `label` resolves when read, so it follows the current language. */
+export const PRESETS: {value: PresetId; label: string}[] = IDS.map(value => ({
+  value,
+  get label() { return t(`bills.periods.${value}`) },
+}))
 
 function shift(month: string, n: number): string {
   const [y, m] = month.split("-").map(Number)

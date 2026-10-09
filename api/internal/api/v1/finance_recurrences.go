@@ -2,6 +2,7 @@ package v1
 
 import (
 	"encoding/json"
+	"fmt"
 
 	"github.com/gofiber/fiber/v3"
 
@@ -67,11 +68,11 @@ func (s scheduleRequest) schedule(today brcal.Date) (finance.Schedule, []problem
 	}
 	errs = append(errs, c.errs...)
 	if len(s.Expression) == 0 {
-		return finance.Schedule{}, []problem.FieldError{fieldErr("expression", "obrigatório", "required")}
+		return finance.Schedule{}, []problem.FieldError{fieldErr("expression", "required", "required")}
 	}
 	expr, err := finance.ParseSchedule(s.Expression)
 	if err != nil {
-		errs = append(errs, fieldErr("expression", err.Error(), "invalid"))
+		errs = append(errs, fieldErr("expression", "invalid_expression", err.Error()))
 	}
 	adjust := finance.BusinessDayAdjust(s.Adjust)
 	if adjust == "" {
@@ -101,7 +102,7 @@ func (h *financeHandlers) createRecurrence(c fiber.Ctx) error {
 	}
 	sched, errs := req.scheduleRequest.schedule(h.today())
 	if req.Direction != string(finance.Payable) && req.Direction != string(finance.Receivable) {
-		errs = append(errs, fieldErr("direction", "use payable ou receivable", "oneof"))
+		errs = append(errs, fieldErr("direction", "unsupported_value", "use payable or receivable", "allowed", []string{"payable", "receivable"}))
 	}
 	ch := &checks{}
 	ch.amount("amount", req.Amount)
@@ -226,7 +227,7 @@ func (h *financeHandlers) previewRecurrence(c fiber.Ctx) error {
 		errs = append(errs, ch.errs...)
 	}
 	if req.Count < 1 || req.Count > finance.MaxPreview {
-		errs = append(errs, fieldErr("count", "entre 1 e 24", "range"))
+		errs = append(errs, fieldErr("count", "out_of_range", fmt.Sprintf("between 1 and %d", finance.MaxPreview), "min", 1, "max", finance.MaxPreview))
 	}
 	if len(errs) > 0 {
 		return problem.Validation(errs).Send(c)
@@ -251,12 +252,16 @@ type projectionMonthDTO struct {
 	Receivable billing.Cents `json:"receivable"`
 	Payable    billing.Cents `json:"payable"`
 	Virtual    billing.Cents `json:"virtual"`
+	// VirtualReceivable and VirtualPayable split Virtual into its two sides (both
+	// >= 0), so a client can show money in and money out separately.
+	VirtualReceivable billing.Cents `json:"virtual_receivable"`
+	VirtualPayable    billing.Cents `json:"virtual_payable"`
 }
 
 func (h *financeHandlers) projection(c fiber.Ctx) error {
 	months := fiber.Query(c, "months", 6)
 	if months < 1 || months > 12 {
-		return problem.Validation([]problem.FieldError{fieldErr("months", "entre 1 e 12", "range")}).Send(c)
+		return problem.Validation([]problem.FieldError{fieldErr("months", "out_of_range", "between 1 and 12", "min", 1, "max", 12)}).Send(c)
 	}
 	p, err := h.jobs.Project(c.Context(), middleware.GetSpace(c), h.today(), months)
 	if err != nil {
@@ -264,7 +269,7 @@ func (h *financeHandlers) projection(c fiber.Ctx) error {
 	}
 	out := listResponse[projectionMonthDTO]{Data: make([]projectionMonthDTO, 0, len(p.Months))}
 	for _, m := range p.Months {
-		out.Data = append(out.Data, projectionMonthDTO{Month: m.Month.String(), Receivable: m.Receivable, Payable: m.Payable, Virtual: m.Virtual})
+		out.Data = append(out.Data, projectionMonthDTO{Month: m.Month.String(), Receivable: m.Receivable, Payable: m.Payable, Virtual: m.Virtual, VirtualReceivable: m.VirtualReceivable, VirtualPayable: m.VirtualPayable})
 	}
 	return c.JSON(out)
 }

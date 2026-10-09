@@ -60,7 +60,7 @@ type createBillRequest struct {
 func (r createBillRequest) validate(today brcal.Date) []problem.FieldError {
 	c := &checks{}
 	if r.Direction != string(finance.Payable) && r.Direction != string(finance.Receivable) {
-		c.fail("direction", "use payable ou receivable", "oneof")
+		c.fail("direction", "unsupported_value", "use payable or receivable", "allowed", []string{"payable", "receivable"})
 	}
 	c.amount("amount", r.Amount)
 	c.id("account_id", r.AccountID, true)
@@ -107,15 +107,15 @@ func (h *financeHandlers) getBill(c fiber.Ctx) error {
 func (h *financeHandlers) listBills(c fiber.Ctx) error {
 	dir := finance.Direction(c.Query("direction"))
 	if dir != finance.Payable && dir != finance.Receivable {
-		return problem.Validation([]problem.FieldError{fieldErr("direction", "use payable ou receivable", "oneof")}).Send(c)
+		return problem.Validation([]problem.FieldError{fieldErr("direction", "unsupported_value", "use payable or receivable", "allowed", []string{"payable", "receivable"})}).Send(c)
 	}
 	limit := fiber.Query(c, "limit", 50)
 	if limit < 1 || limit > pageLimit {
-		return problem.Validation([]problem.FieldError{fieldErr("limit", "entre 1 e 100", "range")}).Send(c)
+		return problem.Validation([]problem.FieldError{fieldErr("limit", "out_of_range", "between 1 and 100", "min", 1, "max", 100)}).Send(c)
 	}
 	start, err := repositories.DecodeCursor(c.Query("cursor"))
 	if err != nil {
-		return problem.BadRequest("cursor inválido").Send(c)
+		return problem.BadRequest("invalid cursor").WithCode("invalid_cursor").Send(c)
 	}
 	page, err := h.bills.ListOpen(c.Context(), middleware.GetSpace(c), dir, limit, start)
 	if err != nil {
@@ -244,6 +244,6 @@ func settleGapError(paid, billAmount billing.Cents, categoryID string) *problem.
 	if paid == billAmount || categoryID != "" {
 		return nil
 	}
-	e := fieldErr("difference_category_id", "obrigatório quando o valor pago difere do valor da conta", "required_with")
+	e := fieldErr("difference_category_id", "required_with", "required when the amount paid differs from the bill amount", "other", "amount")
 	return &e
 }

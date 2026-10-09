@@ -30,8 +30,30 @@ describe("PurchasePanel", () => {
     await pick("Parcelas", "3×")
     await pick("Categoria", "Mercado")
     expect(screen.getByText(/R\$\s100,01 \+ 2× de R\$\s100,00/)).toBeInTheDocument()
-    await userEvent.click(screen.getByRole("button", {name: "Registrar compra"}))
+    await userEvent.click(screen.getByRole("button", {name: "Salvar"}))
     expect(create).toHaveBeenCalledWith(expect.anything(), "visa",
       expect.objectContaining({total: 30001, installments: 3, category_id: "food", description: "TV"}), expect.any(String))
+  })
+
+  it("shows each validation error under its own field and the unknown ones once", async () => {
+    vi.spyOn(finance, "createPurchase").mockRejectedValue({response: {status: 422, data: {status: 422, errors: [
+      {field: "description", code: "required"},
+      {field: "total", code: "too_large", params: {max: 100}},
+      {field: "mystery", code: "not_found"},
+    ]}}})
+    renderWithQuery(<PurchasePanel cardId="visa" accounts={ACCOUNTS} onDone={() => {}}/>)
+    await userEvent.type(screen.getByLabelText(/^Descrição/), "TV")
+    await userEvent.type(screen.getByLabelText(/^Valor/), "300,01")
+    await pick("Categoria", "Mercado")
+    await userEvent.click(screen.getByRole("button", {name: "Salvar"}))
+    const desc = await screen.findByText("Obrigatório.")
+    expect(desc).toHaveAttribute("id", "pu-desc-error")
+    expect(screen.getByLabelText(/^Descrição/)).toHaveAttribute("aria-invalid", "true")
+    expect(screen.getByLabelText(/^Valor/)).toHaveAccessibleDescription(/O valor máximo é/)
+    expect(screen.getByText("Não encontrado.")).toBeInTheDocument()
+    // Editing a field clears only its own error.
+    await userEvent.type(screen.getByLabelText(/^Descrição/), "x")
+    expect(screen.queryByText("Obrigatório.")).not.toBeInTheDocument()
+    expect(screen.getByText(/O valor máximo é/)).toBeInTheDocument()
   })
 })

@@ -6,10 +6,12 @@ import {useMutation, useQuery, useQueryClient} from "@tanstack/react-query"
 import {Package} from "lucide-react"
 import Link from "next/link"
 import {useState} from "react"
+import {useTranslation} from "react-i18next"
 import {toast} from "sonner"
 
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
 import {messageFor} from "@/lib/api/client"
+import {useFieldErrors} from "@/lib/useFieldErrors"
 import {consoleKeys, createProduct, listConsoleProducts} from "@/lib/api/console"
 import {useMode} from "@/lib/console/useMode"
 import {money} from "@/lib/format"
@@ -22,6 +24,7 @@ import {money} from "@/lib/format"
  * list of names answers half of it.
  */
 export default function ConsoleCatalogPage() {
+  const {t} = useTranslation()
   const mode = useMode()
   const queryClient = useQueryClient()
   const [creating, setCreating] = useState(false)
@@ -36,8 +39,8 @@ export default function ConsoleCatalogPage() {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
-        <h1 className="text-lg font-semibold tracking-[-0.01em] text-foreground">Catálogo</h1>
-        <Button size="sm" onClick={() => setCreating(true)}>Novo produto</Button>
+        <h1 className="text-lg font-semibold tracking-[-0.01em] text-foreground">{t("console.catalog.title")}</h1>
+        <Button size="sm" onClick={() => setCreating(true)}>{t("console.catalog.new")}</Button>
       </div>
 
       {query.isPending && <RowsSkeleton/>}
@@ -46,9 +49,8 @@ export default function ConsoleCatalogPage() {
       {!query.isPending && !query.isError && products.length === 0 && (
         <EmptyState
           icon={<Package/>}
-          title="Catálogo vazio"
-          description="Um produto agrupa preços e é o que o cliente lê na linha da fatura. Crie o primeiro para começar a cobrar."
-          action={<Button onClick={() => setCreating(true)}>Novo produto</Button>}
+          title={t("console.catalog.empty")}
+          action={<Button onClick={() => setCreating(true)}>{t("console.catalog.new")}</Button>}
         />
       )}
 
@@ -57,10 +59,10 @@ export default function ConsoleCatalogPage() {
           <table className="w-full min-w-[36rem] border-collapse text-sm">
             <thead>
               <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                <th scope="col" className="py-2 pr-4 font-medium">Produto</th>
-                <th scope="col" className="py-2 pr-4 font-medium">Dono</th>
-                <th scope="col" className="py-2 pr-4 text-right font-medium">Preços ativos</th>
-                <th scope="col" className="py-2 text-right font-medium">A partir de</th>
+                <th scope="col" className="py-2 pr-4 font-medium">{t("console.catalog.product")}</th>
+                <th scope="col" className="py-2 pr-4 font-medium">{t("console.catalog.owner")}</th>
+                <th scope="col" className="py-2 pr-4 text-right font-medium">{t("console.catalog.prices")}</th>
+                <th scope="col" className="py-2 text-right font-medium">{t("console.catalog.from")}</th>
               </tr>
             </thead>
             <tbody>
@@ -83,7 +85,7 @@ export default function ConsoleCatalogPage() {
                         {product.name}
                       </Link>
                       {!product.active && (
-                        <span className="ml-2 text-xs text-muted-foreground">inativo</span>
+                        <span className="ml-2 text-xs text-muted-foreground">{t("console.catalog.inactive")}</span>
                       )}
                     </td>
                     <td className="py-2 pr-4 text-muted-foreground">
@@ -120,56 +122,61 @@ function NewProductDialog({
   onClose,
   onCreated,
 }: { open: boolean; onClose: () => void; onCreated: () => void }) {
+  const {t} = useTranslation()
   const mode = useMode()
   const [name, setName] = useState("")
   const [ownerKey, setOwnerKey] = useState("")
 
+  const fe = useFieldErrors(["name", "owner_key"], {keepOthers: false})
   const create = useMutation({
     mutationFn: () => createProduct({name: name.trim(), owner_key: ownerKey.trim()}, mode),
     onSuccess: () => {
-      toast.success("Produto criado.")
+      toast.success(t("console.catalog.created"))
       setName("")
       setOwnerKey("")
       onCreated()
     },
-    onError: error => toast.error(messageFor(error)),
+    onError: error => { if (!fe.set(error)) toast.error(messageFor(error)) },
   })
 
   return (
     <Modal
       open={open}
       onClose={onClose}
-      title="Novo produto"
-      description="O produto agrupa preços e é o nome que aparece na linha da fatura."
-      cancelLabel="Cancelar"
-      submitLabel="Criar produto"
+      title={t("console.catalog.new")}
+      cancelLabel={t("common.cancel")}
+      submitLabel={t("console.catalog.create")}
       submitDisabled={name.trim() === ""}
       loading={create.isPending}
-      onSubmit={() => create.mutate()}
+      onSubmit={() => { fe.reset(); create.mutate() }}
     >
       <div className="space-y-4">
-        <Field label="Nome" htmlFor="product-name">
+        <Field label={t("console.catalog.name")} htmlFor="product-name" error={fe.of("name")}>
           <Input
             id="product-name"
             maxLength={limits.text.productName}
             value={name}
-            onChange={event => setName(event.target.value)}
+            {...fe.props("name", "product-name")}
+            onChange={event => { setName(event.target.value); fe.clear("name") }}
             placeholder="DF-e Avançado"
           />
         </Field>
         <Field
-          label="Produto dono"
+          label={t("console.catalog.ownerLabel")}
           htmlFor="product-owner"
-          hint="Qual serviço da CTech recebe os webhooks deste produto (dfe, poker). Deixe vazio se a organização é dona do próprio catálogo."
+          hint={t("console.catalog.ownerHint")}
+          error={fe.of("owner_key")}
         >
           <Input
             id="product-owner"
             maxLength={limits.text.ownerKey}
             value={ownerKey}
-            onChange={event => setOwnerKey(event.target.value)}
+            {...fe.props("owner_key", "product-owner")}
+            onChange={event => { setOwnerKey(event.target.value); fe.clear("owner_key") }}
             placeholder="dfe"
           />
         </Field>
+        {fe.general && <p role="alert" className="text-sm text-danger">{fe.general}</p>}
       </div>
     </Modal>
   )

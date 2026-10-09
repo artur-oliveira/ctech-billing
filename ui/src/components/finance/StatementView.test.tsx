@@ -102,7 +102,7 @@ describe("F3 — extrato", () => {
   it("says so when the period has no entries, and still shows the balances", async () => {
     serve(ALL, {cc: () => statement([], 50000)})
     renderWithQuery(<StatementView/>)
-    expect(await screen.findByText("Nenhum lançamento neste período.")).toBeInTheDocument()
+    expect(await screen.findByText("Nada neste período.")).toBeInTheDocument()
     expect(screen.getAllByText("R$ 500,00").length).toBe(2)
   })
 
@@ -124,7 +124,7 @@ describe("F3 — extrato", () => {
     vi.spyOn(finance, "getFinanceSpaces").mockResolvedValue({spaces: [{kind: "personal", label: "Pessoal", verbs: ALL}], organizations_unavailable: false})
     vi.spyOn(finance, "listAccounts").mockResolvedValue({data: [], has_more: false})
     renderWithQuery(<StatementView/>)
-    expect(await screen.findByText("Crie uma conta em Contas para ver o extrato.")).toBeInTheDocument()
-    await waitFor(() => expect(screen.getByText("Ir para Contas").closest("a")).toHaveAttribute("href", "/console/finance/accounts"))
+    expect(await screen.findByText("Nenhuma conta ainda.")).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByText("Criar conta").closest("a")).toHaveAttribute("href", "/console/finance/accounts"))
   })
 })

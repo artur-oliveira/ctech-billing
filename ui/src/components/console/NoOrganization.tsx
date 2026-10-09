@@ -1,6 +1,7 @@
 import {Button, EmptyState} from "@aoctech/ui"
 import {Building2} from "lucide-react"
 import Link from "next/link"
+import {useTranslation} from "react-i18next"
 
 /**
  * Signed in, and not an operator.
@@ -12,15 +13,16 @@ import Link from "next/link"
  * is send them back to their own bills.
  */
 export function NoOrganization() {
+  const {t} = useTranslation()
   return (
     <EmptyState
       icon={<Building2/>}
-      title="Esta conta não tem uma organização"
-      description="Faturas, assinaturas e clientes são de quem emite cobranças. Suas finanças pessoais estão em Finanças, e o que você paga para a CTech, em Minhas cobranças."
+      title={t("console.noOrg.title")}
+      description={t("console.noOrg.description")}
       action={
         <div className="flex flex-wrap gap-2">
-          <Button render={<Link href="/console/finance"/>}>Ir para Finanças</Button>
-          <Button variant="outline" render={<Link href="/dashboard"/>}>Ver minhas cobranças</Button>
+          <Button render={<Link href="/console/finance"/>}>{t("console.noOrg.finance")}</Button>
+          <Button variant="outline" render={<Link href="/dashboard"/>}>{t("console.noOrg.bills")}</Button>
         </div>
       }
     />

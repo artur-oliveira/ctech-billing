@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -66,6 +67,18 @@ func Key(organizationID string, livemode bool, invoiceID string) string {
 		mode = "live"
 	}
 	return fmt.Sprintf("invoices/%s/%s/%s.pdf", organizationID, mode, invoiceID)
+}
+
+// KeyFor is the key of one invoice's document in one language. The default
+// language keeps the original key, so documents stored before languages
+// existed (and the PDFKey recorded on the invoice) stay valid; every other
+// language gets a suffix and so never overwrites the default render.
+func KeyFor(organizationID string, livemode bool, invoiceID string, lang Lang) string {
+	if lang == "" || lang == PTBR {
+		return Key(organizationID, livemode, invoiceID)
+	}
+	k := Key(organizationID, livemode, invoiceID)
+	return strings.TrimSuffix(k, ".pdf") + "." + string(lang) + ".pdf"
 }
 
 // Put stores the document, unless it is already there.

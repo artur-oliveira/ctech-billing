@@ -2,19 +2,20 @@
 
 import Link from "next/link"
 import {usePathname, useRouter} from "next/navigation"
+import {useTranslation} from "react-i18next"
 
 import {Select} from "@/components/ui/Select"
 
-// "Resumo", not "Visão geral": the console's own nav already has a "Visão geral"
+// "Resumo" (not "Visão geral") "Visão geral": the console's own nav already has a "Visão geral"
 // one row up, and two items with one name read as one menu printed twice.
 const SECTIONS = [
-  {href: "/console/finance", label: "Resumo", exact: true},
-  {href: "/console/finance/bills", label: "A pagar e a receber"},
-  {href: "/console/finance/statement", label: "Extrato"},
-  {href: "/console/finance/cards", label: "Cartões"},
-  {href: "/console/finance/recurrences", label: "Recorrências"},
-  {href: "/console/finance/reports", label: "Relatórios"},
-  {href: "/console/finance/accounts", label: "Contas"},
+  {href: "/console/finance", key: "overview", exact: true},
+  {href: "/console/finance/bills", key: "bills"},
+  {href: "/console/finance/statement", key: "statement"},
+  {href: "/console/finance/cards", key: "cards"},
+  {href: "/console/finance/recurrences", key: "recurrences"},
+  {href: "/console/finance/reports", key: "reports"},
+  {href: "/console/finance/accounts", key: "accounts"},
 ] as const
 
 /**
@@ -23,15 +24,16 @@ const SECTIONS = [
  * same menu twice), a picker on a phone.
  */
 export function FinanceNav() {
+  const {t} = useTranslation()
   const pathname = usePathname()
   const router = useRouter()
   const current = SECTIONS.find(s => ("exact" in s ? pathname === s.href : pathname.startsWith(s.href)))?.href ?? SECTIONS[0].href
   return (
     <>
       <div className="lg:hidden">
-        <Select aria-label="Seção" value={current} onValueChange={href => router.push(href)} options={SECTIONS.map(s => ({value: s.href, label: s.label}))}/>
+        <Select aria-label={t("finance.nav.section")} value={current} onValueChange={href => router.push(href)} options={SECTIONS.map(s => ({value: s.href, label: t(`finance.nav.${s.key}`)}))}/>
       </div>
-      <nav aria-label="Finanças" className="hidden lg:block">
+      <nav aria-label={t("finance.nav.label")} className="hidden lg:block">
         <ul className="space-y-0.5 border-l border-border">
           {SECTIONS.map(s => {
             const active = s.href === current
@@ -44,7 +46,7 @@ export function FinanceNav() {
                     active ? "border-brand-600 font-medium text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"
                   }`}
                 >
-                  {s.label}
+                  {t(`finance.nav.${s.key}`)}
                 </Link>
               </li>
             )

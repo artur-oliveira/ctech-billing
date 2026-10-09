@@ -28,7 +28,7 @@ const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://billing.aoctech.ap
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {default: "Billing · CTech", template: "%s · CTech Billing"},
-  description: "Suas faturas e assinaturas na CTech. Pague com PIX em segundos.",
+  description: "Faturas, assinaturas e finanças.",
   applicationName: "CTech Billing",
   robots: {index: false, follow: false, nocache: true},
   manifest: "/site.webmanifest",
@@ -45,7 +45,7 @@ export const metadata: Metadata = {
     siteName: "CTech Billing",
     locale: "pt_BR",
     title: "CTech Billing",
-    description: "Suas faturas e assinaturas na CTech. Pague com PIX em segundos.",
+    description: "Faturas, assinaturas e finanças.",
     images: [{url: "/android-chrome-512x512.png", width: 512, height: 512, alt: "CTech"}],
   },
   twitter: {card: "summary", title: "CTech Billing"},

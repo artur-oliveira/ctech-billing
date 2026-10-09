@@ -7,7 +7,8 @@
  * an invalid model is caught here and never sent.
  */
 import type {ExpressionJSON} from "@/lib/api/financeTypes"
-import {WEEKDAY_LABEL} from "@/lib/finance/labels"
+import {weekdayLabel} from "@/lib/finance/labels"
+import {currentLocale, t} from "@/lib/i18n"
 
 export type Pattern =
   | {kind: "day_of_month"; day: number}
@@ -31,10 +32,19 @@ export interface ModelError {
   message: string
 }
 
-export const MONTH_LABEL = [
-  "janeiro", "fevereiro", "março", "abril", "maio", "junho",
-  "julho", "agosto", "setembro", "outubro", "novembro", "dezembro",
-] as const
+/** The month's name (1..12) in the current language, e.g. "março" / "March". */
+export function monthName(month: number): string {
+  return new Intl.DateTimeFormat(currentLocale(), {month: "long"}).format(new Date(2026, month - 1, 1))
+}
+
+/** 1º / 1ª in Portuguese (feminine when `fem`), 1st / 2nd in English. */
+export function ordinal(n: number, fem = false): string {
+  if (currentLocale() === "en") {
+    const rule = new Intl.PluralRules("en", {type: "ordinal"}).select(n)
+    return `${n}${{one: "st", two: "nd", few: "rd", other: "th"}[rule as "one" | "two" | "few" | "other"]}`
+  }
+  return `${n}${fem ? "ª" : "º"}`
+}
 
 const MAX_DATES = 366
 // Days in each month of a leap year: the server admits 29/02 for "yearly".
@@ -93,74 +103,76 @@ export function validate(m: EditorModel): ModelError[] {
   const int = (v: number) => Number.isInteger(v)
   switch (p.kind) {
     case "day_of_month":
-      if (!int(p.day) || p.day < 1 || p.day > 31) errs.push({field: "day", message: "Escolha um dia entre 1 e 31."})
+      if (!int(p.day) || p.day < 1 || p.day > 31) errs.push({field: "day", message: t("bills.err.day")})
       break
     case "workday_of_month":
-      if (!int(p.n) || (p.n !== -1 && (p.n < 1 || p.n > 23))) errs.push({field: "n", message: "Escolha entre o 1º e o 23º dia útil, ou o último."})
+      if (!int(p.n) || (p.n !== -1 && (p.n < 1 || p.n > 23))) errs.push({field: "n", message: t("bills.err.workday")})
       break
     case "nth_weekday_of_month":
-      if (!int(p.weekday) || p.weekday < 0 || p.weekday > 6) errs.push({field: "weekday", message: "Escolha o dia da semana."})
-      if (!int(p.n) || (p.n !== -1 && (p.n < 1 || p.n > 4))) errs.push({field: "n", message: "Escolha entre a 1ª e a 4ª, ou a última."})
+      if (!int(p.weekday) || p.weekday < 0 || p.weekday > 6) errs.push({field: "weekday", message: t("bills.err.weekday")})
+      if (!int(p.n) || (p.n !== -1 && (p.n < 1 || p.n > 4))) errs.push({field: "n", message: t("bills.err.nth")})
       break
     case "weekly":
-      if (!int(p.weekday) || p.weekday < 0 || p.weekday > 6) errs.push({field: "weekday", message: "Escolha o dia da semana."})
-      if (!int(p.every) || p.every < 1 || p.every > 52) errs.push({field: "every", message: "Repita a cada 1 a 52 semanas."})
+      if (!int(p.weekday) || p.weekday < 0 || p.weekday > 6) errs.push({field: "weekday", message: t("bills.err.weekday")})
+      if (!int(p.every) || p.every < 1 || p.every > 52) errs.push({field: "every", message: t("bills.err.every")})
       if (!isCivilDate(p.anchor) || weekdayOf(p.anchor) !== p.weekday) {
-        errs.push({field: "anchor", message: `A primeira data precisa cair numa ${WEEKDAY_LABEL[p.weekday] ?? "data válida"}.`})
+        errs.push({field: "anchor", message: `A primeira data precisa cair numa ${weekdayLabel(p.weekday) ?? "data válida"}.`})
       }
       break
     case "yearly":
-      if (!int(p.month) || p.month < 1 || p.month > 12) errs.push({field: "month", message: "Escolha o mês."})
+      if (!int(p.month) || p.month < 1 || p.month > 12) errs.push({field: "month", message: t("bills.err.month")})
       else if (!int(p.day) || p.day < 1 || p.day > MAX_DAY[p.month - 1]) {
-        errs.push({field: "day", message: `${MONTH_LABEL[p.month - 1]} não tem dia ${p.day}.`})
+        errs.push({field: "day", message: t("bills.err.monthDay", {month: monthName(p.month), day: p.day})})
       }
       break
   }
-  if (m.exceptions.months.length >= 12) errs.push({field: "months", message: "Excluir todos os meses deixa a recorrência sem datas."})
-  if (m.exceptions.dates.length > MAX_DATES) errs.push({field: "dates", message: `No máximo ${MAX_DATES} datas de exceção.`})
+  if (m.exceptions.months.length >= 12) errs.push({field: "months", message: t("bills.err.allMonths")})
+  if (m.exceptions.dates.length > MAX_DATES) errs.push({field: "dates", message: t("bills.err.maxDates", {max: MAX_DATES})})
   return errs
 }
 
 function list(words: string[]): string {
-  if (words.length <= 1) return words.join("")
-  return `${words.slice(0, -1).join(", ")} e ${words[words.length - 1]}`
+  return new Intl.ListFormat(currentLocale(), {style: "long", type: "conjunction"}).format(words)
 }
 
 /** The rule as one sentence ("Todo dia 10; exceto em dezembro"). No em dash, by the copy rule. */
 export function describeModel(m: EditorModel): string {
   const p = m.pattern
-  const ordM = (n: number) => `${n}º`
-  const ordF = (n: number) => `${n}ª`
+  // Sunday and Saturday are masculine in Portuguese; the weekdays are feminine.
+  const masc = (d: number) => d === 0 || d === 6
   let base: string
   switch (p.kind) {
     case "day_of_month":
-      base = `Todo dia ${p.day}`
+      base = t("bills.rule.dayOfMonth", {day: p.day})
       break
     case "workday_of_month":
-      base = p.n === -1 ? "Último dia útil do mês" : `${ordM(p.n)} dia útil do mês`
+      base = p.n === -1 ? t("bills.rule.lastWorkday") : t("bills.rule.workday", {ord: ordinal(p.n)})
       break
-    case "nth_weekday_of_month":
-      base = p.n === -1 ? `Última ${WEEKDAY_LABEL[p.weekday]} do mês` : `${ordF(p.n)} ${WEEKDAY_LABEL[p.weekday]} do mês`
+    case "nth_weekday_of_month": {
+      const day = weekdayLabel(p.weekday) ?? ""
+      base = p.n === -1
+        ? t(masc(p.weekday) ? "bills.rule.lastWeekdayMasc" : "bills.rule.lastWeekday", {day})
+        : t("bills.rule.nthWeekday", {ord: ordinal(p.n, !masc(p.weekday)), day})
       break
+    }
     case "weekly": {
-      const day = WEEKDAY_LABEL[p.weekday]
-      const toda = p.weekday === 0 || p.weekday === 6 ? "Todo" : "Toda"
-      base = p.every === 1 ? `${toda} ${day}` : `A cada ${p.every} semanas, ${p.weekday === 0 || p.weekday === 6 ? "no" : "na"} ${day}`
+      const day = weekdayLabel(p.weekday) ?? ""
+      const key = p.every === 1 ? "bills.rule.weekly" : "bills.rule.weeklyEvery"
+      base = t(masc(p.weekday) ? `${key}Masc` : key, {day, every: p.every})
       break
     }
     case "yearly":
-      base = `Todo ano em ${p.day} de ${MONTH_LABEL[p.month - 1]}`
+      base = t("bills.rule.yearly", {day: p.day, month: monthName(p.month)})
       break
   }
   const parts: string[] = []
   if (m.exceptions.months.length > 0) {
-    parts.push(`em ${list([...m.exceptions.months].sort((a, b) => a - b).map(n => MONTH_LABEL[n - 1]))}`)
+    parts.push(t("bills.rule.exceptMonths", {months: list([...m.exceptions.months].sort((a, b) => a - b).map(monthName))}))
   }
   if (m.exceptions.dates.length > 0) {
-    const n = m.exceptions.dates.length
-    parts.push(`em ${n} ${n === 1 ? "data" : "datas"}`)
+    parts.push(t("bills.rule.exceptDates", {count: m.exceptions.dates.length}))
   }
-  return parts.length === 0 ? base : `${base}; exceto ${parts.join(", e ")}`
+  return parts.length === 0 ? base : t("bills.rule.except", {base, parts: parts.join(", ")})
 }
 
 /** The first day on or after `start` that falls on `weekday`: a weekly rule's anchor. */

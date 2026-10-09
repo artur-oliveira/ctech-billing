@@ -4,6 +4,7 @@ import {Button, EmptyState, Skeleton} from "@aoctech/ui"
 import {useQuery} from "@tanstack/react-query"
 import {ArrowRight, Receipt} from "lucide-react"
 import Link from "next/link"
+import {useTranslation} from "react-i18next"
 
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
 import {Money} from "@/components/portal/Money"
@@ -11,6 +12,8 @@ import {StatusBadge} from "@/components/portal/StatusBadge"
 import {listInvoices, listSubscriptions, portalKeys} from "@/lib/api/portal"
 import type {Invoice, Subscription} from "@/lib/api/types"
 import {longDate, money} from "@/lib/format"
+import {invoiceTitle} from "@/lib/invoice"
+import {useDocumentTitle} from "@/lib/hooks/useDocumentTitle"
 
 /**
  * P1 — Início. One screen, no chart.
@@ -30,6 +33,8 @@ import {longDate, money} from "@/lib/format"
  * anything can be loud.
  */
 export default function HomePage() {
+  const {t} = useTranslation()
+  useDocumentTitle(t("portal.nav.home"))
   const invoices = useQuery({queryKey: portalKeys.invoiceList, queryFn: () => listInvoices()})
   const subscriptions = useQuery({
     queryKey: portalKeys.subscriptions,
@@ -56,8 +61,8 @@ export default function HomePage() {
       {empty && (
         <EmptyState
           icon={<Receipt/>}
-          title="Nada para pagar por aqui"
-          description="Quando você assinar um plano da CTech, a próxima cobrança e todas as faturas aparecem nesta tela."
+          title={t("portal.dashboard.empty.title")}
+          description={t("portal.dashboard.empty.description")}
         />
       )}
 
@@ -107,6 +112,7 @@ function nextCharge(subscriptions: Subscription[]): Subscription | undefined {
  * screen exists to answer "do I owe anything and how much".
  */
 function Pendencia({invoices}: { invoices: Invoice[] }) {
+  const {t} = useTranslation()
   const [first, ...rest] = invoices
   const total = invoices.reduce((sum, i) => sum + i.amount_due, 0)
 
@@ -114,25 +120,25 @@ function Pendencia({invoices}: { invoices: Invoice[] }) {
     <section className="space-y-6">
       <div className="space-y-3">
         <p className="text-sm text-muted-foreground">
-          {invoices.length === 1 ? "Você tem uma fatura em aberto" : "Você tem faturas em aberto"}
+          {t("portal.dashboard.owed")}
         </p>
         <h1>
           <Money cents={first.amount_due} currency={first.currency} size="hero"/>
         </h1>
-        <StatusBadge state={first.state} tone={first.tone}/>
-        <p className="text-pretty text-sm text-muted-foreground">{first.description}</p>
+        <StatusBadge state={first.state} tone={first.tone} days={first.days_until_due} dueDate={first.due_date}/>
+        <p className="text-pretty text-sm text-muted-foreground">{invoiceTitle(first)}</p>
       </div>
 
       <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
         <Button render={<Link href={`/invoice?id=${first.id}`}/>}>
-          Pagar {money(first.amount_due, first.currency)}
+          {t("portal.dashboard.pay", {amount: money(first.amount_due, first.currency)})}
         </Button>
         {rest.length > 0 && (
           <Link
             href="/invoices"
             className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
           >
-            e mais {rest.length} • {money(total - first.amount_due, first.currency)}
+            {t("portal.dashboard.more", {count: rest.length, amount: money(total - first.amount_due, first.currency)})}
           </Link>
         )}
       </div>
@@ -148,36 +154,40 @@ function Pendencia({invoices}: { invoices: Invoice[] }) {
  * confident zero.
  */
 function EmDia({subscription}: { subscription?: Subscription }) {
+  const {t} = useTranslation()
   return (
     <section className="space-y-3">
-      <h1 className="text-3xl font-semibold tracking-[-0.02em] text-foreground">Tudo em dia</h1>
+      <h1 className="text-3xl font-semibold tracking-[-0.02em] text-foreground">{t("portal.dashboard.upToDate")}</h1>
       {subscription ? (
         <p className="text-pretty text-sm text-muted-foreground">
-          Próxima cobrança{" "}
           {subscription.metered
-            ? "conforme o uso"
-            : `de ${money(subscription.amount ?? 0, subscription.currency)}`}{" "}
-          em {longDate(subscription.renews_on!)} · {subscription.description}
+            ? t("portal.dashboard.nextMetered", {date: longDate(subscription.renews_on!), name: subscription.description})
+            : t("portal.dashboard.nextFixed", {
+                amount: money(subscription.amount ?? 0, subscription.currency),
+                date: longDate(subscription.renews_on!),
+                name: subscription.description,
+              })}
         </p>
       ) : (
-        <p className="text-sm text-muted-foreground">Nenhuma fatura em aberto.</p>
+        <p className="text-sm text-muted-foreground">{t("portal.dashboard.nothingOpen")}</p>
       )}
     </section>
   )
 }
 
 function ActiveList({subscriptions}: { subscriptions: Subscription[] }) {
+  const {t} = useTranslation()
   return (
     <section aria-labelledby="assinaturas" className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 id="assinaturas" className="text-sm font-medium text-muted-foreground">
-          Suas assinaturas
+          {t("portal.dashboard.subscriptions")}
         </h2>
         <Link
           href="/subscriptions"
           className="inline-flex items-center gap-1 text-sm text-brand-600 underline-offset-4 hover:underline"
         >
-          Ver todas
+          {t("portal.dashboard.seeAll")}
           <ArrowRight aria-hidden className="size-3.5"/>
         </Link>
       </div>
@@ -191,7 +201,7 @@ function ActiveList({subscriptions}: { subscriptions: Subscription[] }) {
             {/* A metered line says so. Left blank it reads as a row that
                 failed to load rather than a price that is not knowable yet. */}
             {s.metered ? (
-              <span className="shrink-0 text-sm text-muted-foreground">Conforme o uso</span>
+              <span className="shrink-0 text-sm text-muted-foreground">{t("portal.dashboard.metered")}</span>
             ) : (
               s.amount != null && (
                 <Money cents={s.amount} currency={s.currency} className="text-sm"/>

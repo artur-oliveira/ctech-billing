@@ -68,10 +68,10 @@ describe("F1 — visão geral", () => {
     serve()
     renderWithQuery(<OverviewView/>)
     const block = await screen.findByRole("region", {name: "Projeção"})
-    await userEvent.click(await within(block).findByRole("button", {name: "Ver como tabela"}))
+    await userEvent.click(await within(block).findByRole("button", {name: "Ver tabela"}))
     const table = within(block).getByRole("table")
     const headers = within(table).getAllByRole("columnheader").map(h => h.textContent)
-    expect(headers).toEqual(["Mês", "A receber", "A pagar", "Recorrências ainda não geradas", "Resultado do mês", "Saldo projetado"])
+    expect(headers).toEqual(["Mês", "A receber", "A pagar", "Recorrências", "Resultado do mês", "Saldo projetado"])
     const dec = within(table).getByRole("row", {name: /dez/i})
     expect(within(dec).getAllByText("−R$ 1.500,00").length).toBe(2) // the recurrences and the month's result
   })
@@ -82,14 +82,27 @@ describe("F1 — visão geral", () => {
     serve()
     renderWithQuery(<OverviewView/>)
     const block = await screen.findByRole("region", {name: "Projeção"})
-    await waitFor(() => expect(block.querySelector("svg title")?.textContent?.replace(/\s/g, " ")).toMatch(/^Out\/26: saldo projetado R\$ 18\.668,25 /))
+    await waitFor(() => expect(block.querySelector("svg title")?.textContent?.replace(/\s/g, " ")).toMatch(/^Out\/26: saldo R\$ 18\.668,25 /))
     // The Y axis says what the bars are in: R$, from zero up past the highest.
     const ticks = [...block.querySelectorAll("svg [data-axis=y]")].map(t => t.textContent?.replace(/\s/g, " "))
     expect(ticks[0]).toBe("R$ 0")
     expect(ticks.at(-1)).toMatch(/^R\$ \d+ mil$/)
-    await userEvent.click(within(block).getByRole("button", {name: "Ver como tabela"}))
+    await userEvent.click(within(block).getByRole("button", {name: "Ver tabela"}))
     const rows = within(within(block).getByRole("table")).getAllByRole("row").slice(1)
     expect(rows.map(r => r.lastElementChild?.textContent?.replace(/\s/g, " "))).toEqual(["R$ 18.668,25", "R$ 21.768,25", "R$ 20.268,25"])
+  })
+
+  it("shows money in and out apart, recurrences included, with the net per month", async () => {
+    serve()
+    vi.spyOn(finance, "getProjection").mockResolvedValue({data: [
+      {month: "2026-11", receivable: 350000, payable: 40000, virtual: 70000, virtual_receivable: 100000, virtual_payable: 30000},
+    ], has_more: false})
+    renderWithQuery(<OverviewView/>)
+    const projection = await screen.findByRole("region", {name: "Projeção"})
+    await userEvent.click(await within(projection).findByRole("button", {name: "Entradas e saídas"}))
+    const title = await within(projection).findByText(/entradas R\$\s*4\.500,00, saídas R\$\s*700,00, resultado R\$\s*3\.800,00/)
+    expect(title).toBeInTheDocument()
+    expect(within(projection).getByRole("button", {name: "Entradas e saídas"})).toHaveAttribute("aria-pressed", "true")
   })
 
   it("shows the month's realised result, by cash, and links to the cash flow", async () => {
@@ -99,7 +112,6 @@ describe("F1 — visão geral", () => {
     expect(await within(block).findByText("R$ 3.000,00")).toBeInTheDocument()
     expect(within(block).getByText("R$ 1.800,00")).toBeInTheDocument()
     expect(within(block).getByText("R$ 1.200,00")).toBeInTheDocument()
-    expect(within(block).getByText(/Pelo caixa/)).toBeInTheDocument()
     expect(within(block).getByRole("link", {name: "Ver relatórios"})).toHaveAttribute("href", "/console/finance/reports?view=cash")
     const month = todayIso().slice(0, 7)
     expect(finance.getCashFlow).toHaveBeenCalledWith(expect.anything(), month, month)
@@ -109,7 +121,7 @@ describe("F1 — visão geral", () => {
     serve().mockRejectedValue({response: {status: 500, data: {title: "Erro"}}})
     renderWithQuery(<OverviewView/>)
     const projection = await screen.findByRole("region", {name: "Projeção"})
-    expect(await within(projection).findByRole("button", {name: "Tentar de novo"})).toBeInTheDocument()
+    expect(await within(projection).findByRole("button", {name: "Tentar novamente"})).toBeInTheDocument()
     expect(await within(screen.getByRole("region", {name: "Saldos"})).findByText("Conta corrente")).toBeInTheDocument()
   })
 

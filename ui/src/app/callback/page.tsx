@@ -4,6 +4,7 @@ import {Button} from "@aoctech/ui"
 import Link from "next/link"
 import {useRouter, useSearchParams} from "next/navigation"
 import {Suspense, useEffect, useRef, useState} from "react"
+import {useTranslation} from "react-i18next"
 
 import {StatusScreen} from "@/components/StatusScreen"
 import {useAuth} from "@/lib/auth/AuthContext"
@@ -28,21 +29,22 @@ export default function CallbackPage() {
 
 /** The subset of RFC 6749 §4.1.2.1 errors worth a different sentence. Anything
  *  else is "try again", because anything else is ours to fix, not theirs. */
-function messageFor(error: string): string {
+function messageKeyFor(error: string): string {
   switch (error) {
     case "access_denied":
-      return "Você cancelou a entrada. Nada foi alterado; pode tentar de novo quando quiser."
+      return "auth.callback.denied"
     case "login_required":
     case "interaction_required":
-      return "Sua sessão expirou antes de terminar. Entre de novo."
+      return "auth.callback.expired"
     default:
-      return "Não conseguimos concluir a entrada. Tente de novo; se continuar, fale com a gente."
+      return "auth.callback.failed"
   }
 }
 
 function Callback() {
   const params = useSearchParams()
   const router = useRouter()
+  const {t} = useTranslation()
   const {onCallback} = useAuth()
   // Only the exchange's failure is state. What the URL already says is derived
   // during render — deciding it in an effect would paint one frame of
@@ -73,22 +75,20 @@ function Callback() {
     })()
   }, [usable, code, state, onCallback, router])
 
-  const error = denied
-    ? messageFor(denied)
-    : !usable
-      ? messageFor("invalid_request")
-      : exchangeFailed
-        ? messageFor("server_error")
-        : null
+  const errorKey = denied
+    ? messageKeyFor(denied)
+    : !usable || exchangeFailed
+      ? messageKeyFor("server_error")
+      : null
 
-  if (error) {
+  if (errorKey) {
     return (
       <StatusScreen
-        title="Não deu para entrar"
-        description={error}
+        title={t("auth.callback.failedTitle")}
+        description={t(errorKey)}
         action={
           <Button variant="outline" render={<Link href="/login"/>}>
-            Tentar de novo
+            {t("auth.callback.retry")}
           </Button>
         }
       />
@@ -99,10 +99,11 @@ function Callback() {
 }
 
 function Working() {
+  const {t} = useTranslation()
   return (
     <StatusScreen
-      title="Entrando…"
-      description="Confirmando sua identidade com a conta CTech. Isso leva um instante."
+      title={t("auth.callback.working")}
+      description={t("auth.callback.workingDescription")}
     />
   )
 }

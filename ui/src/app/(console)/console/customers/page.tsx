@@ -4,6 +4,7 @@ import {EmptyState, Skeleton} from "@aoctech/ui"
 import {useQuery} from "@tanstack/react-query"
 import {Users} from "lucide-react"
 import Link from "next/link"
+import {useTranslation} from "react-i18next"
 
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
 import {consoleKeys, listConsoleCustomers} from "@/lib/api/console"
@@ -18,6 +19,7 @@ import {useMode} from "@/lib/console/useMode"
  * screen an operator leaves open all day.
  */
 export default function ConsoleCustomersPage() {
+  const {t} = useTranslation()
   const mode = useMode()
   const query = useQuery({
     queryKey: consoleKeys.customers(mode),
@@ -28,7 +30,7 @@ export default function ConsoleCustomersPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-lg font-semibold tracking-[-0.01em] text-foreground">Clientes</h1>
+      <h1 className="text-lg font-semibold tracking-[-0.01em] text-foreground">{t("console.customers.title")}</h1>
 
       {query.isPending && <RowsSkeleton/>}
       {query.isError && <ErrorBlock error={query.error} onRetry={query.refetch}/>}
@@ -36,8 +38,7 @@ export default function ConsoleCustomersPage() {
       {!query.isPending && !query.isError && customers.length === 0 && (
         <EmptyState
           icon={<Users/>}
-          title="Nenhum cliente"
-          description="Clientes criados por uma integração ou pelo console aparecem aqui."
+          title={t("console.customers.empty")}
         />
       )}
 
@@ -46,10 +47,10 @@ export default function ConsoleCustomersPage() {
           <table className="w-full min-w-[40rem] border-collapse text-sm">
             <thead>
               <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                <th scope="col" className="py-2 pr-4 font-medium">Nome</th>
-                <th scope="col" className="py-2 pr-4 font-medium">E-mail</th>
-                <th scope="col" className="py-2 pr-4 font-medium">CPF/CNPJ</th>
-                <th scope="col" className="py-2 font-medium">Referência externa</th>
+                <th scope="col" className="py-2 pr-4 font-medium">{t("console.customers.name")}</th>
+                <th scope="col" className="py-2 pr-4 font-medium">{t("console.customers.email")}</th>
+                <th scope="col" className="py-2 pr-4 font-medium">{t("console.customers.taxId")}</th>
+                <th scope="col" className="py-2 font-medium">{t("console.customers.externalRef")}</th>
               </tr>
             </thead>
             <tbody>
@@ -66,7 +67,7 @@ export default function ConsoleCustomersPage() {
                       {customer.name}
                     </Link>
                     {customer.anonymized && (
-                      <span className="ml-2 text-xs text-muted-foreground">anonimizado</span>
+                      <span className="ml-2 text-xs text-muted-foreground">{t("console.customers.anonymized")}</span>
                     )}
                   </td>
                   <td className="py-2 pr-4 text-muted-foreground">{customer.email || "—"}</td>

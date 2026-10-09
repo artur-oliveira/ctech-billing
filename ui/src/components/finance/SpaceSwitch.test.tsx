@@ -4,7 +4,7 @@ import {act, screen, waitFor} from "@testing-library/react"
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 
 import {SpaceSwitch} from "@/components/finance/SpaceSwitch"
-import {optionsOf, pick, renderWithQuery, selectByLabel} from "@/components/finance/finance.test-utils"
+import {expectOptionsEventually, pick, renderWithQuery, selectByLabel} from "@/components/finance/finance.test-utils"
 import * as finance from "@/lib/api/finance"
 import {getSpace, setSpace} from "@/lib/console/space"
 
@@ -35,8 +35,7 @@ describe("SpaceSwitch", () => {
       organizations_unavailable: false,
     })
     renderWithQuery(<SpaceSwitch/>)
-    await waitFor(() => expect(finance.getFinanceSpaces).toHaveBeenCalled())
-    await waitFor(async () => expect(await optionsOf("Espaço")).toEqual(["Pessoal", "Acme LTDA"]))
+    await expectOptionsEventually("Espaço", ["Pessoal", "Acme LTDA"])
     // The trigger shows the space's NAME, never its "personal"/"org:…" value.
     expect(selectByLabel("Espaço")).toHaveTextContent("Pessoal")
     // No way to type an id: the control is a closed list.
@@ -52,8 +51,7 @@ describe("SpaceSwitch", () => {
       organizations_unavailable: false,
     })
     renderWithQuery(<SpaceSwitch/>)
-    await waitFor(() => expect(finance.getFinanceSpaces).toHaveBeenCalled())
-    await waitFor(async () => expect(await optionsOf("Espaço")).toHaveLength(2))
+    await expectOptionsEventually("Espaço", ["Pessoal", "Acme LTDA"])
     await pick("Espaço", "Acme LTDA")
     expect(getSpace()).toEqual({kind: "organization", organizationId: ACME})
     expect(selectByLabel("Espaço")).toHaveTextContent("Acme LTDA")
@@ -63,7 +61,7 @@ describe("SpaceSwitch", () => {
   it("keeps personal and says so when organizations are unavailable", async () => {
     serve({spaces: [{kind: "personal", label: "Pessoal", verbs: [...ALL]}], organizations_unavailable: true})
     renderWithQuery(<SpaceSwitch/>)
-    expect(await screen.findByText("Organizações indisponíveis agora")).toBeInTheDocument()
+    expect(await screen.findByText("Organizações indisponíveis")).toBeInTheDocument()
   })
 
   // Review Focus 4.

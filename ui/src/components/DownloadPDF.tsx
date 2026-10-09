@@ -3,10 +3,12 @@
 import {Button} from "@aoctech/ui"
 import {useMutation} from "@tanstack/react-query"
 import {Download} from "lucide-react"
+import {useTranslation} from "react-i18next"
 import {toast} from "sonner"
 
 import {messageFor} from "@/lib/api/client"
 import type {DocumentLink} from "@/lib/api/types"
+import {normalizeLocale, type SupportedLocale} from "@/lib/locale"
 
 /**
  * The invoice's PDF, on both shells.
@@ -27,17 +29,19 @@ import type {DocumentLink} from "@/lib/api/types"
  */
 export function DownloadPDF({
   fetchLink,
-  label = "Baixar PDF",
+  label,
   size = "sm",
   variant = "outline",
 }: {
-  fetchLink: () => Promise<DocumentLink>
+  /** Receives the UI language, so the document is rendered in it. */
+  fetchLink: (lang: SupportedLocale) => Promise<DocumentLink>
   label?: string
   size?: "sm" | "default"
   variant?: "outline" | "ghost"
 }) {
+  const {t, i18n} = useTranslation()
   const download = useMutation({
-    mutationFn: fetchLink,
+    mutationFn: () => fetchLink(normalizeLocale(i18n.language)),
     onSuccess: link => {
       // Opened in the same tab's navigation rather than a new one: a popup
       // blocker eats a `window.open` that is not in the click's own task, and
@@ -55,7 +59,7 @@ export function DownloadPDF({
       disabled={download.isPending}
     >
       <Download aria-hidden className="size-3.5"/>
-      {download.isPending ? "Gerando…" : label}
+      {download.isPending ? t("portal.pdf.generating") : (label ?? t("portal.pdf.download"))}
     </Button>
   )
 }

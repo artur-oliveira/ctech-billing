@@ -1,36 +1,15 @@
 import type {AccountClass, Bucket, Direction, DREGroup} from "@/lib/api/financeTypes"
 
-/** pt-BR for every enum the finance API sends. The screen never shows the raw value. */
-export const BUCKET_LABEL: Record<Bucket, string> = {
-  overdue: "Vencida",
-  today: "Vence hoje",
-  upcoming: "A vencer",
-}
+import {t} from "@/lib/i18n"
 
-export const DIRECTION_LABEL: Record<Direction, string> = {
-  payable: "A pagar",
-  receivable: "A receber",
-}
+/** Every enum the finance API sends has a label; the screen never shows the raw value. Resolved at call time so a language switch applies. */
+export const bucketLabel = (b: Bucket): string => t(`finance.labels.bucket.${b}`)
+export const directionLabel = (d: Direction): string => t(`finance.labels.direction.${d}`)
+export const classLabel = (c: AccountClass): string => t(`finance.labels.class.${c}`)
+export const dreGroupLabel = (g: DREGroup): string => t(`finance.labels.dreGroup.${g}`)
 
-export const CLASS_LABEL: Record<AccountClass, string> = {
-  asset: "Conta",
-  liability: "Passivo",
-  income: "Receita",
-  expense: "Despesa",
-  equity: "Patrimônio",
-}
-
-export const DRE_GROUP_LABEL: Record<DREGroup, string> = {
-  gross_revenue: "Receita bruta",
-  deductions: "Deduções",
-  costs: "Custos",
-  operating_expenses: "Despesas operacionais",
-  financial_result: "Resultado financeiro",
-  other: "Outros",
-}
-
-/** Sunday first, as time.Weekday and Date#getDay number them. */
-export const WEEKDAY_LABEL = ["domingo", "segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado"] as const
+/** Sunday first, as time.Weekday and Date#getDay number them. Undefined outside 0..6. */
+export const weekdayLabel = (i: number): string | undefined => (Number.isInteger(i) && i >= 0 && i <= 6 ? t(`finance.labels.weekday.${i}`) : undefined)
 
 const GROUPS: DREGroup[] = ["gross_revenue", "deductions", "costs", "operating_expenses", "financial_result", "other"]
 

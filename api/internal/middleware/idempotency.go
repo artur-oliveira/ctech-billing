@@ -73,14 +73,14 @@ func idempotency(store *repositories.IdempotencyRepository, clock func() time.Ti
 	return func(c fiber.Ctx) error {
 		key := c.Get(IdempotencyHeader)
 		if key == "" {
-			return problem.BadRequest("cabeçalho " + IdempotencyHeader + " obrigatório").Send(c)
+			return problem.BadRequest(IdempotencyHeader + " header is required").WithCode("idempotency_key_required").Send(c)
 		}
 		if len(key) > maxKeyLength {
-			return problem.BadRequest("Idempotency-Key excede o tamanho máximo").Send(c)
+			return problem.BadRequest("Idempotency-Key exceeds the maximum length").WithCode("idempotency_key_too_long").Send(c)
 		}
 		owner, livemode, ok := scope(c)
 		if !ok {
-			return problem.Internal("tenant não resolvido antes da idempotência").Send(c)
+			return problem.Internal("tenant not resolved before idempotency").WithCode("idempotency_tenant_unresolved").Send(c)
 		}
 
 		hash := hashRequest(c)
@@ -89,9 +89,9 @@ func idempotency(store *repositories.IdempotencyRepository, clock func() time.Ti
 		case errors.Is(err, repositories.ErrIdempotencyConflict):
 			return problem.New(fiber.StatusConflict, problem.TypeIdempotencyConflict,
 				"Idempotency Conflict",
-				"esta Idempotency-Key já foi usada com outro corpo de requisição").Send(c)
+				"this Idempotency-Key was already used with a different request body").Send(c)
 		case err != nil:
-			return problem.Internal("erro ao consultar idempotência").Send(c)
+			return problem.Internal("idempotency lookup failed").WithCode("idempotency_lookup_failed").Send(c)
 		case existing != nil:
 			// A replay. The stored body is returned verbatim, including its status,
 			// so the caller cannot tell a retry from the original — which is the

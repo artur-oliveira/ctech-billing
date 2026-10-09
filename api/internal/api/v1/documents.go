@@ -4,6 +4,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
+	"gopkg.aoctech.app/billing/api/internal/invoicepdf"
 	"gopkg.aoctech.app/billing/api/internal/limits"
 	"gopkg.aoctech.app/billing/api/internal/middleware"
 	"gopkg.aoctech.app/billing/api/internal/problem"
@@ -16,6 +17,10 @@ import (
 // tax id (ADR 0009 § minimization). The document carries all three, because it
 // is the customer's own invoice — which is exactly why it lives behind a
 // session and not behind a link somebody can pass on.
+//
+// Both routes take an optional `lang` query parameter ("pt-BR", the default, or
+// "en"); anything else falls back to pt-BR. Each language is rendered and stored
+// separately.
 //
 // Both routes answer with a short-lived signed URL rather than the bytes. The
 // API instances are t4g.nano behind one shared edge and a download path through
@@ -53,7 +58,7 @@ func (h *portalHandlers) invoicePDF(c fiber.Ctx) error {
 }
 
 func (h *handlers) serveDocument(c fiber.Ctx, inv *billing.Invoice) error {
-	url, err := h.documents.DownloadURL(c.Context(), inv, h.now())
+	url, err := h.documents.DownloadURL(c.Context(), inv, invoicepdf.ParseLang(c.Query("lang")), h.now())
 	if err != nil {
 		return fail(c, err)
 	}
@@ -71,7 +76,7 @@ func (h *consoleHandlers) setIssuer(c fiber.Ctx) error {
 	org := middleware.GetOrganization(c)
 	var req issuerRequest
 	if err := c.Bind().Body(&req); err != nil {
-		return problem.BadRequest("corpo inválido").Send(c)
+		return problem.BadRequest("invalid request body").WithCode("invalid_body").Send(c)
 	}
 	// Every field is optional (an empty one falls back to the organization's
 	// own data on the PDF); what is given must fit the document and be valid —

@@ -52,7 +52,9 @@ var ErrNotIssued = fmt.Errorf("%w: a draft invoice has no document", billing.Err
 // authorization here. What there is instead is one rule this function does
 // enforce: a DRAFT has no number and is not a document, and rendering one would
 // produce a file that looks official and refers to nothing.
-func (d *Documents) DownloadURL(ctx context.Context, inv *billing.Invoice, now time.Time) (string, error) {
+// lang selects the document language; the caller normalises it with
+// invoicepdf.ParseLang.
+func (d *Documents) DownloadURL(ctx context.Context, inv *billing.Invoice, lang invoicepdf.Lang, now time.Time) (string, error) {
 	if !d.Enabled() {
 		return "", invoicepdf.ErrNotConfigured
 	}
@@ -60,11 +62,13 @@ func (d *Documents) DownloadURL(ctx context.Context, inv *billing.Invoice, now t
 		return "", ErrNotIssued
 	}
 
-	key := invoicepdf.Key(inv.OrganizationID, inv.Livemode, inv.ID)
+	key := invoicepdf.KeyFor(inv.OrganizationID, inv.Livemode, inv.ID, lang)
 	// The stored key is trusted over the derived one when present: it is what an
 	// earlier render actually wrote, and a change to the naming scheme must not
-	// orphan documents somebody already has links to.
-	if inv.PDFKey != "" {
+	// orphan documents somebody already has links to. It is the default
+	// language's key only; other languages are always derived, so they never
+	// collide with it.
+	if inv.PDFKey != "" && lang == invoicepdf.PTBR {
 		key = inv.PDFKey
 	}
 
@@ -73,21 +77,21 @@ func (d *Documents) DownloadURL(ctx context.Context, inv *billing.Invoice, now t
 		return "", err
 	}
 	if !stored {
-		if err := d.render(ctx, inv, key, now); err != nil {
+		if err := d.render(ctx, inv, key, lang, now); err != nil {
 			return "", err
 		}
 	}
 
-	return d.store.DownloadURL(ctx, key, fmt.Sprintf("fatura-%d.pdf", inv.Number))
+	return d.store.DownloadURL(ctx, key, invoicepdf.Filename(lang, inv.Number))
 }
 
-func (d *Documents) render(ctx context.Context, inv *billing.Invoice, key string, now time.Time) error {
+func (d *Documents) render(ctx context.Context, inv *billing.Invoice, key string, lang invoicepdf.Lang, now time.Time) error {
 	lines, err := d.invoices.ListItems(ctx, inv.OrganizationID, inv.Livemode, inv.ID)
 	if err != nil {
 		return fmt.Errorf("reading the invoice lines: %w", err)
 	}
 
-	in := invoicepdf.Input{Invoice: inv, Lines: lines}
+	in := invoicepdf.Input{Invoice: inv, Lines: lines, Lang: lang}
 
 	// The issuer and the customer are best-effort in different ways. An
 	// organization that cannot be read is a broken deployment and worth
@@ -132,5 +136,9 @@ func (d *Documents) render(ctx context.Context, inv *billing.Invoice, key string
 	}
 	// Recorded after the object exists. The other order leaves a key pointing at
 	// nothing, which reads as a stored document and downloads as a 404.
+	if lang != invoicepdf.PTBR {
+		// PDFKey records the default-language document only.
+		return nil
+	}
 	return d.invoices.RecordPDFKey(ctx, inv, key, now)
 }

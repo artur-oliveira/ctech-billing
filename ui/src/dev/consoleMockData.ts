@@ -490,8 +490,8 @@ export function consoleSettings(mode: "live" | "test") {
     dunning: consoleDunning(),
     issuer,
     documents_enabled: true,
-    numbering: "sequencial por ano, sem lacunas",
-    retention: "faturas e notas de crédito permanentes; auditoria por 5 anos",
+    numbering: "sequential_per_year_gapless",
+    retention: "invoices_credit_notes_permanent_audit_5y",
   }
 }
 

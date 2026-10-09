@@ -62,9 +62,9 @@ func ResolveTenant(creds *repositories.CredentialRepository) fiber.Handler {
 				// A valid token whose client billing does not know is a
 				// configuration gap, not an authentication failure — but the
 				// response must not confirm which of the two it is.
-				return problem.Forbidden("credencial não habilitada para o billing").Send(c)
+				return problem.Forbidden("credential not enabled for billing").WithCode("credential_not_enabled").Send(c)
 			default:
-				return problem.Internal("erro ao resolver credencial").Send(c)
+				return problem.Internal("could not resolve credential").WithCode("credential_resolve_failed").Send(c)
 			}
 		}
 		c.Locals(CredentialKey, cred)

@@ -19,7 +19,7 @@ const SpaceHeader = "X-Billing-Space"
 const SpaceKey = "space"
 
 func spaceNotFound() *problem.Problem {
-	return problem.New(fiber.StatusNotFound, problem.TypeSpaceNotFound, "Space not found", "espaço não encontrado")
+	return problem.New(fiber.StatusNotFound, problem.TypeSpaceNotFound, "Space not found", "space not found")
 }
 
 // ResolveSpace turns the token's subject plus the X-Billing-Space and mode headers
@@ -63,10 +63,10 @@ func ResolveSpace(r *space.Resolver) fiber.Handler {
 		case errors.Is(err, space.ErrSpaceNotFound):
 			return spaceNotFound().Send(c)
 		case errors.Is(err, space.ErrInvalidSubject):
-			return problem.Unauthorized("credenciais inválidas").Send(c)
+			return problem.Unauthorized("invalid credentials").WithCode("invalid_credentials").Send(c)
 		default: // ErrSpaceUnavailable and anything unforeseen: fail closed
 			return problem.New(fiber.StatusServiceUnavailable, problem.TypeSpaceUnavailable,
-				"Space unavailable", "não foi possível verificar o acesso agora").Send(c)
+				"Space unavailable", "could not verify access right now").Send(c)
 		}
 	}
 }
@@ -82,7 +82,7 @@ func GetSpace(c fiber.Ctx) space.ResolvedSpace {
 func RequireVerb(v space.Verbs) fiber.Handler {
 	return func(c fiber.Ctx) error {
 		if !GetSpace(c).Can(v) {
-			return problem.Forbidden("seu papel não permite esta operação").Send(c)
+			return problem.Forbidden("your role does not allow this operation").WithCode("role_denied").Send(c)
 		}
 		return c.Next()
 	}

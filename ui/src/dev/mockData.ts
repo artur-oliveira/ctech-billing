@@ -29,11 +29,20 @@ const PLAN_LINES = [
   {description: "Emissões adicionais (120 documentos)", amount: 2400, proration: false},
 ]
 
+/** The wire shape: the first line's raw description plus how many lines follow it. */
+function titled(lines: Invoice["lines"] = []): Pick<Invoice, "description" | "extra_lines"> {
+  return {
+    description: lines[0]?.description ?? "",
+    ...(lines.length > 1 ? {extra_lines: lines.length - 1} : {}),
+  }
+}
+
 function invoice(over: Partial<Invoice> & Pick<Invoice, "id" | "state" | "tone">): Invoice {
+  const lines = over.lines ?? PLAN_LINES
   return {
     number: 1042,
-    description: "Plano Essencial · mensal e mais 1",
     due_date: day(3),
+    days_until_due: 3,
     total: 11300,
     amount_due: 11300,
     currency: "BRL",
@@ -42,6 +51,7 @@ function invoice(over: Partial<Invoice> & Pick<Invoice, "id" | "state" | "tone">
     payable: true,
     settled: false,
     ...over,
+    ...titled(lines),
   }
 }
 
@@ -49,7 +59,7 @@ const PAID_HISTORY: Invoice[] = [
   invoice({
     id: "inv_mock_0041",
     number: 1041,
-    state: "Paga",
+    state: "paid",
     tone: "positive",
     due_date: day(-27),
     amount_paid: 11300,
@@ -62,7 +72,7 @@ const PAID_HISTORY: Invoice[] = [
   invoice({
     id: "inv_mock_0040",
     number: 1040,
-    state: "Paga",
+    state: "paid",
     tone: "positive",
     due_date: day(-57),
     amount_paid: 10900,
@@ -79,7 +89,7 @@ const PAID_HISTORY: Invoice[] = [
 const ACTIVE_SUB: Subscription = {
   id: "sub_mock_ana",
   description: "Plano Essencial",
-  state: "Ativa",
+  state: "active",
   tone: "positive",
   renews_on: thisPeriod.end,
   amount: 8900,
@@ -93,7 +103,7 @@ const ACTIVE_SUB: Subscription = {
 const METERED_SUB: Subscription = {
   id: "sub_mock_uso",
   description: "Emissões adicionais",
-  state: "Ativa",
+  state: "active",
   tone: "positive",
   renews_on: thisPeriod.end,
   metered: true,
@@ -115,7 +125,7 @@ interface Fixture {
 
 const OPEN_3_DAYS = invoice({
   id: "inv_mock_0042",
-  state: "Vence em 3 dias",
+  state: "due_soon", days_until_due: 3,
   tone: "attention",
 })
 
@@ -138,14 +148,14 @@ export const FIXTURES: Record<MockScenario, Fixture> = {
     invoices: [
       invoice({
         id: "inv_mock_0042",
-        state: "Vencida há 4 dias",
+        state: "overdue", days_until_due: -4,
         tone: "urgent",
         due_date: day(-4),
       }),
       ...PAID_HISTORY,
     ],
     subscriptions: [
-      {...ACTIVE_SUB, state: "Pagamento pendente", tone: "urgent"},
+      {...ACTIVE_SUB, state: "past_due", tone: "urgent"},
       METERED_SUB,
     ],
     settleAfterSeconds: 6,
@@ -154,10 +164,10 @@ export const FIXTURES: Record<MockScenario, Fixture> = {
 
   pagamento_pendente: {
     invoices: [
-      invoice({id: "inv_mock_0042", state: "Vence hoje", tone: "urgent", due_date: day(0)}),
+      invoice({id: "inv_mock_0042", state: "due_today", tone: "urgent", due_date: day(0), days_until_due: 0}),
       ...PAID_HISTORY,
     ],
-    subscriptions: [{...ACTIVE_SUB, state: "Pagamento pendente", tone: "urgent"}],
+    subscriptions: [{...ACTIVE_SUB, state: "past_due", tone: "urgent"}],
     settleAfterSeconds: 6,
     pixTtlSeconds: 1800,
   },
@@ -183,7 +193,7 @@ export const FIXTURES: Record<MockScenario, Fixture> = {
     invoices: [
       invoice({
         id: "inv_mock_0042",
-        state: "Paga",
+        state: "paid",
         tone: "positive",
         amount_paid: 11300,
         amount_due: 0,
@@ -209,7 +219,7 @@ export const FIXTURES: Record<MockScenario, Fixture> = {
         id: "inv_mock_0043",
         number: 2,
         description: "DF-e Ilimitado · Interno",
-        state: "Paga",
+        state: "paid",
         tone: "positive",
         total: 0,
         amount_due: 0,
@@ -229,14 +239,14 @@ export const FIXTURES: Record<MockScenario, Fixture> = {
     invoices: [
       invoice({
         id: "inv_mock_0042",
-        state: "Pendente de acordo",
+        state: "uncollectible",
         tone: "attention",
         due_date: day(-38),
         payable: false,
       }),
       ...PAID_HISTORY,
     ],
-    subscriptions: [{...ACTIVE_SUB, state: "Pausada", tone: "neutral", renews_on: undefined}],
+    subscriptions: [{...ACTIVE_SUB, state: "paused", tone: "neutral", renews_on: undefined}],
     settleAfterSeconds: null,
     pixTtlSeconds: 1800,
   },

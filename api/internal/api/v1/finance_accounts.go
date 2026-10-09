@@ -14,13 +14,15 @@ import (
 )
 
 type accountDTO struct {
-	ID       string        `json:"id"`
-	Name     string        `json:"name"`
-	Class    string        `json:"class"`
-	DREGroup string        `json:"dre_group,omitempty"`
-	System   bool          `json:"system"`
-	Archived bool          `json:"archived"`
-	Balance  billing.Cents `json:"balance"`
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Class    string `json:"class"`
+	DREGroup string `json:"dre_group,omitempty"`
+	System   bool   `json:"system"`
+	// SystemKey is the stable key of a default account; clients translate it.
+	SystemKey string        `json:"system_key,omitempty"`
+	Archived  bool          `json:"archived"`
+	Balance   billing.Cents `json:"balance"`
 }
 
 func (h *financeHandlers) listAccounts(c fiber.Ctx) error {
@@ -32,7 +34,7 @@ func (h *financeHandlers) listAccounts(c fiber.Ctx) error {
 	for _, r := range rows {
 		out.Data = append(out.Data, accountDTO{
 			ID: r.ID, Name: r.Name, Class: string(r.Class), DREGroup: string(r.Group),
-			System: r.System, Archived: r.Archived, Balance: r.Balance,
+			System: r.System, SystemKey: r.SystemKey, Archived: r.Archived, Balance: r.Balance,
 		})
 	}
 	return c.JSON(out)

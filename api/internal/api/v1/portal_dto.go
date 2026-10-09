@@ -1,7 +1,6 @@
 package v1
 
 import (
-	"fmt"
 	"time"
 
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
@@ -38,25 +37,31 @@ type portalSessionResponse struct {
 
 // portalInvoiceResponse describes one invoice in the words a person uses.
 //
-// State is a short phrase plus a machine-readable tone, never the internal
-// status. The tone exists so the UI can color and sort without parsing the
-// phrase, and it is deliberately a small closed set — a client that switches on
-// it cannot come to depend on wording.
+// State is a language-neutral code (paid, void, uncollectible, draft, overdue,
+// due_today, due_tomorrow, due_soon, upcoming), never the internal status, and
+// the client translates it. Tone is a small closed set so the UI can color and
+// sort without depending on the state list.
 type portalInvoiceResponse struct {
 	ID     string `json:"id"`
 	Number int64  `json:"number,omitempty"`
 	// Description says what was bought, taken from the invoice lines. Without it
 	// the screen is a list of amounts and dates that answers "how much" and
 	// "when" but never "what for".
-	Description string        `json:"description"`
-	State       string        `json:"state"`
-	Tone        string        `json:"tone"`
-	DueDate     brcal.Date    `json:"due_date"`
-	Total       billing.Cents `json:"total"`
-	AmountPaid  billing.Cents `json:"amount_paid,omitempty"`
-	AmountDue   billing.Cents `json:"amount_due"`
-	Currency    string        `json:"currency"`
-	Period      portalPeriod  `json:"period"`
+	Description string `json:"description"`
+	// ExtraLines is how many invoice lines exist beyond the one named in
+	// Description (absent when 0); the client composes "X and N more".
+	ExtraLines int    `json:"extra_lines,omitempty"`
+	State      string `json:"state"`
+	Tone       string `json:"tone"`
+	// DaysUntilDue is whole civil days (São Paulo) from today to due_date:
+	// negative when overdue, 0 on the due day. Always present.
+	DaysUntilDue int           `json:"days_until_due"`
+	DueDate      brcal.Date    `json:"due_date"`
+	Total        billing.Cents `json:"total"`
+	AmountPaid   billing.Cents `json:"amount_paid,omitempty"`
+	AmountDue    billing.Cents `json:"amount_due"`
+	Currency     string        `json:"currency"`
+	Period       portalPeriod  `json:"period"`
 	// PaidOn is the civil date the invoice was settled, absent until it is. A
 	// date and not a timestamp: a receipt is read as "paguei no dia 17", and
 	// publishing the instant would put a UTC hour on a consumer screen.
@@ -144,96 +149,114 @@ const (
 	toneUrgent    = "urgent"
 )
 
-// invoiceState renders an invoice's status as a phrase and a tone.
+// Invoice state codes. A closed, language-neutral set: the client translates
+// them, and builds phrases like "due in N days" from DaysUntilDue plus the
+// due date. The server never sends prose.
+const (
+	invoiceStatePaid          = "paid"
+	invoiceStateVoid          = "void"
+	invoiceStateUncollectible = "uncollectible"
+	invoiceStateDraft         = "draft"
+	invoiceStateOverdue       = "overdue"
+	invoiceStateDueToday      = "due_today"
+	invoiceStateDueTomorrow   = "due_tomorrow"
+	invoiceStateDueSoon       = "due_soon" // 2 to 7 days
+	invoiceStateUpcoming      = "upcoming" // more than 7 days
+)
+
+// Subscription state codes.
+const (
+	subStateTrialing             = "trialing"
+	subStatePastDue              = "past_due"
+	subStatePaused               = "paused"
+	subStateCanceled             = "canceled"
+	subStateIncomplete           = "incomplete"
+	subStateActiveUntilPeriodEnd = "active_until_period_end"
+	subStateActive               = "active"
+)
+
+// invoiceState maps an invoice's status to a state code and a tone, and
+// returns how many days remain until it is due (negative when overdue).
 //
-// Every branch answers "what does this mean for me", never "what state is the
+// Every code answers "what does this mean for me", never "what state is the
 // record in". UNCOLLECTIBLE is the one that matters most: internally it means
 // billing gave up collecting automatically, and telling a person their invoice
 // is "uncollectible" is both frightening and useless. It reads as what it is —
-// something to sort out with a human.
-func invoiceState(inv *billing.Invoice, today brcal.Date) (state, tone string) {
+// something to sort out with a human — which is the client's wording to choose.
+func invoiceState(inv *billing.Invoice, today brcal.Date) (state, tone string, daysUntilDue int) {
+	daysUntilDue = today.DaysBetween(inv.DueDate)
 	switch inv.Status {
 	case billing.InvoicePaid:
-		return "Paga", tonePositive
+		return invoiceStatePaid, tonePositive, daysUntilDue
 	case billing.InvoiceVoid:
-		return "Cancelada", toneNeutral
+		return invoiceStateVoid, toneNeutral, daysUntilDue
 	case billing.InvoiceUncollectible:
-		return "Pendente de acordo", toneAttention
+		return invoiceStateUncollectible, toneAttention, daysUntilDue
 	case billing.InvoiceDraft:
-		// A draft is not yet a bill. Saying "em aberto" would be a demand for
-		// money nobody has asked for yet.
-		return "Em preparação", toneNeutral
+		// A draft is not yet a bill: it must not read as a demand for money
+		// nobody has asked for yet.
+		return invoiceStateDraft, toneNeutral, daysUntilDue
 	}
 
-	days := today.DaysBetween(inv.DueDate)
-	switch {
+	switch days := daysUntilDue; {
 	case days < 0:
-		return pluralDays("Vencida há %d dia", "Vencida há %d dias", -days), toneUrgent
+		return invoiceStateOverdue, toneUrgent, daysUntilDue
 	case days == 0:
-		return "Vence hoje", toneUrgent
+		return invoiceStateDueToday, toneUrgent, daysUntilDue
 	case days == 1:
-		return "Vence amanhã", toneAttention
+		return invoiceStateDueTomorrow, toneAttention, daysUntilDue
 	case days <= 7:
-		return fmt.Sprintf("Vence em %d dias", days), toneAttention
+		return invoiceStateDueSoon, toneAttention, daysUntilDue
 	default:
 		// Beyond a week, a countdown stops being useful and a date starts being
-		// useful: nobody plans around "vence em 23 dias".
-		return "Vence em " + formatBR(inv.DueDate), toneNeutral
+		// useful: the client shows the due date.
+		return invoiceStateUpcoming, toneNeutral, daysUntilDue
 	}
 }
 
-// formatBR renders a civil date the way it is read in Brazil.
-func formatBR(d brcal.Date) string {
-	return fmt.Sprintf("%02d/%02d/%04d", d.Day, int(d.Month), d.Year)
-}
-
-// subscriptionState renders a subscription's status the same way.
+// subscriptionState maps a subscription's status to a state code and a tone.
 func subscriptionState(sub *billing.Subscription) (state, tone string) {
 	switch sub.Status {
 	case billing.SubscriptionTrialing:
-		return "Em teste", tonePositive
+		return subStateTrialing, tonePositive
 	case billing.SubscriptionPastDue:
-		// Not "PAST_DUE" and not "inadimplente": the second is a judgement, and
-		// the person reading it usually just needs to pay one invoice.
-		return "Pagamento pendente", toneUrgent
+		// Not "inadimplente"-style judgement: the person reading it usually just
+		// needs to pay one invoice.
+		return subStatePastDue, toneUrgent
 	case billing.SubscriptionPaused:
-		return "Pausada", toneNeutral
+		return subStatePaused, toneNeutral
 	case billing.SubscriptionCanceled:
-		return "Encerrada", toneNeutral
+		return subStateCanceled, toneNeutral
 	case billing.SubscriptionIncomplete:
-		return "Aguardando confirmação", toneAttention
+		return subStateIncomplete, toneAttention
 	default:
 		if sub.CancelAtPeriodEnd {
-			return "Ativa até o fim do período", toneAttention
+			return subStateActiveUntilPeriodEnd, toneAttention
 		}
-		return "Ativa", tonePositive
+		return subStateActive, tonePositive
 	}
-}
-
-func pluralDays(one, many string, n int) string {
-	if n == 1 {
-		return fmt.Sprintf(one, n)
-	}
-	return fmt.Sprintf(many, n)
 }
 
 func newPortalInvoiceResponse(inv *billing.Invoice, lines []billing.InvoiceItem, today brcal.Date) portalInvoiceResponse {
-	state, tone := invoiceState(inv, today)
+	state, tone, daysUntilDue := invoiceState(inv, today)
+	description, extra := describeLines(lines)
 	out := portalInvoiceResponse{
-		ID:          inv.ID,
-		Number:      inv.Number,
-		Description: describeLines(lines),
-		State:       state,
-		Tone:        tone,
-		DueDate:     inv.DueDate,
-		Total:       inv.Total,
-		AmountPaid:  inv.AmountPaid,
-		AmountDue:   inv.AmountDue(),
-		Currency:    inv.Currency,
-		Period:      portalPeriod{Start: inv.Period.Start, End: inv.Period.End},
-		PaidOn:      civilDate(inv.PaidAt),
-		Settled:     inv.Status == billing.InvoicePaid,
-		Payable:     inv.Payable(),
+		ID:           inv.ID,
+		Number:       inv.Number,
+		Description:  description,
+		ExtraLines:   extra,
+		State:        state,
+		Tone:         tone,
+		DaysUntilDue: daysUntilDue,
+		DueDate:      inv.DueDate,
+		Total:        inv.Total,
+		AmountPaid:   inv.AmountPaid,
+		AmountDue:    inv.AmountDue(),
+		Currency:     inv.Currency,
+		Period:       portalPeriod{Start: inv.Period.Start, End: inv.Period.End},
+		PaidOn:       civilDate(inv.PaidAt),
+		Settled:      inv.Status == billing.InvoicePaid,
+		Payable:      inv.Payable(),
 	}
 	for _, l := range lines {
 		out.Lines = append(out.Lines, portalLine{
@@ -261,18 +284,14 @@ func civilDate(stamp string) *brcal.Date {
 	return &d
 }
 
-// describeLines names what an invoice is for in one phrase.
-//
-// One line is its own description; several become "X e mais N". A concatenation
-// of every line would be a paragraph in a table cell, and the detail screen is
-// where the full list belongs.
-func describeLines(lines []billing.InvoiceItem) string {
-	switch len(lines) {
-	case 0:
-		return "Fatura"
-	case 1:
-		return lines[0].Description
-	default:
-		return fmt.Sprintf("%s e mais %d", lines[0].Description, len(lines)-1)
+// describeLines names what an invoice is for: the first line's own description
+// and how many further lines there are. The client composes "X and N more" in
+// its own language; with no lines the description is empty and the client shows
+// a generic "Invoice". A concatenation of every line would be a paragraph in a
+// table cell, and the detail screen is where the full list belongs.
+func describeLines(lines []billing.InvoiceItem) (description string, extra int) {
+	if len(lines) == 0 {
+		return "", 0
 	}
+	return lines[0].Description, len(lines) - 1
 }

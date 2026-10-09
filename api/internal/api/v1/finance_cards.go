@@ -107,10 +107,10 @@ func (r cardRequest) validate() []problem.FieldError {
 	c := &checks{}
 	c.text("name", r.Name, true, limits.AccountName)
 	if r.ClosingDay < 1 || r.ClosingDay > 31 {
-		c.fail("closing_day", "um dia entre 1 e 31", "range")
+		c.fail("closing_day", "out_of_range", "a day between 1 and 31", "min", 1, "max", 31)
 	}
 	if r.DueDay < 1 || r.DueDay > 31 {
-		c.fail("due_day", "um dia entre 1 e 31", "range")
+		c.fail("due_day", "out_of_range", "a day between 1 and 31", "min", 1, "max", 31)
 	}
 	c.id("paying_account_id", r.PayingAccountID, true)
 	return c.errs
@@ -157,10 +157,10 @@ func (h *financeHandlers) patchCard(c fiber.Ctx) error {
 	}
 	ch := &checks{}
 	if req.ClosingDay != nil && (*req.ClosingDay < 1 || *req.ClosingDay > 31) {
-		ch.fail("closing_day", "um dia entre 1 e 31", "range")
+		ch.fail("closing_day", "out_of_range", "a day between 1 and 31", "min", 1, "max", 31)
 	}
 	if req.DueDay != nil && (*req.DueDay < 1 || *req.DueDay > 31) {
-		ch.fail("due_day", "um dia entre 1 e 31", "range")
+		ch.fail("due_day", "out_of_range", "a day between 1 and 31", "min", 1, "max", 31)
 	}
 	if req.PayingAccountID != nil {
 		ch.id("paying_account_id", *req.PayingAccountID, true)
@@ -179,7 +179,7 @@ func (h *financeHandlers) patchCard(c fiber.Ctx) error {
 func (h *financeHandlers) cardStatement(c fiber.Ctx) error {
 	m, err := finance.ParseMonth(c.Params("month"))
 	if err != nil {
-		return problem.Validation([]problem.FieldError{fieldErr("month", "use YYYY-MM", "format")}).Send(c)
+		return problem.Validation([]problem.FieldError{fieldErr("month", "invalid_format", "use YYYY-MM", "format", "YYYY-MM")}).Send(c)
 	}
 	s, err := h.cards.GetStatement(c.Context(), middleware.GetSpace(c), c.Params("id"), m)
 	if err != nil {
@@ -225,9 +225,9 @@ func (r purchaseRequest) validate(today brcal.Date) []problem.FieldError {
 	c.amount("total", r.Total)
 	switch {
 	case r.Installments < 1 || r.Installments > limits.MaxInstallments:
-		c.fail("installments", "entre 1 e 48 parcelas", "range")
+		c.fail("installments", "out_of_range", "between 1 and 48 installments", "min", 1, "max", limits.MaxInstallments)
 	case r.Total > 0 && r.Total < billing.Cents(r.Installments):
-		c.fail("installments", "cada parcela precisa de pelo menos R$ 0,01", "range")
+		c.fail("installments", "installment_too_small", "each installment needs at least 0.01")
 	}
 	return c.errs
 }
@@ -278,7 +278,7 @@ func (h *financeHandlers) closeStatement(c fiber.Ctx) error {
 	}
 	m, err := finance.ParseMonth(req.Month)
 	if err != nil {
-		return problem.Validation([]problem.FieldError{fieldErr("month", "use YYYY-MM", "format")}).Send(c)
+		return problem.Validation([]problem.FieldError{fieldErr("month", "invalid_format", "use YYYY-MM", "format", "YYYY-MM")}).Send(c)
 	}
 	s, err := h.cards.CloseNow(c.Context(), middleware.GetSpace(c), c.Params("id"), m, h.now())
 	if err != nil {

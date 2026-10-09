@@ -2,6 +2,8 @@
 
 import {toast} from "sonner"
 
+import {t} from "@/lib/i18n"
+
 import {apiClient, isSpaceNotFound} from "@/lib/api/client"
 import type {
   Account, Bill, BillPatch, Card, CardPatch, CardStatement, CashFlow, CurrentSpace, Direction, DRE, FinanceSpaces, ListResponse, NewAccount, NewBill,
@@ -42,7 +44,7 @@ function spaceGone(c: FinanceCtx, error: unknown): never {
   // the blocks failing together show one message.
   if (c.space.kind === "organization" && isSpaceNotFound(error) && spaceHeader(getSpace()) === spaceHeader(c.space)) {
     setSpace(PERSONAL)
-    toast.info("Você não tem mais acesso a esse espaço. Mostrando Pessoal.", {id: "space-gone"})
+    toast.info(t("auth.errors.spaceGone"), {id: "space-gone"})
   }
   throw error
 }

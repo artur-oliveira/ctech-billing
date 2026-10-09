@@ -1,0 +1,212 @@
+{
+  "direction": {
+    "label": "Direction",
+    "payable": "Payable",
+    "receivable": "Receivable"
+  },
+  "noCategory": {
+    "expense": "No expense category. Create one in Accounts.",
+    "income": "No income category. Create one in Accounts."
+  },
+  "noAccount": "No account. Create one in Accounts.",
+  "common": {
+    "description": "Description",
+    "noDescription": "No description",
+    "amount": "Amount",
+    "date": "Date",
+    "category": "Category",
+    "due": "Due date",
+    "close": "Close",
+    "save": "Save",
+    "edit": "Edit",
+    "keep": "Keep",
+    "payWith": {
+      "payable": "Pay from",
+      "receivable": "Receive in"
+    },
+    "auto": {
+      "payable": "Pay automatically on the due date",
+      "receivable": "Receive automatically on the due date"
+    }
+  },
+  "list": {
+    "new": "New bill",
+    "newTitle": {
+      "payable": "New bill to pay",
+      "receivable": "New bill to receive"
+    },
+    "empty": {
+      "payable": "Nothing to pay.",
+      "receivable": "Nothing to receive."
+    },
+    "group": {
+      "overdue": "Overdue",
+      "today": "Due today",
+      "upcoming": "Upcoming"
+    }
+  },
+  "row": {
+    "due": "Due {{date}}",
+    "statement": "Card statement",
+    "viewStatement": "View statement",
+    "settle": {
+      "payable": "Pay",
+      "receivable": "Receive"
+    },
+    "autoNote": {
+      "payable": "Automatic payment",
+      "receivable": "Automatic receipt"
+    },
+    "delete": "Delete"
+  },
+  "delete": {
+    "confirm": "Delete “{{name}}”? It leaves the list and the {{month}} result.",
+    "fallbackName": "this bill"
+  },
+  "conflict": "This bill changed. We refreshed the list; try again.",
+  "settle": {
+    "confirm": {
+      "payable": "Confirm payment",
+      "receivable": "Confirm receipt"
+    },
+    "date": {
+      "payable": "Payment date",
+      "receivable": "Receipt date"
+    },
+    "amount": {
+      "payable": "Amount paid",
+      "receivable": "Amount received"
+    },
+    "diffCategory": "Difference category",
+    "more": "{{amount}} more than {{bill}}",
+    "less": "{{amount}} less than {{bill}}"
+  },
+  "new": {
+    "competence": "Accrual date (P&L)",
+    "competencePlaceholder": "Same as due date",
+    "paidNow": {
+      "payable": "Already paid",
+      "receivable": "Already received"
+    },
+    "paidOn": {
+      "payable": "Paid on",
+      "receivable": "Received on"
+    },
+    "create": "Create",
+    "settleFailed": {
+      "payable": "Bill created, but the payment was not recorded.",
+      "receivable": "Bill created, but the receipt was not recorded."
+    },
+    "retry": "Try again",
+    "leaveOpen": "Leave open"
+  },
+  "rec": {
+    "title": "Recurrences",
+    "new": "New recurrence",
+    "edit": "Edit recurrence",
+    "empty": "No recurrences",
+    "emptyHint": "Whatever repeats becomes a bill on its own.",
+    "customRule": "Custom rule",
+    "end": "End",
+    "endConfirm": "End it? It stops creating bills; existing ones stay.",
+    "confirm": "Confirm",
+    "startsOn": "Starts on",
+    "endsOn": "Ends on",
+    "noEnd": "Never ends",
+    "editNote": "{{rule}}. To change the rule, end this one and create another.",
+    "next": "Next dates",
+    "fixRule": "invalid rule.",
+    "calculating": "calculating…",
+    "paidOn": "(paid on {{date}})",
+    "moreOptions": "More options",
+    "lessOptions": "Fewer options",
+    "weekend": "If it falls on a weekend or holiday",
+    "adjust": {
+      "roll_forward": "Moves to the next business day",
+      "none": "Keeps the date"
+    },
+    "create": "Create"
+  },
+  "editor": {
+    "repeat": "Repeat",
+    "kind": {
+      "day_of_month": "Fixed day of the month",
+      "workday_of_month": "Business day of the month",
+      "nth_weekday_of_month": "Weekday of the month",
+      "weekly": "Weekly",
+      "yearly": "Yearly"
+    },
+    "dayOfMonth": "Day of the month",
+    "workday": "Business day",
+    "which": "Which",
+    "weekday": "Weekday",
+    "everyWeeks": "Every how many weeks",
+    "firstDate": "First date",
+    "firstDateHint": "Weeks are counted from it.",
+    "month": "Month",
+    "day": "Day",
+    "nthWorkday": "{{ord}} business day",
+    "lastWorkday": "Last business day",
+    "last": "Last",
+    "exceptMonths": "Except in months",
+    "exceptDates": "Except on dates",
+    "add": "Add",
+    "remove": "Remove {{date}}"
+  },
+  "rule": {
+    "dayOfMonth": "Day {{day}} of every month",
+    "workday": "{{ord}} business day of the month",
+    "lastWorkday": "Last business day of the month",
+    "nthWeekday": "{{ord}} {{day}} of the month",
+    "lastWeekday": "Last {{day}} of the month",
+    "lastWeekdayMasc": "Last {{day}} of the month",
+    "weekly": "Every {{day}}",
+    "weeklyMasc": "Every {{day}}",
+    "weeklyEvery": "Every {{every}} weeks on {{day}}",
+    "weeklyEveryMasc": "Every {{every}} weeks on {{day}}",
+    "yearly": "Every year on {{month}} {{day}}",
+    "except": "{{base}}; except {{parts}}",
+    "exceptMonths": "in {{months}}",
+    "exceptDates_one": "on {{count}} date",
+    "exceptDates_other": "on {{count}} dates"
+  },
+  "err": {
+    "day": "Pick a day from 1 to 31.",
+    "workday": "Pick the 1st to 23rd business day, or the last.",
+    "nth": "Pick the 1st to 4th, or the last.",
+    "weekday": "Pick a weekday.",
+    "every": "Repeat every 1 to 52 weeks.",
+    "anchor": "The first date must fall on a {{day}}.",
+    "anchorDate": "The first date is invalid.",
+    "month": "Pick a month.",
+    "monthDay": "{{month}} has no day {{day}}.",
+    "allMonths": "Leave at least one month out of the exceptions.",
+    "maxDates": "At most {{max}} exception dates."
+  },
+  "purchase": {
+    "title": "New purchase",
+    "installments": "Installments",
+    "cash": "in full",
+    "cashOption": "In full",
+    "each": "{{n}}× of {{amount}}",
+    "firstPlus": "{{first}} + {{n}}× of {{base}}",
+    "save": "Save"
+  },
+  "transfer": {
+    "title": "New transfer",
+    "from": "From",
+    "to": "To",
+    "placeholder": "Transfer",
+    "submit": "Transfer"
+  },
+  "periods": {
+    "this_month": "This month",
+    "last_month": "Last month",
+    "last_3": "Last 3 months",
+    "this_year": "This year",
+    "last_12": "Last 12 months"
+  },
+  "spaces": {
+    "lost": "You no longer have access to that space. Showing Personal."
+  }
+}

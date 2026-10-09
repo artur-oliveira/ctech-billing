@@ -4,6 +4,7 @@ import {Badge, Button, Drawer, EmptyState, Field, Skeleton} from "@aoctech/ui"
 import {useQuery} from "@tanstack/react-query"
 import {ChevronLeft, ChevronRight, CreditCard} from "lucide-react"
 import {useState} from "react"
+import {useTranslation} from "react-i18next"
 
 import {SettleForm} from "@/components/finance/BillsView"
 import {CardForm} from "@/components/finance/CardForm"
@@ -17,16 +18,18 @@ import {
   refundPurchase,
 } from "@/lib/api/finance"
 import type {Account, Card, CardStatement, CardStatementStatus, Purchase, StatementItem} from "@/lib/api/financeTypes"
+import {currentLocale} from "@/lib/i18n"
 import {monthShort} from "@/lib/finance/today"
 import {useFinanceMutation} from "@/lib/finance/useFinanceMutation"
 import {useFinanceCtx, useFinanceSpaces} from "@/lib/finance/useFinanceSpaces"
 import {shortDate, signedMoney} from "@/lib/format"
+import {accountName} from "@/lib/finance/accountName"
 
-const STATUS: Record<CardStatementStatus, {label: string; tone: "neutral" | "attention" | "urgent"}> = {
-  open: {label: "Aberta", tone: "attention"},
-  future: {label: "Futura", tone: "neutral"},
-  closed: {label: "Fechada", tone: "urgent"},
-  paid: {label: "Paga", tone: "neutral"},
+const STATUS_TONE: Record<CardStatementStatus, "neutral" | "attention" | "urgent"> = {
+  open: "attention",
+  future: "neutral",
+  closed: "urgent",
+  paid: "neutral",
 }
 
 function shiftMonth(ym: string, n: number): string {
@@ -44,6 +47,7 @@ type Panel = "new-card" | "edit-card" | "purchase" | null
  * installment is billed.
  */
 export function CardsView({card: initial = ""}: {card?: string}) {
+  const {t} = useTranslation()
   const ctx = useFinanceCtx()
   const {can} = useFinanceSpaces()
   const [picked, setPicked] = useState(initial)
@@ -52,7 +56,7 @@ export function CardsView({card: initial = ""}: {card?: string}) {
 
   const cards = useQuery({queryKey: financeKeys.cards(ctx.mode, ctx.space), queryFn: () => listCards(ctx)})
   const accounts = useQuery({queryKey: financeKeys.accounts(ctx.mode, ctx.space), queryFn: () => listAccounts(ctx)})
-  const active = (cards.data?.data ?? []).filter(c => !c.archived).sort((a, b) => a.name.localeCompare(b.name, "pt-BR"))
+  const active = (cards.data?.data ?? []).filter(c => !c.archived).sort((a, b) => a.name.localeCompare(b.name, currentLocale()))
   const card = active.find(c => c.id === picked) ?? active[0]
   const shown = month ?? card?.open_month ?? ""
   const all = accounts.data?.data ?? []
@@ -66,17 +70,15 @@ export function CardsView({card: initial = ""}: {card?: string}) {
   if (!card) {
     return (
       <div className="space-y-4">
-        <Drawer open={panel === "new-card"} onClose={() => setPanel(null)} title="Novo cartão">
+        <Drawer open={panel === "new-card"} onClose={() => setPanel(null)} title={t("finance.cards.new")}>
           <CardForm accounts={all} onDone={id => { setPanel(null); if (id) setPicked(id) }}/>
         </Drawer>
         {(
           <EmptyState
             icon={<CreditCard/>}
-            title="Nenhum cartão ainda"
-            description={can("finance.configure")
-              ? "Cadastre um cartão com o dia em que a fatura fecha e o dia em que vence."
-              : "Peça a quem administra o espaço para cadastrar um cartão."}
-            action={can("finance.configure") ? <Button variant="brand" size="sm" onClick={() => setPanel("new-card")}>Novo cartão</Button> : undefined}
+            title={t("finance.cards.empty")}
+            description={can("finance.configure") ? undefined : t("finance.cards.emptyAsk")}
+            action={can("finance.configure") ? <Button variant="brand" size="sm" onClick={() => setPanel("new-card")}>{t("finance.cards.new")}</Button> : undefined}
           />
         )}
       </div>
@@ -86,29 +88,29 @@ export function CardsView({card: initial = ""}: {card?: string}) {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
-        <Field label="Cartão" htmlFor="cd-pick">
-          <Select id="cd-pick" aria-label="Cartão" value={card.id} className="w-56"
+        <Field label={t("finance.cards.card")} htmlFor="cd-pick">
+          <Select id="cd-pick" aria-label={t("finance.cards.card")} value={card.id} className="w-56"
             onValueChange={v => { setPicked(v); setMonth(null); setPanel(null) }}
             options={active.map(c => ({value: c.id, label: c.name}))}/>
         </Field>
         <div className="flex flex-wrap gap-2">
-          {can("finance.write") && <Button variant="brand" size="sm" onClick={() => setPanel("purchase")}>Nova compra</Button>}
+          {can("finance.write") && <Button variant="brand" size="sm" onClick={() => setPanel("purchase")}>{t("finance.cards.newPurchase")}</Button>}
           {can("finance.configure") && (
             <>
-              <Button variant="ghost" size="sm" onClick={() => setPanel("edit-card")}>Editar cartão</Button>
-              <Button variant="ghost" size="sm" onClick={() => setPanel("new-card")}>Novo cartão</Button>
+              <Button variant="ghost" size="sm" onClick={() => setPanel("edit-card")}>{t("finance.cards.edit")}</Button>
+              <Button variant="ghost" size="sm" onClick={() => setPanel("new-card")}>{t("finance.cards.new")}</Button>
             </>
           )}
         </div>
       </div>
 
-      <Drawer open={panel === "purchase"} onClose={() => setPanel(null)} title="Nova compra" description={`No cartão ${card.name}. A compra entra inteira no resultado; as parcelas, uma em cada fatura.`}>
+      <Drawer open={panel === "purchase"} onClose={() => setPanel(null)} title={t("finance.cards.newPurchase")} description={card.name}>
         <PurchasePanel cardId={card.id} accounts={all} onDone={() => setPanel(null)}/>
       </Drawer>
-      <Drawer open={panel === "edit-card"} onClose={() => setPanel(null)} title={`Editar ${card.name}`}>
+      <Drawer open={panel === "edit-card"} onClose={() => setPanel(null)} title={t("finance.cards.editNamed", {name: card.name})}>
         <CardForm key={card.id} card={card} accounts={all} onDone={() => setPanel(null)}/>
       </Drawer>
-      <Drawer open={panel === "new-card"} onClose={() => setPanel(null)} title="Novo cartão">
+      <Drawer open={panel === "new-card"} onClose={() => setPanel(null)} title={t("finance.cards.new")}>
         <CardForm accounts={all} onDone={id => { setPanel(null); if (id) { setPicked(id); setMonth(null) } }}/>
       </Drawer>
 
@@ -118,21 +120,22 @@ export function CardsView({card: initial = ""}: {card?: string}) {
 }
 
 function StatementBlock({card, month, accounts, onMonth}: {card: Card; month: string; accounts: Account[]; onMonth: (m: string) => void}) {
+  const {t} = useTranslation()
   const ctx = useFinanceCtx()
   const {can} = useFinanceSpaces()
   const q = useQuery({queryKey: financeKeys.cardStatement(ctx.mode, ctx.space, card.id, month), queryFn: () => getCardStatement(ctx, card.id, month)})
   const purchases = useQuery({queryKey: financeKeys.purchases(ctx.mode, ctx.space, card.id), queryFn: () => listPurchases(ctx, card.id)})
   const [action, setAction] = useState<"close" | "pay" | null>(null)
-  const names = new Map(accounts.map(a => [a.id, a.name]))
+  const names = new Map(accounts.map(a => [a.id, accountName(a)]))
   const byId = new Map((purchases.data?.data ?? []).map(p => [p.id, p]))
   const s = q.data
 
   return (
-    <section aria-label="Fatura" className="space-y-3">
+    <section aria-label={t("finance.cards.statement")} className="space-y-3">
       <div className="flex items-center gap-2">
-        <Button variant="ghost" size="sm" aria-label="Fatura anterior" onClick={() => onMonth(shiftMonth(month, -1))}><ChevronLeft aria-hidden className="size-4"/></Button>
+        <Button variant="ghost" size="sm" aria-label={t("finance.cards.prev")} onClick={() => onMonth(shiftMonth(month, -1))}><ChevronLeft aria-hidden className="size-4"/></Button>
         <span className="min-w-16 text-center text-sm font-medium tabular-nums">{monthShort(month)}</span>
-        <Button variant="ghost" size="sm" aria-label="Próxima fatura" onClick={() => onMonth(shiftMonth(month, 1))}><ChevronRight aria-hidden className="size-4"/></Button>
+        <Button variant="ghost" size="sm" aria-label={t("finance.cards.next")} onClick={() => onMonth(shiftMonth(month, 1))}><ChevronRight aria-hidden className="size-4"/></Button>
       </div>
       {q.isLoading ? <div className="space-y-2" aria-busy><Skeleton className="h-5 w-48"/><Skeleton className="h-4 w-full"/></div> : q.error || !s ? (
         <ErrorBlock error={q.error} onRetry={() => void q.refetch()}/>
@@ -140,21 +143,21 @@ function StatementBlock({card, month, accounts, onMonth}: {card: Card; month: st
         <>
           <Summary statement={s}/>
           {s.status === "open" && can("finance.write") && action !== "close" && (
-            <Button variant="outline" size="sm" onClick={() => setAction("close")}>Fechar fatura agora</Button>
+            <Button variant="outline" size="sm" onClick={() => setAction("close")}>{t("finance.cards.closeNow")}</Button>
           )}
           {s.status === "closed" && s.bill_id && can("finance.settle") && action !== "pay" && (
-            <Button variant="brand" size="sm" onClick={() => setAction("pay")}>Pagar fatura</Button>
+            <Button variant="brand" size="sm" onClick={() => setAction("pay")}>{t("finance.cards.pay")}</Button>
           )}
           {action === "close" && (
             <Confirm
-              text={`Fechar a fatura de ${monthShort(month)} agora? Compras novas entram na próxima.`}
+              text={t("finance.cards.closeConfirm", {month: monthShort(month)})}
               run={(c, key) => closeStatement(c, card.id, month, key)}
               onDone={() => setAction(null)}
             />
           )}
           {action === "pay" && s.bill_id && <PayStatement billId={s.bill_id} accounts={accounts} onDone={() => setAction(null)}/>}
           {s.items.length === 0 ? (
-            <p className="py-6 text-center text-sm text-muted-foreground">Nenhuma compra nesta fatura.</p>
+            <p className="py-6 text-center text-sm text-muted-foreground">{t("finance.cards.noPurchases")}</p>
           ) : (
             <ul className="divide-y divide-border border-y border-border">
               {s.items.map(it => (
@@ -170,14 +173,14 @@ function StatementBlock({card, month, accounts, onMonth}: {card: Card; month: st
 }
 
 function Summary({statement: s}: {statement: CardStatement}) {
-  const st = STATUS[s.status]
+  const {t} = useTranslation()
   const closed = s.status === "closed" || s.status === "paid"
   return (
     <div className="flex flex-wrap items-baseline justify-between gap-3 text-sm">
       <div className="flex flex-wrap items-center gap-3">
-        <Badge tone={st.tone}>{st.label}</Badge>
-        <span className="text-muted-foreground">{closed ? "Fechou em" : "Fecha em"} {shortDate(s.closing_date)}</span>
-        <span className="text-muted-foreground">Vence em {shortDate(s.due_date)}</span>
+        <Badge tone={STATUS_TONE[s.status]}>{t(`finance.cards.status.${s.status}`)}</Badge>
+        <span className="text-muted-foreground">{t(closed ? "finance.cards.closedOn" : "finance.cards.closesOn", {date: shortDate(s.closing_date)})}</span>
+        <span className="text-muted-foreground">{t("finance.cards.dueOn", {date: shortDate(s.due_date)})}</span>
       </div>
       <span data-numeric className="text-base font-semibold tabular-nums">{signedMoney(s.total)}</span>
     </div>
@@ -193,6 +196,7 @@ function PayStatement({billId, accounts, onDone}: {billId: string; accounts: Acc
 }
 
 function ItemRow({item, card, purchase, category}: {item: StatementItem; card: Card; purchase?: Purchase; category?: string}) {
+  const {t} = useTranslation()
   const {can} = useFinanceSpaces()
   const [action, setAction] = useState<"refund" | "advance" | null>(null)
   const actionable = item.kind === "installment" && purchase && !purchase.refunded && can("finance.write")
@@ -209,21 +213,21 @@ function ItemRow({item, card, purchase, category}: {item: StatementItem; card: C
         <span data-numeric className="w-28 text-right text-sm tabular-nums">{signedMoney(item.amount)}</span>
         {actionable && (
           <div className="flex gap-1">
-            {canAdvance && <Button size="sm" variant="ghost" onClick={() => setAction("advance")}>Antecipar parcelas</Button>}
-            <Button size="sm" variant="ghost" onClick={() => setAction("refund")}>Estornar compra</Button>
+            {canAdvance && <Button size="sm" variant="ghost" onClick={() => setAction("advance")}>{t("finance.cards.advance")}</Button>}
+            <Button size="sm" variant="ghost" onClick={() => setAction("refund")}>{t("finance.cards.refund")}</Button>
           </div>
         )}
       </div>
       {action === "refund" && purchase && (
         <Confirm
-          text="Estornar esta compra? As parcelas já cobradas voltam como crédito na fatura aberta; as futuras deixam de existir."
+          text={t("finance.cards.refundConfirm")}
           run={(c, key) => refundPurchase(c, card.id, purchase.id, key)}
           onDone={() => setAction(null)}
         />
       )}
       {action === "advance" && purchase && (
         <Confirm
-          text="Trazer as parcelas restantes para a fatura aberta?"
+          text={t("finance.cards.advanceConfirm")}
           run={(c, key) => advancePurchase(c, card.id, purchase.id, key)}
           onDone={() => setAction(null)}
         />
@@ -233,12 +237,13 @@ function ItemRow({item, card, purchase, category}: {item: StatementItem; card: C
 }
 
 function Confirm({text, run, onDone}: {text: string; run: (c: FinanceCtx, key: string) => Promise<unknown>; onDone: () => void}) {
+  const {t} = useTranslation()
   const m = useFinanceMutation((c, _: void, key) => run(c, key), wholeSpace, onDone)
   return (
     <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg bg-surface p-3 text-sm motion-safe:animate-in motion-safe:fade-in">
       <p className="text-muted-foreground">{text}</p>
-      <Button size="sm" variant="outline" onClick={onDone}>Voltar</Button>
-      <Button size="sm" variant="brand" disabled={m.isPending} onClick={() => m.mutate()}>Confirmar</Button>
+      <Button size="sm" variant="outline" onClick={onDone}>{t("finance.cards.back")}</Button>
+      <Button size="sm" variant="brand" disabled={m.isPending} onClick={() => m.mutate()}>{t("finance.cards.confirm")}</Button>
       {m.error ? <p role="alert" className="w-full text-sm text-danger">{messageFor(m.error)}</p> : null}
     </div>
   )

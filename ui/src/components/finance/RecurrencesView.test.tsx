@@ -42,7 +42,7 @@ describe("F4 — recorrências", () => {
     vi.mocked(finance.listAccounts).mockResolvedValue({data: ACCOUNTS.filter(a => a.class === "asset"), has_more: false})
     renderWithQuery(<RecurrencesView/>)
     await userEvent.click(await screen.findByRole("button", {name: "Nova recorrência"}))
-    expect(await screen.findByText("Nenhuma categoria de despesa. Crie uma em Contas.")).toBeInTheDocument()
+    expect(await screen.findByText("Sem categoria de despesa. Crie em Contas.")).toBeInTheDocument()
   })
 
   it("lists each recurrence with its rule in words", async () => {
@@ -121,7 +121,7 @@ describe("F4 — recorrências", () => {
     renderWithQuery(<RecurrencesView/>)
     const row = (await screen.findByText("Aluguel do apartamento")).closest("li") as HTMLElement
     await userEvent.click(within(row).getByRole("button", {name: "Editar"}))
-    expect(screen.getByText(/encerre esta recorrência e crie outra/i)).toBeInTheDocument()
+    expect(screen.getByText(/encerre e crie outra/i)).toBeInTheDocument()
     expect(screen.queryByLabelText("Dia do mês")).toBeNull()
   })
 
@@ -131,7 +131,7 @@ describe("F4 — recorrências", () => {
     renderWithQuery(<RecurrencesView/>)
     const row = (await screen.findByText("Aluguel do apartamento")).closest("li") as HTMLElement
     await userEvent.click(within(row).getByRole("button", {name: "Encerrar"}))
-    expect(within(row).getByText(/contas já geradas continuam/i)).toBeInTheDocument()
+    expect(within(row).getByText(/as já geradas ficam/i)).toBeInTheDocument()
     await userEvent.click(within(row).getByRole("button", {name: "Confirmar"}))
     await waitFor(() => expect(archive).toHaveBeenCalledWith(expect.anything(), "r1", expect.any(String)))
   })

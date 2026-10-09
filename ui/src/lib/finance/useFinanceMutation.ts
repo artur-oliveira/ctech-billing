@@ -16,6 +16,7 @@ export function useFinanceMutation<V, R>(
   run: (ctx: FinanceCtx, vars: V, idempotencyKey: string) => Promise<R>,
   invalidate: (ctx: FinanceCtx) => QueryKey[],
   onSuccess?: (result: R) => void,
+  onError?: (error: Error) => void,
 ) {
   const ctx = useFinanceCtx()
   const client = useQueryClient()
@@ -27,5 +28,6 @@ export function useFinanceMutation<V, R>(
       for (const key of invalidate(ctx)) void client.invalidateQueries({queryKey: key})
       onSuccess?.(result)
     },
+    onError,
   })
 }

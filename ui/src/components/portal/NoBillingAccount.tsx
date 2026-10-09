@@ -2,6 +2,7 @@
 
 import {Button, EmptyState} from "@aoctech/ui"
 import {Receipt} from "lucide-react"
+import {useTranslation} from "react-i18next"
 
 const ACCOUNTS = process.env.NEXT_PUBLIC_CTECH_CLIENT_URL || "https://accounts.aoctech.app"
 
@@ -24,17 +25,18 @@ const ACCOUNTS = process.env.NEXT_PUBLIC_CTECH_CLIENT_URL || "https://accounts.a
  * every screen below would show three copies of this, one per failed query.
  */
 export function NoBillingAccount() {
+  const {t} = useTranslation()
   return (
     <EmptyState
       icon={<Receipt/>}
-      title="Você ainda não tem cobranças"
-      description="Este é o portal de cobranças da CTech. Assim que você assinar um plano, suas faturas e assinaturas aparecem aqui."
+      title={t("portal.noAccount.title")}
+      description={t("portal.noAccount.description")}
       action={
         <Button
           variant="outline"
           render={<a href={ACCOUNTS} rel="noreferrer"/>}
         >
-          Ver produtos CTech
+          {t("portal.noAccount.action")}
         </Button>
       }
     />

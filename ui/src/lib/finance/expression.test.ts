@@ -76,7 +76,7 @@ describe("describeModel", () => {
     expect(describeModel(m({kind: "yearly", month: 3, day: 15}))).toBe("Todo ano em 15 de março")
     expect(describeModel(m({kind: "day_of_month", day: 10}, {months: [12], dates: []}))).toBe("Todo dia 10; exceto em dezembro")
     expect(describeModel(m({kind: "day_of_month", day: 10}, {months: [1, 12], dates: ["2026-03-10"]})))
-      .toBe("Todo dia 10; exceto em janeiro e dezembro, e em 1 data")
+      .toBe("Todo dia 10; exceto em janeiro e dezembro, em 1 data")
   })
   it("uses no em dash", () => {
     expect(describeModel(m({kind: "day_of_month", day: 10}, {months: [12], dates: ["2026-03-10", "2026-04-10"]}))).not.toContain("—")

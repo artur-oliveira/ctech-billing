@@ -5,8 +5,10 @@ import {useMutation, useQuery} from "@tanstack/react-query"
 import Image from "next/image"
 import {useSearchParams} from "next/navigation"
 import {Suspense, useState} from "react"
+import {Trans, useTranslation} from "react-i18next"
 import {toast} from "sonner"
 
+import {LanguageSwitcher} from "@/components/LanguageSwitcher"
 import {StatusScreen} from "@/components/StatusScreen"
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
 import {Money} from "@/components/portal/Money"
@@ -16,6 +18,8 @@ import {checkoutKeys, getCheckout, payCheckout} from "@/lib/api/checkout"
 import {messageFor, statusOf} from "@/lib/api/client"
 import type {PixPayment} from "@/lib/api/types"
 import {longDate, money} from "@/lib/format"
+import {useDocumentTitle} from "@/lib/hooks/useDocumentTitle"
+import {invoiceTitle} from "@/lib/invoice"
 import {BILLING_TERMS_URL, PRIVACY_POLICY_URL} from "@/lib/legal"
 
 /**
@@ -48,6 +52,8 @@ export default function CheckoutPage() {
 const POLL_MS = 4_000
 
 function CheckoutScreen() {
+  const {t} = useTranslation()
+  useDocumentTitle(t("checkout.title"))
   const token = useSearchParams().get("token") ?? ""
 
   // The open charge is component state, not query data, and that distinction is
@@ -92,24 +98,22 @@ function CheckoutScreen() {
     <Shell merchant={merchant}>
       <header className="space-y-3">
         <p className="text-sm text-muted-foreground">
-          {invoice.number ? `Fatura nº ${invoice.number}` : "Fatura"}
+          {invoice.number ? t("checkout.invoice", {number: invoice.number}) : t("checkout.untitled")}
         </p>
         <h1>
           <Money cents={invoice.amount_due} currency={invoice.currency} size="hero"/>
         </h1>
-        <StatusBadge state={invoice.state} tone={invoice.tone}/>
+        <StatusBadge state={invoice.state} tone={invoice.tone} days={invoice.days_until_due} dueDate={invoice.due_date}/>
         <p className="text-pretty text-sm text-muted-foreground">
-          {invoice.description} · vence em {longDate(invoice.due_date)}
+          {t("checkout.dueOn", {description: invoiceTitle(invoice), date: longDate(invoice.due_date)})}
         </p>
       </header>
 
       {settled ? (
         <div className="flex items-start gap-3 rounded-xl bg-success px-5 py-4 text-background">
           <div className="space-y-1">
-            <p className="font-medium">Pagamento recebido</p>
-            <p className="text-sm opacity-90">
-              Esta fatura está quitada. Você pode fechar esta página.
-            </p>
+            <p className="font-medium">{t("checkout.settled.title")}</p>
+            <p className="text-sm opacity-90">{t("checkout.settled.description")}</p>
           </div>
         </div>
       ) : payment ? (
@@ -125,14 +129,13 @@ function CheckoutScreen() {
       ) : invoice.payable ? (
         <Button block onClick={() => pay.mutate()} disabled={pay.isPending}>
           {pay.isPending
-            ? "Gerando o código…"
-            : `Pagar ${money(invoice.amount_due, invoice.currency)} com PIX`}
+            ? t("checkout.generating")
+            : t("checkout.payPix", {amount: money(invoice.amount_due, invoice.currency)})}
         </Button>
       ) : (
         <div className="rounded-xl border border-border bg-surface px-5 py-4">
           <p className="text-pretty text-sm text-foreground">
-            Esta fatura não está aberta para pagamento. Nada foi cobrado; fale com {merchant} se
-            você acha que isso está errado.
+            {t("checkout.notOpen", {merchant})}
           </p>
         </div>
       )}
@@ -140,7 +143,7 @@ function CheckoutScreen() {
       {invoice.lines && invoice.lines.length > 0 && (
         <section aria-labelledby="linhas" className="space-y-4">
           <h2 id="linhas" className="text-sm font-medium text-muted-foreground">
-            O que está sendo cobrado
+            {t("checkout.lines")}
           </h2>
           <ul className="space-y-3">
             {invoice.lines.map((line, i) => (
@@ -149,7 +152,7 @@ function CheckoutScreen() {
                   <p className="text-sm text-foreground">{line.description}</p>
                   {line.proration && (
                     <p className="mt-0.5 text-xs text-muted-foreground">
-                      Proporcional aos dias usados neste período
+                      {t("checkout.proration")}
                     </p>
                   )}
                 </div>
@@ -159,7 +162,7 @@ function CheckoutScreen() {
           </ul>
           <Separator/>
           <div className="flex items-baseline justify-between gap-4">
-            <span className="text-sm font-medium text-foreground">Total</span>
+            <span className="text-sm font-medium text-foreground">{t("checkout.total")}</span>
             <Money cents={invoice.amount_due} currency={invoice.currency}/>
           </div>
         </section>
@@ -175,28 +178,36 @@ function CheckoutScreen() {
  * facts and the page says both.
  */
 function Shell({merchant, children}: { merchant: string; children: React.ReactNode }) {
+  const {t} = useTranslation()
   return (
     <div data-density="comfortable" className="min-h-dvh">
       <header className="border-b border-border">
-        <div className="mx-auto flex h-16 max-w-md items-center gap-2.5 px-4">
-          <Image
-            src="/android-chrome-192x192.png"
-            alt=""
-            width={28}
-            height={28}
-            priority
-            className="size-7 rounded-lg"
-          />
-          <span className="text-base font-semibold tracking-[-0.02em] text-brand-600">
-            CTech
-            <span className="ml-1.5 font-normal text-muted-foreground">Billing</span>
-          </span>
+        <div className="mx-auto flex h-16 max-w-md items-center justify-between gap-2.5 px-4">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <Image
+              src="/android-chrome-192x192.png"
+              alt=""
+              width={28}
+              height={28}
+              priority
+              className="size-7 rounded-lg"
+            />
+            <span className="text-base font-semibold tracking-[-0.02em] text-brand-600">
+              CTech
+              <span className="ml-1.5 font-normal text-muted-foreground">Billing</span>
+            </span>
+          </div>
+          <LanguageSwitcher/>
         </div>
       </header>
       <main className="mx-auto max-w-md space-y-8 px-4 py-8 pb-20">
         {merchant && (
           <p className="text-sm text-muted-foreground">
-            Cobrança de <span className="font-medium text-foreground">{merchant}</span>
+            <Trans
+              i18nKey="checkout.from"
+              values={{merchant}}
+              components={{b: <span className="font-medium text-foreground"/>}}
+            />
           </p>
         )}
         {children}
@@ -208,14 +219,14 @@ function Shell({merchant, children}: { merchant: string; children: React.ReactNo
             different obligation, and this is where it is met. */}
         <footer className="border-t border-border pt-6 text-xs text-muted-foreground">
           <p className="text-pretty">
-            Pagamento processado pela CTech.{" "}
+            {t("checkout.footer")}{" "}
             <a
               href={BILLING_TERMS_URL}
               target="_blank"
               rel="noreferrer"
               className="underline underline-offset-4 hover:text-foreground"
             >
-              Termos
+              {t("checkout.terms")}
             </a>{" "}
             ·{" "}
             <a
@@ -224,7 +235,7 @@ function Shell({merchant, children}: { merchant: string; children: React.ReactNo
               rel="noreferrer"
               className="underline underline-offset-4 hover:text-foreground"
             >
-              Privacidade
+              {t("checkout.privacy")}
             </a>
           </p>
         </footer>
@@ -239,10 +250,11 @@ function Shell({merchant, children}: { merchant: string; children: React.ReactNo
  * be an oracle telling somebody guessing tokens when they had guessed right.
  */
 function Invalid() {
+  const {t} = useTranslation()
   return (
     <StatusScreen
-      title="Este link não é mais válido"
-      description="Links de pagamento expiram por segurança. Nada foi cobrado. Peça um novo link a quem enviou este, ou entre na sua conta CTech para ver a fatura."
+      title={t("checkout.invalid.title")}
+      description={t("checkout.invalid.description")}
     />
   )
 }

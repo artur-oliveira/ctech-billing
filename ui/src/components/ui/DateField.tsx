@@ -1,6 +1,9 @@
 "use client"
 
 import {DatePicker} from "@aoctech/ui"
+import {useTranslation} from "react-i18next"
+
+import {normalizeLocale} from "@/lib/locale"
 
 /** `YYYY-MM-DD` as local noon: never `new Date(iso)`, which reads UTC midnight. */
 function toDate(iso: string): Date | undefined {
@@ -23,6 +26,8 @@ interface DateFieldProps {
   placeholder?: string
   disabled?: boolean
   className?: string
+  /** Marks the trigger as failing validation (the message itself is the Field's). */
+  invalid?: boolean
 }
 
 /**
@@ -31,17 +36,19 @@ interface DateFieldProps {
  * date itself and none can shift one by a timezone. Labelled by a Field's
  * `htmlFor` through `id`, like any input.
  */
-export function DateField({id, value, onValueChange, min, max, placeholder, disabled, className}: DateFieldProps) {
+export function DateField({id, value, onValueChange, min, max, placeholder, disabled, className, invalid}: DateFieldProps) {
+  const {t, i18n} = useTranslation()
   return (
     <DatePicker
       id={id}
+      locale={normalizeLocale(i18n.language)}
       value={toDate(value)}
       onValueChange={d => onValueChange(d ? toIso(d) : "")}
       min={min ? toDate(min) : undefined}
       max={max ? toDate(max) : undefined}
-      placeholder={placeholder}
+      placeholder={placeholder ?? t("auth.date.placeholder")}
       disabled={disabled}
-      className={className}
+      className={invalid ? `${className ?? ""} border-danger ring-3 ring-danger/20`.trim() : className}
     />
   )
 }

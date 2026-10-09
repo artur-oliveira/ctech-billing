@@ -51,7 +51,7 @@ probe a route and read a 403 as information.
 - **A pointer row per (organization, user).** Written in the same transaction as the customer and
   conditional, so two customers in one organization cannot claim the same account.
 - **The consumer surface publishes no internal vocabulary.** Status, cause and error codes are
-  translated at the edge — "Vence em 3 dias", never `OPEN`. That is a rule about the DTO layer, not
+  translated at the edge — `due_soon` with `days_until_due: 3` (the UI words it), never `OPEN`. That is a rule about the DTO layer, not
   a suggestion for the UI: the internal name must not be in the payload to begin with.
 
 ## Limits accepted

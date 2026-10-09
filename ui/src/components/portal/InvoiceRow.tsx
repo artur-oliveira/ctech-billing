@@ -4,6 +4,7 @@ import Link from "next/link"
 import {Money} from "@/components/portal/Money"
 import {StatusBadge} from "@/components/portal/StatusBadge"
 import type {Invoice} from "@/lib/api/types"
+import {invoiceTitle} from "@/lib/invoice"
 import {shortDate} from "@/lib/format"
 
 /**
@@ -24,9 +25,9 @@ export function InvoiceRow({invoice}: { invoice: Invoice }) {
         className="group flex items-center gap-4 rounded-xl px-3 py-4 transition-colors hover:bg-surface"
       >
         <div className="min-w-0 flex-1 space-y-1.5">
-          <p className="truncate text-sm font-medium text-foreground">{invoice.description}</p>
+          <p className="truncate text-sm font-medium text-foreground">{invoiceTitle(invoice)}</p>
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <StatusBadge state={invoice.state} tone={invoice.tone}/>
+            <StatusBadge state={invoice.state} tone={invoice.tone} days={invoice.days_until_due} dueDate={invoice.due_date}/>
             <span data-numeric className="text-xs text-muted-foreground">
               {shortDate(invoice.due_date)}
             </span>

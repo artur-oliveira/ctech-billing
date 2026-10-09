@@ -1,7 +1,9 @@
 import {Badge} from "@aoctech/ui"
 import {AlertTriangle, Ban, CheckCircle2, Circle, FileText} from "lucide-react"
 
-import type {ConsoleInvoice, InvoiceStatus} from "@/lib/api/consoleTypes"
+import {useTranslation} from "react-i18next"
+
+import type {ConsoleInvoice} from "@/lib/api/consoleTypes"
 
 /**
  * The internal status, spelled out — the opposite of the portal's badge, and
@@ -14,14 +16,6 @@ import type {ConsoleInvoice, InvoiceStatus} from "@/lib/api/consoleTypes"
  * why it rides alongside as a second badge rather than replacing OPEN — an
  * invoice does not stop being open by being late.
  */
-const LABEL: Record<InvoiceStatus, string> = {
-  DRAFT: "Rascunho",
-  OPEN: "Emitida",
-  PAID: "Paga",
-  VOID: "Anulada",
-  UNCOLLECTIBLE: "Incobrável",
-}
-
 const TONE = {
   DRAFT: "neutral",
   OPEN: "attention",
@@ -39,17 +33,18 @@ const GLYPH = {
 } as const
 
 export function InvoiceStatusBadge({invoice}: { invoice: ConsoleInvoice }) {
+  const {t} = useTranslation()
   const Glyph = GLYPH[invoice.status] ?? Circle
   return (
     <span className="inline-flex items-center gap-1.5">
       <Badge tone={TONE[invoice.status]}>
         <Glyph aria-hidden/>
-        {LABEL[invoice.status] ?? invoice.status}
+        {t(`console.invoiceStatus.${invoice.status}`, {defaultValue: invoice.status})}
       </Badge>
       {invoice.overdue && invoice.status === "OPEN" && (
         <Badge tone="urgent">
           <AlertTriangle aria-hidden/>
-          Vencida
+          {t("console.invoiceStatus.overdue")}
         </Badge>
       )}
     </span>

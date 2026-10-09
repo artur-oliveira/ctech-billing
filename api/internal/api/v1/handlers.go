@@ -64,7 +64,7 @@ func (h *handlers) today() brcal.Date { return brcal.FromTime(h.clock()) }
 // fail maps an error to its RFC 7807 response, and logs the ones the response
 // deliberately hides.
 //
-// A 5xx body says "erro interno" and nothing else, which is right — the client
+// A 5xx body says "internal error" and nothing else, which is right — the client
 // must not learn that a DynamoDB table is throttling or which field failed to
 // decrypt. But that makes this the **only** place the real error still exists,
 // and until it was written down here it existed nowhere: handlers return
@@ -96,7 +96,7 @@ func (h *handlers) createCustomerAs(c fiber.Ctx, actor string) error {
 	t := middleware.GetTenant(c)
 	var req createCustomerRequest
 	if err := c.Bind().Body(&req); err != nil {
-		return problem.BadRequest("corpo inválido").Send(c)
+		return problem.BadRequest("invalid request body").WithCode("invalid_body").Send(c)
 	}
 	// Integrators already in production call this: lengths, an email's shape and
 	// a document's shape are checked, never a CPF's check digits (test data with
@@ -144,31 +144,27 @@ func (h *handlers) createSubscription(c fiber.Ctx) error {
 	t := middleware.GetTenant(c)
 	var req createSubscriptionRequest
 	if err := c.Bind().Body(&req); err != nil {
-		return problem.BadRequest("corpo inválido").Send(c)
+		return problem.BadRequest("invalid request body").WithCode("invalid_body").Send(c)
 	}
 	var fieldErrs []problem.FieldError
 	if req.CustomerID == "" {
-		fieldErrs = append(fieldErrs, problem.FieldError{Field: "customer_id", Message: "obrigatório", Tag: "required"})
+		fieldErrs = append(fieldErrs, fieldErr("customer_id", "required", "required"))
 	}
 	if len(req.Items) == 0 {
-		fieldErrs = append(fieldErrs, problem.FieldError{Field: "items", Message: "informe ao menos um preço", Tag: "required"})
+		fieldErrs = append(fieldErrs, fieldErr("items", "required", "at least one price is required"))
 	}
 	if len(req.Items) > limits.MaxSubscriptionItems {
-		fieldErrs = append(fieldErrs, fieldErr("items", fmt.Sprintf("no máximo %d itens", limits.MaxSubscriptionItems), "max"))
+		fieldErrs = append(fieldErrs, fieldErr("items", "too_many", fmt.Sprintf("at most %d items", limits.MaxSubscriptionItems), "max", limits.MaxSubscriptionItems))
 	}
 	if req.NetDays < 0 || req.NetDays > limits.MaxNetDays {
-		fieldErrs = append(fieldErrs, fieldErr("net_days", fmt.Sprintf("entre 0 e %d dias", limits.MaxNetDays), "range"))
+		fieldErrs = append(fieldErrs, fieldErr("net_days", "out_of_range", fmt.Sprintf("between 0 and %d days", limits.MaxNetDays), "min", 0, "max", limits.MaxNetDays))
 	}
 	for i, it := range req.Items {
 		if it.PriceID == "" {
-			fieldErrs = append(fieldErrs, problem.FieldError{
-				Field:   fmt.Sprintf("items[%d].price_id", i),
-				Message: "obrigatório",
-				Tag:     "required",
-			})
+			fieldErrs = append(fieldErrs, fieldErr(fmt.Sprintf("items[%d].price_id", i), "required", "required"))
 		}
 		if it.Quantity > limits.MaxUsageQuantity {
-			fieldErrs = append(fieldErrs, fieldErr(fmt.Sprintf("items[%d].quantity", i), fmt.Sprintf("no máximo %d", limits.MaxUsageQuantity), "max"))
+			fieldErrs = append(fieldErrs, fieldErr(fmt.Sprintf("items[%d].quantity", i), "too_large", fmt.Sprintf("at most %d", limits.MaxUsageQuantity), "max", limits.MaxUsageQuantity))
 		}
 	}
 	if len(fieldErrs) > 0 {
@@ -180,7 +176,7 @@ func (h *handlers) createSubscription(c fiber.Ctx) error {
 		parsed, err := brcal.Parse(req.Anchor)
 		if err != nil {
 			return problem.Validation([]problem.FieldError{
-				{Field: "anchor", Message: "use o formato YYYY-MM-DD", Tag: "format"},
+				fieldErr("anchor", "invalid_format", "use the format YYYY-MM-DD", "format", "YYYY-MM-DD"),
 			}).Send(c)
 		}
 		anchor = parsed
@@ -197,7 +193,7 @@ func (h *handlers) createSubscription(c fiber.Ctx) error {
 	if _, err := h.customers.Get(c.Context(), t.OrganizationID, t.Livemode, req.CustomerID); err != nil {
 		if errors.Is(err, repositories.ErrNotFound) {
 			return problem.Validation([]problem.FieldError{
-				{Field: "customer_id", Message: "cliente não encontrado", Tag: "exists"},
+				fieldErr("customer_id", "not_found", "customer not found"),
 			}).Send(c)
 		}
 		return fail(c, err)
@@ -246,7 +242,7 @@ func (h *handlers) cancelSubscription(c fiber.Ctx) error {
 	t := middleware.GetTenant(c)
 	var req cancelSubscriptionRequest
 	if err := c.Bind().Body(&req); err != nil {
-		return problem.BadRequest("corpo inválido").Send(c)
+		return problem.BadRequest("invalid request body").WithCode("invalid_body").Send(c)
 	}
 	sub, err := h.subs.Get(c.Context(), t.OrganizationID, t.Livemode, c.Params("id"))
 	if err != nil {
@@ -279,32 +275,26 @@ func (h *handlers) changePlan(c fiber.Ctx, actor string) error {
 	t := middleware.GetTenant(c)
 	var req changeSubscriptionRequest
 	if err := c.Bind().Body(&req); err != nil {
-		return problem.BadRequest("corpo inválido").Send(c)
+		return problem.BadRequest("invalid request body").WithCode("invalid_body").Send(c)
 	}
 
 	var fieldErrs []problem.FieldError
 	if len(req.Items) == 0 {
-		fieldErrs = append(fieldErrs, problem.FieldError{Field: "items", Message: "informe ao menos um preço", Tag: "required"})
+		fieldErrs = append(fieldErrs, fieldErr("items", "required", "at least one price is required"))
 	}
 	for i, it := range req.Items {
 		if it.PriceID == "" {
-			fieldErrs = append(fieldErrs, problem.FieldError{
-				Field:   fmt.Sprintf("items[%d].price_id", i),
-				Message: "obrigatório",
-				Tag:     "required",
-			})
+			fieldErrs = append(fieldErrs, fieldErr(fmt.Sprintf("items[%d].price_id", i), "required", "required"))
 		}
 		if it.Quantity > limits.MaxUsageQuantity {
-			fieldErrs = append(fieldErrs, fieldErr(fmt.Sprintf("items[%d].quantity", i), fmt.Sprintf("no máximo %d", limits.MaxUsageQuantity), "max"))
+			fieldErrs = append(fieldErrs, fieldErr(fmt.Sprintf("items[%d].quantity", i), "too_large", fmt.Sprintf("at most %d", limits.MaxUsageQuantity), "max", limits.MaxUsageQuantity))
 		}
 	}
 	if len(req.Items) > limits.MaxSubscriptionItems {
-		fieldErrs = append(fieldErrs, fieldErr("items", fmt.Sprintf("no máximo %d itens", limits.MaxSubscriptionItems), "max"))
+		fieldErrs = append(fieldErrs, fieldErr("items", "too_many", fmt.Sprintf("at most %d items", limits.MaxSubscriptionItems), "max", limits.MaxSubscriptionItems))
 	}
 	if req.Effective != "" && req.Effective != effectiveNow {
-		fieldErrs = append(fieldErrs, problem.FieldError{
-			Field: "effective", Message: `no momento só "now" é aceito`, Tag: "oneof",
-		})
+		fieldErrs = append(fieldErrs, fieldErr("effective", "unsupported_value", `only "now" is accepted for now`, "allowed", []string{effectiveNow}))
 	}
 	if len(fieldErrs) > 0 {
 		return problem.Validation(fieldErrs).Send(c)
@@ -349,12 +339,12 @@ func (h *handlers) reportUsage(c fiber.Ctx) error {
 	t := middleware.GetTenant(c)
 	var req reportUsageRequest
 	if err := c.Bind().Body(&req); err != nil {
-		return problem.BadRequest("corpo inválido").Send(c)
+		return problem.BadRequest("invalid request body").WithCode("invalid_body").Send(c)
 	}
 	ch := &checks{}
 	ch.text("idempotency_key", req.IdempotencyKey, true, 255)
 	if req.Quantity < 0 || req.Quantity > limits.MaxUsageQuantity {
-		ch.fail("quantity", fmt.Sprintf("entre 0 e %d", limits.MaxUsageQuantity), "range")
+		ch.fail("quantity", "out_of_range", fmt.Sprintf("between 0 and %d", limits.MaxUsageQuantity), "min", 0, "max", limits.MaxUsageQuantity)
 	}
 	if len(ch.errs) > 0 {
 		return problem.Validation(ch.errs).Send(c)
@@ -369,12 +359,12 @@ func (h *handlers) reportUsage(c fiber.Ctx) error {
 		return fail(c, err)
 	}
 	if len(items) == 0 {
-		return problem.Unprocessable("assinatura sem item cobrável").Send(c)
+		return problem.Unprocessable("subscription has no billable item").WithCode("subscription_no_billable_item").Send(c)
 	}
 	item, err := usageItem(items, req.PriceID)
 	if err != nil {
 		return problem.Validation([]problem.FieldError{
-			{Field: "price_id", Message: err.Error(), Tag: "exists"},
+			usageItemFieldErr(err),
 		}).Send(c)
 	}
 
@@ -383,14 +373,14 @@ func (h *handlers) reportUsage(c fiber.Ctx) error {
 		parsed, err := time.Parse(time.RFC3339, req.OccurredAt)
 		if err != nil {
 			return problem.Validation([]problem.FieldError{
-				{Field: "occurred_at", Message: "use RFC 3339", Tag: "format"},
+				fieldErr("occurred_at", "invalid_format", "use RFC 3339", "format", "RFC3339"),
 			}).Send(c)
 		}
 		// Usage is reported as it happens: a timestamp more than a day ahead, or
 		// before 2000, is a clock or a unit error, not usage.
 		if parsed.Before(limits.MinDate.Time()) || parsed.After(h.now().Add(24*time.Hour)) {
 			return problem.Validation([]problem.FieldError{
-				{Field: "occurred_at", Message: "fora do intervalo aceito", Tag: "range"},
+				fieldErr("occurred_at", "out_of_range", "outside the accepted range"),
 			}).Send(c)
 		}
 		occurred = parsed
@@ -422,6 +412,20 @@ func (h *handlers) reportUsage(c fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"recorded": true, "duplicate": false})
 }
 
+// usageItemError is a refused usage price_id, with the stable code the client
+// translates ("required" when it is ambiguous, "not_found" when it matches none).
+type usageItemError struct{ code, msg string }
+
+func (e *usageItemError) Error() string { return e.msg }
+
+func usageItemFieldErr(err error) problem.FieldError {
+	var ue *usageItemError
+	if errors.As(err, &ue) {
+		return fieldErr("price_id", ue.code, ue.msg)
+	}
+	return fieldErr("price_id", "not_found", err.Error())
+}
+
 // usageItem picks the item a usage report belongs to.
 //
 // An omitted price_id resolves only when there is exactly one item. That is not
@@ -434,15 +438,15 @@ func usageItem(items []billing.SubscriptionItem, priceID string) (billing.Subscr
 		if len(items) == 1 {
 			return items[0], nil
 		}
-		return billing.SubscriptionItem{}, fmt.Errorf(
-			"obrigatório: a assinatura tem %d itens e o consumo precisa dizer a qual deles pertence", len(items))
+		return billing.SubscriptionItem{}, &usageItemError{code: "required", msg: fmt.Sprintf(
+			"required: the subscription has %d items and the usage must say which one it belongs to", len(items))}
 	}
 	for _, it := range items {
 		if it.PriceID == priceID {
 			return it, nil
 		}
 	}
-	return billing.SubscriptionItem{}, fmt.Errorf("a assinatura não tem item para o preço %s", priceID)
+	return billing.SubscriptionItem{}, &usageItemError{code: "not_found", msg: fmt.Sprintf("the subscription has no item for price %s", priceID)}
 }
 
 // periodContaining finds which of the subscription's periods a date falls in.
@@ -490,7 +494,7 @@ func (h *handlers) listInvoices(c fiber.Ctx) error {
 	month := fiber.Query(c, "month", int(today.Month))
 	if month < 1 || month > 12 {
 		return problem.Validation([]problem.FieldError{
-			{Field: "month", Message: "entre 1 e 12", Tag: "range"},
+			fieldErr("month", "out_of_range", "between 1 and 12", "min", 1, "max", 12),
 		}).Send(c)
 	}
 

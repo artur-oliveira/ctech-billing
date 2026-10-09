@@ -50,14 +50,19 @@ type checkoutResponse struct {
 }
 
 type checkoutInvoice struct {
-	Number      int64         `json:"number,omitempty"`
-	Description string        `json:"description"`
-	State       string        `json:"state"`
-	Tone        string        `json:"tone"`
-	DueDate     brcal.Date    `json:"due_date"`
-	AmountDue   billing.Cents `json:"amount_due"`
-	Currency    string        `json:"currency"`
-	Lines       []portalLine  `json:"lines,omitempty"`
+	Number      int64  `json:"number,omitempty"`
+	Description string `json:"description"`
+	// ExtraLines is how many invoice lines exist beyond the one named in
+	// Description (absent when 0); the client composes "X and N more".
+	ExtraLines int    `json:"extra_lines,omitempty"`
+	State      string `json:"state"`
+	Tone       string `json:"tone"`
+	// DaysUntilDue: see portalInvoiceResponse; negative when overdue.
+	DaysUntilDue int           `json:"days_until_due"`
+	DueDate      brcal.Date    `json:"due_date"`
+	AmountDue    billing.Cents `json:"amount_due"`
+	Currency     string        `json:"currency"`
+	Lines        []portalLine  `json:"lines,omitempty"`
 	// Payable is the server's answer to "is there anything to do here". A page
 	// that decides it from the state phrase will eventually offer to pay a voided
 	// invoice.
@@ -77,7 +82,7 @@ type checkoutPayment struct {
 func (h *checkoutHandlers) view(c fiber.Ctx) error {
 	org, livemode, invoiceID, err := h.links.Parse(c.Params("token"))
 	if err != nil {
-		return problem.NotFound("link inválido ou expirado").Send(c)
+		return problem.NotFound("invalid or expired link").WithCode("invalid_link").Send(c)
 	}
 	inv, lines, merchant, err := h.load(c, org, livemode, invoiceID)
 	if err != nil {
@@ -94,7 +99,7 @@ func (h *checkoutHandlers) view(c fiber.Ctx) error {
 func (h *checkoutHandlers) pay(c fiber.Ctx) error {
 	org, livemode, invoiceID, err := h.links.Parse(c.Params("token"))
 	if err != nil {
-		return problem.NotFound("link inválido ou expirado").Send(c)
+		return problem.NotFound("invalid or expired link").WithCode("invalid_link").Send(c)
 	}
 	inv, lines, merchant, err := h.load(c, org, livemode, invoiceID)
 	if err != nil {
@@ -162,16 +167,19 @@ func (h *checkoutHandlers) load(c fiber.Ctx, org string, livemode bool, invoiceI
 }
 
 func newCheckoutInvoice(inv *billing.Invoice, lines []billing.InvoiceItem, today brcal.Date) checkoutInvoice {
-	state, tone := invoiceState(inv, today)
+	state, tone, daysUntilDue := invoiceState(inv, today)
+	description, extra := describeLines(lines)
 	out := checkoutInvoice{
-		Number:      inv.Number,
-		Description: describeLines(lines),
-		State:       state,
-		Tone:        tone,
-		DueDate:     inv.DueDate,
-		AmountDue:   inv.AmountDue(),
-		Currency:    inv.Currency,
-		Payable:     inv.Payable(),
+		Number:       inv.Number,
+		Description:  description,
+		ExtraLines:   extra,
+		State:        state,
+		Tone:         tone,
+		DaysUntilDue: daysUntilDue,
+		DueDate:      inv.DueDate,
+		AmountDue:    inv.AmountDue(),
+		Currency:     inv.Currency,
+		Payable:      inv.Payable(),
 	}
 	for _, l := range lines {
 		out.Lines = append(out.Lines, portalLine{
@@ -196,11 +204,11 @@ func newCheckoutInvoice(inv *billing.Invoice, lines []billing.InvoiceItem, today
 func (h *checkoutHandlers) webhook(c fiber.Ctx) error {
 	body := c.Body()
 	if !h.collector.VerifyWebhook(body, c.Get(wallet.HeaderSignature)) {
-		return problem.Unauthorized("assinatura inválida").Send(c)
+		return problem.Unauthorized("invalid signature").WithCode("invalid_signature").Send(c)
 	}
 	var note wallet.Notification
 	if err := c.Bind().Body(&note); err != nil || note.ChargeID == "" {
-		return problem.BadRequest("corpo inválido").Send(c)
+		return problem.BadRequest("invalid request body").WithCode("invalid_body").Send(c)
 	}
 
 	// Live only, and that is now true by construction rather than by assumption:
@@ -222,7 +230,7 @@ func (h *checkoutHandlers) webhook(c fiber.Ctx) error {
 // nothing about which invoices exist.
 func failLink(c fiber.Ctx, err error) error {
 	if errors.Is(err, errNoSuchLink) {
-		return problem.NotFound("link inválido ou expirado").Send(c)
+		return problem.NotFound("invalid or expired link").WithCode("invalid_link").Send(c)
 	}
 	return fail(c, err)
 }
@@ -235,7 +243,7 @@ func failLink(c fiber.Ctx, err error) error {
 func failCheckout(c fiber.Ctx, err error) error {
 	switch {
 	case errors.Is(err, services.ErrInvoiceNotPayable):
-		return problem.Conflict("esta fatura não está aberta para pagamento").Send(c)
+		return problem.Conflict("this invoice is not open for payment").WithCode("invoice_not_payable").Send(c)
 	case errors.Is(err, services.ErrNoPayerAccount),
 		errors.Is(err, services.ErrTestModeNotPayable),
 		errors.Is(err, billing.ErrPayoutNotEnabled):
@@ -251,9 +259,9 @@ func failCheckout(c fiber.Ctx, err error) error {
 			"error", err,
 			"request_id", middleware.GetRequestID(c),
 			"path", c.Path())
-		return problem.Conflict("pagamento indisponível para esta fatura").Send(c)
+		return problem.Conflict("payment is unavailable for this invoice").WithCode("payment_unavailable").Send(c)
 	case errors.Is(err, wallet.ErrChargeRejected):
-		return problem.Unprocessable("não foi possível abrir a cobrança para este valor").Send(c)
+		return problem.Unprocessable("could not open a charge for this amount").WithCode("charge_amount_rejected").Send(c)
 	default:
 		return fail(c, err)
 	}

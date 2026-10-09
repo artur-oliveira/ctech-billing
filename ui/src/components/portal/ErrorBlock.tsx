@@ -2,6 +2,7 @@
 
 import {Button} from "@aoctech/ui"
 import {RotateCw} from "lucide-react"
+import {useTranslation} from "react-i18next"
 
 import {messageFor} from "@/lib/api/client"
 
@@ -14,6 +15,7 @@ import {messageFor} from "@/lib/api/client"
  * request timed out.
  */
 export function ErrorBlock({error, onRetry}: { error: unknown; onRetry?: () => void }) {
+  const {t} = useTranslation()
   return (
     <div
       role="alert"
@@ -23,7 +25,7 @@ export function ErrorBlock({error, onRetry}: { error: unknown; onRetry?: () => v
       {onRetry && (
         <Button variant="outline" size="sm" onClick={onRetry}>
           <RotateCw aria-hidden/>
-          Tentar de novo
+          {t("common.tryAgain")}
         </Button>
       )}
     </div>

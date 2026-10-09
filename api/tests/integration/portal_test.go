@@ -234,9 +234,10 @@ func TestPortalShowsOnlyTheSignedInCustomersInvoices(t *testing.T) {
 	}
 	var page struct {
 		Data []struct {
-			ID    string `json:"id"`
-			State string `json:"state"`
-			Tone  string `json:"tone"`
+			ID           string `json:"id"`
+			State        string `json:"state"`
+			Tone         string `json:"tone"`
+			DaysUntilDue *int   `json:"days_until_due"`
 		} `json:"data"`
 	}
 	res.decode(t, &page)
@@ -248,8 +249,11 @@ func TestPortalShowsOnlyTheSignedInCustomersInvoices(t *testing.T) {
 		}
 		if inv.ID == mine.ID {
 			sawMine = true
-			if inv.State == "" || inv.Tone == "" {
-				t.Error("an invoice reached the portal without a phrase and a tone")
+			if inv.State == "" || inv.Tone == "" || inv.DaysUntilDue == nil {
+				t.Error("an invoice reached the portal without a state code, a tone and days_until_due")
+			}
+			if strings.ContainsAny(inv.State, " ABCDEFGHIJKLMNOPQRSTUVWXYZ") {
+				t.Errorf("state %q is not a lowercase snake_case code", inv.State)
 			}
 		}
 	}
@@ -310,7 +314,10 @@ func TestPortalPayloadCarriesNoInternalVocabulary(t *testing.T) {
 		t.Fatal(err)
 	}
 	if payload["state"] == "" || payload["tone"] == "" {
-		t.Error("the invoice reached the portal without a phrase and a tone")
+		t.Error("the invoice reached the portal without a state code and a tone")
+	}
+	if _, ok := payload["days_until_due"]; !ok {
+		t.Error("the invoice reached the portal without days_until_due")
 	}
 }
 

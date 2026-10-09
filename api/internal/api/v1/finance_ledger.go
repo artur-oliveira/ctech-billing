@@ -41,7 +41,7 @@ type statementDTO struct {
 func (h *financeHandlers) statement(c fiber.Ctx) error {
 	from, to, err := parseDateRange(c.Query("from"), c.Query("to"))
 	if err != nil {
-		return problem.Validation([]problem.FieldError{fieldErr("from", err.Error(), "range")}).Send(c)
+		return problem.Validation([]problem.FieldError{rangeFieldErr(err)}).Send(c)
 	}
 	sp, id := middleware.GetSpace(c), c.Params("id")
 	acct, err := h.ledger.GetAccount(c.Context(), sp, id)
@@ -88,7 +88,7 @@ func (h *financeHandlers) postMeta(c fiber.Ctx, memo string) repositories.PostMe
 func parseDay(field, s string) (brcal.Date, *problem.FieldError) {
 	d, err := brcal.Parse(s)
 	if err != nil {
-		e := fieldErr(field, "use YYYY-MM-DD", "date")
+		e := fieldErr(field, "invalid_format", "use YYYY-MM-DD", "format", "YYYY-MM-DD")
 		return d, &e
 	}
 	return d, nil
@@ -138,7 +138,7 @@ func (r transferRequest) validate(today brcal.Date) []problem.FieldError {
 	c.id("from_account_id", r.FromAccountID, true)
 	c.id("to_account_id", r.ToAccountID, true)
 	if r.ToAccountID != "" && r.ToAccountID == r.FromAccountID {
-		c.fail("to_account_id", "escolha uma conta diferente da de origem", "nefield")
+		c.fail("to_account_id", "same_account", "choose an account different from the source")
 	}
 	c.amount("amount", r.Amount)
 	if d, e := parseDay("date", r.Date); e != nil {
