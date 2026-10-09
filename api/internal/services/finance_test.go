@@ -126,10 +126,10 @@ func (f *fakeRecs) MarkMaterialised(_ context.Context, _ space.ResolvedSpace, id
 	return nil
 }
 
-func (f *fakeRecs) List(context.Context, space.ResolvedSpace) ([]finance.Recurrence, error) {
-	out := make([]finance.Recurrence, 0, len(f.recs))
-	for _, r := range f.recs {
-		out = append(out, r)
+func (f *fakeRecs) ListWithCursors(_ context.Context, sp space.ResolvedSpace) ([]repositories.DueRecurrence, error) {
+	out := make([]repositories.DueRecurrence, 0, len(f.recs))
+	for id, r := range f.recs {
+		out = append(out, repositories.DueRecurrence{Space: sp, Recurrence: r, Cursor: f.cursors[id]})
 	}
 	return out, nil
 }
@@ -287,7 +287,9 @@ func TestProjectKeepsVirtualOccurrencesApartFromForecastBills(t *testing.T) {
 		{ID: "overdue", Direction: finance.Payable, Amount: 1000, Due: day(2026, time.February, 1)}, // before the window
 	}
 	bills.open[finance.Receivable] = []finance.Bill{{ID: "r1", Direction: finance.Receivable, Amount: 90000, Due: day(2026, time.April, 2)}}
-	jobs := NewFinanceJobs(bills, newFakeRecs(monthly("rent", 10)))
+	recs := newFakeRecs(monthly("rent", 10))
+	recs.cursors["rent"] = day(2026, time.April, 10) // the job has materialised through the horizon
+	jobs := NewFinanceJobs(bills, recs)
 
 	p, err := jobs.Project(context.Background(), testSpace(t), day(2026, time.March, 20), 5) // Mar..Jul
 	if err != nil {
@@ -315,6 +317,27 @@ func TestProjectKeepsVirtualOccurrencesApartFromForecastBills(t *testing.T) {
 	}
 	if byMonth[time.April].Virtual != 0 || byMonth[time.March].Virtual != 0 {
 		t.Error("an occurrence inside the horizon is a bill, not a virtual one")
+	}
+}
+
+// A recurrence created today has no bills yet (the job runs tomorrow): every
+// occurrence after its cursor is virtual, so the months inside the horizon are
+// not empty in the meantime.
+func TestProjectCountsWhatTheJobHasNotMaterialisedYet(t *testing.T) {
+	r := monthly("rent", 10)
+	r.Schedule.Start = day(2026, time.March, 25)
+	jobs := NewFinanceJobs(newFakeBills(), newFakeRecs(r))
+	p, err := jobs.Project(context.Background(), testSpace(t), day(2026, time.March, 25), 3) // Mar..May
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range p.Months[1:] {
+		if m.Virtual != -150000 {
+			t.Errorf("%s virtual = %d, want -150000 (not yet a bill)", m.Month, m.Virtual)
+		}
+	}
+	if p.Months[0].Virtual != 0 {
+		t.Errorf("March: the first occurrence is April 10, got %d", p.Months[0].Virtual)
 	}
 }
 

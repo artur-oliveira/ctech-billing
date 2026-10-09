@@ -217,6 +217,35 @@ func (r *RecurrenceRepository) List(ctx context.Context, sp space.ResolvedSpace)
 	return out, nil
 }
 
+// ListWithCursors is List with each recurrence's materialisation cursor: the
+// projection counts as virtual only what the job has not made into a bill yet.
+func (r *RecurrenceRepository) ListWithCursors(ctx context.Context, sp space.ResolvedSpace) ([]DueRecurrence, error) {
+	if err := sp.Require(space.Read); err != nil {
+		return nil, err
+	}
+	items, err := r.ledger.queryPrefix(ctx, r.recs, sp.PK(), "RECURRENCE#")
+	if err != nil {
+		return nil, err
+	}
+	rows, err := DecodeItems[recurrenceItem](items)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]DueRecurrence, len(rows))
+	for i, row := range rows {
+		rec, err := row.recurrence()
+		if err != nil {
+			return nil, err
+		}
+		cursor, err := row.cursor()
+		if err != nil {
+			return nil, err
+		}
+		out[i] = DueRecurrence{Space: sp, Recurrence: rec, Cursor: cursor}
+	}
+	return out, nil
+}
+
 // RecurrencePatch is a partial change. Nil fields stay as they are. The
 // expression and the start are not editable: end the recurrence and make a new
 // one, so the bills it made keep pointing at a rule that still means the same.
