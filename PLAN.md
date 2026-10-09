@@ -607,7 +607,24 @@ gates nothing by plan.
       cannot call it with billing's token (ADR 0025 amendment); the axios interceptor sent every 503 to
       /maintenance, which would turn one unreachable organization into a site outage, so
       `/problems/space-unavailable` is exempt and the personal space keeps working.
-- [ ] 6.4 Reports — F3 statement, F7 DRE and cash flow.
+- [x] 6.4 Reports — F3 statement (running balance, transfer, reverse a transfer or an opening balance,
+      undo a payment), F7 DRE (accrual, from the cached SUMMARY rows) and cash flow (from the entries),
+      F1's realised result of the month, and an opening balance when creating an account.
+      **Shape:** every leg carries a **flow** chosen by its posting rule (the bill's category for a
+      settlement, `-` for a transfer or an opening balance), written on the entry with the kind, memo and
+      bill ref; reports are range Queries on the entry partitions folded by pure functions — no new cache,
+      nothing for `finance-rebuild` to reconcile (ponytail: one Query per cash account from the period's
+      start; a monthly closing row if a space ever holds tens of thousands of entries). Legacy entries have
+      no flow and count as cash under *Sem categoria*. Opening balance is once per account (`OPENING#`
+      marker); reversal from the statement only for transfers and opening balances; `POST
+      /bills/:id/unsettle` reverses the settlement, reopens the bill and turns auto-settle off. Periods: at
+      most 24 months for reports, 366 days for a statement. Finanças' sections became a side column.
+      **Found on the way (fixed here, broken in production since 6.3b):** nothing ever called
+      `EnsureSpace`, so a new space had no system accounts and creating a bill answered 422 (write routes
+      now create the space once per process); the `/console` group's `ResolveConsoleTenant` ran in front
+      of `/console/finance` (Fiber mounts group handlers as prefix middleware), so `/spaces` answered 400
+      without a mode and a person with no organization could not reach Finanças; the CORS preflight
+      refused the space header, PATCH and PUT. The space header is now `X-Billing-Space`.
 - [ ] 6.5 Credit cards — F5, statement closing in the job.
 - [ ] 6.6 Import and reconciliation — F6.
 - [ ] 6.7 Billing integration — `invoice.paid` as revenue in the issuing organization and as an
