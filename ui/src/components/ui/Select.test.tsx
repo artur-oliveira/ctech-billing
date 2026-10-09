@@ -47,3 +47,45 @@ describe("Select", () => {
     expect(screen.getByRole("combobox", {name: "Conta"})).not.toHaveTextContent("acc_01J9ZX")
   })
 })
+
+describe("Select actions", () => {
+  function WithAction({onSelect, onChange = () => undefined}: {onSelect: () => void; onChange?: (v: string) => void}) {
+    const [value, setValue] = useState("acc_01J9ZX")
+    return (
+      <Select aria-label="Conta" value={value} onValueChange={v => { setValue(v); onChange(v) }} options={OPTIONS}
+        actions={[{label: "Nova conta", onSelect}]}/>
+    )
+  }
+
+  // Base UI types ahead on a closed, focused trigger: "n" matches "Nova conta"
+  // and would run it with no list ever on screen.
+  it("never runs an action from typeahead on the closed trigger", async () => {
+    const onSelect = vi.fn()
+    const onChange = vi.fn()
+    render(<WithAction onSelect={onSelect} onChange={onChange}/>)
+    screen.getByRole("combobox", {name: "Conta"}).focus()
+    await userEvent.keyboard("n")
+    await userEvent.keyboard("p")
+    expect(onSelect).not.toHaveBeenCalled()
+    expect(screen.getByRole("combobox", {name: "Conta"})).not.toHaveTextContent("Nova conta")
+  })
+
+  it("runs it from a click in the open list", async () => {
+    const onSelect = vi.fn()
+    render(<WithAction onSelect={onSelect}/>)
+    await userEvent.click(screen.getByRole("combobox", {name: "Conta"}))
+    await userEvent.click(await screen.findByRole("option", {name: "Nova conta"}))
+    expect(onSelect).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole("combobox", {name: "Conta"})).toHaveTextContent("Conta corrente")
+  })
+
+  it("runs it from Enter in the open list", async () => {
+    const onSelect = vi.fn()
+    render(<WithAction onSelect={onSelect}/>)
+    await userEvent.click(screen.getByRole("combobox", {name: "Conta"}))
+    const option = await screen.findByRole("option", {name: "Nova conta"})
+    option.focus()
+    await userEvent.keyboard("{Enter}")
+    expect(onSelect).toHaveBeenCalledTimes(1)
+  })
+})

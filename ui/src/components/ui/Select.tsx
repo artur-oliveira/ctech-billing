@@ -59,10 +59,16 @@ export function Select({id, value, onValueChange, options, actions = [], placeho
     <SelectPrimitive.Root
       items={options}
       value={value === "" ? null : value}
-      onValueChange={v => {
+      onValueChange={(v, details) => {
         const picked = (v as string | null) ?? ""
-        if (picked.startsWith(ACTION)) actions[Number(picked.slice(ACTION.length))]?.onSelect()
-        else onValueChange(picked)
+        if (picked.startsWith(ACTION)) {
+          // Only a deliberate press in the open list (a click, or Enter) runs
+          // an action. Base UI also types ahead on a closed, focused trigger,
+          // and "n" there must not start "Novo espaço" and leave the page.
+          if (details.reason === "item-press") actions[Number(picked.slice(ACTION.length))]?.onSelect()
+          return
+        }
+        onValueChange(picked)
       }}
       disabled={disabled}
     >
