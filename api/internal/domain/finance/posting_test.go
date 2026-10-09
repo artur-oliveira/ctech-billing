@@ -80,10 +80,10 @@ func TestSettlementForADifferentAmount(t *testing.T) {
 		wantDiff billing.Cents // on the difference category, leg convention
 		wantCash billing.Cents
 	}{
-		{"payable paid late with interest", BillFacts{Payable, 10000, "power", "checking"}, 10500, 500, -10500},
-		{"payable paid early with a discount", BillFacts{Payable, 10000, "power", "checking"}, 9500, -500, -9500},
-		{"receivable received short", BillFacts{Receivable, 10000, "services", "checking"}, 9800, 200, 9800},
-		{"receivable received with interest", BillFacts{Receivable, 10000, "services", "checking"}, 10300, -300, 10300},
+		{"payable paid late with interest", BillFacts{Direction: Payable, Amount: 10000, CategoryID: "power", AccountID: "checking"}, 10500, 500, -10500},
+		{"payable paid early with a discount", BillFacts{Direction: Payable, Amount: 10000, CategoryID: "power", AccountID: "checking"}, 9500, -500, -9500},
+		{"receivable received short", BillFacts{Direction: Receivable, Amount: 10000, CategoryID: "services", AccountID: "checking"}, 9800, 200, 9800},
+		{"receivable received with interest", BillFacts{Direction: Receivable, Amount: 10000, CategoryID: "services", AccountID: "checking"}, 10300, -300, 10300},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -102,7 +102,7 @@ func TestSettlementForADifferentAmount(t *testing.T) {
 }
 
 func TestSettlementRefuses(t *testing.T) {
-	bill := BillFacts{Payable, 10000, "power", "checking"}
+	bill := BillFacts{Direction: Payable, Amount: 10000, CategoryID: "power", AccountID: "checking"}
 	day := d(2026, time.March, 20)
 	if _, err := SettleBill(sys, bill, 10500, "", day); !errors.Is(err, ErrInvalidTransaction) {
 		t.Fatalf("a difference without a category: err = %v", err)
@@ -111,10 +111,10 @@ func TestSettlementRefuses(t *testing.T) {
 		t.Fatalf("a zero settlement: err = %v", err)
 	}
 	for name, b := range map[string]BillFacts{
-		"no direction":    {"", 10000, "power", "checking"},
-		"negative amount": {Payable, -1, "power", "checking"},
-		"no category":     {Payable, 10000, "", "checking"},
-		"no account":      {Payable, 10000, "power", ""},
+		"no direction":    {Direction: "", Amount: 10000, CategoryID: "power", AccountID: "checking"},
+		"negative amount": {Direction: Payable, Amount: -1, CategoryID: "power", AccountID: "checking"},
+		"no category":     {Direction: Payable, Amount: 10000, CategoryID: "", AccountID: "checking"},
+		"no account":      {Direction: Payable, Amount: 10000, CategoryID: "power", AccountID: ""},
 	} {
 		if _, err := RecognizeBill(sys, b, day); !errors.Is(err, ErrInvalidTransaction) {
 			t.Fatalf("%s: err = %v", name, err)
@@ -163,7 +163,7 @@ func TestOpeningBalance(t *testing.T) {
 }
 
 func TestCancellingARecognisedBillIsAReversal(t *testing.T) {
-	bill := BillFacts{Payable, 10000, "power", "checking"}
+	bill := BillFacts{Direction: Payable, Amount: 10000, CategoryID: "power", AccountID: "checking"}
 	rec := ok(t)(RecognizeBill(sys, bill, d(2026, time.March, 1)))
 	rev := ok(t)(Reverse(rec, "tx_rec", d(2026, time.March, 15)))
 	for account, v := range balances(rec, rev) {
@@ -207,6 +207,23 @@ func TestTransfersAndOpeningBalancesAreNotCashFlow(t *testing.T) {
 	for _, l := range append(tr.Legs, ob.Legs[0]) {
 		if l.Flow != FlowNone {
 			t.Errorf("leg %s flow = %q, want FlowNone", l.AccountID, l.Flow)
+		}
+	}
+}
+
+func TestSettlingAStatementBillClearsTheCard(t *testing.T) {
+	b := BillFacts{Direction: Payable, Amount: 50000, CategoryID: "visa", AccountID: "bank", Clears: "visa"}
+	tx, err := SettleBill(sys, b, 50000, "", brcal.New(2026, time.March, 10))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := balances(tx)
+	if got["visa"] != 50000 || got["bank"] != -50000 || got[sys.Payables] != 0 {
+		t.Fatalf("legs = %+v", tx.Legs)
+	}
+	for _, l := range tx.Legs {
+		if l.AccountID == "bank" && l.Flow != CardFlow("visa") {
+			t.Fatalf("cash leg flow = %q, want %q", l.Flow, CardFlow("visa"))
 		}
 	}
 }

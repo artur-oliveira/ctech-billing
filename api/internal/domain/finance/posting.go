@@ -37,6 +37,9 @@ type BillFacts struct {
 	Amount     billing.Cents // > 0
 	CategoryID string        // income for a receivable, expense for a payable
 	AccountID  string        // the asset account it is paid from or into
+	// Clears is the liability a payable settles instead of the system payables:
+	// a card statement bill clears its card (spec § 3.6). Empty for every other bill.
+	Clears string
 }
 
 func (b BillFacts) validate() error {
@@ -87,7 +90,11 @@ func SettleBill(sys SystemAccounts, b BillFacts, paid billing.Cents, differenceC
 	if b.Direction == Payable {
 		// payables ↓ by the bill; cash ↓ by what left; the gap is an expense
 		// (paid more: interest) or a gain (paid less: discount).
-		legs = []Leg{{AccountID: sys.Payables, Amount: b.Amount}, {AccountID: b.AccountID, Amount: -paid, Flow: b.CategoryID}}
+		cleared, flow := sys.Payables, b.CategoryID
+		if b.Clears != "" {
+			cleared, flow = b.Clears, CardFlow(b.Clears)
+		}
+		legs = []Leg{{AccountID: cleared, Amount: b.Amount}, {AccountID: b.AccountID, Amount: -paid, Flow: flow}}
 		if diff != 0 {
 			legs = append(legs, Leg{AccountID: differenceCategoryID, Amount: diff})
 		}
