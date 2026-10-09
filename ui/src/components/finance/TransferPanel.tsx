@@ -33,7 +33,7 @@ export function TransferPanel({accounts, from: initialFrom = "", onDone}: {accou
   return (
     <form
       aria-label="Nova transferência"
-      className="grid items-start gap-x-4 gap-y-3 rounded-lg border border-border p-4 sm:grid-cols-2 lg:grid-cols-3 [&>*]:min-w-0 motion-safe:animate-in motion-safe:fade-in"
+      className="grid items-start gap-x-4 gap-y-3 sm:grid-cols-2 [&>*]:min-w-0"
       onSubmit={e => {
         e.preventDefault()
         if (!ready) return
@@ -57,7 +57,7 @@ export function TransferPanel({accounts, from: initialFrom = "", onDone}: {accou
       <Field label="Descrição" htmlFor="tr-memo">
         <Input id="tr-memo" maxLength={limits.text.memo} placeholder="Transferência" value={memo} onChange={e => setMemo(e.target.value)}/>
       </Field>
-      <div className="flex flex-wrap items-center gap-2 sm:col-span-2 lg:col-span-3">
+      <div className="flex flex-wrap items-center gap-2 sm:col-span-2">
         <Button type="submit" variant="brand" size="sm" disabled={!ready}>Transferir</Button>
         <Button type="button" variant="outline" size="sm" onClick={onDone}>Fechar</Button>
         {create.error ? <p role="alert" className="text-sm text-danger">{messageFor(create.error)}</p> : null}

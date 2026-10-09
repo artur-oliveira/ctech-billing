@@ -31,7 +31,7 @@ export function CardForm({card, accounts, onDone}: {card?: Card; accounts: Accou
   return (
     <form
       aria-label={card ? "Editar cartão" : "Novo cartão"}
-      className="grid items-start gap-3 rounded-lg border border-border p-4 sm:grid-cols-2 lg:grid-cols-4 motion-safe:animate-in motion-safe:fade-in"
+      className="grid items-start gap-x-4 gap-y-3 sm:grid-cols-2 [&>*]:min-w-0"
       onSubmit={e => {
         e.preventDefault()
         if (ready) save.mutate()
@@ -51,7 +51,7 @@ export function CardForm({card, accounts, onDone}: {card?: Card; accounts: Accou
       <Field label="Pagar com" htmlFor="cd-payer" required hint={assets.length === 0 ? "Nenhuma conta. Crie uma em Contas." : undefined}>
         <Select id="cd-payer" aria-label="Pagar com" value={payer} onValueChange={setPayer} options={assets.map(a => ({value: a.id, label: a.name}))}/>
       </Field>
-      <div className="flex flex-wrap items-center gap-2 sm:col-span-2 lg:col-span-4">
+      <div className="flex flex-wrap items-center gap-2 sm:col-span-2">
         <Button type="submit" variant="brand" size="sm" disabled={!ready}>{card ? "Salvar" : "Criar cartão"}</Button>
         <Button type="button" variant="outline" size="sm" onClick={() => onDone()}>Fechar</Button>
         {save.error ? <p role="alert" className="text-sm text-danger">{messageFor(save.error)}</p> : null}
