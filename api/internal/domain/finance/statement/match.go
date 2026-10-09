@@ -15,6 +15,11 @@ import (
 type Keyed struct {
 	Line
 	Key string
+	// Fallback is the content key ("H:" + hash) of a line keyed by its FITID.
+	// A bank may reuse a FITID for a later, different transaction; when the
+	// FITID's lock was claimed for another date or amount, the line is keyed by
+	// its content instead of being dropped as a duplicate.
+	Fallback string
 }
 
 // Keys gives every line the key its account's lock row is written under, so
@@ -40,15 +45,16 @@ func Keys(accountID string, lines []Line) []Keyed {
 	ordinal := map[string]int{}
 	out := make([]Keyed, len(lines))
 	for i, l := range lines {
-		if l.FITID != "" && fitids[l.FITID] == 1 {
-			out[i] = Keyed{Line: l, Key: "F:" + l.FITID}
-			continue
-		}
 		ident := strings.Join([]string{accountID, l.FITID, l.Date.String(),
 			strconv.FormatInt(int64(l.Amount), 10), strings.ToUpper(l.Description)}, "\x00")
 		ordinal[ident]++
 		sum := sha256.Sum256([]byte(ident + "\x00" + strconv.Itoa(ordinal[ident])))
-		out[i] = Keyed{Line: l, Key: "H:" + hex.EncodeToString(sum[:16])}
+		hashKey := "H:" + hex.EncodeToString(sum[:16])
+		if l.FITID != "" && fitids[l.FITID] == 1 {
+			out[i] = Keyed{Line: l, Key: "F:" + l.FITID, Fallback: hashKey}
+			continue
+		}
+		out[i] = Keyed{Line: l, Key: hashKey}
 	}
 	return out
 }

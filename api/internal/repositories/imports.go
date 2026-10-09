@@ -162,12 +162,29 @@ func (i lineItem) entity() (ImportLine, error) {
 // holds it and when that line expires: a line nobody reconciled for 90 days
 // expires with its import, and its lock may then be claimed again by a new
 // upload — otherwise the transaction could never be imported again.
+//
+// It also records the transaction's date and amount: a FITID lock claimed for
+// one transaction does not swallow a later, different one under a reused FITID
+// (claim falls back to the content key).
 type lockItem struct {
 	keys
 	ImportID    string `dynamodbav:"import_id"`
 	Line        int    `dynamodbav:"line"`
 	LineExpires int64  `dynamodbav:"line_expires"`
 	Resolved    bool   `dynamodbav:"resolved,omitempty"`
+	Date        string `dynamodbav:"date"`
+	Amount      int64  `dynamodbav:"amount"`
+}
+
+// sameTransaction reports whether a held lock (its old item) was claimed for
+// this date and amount. A lock written without them is taken as the same.
+func sameTransaction(old map[string]types.AttributeValue, l statement.Line) bool {
+	d, okD := old["date"].(*types.AttributeValueMemberS)
+	a, okA := old["amount"].(*types.AttributeValueMemberN)
+	if !okD || !okA {
+		return true
+	}
+	return d.Value == l.Date.String() && a.Value == strconv.FormatInt(int64(l.Amount), 10)
 }
 
 // alive reports whether a row with this TTL still exists for a reader. DynamoDB
@@ -295,7 +312,8 @@ func (r *ImportRepository) claim(ctx context.Context, sp space.ResolvedSpace, im
 		items := make([]types.TransactWriteItem, 0, 2*len(todo))
 		for _, p := range todo {
 			lockSK := ImportLockSK(accountID, p.Key)
-			lock, err := Encode(lockItem{keys: newKeys(sp.PK(), lockSK, RetentionImportLock, now), ImportID: importID, Line: p.n, LineExpires: lineTTL})
+			lock, err := Encode(lockItem{keys: newKeys(sp.PK(), lockSK, RetentionImportLock, now), ImportID: importID, Line: p.n, LineExpires: lineTTL,
+				Date: p.Date.String(), Amount: int64(p.Amount)})
 			if err != nil {
 				return 0, 0, err
 			}
@@ -336,9 +354,16 @@ func (r *ImportRepository) claim(ctx context.Context, sp space.ResolvedSpace, im
 				kept = append(kept, p)
 				continue
 			}
-			if owner, ok := reason.Item["import_id"].(*types.AttributeValueMemberS); ok && owner.Value == importID {
+			owner, _ := reason.Item["import_id"].(*types.AttributeValueMemberS)
+			switch {
+			case owner != nil && owner.Value == importID:
 				added++ // a retry of this import: the line is already there
-			} else {
+			case p.Fallback != "" && !sameTransaction(reason.Item, p.Line):
+				// The bank reused this FITID for another transaction: key it by
+				// its content and try again.
+				p.Key, p.Fallback = p.Fallback, ""
+				kept = append(kept, p)
+			default:
 				duplicates++
 			}
 		}

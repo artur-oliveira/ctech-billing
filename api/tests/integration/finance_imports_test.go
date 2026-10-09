@@ -297,3 +297,23 @@ func TestTheCSVMappingIsKeptPerAccount(t *testing.T) {
 		t.Fatalf("another space's mapping: %v", err)
 	}
 }
+
+// A bank that reuses FITIDs (a per-day sequence, a document number) must not
+// have a later, different transaction dropped as "already imported": the lock
+// remembers the date and amount it was claimed for, and a different
+// transaction under the same FITID falls back to the content key.
+func TestAReusedFITIDForADifferentTransactionStillImports(t *testing.T) {
+	f := newImportsFixture(t)
+	f.upload(t, "a", time.Now(), syntheticOFX(ofxLine("7", "20260301", "-5.00", "Café")))
+	later := syntheticOFX(ofxLine("7", "20260401", "-9.00", "Pão"))
+	b := f.upload(t, "b", time.Now(), later)
+	if b.Lines != 1 || b.Duplicates != 0 {
+		t.Fatalf("a different transaction under a reused FITID = %+v, want 1 added", b)
+	}
+	if again := f.upload(t, "c", time.Now(), later); again.Lines != 0 || again.Duplicates != 1 {
+		t.Fatalf("the same later file again = %+v, want 1 duplicate", again)
+	}
+	if same := f.upload(t, "d", time.Now(), syntheticOFX(ofxLine("7", "20260301", "-5.00", "Café"))); same.Duplicates != 1 {
+		t.Fatalf("the first transaction again = %+v, want 1 duplicate", same)
+	}
+}

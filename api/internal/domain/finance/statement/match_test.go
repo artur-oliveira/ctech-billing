@@ -1,6 +1,7 @@
 package statement
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -28,6 +29,9 @@ func TestKeysAreTheSameForTheSameFile(t *testing.T) {
 	a, b := keysOf(Keys("bank", lines)), keysOf(Keys("bank", lines))
 	if a[0] != "F:A" {
 		t.Fatalf("a unique FITID is its own key: %q", a[0])
+	}
+	if k := Keys("bank", lines); !strings.HasPrefix(k[0].Fallback, "H:") || k[1].Fallback != "" {
+		t.Fatalf("a FITID line carries its content key as a fallback: %+v", k)
 	}
 	if a[1] == a[2] {
 		t.Fatal("two identical lines without a FITID must be two keys (the ordinal)")
