@@ -4,6 +4,7 @@ import {Button, Field, Input} from "@aoctech/ui"
 import {X} from "lucide-react"
 import {useState} from "react"
 
+import {DateField} from "@/components/ui/DateField"
 import {Select} from "@/components/ui/Select"
 import {
   defaultAnchor, type EditorModel, MONTH_LABEL, type ModelError, type Pattern,
@@ -94,7 +95,7 @@ export function PatternFields({model, start, errors, onChange}: EditorProps) {
           </Field>
           {p.every > 1 && (
             <Field label="Primeira data" htmlFor="rx-anchor" error={err("anchor")} hint="As semanas contam a partir dela.">
-              <Input id="rx-anchor" type="date" value={p.anchor} onChange={e => setPattern({...p, anchor: e.target.value})}/>
+              <DateField id="rx-anchor" value={p.anchor} onValueChange={anchor => setPattern({...p, anchor})}/>
             </Field>
           )}
         </>
@@ -145,7 +146,7 @@ export function ExceptionsFields({model, errors, onChange}: Omit<EditorProps, "s
       <div className="space-y-2">
         <Field label="Exceto nas datas" htmlFor="rx-date-add">
           <div className="flex gap-2">
-            <Input id="rx-date-add" type="date" value={newDate} onChange={e => setNewDate(e.target.value)}/>
+            <DateField id="rx-date-add" value={newDate} onValueChange={setNewDate}/>
             <Button
               type="button"
               variant="outline"

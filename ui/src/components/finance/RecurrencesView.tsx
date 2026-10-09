@@ -7,6 +7,7 @@ import {useEffect, useRef, useState} from "react"
 
 import {ExceptionsFields, PatternFields} from "@/components/finance/ExpressionEditor"
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
+import {DateField} from "@/components/ui/DateField"
 import {Select} from "@/components/ui/Select"
 import {messageFor} from "@/lib/api/client"
 import {
@@ -229,11 +230,11 @@ function RecurrencePanel({editing, accounts, onDone}: {editing?: Recurrence; acc
           {!editing && (
             <>
               <PatternFields model={model} start={start} errors={errors} onChange={setModel}/>
-              <Field label="Começa em" htmlFor="rc-start"><Input id="rc-start" type="date" value={start} onChange={e => setStart(e.target.value)}/></Field>
+              <Field label="Começa em" htmlFor="rc-start"><DateField id="rc-start" value={start} onValueChange={setStart}/></Field>
             </>
           )}
           {editing && (
-            <Field label="Termina em" htmlFor="rc-end-edit"><Input id="rc-end-edit" type="date" value={end} onChange={e => setEnd(e.target.value)}/></Field>
+            <Field label="Termina em" htmlFor="rc-end-edit"><DateField id="rc-end-edit" value={end} onValueChange={setEnd} placeholder="Não termina"/></Field>
           )}
         </div>
 
@@ -271,7 +272,7 @@ function RecurrencePanel({editing, accounts, onDone}: {editing?: Recurrence; acc
               </button>
               {more && (
                 <div className="mt-3 grid items-start gap-4 border-t border-border pt-4 lg:grid-cols-[1fr_1fr_2fr]">
-                  <Field label="Termina em" htmlFor="rc-end" hint="Em branco, não termina."><Input id="rc-end" type="date" value={end} onChange={e => setEnd(e.target.value)}/></Field>
+                  <Field label="Termina em" htmlFor="rc-end"><DateField id="rc-end" value={end} onValueChange={setEnd} placeholder="Não termina"/></Field>
                   <Field label="Se cair em fim de semana ou feriado" htmlFor="rc-adjust">
                     <Select id="rc-adjust" value={adjust} onValueChange={v => setAdjust(v as Adjust)} options={ADJUST_OPTIONS}/>
                   </Field>
