@@ -1,6 +1,7 @@
 import {beforeEach, describe, expect, it} from "vitest"
 
-import {FINANCE_MOCK_ORG, financeMock, resetFinanceMock} from "@/dev/financeMockData"
+import {FINANCE_MOCK_ORG, financeMock, resetFinanceMock, setFinanceScenario} from "@/dev/financeMockData"
+import {STATEMENT_WITH_MEMOS} from "@/dev/fixtures/statementWithMemos"
 
 type Req = {method?: string; url: string; headers?: Record<string, string>; data?: unknown; params?: Record<string, unknown>}
 
@@ -237,5 +238,47 @@ describe("the finance mock's recurrences (UX batch 3)", () => {
     expect(d.upcoming.length).toBeGreaterThan(0)
     expect(d.upcoming.every(u => u.nominal > today)).toBe(true)
     expect(call({url: "/recurrences/nope/occurrences", headers: personal}).status).toBe(404)
+  })
+})
+
+describe("the finance mock follows the PATCH rule (UX batch 4): null clears, absent keeps", () => {
+  const w = (method: string, url: string, data: unknown, key: string) => call({method, url, headers: {...personal, "Idempotency-Key": key}, data})
+  const rec = () => (call({url: "/recurrences", headers: personal}).data as {data: {id: string; end?: string; description?: string}[]}).data.find(r => r.id === "r-aluguel")!
+
+  it("clears a recurrence's end with null and keeps it when absent", () => {
+    expect(w("patch", "/recurrences/r-aluguel", {end: "2099-12-10"}, "n1").status).toBe(200)
+    expect(w("patch", "/recurrences/r-aluguel", {amount: 190_000}, "n2").status).toBe(200)
+    expect(rec().end).toBe("2099-12-10")
+    expect(w("patch", "/recurrences/r-aluguel", {end: null}, "n3").status).toBe(200)
+    expect(rec()).not.toHaveProperty("end")
+    expect(w("patch", "/recurrences/r-aluguel", {description: null}, "n4").status).toBe(200)
+    expect(rec()).not.toHaveProperty("description")
+  })
+
+  it("clears a bill's description, a card's brand and the default receiving account with null", () => {
+    expect(w("patch", "/bills/b-mercado", {description: null}, "b1").status).toBe(200)
+    expect(call({url: "/bills/b-mercado", headers: personal}).data).not.toHaveProperty("description")
+    expect(w("patch", "/cards/card-nubank", {brand: null, last4: null}, "c1").status).toBe(200)
+    const card = (call({url: "/cards", headers: personal}).data as {data: {id: string}[]}).data.find(c => c.id === "card-nubank")
+    expect(card).not.toHaveProperty("brand")
+    expect(card).not.toHaveProperty("last4")
+    expect(w("put", "/settings/default-receiving-account", {default_receiving_account_id: "poupanca"}, "d1").status).toBe(200)
+    expect(w("put", "/settings/default-receiving-account", {default_receiving_account_id: null}, "d2").status).toBe(200)
+    expect((call({url: "/settings", headers: personal}).data as {default_receiving_account_id?: string}).default_receiving_account_id).toBeUndefined()
+  })
+})
+
+describe("the finance mock's scenario extrato_memos (UX batch 4)", () => {
+  it("answers the production statement that broke Extrato on a phone, verbatim", () => {
+    setFinanceScenario("extrato_memos")
+    try {
+      const r = call({url: `/accounts/${STATEMENT_WITH_MEMOS.account_id}/statement`, headers: personal, params: {from: "2026-10-01", to: "2026-11-01"}})
+      expect(r.status).toBe(200)
+      expect(r.data).toEqual(STATEMENT_WITH_MEMOS)
+      const names = (call({url: "/accounts", headers: personal}).data as {data: {id: string; name: string}[]}).data
+      expect(names.find(a => a.id === "cat-lazer")?.name).toBe("Lazer")
+    } finally {
+      setFinanceScenario("padrao")
+    }
   })
 })
