@@ -149,15 +149,16 @@ func Build(ctx context.Context, cfg *config.Config, clock func() time.Time) (*fi
 		// accountclient.New returns a typed nil when the credential is not
 		// configured. That is deliberate and safe: a nil *Client answers
 		// Membership with an error, which the resolver reads as "unavailable".
-		FinanceBills: services.NewFinanceBills(billRepo),
-		FinanceJobs:  services.NewFinanceJobs(billRepo, recRepo).WithCards(repositories.NewCardRepository(db, cfg)),
-		Recurrences:  recRepo,
-		Cards:        repositories.NewCardRepository(db, cfg),
-		Ledger:       ledgerRepo,
-		Spaces:       space.NewResolver(account, cacheBackend),
-		SpaceLister:  account,
-		Verifier:     middleware.NewVerifier(cfg.CtechJWKSURL, cfg.ServiceAudience, cfg.CtechIssuerURL, cacheBackend),
-		Clock:        clock,
+		FinanceBills:   services.NewFinanceBills(billRepo),
+		FinanceImports: services.NewFinanceImports(repositories.NewImportRepository(db, cfg), billRepo),
+		FinanceJobs:    services.NewFinanceJobs(billRepo, recRepo).WithCards(repositories.NewCardRepository(db, cfg)),
+		Recurrences:    recRepo,
+		Cards:          repositories.NewCardRepository(db, cfg),
+		Ledger:         ledgerRepo,
+		Spaces:         space.NewResolver(account, cacheBackend),
+		SpaceLister:    account,
+		Verifier:       middleware.NewVerifier(cfg.CtechJWKSURL, cfg.ServiceAudience, cfg.CtechIssuerURL, cacheBackend),
+		Clock:          clock,
 
 		PortalOrganizationID: cfg.PortalOrganizationID,
 		SettlementBus:        bus,

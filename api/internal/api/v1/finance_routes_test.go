@@ -106,6 +106,14 @@ func TestTheRolesMatchTheSpecTable(t *testing.T) {
 		{"GET", "/bills", "viewer", 200},
 		{"GET", "/projection", "viewer", 200},
 		{"POST", "/recurrences/preview", "viewer", 200}, // stateless: a read
+		{"POST", "/imports", "viewer", 403},
+		{"POST", "/imports", "member", 200}, // member holds finance.import
+		{"GET", "/imports/:id", "viewer", 200},
+		{"POST", "/imports/:id/lines/:n/new", "member", 200},
+		{"POST", "/imports/:id/lines/:n/match", "viewer", 403},
+		{"POST", "/imports/:id/lines/:n/ignore", "viewer", 403},
+		{"PUT", "/accounts/:id/csv-mapping", "viewer", 403},
+		{"PUT", "/accounts/:id/csv-mapping", "member", 200},
 	} {
 		if got := gateCall(t, app, find(c.method, c.path), c.role, scopes); got != c.want {
 			t.Errorf("%s %s as %s: %d, want %d", c.method, c.path, c.role, got, c.want)
