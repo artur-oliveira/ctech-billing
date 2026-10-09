@@ -11,6 +11,7 @@ const SECTIONS = [
   {href: "/console/finance", label: "Resumo", exact: true},
   {href: "/console/finance/bills", label: "A pagar e a receber"},
   {href: "/console/finance/statement", label: "Extrato"},
+  {href: "/console/finance/cards", label: "Cartões"},
   {href: "/console/finance/recurrences", label: "Recorrências"},
   {href: "/console/finance/reports", label: "Relatórios"},
   {href: "/console/finance/accounts", label: "Contas"},

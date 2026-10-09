@@ -191,7 +191,7 @@ function FormError({error}: {error: unknown}) {
 // the field beside it (the one with a hint is taller).
 const inPanel = "mt-3 grid items-start gap-3 rounded-lg bg-surface p-3 sm:grid-cols-2 motion-safe:animate-in motion-safe:fade-in"
 
-function SettleForm({bill, accounts, onDone}: {bill: Bill; accounts: Account[]; onDone: () => void}) {
+export function SettleForm({bill, accounts, onDone}: {bill: Bill; accounts: Account[]; onDone: () => void}) {
   const [amountText, setAmountText] = useState(formatMoneyInput(bill.amount))
   const [date, setDate] = useState(todayIso())
   const [category, setCategory] = useState("")

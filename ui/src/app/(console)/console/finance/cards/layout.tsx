@@ -1,0 +1,7 @@
+import type {Metadata} from "next"
+
+export const metadata: Metadata = {title: "Cartões · Finanças"}
+
+export default function Layout({children}: LayoutProps<"/console/finance/cards">) {
+  return children
+}
