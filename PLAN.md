@@ -560,7 +560,7 @@ gates nothing by plan.
       the purchase, remainder on the first.
 - [x] 6.2 Persistence and spaces (`internal/space`, `internal/accountclient`, `LedgerRepository`) —
       `ResolvedSpace` with no exported fields, built only by the `Resolver` (or `ForJob` in `cmd/`,
-      forbidden on the request path by a source-scan test); `Billing-Space` is a request: `personal`
+      forbidden on the request path by a source-scan test); `X-Billing-Space` is a request: `personal`
       resolves to the token's own `sub`, `org:{id}` needs a ctech-account membership (cached 60 s
       positive and negative, outage never cached, fail closed as 503), every refusal is one
       byte-identical 404 `/problems/space-not-found`, and a refused space causes zero DynamoDB

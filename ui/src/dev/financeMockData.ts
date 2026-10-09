@@ -2,7 +2,7 @@
  * A small stateful finance backend for `npm run dev:mock`.
  *
  * It is strict about the contract on purpose: no `X-Billing-Mode` or
- * `Billing-Space`, 400; a write without `Idempotency-Key`, 400; a repeated key
+ * `X-Billing-Space`, 400; a write without `Idempotency-Key`, 400; a repeated key
  * replays the stored response; an organization that is not the reader's, 404
  * space-not-found; a verb the role does not hold, 403. A mock that let the UI
  * forget a header would make a broken screen look fine — the opposite of why
@@ -174,8 +174,8 @@ export function financeMock(r: Req): Res {
   if (path === "/spaces" && method === "get") return ok({spaces: SPACES, organizations_unavailable: false})
 
   const mode = header(r, "X-Billing-Mode")
-  const selector = header(r, "Billing-Space")
-  if (!mode || !selector) return problem(400, "about:blank", "Bad Request", "informe X-Billing-Mode e Billing-Space")
+  const selector = header(r, "X-Billing-Space")
+  if (!mode || !selector) return problem(400, "about:blank", "Bad Request", "informe X-Billing-Mode e X-Billing-Space")
   const entry = selector === "personal"
     ? SPACES[0]
     : SPACES.find(s => `org:${s.organization_id}` === selector)

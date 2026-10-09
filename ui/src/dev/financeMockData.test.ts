@@ -4,8 +4,8 @@ import {FINANCE_MOCK_ORG, financeMock, resetFinanceMock} from "@/dev/financeMock
 
 type Req = {method?: string; url: string; headers?: Record<string, string>; data?: unknown; params?: Record<string, unknown>}
 
-const personal = {"X-Billing-Mode": "live", "Billing-Space": "personal"}
-const org = {"X-Billing-Mode": "live", "Billing-Space": `org:${FINANCE_MOCK_ORG}`}
+const personal = {"X-Billing-Mode": "live", "X-Billing-Space": "personal"}
+const org = {"X-Billing-Mode": "live", "X-Billing-Space": `org:${FINANCE_MOCK_ORG}`}
 const call = (r: Req) => financeMock({method: "get", ...r, url: "/v1.0/console/finance" + r.url})
 
 beforeEach(() => resetFinanceMock())
@@ -13,7 +13,7 @@ beforeEach(() => resetFinanceMock())
 describe("the finance mock enforces the contract", () => {
   it("refuses a request without the mode or the space", () => {
     expect(call({url: "/accounts", headers: {"X-Billing-Mode": "live"}}).status).toBe(400)
-    expect(call({url: "/accounts", headers: {"Billing-Space": "personal"}}).status).toBe(400)
+    expect(call({url: "/accounts", headers: {"X-Billing-Space": "personal"}}).status).toBe(400)
   })
 
   it("lists spaces without a space header", () => {
@@ -34,7 +34,7 @@ describe("the finance mock enforces the contract", () => {
   })
 
   it("answers 404 space-not-found for an organization that is not the reader's", () => {
-    const r = call({url: "/accounts", headers: {...org, "Billing-Space": "org:0190a1b2-c3d4-7e5f-8a9b-ffffffffffff"}})
+    const r = call({url: "/accounts", headers: {...org, "X-Billing-Space": "org:0190a1b2-c3d4-7e5f-8a9b-ffffffffffff"}})
     expect(r.status).toBe(404)
     expect((r.data as {type: string}).type).toBe("/problems/space-not-found")
   })

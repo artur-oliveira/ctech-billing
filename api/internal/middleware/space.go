@@ -13,7 +13,7 @@ import (
 // It is a request, never a permission (ADR 0025).
 //
 // MUST match the constant in ui/src/lib/api/client.ts — never rename.
-const SpaceHeader = "Billing-Space"
+const SpaceHeader = "X-Billing-Space"
 
 // SpaceKey is the Fiber locals key of the ResolvedSpace.
 const SpaceKey = "space"
@@ -22,7 +22,7 @@ func spaceNotFound() *problem.Problem {
 	return problem.New(fiber.StatusNotFound, problem.TypeSpaceNotFound, "Space not found", "espaço não encontrado")
 }
 
-// ResolveSpace turns the token's subject plus the Billing-Space and mode headers
+// ResolveSpace turns the token's subject plus the X-Billing-Space and mode headers
 // into a ResolvedSpace, or refuses. It runs before any table read.
 //
 // Every "no" about an organization — not a member, no such organization, an id

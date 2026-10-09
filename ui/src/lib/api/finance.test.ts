@@ -50,7 +50,7 @@ describe("every finance call", () => {
     await call()
     const h = seen[0].headers as Record<string, string>
     expect(h["X-Billing-Mode"]).toBe("test")
-    expect(h["Billing-Space"]).toBe("org:0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b")
+    expect(h["X-Billing-Space"]).toBe("org:0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b")
   })
 
   it.each(writes)("%s sends the Idempotency-Key", async (_name, call) => {
@@ -65,7 +65,7 @@ describe("every finance call", () => {
 
   it("lists spaces without a space header (there is none yet)", async () => {
     await finance.getFinanceSpaces()
-    expect((seen[0].headers as Record<string, string> | undefined)?.["Billing-Space"]).toBeUndefined()
+    expect((seen[0].headers as Record<string, string> | undefined)?.["X-Billing-Space"]).toBeUndefined()
   })
 })
 

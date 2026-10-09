@@ -25,7 +25,7 @@ export interface FinanceCtx {
 const BASE = "/v1.0/console/finance"
 
 function headers(c: FinanceCtx, idempotencyKey?: string): Record<string, string> {
-  const h: Record<string, string> = {"X-Billing-Mode": c.mode, "Billing-Space": spaceHeader(c.space)}
+  const h: Record<string, string> = {"X-Billing-Mode": c.mode, "X-Billing-Space": spaceHeader(c.space)}
   if (idempotencyKey) h["Idempotency-Key"] = idempotencyKey
   return h
 }

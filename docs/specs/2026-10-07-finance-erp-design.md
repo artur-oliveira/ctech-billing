@@ -95,7 +95,7 @@ No row ever crosses modes.
 
 ### 2.1 Space resolution — the selector is not authority
 
-The console sends `Billing-Space: personal` or `Billing-Space: org:{id}`. That header is a
+The console sends `X-Billing-Space: personal` or `X-Billing-Space: org:{id}`. That header is a
 **request, never a permission**. The rules (ADR 0025):
 
 1. `personal` carries no id. It always resolves to `USER#{sub of the token}`. There is no syntax
@@ -371,7 +371,7 @@ the bootstrap moves to an S3 asset as PLAN.md already anticipates.
 ## 6. API
 
 Under `/v1.0/console/finance/*`:
-- the mode comes from the existing header, the space from `Billing-Space`;
+- the mode comes from the existing header, the space from `X-Billing-Space`;
 - every mutating route goes through the existing idempotency middleware;
 - the OAuth scopes are `billing:finance:read` and `billing:finance:write`, added to
   `scope-manifest.json` and `middleware.AllScopes`.

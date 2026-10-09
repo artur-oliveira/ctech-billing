@@ -2,7 +2,7 @@ package space
 
 import "strings"
 
-// Selector is a parsed Billing-Space header: a request, not a permission.
+// Selector is a parsed X-Billing-Space header: a request, not a permission.
 type Selector struct {
 	Personal       bool
 	OrganizationID string
