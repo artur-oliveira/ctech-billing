@@ -57,14 +57,21 @@ type importLineDTO struct {
 	Description string        `json:"description"`
 	Status      string        `json:"status"`
 	BillID      string        `json:"bill_id,omitempty"`
-	Candidates  []billDTO     `json:"candidates"`
+	// ExpiresAt is when the line leaves with its import (90 days after the
+	// upload): the console warns in its last days.
+	ExpiresAt  string    `json:"expires_at,omitempty"`
+	Candidates []billDTO `json:"candidates"`
 }
 
 func newImportLineDTO(l repositories.ImportLine, candidates []billDTO) importLineDTO {
 	if candidates == nil {
 		candidates = []billDTO{}
 	}
-	return importLineDTO{N: l.N, Date: l.Date, Amount: l.Amount, Description: l.Description, Status: string(l.Status), BillID: l.BillID, Candidates: candidates}
+	out := importLineDTO{N: l.N, Date: l.Date, Amount: l.Amount, Description: l.Description, Status: string(l.Status), BillID: l.BillID, Candidates: candidates}
+	if !l.Expires.IsZero() {
+		out.ExpiresAt = l.Expires.UTC().Format(time.RFC3339)
+	}
+	return out
 }
 
 type importDetailDTO struct {
@@ -187,6 +194,34 @@ func (h *financeHandlers) matchLine(c fiber.Ctx) error {
 	}
 	line, bill, err := h.imports.Match(c.Context(), middleware.GetSpace(c), c.Params("id"), n, req.BillID, req.DifferenceCategoryID,
 		actorOfUser(c), middleware.GetRequestID(c), h.now())
+	if err != nil {
+		return fail(c, err)
+	}
+	b := newBillDTO(bill, h.today())
+	return c.JSON(lineResultDTO{Line: newImportLineDTO(line, nil), Bill: &b})
+}
+
+type linkRequest struct {
+	BillID string `json:"bill_id"`
+}
+
+// linkLine ties a pending line to a bill the recurrence's auto-settle already
+// paid. Nothing is posted: the money is already in the books.
+func (h *financeHandlers) linkLine(c fiber.Ctx) error {
+	n, p := lineParam(c)
+	if p != nil {
+		return p.Send(c)
+	}
+	var req linkRequest
+	if p := decodeStrict(c, &req); p != nil {
+		return p.Send(c)
+	}
+	ch := &checks{}
+	ch.id("bill_id", req.BillID, true)
+	if len(ch.errs) > 0 {
+		return problem.Validation(ch.errs).Send(c)
+	}
+	line, bill, err := h.imports.Link(c.Context(), middleware.GetSpace(c), c.Params("id"), n, req.BillID, h.now())
 	if err != nil {
 		return fail(c, err)
 	}
