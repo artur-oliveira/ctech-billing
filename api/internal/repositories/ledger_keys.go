@@ -13,10 +13,11 @@ import (
 // a partition take the ResolvedSpace itself, never a string, so a key cannot be
 // assembled from a request value.
 
-func LedgerSpaceSK() string               { return "SPACE" }
-func LedgerAccountSK(id string) string    { return "ACCOUNT#" + id }
-func LedgerTxSK(id string) string         { return "TX#" + id }
-func LedgerReversalSK(txID string) string { return "REVERSAL#" + txID }
+func LedgerSpaceSK() string                 { return "SPACE" }
+func LedgerAccountSK(id string) string      { return "ACCOUNT#" + id }
+func LedgerTxSK(id string) string           { return "TX#" + id }
+func LedgerReversalSK(txID string) string   { return "REVERSAL#" + txID }
+func LedgerOpeningSK(account string) string { return "OPENING#" + account }
 func LedgerSummarySK(m finance.Month, account string) string {
 	return "SUMMARY#" + m.String() + "#" + account
 }

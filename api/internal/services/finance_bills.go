@@ -70,3 +70,8 @@ func (s *FinanceBills) Settle(ctx context.Context, sp space.ResolvedSpace, id st
 func (s *FinanceBills) Cancel(ctx context.Context, sp space.ResolvedSpace, id string, actor, requestID string, now time.Time) (finance.Bill, error) {
 	return s.repo.Cancel(ctx, sp, id, brcal.Date{}, meta("manual", actor, requestID), now)
 }
+
+// Unsettle undoes a bill's payment, dated today, and returns it to the open list.
+func (s *FinanceBills) Unsettle(ctx context.Context, sp space.ResolvedSpace, id string, actor, requestID string, now time.Time) (finance.Bill, error) {
+	return s.repo.Unsettle(ctx, sp, id, brcal.FromTime(now), meta("unsettle", actor, requestID), now)
+}

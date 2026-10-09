@@ -421,3 +421,55 @@ func TestAnIdempotencyKeyIsScopedToTheSpace(t *testing.T) {
 		t.Fatalf("the handler ran %d times, want 2 (alice once, bob once)", runs)
 	}
 }
+
+func TestOpeningBalanceIsOncePerAssetAccount(t *testing.T) {
+	r := ledgerFor(t, testDB)
+	sp := jobSpace(t, newSpaceOrgID(), true)
+	seedSpace(t, r, sp)
+	ctx, now, d := context.Background(), time.Now(), brcal.New(2026, time.March, 1)
+	if _, err := r.PostOpeningBalance(ctx, sp, "bank", 100000, d, repositories.PostMeta{Actor: "u"}, now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.PostOpeningBalance(ctx, sp, "bank", 5, d, repositories.PostMeta{Actor: "u"}, now); !errors.Is(err, repositories.ErrOpeningExists) {
+		t.Fatalf("second opening: %v", err)
+	}
+	if _, err := r.PostOpeningBalance(ctx, sp, "nope", 5, d, repositories.PostMeta{}, now); !errors.Is(err, repositories.ErrUnknownAccount) {
+		t.Fatalf("unknown account: %v", err)
+	}
+	if got := balance(t, r, sp, "bank"); got != 100000 {
+		t.Fatalf("bank = %d", got)
+	}
+	es, err := r.EntriesFrom(ctx, sp, "bank", d)
+	if err != nil || len(es) != 1 || es[0].Kind != finance.KindOpeningBalance || es[0].Flow != finance.FlowNone {
+		t.Fatalf("entries = %+v, %v", es, err)
+	}
+}
+
+func TestTransferMovesBalancesButNotTheReports(t *testing.T) {
+	r := ledgerFor(t, testDB)
+	sp := jobSpace(t, newSpaceOrgID(), true)
+	seedSpace(t, r, sp)
+	ctx, now, d := context.Background(), time.Now(), brcal.New(2026, time.March, 2)
+	id, err := r.PostTransfer(ctx, sp, "bank", "cash", 2500, d, repositories.PostMeta{Actor: "u", Memo: "Saque"}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if balance(t, r, sp, "bank") != -2500 || balance(t, r, sp, "cash") != 2500 {
+		t.Fatal("balances did not move")
+	}
+	es, _ := r.EntriesFrom(ctx, sp, "cash", d)
+	rep := finance.CashFlow(map[string]billing.Cents{"bank": -2500, "cash": 2500}, es, finance.MonthOf(d), finance.MonthOf(d))
+	if rep.Months[0].In != 0 || rep.Months[0].Out != 0 {
+		t.Fatalf("transfer counted as flow: %+v", rep.Months[0])
+	}
+	if _, err := r.ReverseManual(ctx, sp, id, d, repositories.PostMeta{Actor: "u"}, now); err != nil {
+		t.Fatal(err)
+	}
+	if balance(t, r, sp, "cash") != 0 {
+		t.Fatal("reversal did not restore cash")
+	}
+	es, _ = r.EntriesFrom(ctx, sp, "cash", d)
+	if len(es) != 2 || !es[0].Reversed || !es[1].Reversal || es[1].Memo != "Saque" {
+		t.Fatalf("entries after reversal = %+v", es)
+	}
+}

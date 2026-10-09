@@ -207,7 +207,7 @@ func (r *BillRepository) createWithGuards(ctx context.Context, sp space.Resolved
 	if err != nil {
 		return finance.Bill{}, false, err
 	}
-	plan, err := r.ledger.planPost(sp, rec, meta, now)
+	plan, err := r.ledger.planPost(sp, rec, billMeta(meta, b), now)
 	if err != nil {
 		return finance.Bill{}, false, err
 	}
@@ -421,6 +421,17 @@ func mergeGuard(cur *finance.Bill, values map[string]types.AttributeValue) (cond
 	return cond, names
 }
 
+// billMeta names the bill on every ledger fact it produces, so a statement line
+// says what it was for and links back to it.
+func billMeta(meta PostMeta, b finance.Bill) PostMeta {
+	meta.Memo = b.Description
+	if meta.Memo == "" {
+		meta.Memo = "Sem descrição"
+	}
+	meta.Ref = "bill:" + b.ID
+	return meta
+}
+
 func str(s string) types.AttributeValue { return &types.AttributeValueMemberS{Value: s} }
 
 func (r *BillRepository) stamp(now time.Time) types.AttributeValue {
@@ -472,7 +483,7 @@ func (r *BillRepository) Settle(ctx context.Context, sp space.ResolvedSpace, bil
 	if err != nil {
 		return finance.Bill{}, err
 	}
-	plan, err := r.ledger.planPost(sp, tx, meta, now)
+	plan, err := r.ledger.planPost(sp, tx, billMeta(meta, *b), now)
 	if err != nil {
 		return finance.Bill{}, err
 	}
@@ -530,7 +541,7 @@ func (r *BillRepository) Cancel(ctx context.Context, sp space.ResolvedSpace, bil
 	if err != nil {
 		return finance.Bill{}, err
 	}
-	plan, err := r.ledger.planPost(sp, tx, meta, now)
+	plan, err := r.ledger.planPost(sp, tx, billMeta(meta, *b), now)
 	if err != nil {
 		return finance.Bill{}, err
 	}
@@ -635,7 +646,7 @@ func (r *BillRepository) Edit(ctx context.Context, sp space.ResolvedSpace, billI
 		if err != nil {
 			return finance.Bill{}, err
 		}
-		plan, err := r.ledger.planPost(sp, tx, meta, now)
+		plan, err := r.ledger.planPost(sp, tx, billMeta(meta, next), now)
 		if err != nil {
 			return finance.Bill{}, err
 		}
@@ -685,4 +696,49 @@ func (r *BillRepository) Edit(ctx context.Context, sp space.ResolvedSpace, billI
 	}
 	next.TransactionIDs = newIDs
 	return next, nil
+}
+
+// Unsettle undoes a payment: the settlement is reversed and the bill goes back
+// to the open list, in one transaction. auto_settle is turned off — if the job
+// paid it and the person undid that, paying it again tomorrow would be wrong.
+func (r *BillRepository) Unsettle(ctx context.Context, sp space.ResolvedSpace, billID string, date brcal.Date, meta PostMeta, now time.Time) (finance.Bill, error) {
+	if err := sp.Require(space.Write | space.Settle); err != nil {
+		return finance.Bill{}, err
+	}
+	b, err := r.get(ctx, sp, billID)
+	if err != nil {
+		return finance.Bill{}, err
+	}
+	if b.Status != finance.BillPaid || len(b.TransactionIDs) == 0 {
+		return finance.Bill{}, fmt.Errorf("%w: only a paid bill can be reopened", finance.ErrBillState)
+	}
+	settlement := b.TransactionIDs[len(b.TransactionIDs)-1]
+	plan, err := r.ledger.planReverse(ctx, sp, settlement, date, billMeta(meta, *b), now)
+	if err != nil {
+		return finance.Bill{}, err
+	}
+	reopened := *b
+	reopened.Status, reopened.PaidDate, reopened.AutoSettle = finance.BillForecast, brcal.Date{}, false
+	openPK, openSK, _, _ := sparseKeys(sp, reopened)
+	sk := BillSK(billID)
+	values := map[string]types.AttributeValue{
+		":forecast": str(string(finance.BillForecast)), ":paid": str(string(finance.BillPaid)),
+		":n":  &types.AttributeValueMemberN{Value: fmt.Sprint(len(b.TransactionIDs))},
+		":op": str(openPK), ":os": str(openSK), ":f": &types.AttributeValueMemberBOOL{Value: false},
+		":now": r.stamp(now),
+		":tx":  &types.AttributeValueMemberL{Value: []types.AttributeValue{str(plan.TxID)}},
+	}
+	names := map[string]string{"#status": "status", "#n": "transaction_ids"}
+	update := r.bills.BuildRawUpdateTxItem(sp.PK(), &sk,
+		"SET #status = :forecast, auto_settle = :f, open_pk = :op, open_sk = :os, #n = list_append(#n, :tx), updated_at = :now REMOVE paid_date",
+		"#status = :paid AND size(#n) = :n", names, values)
+	items := append(append([]types.TransactWriteItem(nil), plan.Items...), update)
+	if err := r.bills.TransactWrite(ctx, items); err != nil {
+		if onlyConditionFailed(err) {
+			return finance.Bill{}, finance.ErrBillState
+		}
+		return finance.Bill{}, err
+	}
+	reopened.TransactionIDs = append(append([]string(nil), b.TransactionIDs...), plan.TxID)
+	return reopened, nil
 }
