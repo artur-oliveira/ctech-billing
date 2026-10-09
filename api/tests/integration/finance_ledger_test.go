@@ -277,11 +277,11 @@ func corruptBalance(t *testing.T, sp space.ResolvedSpace, account string, value 
 
 // --- The selector cannot be spoofed: zero table reads -------------------------
 
-type staticMembers map[string]string // "org|user" -> role
+type staticMembers map[string][2]string // "org|user" -> {kind, role}
 
-func (m staticMembers) Membership(_ context.Context, org, user string) (string, bool, error) {
-	role, ok := m[org+"|"+user]
-	return role, ok, nil
+func (m staticMembers) Membership(_ context.Context, org, user string) (string, string, bool, error) {
+	a, ok := m[org+"|"+user]
+	return a[0], a[1], ok, nil
 }
 
 // countingClient returns a DynamoDB client that counts every API call it makes.
@@ -310,7 +310,7 @@ func TestUserAWithOrganizationBsIdIsA404AndReadsNothing(t *testing.T) {
 		c.Locals(mw.ClaimsKey, &mw.Claims{Sub: "alice", SID: "s", Scope: mw.ScopeFinanceRead})
 		return c.Next()
 	})
-	resolver := space.NewResolver(staticMembers{orgB + "|bob": "owner"}, cache.NewMemoryBackend(10))
+	resolver := space.NewResolver(staticMembers{orgB + "|bob": {"organization", "owner"}}, cache.NewMemoryBackend(10))
 	app.Get("/accounts", mw.RequireUserScope(mw.ScopeFinanceRead), mw.ResolveSpace(resolver), mw.RequireVerb(space.Read),
 		func(c fiber.Ctx) error {
 			rows, err := r.ListAccounts(c.Context(), mw.GetSpace(c))
@@ -344,6 +344,52 @@ func TestUserAWithOrganizationBsIdIsA404AndReadsNothing(t *testing.T) {
 	}
 	if reads.Load() == 0 {
 		t.Fatal("the call counter never moved on a successful read, so the zero above proves nothing")
+	}
+}
+
+// § 9.1 with personal fixtures: alice owns personal workspace A; bob's personal
+// workspace B has data. Alice selecting B is the 404, with zero DynamoDB calls.
+func TestAMemberOfOnePersonalWorkspaceSelectingAnotherIsA404AndReadsNothing(t *testing.T) {
+	wsA, wsB := newSpaceOrgID(), newSpaceOrgID()
+	var reads atomic.Int64
+	r := ledgerFor(t, countingClient(&reads))
+	seedSpace(t, ledgerFor(t, testDB), jobSpace(t, wsB, true)) // B has data
+
+	app := fiber.New()
+	app.Use(func(c fiber.Ctx) error {
+		c.Locals(mw.ClaimsKey, &mw.Claims{Sub: "alice", SID: "s", Scope: mw.ScopeFinanceRead})
+		return c.Next()
+	})
+	resolver := space.NewResolver(staticMembers{
+		wsA + "|alice": {"personal", "owner"},
+		wsB + "|bob":   {"personal", "owner"},
+	}, cache.NewMemoryBackend(10))
+	app.Get("/accounts", mw.RequireUserScope(mw.ScopeFinanceRead), mw.ResolveSpace(resolver), mw.RequireVerb(space.Read),
+		func(c fiber.Ctx) error {
+			rows, err := r.ListAccounts(c.Context(), mw.GetSpace(c))
+			if err != nil {
+				return err
+			}
+			return c.JSON(len(rows))
+		})
+	get := func(ws string) int {
+		req := httptest.NewRequest("GET", "/accounts", nil)
+		req.Header.Set(mw.ModeHeader, "live")
+		req.Header.Set(mw.SpaceHeader, "org:"+ws)
+		resp, err := app.Test(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return resp.StatusCode
+	}
+	if code := get(wsB); code != 404 {
+		t.Fatalf("alice selecting bob's personal workspace: %d, want 404", code)
+	}
+	if got := reads.Load(); got != 0 {
+		t.Fatalf("a refused personal workspace caused %d DynamoDB call(s); want 0", got)
+	}
+	if code := get(wsA); code != 200 || reads.Load() == 0 {
+		t.Fatalf("alice's own workspace: %d with %d reads — the zero above proves nothing", code, reads.Load())
 	}
 }
 

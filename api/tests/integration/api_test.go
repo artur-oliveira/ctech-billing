@@ -20,6 +20,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 
 	"gopkg.aoctech.app/billing/api/internal/app"
+	"gopkg.aoctech.app/billing/api/internal/config"
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
 	"gopkg.aoctech.app/billing/api/internal/domain/brcal"
 	"gopkg.aoctech.app/billing/api/internal/domain/id"
@@ -48,6 +49,13 @@ type apiEnv struct {
 
 func newAPI(t *testing.T) *apiEnv {
 	t.Helper()
+	return newAPIWith(t, nil)
+}
+
+// newAPIWith is newAPI with a change to its configuration before the server is
+// built — a fake ctech-account behind the real client, for instance.
+func newAPIWith(t *testing.T, configure func(*config.Config)) *apiEnv {
+	t.Helper()
 	ctx := ctxT(t)
 
 	key, jwks := newJWKS(t)
@@ -56,6 +64,9 @@ func newAPI(t *testing.T) *apiEnv {
 	cfg.CtechIssuerURL = testIssuer
 	cfg.CtechJWKSURL = jwks
 	cfg.ServiceAudience = testAudience
+	if configure != nil {
+		configure(&cfg)
+	}
 
 	// A pinned clock: a billing service tested against the wall clock passes in
 	// March and fails in February.

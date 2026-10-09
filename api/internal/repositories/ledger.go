@@ -221,7 +221,10 @@ func (r *LedgerRepository) SeedCategories(ctx context.Context, sp space.Resolved
 		byID[a.ID] = a
 	}
 	_, system := finance.DefaultSystemAccounts()
-	for _, a := range append(system, finance.DefaultCategories(sp.Personal())...) {
+	// A personal workspace is a household's books, like the default personal
+	// space: it gets the personal chart (ADR 0027).
+	personalChart := sp.Kind() != space.KindOrganization
+	for _, a := range append(system, finance.DefaultCategories(personalChart)...) {
 		if cur, ok := byID[a.ID]; ok {
 			// Already there (seeded by an older version): only the missing key is
 			// added; its name, group and archived state are the person's.

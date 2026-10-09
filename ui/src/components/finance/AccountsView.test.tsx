@@ -30,7 +30,7 @@ const ACCOUNTS: Account[] = [
 ]
 
 function serve(verbs: Verb[], accounts = ACCOUNTS) {
-  vi.spyOn(finance, "getFinanceSpaces").mockResolvedValue({spaces: [{kind: "personal", label: "Pessoal", verbs}], organizations_unavailable: false})
+  vi.spyOn(finance, "getFinanceSpaces").mockResolvedValue({spaces: [{selector: "personal", kind: "personal_default", display_name: "Pessoal", verbs, manage_people: false}], organizations_unavailable: false})
   vi.spyOn(finance, "listAccounts").mockResolvedValue({data: accounts, has_more: false})
   vi.spyOn(finance, "getSettings").mockResolvedValue({})
 }
@@ -214,6 +214,32 @@ describe("F8 — accounts", () => {
     renderWithQuery(<AccountsView/>)
     await row("Conta corrente")
     expect(screen.queryByRole("switch")).toBeNull()
+  })
+
+  // The payer side of 6.7 posts to Pessoal only, never to a shared space
+  // (shared-spaces spec § 2): elsewhere the switch would do nothing.
+  it("shows the CTech invoices setting only in Pessoal", async () => {
+    const WS = "0190a1b2-c3d4-7e5f-8a9b-cccccccccccc"
+    for (const kind of ["personal", "organization"] as const) {
+      window.localStorage.setItem("ctech-billing-finance-space", `org:${WS}`)
+      vi.spyOn(finance, "getFinanceSpaces").mockResolvedValue({
+        spaces: [
+          {selector: "personal", kind: "personal_default", display_name: "Pessoal", verbs: ALL, manage_people: false},
+          {selector: `org:${WS}`, kind, display_name: "Casa", role: "owner", verbs: ALL, manage_people: kind === "personal"},
+        ],
+        organizations_unavailable: false,
+      })
+      vi.spyOn(finance, "listAccounts").mockResolvedValue({data: ACCOUNTS, has_more: false})
+      vi.spyOn(finance, "getSettings").mockResolvedValue({})
+      const {unmount} = renderWithQuery(<AccountsView/>)
+      await row("Conta corrente")
+      // configure is held (the default receiving account is offered) …
+      expect(await screen.findByRole("combobox", {name: "Conta padrão de recebimento"})).toBeInTheDocument()
+      // … and still no CTech invoices switch outside Pessoal.
+      expect(screen.queryByRole("switch")).toBeNull()
+      unmount()
+      vi.restoreAllMocks()
+    }
   })
 
   it("teaches the first step when there is nothing yet", async () => {

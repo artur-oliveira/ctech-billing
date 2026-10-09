@@ -4,13 +4,14 @@ import (
 	"github.com/gofiber/fiber/v3"
 
 	"gopkg.aoctech.app/billing/api/internal/middleware"
+	"gopkg.aoctech.app/billing/api/internal/space"
 )
 
 type financeSpaceDTO struct {
-	Kind           string   `json:"kind"` // "personal" | "organization"
-	OrganizationID string   `json:"organization_id,omitempty"`
-	Mode           string   `json:"mode"`
-	Verbs          []string `json:"verbs"`
+	Kind           space.Kind `json:"kind"` // personal_default | personal | organization
+	OrganizationID string     `json:"organization_id,omitempty"`
+	Mode           string     `json:"mode"`
+	Verbs          []string   `json:"verbs"`
 }
 
 // financeSpace reports the space the request resolved to and the verbs held in
@@ -18,12 +19,8 @@ type financeSpaceDTO struct {
 // information for the UI, not an authorization: every route re-resolves.
 func financeSpace(c fiber.Ctx) error {
 	sp := middleware.GetSpace(c)
-	kind := "organization"
-	if sp.Personal() {
-		kind = "personal"
-	}
 	return c.JSON(financeSpaceDTO{
-		Kind:           kind,
+		Kind:           sp.Kind(),
 		OrganizationID: sp.OrganizationID(),
 		Mode:           sp.Mode(),
 		Verbs:          sp.Verbs().Names(),

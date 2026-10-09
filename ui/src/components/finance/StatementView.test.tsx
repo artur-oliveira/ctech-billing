@@ -25,7 +25,7 @@ const entry = (over: Partial<StatementEntry>): StatementEntry => ({
 })
 
 function serve(verbs: Verb[], statements: Record<string, () => Statement>) {
-  vi.spyOn(finance, "getFinanceSpaces").mockResolvedValue({spaces: [{kind: "personal", label: "Pessoal", verbs}], organizations_unavailable: false})
+  vi.spyOn(finance, "getFinanceSpaces").mockResolvedValue({spaces: [{selector: "personal", kind: "personal_default", display_name: "Pessoal", verbs, manage_people: false}], organizations_unavailable: false})
   vi.spyOn(finance, "listAccounts").mockResolvedValue({data: ACCOUNTS, has_more: false})
   return vi.spyOn(finance, "getStatement").mockImplementation(async (_c, id) => statements[id]())
 }
@@ -121,7 +121,7 @@ describe("F3 — extrato", () => {
   })
 
   it("points to Contas when there is no account yet", async () => {
-    vi.spyOn(finance, "getFinanceSpaces").mockResolvedValue({spaces: [{kind: "personal", label: "Pessoal", verbs: ALL}], organizations_unavailable: false})
+    vi.spyOn(finance, "getFinanceSpaces").mockResolvedValue({spaces: [{selector: "personal", kind: "personal_default", display_name: "Pessoal", verbs: ALL, manage_people: false}], organizations_unavailable: false})
     vi.spyOn(finance, "listAccounts").mockResolvedValue({data: [], has_more: false})
     renderWithQuery(<StatementView/>)
     expect(await screen.findByText("Nenhuma conta ainda.")).toBeInTheDocument()

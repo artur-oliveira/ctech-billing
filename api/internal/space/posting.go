@@ -16,7 +16,7 @@ func ForInvoiceIssuer(organizationID string, livemode bool) (ResolvedSpace, erro
 	if !validOrganizationID(organizationID) {
 		return ResolvedSpace{}, ErrSpaceNotFound
 	}
-	return orgSpace(organizationID, livemode, postingVerbs), nil
+	return orgSpace(organizationID, KindOrganization, livemode, postingVerbs), nil
 }
 
 // ForInvoicePayer: see ForInvoiceIssuer.

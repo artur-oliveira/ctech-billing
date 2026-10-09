@@ -3,6 +3,7 @@ package space
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 
@@ -23,17 +24,18 @@ type fakeSource struct {
 type answer struct {
 	role   string
 	member bool
+	kind   string // raw, as ctech-account sends it; "" is an organization
 }
 
-func (f *fakeSource) Membership(_ context.Context, org, user string) (string, bool, error) {
+func (f *fakeSource) Membership(_ context.Context, org, user string) (string, string, bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls++
 	if f.err != nil {
-		return "", false, f.err
+		return "", "", false, f.err
 	}
 	a := f.answers[org+"|"+user]
-	return a.role, a.member, nil
+	return a.kind, a.role, a.member, nil
 }
 
 func newResolver(src MembershipSource) (*Resolver, cache.Backend) {
@@ -81,9 +83,9 @@ func TestPersonalRefusesASubjectThatCouldBeAKey(t *testing.T) {
 
 func TestResolveGrantsTheRolesVerbs(t *testing.T) {
 	src := &fakeSource{answers: map[string]answer{
-		orgA + "|owner":  {"owner", true},
-		orgA + "|member": {"member", true},
-		orgA + "|viewer": {"viewer", true},
+		orgA + "|owner":  {role: "owner", member: true},
+		orgA + "|member": {role: "member", member: true},
+		orgA + "|viewer": {role: "viewer", member: true},
 	}}
 	r, _ := newResolver(src)
 	for sub, want := range map[string]Verbs{"owner": All, "member": All &^ Configure, "viewer": Read} {
@@ -95,7 +97,7 @@ func TestResolveGrantsTheRolesVerbs(t *testing.T) {
 }
 
 func TestUserAWithOrganizationBIsNotFound(t *testing.T) {
-	src := &fakeSource{answers: map[string]answer{orgB + "|bob": {"owner", true}}}
+	src := &fakeSource{answers: map[string]answer{orgB + "|bob": {role: "owner", member: true}}}
 	r, _ := newResolver(src)
 	s, err := resolveOrg(r, "alice", orgB)
 	if !errors.Is(err, ErrSpaceNotFound) || !s.IsZero() {
@@ -112,7 +114,7 @@ func TestAnUnknownOrganizationIsTheSameError(t *testing.T) {
 }
 
 func TestAMemberWithAnUnknownRoleGetsNothing(t *testing.T) {
-	src := &fakeSource{answers: map[string]answer{orgA + "|alice": {"auditor", true}}}
+	src := &fakeSource{answers: map[string]answer{orgA + "|alice": {role: "auditor", member: true}}}
 	r, _ := newResolver(src)
 	if _, err := resolveOrg(r, "alice", orgA); !errors.Is(err, ErrSpaceNotFound) {
 		t.Fatalf("err = %v, want ErrSpaceNotFound (no verbs is no access)", err)
@@ -121,7 +123,7 @@ func TestAMemberWithAnUnknownRoleGetsNothing(t *testing.T) {
 
 // Review Focus 1.
 func TestResolveRefusesAKeyShapedOrganizationID(t *testing.T) {
-	src := &fakeSource{answers: map[string]answer{"USER#alice|mallory": {"owner", true}}}
+	src := &fakeSource{answers: map[string]answer{"USER#alice|mallory": {role: "owner", member: true}}}
 	r, _ := newResolver(src)
 	for _, h := range []string{"org:USER#alice", "org:" + orgA + "#live", "org:" + orgA + "\n"} {
 		sel, err := ParseSelector(h)
@@ -140,7 +142,7 @@ func TestResolveRefusesAKeyShapedOrganizationID(t *testing.T) {
 }
 
 func TestMembershipIsCachedBothWays(t *testing.T) {
-	src := &fakeSource{answers: map[string]answer{orgA + "|alice": {"admin", true}}}
+	src := &fakeSource{answers: map[string]answer{orgA + "|alice": {role: "admin", member: true}}}
 	r, _ := newResolver(src)
 	for i := 0; i < 3; i++ {
 		if _, err := resolveOrg(r, "alice", orgA); err != nil {
@@ -157,7 +159,7 @@ func TestMembershipIsCachedBothWays(t *testing.T) {
 
 // Review Focus 2.
 func TestMembershipCacheIsKeyedByOrganizationAndUser(t *testing.T) {
-	src := &fakeSource{answers: map[string]answer{orgA + "|alice": {"owner", true}}}
+	src := &fakeSource{answers: map[string]answer{orgA + "|alice": {role: "owner", member: true}}}
 	r, _ := newResolver(src)
 	if _, err := resolveOrg(r, "alice", orgA); err != nil {
 		t.Fatal(err)
@@ -171,7 +173,7 @@ func TestMembershipCacheIsKeyedByOrganizationAndUser(t *testing.T) {
 }
 
 func TestARemovedMemberLosesAccessWhenTheCacheExpires(t *testing.T) {
-	src := &fakeSource{answers: map[string]answer{orgA + "|alice": {"owner", true}}}
+	src := &fakeSource{answers: map[string]answer{orgA + "|alice": {role: "owner", member: true}}}
 	r, c := newResolver(src)
 	if _, err := resolveOrg(r, "alice", orgA); err != nil {
 		t.Fatal(err)
@@ -199,7 +201,7 @@ func TestAccountUnreachableFailsClosed(t *testing.T) {
 
 // Review Focus 3.
 func TestAnOutageIsNeverCached(t *testing.T) {
-	src := &fakeSource{err: errors.New("503"), answers: map[string]answer{orgA + "|alice": {"owner", true}}}
+	src := &fakeSource{err: errors.New("503"), answers: map[string]answer{orgA + "|alice": {role: "owner", member: true}}}
 	r, _ := newResolver(src)
 	if _, err := resolveOrg(r, "alice", orgA); !errors.Is(err, ErrSpaceUnavailable) {
 		t.Fatal(err)
@@ -222,11 +224,120 @@ func TestANilSourceFailsClosed(t *testing.T) {
 }
 
 func TestModeIsPartOfTheSpace(t *testing.T) {
-	src := &fakeSource{answers: map[string]answer{orgA + "|alice": {"owner", true}}}
+	src := &fakeSource{answers: map[string]answer{orgA + "|alice": {role: "owner", member: true}}}
 	r, _ := newResolver(src)
 	live, _ := r.Resolve(context.Background(), "alice", Selector{OrganizationID: orgA}, true)
 	test, _ := r.Resolve(context.Background(), "alice", Selector{OrganizationID: orgA}, false)
 	if live.PK() == test.PK() || test.PK() != orgA+"#test" {
 		t.Fatalf("live %q test %q", live.PK(), test.PK())
+	}
+}
+
+const wsA = "0190a1b2-c3d4-7e5f-8a9b-aaaaaaaaaaaa" // a personal workspace
+const wsB = "0190a1b2-c3d4-7e5f-8a9b-bbbbbbbbbbbb"
+
+func TestAPersonalWorkspaceGrantsByItsOwnTable(t *testing.T) {
+	src := &fakeSource{answers: map[string]answer{
+		wsA + "|owner":  {kind: "personal", role: "owner", member: true},
+		wsA + "|member": {kind: "personal", role: "member", member: true},
+		wsA + "|viewer": {kind: "personal", role: "viewer", member: true},
+	}}
+	r, _ := newResolver(src)
+	for sub, want := range map[string]Verbs{"owner": All, "member": All, "viewer": Read} {
+		s, err := resolveOrg(r, sub, wsA)
+		if err != nil || s.Verbs() != want || s.Kind() != KindPersonal || s.PK() != wsA+"#live" || s.Personal() {
+			t.Errorf("%s: %+v, %v", sub, s, err)
+		}
+	}
+}
+
+// § 9.3
+func TestAdminOnAPersonalWorkspaceOrAnUnknownKindIsNotFound(t *testing.T) {
+	src := &fakeSource{answers: map[string]answer{
+		wsA + "|alice": {kind: "personal", role: "admin", member: true},
+		wsB + "|alice": {kind: "team", role: "owner", member: true},
+	}}
+	r, _ := newResolver(src)
+	for _, ws := range []string{wsA, wsB} {
+		s, err := resolveOrg(r, "alice", ws)
+		if !errors.Is(err, ErrSpaceNotFound) || !s.IsZero() {
+			t.Errorf("%s: %+v, %v; want the ordinary 404", ws, s, err)
+		}
+	}
+}
+
+// § 9.4
+func TestARemovedPersonalWorkspaceMemberLosesAccessWhenTheCacheExpires(t *testing.T) {
+	src := &fakeSource{answers: map[string]answer{wsA + "|alice": {kind: "personal", role: "member", member: true}}}
+	r, c := newResolver(src)
+	if _, err := resolveOrg(r, "alice", wsA); err != nil {
+		t.Fatal(err)
+	}
+	delete(src.answers, wsA+"|alice") // removed in ctech-account
+	if _, err := resolveOrg(r, "alice", wsA); err != nil {
+		t.Fatalf("within the TTL the cached answer stands (accepted limit): %v", err)
+	}
+	if err := c.DeletePrefix(context.Background(), "billing:space:"); err != nil { // the TTL elapsing
+		t.Fatal(err)
+	}
+	if _, err := resolveOrg(r, "alice", wsA); !errors.Is(err, ErrSpaceNotFound) {
+		t.Fatalf("after expiry the removed member still resolves: %v", err)
+	}
+}
+
+// § 9.4
+func TestAnOutageIsNeverCachedForAPersonalWorkspace(t *testing.T) {
+	src := &fakeSource{err: errors.New("503"), answers: map[string]answer{wsA + "|alice": {kind: "personal", role: "viewer", member: true}}}
+	r, _ := newResolver(src)
+	if _, err := resolveOrg(r, "alice", wsA); !errors.Is(err, ErrSpaceUnavailable) {
+		t.Fatal(err)
+	}
+	src.err = nil
+	s, err := resolveOrg(r, "alice", wsA)
+	if err != nil || s.Verbs() != Read {
+		t.Fatalf("a blip became a cached refusal: %+v, %v", s, err)
+	}
+}
+
+// § 9.8: an entry written before this deploy has no kind. It must read as an
+// organization — for member that is FEWER verbs than personal, never more.
+func TestACachedEntryWithoutKindGrantsTheOrganizationVerbs(t *testing.T) {
+	src := &fakeSource{answers: map[string]answer{wsA + "|alice": {kind: "personal", role: "member", member: true}}}
+	r, c := newResolver(src)
+	if err := c.Set(context.Background(), cacheKey(wsA, "alice"), []byte(`{"member":true,"role":"member"}`), MembershipTTLSeconds); err != nil {
+		t.Fatal(err)
+	}
+	s, err := resolveOrg(r, "alice", wsA)
+	if err != nil || s.Verbs() != All&^Configure || s.Kind() != KindOrganization {
+		t.Fatalf("got %+v (verbs %v), %v; want the organization member's verbs", s, s.Verbs(), err)
+	}
+	if src.calls != 0 {
+		t.Fatalf("the cached entry was not used: %d call(s)", src.calls)
+	}
+}
+
+// Deploy order: ctech-account not sending kind yet reads as organization.
+func TestAMissingKindIsAnOrganization(t *testing.T) {
+	src := &fakeSource{answers: map[string]answer{orgA + "|alice": {role: "member", member: true}}}
+	r, _ := newResolver(src)
+	s, err := resolveOrg(r, "alice", orgA)
+	if err != nil || s.Kind() != KindOrganization || s.Verbs() != All&^Configure {
+		t.Fatalf("got %+v, %v", s, err)
+	}
+}
+
+func TestTheCacheStoresTheKind(t *testing.T) {
+	src := &fakeSource{answers: map[string]answer{wsA + "|alice": {kind: "personal", role: "member", member: true}}}
+	r, c := newResolver(src)
+	if _, err := resolveOrg(r, "alice", wsA); err != nil {
+		t.Fatal(err)
+	}
+	raw, ok, err := c.Get(context.Background(), cacheKey(wsA, "alice"))
+	if err != nil || !ok || !strings.Contains(string(raw), `"kind":"personal"`) {
+		t.Fatalf("cache entry = %s, %v, %v", raw, ok, err)
+	}
+	s, _ := resolveOrg(r, "alice", wsA) // from the cache
+	if s.Verbs() != All || src.calls != 1 {
+		t.Fatalf("cached read: verbs %v, calls %d", s.Verbs(), src.calls)
 	}
 }

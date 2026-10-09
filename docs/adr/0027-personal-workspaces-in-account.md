@@ -60,3 +60,11 @@ not in the model.
 A shared space needs permissions finer than the two levels, or needs to be shared with an
 organization rather than with people. Either one means a permission model inside a space, and that is a
 different decision.
+
+## Amendment, 2026-10-09 — implemented in 6.8
+
+`VerbsFor(kind, role)` replaced `VerbsForRole`, which was removed rather than kept beside it; `ResolvedSpace.Kind()`
+is `personal_default`, `personal` or `organization`; the kind is normalised once, in the resolver, after the cache.
+ctech-account's people page is `/account/spaces/people?id={id}` and its create handoff returns to
+`/console/finance/spaces/created`. A personal workspace gets the personal chart of categories. See the spec's
+implementation amendment and PLAN.md 6.8.

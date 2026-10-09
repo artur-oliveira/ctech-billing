@@ -34,6 +34,7 @@ var (
 type ResolvedSpace struct {
 	owner    string // organization id, or "USER#{sub}"
 	personal bool
+	kind     Kind
 	livemode bool
 	verbs    Verbs
 }
@@ -51,9 +52,16 @@ func (s ResolvedSpace) PK() string {
 // Owner is the organization id, or USER#{sub} for a personal space.
 func (s ResolvedSpace) Owner() string { return s.owner }
 
+// Personal is the default personal space, USER#{sub} — not a personal
+// workspace, which is Kind() == KindPersonal.
 func (s ResolvedSpace) Personal() bool { return s.personal }
 
-// OrganizationID is empty for a personal space.
+// Kind is personal_default for USER#{sub}, else the workspace's kind. The
+// console uses it to decide what to show; it authorizes nothing by itself.
+func (s ResolvedSpace) Kind() Kind { return s.kind }
+
+// OrganizationID is the workspace id (an organization's or a personal
+// workspace's), and empty for the default personal space.
 func (s ResolvedSpace) OrganizationID() string {
 	if s.personal {
 		return ""
@@ -95,11 +103,11 @@ func personalSpace(sub string, livemode bool) (ResolvedSpace, error) {
 	if sub == "" || strings.Contains(sub, "#") {
 		return ResolvedSpace{}, ErrInvalidSubject
 	}
-	return ResolvedSpace{owner: userPrefix + sub, personal: true, livemode: livemode, verbs: All}, nil
+	return ResolvedSpace{owner: userPrefix + sub, personal: true, kind: KindPersonalDefault, livemode: livemode, verbs: All}, nil
 }
 
-func orgSpace(orgID string, livemode bool, verbs Verbs) ResolvedSpace {
-	return ResolvedSpace{owner: orgID, livemode: livemode, verbs: verbs}
+func orgSpace(orgID string, kind Kind, livemode bool, verbs Verbs) ResolvedSpace {
+	return ResolvedSpace{owner: orgID, kind: kind, livemode: livemode, verbs: verbs}
 }
 
 // ForJob builds a space for a binary (cmd/finance, cmd/finance-rebuild) that
@@ -112,7 +120,9 @@ func ForJob(owner string, livemode bool) (ResolvedSpace, error) {
 	if !validOrganizationID(owner) {
 		return ResolvedSpace{}, ErrSpaceNotFound
 	}
-	return orgSpace(owner, livemode, All), nil
+	// A job cannot know a workspace's kind and reports organization; jobs never
+	// seed a space (only a request does), so the kind changes nothing they write.
+	return orgSpace(owner, KindOrganization, livemode, All), nil
 }
 
 // Narrow returns s holding only the verbs in v that s already held. It can

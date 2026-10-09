@@ -19,6 +19,8 @@ import type {
 } from "@/lib/api/financeTypes"
 
 export const FINANCE_MOCK_ORG = "0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b"
+/** A personal workspace this person owns (ADR 0027): every verb, manages its people. */
+export const FINANCE_MOCK_HOUSE = "0190a1b2-c3d4-7e5f-8a9b-cccccccccccc"
 
 type Req = {method?: string; url: string; headers?: Record<string, unknown>; data?: unknown; params?: Record<string, unknown>}
 type Res = {status: number; data: unknown}
@@ -27,8 +29,9 @@ const ALL: Verb[] = ["finance.read", "finance.write", "finance.settle", "finance
 const MEMBER: Verb[] = ["finance.read", "finance.write", "finance.settle", "finance.import"]
 
 const SPACES: FinanceSpaceEntry[] = [
-  {kind: "personal", label: "Pessoal", verbs: ALL},
-  {kind: "organization", organization_id: FINANCE_MOCK_ORG, label: "Acme Serviços LTDA", role: "member", verbs: MEMBER},
+  {selector: "personal", kind: "personal_default", display_name: "Pessoal", verbs: ALL, manage_people: false},
+  {selector: `org:${FINANCE_MOCK_HOUSE}`, kind: "personal", display_name: "Casa", role: "owner", verbs: ALL, manage_people: true},
+  {selector: `org:${FINANCE_MOCK_ORG}`, kind: "organization", display_name: "Acme Serviços LTDA", role: "member", verbs: MEMBER, manage_people: false},
 ]
 
 /** One leg on a cash account, as the API's entry rows (flow "-" = not cash flow). */
@@ -275,14 +278,12 @@ export function financeMock(r: Req): Res {
   const mode = header(r, "X-Billing-Mode")
   const selector = header(r, "X-Billing-Space")
   if (!mode || !selector) return problem(400, "about:blank", "Bad Request", "informe X-Billing-Mode e X-Billing-Space", "bad_request")
-  const entry = selector === "personal"
-    ? SPACES[0]
-    : SPACES.find(s => `org:${s.organization_id}` === selector)
+  const entry = SPACES.find(s => s.selector === selector)
   if (!entry) return problem(404, "/problems/space-not-found", "Space not found", "espaço não encontrado", "space_not_found")
   const can = (v: Verb) => entry.verbs.includes(v)
 
   const key = `${mode}|${selector}`
-  if (!state.has(key)) state.set(key, seed(entry.kind === "personal" ? "personal" : "org", mode))
+  if (!state.has(key)) state.set(key, seed(entry.kind === "organization" ? "org" : "personal", mode))
   const s = state.get(key)!
 
   const isWrite = method !== "get" && path !== "/recurrences/preview"
@@ -321,7 +322,7 @@ function route(method: string, path: string, r: Req, s: SpaceState, can: (v: Ver
   }
   const recMatch = path.match(/^\/recurrences\/([^/]+)(?:\/archive)?$/)
 
-  if (path === "/space") return ok({kind: "personal", mode: "live", verbs: ALL})
+  if (path === "/space") return ok({kind: "personal_default", mode: "live", verbs: ALL})
 
   // bills
   if (path === "/bills" && method === "get") {

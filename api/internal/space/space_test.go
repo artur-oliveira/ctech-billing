@@ -9,23 +9,61 @@ import (
 
 const orgA = "0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b"
 
-func TestVerbsForRole(t *testing.T) {
+func TestVerbsFor(t *testing.T) {
 	cases := []struct {
+		kind Kind
 		role string
 		want Verbs
 	}{
-		{"owner", All},
-		{"admin", All},
-		{"member", All &^ Configure},
-		{"viewer", Read},
-		{"", 0},
-		{"superuser", 0},
-		{"OWNER", 0}, // roles are exact: an unknown spelling grants nothing
+		// organization: unchanged from 6.2
+		{KindOrganization, "owner", All},
+		{KindOrganization, "admin", All},
+		{KindOrganization, "member", All &^ Configure},
+		{KindOrganization, "viewer", Read},
+		{KindOrganization, "", 0},
+		{KindOrganization, "superuser", 0},
+		{KindOrganization, "OWNER", 0}, // roles are exact
+		// personal workspace (ADR 0027): Dono, Acesso total, Leitura
+		{KindPersonal, "owner", All},
+		{KindPersonal, "member", All},
+		{KindPersonal, "viewer", Read},
+		{KindPersonal, "admin", 0}, // refused upstream on this kind: seeing it means something is wrong
+		{KindPersonal, "superuser", 0},
+		// a kind billing does not know grants nothing, whatever the role
+		{Kind("team"), "owner", 0},
+		{Kind(""), "owner", 0},
+		{KindPersonalDefault, "owner", 0}, // never reached through membership
 	}
 	for _, c := range cases {
-		if got := VerbsForRole(c.role); got != c.want {
-			t.Errorf("VerbsForRole(%q) = %v, want %v", c.role, got, c.want)
+		if got := VerbsFor(c.kind, c.role); got != c.want {
+			t.Errorf("VerbsFor(%q, %q) = %v, want %v", c.kind, c.role, got, c.want)
 		}
+	}
+}
+
+func TestWorkspaceKind(t *testing.T) {
+	for raw, want := range map[string]Kind{
+		"":             KindOrganization, // a route that predates kinds
+		"organization": KindOrganization,
+		"personal":     KindPersonal,
+		"team":         Kind("team"), // kept, so VerbsFor refuses it
+	} {
+		if got := WorkspaceKind(raw); got != want {
+			t.Errorf("WorkspaceKind(%q) = %q, want %q", raw, got, want)
+		}
+	}
+}
+
+func TestKindOfASpace(t *testing.T) {
+	p, _ := personalSpace("alice", true)
+	if p.Kind() != KindPersonalDefault {
+		t.Errorf("personal default kind = %q", p.Kind())
+	}
+	if k := orgSpace(orgA, KindPersonal, true, Read).Kind(); k != KindPersonal {
+		t.Errorf("workspace kind = %q", k)
+	}
+	if (ResolvedSpace{}).Kind() != "" {
+		t.Error("the zero space has a kind")
 	}
 }
 

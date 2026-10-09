@@ -6,7 +6,7 @@ import {toast} from "sonner"
 
 import {type FinanceCtx, financeKeys, getFinanceSpaces} from "@/lib/api/finance"
 import type {FinanceSpaceEntry, Verb} from "@/lib/api/financeTypes"
-import {PERSONAL, sameSpace, setSpace, type Space} from "@/lib/console/space"
+import {parseSpace, PERSONAL, sameSpace, setSpace, type Space} from "@/lib/console/space"
 import {t} from "@/lib/i18n"
 import {useMode} from "@/lib/console/useMode"
 import {useSpace} from "@/lib/console/useSpace"
@@ -18,8 +18,18 @@ export function useFinanceCtx(): FinanceCtx {
   return useMemo(() => ({mode, space}), [mode, space])
 }
 
+/**
+ * The selector the server named for an entry. The console's `Space` is the
+ * X-Billing-Space grammar ("personal" | "org:{id}"), so a personal workspace is
+ * an `org:` selector like an organization; its kind is on the entry.
+ */
 function entrySpace(e: FinanceSpaceEntry): Space {
-  return e.kind === "personal" || !e.organization_id ? PERSONAL : {kind: "organization", organizationId: e.organization_id}
+  return parseSpace(e.selector)
+}
+
+/** "Pessoal" in the reader's language; every other space by its own name. */
+function labelOf(e: FinanceSpaceEntry): string {
+  return e.kind === "personal_default" ? t("finance.space.personal") : e.display_name
 }
 
 /**
@@ -53,5 +63,6 @@ export function useFinanceSpaces() {
     error: q.error,
     can: (verb: Verb) => verbs.has(verb),
     spaceOf: entrySpace,
+    labelOf,
   }
 }

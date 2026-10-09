@@ -39,19 +39,35 @@ func (v Verbs) Names() []string {
 	return out
 }
 
-// VerbsForRole maps a ctech-account organization role to verbs. v1 derives them
-// directly from the role, with no billing-side role table until somebody needs
-// a finer grant. An unknown role grants nothing: a ladder that grows a fifth
-// rung must not silently grant it everything.
-func VerbsForRole(role string) Verbs {
-	switch role {
-	case "owner", "admin":
-		return All
-	case "member":
-		return All &^ Configure
-	case "viewer":
-		return Read
-	default:
-		return 0
+// VerbsFor maps a ctech-account workspace kind and role to verbs. The role in
+// ctech-account decides reach; the product decides what it may do (ADR 0023),
+// and the same role means different things on the two kinds (ADR 0027):
+//
+//   - organization: owner/admin all, member all but configure, viewer read.
+//   - personal: owner and member (Acesso total) all, viewer (Leitura) read.
+//     admin does not exist there — ctech-account refuses it — so it grants
+//     nothing and the answer is the ordinary 404.
+//
+// Any other kind or role grants nothing: a ladder or a kind that grows upstream
+// must never inherit a grant by default.
+func VerbsFor(kind Kind, role string) Verbs {
+	switch kind {
+	case KindOrganization:
+		switch role {
+		case "owner", "admin":
+			return All
+		case "member":
+			return All &^ Configure
+		case "viewer":
+			return Read
+		}
+	case KindPersonal:
+		switch role {
+		case "owner", "member":
+			return All
+		case "viewer":
+			return Read
+		}
 	}
+	return 0
 }
