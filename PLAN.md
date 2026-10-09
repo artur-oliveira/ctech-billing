@@ -647,7 +647,8 @@ gates nothing by plan.
       [spec](docs/specs/2026-10-09-shared-spaces-design.md), [ADR 0027](docs/adr/0027-personal-workspaces-in-account.md).
       A ctech-account workspace of `kind: personal`, created and managed by handoff; verbs by kind and
       role; the resolver gains no path; the default personal space is never shareable. **Deploy
-      ctech-account first** (`ctech-account/docs/specs/2026-10-09-personal-workspaces.md`).
+      ctech-account first** (`ctech-account/docs/specs/2026-10-09-personal-workspaces.md`); ctech-dfe adds
+      only a kind check on company reach (`ctech-dfe/docs/specs/2026-10-09-personal-workspaces-in-dfe.md`).
 
 **Still open in Phase 6 (recorded 2026-10-09):**
 - **6.6 import and reconciliation**: not started (no OFX/FITID code, no `imports` table).
