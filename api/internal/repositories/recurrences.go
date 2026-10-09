@@ -23,6 +23,11 @@ import (
 // works from the current rule on its next run.
 var ErrRecurrenceChanged = errors.New("recurrence changed since it was read")
 
+// ErrRecurrenceWouldEnd is an edit of the end date that leaves the recurrence
+// nothing to come (finance.Recurrence.Ended) sent without Archive: the person
+// has not confirmed that this ends it, so nothing is saved (UX batch 3).
+var ErrRecurrenceWouldEnd = errors.New("this end date leaves the recurrence with no occurrence to come")
+
 // catchUpSlackDays is the month of slack the first materialisation and an edit
 // allow on the creation-time bound, so a recurrence created on the last day of a
 // month with the oldest allowed Start does not become a poison row when the
@@ -217,6 +222,23 @@ func (r *RecurrenceRepository) List(ctx context.Context, sp space.ResolvedSpace)
 	return out, nil
 }
 
+// GetWithCursor is Get with the materialisation cursor (zero: nothing made yet).
+func (r *RecurrenceRepository) GetWithCursor(ctx context.Context, sp space.ResolvedSpace, recID string) (finance.Recurrence, brcal.Date, error) {
+	if err := sp.Require(space.Read); err != nil {
+		return finance.Recurrence{}, brcal.Date{}, err
+	}
+	row, err := r.load(ctx, sp, recID)
+	if err != nil {
+		return finance.Recurrence{}, brcal.Date{}, err
+	}
+	rec, err := row.recurrence()
+	if err != nil {
+		return finance.Recurrence{}, brcal.Date{}, err
+	}
+	cursor, err := row.cursor()
+	return rec, cursor, err
+}
+
 // ListWithCursors is List with each recurrence's materialisation cursor: the
 // projection counts as virtual only what the job has not made into a bill yet.
 func (r *RecurrenceRepository) ListWithCursors(ctx context.Context, sp space.ResolvedSpace) ([]DueRecurrence, error) {
@@ -256,6 +278,10 @@ type RecurrencePatch struct {
 	Description *string
 	AutoSettle  *bool
 	End         *brcal.Date
+	// Archive confirms that an End leaving nothing to come ends the recurrence:
+	// the end and the archive are then one conditional write. Without it, such
+	// an End is ErrRecurrenceWouldEnd.
+	Archive bool
 }
 
 // Update changes a recurrence for the occurrences not yet materialised; bills
@@ -319,6 +345,12 @@ func (r *RecurrenceRepository) Update(ctx context.Context, sp space.ResolvedSpac
 	if err != nil {
 		return err
 	}
+	if p.End != nil && !p.Archive && !rec.Archived && rec.Ended(cursor, brcal.FromTime(now)) {
+		return ErrRecurrenceWouldEnd
+	}
+	if p.Archive {
+		rec.Archived = true
+	}
 	if err := checkDirectionAccounts(ctx, r.ledger, sp, rec.Direction, rec.CategoryID, rec.AccountID, finance.ErrInvalidRecurrence); err != nil {
 		return err
 	}
@@ -338,6 +370,9 @@ func (r *RecurrenceRepository) Update(ctx context.Context, sp space.ResolvedSpac
 	set("auto_settle", &types.AttributeValueMemberBOOL{Value: rec.AutoSettle})
 	if p.End != nil {
 		set("end", str(rec.Schedule.End.String()))
+	}
+	if p.Archive {
+		set("archived", &types.AttributeValueMemberBOOL{Value: true})
 	}
 	remove := ""
 	if pk, sk := scheduleKeysFor(sp, rec, cursor); pk != "" {

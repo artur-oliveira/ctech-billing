@@ -10,6 +10,47 @@ import (
 // ErrInvalidCard wraps every reason a card is refused.
 var ErrInvalidCard = errors.New("invalid card")
 
+// CardBrand is the network printed on a card: a closed set, so the console can
+// show its mark. Empty means not given.
+type CardBrand string
+
+const (
+	BrandVisa       CardBrand = "visa"
+	BrandMastercard CardBrand = "mastercard"
+	BrandElo        CardBrand = "elo"
+	BrandAmex       CardBrand = "amex"
+	BrandHipercard  CardBrand = "hipercard"
+	BrandDiners     CardBrand = "diners"
+	BrandOther      CardBrand = "other"
+)
+
+// CardBrands is the closed set, in the order the console offers it.
+var CardBrands = []CardBrand{BrandVisa, BrandMastercard, BrandElo, BrandAmex, BrandHipercard, BrandDiners, BrandOther}
+
+// ValidCardBrand reports whether b is one of CardBrands (empty is not).
+func ValidCardBrand(b CardBrand) bool {
+	for _, x := range CardBrands {
+		if b == x {
+			return true
+		}
+	}
+	return false
+}
+
+// ValidLast4 reports whether s is exactly four ASCII digits. It is the only
+// part of a card number billing ever holds: enough to tell two cards apart.
+func ValidLast4(s string) bool {
+	if len(s) != 4 {
+		return false
+	}
+	for i := 0; i < 4; i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	return true
+}
+
 // Card is a credit card's settings (spec § 3.6). Its money is a liability
 // account in the ledger with the same id; this is when its statements close,
 // when they are due, and which account pays them.
@@ -21,6 +62,10 @@ type Card struct {
 	// OpenMonth is the first statement not yet closed: every installment lands
 	// on it or later, so a closed statement is never changed.
 	OpenMonth Month
+	// Brand and Last4 only identify the card to the person (UX batch 3); both
+	// are optional and neither changes how statements close or are paid.
+	Brand CardBrand
+	Last4 string
 }
 
 func (c Card) Validate() error {
@@ -36,6 +81,10 @@ func (c Card) Validate() error {
 		return fail("the paying account is required")
 	case c.OpenMonth == (Month{}):
 		return fail("the open month is required")
+	case c.Brand != "" && !ValidCardBrand(c.Brand):
+		return fail("unknown brand %q", c.Brand)
+	case c.Last4 != "" && !ValidLast4(c.Last4):
+		return fail("last4 must be exactly four digits")
 	}
 	return nil
 }

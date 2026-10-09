@@ -75,3 +75,8 @@ func (s *FinanceBills) Cancel(ctx context.Context, sp space.ResolvedSpace, id st
 func (s *FinanceBills) Unsettle(ctx context.Context, sp space.ResolvedSpace, id string, actor, requestID string, now time.Time) (finance.Bill, error) {
 	return s.repo.Unsettle(ctx, sp, id, brcal.FromTime(now), meta("unsettle", actor, requestID), now)
 }
+
+// ForRecurrence is the latest bills a recurrence made, oldest first (F4's detail).
+func (s *FinanceBills) ForRecurrence(ctx context.Context, sp space.ResolvedSpace, recurrenceID string, limit int) ([]repositories.OccurrenceBill, error) {
+	return s.repo.ForRecurrence(ctx, sp, recurrenceID, limit)
+}

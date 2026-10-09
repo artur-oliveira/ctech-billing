@@ -60,6 +60,25 @@ export interface Occurrence {
   due: IsoDate
 }
 
+/** paid; forecast (made, not yet due); overdue (made, past due, unpaid); skipped (its bill was cancelled). */
+export type OccurrenceState = "paid" | "forecast" | "overdue" | "skipped"
+
+/** A bill a recurrence made, for F4's detail (UX batch 3). */
+export interface OccurrenceBill extends Occurrence {
+  bill_id: string
+  amount: Cents
+  state: OccurrenceState
+  paid_date?: IsoDate
+  /** The bill's own flag: an open one that has it is still paid by the daily job after the recurrence ends. */
+  auto_settle?: boolean
+}
+
+/** `history`: the latest bills it made, oldest first. `upcoming`: dates it will make, none once archived. */
+export interface RecurrenceOccurrences {
+  history: OccurrenceBill[]
+  upcoming: Occurrence[]
+}
+
 export interface ProjectionMonth {
   month: string // YYYY-MM
   receivable: Cents
@@ -170,6 +189,9 @@ export interface RecurrencePatch {
   description?: string
   auto_settle?: boolean
   end?: IsoDate
+  /** Confirms an end that leaves nothing to come: saved and archived in one write.
+   *  Without it the API answers 422 `recurrence_would_end` and saves nothing. */
+  archive?: boolean
 }
 
 export interface PreviewInput extends ScheduleInput {
@@ -258,6 +280,9 @@ export interface OpeningBalance {
 
 // --- 6.5: cards ------------------------------------------------------------------------
 
+/** The network printed on a card (UX batch 3): the API's closed set. */
+export type CardBrand = "visa" | "mastercard" | "elo" | "amex" | "hipercard" | "diners" | "other"
+
 export interface Card {
   id: string
   name: string
@@ -269,6 +294,9 @@ export interface Card {
   /** The card account's balance: negative is what is owed. */
   balance: Cents
   archived: boolean
+  brand?: CardBrand
+  /** Exactly four digits, only to tell cards apart. */
+  last4?: string
 }
 
 export interface NewCard {
@@ -276,12 +304,18 @@ export interface NewCard {
   closing_day: number
   due_day: number
   paying_account_id: string
+  brand?: CardBrand
+  last4?: string
 }
 
 export interface CardPatch {
   closing_day?: number
   due_day?: number
   paying_account_id?: string
+  /** "" clears it. */
+  brand?: CardBrand | ""
+  /** "" clears it. */
+  last4?: string
 }
 
 export type StatementItemKind = "installment" | "credit" | "advance" | "carry"

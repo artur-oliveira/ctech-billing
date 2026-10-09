@@ -21,11 +21,14 @@ type cardDTO struct {
 	OpenMonth       string        `json:"open_month"`
 	Balance         billing.Cents `json:"balance"` // the card account's: negative is owed
 	Archived        bool          `json:"archived"`
+	Brand           string        `json:"brand,omitempty"`
+	Last4           string        `json:"last4,omitempty"`
 }
 
 func newCardDTO(c repositories.CardRow) cardDTO {
 	return cardDTO{ID: c.ID, Name: c.Name, ClosingDay: c.ClosingDay, DueDay: c.DueDay, PayingAccountID: c.PayingAccountID,
-		OpenMonth: c.OpenMonth.String(), Balance: billing.Cents(c.Balance), Archived: c.Archived}
+		OpenMonth: c.OpenMonth.String(), Balance: billing.Cents(c.Balance), Archived: c.Archived,
+		Brand: string(c.Brand), Last4: c.Last4}
 }
 
 type statementItemDTO struct {
@@ -101,6 +104,22 @@ type cardRequest struct {
 	ClosingDay      int    `json:"closing_day"`
 	DueDay          int    `json:"due_day"`
 	PayingAccountID string `json:"paying_account_id"`
+	Brand           string `json:"brand"`
+	Last4           string `json:"last4"`
+}
+
+// cardIdentity checks a card's brand and last four digits, both optional.
+func cardIdentity(c *checks, brand, last4 string) {
+	if brand != "" && !finance.ValidCardBrand(finance.CardBrand(brand)) {
+		allowed := make([]string, len(finance.CardBrands))
+		for i, b := range finance.CardBrands {
+			allowed[i] = string(b)
+		}
+		c.fail("brand", "unsupported_value", "one of the listed brands", "allowed", allowed)
+	}
+	if last4 != "" && !finance.ValidLast4(last4) {
+		c.fail("last4", "invalid_format", "exactly four digits", "format", "0000")
+	}
 }
 
 func (r cardRequest) validate() []problem.FieldError {
@@ -113,6 +132,7 @@ func (r cardRequest) validate() []problem.FieldError {
 		c.fail("due_day", "out_of_range", "a day between 1 and 31", "min", 1, "max", 31)
 	}
 	c.id("paying_account_id", r.PayingAccountID, true)
+	cardIdentity(c, r.Brand, r.Last4)
 	return c.errs
 }
 
@@ -137,7 +157,8 @@ func (h *financeHandlers) createCard(c fiber.Ctx) error {
 		return problem.Validation(errs).Send(c)
 	}
 	row, err := h.cards.CreateCard(c.Context(), middleware.GetSpace(c), req.Name,
-		finance.Card{ClosingDay: req.ClosingDay, DueDay: req.DueDay, PayingAccountID: req.PayingAccountID}, h.now())
+		finance.Card{ClosingDay: req.ClosingDay, DueDay: req.DueDay, PayingAccountID: req.PayingAccountID,
+			Brand: finance.CardBrand(req.Brand), Last4: req.Last4}, h.now())
 	if err != nil {
 		return fail(c, err)
 	}
@@ -148,6 +169,9 @@ type cardPatchRequest struct {
 	ClosingDay      *int    `json:"closing_day"`
 	DueDay          *int    `json:"due_day"`
 	PayingAccountID *string `json:"paying_account_id"`
+	// Brand and Last4: absent keeps, "" clears.
+	Brand *string `json:"brand"`
+	Last4 *string `json:"last4"`
 }
 
 func (h *financeHandlers) patchCard(c fiber.Ctx) error {
@@ -165,11 +189,19 @@ func (h *financeHandlers) patchCard(c fiber.Ctx) error {
 	if req.PayingAccountID != nil {
 		ch.id("paying_account_id", *req.PayingAccountID, true)
 	}
+	brand, last4 := "", ""
+	if req.Brand != nil {
+		brand = *req.Brand
+	}
+	if req.Last4 != nil {
+		last4 = *req.Last4
+	}
+	cardIdentity(ch, brand, last4)
 	if len(ch.errs) > 0 {
 		return problem.Validation(ch.errs).Send(c)
 	}
 	row, err := h.cards.UpdateCard(c.Context(), middleware.GetSpace(c), c.Params("id"),
-		repositories.CardPatch{ClosingDay: req.ClosingDay, DueDay: req.DueDay, PayingAccountID: req.PayingAccountID}, h.now())
+		repositories.CardPatch{ClosingDay: req.ClosingDay, DueDay: req.DueDay, PayingAccountID: req.PayingAccountID, Brand: req.Brand, Last4: req.Last4}, h.now())
 	if err != nil {
 		return fail(c, err)
 	}

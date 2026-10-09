@@ -187,3 +187,20 @@ func Preview(s Schedule, from brcal.Date, n int) ([]Occurrence, error) {
 	}
 	return out, nil
 }
+
+// Ended reports whether the recurrence, as it now reads, has nothing left to
+// come: no occurrence after today, and none the job still owes after its
+// cursor (zero: nothing made yet, so everything from Start is owed). An edit of
+// the end date that makes this true ends the recurrence, and the API archives it
+// in the same write or refuses the edit (UX batch 3). Bills already made stay.
+func (r Recurrence) Ended(cursor, today brcal.Date) bool {
+	from := today.AddDays(1)
+	switch {
+	case cursor.IsZero():
+		from = r.Schedule.Start
+	case cursor.AddDays(1).Before(from):
+		from = cursor.AddDays(1)
+	}
+	occ, err := Preview(r.Schedule, from, 1)
+	return err == nil && len(occ) == 0
+}

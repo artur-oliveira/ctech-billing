@@ -801,3 +801,53 @@ func (r *BillRepository) statementBillItem(sp space.ResolvedSpace, b finance.Bil
 	}
 	return r.bills.BuildPutTxItemIfAbsent(item), nil
 }
+
+// OccurrenceBill is a bill a recurrence made, with the nominal day it was made
+// for (the occurrence's identity).
+type OccurrenceBill struct {
+	Nominal brcal.Date
+	Bill    finance.Bill
+}
+
+// ForRecurrence returns the latest `limit` bills a recurrence made, oldest
+// first: one Query on its OCCURRENCE# lock rows inside the space (newest first,
+// limited), then one read per bill. Another space's recurrence id finds no lock
+// rows here. A lock whose bill is missing is skipped rather than failing the
+// whole history.
+// ponytail: a BatchGetItem if a recurrence's history ever needs more than a
+// screenful of rows.
+func (r *BillRepository) ForRecurrence(ctx context.Context, sp space.ResolvedSpace, recurrenceID string, limit int) ([]OccurrenceBill, error) {
+	if err := sp.Require(space.Read); err != nil {
+		return nil, err
+	}
+	res, err := r.bills.Query(ctx, QueryOpts{
+		PK: sp.PK(), SKPrefix: "OCCURRENCE#" + recurrenceID + "#", ScanIndexForward: false, Limit: limit, ConsistentRead: true,
+	})
+	if err != nil {
+		return nil, err
+	}
+	locks, err := DecodeItems[struct {
+		SK     string `dynamodbav:"sk"`
+		BillID string `dynamodbav:"bill_id"`
+	}](res.Items)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]OccurrenceBill, 0, len(locks))
+	for i := len(locks) - 1; i >= 0; i-- {
+		l := locks[i]
+		nominal, err := brcal.Parse(l.SK[strings.LastIndexByte(l.SK, '#')+1:])
+		if err != nil {
+			return nil, fmt.Errorf("malformed occurrence lock %q: %w", l.SK, err)
+		}
+		b, err := r.get(ctx, sp, l.BillID)
+		if errors.Is(err, ErrNotFound) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, OccurrenceBill{Nominal: nominal, Bill: *b})
+	}
+	return out, nil
+}

@@ -122,7 +122,10 @@ describe("F6 — importar extrato", () => {
     const made = vi.spyOn(finance, "newFromLine").mockResolvedValue({line: {...DETAIL.lines[1], status: "created"}})
     renderWithQuery(<ImportView/>)
     const row = (await screen.findByText("Padaria")).closest("li") as HTMLElement
-    await userEvent.click(within(row).getByRole("button", {name: "Nova conta"}))
+    // "Conta" is a bank account in Finanças; creating a bill from a line is Adicionar.
+    expect(within(row).queryByRole("button", {name: "Nova conta"})).toBeNull()
+    await userEvent.click(within(row).getByRole("button", {name: "Adicionar"}))
+    expect(within(row).getByRole("form", {name: "Adicionar"})).toBeInTheDocument()
     await userEvent.click(within(row).getByRole("combobox", {name: "Categoria"}))
     const options = (await screen.findAllByRole("option")).map(o => o.textContent?.trim())
     expect(options).toEqual(["Mercado"]) // money out: expense categories only
@@ -200,7 +203,7 @@ describe("F6 — importar extrato", () => {
     renderWithQuery(<ImportView/>)
     await screen.findByText("Pagamento aluguel")
     expect(screen.queryByLabelText("Arquivo do extrato")).not.toBeInTheDocument()
-    for (const name of ["Dar baixa", "Vincular", "Nova conta", "Ignorar", "Importar"]) {
+    for (const name of ["Dar baixa", "Vincular", "Adicionar", "Ignorar", "Importar"]) {
       expect(screen.queryByRole("button", {name})).not.toBeInTheDocument()
     }
   })

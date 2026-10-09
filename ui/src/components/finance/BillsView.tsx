@@ -51,11 +51,13 @@ const touched = (c: FinanceCtx) => [
  * in the order the API returns (earliest due first, so overdue leads). A row's
  * actions open in place; the list never disappears behind a modal.
  */
-export function BillsView() {
+export function BillsView({direction: initial = "payable", focus}: {direction?: Direction; focus?: string} = {}) {
   const {t} = useTranslation()
   const ctx = useFinanceCtx()
   const {can, loading} = useFinanceSpaces()
-  const [direction, setDirection] = useState<Direction>("payable")
+  // `?direction=&bill=` (a recurrence's overdue occurrence links here): open on
+  // that side and mark that bill.
+  const [direction, setDirection] = useState<Direction>(initial)
   const [creating, setCreating] = useState(false)
   // The bar's request is a wish, not a permission: a role that may not create
   // never sees the drawer, whenever the space's verbs arrive.
@@ -104,7 +106,7 @@ export function BillsView() {
                   </div>
                   <ul className="divide-y divide-border border-y border-border">
                     {group.map(b => (
-                      <BillRow key={b.id} bill={b} accountName={names.get(b.account_id)} accounts={accounts.data?.data ?? []}/>
+                      <BillRow key={b.id} bill={b} current={b.id === focus} accountName={names.get(b.account_id)} accounts={accounts.data?.data ?? []}/>
                     ))}
                   </ul>
                 </section>
@@ -123,7 +125,7 @@ export function BillsView() {
 
 type Panel = "settle" | "edit" | "cancel" | null
 
-function BillRow({bill, accountName, accounts}: {bill: Bill; accountName?: string; accounts: Account[]}) {
+function BillRow({bill, current, accountName, accounts}: {bill: Bill; current?: boolean; accountName?: string; accounts: Account[]}) {
   const {t} = useTranslation()
   const {can} = useFinanceSpaces()
   const [panel, setPanel] = useState<Panel>(null)
@@ -132,6 +134,7 @@ function BillRow({bill, accountName, accounts}: {bill: Bill; accountName?: strin
   const Icon = BADGE[bucket].icon
   return (
     <LedgerRow
+      current={current}
       title={bill.description || t("bills.common.noDescription")}
       meta={<>
         {t("bills.row.due", {date: shortDate(bill.due_date)})}{accountName ? ` • ${accountName}` : ""}{bill.auto_settle ? ` • ${t(`bills.row.autoNote.${bill.direction}`)}` : ""}

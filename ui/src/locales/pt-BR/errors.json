@@ -46,6 +46,7 @@
     "invalid_card": "Cartão inválido.",
     "invalid_installments": "Parcelas inválidas.",
     "invalid_bill": "Conta inválida.",
+    "recurrence_would_end": "Essa data de término não deixa nenhuma ocorrência por vir; confirme para encerrar e arquivar.",
     "invalid_recurrence": "Recorrência inválida.",
     "invalid_transaction": "Lançamento inválido.",
     "invalid_account": "Conta inválida.",

@@ -120,7 +120,13 @@
     "defaultReceiving": "Default receiving account",
     "postCTechInvoices": "Post my CTech invoices automatically in this space",
     "postCTechInvoicesHelp": "When a CTech invoice of yours is paid, it is recorded here as an expense. Today this applies to the personal space.",
-    "none": "None"
+    "none": "None",
+    "created": {
+      "title": "Account created. Import a statement now?",
+      "hint": "Upload the bank's OFX or CSV and the transactions of {{name}} show up to reconcile.",
+      "import": "Import statement",
+      "later": "Not now"
+    }
   },
   "cards": {
     "new": "New card",
@@ -141,7 +147,8 @@
       "open": "Open",
       "future": "Upcoming",
       "closed": "Closed",
-      "paid": "Paid"
+      "paid": "Paid",
+      "overdue": "Overdue"
     },
     "closedOn": "Closed {{date}}",
     "closesOn": "Closes {{date}}",
@@ -160,7 +167,21 @@
     "noAccounts": "No accounts. Create one in Accounts.",
     "save": "Save",
     "create": "Create card",
-    "close": "Close"
+    "close": "Close",
+    "brands": {
+      "visa": "Visa",
+      "mastercard": "Mastercard",
+      "elo": "Elo",
+      "amex": "American Express",
+      "hipercard": "Hipercard",
+      "diners": "Diners Club",
+      "other": "Other"
+    },
+    "brand": "Brand",
+    "last4": "Last 4 digits",
+    "last4Hint": "Optional; only to recognise the card.",
+    "last4Invalid": "Enter the last 4 digits, or leave it blank.",
+    "cycle": "Closes on day {{closing}} • due on day {{due}}"
   },
   "overview": {
     "title": "Overview",
@@ -333,11 +354,11 @@
     "which": "Which bill it is",
     "noCandidate": "No open bill for this amount near this date.",
     "match": "Settle",
-    "new": "New bill",
+    "new": "Add",
     "ignore": "Ignore",
     "reopen": "Undo",
     "matched": "Settled",
-    "created": "Bill created and paid",
+    "created": "Bill added and paid",
     "category": "Category",
     "description": "Description",
     "create": "Create and settle",

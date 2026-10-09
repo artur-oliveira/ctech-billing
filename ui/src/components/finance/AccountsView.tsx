@@ -1,19 +1,20 @@
 "use client"
 
 import limits from "@/lib/limits.json"
-import {Button, Drawer, EmptyState, Field, Input, Skeleton, Switch} from "@aoctech/ui"
+import {Button, buttonVariants, Drawer, EmptyState, Field, Input, Skeleton, Switch} from "@aoctech/ui"
 import {useQuery} from "@tanstack/react-query"
-import {Landmark} from "lucide-react"
+import {CircleCheck, FileUp, Landmark} from "lucide-react"
 import Link from "next/link"
 import {useState} from "react"
 import {useTranslation} from "react-i18next"
 
+import {CardBrandMark, maskedLast4} from "@/components/finance/CardBrandMark"
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
 import {DateField} from "@/components/ui/DateField"
 import {Select} from "@/components/ui/Select"
 import {messageFor} from "@/lib/api/client"
-import {archiveAccount, createAccount, financeKeys, getSettings, listAccounts, postOpeningBalance, setDefaultReceivingAccount, setPostCTechInvoices} from "@/lib/api/finance"
-import type {Account, AccountClass, DREGroup, OpeningBalance} from "@/lib/api/financeTypes"
+import {archiveAccount, createAccount, financeKeys, getSettings, listAccounts, listCards, postOpeningBalance, setDefaultReceivingAccount, setPostCTechInvoices} from "@/lib/api/finance"
+import type {Account, AccountClass, Card, DREGroup, OpeningBalance} from "@/lib/api/financeTypes"
 import {classLabel, dreGroupLabel, groupsForClass} from "@/lib/finance/labels"
 import {useFinanceMutation} from "@/lib/finance/useFinanceMutation"
 import {useCreateRequest} from "@/lib/finance/createRequest"
@@ -53,6 +54,11 @@ export function AccountsView() {
   const accounts = (q.data?.data ?? []).filter(a => !a.system)
   const visible = accounts.filter(a => showArchived || !a.archived)
   const hasArchived = accounts.some(a => a.archived)
+  // A card's brand and last digits live on the card, not the account: read only
+  // when there is a card to show them on.
+  const hasCards = accounts.some(a => a.class === "liability")
+  const cards = useQuery({queryKey: financeKeys.cards(ctx.mode, ctx.space), queryFn: () => listCards(ctx), enabled: hasCards})
+  const cardOf = new Map((cards.data?.data ?? []).map(c => [c.id, c]))
 
   return (
     <div className="space-y-6">
@@ -64,7 +70,7 @@ export function AccountsView() {
       </div>
 
       <Drawer open={creating && configure} onClose={() => setCreating(false)} title={t("finance.accounts.new")}>
-        <AccountForm onDone={() => setCreating(false)}/>
+        {creating && <AccountForm onDone={() => setCreating(false)} offerImport={can("finance.import")}/>}
       </Drawer>
 
       {q.isLoading ? (
@@ -85,7 +91,7 @@ export function AccountsView() {
               <section key={section.key} className="space-y-2" aria-labelledby={`sec-${section.key}`}>
                 <h2 id={`sec-${section.key}`} className="text-sm font-medium text-foreground">{t(`finance.accounts.sections.${section.key}`)}</h2>
                 <ul className="divide-y divide-border border-y border-border">
-                  {rows.map(a => <AccountRow key={a.id} account={a} configure={configure}/>)}
+                  {rows.map(a => <AccountRow key={a.id} account={a} card={cardOf.get(a.id)} configure={configure}/>)}
                 </ul>
               </section>
             )
@@ -105,7 +111,7 @@ export function AccountsView() {
   )
 }
 
-function AccountRow({account, configure}: {account: Account; configure: boolean}) {
+function AccountRow({account, card, configure}: {account: Account; card?: Card; configure: boolean}) {
   const {t} = useTranslation()
   const [confirming, setConfirming] = useState(false)
   const [opening, setOpening] = useState(false)
@@ -117,9 +123,13 @@ function AccountRow({account, configure}: {account: Account; configure: boolean}
   return (
     <li className={`py-2.5 ${account.archived ? "text-muted-foreground" : ""}`}>
       <div className="flex items-center justify-between gap-4">
-        <div className="min-w-0">
-          <p className="truncate text-sm text-foreground">{accountName(account)}</p>
-          {account.dre_group && <p className="text-xs text-muted-foreground">{dreGroupLabel(account.dre_group)}</p>}
+        <div className="flex min-w-0 items-center gap-3">
+          {account.class === "liability" && <CardBrandMark brand={card?.brand ?? "other"} className="text-muted-foreground"/>}
+          <div className="min-w-0">
+            <p className="truncate text-sm text-foreground">{accountName(account)}</p>
+            {account.dre_group && <p className="text-xs text-muted-foreground">{dreGroupLabel(account.dre_group)}</p>}
+            {card?.last4 && <p className="text-xs tabular-nums text-muted-foreground">{maskedLast4(card.last4)}</p>}
+          </div>
         </div>
         <div className="flex shrink-0 items-center gap-3">
           {account.class === "asset" && <span data-numeric className="text-sm tabular-nums">{money(account.balance)}</span>}
@@ -127,7 +137,7 @@ function AccountRow({account, configure}: {account: Account; configure: boolean}
             <>
               {/* A card's balance is a credit: negative is what is owed. */}
               <span data-numeric className="text-sm tabular-nums">{account.balance < 0 ? t("finance.accounts.owed", {amount: money(-account.balance)}) : money(account.balance)}</span>
-              <Link href={`/console/finance/cards?card=${encodeURIComponent(account.id)}`} className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline">{t("finance.accounts.open")}</Link>
+              <Link href={`/console/finance/cards?card=${encodeURIComponent(account.id)}`} className="inline-flex items-center text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline touch:min-h-11">{t("finance.accounts.open")}</Link>
             </>
           )}
           {account.archived && <span className="text-xs">{t("finance.accounts.archived")}</span>}
@@ -194,7 +204,13 @@ function OpeningForm({account, onDone}: {account: Account; onDone: () => void}) 
   )
 }
 
-function AccountForm({onDone}: {onDone: () => void}) {
+/**
+ * Creates an account (and, for a bank or cash account, its opening balance).
+ * Once a bank or cash account exists, and the role may import, the drawer
+ * offers the statement import for it instead of closing: the import is a step
+ * of its own on Importar, never a field of this form.
+ */
+function AccountForm({onDone, offerImport}: {onDone: () => void; offerImport: boolean}) {
   const {t} = useTranslation()
   const [name, setName] = useState("")
   const [cls, setCls] = useState<AccountClass>("asset")
@@ -202,23 +218,32 @@ function AccountForm({onDone}: {onDone: () => void}) {
   const [group, setGroup] = useState<DREGroup | "">("")
   const [openingText, setOpeningText] = useState("")
   const [openingDate, setOpeningDate] = useState(todayIso())
+  const [made, setMade] = useState<Account | null>(null)
   const asset = cls === "asset"
   const openingAmount = asset ? parseSignedMoney(openingText) : null
   const openingInvalid = asset && openingText.trim() !== "" && openingAmount === null
+  const finish = (account: Account) => (offerImport && account.class === "asset" ? setMade(account) : onDone())
   // The opening balance is its own fact with its own intent: when only it fails,
-  // the account exists and a retry must not create a second one.
+  // the account exists and a retry must not create a second one. Its failure
+  // still refreshes, so the account it was for shows in the list.
   const opening = useFinanceMutation(
-    (c, v: {id: string; body: OpeningBalance}, key) => postOpeningBalance(c, v.id, v.body, key),
+    (c, v: {account: Account; body: OpeningBalance}, key) => postOpeningBalance(c, v.account.id, v.body, key),
     c => [financeKeys.all(c.mode, c.space)],
-    onDone,
+    (_, v) => finish(v.account),
+    undefined,
+    {invalidateOnError: true},
   )
   const fe = useFieldErrors(["name", "class", "dre_group"])
+  // Value-aware: when an opening balance follows, the list is refreshed once,
+  // after it lands. Refreshing between the two halves painted the new account at
+  // R$ 0,00, a balance the person never entered.
   const create = useFinanceMutation(
     (c, body: {name: string; class: AccountClass; dre_group?: DREGroup}, key) => createAccount(c, body, key),
-    c => [financeKeys.accounts(c.mode, c.space)],
-    created => (openingAmount ? opening.mutate({id: created.id, body: {amount: openingAmount, date: openingDate}}) : onDone()),
+    (c, _created, body) => (body.class === "asset" && openingAmount ? [] : [financeKeys.accounts(c.mode, c.space)]),
+    created => (openingAmount ? opening.mutate({account: created, body: {amount: openingAmount, date: openingDate}}) : finish(created)),
     fe.set,
   )
+  if (made) return <ImportOffer account={made} onDone={onDone}/>
   const chosenGroup = groups.includes(group as DREGroup) ? (group as DREGroup) : groups[0]
   return (
     <form
@@ -261,10 +286,34 @@ function AccountForm({onDone}: {onDone: () => void}) {
         <div role="alert" className="flex flex-wrap items-center gap-2 text-sm sm:col-span-2">
           <p className="text-danger">{t("finance.accounts.openingFailed")}</p>
           <Button type="button" size="sm" variant="outline" disabled={opening.isPending} onClick={() => opening.mutate(opening.variables!)}>{t("common.tryAgain")}</Button>
-          <Button type="button" size="sm" variant="ghost" onClick={onDone}>{t("finance.accounts.skipOpening")}</Button>
+          <Button type="button" size="sm" variant="ghost" onClick={() => finish(opening.variables!.account)}>{t("finance.accounts.skipOpening")}</Button>
         </div>
       )}
     </form>
+  )
+}
+
+/** "Conta criada. Importar um extrato agora?": Importar, with this account chosen. */
+function ImportOffer({account, onDone}: {account: Account; onDone: () => void}) {
+  const {t} = useTranslation()
+  return (
+    <div className="space-y-4 motion-safe:animate-in motion-safe:fade-in">
+      <div className="flex items-start gap-3">
+        <CircleCheck aria-hidden className="mt-0.5 size-5 shrink-0 text-success"/>
+        <div className="min-w-0 space-y-1">
+          <p role="status" className="text-sm font-medium text-foreground">{t("finance.accounts.created.title")}</p>
+          <p className="text-sm text-muted-foreground">{t("finance.accounts.created.hint", {name: accountName(account)})}</p>
+        </div>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {/* A link, not a button: it goes to Importar. data-slot keeps the 44px touch rule. */}
+        <Link data-slot="button" className={buttonVariants({variant: "brand", size: "sm"})}
+          href={`/console/finance/import?account=${encodeURIComponent(account.id)}`}>
+          <FileUp aria-hidden className="size-4"/>{t("finance.accounts.created.import")}
+        </Link>
+        <Button variant="outline" size="sm" onClick={onDone}>{t("finance.accounts.created.later")}</Button>
+      </div>
+    </div>
   )
 }
 

@@ -9,6 +9,9 @@ import {useTranslation} from "react-i18next"
 export interface SelectOption {
   value: string
   label: string
+  /** Decoration beside the label (a card brand's mark), in the list and on the
+   *  trigger. Hidden from assistive technology: the label is the name. */
+  icon?: ReactNode
 }
 
 /**
@@ -55,6 +58,7 @@ export function Select({id, value, onValueChange, options, actions = [], placeho
   const {t} = useTranslation()
   const emptyLabel = placeholder ?? t("auth.select.placeholder")
   const labelOf = (v: string | null) => options.find(o => o.value === v)?.label
+  const iconOf = (v: string | null) => options.find(o => o.value === v)?.icon
   return (
     <SelectPrimitive.Root
       items={options}
@@ -87,7 +91,10 @@ export function Select({id, value, onValueChange, options, actions = [], placeho
         )}
       >
         <SelectPrimitive.Value className="min-w-0 truncate data-[placeholder]:text-muted-foreground">
-          {(v: string | null) => labelOf(v) ?? emptyLabel}
+          {(v: string | null) => {
+            const icon = iconOf(v)
+            return icon ? <span className="flex min-w-0 items-center gap-2"><OptionIcon>{icon}</OptionIcon><span className="truncate">{labelOf(v)}</span></span> : labelOf(v) ?? emptyLabel
+          }}
         </SelectPrimitive.Value>
         <SelectPrimitive.Icon className="shrink-0 text-muted-foreground">
           <ChevronDown aria-hidden className="size-4"/>
@@ -109,7 +116,10 @@ export function Select({id, value, onValueChange, options, actions = [], placeho
                   value={o.value}
                   className="flex cursor-default items-center justify-between gap-3 rounded-md px-2 py-1.5 text-foreground outline-none select-none touch:min-h-11 data-[highlighted]:bg-surface data-[selected]:font-medium"
                 >
-                  <SelectPrimitive.ItemText>{o.label}</SelectPrimitive.ItemText>
+                  <span className="flex min-w-0 items-center gap-2">
+                    {o.icon && <OptionIcon>{o.icon}</OptionIcon>}
+                    <SelectPrimitive.ItemText>{o.label}</SelectPrimitive.ItemText>
+                  </span>
                   <SelectPrimitive.ItemIndicator className="text-brand-600">
                     <Check aria-hidden className="size-4"/>
                   </SelectPrimitive.ItemIndicator>
@@ -132,4 +142,8 @@ export function Select({id, value, onValueChange, options, actions = [], placeho
       </SelectPrimitive.Portal>
     </SelectPrimitive.Root>
   )
+}
+
+function OptionIcon({children}: {children: ReactNode}) {
+  return <span aria-hidden className="flex shrink-0 items-center">{children}</span>
 }

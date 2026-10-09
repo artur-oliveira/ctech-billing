@@ -134,6 +134,18 @@ function seed(kind: "personal" | "org", mode: string): SpaceState {
         lines: 4, duplicates: 0, rejected_count: 0, rejected: [], pending: 3, lines_: lines,
       })
       for (const l of lines) ledger.locks.add(`conta-corrente#seed-${l.n}`)
+      // A branded card with a purchase in 3× that began last month: last
+      // month's statement is closed and past due (Vencida), this one is open.
+      const [py, pm] = monthOffset(today, -1)
+      const ym = (n: number) => { const [y, m] = monthOffset(today, n); return `${y}-${String(m).padStart(2, "0")}` }
+      ledger.cards.push({id: "card-nubank", name: "Nubank", closing_day: 3, due_day: 10, paying_account_id: "conta-corrente",
+        open_month: ym(0), balance: -90_000, archived: false, brand: "mastercard", last4: "4242"})
+      ledger.purchases.push({id: "p-seed", card: "card-nubank", description: "Geladeira", category_id: "mercado", date: iso(py, pm, 2),
+        total: 90_000, refunded: false, advanced: [], installments: [0, 1, 2].map(i => ({number: i + 1, amount: 30_000, month: ym(i - 1)}))})
+      for (const i of [0, 1, 2]) {
+        ledger.items.push({card: "card-nubank", month: ym(i - 1), key: `p-seed#${i + 1}`, purchase_id: "p-seed", description: "Geladeira",
+          category_id: "mercado", date: iso(py, pm, 2), number: i + 1, of: 3, kind: "installment", amount: 30_000})
+      }
     }
     return {
       ...ledger,
@@ -146,6 +158,7 @@ function seed(kind: "personal" | "org", mode: string): SpaceState {
         acct("mercado", "Mercado", "expense", 0, {dre_group: "operating_expenses"}),
         acct("juros", "Juros e multas", "expense", 0, {dre_group: "financial_result", system_key: "interest_and_fines"}),
         acct("assinaturas-antigas", "Assinaturas antigas", "expense", 0, {dre_group: "operating_expenses", archived: true}),
+        ...(live ? [acct("card-nubank", "Nubank", "liability", -90_000)] : []),
       ],
       bills: [
         bill("b-aluguel", "payable", 180_000, addDays(today, -3), "aluguel", "Aluguel do apartamento"),
@@ -402,12 +415,12 @@ function route(method: string, path: string, r: Req, s: SpaceState, can: (v: Ver
   // recurrences
   if (path === "/recurrences" && method === "get") return ok({data: s.recurrences, has_more: false})
   if (path === "/recurrences/preview" && method === "post") {
-    const p = body<{expression: ExpressionJSON; start: string; from?: string; count: number}>(r)
+    const p = body<{expression: ExpressionJSON; start: string; end?: string; from?: string; count: number}>(r)
     if (!(p.count >= 1 && p.count <= 24)) {
       return {status: 422, data: {type: "about:blank", title: "Validation", status: 422, errors: [{field: "count", message: "entre 1 e 24"}]}}
     }
     const from = p.from && p.from > p.start ? p.from : p.start
-    return ok({data: occurrences(p.expression, from, p.count), has_more: false})
+    return ok({data: occurrences(p.expression, from, p.count).filter(o => !p.end || o.nominal <= p.end), has_more: false})
   }
   if (path === "/recurrences" && method === "post") {
     if (!can("finance.write")) return forbidden()
@@ -421,6 +434,28 @@ function route(method: string, path: string, r: Req, s: SpaceState, can: (v: Ver
     s.recurrences.push(rec)
     return ok(rec, 201)
   }
+  const occMatch = path.match(/^\/recurrences\/([^/]+)\/occurrences$/)
+  if (occMatch && method === "get") {
+    // Mock-grade: the seeded rent shows every state (the latest past one is the
+    // seeded overdue bill, one skipped, the rest paid, this month's forecast);
+    // a recurrence created in this session has made nothing yet.
+    const rec = s.recurrences.find(x => x.id === occMatch[1])
+    if (!rec) return problem(404, "about:blank", "Not Found", "recurso não encontrado", "resource_not_found")
+    const all = occurrences(rec.expression, rec.start, 24).filter(o => !rec.end || o.nominal <= rec.end)
+    const [hy, hm] = monthOffset(today, 1)
+    const horizonEnd = iso(hy, hm, daysIn(hy, hm))
+    const made = rec.id === "r-aluguel" ? all.filter(o => o.nominal <= horizonEnd).slice(-6) : []
+    const past = made.filter(o => o.nominal < today)
+    const history = made.map(o => {
+      const i = past.indexOf(o)
+      const last = i === past.length - 1
+      const state = i < 0 ? "forecast" : last ? "overdue" : i === past.length - 2 ? "skipped" : "paid"
+      return {...o, bill_id: last ? "b-aluguel" : `mock-${o.nominal}`, amount: rec.amount, state, auto_settle: rec.auto_settle, ...(state === "paid" ? {paid_date: o.due} : {})}
+    })
+    const after = made.at(-1)?.nominal ?? addDays(today, -1)
+    const upcoming = rec.archived ? [] : all.filter(o => o.nominal > after && o.nominal > today).slice(0, 6)
+    return ok({history, upcoming})
+  }
   if (recMatch) {
     const rec = s.recurrences.find(x => x.id === recMatch[1])
     if (!rec) return problem(404, "about:blank", "Not Found", "recurso não encontrado", "resource_not_found")
@@ -430,7 +465,14 @@ function route(method: string, path: string, r: Req, s: SpaceState, can: (v: Ver
       return {status: 204, data: ""}
     }
     if (method === "patch") {
-      Object.assign(rec, Object.fromEntries(Object.entries(body<Partial<Recurrence>>(r)).filter(([, v]) => v !== undefined)))
+      const p = body<Partial<Recurrence> & {archive?: boolean}>(r)
+      // An end that leaves nothing after today ends it: confirmed (archive) or refused.
+      if (p.end && !p.archive && !occurrences(rec.expression, addDays(today, 1), 1).some(o => o.nominal <= p.end!)) {
+        return problem(422, "about:blank", "Unprocessable", "this end date leaves the recurrence with no occurrence to come", "recurrence_would_end")
+      }
+      const {archive, ...rest} = p
+      Object.assign(rec, Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined)))
+      if (archive) rec.archived = true
       return ok(rec)
     }
   }
@@ -504,9 +546,10 @@ function route(method: string, path: string, r: Req, s: SpaceState, can: (v: Ver
   if (path === "/cards" && method === "get") return ok({data: s.cards, has_more: false})
   if (path === "/cards" && method === "post") {
     if (!can("finance.configure")) return forbidden()
-    const p = body<{name: string; closing_day: number; due_day: number; paying_account_id: string}>(r)
+    const p = body<{name: string; closing_day: number; due_day: number; paying_account_id: string; brand?: Card["brand"]; last4?: string}>(r)
     const c: Card = {id: nextId("card"), name: p.name, closing_day: p.closing_day, due_day: p.due_day,
-      paying_account_id: p.paying_account_id, open_month: today.slice(0, 7), balance: 0, archived: false}
+      paying_account_id: p.paying_account_id, open_month: today.slice(0, 7), balance: 0, archived: false,
+      ...(p.brand ? {brand: p.brand} : {}), ...(p.last4 ? {last4: p.last4} : {})}
     s.cards.push(c)
     s.accounts.push({id: c.id, name: c.name, class: "liability", system: false, archived: false, balance: 0})
     return ok(c, 201)
@@ -517,7 +560,10 @@ function route(method: string, path: string, r: Req, s: SpaceState, can: (v: Ver
     const [, , sub, arg, action] = cardMatch
     if (!sub && method === "patch") {
       if (!can("finance.configure")) return forbidden()
-      Object.assign(c, Object.fromEntries(Object.entries(body<Partial<Card>>(r)).filter(([, v]) => v !== undefined)))
+      const patch = body<Record<string, unknown>>(r)
+      Object.assign(c, Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined && v !== "")))
+      // An empty brand or last4 clears it, as the API does.
+      for (const k of ["brand", "last4"] as const) if (patch[k] === "") delete c[k]
       return ok(c)
     }
     if (sub === "statements" && arg && method === "get") return ok(statementOf(c, arg))

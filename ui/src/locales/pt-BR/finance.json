@@ -120,7 +120,13 @@
     "defaultReceiving": "Conta padrão de recebimento",
     "postCTechInvoices": "Lançar minhas faturas da CTech automaticamente neste espaço",
     "postCTechInvoicesHelp": "Quando uma fatura sua da CTech é paga, ela entra aqui como despesa. Hoje vale para o espaço pessoal.",
-    "none": "Nenhuma"
+    "none": "Nenhuma",
+    "created": {
+      "title": "Conta criada. Importar um extrato agora?",
+      "hint": "Envie o OFX ou CSV do banco e os lançamentos de {{name}} aparecem para conciliar.",
+      "import": "Importar extrato",
+      "later": "Agora não"
+    }
   },
   "cards": {
     "new": "Novo cartão",
@@ -141,7 +147,8 @@
       "open": "Aberta",
       "future": "Futura",
       "closed": "Fechada",
-      "paid": "Paga"
+      "paid": "Paga",
+      "overdue": "Vencida"
     },
     "closedOn": "Fechou em {{date}}",
     "closesOn": "Fecha em {{date}}",
@@ -160,7 +167,21 @@
     "noAccounts": "Nenhuma conta. Crie uma em Contas.",
     "save": "Salvar",
     "create": "Criar cartão",
-    "close": "Fechar"
+    "close": "Fechar",
+    "brands": {
+      "visa": "Visa",
+      "mastercard": "Mastercard",
+      "elo": "Elo",
+      "amex": "American Express",
+      "hipercard": "Hipercard",
+      "diners": "Diners Club",
+      "other": "Outra"
+    },
+    "brand": "Bandeira",
+    "last4": "Últimos 4 dígitos",
+    "last4Hint": "Opcional; só para reconhecer o cartão.",
+    "last4Invalid": "Digite os 4 últimos dígitos, ou deixe em branco.",
+    "cycle": "Fecha dia {{closing}} • vence dia {{due}}"
   },
   "overview": {
     "title": "Resumo",
@@ -330,14 +351,14 @@
     "candidatePaid": "Parece ser: {{description}}, já pago automaticamente em {{date}}",
     "link": "Vincular",
     "linked": "Vinculada ao pagamento automático",
-    "which": "Qual conta é",
-    "noCandidate": "Nenhuma conta em aberto com este valor perto desta data.",
+    "which": "Qual lançamento é",
+    "noCandidate": "Nenhum lançamento em aberto com este valor perto desta data.",
     "match": "Dar baixa",
-    "new": "Nova conta",
+    "new": "Adicionar",
     "ignore": "Ignorar",
     "reopen": "Desfazer",
     "matched": "Baixa dada",
-    "created": "Conta criada e paga",
+    "created": "Lançamento adicionado e pago",
     "category": "Categoria",
     "description": "Descrição",
     "create": "Criar e dar baixa",

@@ -2,11 +2,12 @@
 
 import {Badge, Button, Drawer, EmptyState, Field, Skeleton} from "@aoctech/ui"
 import {useQuery} from "@tanstack/react-query"
-import {ChevronLeft, ChevronRight, CreditCard} from "lucide-react"
+import {AlertCircle, ChevronLeft, ChevronRight, CircleCheck, CircleDot, Clock, CreditCard, Lock} from "lucide-react"
 import {useState} from "react"
 import {useTranslation} from "react-i18next"
 
 import {SettleForm} from "@/components/finance/BillsView"
+import {CardBrandMark, maskedLast4} from "@/components/finance/CardBrandMark"
 import {CardForm} from "@/components/finance/CardForm"
 import {PurchasePanel} from "@/components/finance/PurchasePanel"
 import {wholeSpace} from "@/components/finance/TransferPanel"
@@ -19,18 +20,37 @@ import {
 } from "@/lib/api/finance"
 import type {Account, Card, CardStatement, CardStatementStatus, Purchase, StatementItem} from "@/lib/api/financeTypes"
 import {currentLocale} from "@/lib/i18n"
-import {monthShort} from "@/lib/finance/today"
+import {monthShort, todayIso} from "@/lib/finance/today"
 import {useFinanceMutation} from "@/lib/finance/useFinanceMutation"
 import {useCreateRequest} from "@/lib/finance/createRequest"
 import {useFinanceCtx, useFinanceSpaces} from "@/lib/finance/useFinanceSpaces"
 import {shortDate, signedMoney} from "@/lib/format"
 import {accountName} from "@/lib/finance/accountName"
 
-const STATUS_TONE: Record<CardStatementStatus, "neutral" | "attention" | "urgent"> = {
-  open: "attention",
-  future: "neutral",
-  closed: "urgent",
-  paid: "neutral",
+type StatementState = CardStatementStatus | "overdue"
+
+/**
+ * A statement's badge. Open is the normal state of a card, so it is calm green
+ * (positive), not a warning; closed and waiting for its due date, and paid, are
+ * neutral; red (urgent) is kept for the one state that needs action: closed,
+ * past its due date, unpaid. Each carries a glyph, never colour alone.
+ */
+const STATUS: Record<StatementState, {tone: "neutral" | "positive" | "urgent"; icon: typeof CircleDot}> = {
+  open: {tone: "positive", icon: CircleDot},
+  future: {tone: "neutral", icon: Clock},
+  closed: {tone: "neutral", icon: Lock},
+  paid: {tone: "neutral", icon: CircleCheck},
+  overdue: {tone: "urgent", icon: AlertCircle},
+}
+
+/**
+ * "Vencida" is not a server status: a closed statement past its due date that
+ * still owes something. A zero or credit statement makes no bill, and every
+ * month before a card's first reads "closed": none of them owes, so none is red.
+ * A paid statement's bill makes the server say "paid".
+ */
+export function statementState(s: Pick<CardStatement, "status" | "due_date" | "bill_id" | "total">, today: string): StatementState {
+  return s.status === "closed" && !!s.bill_id && s.total > 0 && s.due_date < today ? "overdue" : s.status
 }
 
 function shiftMonth(ym: string, n: number): string {
@@ -102,7 +122,7 @@ export function CardsView({card: initial = ""}: {card?: string}) {
         <Field label={t("finance.cards.card")} htmlFor="cd-pick">
           <Select id="cd-pick" aria-label={t("finance.cards.card")} value={card.id} className="w-56"
             onValueChange={v => { setPicked(v); setMonth(null); setPanel(null) }}
-            options={active.map(c => ({value: c.id, label: c.name}))}/>
+            options={active.map(c => ({value: c.id, label: cardLabel(c), icon: <CardBrandMark brand={c.brand ?? "other"}/>}))}/>
         </Field>
         <div className="flex flex-wrap gap-2">
           {can("finance.write") && <Button variant="brand" size="sm" className="max-md:hidden" onClick={() => setPanel("purchase")}>{t("finance.cards.newPurchase")}</Button>}
@@ -125,7 +145,29 @@ export function CardsView({card: initial = ""}: {card?: string}) {
         <CardForm accounts={all} onDone={id => { setPanel(null); if (id) { setPicked(id); setMonth(null) } }}/>
       </Drawer>
 
+      <CardHeader card={card}/>
+
       <StatementBlock key={`${card.id}-${shown}`} card={card} month={shown} accounts={all} onMonth={setMonth}/>
+    </div>
+  )
+}
+
+/** "Nubank •••• 4242" in a picker; the name alone when there are no digits. */
+const cardLabel = (c: Card) => (c.last4 ? `${c.name} ${maskedLast4(c.last4)}` : c.name)
+
+/** The card on screen: its mark, name and last digits, and when it closes and is due. */
+function CardHeader({card}: {card: Card}) {
+  const {t} = useTranslation()
+  return (
+    <div data-card-header className="flex items-center gap-3 border-b border-border pb-3">
+      <CardBrandMark brand={card.brand ?? "other"} className="h-7 w-auto text-muted-foreground"/>
+      <div className="min-w-0">
+        <h1 className="flex flex-wrap items-baseline gap-x-2 text-lg font-semibold tracking-[-0.01em] text-foreground">
+          <span className="min-w-0 [overflow-wrap:anywhere]">{card.name}</span>
+          {card.last4 && <span className="text-sm font-normal tabular-nums text-muted-foreground">{maskedLast4(card.last4)}</span>}
+        </h1>
+        <p className="text-xs text-muted-foreground">{t("finance.cards.cycle", {closing: card.closing_day, due: card.due_day})}</p>
+      </div>
     </div>
   )
 }
@@ -186,10 +228,12 @@ function StatementBlock({card, month, accounts, onMonth}: {card: Card; month: st
 function Summary({statement: s}: {statement: CardStatement}) {
   const {t} = useTranslation()
   const closed = s.status === "closed" || s.status === "paid"
+  const state = statementState(s, todayIso())
+  const {tone, icon: Icon} = STATUS[state]
   return (
     <div className="flex flex-wrap items-baseline justify-between gap-3 text-sm">
       <div className="flex flex-wrap items-center gap-3">
-        <Badge tone={STATUS_TONE[s.status]}>{t(`finance.cards.status.${s.status}`)}</Badge>
+        <Badge tone={tone}><Icon aria-hidden/>{t(`finance.cards.status.${state}`)}</Badge>
         <span className="text-muted-foreground">{t(closed ? "finance.cards.closedOn" : "finance.cards.closesOn", {date: shortDate(s.closing_date)})}</span>
         <span className="text-muted-foreground">{t("finance.cards.dueOn", {date: shortDate(s.due_date)})}</span>
       </div>

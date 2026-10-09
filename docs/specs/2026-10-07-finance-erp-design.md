@@ -257,6 +257,15 @@ needs them yet, and the tree format admits them later without migration.
   `OCCURRENCE#` lock row, so a re-run never duplicates.
 - Editing a recurrence changes only occurrences **not yet materialised**, the same rule as the
   dunning policy copied onto an invoice.
+- **An end that leaves nothing to come ends it** (UX batch 3): when the new end leaves no occurrence
+  after today and none the job still owes after its cursor, the edit is refused (422
+  `recurrence_would_end`) unless it also asks to archive, and then the end and the archive are one
+  conditional write. Bills already made are untouched. The console asks first: "Isso encerra a
+  recorrência; ela será arquivada."
+- **A recurrence's detail** (`GET /recurrences/:id/occurrences`, read verb, inside the space) lists
+  the latest bills it made, each paid, forecast, overdue or skipped (its bill cancelled), and the
+  next dates the rule will make (computed on read, from after the cursor, never before today; none
+  once archived).
 - The projection shows forecast and realised visually apart. A materialised bill is recognised in
   the DRE at its competence date — that is what accrual means — but it is never part of the
   **cash** result until settled. F1's "resultado realizado" is cash; F7's DRE is accrual, and the
@@ -266,7 +275,9 @@ needs them yet, and the tree format admits them later without migration.
 
 A card is a `liability` account with:
 - `closing_day`, `due_day`;
-- `default_paying_account_id`.
+- `default_paying_account_id`;
+- optionally `brand` (visa, mastercard, elo, amex, hipercard, diners, other) and `last4` (exactly
+  four digits), only to tell cards apart (UX batch 3). Never the full number.
 
 | Entity | Notes |
 |---|---|

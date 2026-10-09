@@ -46,6 +46,19 @@ beforeEach(() => window.localStorage.clear())
 afterEach(() => vi.restoreAllMocks())
 
 describe("F2 — a pagar e a receber", () => {
+  // UX batch 3: a recurrence's overdue occurrence links here, to its bill.
+  it("opens on the linked direction and marks the linked bill", async () => {
+    serve(ALL, [bill({id: "r1", direction: "receivable", description: "Projeto"}), bill({id: "r2", direction: "receivable", description: "Consultoria", bucket: "overdue"})])
+    const scroll = vi.fn()
+    Element.prototype.scrollIntoView = scroll
+    renderWithQuery(<BillsView direction="receivable" focus="r2"/>)
+    const row = (await screen.findByText("Consultoria")).closest("li") as HTMLElement
+    expect(row).toHaveAttribute("aria-current", "true")
+    expect((await screen.findByText("Projeto")).closest("li")).not.toHaveAttribute("aria-current")
+    expect(screen.getByRole("button", {name: "A receber"})).toHaveAttribute("aria-pressed", "true")
+    await waitFor(() => expect(scroll).toHaveBeenCalled())
+  })
+
   it("shows a card statement's bill as the statement, with no cancel and no amount to edit", async () => {
     serve(ALL, [bill({id: "f", description: "Fatura Visa 2026-03", category_id: "visa", origin: "card_statement", origin_ref: "visa#2026-03"})])
     renderWithQuery(<BillsView/>)

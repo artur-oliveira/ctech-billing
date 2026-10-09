@@ -185,3 +185,35 @@ func TestTheJobsCatchUpCheckHasAMonthOfSlack(t *testing.T) {
 		t.Fatalf("a start two months past the limit was accepted: %v", err)
 	}
 }
+
+// UX batch 3: an end that leaves nothing to come ends the recurrence. "Nothing
+// to come" is no occurrence after today AND none the job still owes after its
+// cursor, so a recurrence created today (cursor zero) is never ended before
+// the job has made its occurrences up to today.
+func TestEndedIsTrueOnlyWhenNothingIsLeftToCome(t *testing.T) {
+	today := d(2026, time.October, 9)
+	// The production case: start = end = 08/10, 4th business day of the month.
+	prod := rent()
+	prod.Schedule = Schedule{Expression: WorkdayOfMonth{N: 4}, Start: d(2026, time.October, 8), End: d(2026, time.October, 8), Adjust: AdjustNone}
+	for _, c := range []struct {
+		name   string
+		rec    func() Recurrence
+		cursor brcal.Date
+		want   bool
+	}{
+		{"start = end with no occurrence at all", func() Recurrence { return prod }, brcal.Date{}, true},
+		{"open-ended", rent, d(2026, time.November, 10), false},
+		{"end today, all made", func() Recurrence { r := rent(); r.Schedule.End = today; return r }, d(2026, time.November, 10), true},
+		{"end before the next occurrence", func() Recurrence { r := rent(); r.Schedule.End = d(2026, time.October, 9); return r }, d(2026, time.September, 10), true},
+		{"end on the next occurrence", func() Recurrence { r := rent(); r.Schedule.End = d(2026, time.October, 10); return r }, d(2026, time.September, 10), false},
+		{"end today, an occurrence the job has not made yet", func() Recurrence {
+			r := rent()
+			r.Schedule.Start, r.Schedule.End = d(2026, time.September, 1), today
+			return r
+		}, brcal.Date{}, false},
+	} {
+		if got := c.rec().Ended(c.cursor, today); got != c.want {
+			t.Errorf("%s: Ended = %v, want %v", c.name, got, c.want)
+		}
+	}
+}

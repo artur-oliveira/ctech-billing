@@ -92,6 +92,7 @@ func financeRoutes() []financeRoute {
 		{"GET", "/recurrences", space.Read, false, func(h *financeHandlers) fiber.Handler { return h.listRecurrences }},
 		{"POST", "/recurrences", space.Write, true, func(h *financeHandlers) fiber.Handler { return h.createRecurrence }},
 		{"POST", "/recurrences/preview", space.Read, false, func(h *financeHandlers) fiber.Handler { return h.previewRecurrence }},
+		{"GET", "/recurrences/:id/occurrences", space.Read, false, func(h *financeHandlers) fiber.Handler { return h.recurrenceOccurrences }},
 		{"PATCH", "/recurrences/:id", space.Write, true, func(h *financeHandlers) fiber.Handler { return h.patchRecurrence }},
 		{"POST", "/recurrences/:id/archive", space.Write, true, func(h *financeHandlers) fiber.Handler { return h.archiveRecurrence }},
 

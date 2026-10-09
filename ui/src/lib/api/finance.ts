@@ -7,7 +7,7 @@ import {t} from "@/lib/i18n"
 import {apiClient, isSpaceNotFound} from "@/lib/api/client"
 import type {
   Account, Bill, BillPatch, Card, CardPatch, CardStatement, CashFlow, CurrentSpace, Direction, DRE, FinanceSpaces, ListResponse, NewAccount, NewBill,
-  NewCard, NewPurchase, NewRecurrence, NewTransfer, Purchase, Occurrence, OpeningBalance, PreviewInput, ProjectionMonth, Recurrence, RecurrencePatch,
+  NewCard, NewPurchase, NewRecurrence, NewTransfer, Purchase, Occurrence, OpeningBalance, PreviewInput, ProjectionMonth, Recurrence, RecurrenceOccurrences, RecurrencePatch,
   Settings, Settlement, Statement, CsvMapping, ImportDetail, ImportSummary, LineResult, NewImport,
 } from "@/lib/api/financeTypes"
 import {getSpace, PERSONAL, type Space, setSpace, spaceHeader} from "@/lib/console/space"
@@ -78,6 +78,8 @@ export const financeKeys = {
   bills: (mode: Mode, space: Space, dir: Direction) => ["finance", mode, spaceHeader(space), "bills", dir] as const,
   bill: (mode: Mode, space: Space, id: string) => ["finance", mode, spaceHeader(space), "bill", id] as const,
   recurrences: (mode: Mode, space: Space) => ["finance", mode, spaceHeader(space), "recurrences"] as const,
+  // Under "recurrences", so every write that refreshes the list refreshes the detail.
+  recurrenceOccurrences: (mode: Mode, space: Space, id: string) => ["finance", mode, spaceHeader(space), "recurrences", id, "occurrences"] as const,
   projection: (mode: Mode, space: Space, months: number) => ["finance", mode, spaceHeader(space), "projection", months] as const,
   accounts: (mode: Mode, space: Space) => ["finance", mode, spaceHeader(space), "accounts"] as const,
   settings: (mode: Mode, space: Space) => ["finance", mode, spaceHeader(space), "settings"] as const,
@@ -129,6 +131,9 @@ export const createRecurrence = (c: FinanceCtx, body: NewRecurrence, idempotency
   write<Recurrence>(c, "POST", "/recurrences", body, idempotencyKey)
 export const patchRecurrence = (c: FinanceCtx, id: string, body: RecurrencePatch, idempotencyKey: string) =>
   write<Recurrence>(c, "PATCH", `/recurrences/${encodeURIComponent(id)}`, body, idempotencyKey)
+/** F4's detail: what the recurrence made (each with its state) and what it will make. */
+export const getRecurrenceOccurrences = (c: FinanceCtx, id: string) =>
+  read<RecurrenceOccurrences>(c, `/recurrences/${encodeURIComponent(id)}/occurrences`)
 export const archiveRecurrence = (c: FinanceCtx, id: string, idempotencyKey: string) =>
   write<void>(c, "POST", `/recurrences/${encodeURIComponent(id)}/archive`, {}, idempotencyKey)
 

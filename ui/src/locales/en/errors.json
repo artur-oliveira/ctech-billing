@@ -46,6 +46,7 @@
     "invalid_card": "Invalid card.",
     "invalid_installments": "Invalid installments.",
     "invalid_bill": "Invalid bill.",
+    "recurrence_would_end": "That end date leaves no occurrence to come; confirm to end and archive it.",
     "invalid_recurrence": "Invalid recurrence.",
     "invalid_transaction": "Invalid entry.",
     "invalid_account": "Invalid account.",
