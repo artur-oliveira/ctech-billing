@@ -43,9 +43,14 @@ const STATUS: Record<StatementState, {tone: "neutral" | "positive" | "urgent"; i
   overdue: {tone: "urgent", icon: AlertCircle},
 }
 
-/** "Vencida" is not a server status: a closed statement past its due date, unpaid. */
-export function statementState(s: Pick<CardStatement, "status" | "due_date">, today: string): StatementState {
-  return s.status === "closed" && s.due_date < today ? "overdue" : s.status
+/**
+ * "Vencida" is not a server status: a closed statement past its due date that
+ * still owes something. A zero or credit statement makes no bill, and every
+ * month before a card's first reads "closed": none of them owes, so none is red.
+ * A paid statement's bill makes the server say "paid".
+ */
+export function statementState(s: Pick<CardStatement, "status" | "due_date" | "bill_id" | "total">, today: string): StatementState {
+  return s.status === "closed" && !!s.bill_id && s.total > 0 && s.due_date < today ? "overdue" : s.status
 }
 
 function shiftMonth(ym: string, n: number): string {

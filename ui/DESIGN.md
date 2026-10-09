@@ -349,7 +349,8 @@ asset; trademarks of their owners, nominative use), always `aria-hidden` beside 
 option's name stays its label.
 
 **A card statement is calm until it is late.** Aberta is `positive`, Fechada, Paga and Futura are
-`neutral`, and `urgent` is kept for *Vencida* (closed, past its due date, unpaid). Each badge has a
+`neutral`, and `urgent` is kept for *Vencida*: closed with a statement bill, a positive total, past its
+due date, unpaid (a zero or credit statement, or a month before the card's first, owes nothing). Each badge has a
 glyph. No new tone: the four stay the family's closed set.
 
 **A link to a row marks it.** A pagar/receber reads `?direction=&bill=`, opens on that side, tints

@@ -4,7 +4,7 @@ import {screen, waitFor, within} from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 
-import {CardsView} from "@/components/finance/CardsView"
+import {CardsView, statementState} from "@/components/finance/CardsView"
 import {pick, renderWithQuery} from "@/components/finance/finance.test-utils"
 import * as finance from "@/lib/api/finance"
 import * as createRequest from "@/lib/finance/createRequest"
@@ -190,6 +190,28 @@ describe("F5 — statement status colours (UX batch 3)", () => {
     await userEvent.click(screen.getByRole("button", {name: "Fatura anterior"}))
     const late = await badge("Vencida")
     expect(late).toHaveClass("text-danger")
+  })
+})
+
+// Review fix: a zero or credit statement makes no bill, and every month before a
+// card's first one reads "closed"; none of them owes anything, so none is Vencida.
+describe("statementState: Vencida only when something is owed", () => {
+  const today = "2026-03-20"
+  const s = (over: Partial<CardStatement>): CardStatement => ({...statement("2026-02", "closed", 1), due_date: "2026-02-10", total: 10000, bill_id: "b1", ...over})
+
+  it("an empty statement past its due date is not Vencida", () => {
+    expect(statementState(s({total: 0, bill_id: undefined, items: []}), today)).toBe("closed")
+  })
+  it("a credit statement past its due date is not Vencida", () => {
+    expect(statementState(s({total: -5000, bill_id: undefined}), today)).toBe("closed")
+  })
+  it("a month before the card's first is not Vencida", () => {
+    expect(statementState(s({month: "2025-11", due_date: "2025-11-10", total: 0, bill_id: undefined, items: []}), today)).toBe("closed")
+  })
+  it("a closed, unpaid, past-due statement with a bill is Vencida", () => {
+    expect(statementState(s({}), today)).toBe("overdue")
+    expect(statementState(s({due_date: "2026-03-25"}), today)).toBe("closed") // not due yet
+    expect(statementState(s({status: "paid"}), today)).toBe("paid")
   })
 })
 

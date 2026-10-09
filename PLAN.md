@@ -658,8 +658,9 @@ gates nothing by plan.
       **UX batch 3 (2026-10-09):** a card has an optional `brand` (visa, mastercard, elo, amex, hipercard, diners,
       other) and `last4` (exactly four digits), attributes of its row in `cards` (no migration; a cleared one is
       REMOVEd), shown with a simplified SVG mark and "•••• 1234" on the card header, the picker and Contas.
-      Statement badges: Aberta positive, Fechada/Paga/Futura neutral, red only for *Vencida* (closed, past due,
-      unpaid; derived in the console).
+      Statement badges: Aberta positive, Fechada/Paga/Futura neutral, red only for *Vencida* (closed with a statement
+      bill and a positive total, past due, unpaid; derived in the console — a zero, credit or pre-first-month
+      statement owes nothing).
 - [x] 6.6 Import and reconciliation — F6 (upload OFX or CSV per bank/cash account; reconcile each line:
       settle an open bill, create and settle a new one, ignore, undo an ignore), CSV columns saved per account.
       [Plan](docs/plans/2026-10-09-finance-6.6-import-and-reconciliation.md).
