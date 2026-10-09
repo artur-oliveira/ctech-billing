@@ -34,6 +34,20 @@ export const longDate = (iso: IsoDate) =>
 export const shortDate = (iso: IsoDate) =>
   intl("short", l => new Intl.DateTimeFormat(l, {day: "2-digit", month: "2-digit", year: "numeric"})).format(civil(iso))
 
+/** "10/03" (pt-BR) — a recent date, inside a sentence. */
+export const dayMonth = (iso: IsoDate) =>
+  intl("day-month-numeric", l => new Intl.DateTimeFormat(l, {day: "2-digit", month: "2-digit"})).format(civil(iso))
+
+/**
+ * Whole calendar days, in the reader's time zone, from now until the instant
+ * (an RFC 3339 timestamp): 0 when it falls later today, 1 tomorrow.
+ */
+export function calendarDaysUntil(instant: string, now: Date = new Date()): number {
+  const at = new Date(instant)
+  const day = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12).getTime()
+  return Math.round((day(at) - day(now)) / 86_400_000)
+}
+
 /** "1 de mar a 31 de mar" — a billing period, without repeating the year. */
 export function period(start: IsoDate, end: IsoDate): string {
   const f = intl("day-month", l => new Intl.DateTimeFormat(l, {day: "numeric", month: "short"}))

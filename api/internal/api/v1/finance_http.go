@@ -120,6 +120,8 @@ func financeRoutes() []financeRoute {
 		{"GET", "/imports/:id", space.Read, false, func(h *financeHandlers) fiber.Handler { return h.getImport }},
 		{"POST", "/imports/:id/lines/:n/match", space.Import | space.Write | space.Settle, true, func(h *financeHandlers) fiber.Handler { return h.matchLine }},
 		{"POST", "/imports/:id/lines/:n/new", space.Import | space.Write | space.Settle, true, func(h *financeHandlers) fiber.Handler { return h.newFromLine }},
+		// Linking posts nothing (the job already paid the bill), but it binds a bill.
+		{"POST", "/imports/:id/lines/:n/link", space.Import | space.Write, true, func(h *financeHandlers) fiber.Handler { return h.linkLine }},
 		{"POST", "/imports/:id/lines/:n/ignore", space.Import, true, func(h *financeHandlers) fiber.Handler { return h.ignoreLine }},
 		{"POST", "/imports/:id/lines/:n/reopen", space.Import, true, func(h *financeHandlers) fiber.Handler { return h.reopenLine }},
 		{"GET", "/accounts/:id/csv-mapping", space.Read, false, func(h *financeHandlers) fiber.Handler { return h.getCSVMapping }},

@@ -180,6 +180,21 @@ describe("the mock imports statements (F6)", () => {
     expect((made.data as {bill: {status: string; origin: string}}).bill).toMatchObject({status: "paid", origin: "import"})
   })
 
+  it("links a line to the bill auto-settle paid, posting nothing, once", () => {
+    const detail = r("/imports/imp-seed") as {lines: {n: number; expires_at?: string; candidates: {id: string; status: string}[]}[]}
+    const line = detail.lines.find(l => l.candidates.some(c => c.status === "paid"))!
+    expect(line.expires_at).toBeDefined()
+    const bill = line.candidates.find(c => c.status === "paid")!
+    const balance = () => (call({url: "/accounts", headers: personal}).data as {data: {id: string; balance: number}[]}).data.find(a => a.id === "conta-corrente")!.balance
+    const before = balance()
+    const linked = w(`/imports/imp-seed/lines/${line.n}/link`, {bill_id: bill.id}, "l1")
+    expect(linked.status).toBe(200)
+    expect((linked.data as {line: {status: string}}).line.status).toBe("linked")
+    expect(balance()).toBe(before)
+    const after = r("/imports/imp-seed") as {lines: {candidates: {id: string}[]}[]}
+    expect(after.lines.flatMap(l => l.candidates).map(c => c.id)).not.toContain(bill.id)
+  })
+
   it("asks for the CSV columns before reading a CSV", () => {
     const csv = btoa("05/03/2026;Café;-5,00\n")
     expect(w("/imports", {account_id: "conta-corrente", format: "csv", content: csv}, "c1").data).toMatchObject({code: "csv_mapping_required"})

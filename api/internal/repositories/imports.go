@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -41,7 +42,13 @@ const (
 	LineMatched LineStatus = "matched" // settled an open bill
 	LineCreated LineStatus = "created" // became a bill, created and settled at once
 	LineIgnored LineStatus = "ignored" // kept, so it is not offered again
+	// LineLinked is a line tied to a bill the recurrence's auto-settle had
+	// already paid: nothing was posted, the money was already recorded.
+	LineLinked LineStatus = "linked"
 )
+
+// ErrBillLinked is a link to a bill another statement line already holds.
+var ErrBillLinked = errors.New("this bill is already linked to another statement line")
 
 // maxStoredRejections bounds the rejected lines kept on an import's row: the
 // count is exact, the list is a sample to show.
@@ -100,7 +107,10 @@ type ImportLine struct {
 	Amount      billing.Cents // signed from the account's side
 	Description string
 	Status      LineStatus
-	BillID      string // the bill it settled or became
+	BillID      string // the bill it settled, became or was linked to
+	// Expires is when the line leaves with its import (90 days after the
+	// upload); zero for a row written without a TTL.
+	Expires time.Time
 }
 
 type rejectedItem struct {
@@ -161,8 +171,12 @@ func (i lineItem) entity() (ImportLine, error) {
 	if err != nil {
 		return ImportLine{}, fmt.Errorf("import line %d has a malformed date: %w", i.N, err)
 	}
-	return ImportLine{N: i.N, Date: d, Amount: billing.Cents(i.Amount), Description: i.Description,
-		Status: LineStatus(i.Status), BillID: i.BillID}, nil
+	l := ImportLine{N: i.N, Date: d, Amount: billing.Cents(i.Amount), Description: i.Description,
+		Status: LineStatus(i.Status), BillID: i.BillID}
+	if i.TTL != nil {
+		l.Expires = time.Unix(*i.TTL, 0).UTC()
+	}
+	return l, nil
 }
 
 // lockItem is a transaction's claim in its account. It names the line that
@@ -664,6 +678,230 @@ func (r *ImportRepository) Create(ctx context.Context, sp space.ResolvedSpace, i
 	}
 	line.Status, line.BillID = LineCreated, b.ID
 	return line, b, nil
+}
+
+// maxLinkLookups bounds the bill reads behind the linkable candidates of one
+// import: only settlements of exactly a pending line's amount, near its date,
+// are read at all, so a real statement stays far below it.
+const maxLinkLookups = 50
+
+// AutoPaid returns the bills of accountID that the recurrence's auto-settle
+// paid and that no statement line has linked yet, among those a pending line
+// could be linked to: a settlement entry on the account for exactly the line's
+// signed amount, within statement.MatchWindow days of its date. It is one range
+// Query on the account's entry partition (inside the space), then one read of
+// each such bill and of its settlement's header. Entries posted before 6.4
+// carry no kind or ref and are not found.
+func (r *ImportRepository) AutoPaid(ctx context.Context, sp space.ResolvedSpace, accountID string, lines []ImportLine) ([]finance.Bill, error) {
+	if err := sp.Require(space.Read); err != nil {
+		return nil, err
+	}
+	if len(lines) == 0 {
+		return nil, nil
+	}
+	from, to := lines[0].Date, lines[0].Date
+	for _, l := range lines {
+		if l.Date.Before(from) {
+			from = l.Date
+		}
+		if l.Date.After(to) {
+			to = l.Date
+		}
+	}
+	// SKs are ENTRY#{date}#{tx}#{leg}: "ENTRY#{to+6}" sorts after every entry
+	// of to+5 and before any of to+6.
+	raw, err := r.ledger.queryRange(ctx, r.ledger.txs, LedgerEntryPK(sp, accountID),
+		"ENTRY#"+from.AddDays(-statement.MatchWindow).String(), "ENTRY#"+to.AddDays(statement.MatchWindow+1).String())
+	if err != nil {
+		return nil, err
+	}
+	entries, err := DecodeItems[entryItem](raw)
+	if err != nil {
+		return nil, err
+	}
+	settledBy := map[string]string{} // bill id → settlement transaction id
+	var order []string
+	for _, e := range entries {
+		billID, ok := strings.CutPrefix(e.Ref, "bill:")
+		if !ok || e.Kind != finance.KindSettlement || e.Reversal || settledBy[billID] != "" {
+			continue
+		}
+		d, err := brcal.Parse(e.Date)
+		if err != nil {
+			continue
+		}
+		if !nearLine(lines, d, billing.Cents(e.Amount)) {
+			continue
+		}
+		settledBy[billID] = e.TxID
+		order = append(order, billID)
+		if len(order) == maxLinkLookups {
+			break
+		}
+	}
+	var out []finance.Bill
+	for _, billID := range order {
+		it, err := r.billRow(ctx, sp, billID)
+		if errors.Is(err, ErrNotFound) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		b, err := it.bill()
+		if err != nil {
+			return nil, err
+		}
+		if it.ImportLink != "" || b.AccountID != accountID || len(b.TransactionIDs) == 0 || b.TransactionIDs[len(b.TransactionIDs)-1] != settledBy[billID] {
+			continue
+		}
+		auto, err := r.paidByAutoSettle(ctx, sp, b)
+		if err != nil {
+			return nil, err
+		}
+		if auto {
+			out = append(out, b)
+		}
+	}
+	return out, nil
+}
+
+// nearLine reports whether a cash entry of amount on date is what some line
+// says: the same signed amount, within the match window.
+func nearLine(lines []ImportLine, date brcal.Date, amount billing.Cents) bool {
+	for _, l := range lines {
+		if l.Amount == amount && abs(l.Date.DaysBetween(date)) <= statement.MatchWindow {
+			return true
+		}
+	}
+	return false
+}
+
+func abs(n int) int {
+	if n < 0 {
+		return -n
+	}
+	return n
+}
+
+// billRow reads a bill's stored row inside the space, link marker included.
+func (r *ImportRepository) billRow(ctx context.Context, sp space.ResolvedSpace, billID string) (billItem, error) {
+	raw, err := r.bills.bills.GetItem(ctx, sp.PK(), BillSK(billID))
+	if err != nil {
+		return billItem{}, err
+	}
+	if raw == nil {
+		return billItem{}, fmt.Errorf("%w: bill %s", ErrNotFound, billID)
+	}
+	it, err := Decode[billItem](raw)
+	if err != nil {
+		return billItem{}, err
+	}
+	return *it, nil
+}
+
+// paidByAutoSettle reports whether a paid bill's standing settlement is one
+// the daily job posted (origin auto_settle, written on every job settlement
+// since 6.3), not one a person confirmed.
+func (r *ImportRepository) paidByAutoSettle(ctx context.Context, sp space.ResolvedSpace, b finance.Bill) (bool, error) {
+	if b.Status != finance.BillPaid || len(b.TransactionIDs) == 0 {
+		return false, nil
+	}
+	tx, err := r.ledger.GetTransaction(ctx, sp, b.TransactionIDs[len(b.TransactionIDs)-1])
+	if errors.Is(err, ErrNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return tx.Origin == OriginAutoSettle && tx.Tx.Kind == finance.KindSettlement, nil
+}
+
+// Link ties a pending line to a bill the recurrence's auto-settle already paid:
+// same account and direction, exactly the line's amount, paid within
+// statement.MatchWindow days of the line, linked to no other line. It posts
+// NOTHING — the money is already in the books — and writes, in one
+// transaction, the link on the bill (conditional on it being absent, and on the
+// bill still being paid with the transactions it was read with) and the line's
+// decision. Of two lines racing for one bill, exactly one wins; the other is
+// ErrBillLinked and stays pending. Linking the same line to the same bill again
+// answers what the first did.
+func (r *ImportRepository) Link(ctx context.Context, sp space.ResolvedSpace, importID string, n int, billID string, now time.Time) (ImportLine, finance.Bill, error) {
+	if err := sp.Require(space.Import | space.Write); err != nil {
+		return ImportLine{}, finance.Bill{}, err
+	}
+	for attempt := 0; ; attempt++ {
+		imp, line, lockSK, err := r.loadLine(ctx, sp, importID, n, now)
+		if err != nil {
+			return ImportLine{}, finance.Bill{}, err
+		}
+		if line.Status == LineLinked && line.BillID == billID {
+			b, err := r.bills.get(ctx, sp, billID)
+			if err != nil {
+				return ImportLine{}, finance.Bill{}, err
+			}
+			return line, *b, nil
+		}
+		if line.Status != LinePending {
+			return ImportLine{}, finance.Bill{}, ErrLineResolved
+		}
+		it, err := r.billRow(ctx, sp, billID)
+		if err != nil {
+			return ImportLine{}, finance.Bill{}, err
+		}
+		b, err := it.bill()
+		if err != nil {
+			return ImportLine{}, finance.Bill{}, err
+		}
+		amount := line.Amount
+		if amount < 0 {
+			amount = -amount
+		}
+		if b.AccountID != imp.AccountID || b.Direction != statement.DirectionOf(line.Amount) || b.Amount != amount ||
+			b.Status != finance.BillPaid || b.PaidDate.IsZero() || abs(line.Date.DaysBetween(b.PaidDate)) > statement.MatchWindow {
+			return ImportLine{}, finance.Bill{}, ErrLineMismatch
+		}
+		if it.ImportLink != "" {
+			return ImportLine{}, finance.Bill{}, ErrBillLinked
+		}
+		auto, err := r.paidByAutoSettle(ctx, sp, b)
+		if err != nil {
+			return ImportLine{}, finance.Bill{}, err
+		}
+		if !auto {
+			return ImportLine{}, finance.Bill{}, ErrLineMismatch
+		}
+
+		sk := BillSK(billID)
+		link := r.bills.bills.BuildRawUpdateTxItem(sp.PK(), &sk, "SET import_link = :ref, updated_at = :now",
+			"#status = :paid AND size(#n) = :n AND attribute_not_exists(import_link)",
+			map[string]string{"#status": "status", "#n": "transaction_ids"},
+			map[string]types.AttributeValue{
+				":ref":  str(importID + "#" + strconv.Itoa(n)),
+				":now":  str(now.UTC().Format(time.RFC3339Nano)),
+				":paid": str(string(finance.BillPaid)),
+				":n":    numberValue(int64(len(b.TransactionIDs))),
+			})
+		items := append([]types.TransactWriteItem{link}, r.decide(sp, importID, n, lockSK, LineLinked, billID, now)...)
+		err = r.imports.TransactWrite(ctx, items)
+		if err == nil {
+			line.Status, line.BillID = LineLinked, billID
+			return line, b, nil
+		}
+		if retryableCancel(err) && attempt < 3 {
+			continue // another request touched the bill or the line: read again
+		}
+		if !onlyConditionFailed(err) {
+			return ImportLine{}, finance.Bill{}, err
+		}
+		if decisionFailed(err, 1) {
+			return ImportLine{}, finance.Bill{}, ErrLineResolved
+		}
+		if cur, gerr := r.billRow(ctx, sp, billID); gerr == nil && cur.ImportLink != "" {
+			return ImportLine{}, finance.Bill{}, ErrBillLinked
+		}
+		return ImportLine{}, finance.Bill{}, finance.ErrBillState
+	}
 }
 
 // Ignore keeps a pending line out of the reconciliation: it is not offered

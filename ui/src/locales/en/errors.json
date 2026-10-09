@@ -65,6 +65,7 @@
     "too_many_requests": "Too many attempts. Wait a bit and try again.",
     "validation_error": "Check the fields and try again.",
     "line_already_reconciled": "This line was already reconciled. The list was refreshed.",
+    "bill_already_linked": "That bill is already linked to another statement line. The list was refreshed.",
     "line_bill_mismatch": "That bill is not in this bank account or is not of the same kind (to pay or to receive).",
     "statement_card_not_supported": "Card statements are not imported yet. Import the checking account statement.",
     "statement_many_accounts": "The file holds more than one account. Export one account per file.",

@@ -106,6 +106,48 @@ func Candidates(accountID string, l Line, bills []finance.Bill) []finance.Bill {
 	return out
 }
 
+// PaidCandidates returns the bills, already paid, that a line may be linked to
+// rather than settle: in the line's account, of its direction, for exactly its
+// amount, paid within MatchWindow days of its date — closest paid date first,
+// then the earlier, then by id. Only the exact case: a payment that differs by
+// interest or a discount is not offered. The caller passes only bills the
+// recurrence's auto-settle paid and no line has linked yet; linking posts
+// nothing, because the money is already recorded.
+func PaidCandidates(accountID string, l Line, bills []finance.Bill) []finance.Bill {
+	dir, amount := DirectionOf(l.Amount), abs(l.Amount)
+	var out []finance.Bill
+	for _, b := range bills {
+		if b.Status != finance.BillPaid || b.PaidDate.IsZero() || b.AccountID != accountID || b.Direction != dir || b.Amount != amount {
+			continue
+		}
+		if paidDistance(l, b) > MatchWindow {
+			continue
+		}
+		out = append(out, b)
+	}
+	slices.SortStableFunc(out, func(a, b finance.Bill) int {
+		if da, db := paidDistance(l, a), paidDistance(l, b); da != db {
+			return da - db
+		}
+		if c := a.PaidDate.Compare(b.PaidDate); c != 0 {
+			return c
+		}
+		return strings.Compare(a.ID, b.ID)
+	})
+	if len(out) > MaxCandidates {
+		out = out[:MaxCandidates]
+	}
+	return out
+}
+
+func paidDistance(l Line, b finance.Bill) int {
+	d := l.Date.DaysBetween(b.PaidDate)
+	if d < 0 {
+		return -d
+	}
+	return d
+}
+
 func distance(l Line, b finance.Bill) int {
 	d := l.Date.DaysBetween(b.Due)
 	if d < 0 {

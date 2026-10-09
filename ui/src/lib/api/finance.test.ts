@@ -65,6 +65,7 @@ describe("every finance call", () => {
     ["closeStatement", () => finance.closeStatement(ctx, "c1", "2026-03", "K")],
     ["uploadImport", () => finance.uploadImport(ctx, {account_id: "a1", format: "ofx", content: "PE9GWD4="}, "K")],
     ["matchLine", () => finance.matchLine(ctx, "i1", 1, {bill_id: "b1"}, "K")],
+    ["linkLine", () => finance.linkLine(ctx, "i1", 1, {bill_id: "b1"}, "K")],
     ["newFromLine", () => finance.newFromLine(ctx, "i1", 1, {category_id: "c"}, "K")],
     ["ignoreLine", () => finance.ignoreLine(ctx, "i1", 1, "K")],
     ["reopenLine", () => finance.reopenLine(ctx, "i1", 1, "K")],
@@ -126,6 +127,13 @@ describe("the statement upload", () => {
     expect(seen[0].method).toBe("POST")
     expect(seen[0].url).toBe("/v1.0/console/finance/imports")
     expect(seen[0].data).toEqual({account_id: "a1", format: "csv", content: "YQ=="})
+  })
+
+  it("links a line to a paid bill on its own route", async () => {
+    await finance.linkLine(ctx, "i1", 2, {bill_id: "b1"}, "K")
+    expect(seen[0].method).toBe("POST")
+    expect(seen[0].url).toBe("/v1.0/console/finance/imports/i1/lines/2/link")
+    expect(seen[0].data).toEqual({bill_id: "b1"})
   })
 
   it("reads a file's bytes as base64 without decoding them as text", async () => {

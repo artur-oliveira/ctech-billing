@@ -333,7 +333,8 @@ export interface NewPurchase {
 // --- import and reconciliation (F6) -------------------------------------------
 
 export type ImportFormat = "ofx" | "csv"
-export type LineStatus = "pending" | "matched" | "created" | "ignored"
+/** linked: tied to a bill auto-settle had already paid; nothing was posted. */
+export type LineStatus = "pending" | "matched" | "created" | "ignored" | "linked"
 /** Why a line of the file was not imported; the rest of the file was. */
 export type RejectReason = "invalid_date" | "invalid_amount" | "zero_amount" | "balance_row"
 
@@ -362,7 +363,12 @@ export interface ImportLine {
   description: string
   status: LineStatus
   bill_id?: string
-  /** Open bills this line may settle, closest due date first (pending lines only). */
+  /** When the line leaves with its import (RFC 3339), 90 days after the upload. */
+  expires_at?: string
+  /**
+   * Pending lines only: open bills this line may settle, closest due date first,
+   * then bills auto-settle already paid (status "paid") it may be linked to.
+   */
   candidates: Bill[]
 }
 

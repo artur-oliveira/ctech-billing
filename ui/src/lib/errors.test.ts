@@ -25,7 +25,7 @@ const BACKEND_CODES = [
   "invalid_transaction", "invalid_account", "invalid_metadata", "invalid_price", "invalid_usage",
   "invalid_subscription_item", "invalid_credit_note", "invalid_dunning_policy", "invalid_invoice_items", "bad_request",
   "unauthorized", "forbidden", "not_found", "conflict", "unprocessable_entity", "too_many_requests", "validation_error",
-  "line_already_reconciled", "line_bill_mismatch", "statement_card_not_supported", "statement_many_accounts", "statement_currency",
+  "line_already_reconciled", "line_bill_mismatch", "bill_already_linked", "statement_card_not_supported", "statement_many_accounts", "statement_currency",
   "statement_too_large", "statement_empty", "statement_unreadable", "csv_mapping_required", "invalid_csv_mapping",
 ]
 const FIELD_CODES = [

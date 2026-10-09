@@ -302,6 +302,17 @@ Rules:
   - **match**: confirming settles that bill with the line's date and amount;
   - **new**: the user picks a category and it becomes a bill created and settled at once;
   - **ignore**: kept, so it is not offered again.
+  - **link** (6.6 follow-up): a bill the recurrence's `auto_settle` already paid is offered too, only in
+    the exact case — same account and direction, exactly the line's amount, paid within ±5 days, not
+    linked to another line. Confirming it posts **nothing** (the money is already recorded): it marks
+    the line reconciled and ties line and bill, conditionally, so two lines never hold one bill. A
+    payment made by the job is told apart from a manual one by the settlement's `origin =
+    auto_settle`. A different amount (interest, discount) is not offered; the user ignores the line.
+- **Undoing a payment does not reopen a line.** A line that settled, created or was linked to a bill
+  stays reconciled when that bill's payment is undone: the bank statement says the money moved, so
+  the statement resolves the line.
+- **Expiry is shown where it matters:** the pending list says lines stay 90 days after the import, and
+  a pending line in its last 15 days says when it expires. No banner.
 - Nothing is settled without a confirmation in v1. Auto-confirming exact matches can come later.
 
 ### 3.8 Billing integration in v1

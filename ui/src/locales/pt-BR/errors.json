@@ -65,6 +65,7 @@
     "too_many_requests": "Muitas tentativas. Aguarde um pouco e tente de novo.",
     "validation_error": "Confira os campos e tente de novo.",
     "line_already_reconciled": "Este lançamento já foi conciliado. A lista foi atualizada.",
+    "bill_already_linked": "Essa conta já foi vinculada a outro lançamento do extrato. A lista foi atualizada.",
     "line_bill_mismatch": "Essa conta não é desta conta bancária ou não é do mesmo tipo (pagar ou receber).",
     "statement_card_not_supported": "Extratos de cartão ainda não são importados. Importe o extrato da conta corrente.",
     "statement_many_accounts": "O arquivo traz mais de uma conta. Exporte uma conta por arquivo.",

@@ -194,6 +194,8 @@ func FromError(err error) *Problem {
 
 	case errors.Is(err, repositories.ErrLineResolved):
 		return New(409, TypeInvalidTransition, "Invalid Transition", "This statement line was already reconciled.").WithCode("line_already_reconciled")
+	case errors.Is(err, repositories.ErrBillLinked):
+		return New(409, TypeInvalidTransition, "Invalid Transition", "This bill is already linked to another statement line.").WithCode("bill_already_linked")
 	case errors.Is(err, repositories.ErrLineMismatch):
 		return Unprocessable("the bill is not of this line's account or direction").WithCode("line_bill_mismatch")
 	case errors.Is(err, statement.ErrCardStatement):

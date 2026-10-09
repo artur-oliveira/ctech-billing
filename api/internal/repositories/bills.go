@@ -53,6 +53,9 @@ type billItem struct {
 	PaymentGroup   string   `dynamodbav:"payment_group,omitempty"`
 	TransactionIDs []string `dynamodbav:"transaction_ids"`
 	Credited       int64    `dynamodbav:"credited,omitempty"`
+	// ImportLink is the statement line ({import}#{n}) a paid bill was linked to
+	// (6.6 follow-up): set once, conditionally, so two lines never hold one bill.
+	ImportLink string `dynamodbav:"import_link,omitempty"`
 
 	// Sparse index keys, present only while the bill is a forecast (open-index)
 	// and, when it auto-settles, until it is settled (schedule-index).
