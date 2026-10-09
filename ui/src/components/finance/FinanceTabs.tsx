@@ -6,6 +6,7 @@ import {usePathname} from "next/navigation"
 const TABS = [
   {href: "/console/finance", label: "Visão geral", exact: true},
   {href: "/console/finance/bills", label: "A pagar e a receber"},
+  {href: "/console/finance/statement", label: "Extrato"},
   {href: "/console/finance/recurrences", label: "Recorrências"},
   {href: "/console/finance/accounts", label: "Contas"},
 ] as const
