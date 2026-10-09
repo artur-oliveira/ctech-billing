@@ -149,6 +149,13 @@ reads it: `comfortable` gives 44px targets (the portal, read on a phone),
 `size="console"` — height is decided by where a button is, not by each call site
 remembering which screen it is on.
 
+**Touch overrides compact.** The console's 32px is for a mouse on a laptop. Under
+a coarse pointer, or a viewport under `sm`, a control is a 44px target again: one
+unlayered rule in `globals.css`, keyed on the `data-slot` every shared control
+carries (`button`, `input`, `select-trigger`, `segmented-item`, `date-field`, a
+switch's label), and a `touch:` variant for anything drawn by hand. It is still
+"decided by where a button is"; the where now includes the hand holding it.
+
 ## Depth is hairlines
 
 Structure comes from `border` at 1px. `shadow-card` marks a block that is
@@ -224,7 +231,8 @@ accounts are never shown.
 **F1, overview.** Three independent blocks, separated by rules: Saldos (a ruled list), Vencidas e
 próximas, and Projeção. The projection is diverging bars per month — *a receber* above the axis,
 *a pagar* below — where forecast bills are solid and recurrences not yet generated are outline
-only: the difference is shape, not hue. "Ver como tabela" shows the same numbers. There is no
+only: the difference is shape, not hue. The rows view shows the same numbers, in the same
+Saldo / Entradas e saídas view as the chart (see "On a phone"). There is no
 "resultado realizado" tile and no placeholder for one (it ships with the cash read in 6.4). This is
 the first chart in billing; the portal ban on charts stands.
 
@@ -245,3 +253,35 @@ a fact is not punctuation and stays. Code comments are not copy.
 trigger shows the option's **label**, never its value: an account shows "Conta corrente", not its
 id, and the space shows "Pessoal", not `personal`. The component's own test pins this.
 `ctech-ui` has no Select yet; this one is written to move there unchanged.
+
+## On a phone (finance, 2026-10-09)
+
+A phone is its own layout, not the laptop's squeezed. Navigation is out of this note; it
+changes in its own batch.
+
+**A chart becomes a list, and stays one tap away.** Under `sm`, a chart whose x-axis is
+categories (the projection's months) opens as a list: one row per category, its headline
+figure on the right, and a thin bar per series in the chart's own encoding (green in, red out,
+the recurrences' share at 45%), each bar beside its amount. The chart is behind an icon toggle
+beside the period, never removed, so the two can be compared; on a laptop the chart is the
+default and the same toggle shows a table. Rows and chart always show the same view (Saldo or
+Entradas e saídas), and that switch never disappears with the chart. A chart that is shown
+draws at its measured width, so its 11px labels stay 11px, and thins its month labels when a
+slot is narrower than one; each bar's title still names its month.
+
+**One row for every finance list.** `LedgerRow` (bills, recurrences, imported lines): from
+`sm` a single line, description, aside, amount in a fixed column, actions; under `sm` the
+description and the amount share the first line, the description wrapping to two lines rather
+than being cut, then the meta, then the aside and the actions on lines of their own. An aside
+that repeats a group heading (a bill's bucket badge under "Vencidas") is not shown on a phone;
+one that is the only place a fact appears (a recurrence's direction) moves into the meta line.
+
+**Segmented, for every two-to-four-way switch.** Direction, projection view, period, chart or
+rows: `components/ui/Segmented`, a group of pressed buttons, full width on a phone when it is
+the row's only control. A shortened label carries its full name ("6 m" is "6 meses"), and the
+name contains the visible text.
+
+**Naming.** In finance, "conta" is a bank account and nothing else. Recording a bill is
+**Adicionar**, and its panel is **Novo lançamento**. Once "Já foi pago" is on, the section that
+held the account becomes **Pagamento** or **Recebimento**, with the date and the account it was
+paid from or received into.
