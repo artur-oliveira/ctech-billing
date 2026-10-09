@@ -147,7 +147,7 @@ func (j *FinanceJobs) AutoSettle(ctx context.Context, livemode bool, today brcal
 		res.fail("reading the auto-settle list: %v", err)
 		return res
 	}
-	meta := repositories.PostMeta{Origin: "auto_settle", Actor: financeActor}
+	meta := repositories.PostMeta{Origin: repositories.OriginAutoSettle, Actor: financeActor}
 	for _, d := range due {
 		res.Examined++
 		_, err := j.bills.Settle(ctx, d.Space, d.Bill.ID, d.Bill.Amount, "", d.Bill.Due, meta, now)

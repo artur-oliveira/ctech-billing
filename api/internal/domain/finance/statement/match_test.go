@@ -129,7 +129,7 @@ func TestPaidCandidates(t *testing.T) {
 		paid("interest", finance.Payable, 1050, 10, "bank"), // other amount
 		paid("in", finance.Receivable, 1000, 10, "bank"),    // other direction
 		paid("edge", finance.Payable, 1000, 5, "bank"),      // exactly 5 days: in
-		open,                                                // not paid
+		open, // not paid
 	}
 	got := PaidCandidates("bank", Line{Date: day(10), Amount: -1000}, bills)
 	want := []string{"exact", "near", "edge"}

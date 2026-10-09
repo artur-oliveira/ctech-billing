@@ -37,6 +37,15 @@ func TestEveryImportMethodChecksTheSpaceAndTheVerb(t *testing.T) {
 			_, _, err := r.Create(ctx, sp, "i", 1, "food", "", PostMeta{}, now)
 			return err
 		}, []space.ResolvedSpace{zero, viewer, importer}},
+		// Linking posts nothing, but it binds a bill: import and write.
+		"Link": {func(sp space.ResolvedSpace) error {
+			_, _, err := r.Link(ctx, sp, "i", 1, "b", now)
+			return err
+		}, []space.ResolvedSpace{zero, viewer, importer}},
+		"AutoPaid": {func(sp space.ResolvedSpace) error {
+			_, err := r.AutoPaid(ctx, sp, "bank", []ImportLine{{N: 1}})
+			return err
+		}, []space.ResolvedSpace{zero}},
 		"Ignore":     {func(sp space.ResolvedSpace) error { _, err := r.Ignore(ctx, sp, "i", 1, now); return err }, []space.ResolvedSpace{zero, viewer}},
 		"Reopen":     {func(sp space.ResolvedSpace) error { _, err := r.Reopen(ctx, sp, "i", 1, now); return err }, []space.ResolvedSpace{zero, viewer}},
 		"GetMapping": {func(sp space.ResolvedSpace) error { _, err := r.GetMapping(ctx, sp, "bank"); return err }, []space.ResolvedSpace{zero}},

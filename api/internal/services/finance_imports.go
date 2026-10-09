@@ -71,23 +71,30 @@ type LineView struct {
 const maxOpenPages = 10
 
 // Get returns an import with every line and, for the pending ones, their
-// candidates — computed on read from the open bills, never stored, so a bill
-// paid elsewhere stops being offered at once.
+// candidates — computed on read from the open bills and from the bills the
+// recurrence's auto-settle already paid in the import's account, never stored,
+// so a bill paid (or linked) elsewhere stops being offered at once.
 func (s *FinanceImports) Get(ctx context.Context, sp space.ResolvedSpace, importID string, now time.Time) (repositories.Import, []LineView, error) {
 	imp, lines, err := s.repo.Get(ctx, sp, importID, now)
 	if err != nil {
 		return repositories.Import{}, nil, err
 	}
-	var open []finance.Bill
+	var pending []repositories.ImportLine
 	for _, l := range lines {
 		if l.Status == repositories.LinePending {
-			if open, err = s.openBills(ctx, sp); err != nil {
-				return repositories.Import{}, nil, err
-			}
-			break
+			pending = append(pending, l)
 		}
 	}
-	return imp, Reconcile(imp.AccountID, lines, open, nil), nil
+	var open, autoPaid []finance.Bill
+	if len(pending) > 0 {
+		if open, err = s.openBills(ctx, sp); err != nil {
+			return repositories.Import{}, nil, err
+		}
+		if autoPaid, err = s.repo.AutoPaid(ctx, sp, imp.AccountID, pending); err != nil {
+			return repositories.Import{}, nil, err
+		}
+	}
+	return imp, Reconcile(imp.AccountID, lines, open, autoPaid), nil
 }
 
 // Reconcile attaches candidates to the pending lines: the open bills it may
@@ -131,6 +138,12 @@ func (s *FinanceImports) Match(ctx context.Context, sp space.ResolvedSpace, impo
 
 func (s *FinanceImports) Create(ctx context.Context, sp space.ResolvedSpace, importID string, n int, categoryID, description, actor, requestID string, now time.Time) (repositories.ImportLine, finance.Bill, error) {
 	return s.repo.Create(ctx, sp, importID, n, categoryID, description, meta("import", actor, requestID), now)
+}
+
+// Link ties a pending line to a bill the recurrence's auto-settle already paid.
+// It posts nothing: the money is already recorded.
+func (s *FinanceImports) Link(ctx context.Context, sp space.ResolvedSpace, importID string, n int, billID string, now time.Time) (repositories.ImportLine, finance.Bill, error) {
+	return s.repo.Link(ctx, sp, importID, n, billID, now)
 }
 
 func (s *FinanceImports) Ignore(ctx context.Context, sp space.ResolvedSpace, importID string, n int, now time.Time) (repositories.ImportLine, error) {

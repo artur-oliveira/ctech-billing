@@ -489,6 +489,12 @@ func (r *LedgerRepository) queryPrefix(ctx context.Context, b Base, pk, skPrefix
 	}
 }
 
+// OriginAutoSettle is the origin the daily job writes on the settlements it
+// posts for auto-settling bills (since 6.3). It is how a payment the job made is
+// told apart from one a person confirmed: an import line may be linked to the
+// former, never the latter.
+const OriginAutoSettle = "auto_settle"
+
 // PostMeta is the provenance written beside a transaction.
 type PostMeta struct {
 	Origin    string // e.g. "manual", "bill_settlement", "invoice_paid"
