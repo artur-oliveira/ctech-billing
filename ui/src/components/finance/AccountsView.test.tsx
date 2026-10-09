@@ -19,6 +19,15 @@ async function row(name: string) {
   return el.closest("li") as HTMLElement
 }
 
+// The list behind an open drawer is aria-hidden, so it is read by text.
+async function listed(name: string) {
+  return waitFor(() => {
+    const el = screen.getAllByText(name).find(e => e.closest("li"))
+    if (!el) throw new Error(`no row ${name}`)
+    return el.closest("li") as HTMLElement
+  })
+}
+
 const ALL: Verb[] = ["finance.read", "finance.write", "finance.settle", "finance.import", "finance.configure"]
 const ACCOUNTS: Account[] = [
   {id: "sys-payables", name: "Contas a pagar", class: "liability", system: true, archived: false, balance: -5000},
@@ -100,6 +109,89 @@ describe("F8 — accounts", () => {
     await userEvent.click(screen.getByRole("button", {name: "Criar"}))
     await waitFor(() => expect(opening).toHaveBeenCalledWith(expect.anything(), "new", expect.objectContaining({amount: -150000}), expect.any(String)))
     await waitFor(() => expect(screen.queryByLabelText(/^Saldo inicial/)).not.toBeInTheDocument())
+  })
+
+  // UX batch 3 (the same chain as batch 2's bill flicker): refreshing the list
+  // between "account created" and "its opening balance posted" painted the new
+  // account at R$ 0,00, a balance the person never entered.
+  it("never shows a new account at zero while its opening balance is being posted", async () => {
+    let server: Account[] = [...ACCOUNTS]
+    serve(ALL)
+    const list = vi.mocked(finance.listAccounts).mockImplementation(async () => ({data: server, has_more: false}))
+    const created: Account = {id: "new", name: "Nubank", class: "asset", system: false, archived: false, balance: 0}
+    vi.spyOn(finance, "createAccount").mockImplementation(async () => { server = [...server, created]; return created })
+    let land!: () => void
+    vi.spyOn(finance, "postOpeningBalance").mockImplementation(() => new Promise(resolve => {
+      land = () => { server = server.map(a => (a.id === "new" ? {...a, balance: 150000} : a)); resolve({transaction_id: "t"}) }
+    }))
+    renderWithQuery(<AccountsView/>)
+    await userEvent.click(await screen.findByRole("button", {name: "Nova conta"}))
+    await userEvent.type(screen.getByLabelText(/^Nome/), "Nubank")
+    await userEvent.type(screen.getByLabelText(/^Saldo inicial/), "1.500,00")
+    const before = list.mock.calls.length
+    await userEvent.click(screen.getByRole("button", {name: "Criar"}))
+    await waitFor(() => expect(finance.postOpeningBalance).toHaveBeenCalled())
+    await act(() => new Promise(r => setTimeout(r, 50)))
+    expect(list.mock.calls.length).toBe(before) // no refetch between the two halves
+    expect(screen.queryAllByText("Nubank").some(e => e.closest("li"))).toBe(false)
+    await act(async () => land())
+    const nubank = await listed("Nubank")
+    expect(within(nubank).getByText("R$ 1.500,00")).toBeInTheDocument()
+  })
+
+  it("refreshes the list when the opening balance fails, so the created account shows", async () => {
+    let server: Account[] = [...ACCOUNTS]
+    serve(ALL)
+    vi.mocked(finance.listAccounts).mockImplementation(async () => ({data: server, has_more: false}))
+    const created: Account = {id: "new", name: "Nubank", class: "asset", system: false, archived: false, balance: 0}
+    vi.spyOn(finance, "createAccount").mockImplementation(async () => { server = [...server, created]; return created })
+    vi.spyOn(finance, "postOpeningBalance").mockRejectedValue({code: "ERR_NETWORK"})
+    renderWithQuery(<AccountsView/>)
+    await userEvent.click(await screen.findByRole("button", {name: "Nova conta"}))
+    await userEvent.type(screen.getByLabelText(/^Nome/), "Nubank")
+    await userEvent.type(screen.getByLabelText(/^Saldo inicial/), "1.500,00")
+    await userEvent.click(screen.getByRole("button", {name: "Criar"}))
+    expect(await screen.findByText("A conta foi criada, mas o saldo inicial não foi salvo.")).toBeInTheDocument()
+    expect(await listed("Nubank")).toBeInTheDocument()
+  })
+
+  it("offers to import a statement into a new bank account, with the account chosen", async () => {
+    serve(ALL)
+    vi.spyOn(finance, "createAccount").mockResolvedValue({id: "new", name: "Nubank", class: "asset", system: false, archived: false, balance: 0})
+    renderWithQuery(<AccountsView/>)
+    await userEvent.click(await screen.findByRole("button", {name: "Nova conta"}))
+    await userEvent.type(screen.getByLabelText(/^Nome/), "Nubank")
+    await userEvent.click(screen.getByRole("button", {name: "Criar"}))
+    const dialog = await screen.findByRole("dialog", {name: "Nova conta"})
+    expect(await within(dialog).findByText("Conta criada. Importar um extrato agora?")).toBeInTheDocument()
+    expect(within(dialog).getByRole("link", {name: "Importar extrato"})).toHaveAttribute("href", "/console/finance/import?account=new")
+    // The import is offered, never part of the create form.
+    expect(within(dialog).queryByLabelText("Arquivo do extrato")).toBeNull()
+    await userEvent.click(within(dialog).getByRole("button", {name: "Agora não"}))
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
+  })
+
+  it("does not offer an import for a category, nor to a role that cannot import", async () => {
+    serve(ALL)
+    vi.spyOn(finance, "createAccount").mockResolvedValue({id: "new", name: "Feira", class: "expense", dre_group: "operating_expenses", system: false, archived: false, balance: 0})
+    const {unmount} = renderWithQuery(<AccountsView/>)
+    await userEvent.click(await screen.findByRole("button", {name: "Nova conta"}))
+    await userEvent.type(screen.getByLabelText(/^Nome/), "Feira")
+    await pick("Tipo", "Despesa")
+    await userEvent.click(screen.getByRole("button", {name: "Criar"}))
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
+    expect(screen.queryByText(/Importar um extrato agora/)).toBeNull()
+    unmount()
+    vi.restoreAllMocks()
+
+    serve(["finance.read", "finance.configure"])
+    vi.spyOn(finance, "createAccount").mockResolvedValue({id: "new", name: "Nubank", class: "asset", system: false, archived: false, balance: 0})
+    renderWithQuery(<AccountsView/>)
+    await userEvent.click(await screen.findByRole("button", {name: "Nova conta"}))
+    await userEvent.type(screen.getByLabelText(/^Nome/), "Nubank")
+    await userEvent.click(screen.getByRole("button", {name: "Criar"}))
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
+    expect(screen.queryByText(/Importar um extrato agora/)).toBeNull()
   })
 
   it("keeps the account when the opening balance fails, and retries with the same key", async () => {

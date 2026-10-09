@@ -120,7 +120,13 @@
     "defaultReceiving": "Default receiving account",
     "postCTechInvoices": "Post my CTech invoices automatically in this space",
     "postCTechInvoicesHelp": "When a CTech invoice of yours is paid, it is recorded here as an expense. Today this applies to the personal space.",
-    "none": "None"
+    "none": "None",
+    "created": {
+      "title": "Account created. Import a statement now?",
+      "hint": "Upload the bank's OFX or CSV and the transactions of {{name}} show up to reconcile.",
+      "import": "Import statement",
+      "later": "Not now"
+    }
   },
   "cards": {
     "new": "New card",
