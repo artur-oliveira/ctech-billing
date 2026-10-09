@@ -87,16 +87,21 @@ func (s *FinanceImports) Get(ctx context.Context, sp space.ResolvedSpace, import
 			break
 		}
 	}
-	return imp, Reconcile(imp.AccountID, lines, open), nil
+	return imp, Reconcile(imp.AccountID, lines, open, nil), nil
 }
 
-// Reconcile attaches candidates to the pending lines.
-func Reconcile(accountID string, lines []repositories.ImportLine, open []finance.Bill) []LineView {
+// Reconcile attaches candidates to the pending lines: the open bills it may
+// settle first, then the bills auto-settle already paid that it may be linked
+// to (exact amount only), at most statement.MaxCandidates in all.
+func Reconcile(accountID string, lines []repositories.ImportLine, open, autoPaid []finance.Bill) []LineView {
 	out := make([]LineView, len(lines))
 	for i, l := range lines {
 		out[i] = LineView{ImportLine: l}
 		if l.Status == repositories.LinePending {
-			out[i].Candidates = statement.Candidates(accountID, statement.Line{Date: l.Date, Amount: l.Amount}, open)
+			sl := statement.Line{Date: l.Date, Amount: l.Amount}
+			c := statement.Candidates(accountID, sl, open)
+			c = append(c, statement.PaidCandidates(accountID, sl, autoPaid)...)
+			out[i].Candidates = c[:min(len(c), statement.MaxCandidates)]
 		}
 	}
 	return out
