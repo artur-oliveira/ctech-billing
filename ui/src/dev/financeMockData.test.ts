@@ -213,3 +213,29 @@ describe("the mock imports statements (F6)", () => {
     expect((up.data as {lines: number}).lines).toBe(1)
   })
 })
+
+describe("the finance mock's recurrences (UX batch 3)", () => {
+  const today = (() => { const t = new Date(); return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}` })()
+  const patch = (data: unknown, key: string) => call({method: "patch", url: "/recurrences/r-aluguel", headers: {...personal, "Idempotency-Key": key}, data})
+  const rec = () => (call({url: "/recurrences", headers: personal}).data as {data: {id: string; end?: string; archived: boolean}[]}).data.find(r => r.id === "r-aluguel")!
+
+  it("refuses an end that leaves nothing to come unless the request archives", () => {
+    const refused = patch({end: today}, "e1")
+    expect(refused.status).toBe(422)
+    expect((refused.data as {code: string}).code).toBe("recurrence_would_end")
+    expect(rec()).toMatchObject({archived: false})
+    expect(rec().end).toBeUndefined()
+    expect(patch({end: today, archive: true}, "e1").status).toBe(200)
+    expect(rec()).toMatchObject({archived: true, end: today})
+  })
+
+  it("answers a recurrence's history and next dates", () => {
+    const r = call({url: "/recurrences/r-aluguel/occurrences", headers: personal})
+    expect(r.status).toBe(200)
+    const d = r.data as {history: {state: string; nominal: string}[]; upcoming: {nominal: string}[]}
+    expect(d.history.length).toBeGreaterThan(0)
+    expect(d.upcoming.length).toBeGreaterThan(0)
+    expect(d.upcoming.every(u => u.nominal > today)).toBe(true)
+    expect(call({url: "/recurrences/nope/occurrences", headers: personal}).status).toBe(404)
+  })
+})

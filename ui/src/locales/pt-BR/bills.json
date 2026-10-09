@@ -135,7 +135,31 @@
       "roll_forward": "Vai para o próximo dia útil",
       "none": "Mantém a data"
     },
-    "create": "Criar"
+    "create": "Criar",
+    "view": "Ver",
+    "detail": "Ocorrências de {{name}}",
+    "upcoming": "Próximas",
+    "history": "Histórico",
+    "nothingToCome": "Nenhuma data por vir.",
+    "noHistory": "Nenhuma conta gerada ainda.",
+    "state": {
+      "paid": "Paga",
+      "paidOn": "Paga em {{date}}",
+      "forecast": "Prevista",
+      "overdue": "Vencida",
+      "skipped": "Pulada",
+      "upcoming": "A gerar"
+    },
+    "openBill": {
+      "payable": "Ver em A pagar",
+      "receivable": "Ver em A receber"
+    },
+    "rolled": "paga em {{date}} ({{weekday}}), próximo dia útil",
+    "noneLeft": "Nenhuma data depois de hoje; salvar encerra a recorrência.",
+    "noneAtAll": "Esta regra não gera nenhuma data.",
+    "endsConfirm": "Isso encerra a recorrência; ela será arquivada.",
+    "back": "Voltar",
+    "endAndArchive": "Encerrar e arquivar"
   },
   "editor": {
     "repeat": "Repetição",

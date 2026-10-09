@@ -3,21 +3,23 @@
 import limits from "@/lib/limits.json"
 import {Button, Drawer, EmptyState, Field, Input, Skeleton, Switch} from "@aoctech/ui"
 import {useQuery} from "@tanstack/react-query"
-import {Repeat} from "lucide-react"
-import {useEffect, useRef, useState} from "react"
+import {ChevronDown, Repeat} from "lucide-react"
+import Link from "next/link"
+import {useEffect, useId, useRef, useState} from "react"
 import {useTranslation} from "react-i18next"
 
 import {ExceptionsFields, PatternFields} from "@/components/finance/ExpressionEditor"
 import {LedgerRow} from "@/components/finance/LedgerRow"
+import {OccurrenceTimeline, type TimelineEntry} from "@/components/finance/OccurrenceTimeline"
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
 import {DateField} from "@/components/ui/DateField"
 import {Select} from "@/components/ui/Select"
-import {messageFor} from "@/lib/api/client"
+import {messageFor, problemCode} from "@/lib/api/client"
 import {
-  archiveRecurrence, createRecurrence, type FinanceCtx, financeKeys, listAccounts, listRecurrences,
+  archiveRecurrence, createRecurrence, type FinanceCtx, financeKeys, getRecurrenceOccurrences, listAccounts, listRecurrences,
   patchRecurrence, previewRecurrence,
 } from "@/lib/api/finance"
-import type {Account, Adjust, Direction, NewRecurrence, Occurrence, Recurrence, RecurrencePatch} from "@/lib/api/financeTypes"
+import type {Account, Adjust, Direction, ExpressionJSON, NewRecurrence, Occurrence, Recurrence, RecurrencePatch} from "@/lib/api/financeTypes"
 import {defaultModel, describeModel, type EditorModel, fromExpression, toExpression, validate} from "@/lib/finance/expression"
 import {t} from "@/lib/i18n"
 import {addYearsIso, todayIso} from "@/lib/finance/today"
@@ -107,6 +109,10 @@ function RecurrenceRow({rec, account, onEdit}: {rec: Recurrence; account?: strin
   const {t} = useTranslation()
   const {can} = useFinanceSpaces()
   const [confirming, setConfirming] = useState(false)
+  // A disclosure: the detail opens in place under the row and the focus stays
+  // on the button, which says whether it is open (aria-expanded).
+  const [open, setOpen] = useState(false)
+  const detailId = useId()
   const archive = useFinanceMutation((c, _: void, key) => archiveRecurrence(c, rec.id, key), touched, () => setConfirming(false))
   return (
     <LedgerRow
@@ -119,11 +125,18 @@ function RecurrenceRow({rec, account, onEdit}: {rec: Recurrence; account?: strin
       aside={<span className="text-xs text-muted-foreground">{t(`bills.direction.${rec.direction}`)}</span>}
       asideOnPhone={false}
       amount={<span data-numeric>{money(rec.amount)}</span>}
-      actions={can("finance.write") && <>
-        <Button size="sm" variant="ghost" onClick={onEdit}>{t("bills.common.edit")}</Button>
-        <Button size="sm" variant="ghost" aria-expanded={confirming} onClick={() => setConfirming(v => !v)}>{t("bills.rec.end")}</Button>
+      actions={<>
+        <Button size="sm" variant="ghost" aria-expanded={open} aria-controls={detailId} onClick={() => setOpen(v => !v)}>
+          {t("bills.rec.view")}
+          <ChevronDown aria-hidden className={`size-4 transition-transform duration-200 ease-out motion-reduce:transition-none ${open ? "rotate-180" : ""}`}/>
+        </Button>
+        {can("finance.write") && <>
+          <Button size="sm" variant="ghost" onClick={onEdit}>{t("bills.common.edit")}</Button>
+          <Button size="sm" variant="ghost" aria-expanded={confirming} onClick={() => setConfirming(v => !v)}>{t("bills.rec.end")}</Button>
+        </>}
       </>}
     >
+      {open && <RecurrenceDetail id={detailId} rec={rec}/>}
       {confirming && (
         <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg bg-surface p-3 text-sm motion-safe:animate-in motion-safe:fade-in">
           <p className="text-muted-foreground">{t("bills.rec.endConfirm")}</p>
@@ -137,26 +150,75 @@ function RecurrenceRow({rec, account, onEdit}: {rec: Recurrence; account?: strin
 }
 
 /**
+ * F4's inline detail (UX batch 3): a timeline of what is to come (the bills
+ * already made and not yet due, then the dates the rule will make) and of what
+ * happened (paid, overdue with a way to it, skipped), most recent first.
+ */
+function RecurrenceDetail({id, rec}: {id: string; rec: Recurrence}) {
+  const {t} = useTranslation()
+  const ctx = useFinanceCtx()
+  const q = useQuery({queryKey: financeKeys.recurrenceOccurrences(ctx.mode, ctx.space, rec.id), queryFn: () => getRecurrenceOccurrences(ctx, rec.id)})
+  const name = rec.description || t("bills.common.noDescription")
+  const made = (o: NonNullable<typeof q.data>["history"][number]): TimelineEntry => ({
+    key: o.bill_id, nominal: o.nominal, due: o.due, kind: o.state, amount: money(o.amount),
+    state: o.state === "paid" && o.paid_date ? t("bills.rec.state.paidOn", {date: shortDate(o.paid_date)}) : t(`bills.rec.state.${o.state}`),
+    action: o.state === "overdue"
+      ? <Link href={`/console/finance/bills?direction=${rec.direction}&bill=${encodeURIComponent(o.bill_id)}`} className="text-sm text-foreground underline underline-offset-4 hover:text-brand-700">{t(`bills.rec.openBill.${rec.direction}`)}</Link>
+      : undefined,
+  })
+  const next: TimelineEntry[] = [
+    ...(q.data?.history ?? []).filter(o => o.state === "forecast").map(made),
+    ...(q.data?.upcoming ?? []).map(o => ({key: `u-${o.nominal}`, nominal: o.nominal, due: o.due, kind: "upcoming" as const, state: t("bills.rec.state.upcoming"), amount: money(rec.amount)})),
+  ]
+  const past = (q.data?.history ?? []).filter(o => o.state !== "forecast").reverse().map(made)
+  return (
+    <section id={id} aria-label={t("bills.rec.detail", {name})}
+      className="mt-3 grid gap-5 rounded-lg bg-surface p-3 sm:grid-cols-2 sm:gap-6 sm:p-4 motion-safe:animate-in motion-safe:fade-in">
+      {q.isLoading ? (
+        <div className="space-y-2 sm:col-span-2" aria-busy><Skeleton className="h-4 w-48"/><Skeleton className="h-4 w-56"/><Skeleton className="h-4 w-40"/></div>
+      ) : q.error ? (
+        <div className="sm:col-span-2"><ErrorBlock error={q.error} onRetry={() => void q.refetch()}/></div>
+      ) : (
+        <>
+          <div className="min-w-0 space-y-2">
+            <h3 className="text-xs font-medium text-muted-foreground">{t("bills.rec.upcoming")}</h3>
+            {next.length > 0
+              ? <OccurrenceTimeline label={t("bills.rec.upcoming")} entries={next}/>
+              : <p className="text-sm text-muted-foreground">{t("bills.rec.nothingToCome")}</p>}
+          </div>
+          <div className="min-w-0 space-y-2">
+            <h3 className="text-xs font-medium text-muted-foreground">{t("bills.rec.history")}</h3>
+            {past.length > 0
+              ? <OccurrenceTimeline label={t("bills.rec.history")} entries={past}/>
+              : <p className="text-sm text-muted-foreground">{t("bills.rec.noHistory")}</p>}
+          </div>
+        </>
+      )}
+    </section>
+  )
+}
+
+/**
  * The next occurrences for a valid model, debounced and last-answer-wins: a
  * slow reply to an older edit never overwrites the preview of a newer one.
  */
-function usePreview(ctx: FinanceCtx, model: EditorModel, start: string, end: string, adjust: Adjust, valid: boolean) {
-  const [state, setState] = useState<{occ: Occurrence[]; loading: boolean; error: unknown}>({occ: [], loading: false, error: null})
+function usePreview(ctx: FinanceCtx, expression: ExpressionJSON, start: string, end: string, adjust: Adjust, from: string, valid: boolean) {
+  const [state, setState] = useState<{occ: Occurrence[]; loading: boolean; error: unknown; done: boolean}>({occ: [], loading: false, error: null, done: false})
   const seq = useRef(0)
-  const body = JSON.stringify({expression: toExpression(model), start, end, adjust})
+  const body = JSON.stringify({expression, start, end, adjust, from})
   useEffect(() => {
     if (!valid || !start) return
     const mine = ++seq.current
     const abort = new AbortController()
     const t = setTimeout(() => {
       setState(s => ({...s, loading: true}))
-      const parsed = JSON.parse(body) as {expression: NewRecurrence["expression"]; start: string; end: string; adjust: Adjust}
+      const parsed = JSON.parse(body) as {expression: ExpressionJSON; start: string; end: string; adjust: Adjust; from: string}
       previewRecurrence(ctx, {
         expression: parsed.expression, start: parsed.start, end: parsed.end || undefined,
-        business_day_adjust: parsed.adjust, from: todayIso() > parsed.start ? todayIso() : parsed.start, count: PREVIEW_COUNT,
+        business_day_adjust: parsed.adjust, from: parsed.from > parsed.start ? parsed.from : parsed.start, count: PREVIEW_COUNT,
       }, abort.signal)
-        .then(r => { if (mine === seq.current) setState({occ: r.data, loading: false, error: null}) })
-        .catch(e => { if (mine === seq.current && !abort.signal.aborted) setState({occ: [], loading: false, error: e}) })
+        .then(r => { if (mine === seq.current) setState({occ: r.data, loading: false, error: null, done: true}) })
+        .catch(e => { if (mine === seq.current && !abort.signal.aborted) setState({occ: [], loading: false, error: e, done: true}) })
     }, DEBOUNCE_MS)
     return () => {
       clearTimeout(t)
@@ -164,6 +226,13 @@ function usePreview(ctx: FinanceCtx, model: EditorModel, start: string, end: str
     }
   }, [ctx, body, valid, start])
   return state
+}
+
+/** The day after a civil date. */
+function nextDay(iso: string): string {
+  const [y, m, d] = iso.split("-").map(Number)
+  const next = new Date(y, m - 1, d + 1, 12)
+  return `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}-${String(next.getDate()).padStart(2, "0")}`
 }
 
 function RecurrencePanel({editing, accounts, onDone}: {editing?: Recurrence; accounts: Account[]; onDone: () => void}) {
@@ -182,7 +251,16 @@ function RecurrencePanel({editing, accounts, onDone}: {editing?: Recurrence; acc
   const [model, setModel] = useState<EditorModel>(() => (editing && fromExpression(editing.expression)) || defaultModel(todayIso()))
 
   const errors = editing ? [] : validate(model)
-  const preview = usePreview(ctx, model, start, end, adjust, errors.length === 0)
+  // Creating: the dates from today. Editing: the rule is fixed, so the preview
+  // shows what is left after today under the end being edited, which is what
+  // tells the person that an end will close the recurrence.
+  const preview = usePreview(ctx, editing ? editing.expression : toExpression(model), start, end,
+    editing ? editing.business_day_adjust : adjust, editing ? nextDay(todayIso()) : todayIso(), errors.length === 0)
+  // An end the server said leaves nothing to come (422 recurrence_would_end):
+  // saving it again asks for confirmation instead of repeating the request.
+  const [endsAt, setEndsAt] = useState<string | null>(null)
+  const [confirmEnd, setConfirmEnd] = useState(false)
+  const lastPatch = useRef<RecurrencePatch>({})
   const amount = parseMoney(amountText)
   const cats = accounts.filter(a => a.class === (direction === "payable" ? "expense" : "income") && !a.archived && !a.system)
   const assets = accounts.filter(a => a.class === "asset" && !a.archived && !a.system)
@@ -192,7 +270,14 @@ function RecurrencePanel({editing, accounts, onDone}: {editing?: Recurrence; acc
   // otherwise its error is shown as the general message.
   const fe = useFieldErrors(["description", "amount", "category_id", "account_id", ...(editing ? [] : ["start"]), ...(editing || more ? ["end"] : [])])
   const create = useFinanceMutation((c, body: NewRecurrence, key) => createRecurrence(c, body, key), touched, onDone, fe.set)
-  const patch = useFinanceMutation((c, body: RecurrencePatch, key) => patchRecurrence(c, editing!.id, body, key), touched, onDone, fe.set)
+  const patch = useFinanceMutation((c, body: RecurrencePatch, key) => patchRecurrence(c, editing!.id, body, key), touched, onDone, e => {
+    if (problemCode(e) === "recurrence_would_end" && lastPatch.current.end) {
+      setEndsAt(lastPatch.current.end)
+      setConfirmEnd(true)
+      return
+    }
+    fe.set(e)
+  })
   const pending = create.isPending || patch.isPending
   const ready = amount !== null && category !== "" && account !== "" && errors.length === 0 && !pending
   const showAuto = can("finance.settle") || (editing?.auto_settle ?? false)
@@ -216,10 +301,32 @@ function RecurrencePanel({editing, accounts, onDone}: {editing?: Recurrence; acc
     if (autoSettle !== editing.auto_settle) body.auto_settle = autoSettle
     if (end && end !== (editing.end ?? "")) body.end = end
     if (Object.keys(body).length === 0) return onDone()
+    lastPatch.current = body
+    if (body.end && body.end === endsAt) {
+      setConfirmEnd(true)
+      return
+    }
     patch.mutate(body)
   }
 
   const nextDates = preview.occ.slice(0, PREVIEW_COUNT)
+  const previewList = (
+    <div className="space-y-2" aria-live="polite">
+      <h3 id="rc-next" className="text-sm font-medium text-foreground">{t("bills.rec.next")}</h3>
+      {errors.length > 0 ? (
+        <p className="text-sm text-muted-foreground">{t("bills.rec.fixRule")}</p>
+      ) : preview.error ? (
+        <p role="alert" className="text-sm text-danger">{messageFor(preview.error)}</p>
+      ) : nextDates.length > 0 ? (
+        <OccurrenceTimeline label={t("bills.rec.next")}
+          entries={nextDates.map(o => ({key: o.nominal, nominal: o.nominal, due: o.due, kind: "upcoming" as const}))}/>
+      ) : preview.done && !preview.loading ? (
+        <p className="text-sm text-muted-foreground">{editing ? t("bills.rec.noneLeft") : t("bills.rec.noneAtAll")}</p>
+      ) : (
+        <p className="text-sm text-muted-foreground">{t("bills.rec.calculating")}</p>
+      )}
+    </div>
+  )
 
   return (
     <div className="space-y-4">
@@ -258,31 +365,15 @@ function RecurrencePanel({editing, accounts, onDone}: {editing?: Recurrence; acc
         </div>
 
         {editing ? (
-          <p className="text-sm text-muted-foreground">
-            {t("bills.rec.editNote", {rule: ruleOf(editing)})}
-          </p>
+          <>
+            <p className="text-sm text-muted-foreground">
+              {t("bills.rec.editNote", {rule: ruleOf(editing)})}
+            </p>
+            {previewList}
+          </>
         ) : (
           <>
-            <p className="text-sm" aria-live="polite">
-              <span className="font-medium text-foreground">{t("bills.rec.next")}: </span>
-              {errors.length > 0 ? (
-                <span className="text-muted-foreground">{t("bills.rec.fixRule")}</span>
-              ) : preview.error ? (
-                <span role="alert" className="text-danger">{messageFor(preview.error)}</span>
-              ) : nextDates.length === 0 ? (
-                <span className="text-muted-foreground">{t("bills.rec.calculating")}</span>
-              ) : (
-                <span className="tabular-nums text-foreground">
-                  {nextDates.map((o, i) => (
-                    <span key={o.nominal}>
-                      {i > 0 && <span className="text-muted-foreground"> • </span>}
-                      {shortDate(o.nominal)}
-                      {o.due !== o.nominal && <span className="text-muted-foreground">{` ${t("bills.rec.paidOn", {date: shortDate(o.due)})}`}</span>}
-                    </span>
-                  ))}
-                </span>
-              )}
-            </p>
+            {previewList}
 
             <div>
               <button type="button" aria-expanded={more} onClick={() => setMore(v => !v)}
@@ -315,6 +406,14 @@ function RecurrencePanel({editing, accounts, onDone}: {editing?: Recurrence; acc
             <Button type="button" variant="outline" size="sm" onClick={onDone}>{t("bills.common.close")}</Button>
           </div>
         </div>
+        {confirmEnd && (
+          <div className="flex flex-wrap items-center gap-2 rounded-lg bg-surface p-3 text-sm motion-safe:animate-in motion-safe:fade-in">
+            <p role="alert" className="w-full text-foreground">{t("bills.rec.endsConfirm")}</p>
+            <Button type="button" size="sm" variant="outline" onClick={() => setConfirmEnd(false)}>{t("bills.rec.back")}</Button>
+            <Button type="button" size="sm" variant="danger" disabled={patch.isPending}
+              onClick={() => patch.mutate({...lastPatch.current, archive: true})}>{t("bills.rec.endAndArchive")}</Button>
+          </div>
+        )}
         {fe.general && <p role="alert" className="text-sm text-danger">{fe.general}</p>}
       </form>
     </div>

@@ -1,6 +1,6 @@
 "use client"
 
-import type {ReactNode} from "react"
+import {type ReactNode, useEffect, useRef} from "react"
 
 interface LedgerRowProps {
   /** The description. Wraps to two lines on a phone, one line (truncated) from `sm`. */
@@ -16,6 +16,8 @@ interface LedgerRowProps {
   actions?: ReactNode
   /** What opens in place under the row (a settle form, a confirmation). */
   children?: ReactNode
+  /** The row a link pointed at (a recurrence's overdue bill): marked and scrolled to. */
+  current?: boolean
 }
 
 /**
@@ -28,9 +30,15 @@ interface LedgerRowProps {
  * wrapping onto a second rather than being cut, and the aside and actions get
  * lines of their own, full width, so every action is a 44px target in reach.
  */
-export function LedgerRow({title, meta, amount, aside, asideOnPhone = true, actions, children}: LedgerRowProps) {
+export function LedgerRow({title, meta, amount, aside, asideOnPhone = true, actions, children, current = false}: LedgerRowProps) {
+  const ref = useRef<HTMLLIElement>(null)
+  useEffect(() => {
+    if (current) ref.current?.scrollIntoView?.({block: "center"})
+  }, [current])
   return (
-    <li className="py-2.5">
+    // The pointed-at row takes the selected-row tint (brand-50), the brand's one
+    // home in a list.
+    <li ref={ref} aria-current={current || undefined} className={`py-2.5 ${current ? "-mx-2 rounded-md bg-brand-50 px-2" : ""}`}>
       <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-1.5 sm:flex sm:flex-wrap sm:items-center sm:gap-x-4 sm:gap-y-1">
         <div className="col-start-1 row-start-1 min-w-0 sm:flex-1 sm:basis-40">
           <p title={title} className="line-clamp-2 text-sm text-foreground [overflow-wrap:anywhere] sm:line-clamp-1">{title}</p>

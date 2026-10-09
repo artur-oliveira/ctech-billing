@@ -60,6 +60,23 @@ export interface Occurrence {
   due: IsoDate
 }
 
+/** paid; forecast (made, not yet due); overdue (made, past due, unpaid); skipped (its bill was cancelled). */
+export type OccurrenceState = "paid" | "forecast" | "overdue" | "skipped"
+
+/** A bill a recurrence made, for F4's detail (UX batch 3). */
+export interface OccurrenceBill extends Occurrence {
+  bill_id: string
+  amount: Cents
+  state: OccurrenceState
+  paid_date?: IsoDate
+}
+
+/** `history`: the latest bills it made, oldest first. `upcoming`: dates it will make, none once archived. */
+export interface RecurrenceOccurrences {
+  history: OccurrenceBill[]
+  upcoming: Occurrence[]
+}
+
 export interface ProjectionMonth {
   month: string // YYYY-MM
   receivable: Cents
@@ -170,6 +187,9 @@ export interface RecurrencePatch {
   description?: string
   auto_settle?: boolean
   end?: IsoDate
+  /** Confirms an end that leaves nothing to come: saved and archived in one write.
+   *  Without it the API answers 422 `recurrence_would_end` and saves nothing. */
+  archive?: boolean
 }
 
 export interface PreviewInput extends ScheduleInput {

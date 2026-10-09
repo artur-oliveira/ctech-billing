@@ -8,7 +8,7 @@ import {RecurrencesView} from "@/components/finance/RecurrencesView"
 import {optionsOf, pick, renderWithQuery} from "@/components/finance/finance.test-utils"
 import * as finance from "@/lib/api/finance"
 import * as createRequest from "@/lib/finance/createRequest"
-import type {Account, Recurrence, Verb} from "@/lib/api/financeTypes"
+import type {Account, Recurrence, RecurrenceOccurrences, Verb} from "@/lib/api/financeTypes"
 
 const ALL: Verb[] = ["finance.read", "finance.write", "finance.settle", "finance.import", "finance.configure"]
 const ACCOUNTS: Account[] = [
@@ -160,5 +160,131 @@ describe("the phone's central action", () => {
     renderWithQuery(<RecurrencesView/>)
     act(() => createRequest.requestCreate("recurrence"))
     expect(await screen.findByRole("dialog", {name: "Nova recorrência"})).toBeInTheDocument()
+  })
+})
+
+// ---- UX batch 3 -----------------------------------------------------------------
+
+const OCCURRENCES: RecurrenceOccurrences = {
+  history: [
+    {nominal: "2026-07-10", due: "2026-07-10", bill_id: "b7", amount: 180000, state: "paid", paid_date: "2026-07-10"},
+    {nominal: "2026-08-10", due: "2026-08-10", bill_id: "b8", amount: 180000, state: "skipped"},
+    {nominal: "2026-09-10", due: "2026-09-10", bill_id: "b9", amount: 180000, state: "overdue"},
+    {nominal: "2026-10-10", due: "2026-10-13", bill_id: "b10", amount: 180000, state: "forecast"},
+  ],
+  upcoming: [{nominal: "2026-11-10", due: "2026-11-10"}, {nominal: "2026-12-10", due: "2026-12-10"}],
+}
+
+describe("F4 — a recurrence's detail, in place (UX batch 3)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({toFake: ["Date"]})
+    vi.setSystemTime(new Date(2026, 9, 9, 9, 0)) // 9 October 2026
+  })
+
+  it("expands in place under a disclosure button that keeps the focus", async () => {
+    serve(["finance.read"]) // a viewer reads the detail too
+    const get = vi.spyOn(finance, "getRecurrenceOccurrences").mockResolvedValue(OCCURRENCES)
+    renderWithQuery(<RecurrencesView/>)
+    const row = (await screen.findByText("Aluguel do apartamento")).closest("li") as HTMLElement
+    const ver = within(row).getByRole("button", {name: "Ver"})
+    expect(ver).toHaveAttribute("aria-expanded", "false")
+    await userEvent.click(ver)
+    expect(ver).toHaveAttribute("aria-expanded", "true")
+    expect(ver).toHaveFocus()
+    const region = await screen.findByRole("region", {name: "Ocorrências de Aluguel do apartamento"})
+    expect(ver).toHaveAttribute("aria-controls", region.id)
+    await waitFor(() => expect(get).toHaveBeenCalledWith(expect.anything(), "r1"))
+    await userEvent.click(ver)
+    expect(ver).toHaveAttribute("aria-expanded", "false")
+    expect(screen.queryByRole("region", {name: /Ocorrências de/})).toBeNull()
+  })
+
+  it("shows the next dates and the history as a timeline, each with its state in words", async () => {
+    serve(ALL)
+    vi.spyOn(finance, "getRecurrenceOccurrences").mockResolvedValue(OCCURRENCES)
+    renderWithQuery(<RecurrencesView/>)
+    const row = (await screen.findByText("Aluguel do apartamento")).closest("li") as HTMLElement
+    await userEvent.click(within(row).getByRole("button", {name: "Ver"}))
+    const region = await screen.findByRole("region", {name: /Ocorrências de/})
+
+    const next = await within(region).findByRole("list", {name: "Próximas"})
+    const nextItems = within(next).getAllByRole("listitem")
+    // The bill already made for 10/10 (rolled to 13/10) leads, then what the rule will make.
+    expect(nextItems.map(i => i.textContent)).toEqual([
+      expect.stringMatching(/10\/10\/2026.*Prevista.*paga em 13\/10\/2026/),
+      expect.stringMatching(/10\/11\/2026.*A gerar/),
+      expect.stringMatching(/10\/12\/2026.*A gerar/),
+    ])
+
+    const past = within(region).getByRole("list", {name: "Histórico"})
+    const pastItems = within(past).getAllByRole("listitem")
+    expect(pastItems.map(i => i.textContent)).toEqual([ // most recent first
+      expect.stringMatching(/10\/09\/2026.*Vencida/),
+      expect.stringMatching(/10\/08\/2026.*Pulada/),
+      expect.stringMatching(/10\/07\/2026.*Paga em 10\/07\/2026/),
+    ])
+    expect(within(pastItems[0]).getByRole("link", {name: "Ver em A pagar"}))
+      .toHaveAttribute("href", "/console/finance/bills?direction=payable&bill=b9")
+  })
+
+  it("says when there is nothing to come", async () => {
+    serve(ALL)
+    vi.spyOn(finance, "getRecurrenceOccurrences").mockResolvedValue({history: [], upcoming: []})
+    renderWithQuery(<RecurrencesView/>)
+    const row = (await screen.findByText("Aluguel do apartamento")).closest("li") as HTMLElement
+    await userEvent.click(within(row).getByRole("button", {name: "Ver"}))
+    expect(await screen.findByText("Nenhuma data por vir.")).toBeInTheDocument()
+  })
+
+  it("previews the next dates as a compact list with the weekday and the business-day roll", async () => {
+    serve(ALL, [])
+    renderWithQuery(<RecurrencesView/>)
+    await userEvent.click(await screen.findByRole("button", {name: "Nova recorrência"}))
+    const list = await screen.findByRole("list", {name: "Próximas datas"})
+    const items = await within(list).findAllByRole("listitem")
+    expect(items).toHaveLength(2)
+    expect(items[0]).toHaveTextContent(/31\/10\/2026/)
+    expect(items[0]).toHaveTextContent(/sáb/)
+    expect(items[0]).toHaveTextContent(/paga em 03\/11\/2026.*próximo dia útil/)
+    expect(items[1]).not.toHaveTextContent(/paga em/)
+  })
+
+  it("previews the dates left while editing, and warns when the end leaves none", async () => {
+    const preview = serve(ALL)
+    preview.mockResolvedValue({data: [], has_more: false})
+    renderWithQuery(<RecurrencesView/>)
+    const row = (await screen.findByText("Aluguel do apartamento")).closest("li") as HTMLElement
+    await userEvent.click(within(row).getByRole("button", {name: "Editar"}))
+    expect(await screen.findByText(/Nenhuma data depois de hoje; salvar encerra a recorrência/)).toBeInTheDocument()
+    await waitFor(() => expect(preview).toHaveBeenCalledWith(expect.anything(),
+      expect.objectContaining({expression: REC.expression, start: REC.start}), expect.anything()))
+  })
+
+  it("asks before an end that leaves nothing to come, and archives only on confirmation", async () => {
+    serve(ALL)
+    const patch = vi.spyOn(finance, "patchRecurrence")
+      .mockRejectedValueOnce({response: {status: 422, data: {code: "recurrence_would_end", detail: "x"}}})
+      .mockResolvedValueOnce({...REC, end: "2026-10-09", archived: true})
+    renderWithQuery(<RecurrencesView/>)
+    const row = (await screen.findByText("Aluguel do apartamento")).closest("li") as HTMLElement
+    await userEvent.click(within(row).getByRole("button", {name: "Editar"}))
+    const dialog = screen.getByRole("dialog", {name: "Editar recorrência"})
+    await userEvent.click(within(dialog).getByLabelText("Termina em"))
+    await userEvent.click(await screen.findByRole("button", {name: /sexta-feira, 9 de outubro de 2026$/}))
+    await userEvent.click(within(dialog).getByRole("button", {name: "Salvar"}))
+    expect(await within(dialog).findByText("Isso encerra a recorrência; ela será arquivada.")).toBeInTheDocument()
+    expect(patch).toHaveBeenCalledTimes(1)
+    expect(patch.mock.calls[0][2]).toEqual({end: "2026-10-09"})
+
+    // Back: nothing else is sent.
+    await userEvent.click(within(dialog).getByRole("button", {name: "Voltar"}))
+    expect(within(dialog).queryByText(/ela será arquivada/)).toBeNull()
+    expect(patch).toHaveBeenCalledTimes(1)
+
+    await userEvent.click(within(dialog).getByRole("button", {name: "Salvar"}))
+    // The confirmation appears again from the same refusal (no second request needed).
+    await userEvent.click(await within(dialog).findByRole("button", {name: "Encerrar e arquivar"}))
+    await waitFor(() => expect(patch).toHaveBeenLastCalledWith(expect.anything(), "r1", {end: "2026-10-09", archive: true}, expect.any(String)))
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
   })
 })

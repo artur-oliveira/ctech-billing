@@ -135,7 +135,31 @@
       "roll_forward": "Moves to the next business day",
       "none": "Keeps the date"
     },
-    "create": "Create"
+    "create": "Create",
+    "view": "View",
+    "detail": "Occurrences of {{name}}",
+    "upcoming": "Next",
+    "history": "History",
+    "nothingToCome": "Nothing to come.",
+    "noHistory": "No bill made yet.",
+    "state": {
+      "paid": "Paid",
+      "paidOn": "Paid on {{date}}",
+      "forecast": "Forecast",
+      "overdue": "Overdue",
+      "skipped": "Skipped",
+      "upcoming": "To be made"
+    },
+    "openBill": {
+      "payable": "See in Payables",
+      "receivable": "See in Receivables"
+    },
+    "rolled": "paid on {{date}} ({{weekday}}), next business day",
+    "noneLeft": "No date after today; saving ends the recurrence.",
+    "noneAtAll": "This rule makes no date.",
+    "endsConfirm": "This ends the recurrence; it will be archived.",
+    "back": "Back",
+    "endAndArchive": "End and archive"
   },
   "editor": {
     "repeat": "Repeat",

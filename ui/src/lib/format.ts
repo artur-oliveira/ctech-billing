@@ -34,6 +34,10 @@ export const longDate = (iso: IsoDate) =>
 export const shortDate = (iso: IsoDate) =>
   intl("short", l => new Intl.DateTimeFormat(l, {day: "2-digit", month: "2-digit", year: "numeric"})).format(civil(iso))
 
+/** "sáb." / "Sat" — beside a date in a list of dates, where the day of the week decides. */
+export const weekdayShort = (iso: IsoDate) =>
+  intl("weekday-short", l => new Intl.DateTimeFormat(l, {weekday: "short"})).format(civil(iso))
+
 /** "10/03" (pt-BR) — a recent date, inside a sentence. */
 export const dayMonth = (iso: IsoDate) =>
   intl("day-month-numeric", l => new Intl.DateTimeFormat(l, {day: "2-digit", month: "2-digit"})).format(civil(iso))

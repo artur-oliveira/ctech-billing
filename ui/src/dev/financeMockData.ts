@@ -434,6 +434,28 @@ function route(method: string, path: string, r: Req, s: SpaceState, can: (v: Ver
     s.recurrences.push(rec)
     return ok(rec, 201)
   }
+  const occMatch = path.match(/^\/recurrences\/([^/]+)\/occurrences$/)
+  if (occMatch && method === "get") {
+    // Mock-grade: the seeded rent shows every state (the latest past one is the
+    // seeded overdue bill, one skipped, the rest paid, this month's forecast);
+    // a recurrence created in this session has made nothing yet.
+    const rec = s.recurrences.find(x => x.id === occMatch[1])
+    if (!rec) return problem(404, "about:blank", "Not Found", "recurso não encontrado", "resource_not_found")
+    const all = occurrences(rec.expression, rec.start, 24).filter(o => !rec.end || o.nominal <= rec.end)
+    const [hy, hm] = monthOffset(today, 1)
+    const horizonEnd = iso(hy, hm, daysIn(hy, hm))
+    const made = rec.id === "r-aluguel" ? all.filter(o => o.nominal <= horizonEnd).slice(-6) : []
+    const past = made.filter(o => o.nominal < today)
+    const history = made.map(o => {
+      const i = past.indexOf(o)
+      const last = i === past.length - 1
+      const state = i < 0 ? "forecast" : last ? "overdue" : i === past.length - 2 ? "skipped" : "paid"
+      return {...o, bill_id: last ? "b-aluguel" : `mock-${o.nominal}`, amount: rec.amount, state, ...(state === "paid" ? {paid_date: o.due} : {})}
+    })
+    const after = made.at(-1)?.nominal ?? addDays(today, -1)
+    const upcoming = rec.archived ? [] : all.filter(o => o.nominal > after && o.nominal > today).slice(0, 6)
+    return ok({history, upcoming})
+  }
   if (recMatch) {
     const rec = s.recurrences.find(x => x.id === recMatch[1])
     if (!rec) return problem(404, "about:blank", "Not Found", "recurso não encontrado", "resource_not_found")
@@ -443,7 +465,14 @@ function route(method: string, path: string, r: Req, s: SpaceState, can: (v: Ver
       return {status: 204, data: ""}
     }
     if (method === "patch") {
-      Object.assign(rec, Object.fromEntries(Object.entries(body<Partial<Recurrence>>(r)).filter(([, v]) => v !== undefined)))
+      const p = body<Partial<Recurrence> & {archive?: boolean}>(r)
+      // An end that leaves nothing after today ends it: confirmed (archive) or refused.
+      if (p.end && !p.archive && !occurrences(rec.expression, addDays(today, 1), 1).some(o => o.nominal <= p.end!)) {
+        return problem(422, "about:blank", "Unprocessable", "this end date leaves the recurrence with no occurrence to come", "recurrence_would_end")
+      }
+      const {archive, ...rest} = p
+      Object.assign(rec, Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined)))
+      if (archive) rec.archived = true
       return ok(rec)
     }
   }
