@@ -117,6 +117,8 @@ const (
 	EntityOrganization   Entity = "ORGANIZATION"
 	EntityAudit          Entity = "AUDIT"
 	EntityLedgerTx       Entity = "LEDGER_TX"
+	// EntityFinanceSettings is a finance space's settings row (SPACE).
+	EntityFinanceSettings Entity = "FINANCE_SETTINGS"
 )
 
 // Sort-key prefixes. One constant per row type, so the layout lives in this file

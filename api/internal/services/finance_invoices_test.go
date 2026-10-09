@@ -23,9 +23,10 @@ type fakeBooks struct {
 	recorded map[string]repositories.InvoiceFact // space PK -> fact
 	credits  map[string]billing.Cents            // space PK -> credited
 	calls    int
-	failPK   string // writes fail in this space
-	noRecvPK string // this space has no receiving account
-	overPK   string // a credit in this space exceeds what is left on the bill
+	failPK   string          // writes fail in this space
+	noRecvPK string          // this space has no receiving account
+	overPK   string          // a credit in this space exceeds what is left on the bill
+	optedOut map[string]bool // spaces that turned "post my CTech invoices" off
 	panics   bool
 }
 
@@ -49,6 +50,10 @@ func (f *fakeBooks) RecordInvoice(_ context.Context, sp space.ResolvedSpace, fac
 	}
 	f.recorded[sp.PK()] = fact
 	return finance.Bill{ID: "b"}, true, nil
+}
+
+func (f *fakeBooks) PostsCTechInvoices(_ context.Context, sp space.ResolvedSpace) (bool, error) {
+	return !f.optedOut[sp.PK()], nil
 }
 
 func (f *fakeBooks) RecordInvoiceCredit(_ context.Context, sp space.ResolvedSpace, _, _ string, amount billing.Cents, _ brcal.Date, _ repositories.PostMeta, _ time.Time) (bool, error) {
@@ -406,4 +411,29 @@ func TestACreditBeyondTheBillIsSettledNotRetried(t *testing.T) {
 	if !f.queue.credited["cn_1"] {
 		t.Fatal("a credit the bill can never take stays queued forever")
 	}
+}
+
+// ---- "Lançar minhas faturas da CTech automaticamente" (user decision 5) ---------
+
+func TestASpaceThatOptedOutGetsNoPayerPosting(t *testing.T) {
+	f := newInvoiceFixture()
+	f.books.optedOut = map[string]bool{payerPK: true}
+	out := f.rule.Paid(context.Background(), f.inv, "a", "r", at)
+	wantResult(t, out, SideIssuer, PostingPosted, "")
+	wantResult(t, out, SidePayer, PostingSkipped, "payer_opted_out")
+	if _, ok := f.books.recorded[payerPK]; ok {
+		t.Fatal("an opted-out space got the expense")
+	}
+	if !f.queue.posted["in_1"] {
+		t.Fatal("opting out is a decision, not a reason to retry")
+	}
+	cn := &billing.CreditNote{ID: "cn_1", OrganizationID: "ctech", Livemode: true, InvoiceID: "in_1", Amount: 1990, CreatedAt: at}
+	wantResult(t, f.rule.Credited(context.Background(), f.inv, cn, "u", "r", at), SidePayer, PostingSkipped, "payer_opted_out")
+}
+
+// The issuer side is CTech's own books: the setting never reaches it.
+func TestTheSettingDoesNotTouchTheIssuer(t *testing.T) {
+	f := newInvoiceFixture()
+	f.books.optedOut = map[string]bool{issuerPK: true}
+	wantResult(t, f.rule.Paid(context.Background(), f.inv, "a", "r", at), SideIssuer, PostingPosted, "")
 }

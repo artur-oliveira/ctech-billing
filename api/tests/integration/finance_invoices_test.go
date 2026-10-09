@@ -778,6 +778,61 @@ func TestConcurrentFinanceCreditsCannotSumPastTheBill(t *testing.T) {
 	}
 }
 
+// User decision 5: "Lançar minhas faturas da CTech automaticamente neste
+// espaço" is on until the person turns it off, needs finance.configure (the
+// route table), and is audited.
+func TestTheCTechInvoicesSettingIsOnByDefaultAndAudited(t *testing.T) {
+	f := newFinanceEnv(t)
+	var got struct {
+		Post *bool `json:"post_ctech_invoices"`
+	}
+	f.must(t, 200, "GET", "/settings", "", &got)
+	if got.Post == nil || !*got.Post {
+		t.Fatalf("a new space reads %v, want on", got.Post)
+	}
+	f.must(t, 200, "PUT", "/settings/post-ctech-invoices", `{"post_ctech_invoices":false}`, nil)
+	got.Post = nil
+	f.must(t, 200, "GET", "/settings", "", &got)
+	if got.Post == nil || *got.Post {
+		t.Fatalf("after turning it off it reads %v", got.Post)
+	}
+	if res := f.call(t, "PUT", "/settings/post-ctech-invoices", `{}`); res.status != 422 && res.status != 400 {
+		t.Errorf("a body without the flag: %d", res.status)
+	}
+	owner := "USER#" + f.org.OwnerUserID
+	trail, err := repositories.NewAuditRepository(testDB, testCfg).ListForEntity(ctxT(t), owner, true, owner+"#live", 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, a := range trail {
+		found = found || (a.Action == "finance.settings.post_ctech_invoices_changed" && a.After == "off" && a.Actor == "user:"+f.org.OwnerUserID)
+	}
+	if !found {
+		t.Fatalf("no audit row for the change: %+v", trail)
+	}
+}
+
+// User decision 5: a payer who turned the setting off gets nothing, and the
+// replay respects it too; the issuer's revenue is unaffected.
+func TestAPayerWhoOptedOutGetsNothing(t *testing.T) {
+	f := newFinancePayEnv(t, true)
+	if err := f.ledger.SetPostCTechInvoices(ctxT(t), f.payer, false, "user:"+f.userID, "req", now()); err != nil {
+		t.Fatal(err)
+	}
+	inv, _ := f.payByWebhook(t)
+	f.finance.Replay(ctxT(t), true, now().Add(time.Hour))
+	if got := f.bal(t, f.payer, "bank"); got != 0 {
+		t.Errorf("payer bank = %d, want 0 (opted out)", got)
+	}
+	if got := f.bal(t, f.issuer, "bank"); got != inv.Total {
+		t.Errorf("issuer bank = %d, want %d", got, inv.Total)
+	}
+	if f.pendingPosting(t, inv.ID) {
+		t.Error("an opted-out payer keeps the invoice queued")
+	}
+}
+
 func contains(xs []string, x string) bool {
 	for _, s := range xs {
 		if s == x {

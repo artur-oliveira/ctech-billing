@@ -79,12 +79,42 @@ type settingsDTO struct {
 	DefaultReceivingAccountID string `json:"default_receiving_account_id,omitempty"`
 }
 
+// financeSettingsResponse is the space's settings as GET /settings answers them.
+// post_ctech_invoices is always present: absent on the row means on.
+type financeSettingsResponse struct {
+	DefaultReceivingAccountID string `json:"default_receiving_account_id,omitempty"`
+	PostCTechInvoices         bool   `json:"post_ctech_invoices"`
+}
+
 func (h *financeHandlers) getSettings(c fiber.Ctx) error {
 	s, err := h.ledger.GetSettings(c.Context(), middleware.GetSpace(c))
 	if err != nil {
 		return fail(c, err)
 	}
-	return c.JSON(settingsDTO{DefaultReceivingAccountID: s.DefaultReceivingAccountID})
+	return c.JSON(financeSettingsResponse{DefaultReceivingAccountID: s.DefaultReceivingAccountID, PostCTechInvoices: s.PostCTechInvoices})
+}
+
+type postCTechInvoicesRequest struct {
+	PostCTechInvoices *bool `json:"post_ctech_invoices"`
+}
+
+// setPostCTechInvoices turns "Lançar minhas faturas da CTech automaticamente
+// neste espaço" on or off (spec § 3.8). finance.configure, audited.
+func (h *financeHandlers) setPostCTechInvoices(c fiber.Ctx) error {
+	var req postCTechInvoicesRequest
+	if p := decodeStrict(c, &req); p != nil {
+		return p.Send(c)
+	}
+	if req.PostCTechInvoices == nil {
+		ch := &checks{}
+		ch.fail("post_ctech_invoices", "required", "required")
+		return problem.Validation(ch.errs).Send(c)
+	}
+	if err := h.ledger.SetPostCTechInvoices(c.Context(), middleware.GetSpace(c), *req.PostCTechInvoices,
+		actorOfUser(c), middleware.GetRequestID(c), h.now()); err != nil {
+		return fail(c, err)
+	}
+	return c.JSON(map[string]bool{"post_ctech_invoices": *req.PostCTechInvoices})
 }
 
 func (h *financeHandlers) setDefaultReceivingAccount(c fiber.Ctx) error {

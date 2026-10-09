@@ -364,6 +364,10 @@ func (r *LedgerRepository) ArchiveAccount(ctx context.Context, sp space.Resolved
 // Settings are the space's own preferences, on its SPACE row.
 type Settings struct {
 	DefaultReceivingAccountID string
+	// PostCTechInvoices is "Lançar minhas faturas da CTech automaticamente neste
+	// espaço" (spec § 3.8): when false, a paid CTech invoice writes nothing in
+	// this space as the payer. On when the attribute is absent.
+	PostCTechInvoices bool
 }
 
 // GetSettings reads the space's settings; a space with none yet has the zero value.
@@ -376,15 +380,45 @@ func (r *LedgerRepository) GetSettings(ctx context.Context, sp space.ResolvedSpa
 		return Settings{}, err
 	}
 	if raw == nil {
-		return Settings{}, nil
+		return Settings{PostCTechInvoices: true}, nil
 	}
 	it, err := Decode[struct {
 		Default string `dynamodbav:"default_receiving_account_id"`
+		Post    *bool  `dynamodbav:"post_ctech_invoices"`
 	}](raw)
 	if err != nil {
 		return Settings{}, err
 	}
-	return Settings{DefaultReceivingAccountID: it.Default}, nil
+	return Settings{DefaultReceivingAccountID: it.Default, PostCTechInvoices: it.Post == nil || *it.Post}, nil
+}
+
+// SetPostCTechInvoices turns "Lançar minhas faturas da CTech automaticamente
+// neste espaço" on or off, with an audit row in the same write. Future postings
+// only: turning it off deletes nothing, and turning it back on replays nothing.
+func (r *LedgerRepository) SetPostCTechInvoices(ctx context.Context, sp space.ResolvedSpace, on bool, actor, requestID string, now time.Time) error {
+	if err := sp.Require(space.Configure); err != nil {
+		return err
+	}
+	if err := r.EnsureReady(ctx, sp, now); err != nil {
+		return err
+	}
+	after := map[bool]string{true: "on", false: "off"}[on]
+	audit, err := buildAuditItem(sp.Owner(), sp.Livemode(), AuditEntry{
+		Entity: EntityFinanceSettings, EntityID: sp.PK(), Action: "finance.settings.post_ctech_invoices_changed",
+		Cause: billing.CauseManual, Actor: actor, RequestID: requestID, After: after,
+	}, "", "", now)
+	if err != nil {
+		return err
+	}
+	sk := LedgerSpaceSK()
+	return r.accounts.TransactWrite(ctx, txItems(
+		r.accounts.BuildRawUpdateTxItem(sp.PK(), &sk, "SET post_ctech_invoices = :on, updated_at = :now", "attribute_exists(pk)", nil,
+			map[string]types.AttributeValue{
+				":on":  &types.AttributeValueMemberBOOL{Value: on},
+				":now": &types.AttributeValueMemberS{Value: now.UTC().Format(time.RFC3339Nano)},
+			}),
+		r.audit.BuildPutTxItem(audit),
+	))
 }
 
 // SetDefaultReceivingAccount names the asset account receivables settle into by

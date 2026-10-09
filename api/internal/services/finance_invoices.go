@@ -20,6 +20,7 @@ import (
 type invoiceBooks interface {
 	RecordInvoice(ctx context.Context, sp space.ResolvedSpace, f repositories.InvoiceFact, meta repositories.PostMeta, now time.Time) (finance.Bill, bool, error)
 	RecordInvoiceCredit(ctx context.Context, sp space.ResolvedSpace, invoiceID, creditNoteID string, amount billing.Cents, date brcal.Date, meta repositories.PostMeta, now time.Time) (bool, error)
+	PostsCTechInvoices(ctx context.Context, sp space.ResolvedSpace) (bool, error)
 }
 
 type organizationReader interface {
@@ -362,6 +363,15 @@ func (s *FinanceInvoices) payer(ctx context.Context, inv *billing.Invoice) targe
 	sp, err := space.ForInvoicePayer(c.UserID, inv.Livemode)
 	if err != nil {
 		return skipped(SidePayer, "payer_has_no_account")
+	}
+	// "Lançar minhas faturas da CTech automaticamente neste espaço", read at
+	// posting time, so the replay respects what the person decided since.
+	post, err := s.books.PostsCTechInvoices(ctx, sp)
+	if err != nil {
+		return failed(SidePayer, err)
+	}
+	if !post {
+		return skipped(SidePayer, "payer_opted_out")
 	}
 	return target{side: SidePayer, sp: sp}
 }

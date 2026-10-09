@@ -269,6 +269,17 @@ func (r *BillRepository) getConsistent(ctx context.Context, sp space.ResolvedSpa
 	return &b, nil
 }
 
+// PostsCTechInvoices reports the space's "Lançar minhas faturas da CTech
+// automaticamente" setting, on unless the person turned it off. A space that
+// does not exist yet reads on.
+func (r *BillRepository) PostsCTechInvoices(ctx context.Context, sp space.ResolvedSpace) (bool, error) {
+	s, err := r.ledger.GetSettings(ctx, sp)
+	if err != nil {
+		return false, err
+	}
+	return s.PostCTechInvoices, nil
+}
+
 // receivingAccount is where a paid invoice's cash goes in this space: the
 // default receiving account (F8) if it is still an active asset account the
 // person holds; otherwise, when the space holds exactly one active bank or cash
