@@ -258,6 +258,14 @@ describe("F8 — accounts", () => {
 })
 
 describe("the phone's central action", () => {
+  it("does not open Nova conta for a role that cannot configure", async () => {
+    serve(["finance.read", "finance.write"])
+    createRequest.requestCreate("account")
+    renderWithQuery(<AccountsView/>)
+    await new Promise(r => setTimeout(r, 50))
+    expect(screen.queryByRole("dialog")).toBeNull()
+  })
+
   it("opens Nova conta", async () => {
     serve(ALL)
     renderWithQuery(<AccountsView/>)

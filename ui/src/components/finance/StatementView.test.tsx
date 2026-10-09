@@ -131,6 +131,15 @@ describe("F3 — extrato", () => {
 })
 
 describe("the phone's central action", () => {
+  it("does not open Nova transferência for a role that cannot create", async () => {
+    serve(["finance.read"], {cc: () => statement([])})
+    createRequest.requestCreate("transfer")
+    renderWithQuery(<StatementView/>)
+    await screen.findByText("Nada neste período.")
+    await new Promise(r => setTimeout(r, 50))
+    expect(screen.queryByRole("dialog")).toBeNull()
+  })
+
   it("opens Nova transferência, once the accounts are known", async () => {
     serve(ALL, {cc: () => statement([])})
     createRequest.requestCreate("transfer")

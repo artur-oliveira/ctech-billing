@@ -54,10 +54,12 @@ const touched = (c: FinanceCtx) => [
 export function BillsView() {
   const {t} = useTranslation()
   const ctx = useFinanceCtx()
-  const {can} = useFinanceSpaces()
+  const {can, loading} = useFinanceSpaces()
   const [direction, setDirection] = useState<Direction>("payable")
   const [creating, setCreating] = useState(false)
-  useCreateRequest("bill", () => setCreating(true))
+  // The bar's request is a wish, not a permission: a role that may not create
+  // never sees the drawer, whenever the space's verbs arrive.
+  useCreateRequest("bill", () => { if (loading || can("finance.write")) setCreating(true) })
 
   const bills = useQuery({queryKey: financeKeys.bills(ctx.mode, ctx.space, direction), queryFn: () => listBills(ctx, direction)})
   const accounts = useQuery({queryKey: financeKeys.accounts(ctx.mode, ctx.space), queryFn: () => listAccounts(ctx)})
@@ -112,7 +114,7 @@ export function BillsView() {
         </div>
 
       </div>
-      <Drawer open={creating} onClose={() => setCreating(false)} title={t("bills.list.newTitle")}>
+      <Drawer open={creating && can("finance.write")} onClose={() => setCreating(false)} title={t("bills.list.newTitle")}>
         <NewBillPanel direction={direction} accounts={accounts.data?.data ?? []} onDone={() => setCreating(false)}/>
       </Drawer>
     </div>

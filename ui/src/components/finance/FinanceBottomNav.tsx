@@ -6,11 +6,12 @@ import {
 } from "lucide-react"
 import Link from "next/link"
 import {usePathname, useRouter} from "next/navigation"
+import {useEffect} from "react"
 import {useTranslation} from "react-i18next"
 
 import {currentFinanceSection} from "@/components/finance/FinanceNav"
 import type {Verb} from "@/lib/api/financeTypes"
-import {type CreateKind, requestCreate} from "@/lib/finance/createRequest"
+import {type CreateKind, dropCreateUnlessAt, requestCreate} from "@/lib/finance/createRequest"
 import {useFinanceSpaces} from "@/lib/finance/useFinanceSpaces"
 
 const BASE = "/console/finance"
@@ -58,6 +59,11 @@ export function FinanceBottomNav() {
   const {can} = useFinanceSpaces()
   const current = currentFinanceSection(pathname)
   const is = (href: string) => current === href
+  // Resumo's Adicionar is bound for A pagar/receber; landing anywhere else
+  // first (a tap on Extrato mid-navigation) abandons it.
+  useEffect(() => {
+    dropCreateUnlessAt(current)
+  }, [current])
 
   const own = CREATE[current]
   const create = own ?? FALLBACK
@@ -66,8 +72,12 @@ export function FinanceBottomNav() {
       label: t(`finance.nav.create.${create.kind}`),
       icon: ACTION_ICON[create.kind],
       onClick: () => {
-        requestCreate(create.kind)
-        if (!own) router.push(BILLS)
+        if (own) {
+          requestCreate(create.kind)
+        } else {
+          requestCreate(create.kind, BILLS)
+          router.push(BILLS)
+        }
       },
     }
     : null

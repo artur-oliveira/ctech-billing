@@ -1,5 +1,6 @@
 import "@testing-library/jest-dom/vitest"
 
+import {QueryClientProvider} from "@tanstack/react-query"
 import {screen, within} from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
@@ -33,6 +34,7 @@ const bar = () => screen.getByRole("navigation", {name: "Navegação principal"}
 beforeEach(() => {
   window.localStorage.clear()
   nav.push.mockReset()
+  create.clearPendingCreate()
 })
 afterEach(() => vi.restoreAllMocks())
 
@@ -85,7 +87,7 @@ describe("FinanceBottomNav", () => {
         const request = vi.spyOn(create, "requestCreate")
         at(path)
         await userEvent.click(await within(bar()).findByRole("button", {name: "Adicionar"}))
-        expect(request).toHaveBeenCalledWith("bill")
+        expect(request).toHaveBeenCalledWith("bill", "/console/finance/bills")
         expect(nav.push).toHaveBeenCalledWith("/console/finance/bills")
       },
     )
@@ -117,5 +119,31 @@ describe("createRequest", () => {
     create.requestCreate("transfer")
     expect(create.takePendingCreate("bill")).toBe(false)
     expect(create.takePendingCreate("transfer")).toBe(true)
+  })
+
+  it("drops a request nobody took within a few seconds", () => {
+    const now = vi.spyOn(Date, "now").mockReturnValue(1_000_000)
+    create.requestCreate("bill")
+    now.mockReturnValue(1_000_000 + 4_000)
+    expect(create.takePendingCreate("bill")).toBe(false)
+  })
+
+  it("drops Resumo's Adicionar when the person goes somewhere else before A pagar/receber opens", async () => {
+    const {rerender, client} = at("/console/finance")
+    await userEvent.click(await within(bar()).findByRole("button", {name: "Adicionar"}))
+    expect(nav.push).toHaveBeenCalledWith("/console/finance/bills")
+    // They tap Extrato before the bills screen mounted.
+    nav.pathname = "/console/finance/statement"
+    rerender(<QueryClientProvider client={client}><FinanceBottomNav/></QueryClientProvider>)
+    // Minutes later, opening A pagar/receber must not open Novo lançamento.
+    expect(create.takePendingCreate("bill")).toBe(false)
+  })
+
+  it("keeps Resumo's Adicionar when the navigation lands on A pagar/receber", async () => {
+    const {rerender, client} = at("/console/finance")
+    await userEvent.click(await within(bar()).findByRole("button", {name: "Adicionar"}))
+    nav.pathname = "/console/finance/bills"
+    rerender(<QueryClientProvider client={client}><FinanceBottomNav/></QueryClientProvider>)
+    expect(create.takePendingCreate("bill")).toBe(true)
   })
 })

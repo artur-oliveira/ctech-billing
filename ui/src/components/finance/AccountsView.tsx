@@ -41,11 +41,13 @@ const SECTIONS: {key: "accounts" | "income" | "expense" | "cards"; classes: Acco
 export function AccountsView() {
   const {t} = useTranslation()
   const ctx = useFinanceCtx()
-  const {can, current} = useFinanceSpaces()
+  const {can, current, loading} = useFinanceSpaces()
   const configure = can("finance.configure")
   const [showArchived, setShowArchived] = useState(false)
   const [creating, setCreating] = useState(false)
-  useCreateRequest("account", () => setCreating(true))
+  // The bar's request is a wish, not a permission: a role that may not create
+  // never sees the drawer, whenever the space's verbs arrive.
+  useCreateRequest("account", () => { if (loading || configure) setCreating(true) })
 
   const q = useQuery({queryKey: financeKeys.accounts(ctx.mode, ctx.space), queryFn: () => listAccounts(ctx)})
   const accounts = (q.data?.data ?? []).filter(a => !a.system)
@@ -61,7 +63,7 @@ export function AccountsView() {
         )}
       </div>
 
-      <Drawer open={creating} onClose={() => setCreating(false)} title={t("finance.accounts.new")}>
+      <Drawer open={creating && configure} onClose={() => setCreating(false)} title={t("finance.accounts.new")}>
         <AccountForm onDone={() => setCreating(false)}/>
       </Drawer>
 

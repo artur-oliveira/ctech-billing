@@ -147,6 +147,14 @@ describe("F4 — recorrências", () => {
 })
 
 describe("the phone's central action", () => {
+  it("does not open Nova recorrência for a role that cannot create", async () => {
+    serve(["finance.read"])
+    createRequest.requestCreate("recurrence")
+    renderWithQuery(<RecurrencesView/>)
+    await new Promise(r => setTimeout(r, 50))
+    expect(screen.queryByRole("dialog")).toBeNull()
+  })
+
   it("opens Nova recorrência", async () => {
     serve(ALL)
     renderWithQuery(<RecurrencesView/>)

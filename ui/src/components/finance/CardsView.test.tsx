@@ -86,6 +86,14 @@ describe("F5 — cartões", () => {
 })
 
 describe("the phone's central action", () => {
+  it("does not open Nova compra for a role that cannot create", async () => {
+    serve(["finance.read"])
+    createRequest.requestCreate("purchase")
+    renderWithQuery(<CardsView/>)
+    await new Promise(r => setTimeout(r, 50))
+    expect(screen.queryByRole("dialog")).toBeNull()
+  })
+
   it("opens Nova compra on the card on screen, once the cards are known", async () => {
     serve(ALL)
     createRequest.requestCreate("purchase")

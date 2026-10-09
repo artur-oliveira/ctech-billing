@@ -282,6 +282,15 @@ describe("F2 — a pagar e a receber", () => {
 })
 
 describe("the phone's central action", () => {
+  it("does not open Novo lançamento for a role that cannot create", async () => {
+    serve(["finance.read"], [])
+    createRequest.requestCreate("bill")
+    renderWithQuery(<BillsView/>)
+    await screen.findByText("Nada a pagar em aberto.")
+    await new Promise(r => setTimeout(r, 50))
+    expect(screen.queryByRole("dialog")).toBeNull()
+  })
+
   it("opens Novo lançamento when it was asked for before the screen mounted", async () => {
     serve(ALL, [])
     createRequest.requestCreate("bill")

@@ -50,7 +50,7 @@ type Panel = "new-card" | "edit-card" | "purchase" | null
 export function CardsView({card: initial = ""}: {card?: string}) {
   const {t} = useTranslation()
   const ctx = useFinanceCtx()
-  const {can} = useFinanceSpaces()
+  const {can, loading: verbsLoading} = useFinanceSpaces()
   const [picked, setPicked] = useState(initial)
   const [month, setMonth] = useState<string | null>(null)
   const [chosen, setChosen] = useState<Panel>(null)
@@ -65,8 +65,10 @@ export function CardsView({card: initial = ""}: {card?: string}) {
   const all = accounts.data?.data ?? []
   // The central action on a phone: a purchase on the card on screen, or the
   // card itself when there is none to buy with yet.
-  const loaded = !cards.isLoading && !accounts.isLoading
-  const requested: Panel = asked && loaded ? (card ? "purchase" : can("finance.configure") ? "new-card" : null) : null
+  const loaded = !cards.isLoading && !accounts.isLoading && !verbsLoading
+  const requested: Panel = asked && loaded
+    ? (card ? (can("finance.write") ? "purchase" : null) : can("finance.configure") ? "new-card" : null)
+    : null
   const panel = chosen ?? requested
   const setPanel = (p: Panel) => { setChosen(p); setAsked(false) }
 

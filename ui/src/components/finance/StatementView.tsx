@@ -55,11 +55,13 @@ function cashAccounts(accounts: Account[]): Account[] {
 export function StatementView({account: initial = ""}: {account?: string}) {
   const {t} = useTranslation()
   const ctx = useFinanceCtx()
-  const {can} = useFinanceSpaces()
+  const {can, loading} = useFinanceSpaces()
   const [picked, setPicked] = useState(initial)
   const [preset, setPreset] = useState<PresetId>("this_month")
   const [transferring, setTransferring] = useState(false)
-  useCreateRequest("transfer", () => setTransferring(true))
+  // The bar's request is a wish, not a permission: a role that may not create
+  // never sees the drawer, whenever the space's verbs arrive.
+  useCreateRequest("transfer", () => { if (loading || can("finance.write")) setTransferring(true) })
 
   const accounts = useQuery({queryKey: financeKeys.accounts(ctx.mode, ctx.space), queryFn: () => listAccounts(ctx)})
   const all = accounts.data?.data ?? []
@@ -106,7 +108,7 @@ export function StatementView({account: initial = ""}: {account?: string}) {
         )}
       </div>
 
-      <Drawer open={transferring} onClose={() => setTransferring(false)} title={t("finance.statement.newTransfer")}>
+      <Drawer open={transferring && can("finance.write")} onClose={() => setTransferring(false)} title={t("finance.statement.newTransfer")}>
         <TransferPanel accounts={all} from={accountId} onDone={() => setTransferring(false)}/>
       </Drawer>
 
