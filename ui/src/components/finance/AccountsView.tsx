@@ -4,6 +4,7 @@ import limits from "@/lib/limits.json"
 import {Button, EmptyState, Field, Input, Skeleton} from "@aoctech/ui"
 import {useQuery} from "@tanstack/react-query"
 import {Landmark} from "lucide-react"
+import Link from "next/link"
 import {useState} from "react"
 
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
@@ -23,6 +24,7 @@ const SECTIONS: {title: string; classes: AccountClass[]}[] = [
   {title: "Contas", classes: ["asset"]},
   {title: "Receitas", classes: ["income"]},
   {title: "Despesas", classes: ["expense"]},
+  {title: "Cartões", classes: ["liability"]},
 ]
 
 /**
@@ -108,6 +110,13 @@ function AccountRow({account, configure}: {account: Account; configure: boolean}
         </div>
         <div className="flex shrink-0 items-center gap-3">
           {account.class === "asset" && <span data-numeric className="text-sm tabular-nums">{money(account.balance)}</span>}
+          {account.class === "liability" && (
+            <>
+              {/* A card's balance is a credit: negative is what is owed. */}
+              <span data-numeric className="text-sm tabular-nums">{account.balance < 0 ? `Deve ${money(-account.balance)}` : money(account.balance)}</span>
+              <Link href={`/console/finance/cards?card=${encodeURIComponent(account.id)}`} className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline">Abrir</Link>
+            </>
+          )}
           {account.archived && <span className="text-xs">Arquivada</span>}
           {configure && account.class === "asset" && !account.archived && !opening && (
             <Button variant="ghost" size="sm" onClick={() => setOpening(true)}>Saldo inicial</Button>

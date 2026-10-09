@@ -42,6 +42,18 @@ beforeEach(() => window.localStorage.clear())
 afterEach(() => vi.restoreAllMocks())
 
 describe("F2 — a pagar e a receber", () => {
+  it("shows a card statement's bill as the statement, with no cancel and no amount to edit", async () => {
+    serve(ALL, [bill({id: "f", description: "Fatura Visa 2026-03", category_id: "visa", origin: "card_statement", origin_ref: "visa#2026-03"})])
+    renderWithQuery(<BillsView/>)
+    const row = (await screen.findByText("Fatura Visa 2026-03")).closest("li") as HTMLElement
+    expect(within(row).getByText(/Fatura do cartão/)).toBeInTheDocument()
+    expect(within(row).getByRole("link", {name: "Ver fatura"})).toHaveAttribute("href", "/console/finance/cards?card=visa")
+    expect(within(row).queryByRole("button", {name: "Cancelar conta"})).not.toBeInTheDocument()
+    await userEvent.click(within(row).getByRole("button", {name: "Editar"}))
+    expect(within(row).queryByLabelText(/^Valor/)).not.toBeInTheDocument()
+    expect(within(row).queryByLabelText(/^Categoria/)).not.toBeInTheDocument()
+  })
+
   it("lists overdue first, each bucket labelled in words", async () => {
     serve(ALL, [
       bill({id: "a", description: "Condomínio", due_date: "2026-03-01", bucket: "overdue"}),
