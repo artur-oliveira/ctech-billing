@@ -30,11 +30,8 @@
     }
   },
   "list": {
-    "new": "New bill",
-    "newTitle": {
-      "payable": "New bill to pay",
-      "receivable": "New bill to receive"
-    },
+    "new": "Add",
+    "newTitle": "New entry",
     "empty": {
       "payable": "Nothing to pay.",
       "receivable": "Nothing to receive."
@@ -88,9 +85,14 @@
       "payable": "Already paid",
       "receivable": "Already received"
     },
-    "paidOn": {
-      "payable": "Paid on",
-      "receivable": "Received on"
+    "section": {
+      "plan": "Schedule",
+      "payable": "Payment",
+      "receivable": "Receipt"
+    },
+    "paidWith": {
+      "payable": "Paid from",
+      "receivable": "Received into"
     },
     "create": "Create",
     "settleFailed": {

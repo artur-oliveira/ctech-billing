@@ -30,11 +30,8 @@
     }
   },
   "list": {
-    "new": "Nova conta",
-    "newTitle": {
-      "payable": "Nova conta a pagar",
-      "receivable": "Nova conta a receber"
-    },
+    "new": "Adicionar",
+    "newTitle": "Novo lançamento",
     "empty": {
       "payable": "Nada a pagar em aberto.",
       "receivable": "Nada a receber em aberto."
@@ -88,8 +85,13 @@
       "payable": "Já foi pago",
       "receivable": "Já foi recebido"
     },
-    "paidOn": {
-      "payable": "Pago em",
+    "section": {
+      "plan": "Agendamento",
+      "payable": "Pagamento",
+      "receivable": "Recebimento"
+    },
+    "paidWith": {
+      "payable": "Pago com",
       "receivable": "Recebido em"
     },
     "create": "Criar",

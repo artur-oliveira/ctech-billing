@@ -114,7 +114,7 @@ export function BillsView() {
         </div>
 
       </div>
-      <Drawer open={creating} onClose={() => setCreating(false)} title={t(`bills.list.newTitle.${direction}`)}>
+      <Drawer open={creating} onClose={() => setCreating(false)} title={t("bills.list.newTitle")}>
         <NewBillPanel direction={direction} accounts={accounts.data?.data ?? []} onDone={() => setCreating(false)}/>
       </Drawer>
     </div>
@@ -376,26 +376,34 @@ function NewBillPanel({direction, accounts, onDone}: {direction: Direction; acco
         <Field label={t("bills.common.category")} htmlFor="nb-cat" required error={fe.of("category_id")} hint={cats.length === 0 ? t(`bills.noCategory.${direction === "payable" ? "expense" : "income"}`) : undefined}>
           <Select id="nb-cat" value={category} {...fe.props("category_id", "nb-cat")} onValueChange={v => { setCategory(v); fe.clear("category_id") }} options={cats.map(a => ({value: a.id, label: accountName(a)}))}/>
         </Field>
-        <Field label={t(`bills.common.payWith.${direction}`)} htmlFor="nb-acct" required error={fe.of("account_id")} hint={assets.length === 0 ? t("bills.noAccount") : undefined}>
-          <Select id="nb-acct" value={account} {...fe.props("account_id", "nb-acct")} onValueChange={v => { setAccount(v); fe.clear("account_id") }} options={assets.map(a => ({value: a.id, label: accountName(a)}))}/>
-        </Field>
         {can("finance.settle") && (
-          <label className="flex items-center gap-2 text-sm">
+          <label className="flex min-h-11 items-center gap-2 text-sm">
             <Switch checked={paidNow} onCheckedChange={setPaidNow} aria-label={t(`bills.new.paidNow.${direction}`)}/>
             {t(`bills.new.paidNow.${direction}`)}
           </label>
         )}
-        {paidNow && (
-          <Field label={t(`bills.new.paidOn.${direction}`)} htmlFor="nb-paid">
-            <DateField id="nb-paid" min={limits.minDate} max={todayIso()} value={paidOn} onValueChange={setPaidOn}/>
+        {/* What happens to the money: planned (which account, paid by itself on
+            the due date or not) or already done, and then the section is the
+            payment itself, named by direction, with its date and account. */}
+        <fieldset className="space-y-3 border-t border-border">
+          <legend className="float-left w-full pt-4 pb-1 text-sm font-medium text-foreground">
+            {paidNow ? t(`bills.new.section.${direction}`) : t("bills.new.section.plan")}
+          </legend>
+          {paidNow && (
+            <Field label={t(`bills.settle.date.${direction}`)} htmlFor="nb-paid">
+              <DateField id="nb-paid" min={limits.minDate} max={todayIso()} value={paidOn} onValueChange={setPaidOn}/>
+            </Field>
+          )}
+          <Field label={t(paidNow ? `bills.new.paidWith.${direction}` : `bills.common.payWith.${direction}`)} htmlFor="nb-acct" required error={fe.of("account_id")} hint={assets.length === 0 ? t("bills.noAccount") : undefined}>
+            <Select id="nb-acct" value={account} {...fe.props("account_id", "nb-acct")} onValueChange={v => { setAccount(v); fe.clear("account_id") }} options={assets.map(a => ({value: a.id, label: accountName(a)}))}/>
           </Field>
-        )}
-        {can("finance.settle") && !paidNow && (
-          <label className="flex items-center gap-2 text-sm">
-            <Switch checked={autoSettle} onCheckedChange={setAutoSettle} aria-label={t(`bills.common.auto.${direction}`)}/>
-            {t(`bills.common.auto.${direction}`)}
-          </label>
-        )}
+          {can("finance.settle") && !paidNow && (
+            <label className="flex min-h-11 items-center gap-2 text-sm">
+              <Switch checked={autoSettle} onCheckedChange={setAutoSettle} aria-label={t(`bills.common.auto.${direction}`)}/>
+              {t(`bills.common.auto.${direction}`)}
+            </label>
+          )}
+        </fieldset>
         <div className="flex flex-wrap gap-2">
           <Button type="submit" variant="brand" size="sm" disabled={!ready}>{t("bills.new.create")}</Button>
           <Button type="button" variant="outline" size="sm" onClick={onDone}>{t("bills.common.close")}</Button>
