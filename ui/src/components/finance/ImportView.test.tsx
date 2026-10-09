@@ -74,6 +74,29 @@ describe("F6 — importar extrato", () => {
     expect(await screen.findByRole("status")).toHaveTextContent("12 lançamentos novos, 3 já importados antes, 1 linha não lida")
   })
 
+  it("keeps the key to retry the same file, and takes a new one for another file", async () => {
+    serve(ALL)
+    const upload = vi.spyOn(finance, "uploadImport")
+      .mockRejectedValueOnce({code: "ERR_NETWORK"})
+      .mockRejectedValueOnce({code: "ERR_NETWORK"})
+      .mockResolvedValue({...SUMMARY, id: "imp2"})
+    renderWithQuery(<ImportView/>)
+    await screen.findByText("Pagamento aluguel")
+    const input = screen.getByLabelText("Arquivo do extrato")
+    await userEvent.upload(input, ofxFile())
+    await userEvent.click(screen.getByRole("button", {name: "Importar"}))
+    await waitFor(() => expect(upload).toHaveBeenCalledTimes(1))
+    await screen.findByRole("alert")
+    await userEvent.click(screen.getByRole("button", {name: "Importar"}))
+    await waitFor(() => expect(upload).toHaveBeenCalledTimes(2))
+    await userEvent.upload(input, new File(["<OFX>B</OFX>"], "outro.ofx"))
+    await userEvent.click(screen.getByRole("button", {name: "Importar"}))
+    await waitFor(() => expect(upload).toHaveBeenCalledTimes(3))
+    const keys = upload.mock.calls.map(c => c[2])
+    expect(keys[1]).toBe(keys[0]) // a retry of the same file is the same intent
+    expect(keys[2]).not.toBe(keys[0]) // another file is another intent
+  })
+
   it("says so when the file held nothing new", async () => {
     serve(ALL)
     vi.spyOn(finance, "uploadImport").mockResolvedValue({...SUMMARY, id: undefined, lines: 0, duplicates: 3})

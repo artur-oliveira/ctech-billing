@@ -2,6 +2,8 @@ package repositories
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"slices"
@@ -46,8 +48,13 @@ const (
 const maxStoredRejections = 50
 
 // importChunk is how many lines one TransactWriteItems claims: a lock and a
-// line each, 100 items.
-const importChunk = 50
+// line each, plus the ADD on the import's line count — 99 items.
+const importChunk = 49
+
+// ErrImportConflict is a line slot of an import already holding another
+// transaction's line. The import id is bound to the file's content, so this is
+// a hash collision or a bug, never a retry; nothing is overwritten.
+var ErrImportConflict = errors.New("the import already holds a different line at this position")
 
 // ImportRepository stores statement imports (spec § 3.7, § 4 `imports`):
 //
@@ -194,9 +201,14 @@ func alive(ttl *int64, now time.Time) bool { return ttl == nil || *ttl > now.Uni
 // Import writes a parsed file's lines under a new import, each claiming its
 // lock in the account; a line whose lock is already held (the same file again,
 // an overlapping export) is a duplicate and is not written. With an idempotency
-// key the import's id is derived from it, so a retry after a failure resumes
-// the same import and counts its own lines as added, not as duplicates. An
-// import that adds nothing leaves no row and comes back with no id.
+// key the import's id is derived from it AND from the file's content, so a
+// retry of the same file after a failure resumes the same import and counts its
+// own lines as added, not as duplicates, while another file sent under the same
+// key (a person who picked a different file after a failure) is another import
+// and never overwrites the first one's lines. The row's line count is ADDed in
+// the same transaction as each chunk's lines, so a failure halfway leaves a row
+// that counts exactly the lines it holds. An import that adds nothing leaves no
+// row and comes back with no id.
 func (r *ImportRepository) Import(ctx context.Context, sp space.ResolvedSpace, accountID string, format statement.Format, parsed statement.Parsed, idempotencyKey string, now time.Time) (Import, error) {
 	if err := sp.Require(space.Import); err != nil {
 		return Import{}, err
@@ -205,8 +217,9 @@ func (r *ImportRepository) Import(ctx context.Context, sp space.ResolvedSpace, a
 		return Import{}, err
 	}
 	imp := Import{ID: id.New(), AccountID: accountID, Format: format, CreatedAt: now.UTC(), RejectedCount: len(parsed.Rejected)}
+	keyed := statement.Keys(accountID, parsed.Lines)
 	if idempotencyKey != "" {
-		imp.ID = idempotentID(sp, "import", idempotencyKey)
+		imp.ID = idempotentID(sp, "import", idempotencyKey+"\x00"+fileFingerprint(accountID, format, keyed, parsed.Rejected))
 	}
 	imp.Rejected = parsed.Rejected[:min(len(parsed.Rejected), maxStoredRejections)]
 	for _, l := range parsed.Lines {
@@ -228,7 +241,6 @@ func (r *ImportRepository) Import(ctx context.Context, sp space.ResolvedSpace, a
 		return Import{}, err
 	}
 
-	keyed := statement.Keys(accountID, parsed.Lines)
 	lineTTL := *RetentionImportLine.ExpiresAt(now)
 	for start := 0; start < len(keyed); start += importChunk {
 		end := min(start+importChunk, len(keyed))
@@ -256,13 +268,13 @@ func (r *ImportRepository) Import(ctx context.Context, sp space.ResolvedSpace, a
 		return Import{}, err
 	}
 	values := map[string]types.AttributeValue{
-		":l": numberValue(int64(imp.Lines)), ":d": numberValue(int64(imp.Duplicates)),
+		":d":  numberValue(int64(imp.Duplicates)),
 		":rc": numberValue(int64(imp.RejectedCount)), ":r": rejected["r"],
 		":f": str(imp.From.String()), ":t": str(imp.To.String()), ":now": str(now.UTC().Format(time.RFC3339Nano)),
 	}
 	update := r.imports.BuildRawUpdateTxItem(sp.PK(), &sk,
-		"SET #lines = :l, duplicates = :d, rejected_count = :rc, rejected = :r, #from = :f, #to = :t, updated_at = :now",
-		"attribute_exists(pk)", map[string]string{"#lines": "lines", "#from": "from", "#to": "to"}, values)
+		"SET duplicates = :d, rejected_count = :rc, rejected = :r, #from = :f, #to = :t, updated_at = :now",
+		"attribute_exists(pk)", map[string]string{"#from": "from", "#to": "to"}, values)
 	if err := r.imports.TransactWrite(ctx, []types.TransactWriteItem{update}); err != nil {
 		return Import{}, err
 	}
@@ -271,6 +283,21 @@ func (r *ImportRepository) Import(ctx context.Context, sp space.ResolvedSpace, a
 		imp.Resolved = cur.Resolved
 	}
 	return imp, nil
+}
+
+// fileFingerprint names a parsed file: its account, format, line keys (which
+// carry dates, amounts and descriptions) and rejected rows. Two uploads of the
+// same file have it; two different files do not.
+func fileFingerprint(accountID string, format statement.Format, keyed []statement.Keyed, rejected []statement.Rejected) string {
+	h := sha256.New()
+	fmt.Fprintf(h, "%s\x00%s\x00", accountID, format)
+	for _, k := range keyed {
+		fmt.Fprintf(h, "%s\x00%s\x00%d\x00%s\x00", k.Key, k.Date, k.Amount, k.Description)
+	}
+	for _, r := range rejected {
+		fmt.Fprintf(h, "r%d:%s\x00", r.Line, r.Reason)
+	}
+	return hex.EncodeToString(h.Sum(nil))
 }
 
 func rejectedItems(rs []statement.Rejected) []rejectedItem {
@@ -309,7 +336,7 @@ func (r *ImportRepository) claim(ctx context.Context, sp space.ResolvedSpace, im
 	}
 	conflicts := 0
 	for len(todo) > 0 {
-		items := make([]types.TransactWriteItem, 0, 2*len(todo))
+		items := make([]types.TransactWriteItem, 0, 2*len(todo)+1)
 		for _, p := range todo {
 			lockSK := ImportLockSK(accountID, p.Key)
 			lock, err := Encode(lockItem{keys: newKeys(sp.PK(), lockSK, RetentionImportLock, now), ImportID: importID, Line: p.n, LineExpires: lineTTL,
@@ -333,8 +360,16 @@ func (r *ImportRepository) claim(ctx context.Context, sp space.ResolvedSpace, im
 					ExpressionAttributeValues:           map[string]types.AttributeValue{":now": numberValue(now.Unix())},
 					ReturnValuesOnConditionCheckFailure: types.ReturnValuesOnConditionCheckFailureAllOld,
 				}},
-				r.imports.BuildPutTxItem(line))
+				types.TransactWriteItem{Put: &types.Put{
+					TableName: aws.String(r.imports.TableName), Item: line,
+					// Empty, or this very line again (a retry): never another's.
+					ConditionExpression:       aws.String("attribute_not_exists(pk) OR lock_sk = :lock"),
+					ExpressionAttributeValues: map[string]types.AttributeValue{":lock": str(lockSK)},
+				}})
 		}
+		headerSK := ImportSK(importID)
+		items = append(items, r.imports.BuildRawUpdateTxItem(sp.PK(), &headerSK, "ADD #lines :n", "attribute_exists(pk)",
+			map[string]string{"#lines": "lines"}, map[string]types.AttributeValue{":n": numberValue(int64(len(todo)))}))
 		err := r.imports.TransactWrite(ctx, items)
 		if err == nil {
 			return added + len(todo), duplicates, nil
@@ -346,6 +381,11 @@ func (r *ImportRepository) claim(ctx context.Context, sp space.ResolvedSpace, im
 		var tc *types.TransactionCanceledException
 		if !onlyConditionFailed(err) || !errors.As(err, &tc) {
 			return 0, 0, err
+		}
+		for i := range todo {
+			if aws.ToString(tc.CancellationReasons[2*i+1].Code) == codeConditionFailed {
+				return 0, 0, ErrImportConflict
+			}
 		}
 		kept := todo[:0]
 		for i, p := range todo {
