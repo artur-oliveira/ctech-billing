@@ -159,7 +159,13 @@
     "noneAtAll": "This rule makes no date.",
     "endsConfirm": "This ends the recurrence; it will be archived.",
     "back": "Back",
-    "endAndArchive": "End and archive"
+    "endAndArchive": "End and archive",
+    "stillGoing_one": "{{count}} bill already made stays: {{dates}}.",
+    "stillGoing_other": "{{count}} bills already made stay: {{dates}}.",
+    "stillAuto": {
+      "payable": "Those set to pay automatically will still be paid on their dates.",
+      "receivable": "Those set to receive automatically will still be received on their dates."
+    }
   },
   "editor": {
     "repeat": "Repeat",

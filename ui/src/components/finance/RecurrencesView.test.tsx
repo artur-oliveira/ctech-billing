@@ -288,3 +288,50 @@ describe("F4 — a recurrence's detail, in place (UX batch 3)", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
   })
 })
+
+// Review fix: ending a recurrence keeps the bills it already made after the new
+// end (the owner's decision); the confirmation says which, and that an
+// auto-settling one is still paid on its date.
+describe("F4 — ending a recurrence says which bills keep going", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({toFake: ["Date"]})
+    vi.setSystemTime(new Date(2026, 9, 9, 9, 0)) // 9 October 2026
+  })
+
+  async function confirmEndToday(history: RecurrenceOccurrences["history"]) {
+    serve(ALL)
+    vi.spyOn(finance, "getRecurrenceOccurrences").mockResolvedValue({history, upcoming: []})
+    vi.spyOn(finance, "patchRecurrence").mockRejectedValue({response: {status: 422, data: {code: "recurrence_would_end", detail: "x"}}})
+    renderWithQuery(<RecurrencesView/>)
+    const row = (await screen.findByText("Aluguel do apartamento")).closest("li") as HTMLElement
+    await userEvent.click(within(row).getByRole("button", {name: "Editar"}))
+    const dialog = screen.getByRole("dialog", {name: "Editar recorrência"})
+    await userEvent.click(within(dialog).getByLabelText("Termina em"))
+    await userEvent.click(await screen.findByRole("button", {name: /sexta-feira, 9 de outubro de 2026$/}))
+    await userEvent.click(within(dialog).getByRole("button", {name: "Salvar"}))
+    await within(dialog).findByText("Isso encerra a recorrência; ela será arquivada.")
+    return dialog
+  }
+
+  const made = (nominal: string, state: "paid" | "forecast", auto: boolean) =>
+    ({nominal, due: nominal, bill_id: `b-${nominal}`, amount: 180000, state, auto_settle: auto})
+
+  it("lists the bills already made after the new end, and that auto-pay still pays them", async () => {
+    const dialog = await confirmEndToday([made("2026-09-10", "paid", true), made("2026-10-10", "forecast", true), made("2026-11-10", "forecast", false)])
+    expect(await within(dialog).findByText("2 lançamentos já gerados continuam: 10/10 e 10/11.")).toBeInTheDocument()
+    expect(within(dialog).getByText("Os que estão em pagamento automático ainda serão pagos nas datas deles.")).toBeInTheDocument()
+    expect(within(dialog).getByRole("link", {name: "Ver em A pagar"})).toHaveAttribute("href", "/console/finance/bills?direction=payable")
+  })
+
+  it("says nothing about auto-pay when none of them has it, and nothing at all when none is left", async () => {
+    const dialog = await confirmEndToday([made("2026-10-10", "forecast", false)])
+    expect(await within(dialog).findByText("1 lançamento já gerado continua: 10/10.")).toBeInTheDocument()
+    expect(within(dialog).queryByText(/pagamento automático/)).toBeNull()
+  })
+
+  it("adds nothing when no bill was made after the new end", async () => {
+    const dialog = await confirmEndToday([made("2026-09-10", "paid", false)])
+    await act(() => new Promise(r => setTimeout(r, 50)))
+    expect(within(dialog).queryByText(/já gerad/)).toBeNull()
+  })
+})

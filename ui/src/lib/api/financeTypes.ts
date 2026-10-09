@@ -69,6 +69,8 @@ export interface OccurrenceBill extends Occurrence {
   amount: Cents
   state: OccurrenceState
   paid_date?: IsoDate
+  /** The bill's own flag: an open one that has it is still paid by the daily job after the recurrence ends. */
+  auto_settle?: boolean
 }
 
 /** `history`: the latest bills it made, oldest first. `upcoming`: dates it will make, none once archived. */

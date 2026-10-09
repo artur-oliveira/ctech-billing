@@ -22,12 +22,12 @@ import {
 } from "@/lib/api/finance"
 import type {Account, Adjust, Direction, ExpressionJSON, NewRecurrence, Occurrence, Recurrence, RecurrencePatch} from "@/lib/api/financeTypes"
 import {defaultModel, describeModel, type EditorModel, fromExpression, toExpression, validate} from "@/lib/finance/expression"
-import {t} from "@/lib/i18n"
+import {currentLocale, t} from "@/lib/i18n"
 import {addYearsIso, todayIso} from "@/lib/finance/today"
 import {useFinanceMutation} from "@/lib/finance/useFinanceMutation"
 import {useCreateRequest} from "@/lib/finance/createRequest"
 import {useFinanceCtx, useFinanceSpaces} from "@/lib/finance/useFinanceSpaces"
-import {money, shortDate} from "@/lib/format"
+import {dayMonth, money, shortDate} from "@/lib/format"
 import {useFieldErrors} from "@/lib/useFieldErrors"
 import {formatMoneyInput, maskMoney, moneyPlaceholder, parseMoney} from "@/lib/money"
 import {accountName} from "@/lib/finance/accountName"
@@ -196,6 +196,31 @@ function RecurrenceDetail({id, rec}: {id: string; rec: Recurrence}) {
         </>
       )}
     </section>
+  )
+}
+
+/**
+ * Ending a recurrence keeps the bills it already made after the new end (they
+ * exist and can be edited or cancelled one by one); the confirmation says which,
+ * and that one set to auto-settle is still paid on its date by the daily job.
+ */
+function StillGoing({rec, end}: {rec: Recurrence; end: string}) {
+  const {t} = useTranslation()
+  const ctx = useFinanceCtx()
+  const q = useQuery({queryKey: financeKeys.recurrenceOccurrences(ctx.mode, ctx.space, rec.id), queryFn: () => getRecurrenceOccurrences(ctx, rec.id)})
+  const going = (q.data?.history ?? []).filter(o => o.nominal > end && (o.state === "forecast" || o.state === "overdue"))
+  if (going.length === 0) return null
+  const dates = new Intl.ListFormat(currentLocale(), {type: "conjunction"}).format(going.map(o => dayMonth(o.due)))
+  return (
+    <div className="w-full space-y-1 text-muted-foreground">
+      <p>
+        {t("bills.rec.stillGoing", {count: going.length, dates})}{" "}
+        <Link href={`/console/finance/bills?direction=${rec.direction}`} className="inline-flex items-center text-foreground underline underline-offset-4 hover:text-brand-700 touch:min-h-11">
+          {t(`bills.rec.openBill.${rec.direction}`)}
+        </Link>
+      </p>
+      {going.some(o => o.auto_settle) && <p>{t(`bills.rec.stillAuto.${rec.direction}`)}</p>}
+    </div>
   )
 }
 
@@ -405,9 +430,10 @@ function RecurrencePanel({editing, accounts, onDone}: {editing?: Recurrence; acc
             <Button type="button" variant="outline" size="sm" onClick={onDone}>{t("bills.common.close")}</Button>
           </div>
         </div>
-        {confirmEnd && (
+        {confirmEnd && editing && (
           <div className="flex flex-wrap items-center gap-2 rounded-lg bg-surface p-3 text-sm motion-safe:animate-in motion-safe:fade-in">
             <p role="alert" className="w-full text-foreground">{t("bills.rec.endsConfirm")}</p>
+            <StillGoing rec={editing} end={lastPatch.current.end ?? ""}/>
             <Button type="button" size="sm" variant="outline" onClick={() => setConfirmEnd(false)}>{t("bills.rec.back")}</Button>
             <Button type="button" size="sm" variant="danger" disabled={patch.isPending}
               onClick={() => patch.mutate({...lastPatch.current, archive: true})}>{t("bills.rec.endAndArchive")}</Button>

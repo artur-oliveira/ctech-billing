@@ -220,6 +220,9 @@ type occurrenceBillDTO struct {
 	// skipped (the occurrence's bill was cancelled).
 	State    string      `json:"state"`
 	PaidDate *brcal.Date `json:"paid_date,omitempty"`
+	// AutoSettle is the bill's own flag (copied when it was made): an open bill
+	// that has it is still paid by the daily job after the recurrence ends.
+	AutoSettle bool `json:"auto_settle"`
 }
 
 type recurrenceOccurrencesDTO struct {
@@ -258,7 +261,7 @@ func (h *financeHandlers) recurrenceOccurrences(c fiber.Ctx) error {
 	today := h.today()
 	out := recurrenceOccurrencesDTO{History: make([]occurrenceBillDTO, 0, len(made)), Upcoming: []occurrenceDTO{}}
 	for _, m := range made {
-		d := occurrenceBillDTO{Nominal: m.Nominal, Due: m.Bill.Due, BillID: m.Bill.ID, Amount: m.Bill.Amount, State: occurrenceState(m.Bill, today)}
+		d := occurrenceBillDTO{Nominal: m.Nominal, Due: m.Bill.Due, BillID: m.Bill.ID, Amount: m.Bill.Amount, State: occurrenceState(m.Bill, today), AutoSettle: m.Bill.AutoSettle}
 		if !m.Bill.PaidDate.IsZero() {
 			paid := m.Bill.PaidDate
 			d.PaidDate = &paid

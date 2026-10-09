@@ -19,10 +19,19 @@ import (
 // cursor on 10/04.
 func recurrenceThroughHTTP(t *testing.T, f financeEnv) (recID string, bills map[string]string, sp space.ResolvedSpace) {
 	t.Helper()
+	return recurrenceThroughHTTPWith(t, f, false)
+}
+
+func recurrenceThroughHTTPWith(t *testing.T, f financeEnv, autoSettle bool) (recID string, bills map[string]string, sp space.ResolvedSpace) {
+	t.Helper()
+	auto := ""
+	if autoSettle {
+		auto = `,"auto_settle":true`
+	}
 	var bank, rent, rec struct{ ID string }
 	f.must(t, 201, "POST", "/accounts", `{"name":"Banco","class":"asset"}`, &bank)
 	f.must(t, 201, "POST", "/accounts", `{"name":"Aluguel","class":"expense","dre_group":"operating_expenses"}`, &rent)
-	f.must(t, 201, "POST", "/recurrences", `{"direction":"payable","amount":150000,"category_id":"`+rent.ID+`","account_id":"`+bank.ID+`","description":"Aluguel","expression":{"kind":"day_of_month","day":10},"start":"2026-01-01","business_day_adjust":"none"}`, &rec)
+	f.must(t, 201, "POST", "/recurrences", `{"direction":"payable","amount":150000,"category_id":"`+rent.ID+`","account_id":"`+bank.ID+`","description":"Aluguel","expression":{"kind":"day_of_month","day":10},"start":"2026-01-01","business_day_adjust":"none"`+auto+`}`, &rec)
 
 	sp = jobSpace(t, "USER#"+f.org.OwnerUserID, true)
 	recs := repositories.NewRecurrenceRepository(testDB, testCfg)
@@ -117,11 +126,12 @@ func TestAnEndWithAnOccurrenceStillToComeSavesWithoutArchiving(t *testing.T) {
 
 type occurrencesView struct {
 	History []struct {
-		Nominal  string `json:"nominal"`
-		Due      string `json:"due"`
-		BillID   string `json:"bill_id"`
-		State    string `json:"state"`
-		PaidDate string `json:"paid_date"`
+		Nominal    string `json:"nominal"`
+		Due        string `json:"due"`
+		BillID     string `json:"bill_id"`
+		State      string `json:"state"`
+		AutoSettle bool   `json:"auto_settle"`
+		PaidDate   string `json:"paid_date"`
 	} `json:"history"`
 	Upcoming []struct {
 		Nominal string `json:"nominal"`
@@ -185,5 +195,23 @@ func TestARecurrenceFromAnotherSpaceIsNotFound(t *testing.T) {
 	}
 	if got := findRecurrence(t, f, recID); got.Archived {
 		t.Fatal("a PATCH from another space archived the recurrence")
+	}
+}
+
+// Review fix: the console warns, before an end closes a recurrence, which bills
+// already made keep going and whether they will still be paid automatically.
+// It needs each made bill's own auto-settle flag (copied when it was made).
+func TestARecurrencesMadeBillsSayWhetherTheyAutoSettle(t *testing.T) {
+	f := newFinanceEnv(t)
+	recID, _, _ := recurrenceThroughHTTPWith(t, f, true)
+	var got occurrencesView
+	f.must(t, 200, "GET", "/recurrences/"+recID+"/occurrences", "", &got)
+	if len(got.History) == 0 {
+		t.Fatal("no history")
+	}
+	for _, h := range got.History {
+		if !h.AutoSettle {
+			t.Errorf("bill of %s: auto_settle false, want true", h.Nominal)
+		}
 	}
 }

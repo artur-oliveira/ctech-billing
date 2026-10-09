@@ -450,7 +450,7 @@ function route(method: string, path: string, r: Req, s: SpaceState, can: (v: Ver
       const i = past.indexOf(o)
       const last = i === past.length - 1
       const state = i < 0 ? "forecast" : last ? "overdue" : i === past.length - 2 ? "skipped" : "paid"
-      return {...o, bill_id: last ? "b-aluguel" : `mock-${o.nominal}`, amount: rec.amount, state, ...(state === "paid" ? {paid_date: o.due} : {})}
+      return {...o, bill_id: last ? "b-aluguel" : `mock-${o.nominal}`, amount: rec.amount, state, auto_settle: rec.auto_settle, ...(state === "paid" ? {paid_date: o.due} : {})}
     })
     const after = made.at(-1)?.nominal ?? addDays(today, -1)
     const upcoming = rec.archived ? [] : all.filter(o => o.nominal > after && o.nominal > today).slice(0, 6)
