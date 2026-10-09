@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"gopkg.aoctech.app/billing/api/internal/domain/brcal"
+	"gopkg.aoctech.app/billing/api/internal/domain/finance"
 	"gopkg.aoctech.app/billing/api/internal/domain/id"
 	"gopkg.aoctech.app/billing/api/internal/middleware"
 	"gopkg.aoctech.app/billing/api/internal/repositories"
@@ -159,6 +160,101 @@ func TestTheDefaultReceivingAccountIsClearedWithNull(t *testing.T) {
 	if res := f.call(t, "PUT", "/settings/default-receiving-account", `{}`); res.status != 422 {
 		t.Fatalf("an empty body = %d %s, want 422", res.status, res.body)
 	}
+}
+
+// staleAutoSettlingRecurrence is a payable "every 10th" with auto_settle in the
+// HTTP env's personal space whose end passed long ago: created and run by the job
+// in January 2025 with an end on 31/01/2025, so it made and settled 10/01/2025
+// and its cursor stayed there, more than a year before now() (10/03/2026).
+func staleAutoSettlingRecurrence(t *testing.T, f financeEnv) (recID, bankID string, sp space.ResolvedSpace) {
+	t.Helper()
+	var bank, rent struct{ ID string }
+	f.must(t, 201, "POST", "/accounts", `{"name":"Banco","class":"asset"}`, &bank)
+	f.must(t, 201, "POST", "/accounts", `{"name":"Aluguel","class":"expense","dre_group":"operating_expenses"}`, &rent)
+	sp = jobSpace(t, "USER#"+f.org.OwnerUserID, true)
+	recs := repositories.NewRecurrenceRepository(testDB, testCfg)
+	then := time.Date(2025, time.January, 15, 12, 0, 0, 0, time.UTC)
+	rec, err := recs.Create(context.Background(), sp, finance.Recurrence{
+		Direction: finance.Payable, Amount: 150000, CategoryID: rent.ID, AccountID: bank.ID, Description: "Aluguel", AutoSettle: true,
+		Schedule: finance.Schedule{Expression: finance.DayOfMonth{Day: 10}, Start: brcal.New(2025, time.January, 1),
+			End: brcal.New(2025, time.January, 31), Adjust: finance.AdjustNone},
+	}, repositories.PostMeta{}, then)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runJob(t, brcal.New(2025, time.January, 15))
+	if got := madeNominals(t, sp, rec.ID); fmt.Sprint(got) != "[2025-01-10]" {
+		t.Fatalf("setup made %v, want only 10/01/2025", got)
+	}
+	return rec.ID, bank.ID, sp
+}
+
+// runJob is the daily job on a day: materialise, then auto-settle.
+func runJob(t *testing.T, day brcal.Date) {
+	t.Helper()
+	job := services.NewFinanceJobs(repositories.NewBillRepository(testDB, testCfg), repositories.NewRecurrenceRepository(testDB, testCfg))
+	at := time.Date(day.Year, day.Month, day.Day, 12, 0, 0, 0, time.UTC)
+	_ = job.Materialise(context.Background(), true, day, at)
+	_ = job.AutoSettle(context.Background(), true, day, at)
+}
+
+// Review fix (UX batch 4): re-opening a rule whose end passed long ago resumes it
+// from the current horizon. Without that, the job's catch-up from the old cursor
+// made every missed month as an overdue bill and, with auto_settle, back-dated a
+// settlement for each.
+func assertReopenedFromTheHorizon(t *testing.T, f financeEnv, recID, bankID string, sp space.ResolvedSpace) {
+	t.Helper()
+	for run := 0; run < 3; run++ {
+		runJob(t, brcal.FromTime(now()))
+	}
+	want := []string{"2025-01-10", "2026-03-10", "2026-04-10"}
+	if got := madeNominals(t, sp, recID); fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Fatalf("re-opened, made %v, want %v: nothing between the old end and the current month, each once", got, want)
+	}
+	made, err := repositories.NewBillRepository(testDB, testCfg).ForRecurrence(context.Background(), sp, recID, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	paid := 0
+	for _, m := range made {
+		if m.Bill.Status != finance.BillPaid {
+			continue
+		}
+		paid++
+		if m.Bill.PaidDate != m.Bill.Due {
+			t.Errorf("bill of %s paid on %s, want its own due date", m.Nominal, m.Bill.PaidDate)
+		}
+	}
+	// January 2025 (paid in 2025) and 10/03/2026 (due today); April is still ahead.
+	if paid != 2 {
+		t.Fatalf("paid bills = %d, want 2: no settlement back-dated into the gap", paid)
+	}
+	var accounts struct {
+		Data []struct {
+			ID      string
+			Balance int64
+		}
+	}
+	f.must(t, 200, "GET", "/accounts", "", &accounts)
+	for _, a := range accounts.Data {
+		if a.ID == bankID && a.Balance != -2*150000 {
+			t.Fatalf("bank balance %d, want two settlements", a.Balance)
+		}
+	}
+}
+
+func TestClearingALongPastEndReopensFromTheCurrentHorizon(t *testing.T) {
+	f := newFinanceEnv(t)
+	recID, bankID, sp := staleAutoSettlingRecurrence(t, f)
+	f.must(t, 200, "PATCH", "/recurrences/"+recID, `{"end":null}`, nil)
+	assertReopenedFromTheHorizon(t, f, recID, bankID, sp)
+}
+
+func TestMovingALongPastEndLaterReopensFromTheCurrentHorizon(t *testing.T) {
+	f := newFinanceEnv(t)
+	recID, bankID, sp := staleAutoSettlingRecurrence(t, f)
+	f.must(t, 200, "PATCH", "/recurrences/"+recID, `{"end":"2026-12-31"}`, nil)
+	assertReopenedFromTheHorizon(t, f, recID, bankID, sp)
 }
 
 // Clearing resolves inside the space like every edit: another person's null is

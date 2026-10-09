@@ -803,9 +803,11 @@ gates nothing by plan.
       recurrences, bills, cards and `PUT /settings/default-receiving-account`. Absent keeps, an explicit `null`
       clears an optional field (recurrence `end` and `description`, bill `description`, card `brand`/`last4` — `""`
       still clears these two — and the default receiving account), `null` on a required field is a 422 `required`.
-      A cleared value is REMOVEd from the row. Clearing a recurrence's end recomputes its job-index keys from the
-      cursor, so the job re-opens it and makes the dates after the old end once (integration-tested, three runs);
-      it does not unarchive. Accounts and categories have no edit route, so nothing to clear. Spec § 6.
+      A cleared value is REMOVEd from the row. Clearing a recurrence's end or moving it later re-opens it **from the
+      current horizon** (review fix): a cursor left before this month moves to the day before it, so a rule ended
+      long ago makes no bills for the gap and auto-settles nothing back-dated; the current occurrence is made once
+      (integration-tested, three runs, with auto_settle). It does not unarchive. The editor says the rule continues
+      from this month. Accounts and categories have no edit route, so nothing to clear. Spec § 6.
       The console maps an emptied field to `null` in one place (`lib/api/finance` `patchBody`); optional dates have
       **Limpar**, optional selects **Nenhuma** first. (2) **Touch:** compact controls are drawn 36px (segments 32px)
       with an invisible ≥44px hit area (`::after`), segments vertical-only, inputs through their label; drawers and

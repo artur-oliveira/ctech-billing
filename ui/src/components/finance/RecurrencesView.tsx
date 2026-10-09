@@ -395,6 +395,11 @@ function RecurrencePanel({editing, accounts, onDone}: {editing?: Recurrence; acc
             <p className="text-sm text-muted-foreground">
               {t("bills.rec.editNote", {rule: ruleOf(editing)})}
             </p>
+            {/* An end that had passed, cleared or moved later: the server resumes
+                the rule from the current month, never backfilling the gap. */}
+            {editing.end && editing.end < todayIso() && (end === "" || end > editing.end) && (
+              <p role="status" className="text-sm text-foreground">{t("bills.rec.reopenNote")}</p>
+            )}
             {previewList}
           </>
         ) : (

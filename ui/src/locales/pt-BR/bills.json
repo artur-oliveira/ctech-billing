@@ -125,6 +125,7 @@
     "endsOn": "Termina em",
     "noEnd": "Não termina",
     "clearEnd": "Limpar data de término",
+    "reopenNote": "A recorrência continua a partir deste mês; as datas entre o fim anterior e hoje não são criadas.",
     "editNote": "{{rule}}. Para mudar a regra, encerre e crie outra.",
     "next": "Próximas datas",
     "fixRule": "regra inválida.",

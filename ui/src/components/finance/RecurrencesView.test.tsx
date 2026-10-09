@@ -126,6 +126,29 @@ describe("F4 — recorrências", () => {
     expect(screen.queryByLabelText("Dia do mês")).toBeNull()
   })
 
+  // Review fix (UX batch 4): re-opening a rule whose end has passed resumes it
+  // from the current month; the editor says so before saving.
+  it("says a re-opened rule continues from this month when a past end is cleared or moved later", async () => {
+    serve(ALL, [{...REC, end: "2025-01-31"}])
+    renderWithQuery(<RecurrencesView/>)
+    const row = (await screen.findByText("Aluguel do apartamento")).closest("li") as HTMLElement
+    await userEvent.click(within(row).getByRole("button", {name: "Editar"}))
+    const dialog = await screen.findByRole("dialog")
+    expect(within(dialog).queryByText(/continua a partir deste mês/)).toBeNull()
+    await userEvent.click(within(dialog).getByRole("button", {name: "Limpar data de término"}))
+    expect(within(dialog).getByText(/continua a partir deste mês/)).toBeInTheDocument()
+  })
+
+  it("says nothing about re-opening when the end is still ahead", async () => {
+    serve(ALL, [{...REC, end: "2099-12-10"}])
+    renderWithQuery(<RecurrencesView/>)
+    const row = (await screen.findByText("Aluguel do apartamento")).closest("li") as HTMLElement
+    await userEvent.click(within(row).getByRole("button", {name: "Editar"}))
+    const dialog = await screen.findByRole("dialog")
+    await userEvent.click(within(dialog).getByRole("button", {name: "Limpar data de término"}))
+    expect(within(dialog).queryByText(/continua a partir deste mês/)).toBeNull()
+  })
+
   it("asks before archiving and says the generated bills stay", async () => {
     serve(ALL)
     const archive = vi.spyOn(finance, "archiveRecurrence").mockResolvedValue(undefined)

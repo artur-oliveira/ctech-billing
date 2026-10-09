@@ -366,6 +366,19 @@ func (r *RecurrenceRepository) Update(ctx context.Context, sp space.ResolvedSpac
 	if err := checkDirectionAccounts(ctx, r.ledger, sp, rec.Direction, rec.CategoryID, rec.AccountID, finance.ErrInvalidRecurrence); err != nil {
 		return err
 	}
+	// Re-opening (an end cleared or moved later) resumes the rule from the
+	// current horizon, never from a cursor left behind when the old end passed:
+	// the job's catch-up would otherwise make every missed date as an overdue
+	// bill and, with auto_settle, settle each one back-dated. The dates between
+	// the old end and this month were not owed while the rule had ended. A rule
+	// still running (its cursor already at or past the horizon) is untouched.
+	next := cursor
+	if endExtended && !cursor.IsZero() {
+		from, _ := finance.Horizon(brcal.FromTime(now))
+		if floor := from.AddDays(-1); cursor.Before(floor) {
+			next = floor
+		}
+	}
 
 	names := map[string]string{}
 	values := map[string]types.AttributeValue{":now": str(now.UTC().Format(time.RFC3339Nano))}
@@ -394,10 +407,13 @@ func (r *RecurrenceRepository) Update(ctx context.Context, sp space.ResolvedSpac
 	}
 	// The job-index keys follow the rule as edited: an end cleared on a rule the
 	// job had finished puts it back on the list at its next date after the
-	// cursor (re-opened); an end that leaves nothing after the cursor takes it
-	// off. The cursor itself never moves here, so nothing already made is made
-	// again — and the OCCURRENCE# lock would refuse it if it were.
-	if pk, sk := scheduleKeysFor(sp, rec, cursor); pk != "" {
+	// (re-opened) cursor; an end that leaves nothing after the cursor takes it
+	// off. The cursor only ever moves forward here, so nothing already made is
+	// made again — and the OCCURRENCE# lock would refuse it if it were.
+	if next != cursor {
+		set("last_nominal", str(next.String()))
+	}
+	if pk, sk := scheduleKeysFor(sp, rec, next); pk != "" {
 		set("schedule_pk", str(pk))
 		set("schedule_sk", str(sk))
 	} else {
