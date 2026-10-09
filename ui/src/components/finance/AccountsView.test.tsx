@@ -190,6 +190,32 @@ describe("F8 — accounts", () => {
     expect(await optionsOf("Conta padrão de recebimento")).toEqual(["Conta corrente", "Poupança"])
   })
 
+  it("posts CTech invoices by default and lets an admin turn it off", async () => {
+    serve(ALL)
+    const set = vi.spyOn(finance, "setPostCTechInvoices").mockResolvedValue({post_ctech_invoices: false})
+    renderWithQuery(<AccountsView/>)
+    const toggle = await screen.findByRole("switch", {name: "Lançar minhas faturas da CTech automaticamente neste espaço"})
+    await waitFor(() => expect(toggle).toBeChecked()) // absent on the server reads as on
+    expect(screen.getByText(/Hoje vale para o espaço pessoal/)).toBeInTheDocument()
+    await userEvent.click(toggle)
+    await waitFor(() => expect(set).toHaveBeenCalledWith(expect.anything(), false, expect.any(String)))
+  })
+
+  it("shows the CTech invoices setting off when the space turned it off", async () => {
+    serve(ALL)
+    vi.mocked(finance.getSettings).mockResolvedValue({post_ctech_invoices: false})
+    renderWithQuery(<AccountsView/>)
+    const toggle = await screen.findByRole("switch", {name: /faturas da CTech/})
+    await waitFor(() => expect(toggle).not.toBeChecked())
+  })
+
+  it("hides the CTech invoices setting from someone who cannot configure", async () => {
+    serve(["finance.read", "finance.write", "finance.settle", "finance.import"])
+    renderWithQuery(<AccountsView/>)
+    await row("Conta corrente")
+    expect(screen.queryByRole("switch")).toBeNull()
+  })
+
   it("teaches the first step when there is nothing yet", async () => {
     serve(ALL, [])
     renderWithQuery(<AccountsView/>)

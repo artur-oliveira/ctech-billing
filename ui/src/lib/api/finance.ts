@@ -153,6 +153,8 @@ export const archiveAccount = (c: FinanceCtx, id: string, idempotencyKey: string
 export const getSettings = (c: FinanceCtx) => read<Settings>(c, "/settings")
 export const setDefaultReceivingAccount = (c: FinanceCtx, accountId: string, idempotencyKey: string) =>
   write<Settings>(c, "PUT", "/settings/default-receiving-account", {default_receiving_account_id: accountId}, idempotencyKey)
+export const setPostCTechInvoices = (c: FinanceCtx, on: boolean, idempotencyKey: string) =>
+  write<Settings>(c, "PUT", "/settings/post-ctech-invoices", {post_ctech_invoices: on}, idempotencyKey)
 
 // --- statement, transfers, reports ------------------------------------------------
 

@@ -103,6 +103,8 @@
     "openingFailed": "The account was created, but the opening balance was not saved.",
     "skipOpening": "Skip opening balance",
     "defaultReceiving": "Default receiving account",
+    "postCTechInvoices": "Post my CTech invoices automatically in this space",
+    "postCTechInvoicesHelp": "When a CTech invoice of yours is paid, it is recorded here as an expense. Today this applies to the personal space.",
     "none": "None"
   },
   "cards": {
