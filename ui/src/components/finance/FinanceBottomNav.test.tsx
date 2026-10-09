@@ -45,7 +45,7 @@ describe("FinanceBottomNav", () => {
   it("has three tabs and Mais, the current one marked", async () => {
     at("/console/finance/statement")
     const tabs = within(bar()).getAllByRole("link").map(l => l.getAttribute("aria-label"))
-    expect(tabs).toEqual(["Resumo", "A pagar/receber", "Extrato"])
+    expect(tabs).toEqual(["Resumo", "Agenda", "Extrato"])
     expect(within(bar()).getByRole("link", {name: "Extrato"})).toHaveAttribute("aria-current", "page")
     expect(within(bar()).getByRole("link", {name: "Resumo"})).not.toHaveAttribute("aria-current")
     expect(within(bar()).getByRole("button", {name: "Mais"})).toBeInTheDocument()
@@ -85,7 +85,7 @@ describe("FinanceBottomNav", () => {
     })
 
     it.each(["/console/finance", "/console/finance/import", "/console/finance/reports"])(
-      "on %s, with nothing of its own to create, it adds a lançamento in A pagar/receber",
+      "on %s, with nothing of its own to create, it adds a lançamento in Agenda",
       async path => {
         const request = vi.spyOn(create, "requestCreate")
         at(path)
@@ -145,18 +145,18 @@ describe("createRequest", () => {
     expect(create.takePendingCreate("bill")).toBe(false)
   })
 
-  it("drops Resumo's Adicionar when the person goes somewhere else before A pagar/receber opens", async () => {
+  it("drops Resumo's Adicionar when the person goes somewhere else before Agenda opens", async () => {
     const {rerender, client} = at("/console/finance")
     await userEvent.click(await within(bar()).findByRole("button", {name: "Adicionar"}))
     expect(nav.push).toHaveBeenCalledWith("/console/finance/bills")
     // They tap Extrato before the bills screen mounted.
     nav.pathname = "/console/finance/statement"
     rerender(<QueryClientProvider client={client}><FinanceBottomNav/></QueryClientProvider>)
-    // Minutes later, opening A pagar/receber must not open Novo lançamento.
+    // Minutes later, opening Agenda must not open Novo lançamento.
     expect(create.takePendingCreate("bill")).toBe(false)
   })
 
-  it("keeps Resumo's Adicionar when the navigation lands on A pagar/receber", async () => {
+  it("keeps Resumo's Adicionar when the navigation lands on Agenda", async () => {
     const {rerender, client} = at("/console/finance")
     await userEvent.click(await within(bar()).findByRole("button", {name: "Adicionar"}))
     nav.pathname = "/console/finance/bills"

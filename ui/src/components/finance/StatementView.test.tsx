@@ -84,7 +84,7 @@ describe("F3 — extrato", () => {
     const row = await rowOf("Aluguel")
     expect(within(row).queryByRole("button", {name: "Estornar"})).not.toBeInTheDocument()
     await userEvent.click(within(row).getByRole("button", {name: "Desfazer pagamento"}))
-    expect(within(row).getByText(/A conta volta para A pagar e a receber/)).toBeInTheDocument()
+    expect(within(row).getByText(/A conta volta para a Agenda/)).toBeInTheDocument()
     await userEvent.click(within(row).getByRole("button", {name: "Confirmar"}))
     expect(unsettle).toHaveBeenCalledWith(expect.anything(), "b1", expect.any(String))
     expect(await screen.findByText("Estornado")).toBeInTheDocument()
