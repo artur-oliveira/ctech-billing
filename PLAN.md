@@ -650,8 +650,12 @@ gates nothing by plan.
       `CREDIT` (always in). Bad lines are *rejected* with position and reason, the rest imports. New table
       `imports`: `S → IMPORT#{id}` and `S#IMPORT#{id} → LINE#{n}` (TTL 90 days), `S → FITID#{account}#{key}`
       (no TTL, ADR 0026), `S → CSVMAP#{account}`. Key = `F:{FITID}` when unique in the file, else
-      `H:` + hash(account, FITID, date, amount, description, ordinal among identical lines). Upload = chunks of 50
-      lines (lock put + line put); a held lock is a duplicate, read from the cancellation reasons, no pre-read.
+      `H:` + hash(account, FITID, date, amount, description, ordinal among identical lines); the lock keeps the
+      date and amount, and a FITID lock held for another transaction (a bank reusing FITIDs) falls back to the
+      `H:` key. Upload = chunks of 49 lines (lock put + conditional line put, plus an ADD on the row's line count
+      in the same transaction); a held lock is a duplicate, read from the cancellation reasons, no pre-read. The
+      import id derives from the idempotency key and a fingerprint of the parsed file, so a retry resumes and
+      another file under the same key is another import; the UI renews the key when the file changes.
       An upload that adds nothing leaves no row (200, no id). Candidates are computed on read (open-index, same
       account/direction/amount, ±5 days, closest first, ≤5). Each decision is ONE `TransactWriteItems`: the
       settlement (or recognition + settlement of the new bill, ADDs on payables and the summary folded by
@@ -667,7 +671,8 @@ gates nothing by plan.
       import id derives from the key and the lock condition reads the owner from the cancellation reason;
       (3) DynamoDB returns TTL-expired items until it deletes them (up to ~48 h), so reads filter on `ttl`;
       (4) real Brazilian OFX declares `CHARSET:1252` over UTF-8 bytes; (5) `Settle` was split into
-      `planSettle`/`settleError` so another fact can commit with a settlement. Not built: purging (ADR 0026's job
+      `planSettle`/`settleError` so another fact can commit with a settlement; (6) review: line text is
+      bounded in bytes (what `Bill.Validate` counts) with control characters dropped. Not built: purging (ADR 0026's job
       is still unbuilt for every finance table, `imports` included).
 - [ ] 6.7 Billing integration — `invoice.paid` as revenue in the issuing organization and as an
       expense in the paying customer's own space (personal or organization).
