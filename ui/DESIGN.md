@@ -330,3 +330,30 @@ or on Finanças. On a phone it stays in the header; the bottom bar never repeats
 **Shell controls are 44px under touch.** The mode switch is a segment (`data-slot`), and the
 console's section tabs, the logo links, the language switch and the avatar grow to 44px under
 `touch:`; on a desk with a mouse the console keeps 32px.
+
+## Timelines, card marks and statement colours (UX batch 3, 2026-10-09)
+
+**A recurrence's dates are a rail.** F4's inline detail and the editor's *Próximas datas* share
+`OccurrenceTimeline`: a hairline rail, one line per date (date, weekday, the state in words), and
+under it, when a weekend or holiday moved it, "paga em 03/11/2026 (seg.), próximo dia útil". The
+marker's shape says what exists: filled for paid (success) and overdue (danger), a firm outline for
+a bill made and not yet due, a faint outline for a date the rule has not made yet (the projection's
+"outline is not made yet"), a grey dot and a struck date for a skipped one. The words carry the
+meaning; the marker never does alone. The detail opens under the row behind a **Ver** disclosure
+(`aria-expanded`, `aria-controls`, focus stays on it), split *Próximas* | *Histórico* side by side
+from `sm`, stacked on a phone. Still no chart for a recurrence.
+
+**A card shows its mark.** `CardBrandMark` draws a simplified 32×20 mark per brand (no third-party
+asset; trademarks of their owners, nominative use), always `aria-hidden` beside the brand's name.
+"•••• 1234" is the only part of a number shown. A `Select` option may carry such an `icon`; the
+option's name stays its label.
+
+**A card statement is calm until it is late.** Aberta is `positive`, Fechada, Paga and Futura are
+`neutral`, and `urgent` is kept for *Vencida* (closed, past its due date, unpaid). Each badge has a
+glyph. No new tone: the four stay the family's closed set.
+
+**A link to a row marks it.** A pagar/receber reads `?direction=&bill=`, opens on that side, tints
+the row with `brand-50` (the selected row) and scrolls it into view.
+
+**Drawers are touch-sized too.** A Drawer is portaled out of `[data-density]`, so the touch rule
+also roots at `[role=dialog]`.

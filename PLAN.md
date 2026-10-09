@@ -607,6 +607,21 @@ gates nothing by plan.
       cannot call it with billing's token (ADR 0025 amendment); the axios interceptor sent every 503 to
       /maintenance, which would turn one unreachable organization into a site outage, so
       `/problems/space-unavailable` is exempt and the personal space keeps working.
+      **UX batch 3 (2026-10-09):** F4 rows open a timeline in place (a "Ver" disclosure) fed by
+      `GET /recurrences/:id/occurrences` (`finance.read`, resolved space, another space's id is 404): the latest
+      12 bills it made as paid / forecast / overdue (linked to its bill on A pagar/receber via `?direction=&bill=`)
+      / skipped (cancelled), and the next 6 dates from after the job's cursor, never before today, none once
+      archived. The editor's *Próximas datas* is the same rail (date, weekday, "paga em … (seg.), próximo dia útil")
+      and also shows, while editing, the dates left after today. **Ruling:** an end with nothing to come (no
+      occurrence after today and none the job still owes, `Recurrence.Ended`) is 422 `recurrence_would_end` unless
+      the PATCH carries `archive: true`, and then the end and the archive are ONE conditional UpdateItem (both, not
+      either: the 422 keeps an old client from silently leaving a dead rule, the flag makes the confirmed case
+      atomic). The console confirms "Isso encerra a recorrência; ela será arquivada."; bills already made stay.
+      F8: creating an account with an opening balance no longer flashes R$ 0,00 (value-aware invalidation plus
+      `invalidateOnError`), and a new bank/cash account offers "Importar um extrato agora?" (a link to Importar
+      with it chosen). **Left out:** an opening balance from the OFX `LEDGERBAL` — dated `DTASOF` it double-counts
+      the file's own lines once they are reconciled; the right rule (`LEDGERBAL` minus the file's lines, before
+      the first line, and what an ignored line does to it) needs its own decision.
 - [x] 6.4 Reports — F3 statement (running balance, transfer, reverse a transfer or an opening balance,
       undo a payment), F7 DRE (accrual, from the cached SUMMARY rows) and cash flow (from the entries),
       F1's realised result of the month, and an opening balance when creating an account.
@@ -640,6 +655,11 @@ gates nothing by plan.
       missed days closes the months in order. A purchase dated in a closed month lands on the open one.
       **Out:** opening debt on a card, interest/IOF lines (6.6 import), card installments in F1's
       projection, business-day roll of due dates (the bill's due date is editable).
+      **UX batch 3 (2026-10-09):** a card has an optional `brand` (visa, mastercard, elo, amex, hipercard, diners,
+      other) and `last4` (exactly four digits), attributes of its row in `cards` (no migration; a cleared one is
+      REMOVEd), shown with a simplified SVG mark and "•••• 1234" on the card header, the picker and Contas.
+      Statement badges: Aberta positive, Fechada/Paga/Futura neutral, red only for *Vencida* (closed, past due,
+      unpaid; derived in the console).
 - [x] 6.6 Import and reconciliation — F6 (upload OFX or CSV per bank/cash account; reconcile each line:
       settle an open bill, create and settle a new one, ignore, undo an ignore), CSV columns saved per account.
       [Plan](docs/plans/2026-10-09-finance-6.6-import-and-reconciliation.md).
@@ -691,6 +711,8 @@ gates nothing by plan.
       `bill_already_linked` and stays pending; the same link again answers what the first did. A different amount
       (interest, discount) is not offered — the person ignores the line. The console shows such a candidate as *já
       pago automaticamente em DD/MM* with "Vincular" instead of "Dar baixa".
+      **UX batch 3 (2026-10-09):** the line action that creates a bill is **Adicionar** (was "Nova conta"; "conta"
+      is a bank account), and the line's badge, picker and empty hint say *lançamento*.
 - [x] 6.7 Billing integration — a paid invoice is revenue in the issuing organization's space and an
       expense in the paying person's own space; a credit note on a paid invoice takes its amount back from both.
       [Plan](docs/plans/2026-10-09-finance-6.7-billing-integration.md).
