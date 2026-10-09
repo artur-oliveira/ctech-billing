@@ -98,6 +98,10 @@
       "payable": "Pagamento registrado",
       "receivable": "Recebimento registrado"
     },
+    "settleError": {
+      "payable": "Não foi possível registrar o pagamento",
+      "receivable": "Não foi possível registrar o recebimento"
+    },
     "create": "Criar",
     "settleFailed": {
       "payable": "Conta criada, mas o pagamento não foi registrado.",

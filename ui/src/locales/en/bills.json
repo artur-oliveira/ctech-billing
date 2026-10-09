@@ -98,6 +98,10 @@
       "payable": "Payment recorded",
       "receivable": "Receipt recorded"
     },
+    "settleError": {
+      "payable": "The payment could not be recorded",
+      "receivable": "The receipt could not be recorded"
+    },
     "create": "Create",
     "settleFailed": {
       "payable": "Bill created, but the payment was not recorded.",

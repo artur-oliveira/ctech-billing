@@ -229,6 +229,34 @@ describe("F2 — a pagar e a receber", () => {
     expect(screen.queryByText("Conta de luz", {selector: "li *"})).toBeNull()
   })
 
+  // Closing the panel while the settle is in flight takes its inline retry with
+  // it; a failure after that must still reach the person, who would otherwise
+  // believe the bill was paid.
+  it.each([
+    ["payable", "A pagar", "Já foi pago", "Pago com", "Não foi possível registrar o pagamento"],
+    ["receivable", "A receber", "Já foi recebido", "Recebido em", "Não foi possível registrar o recebimento"],
+  ])("tells the person when the %s settle fails after the panel was closed", async (_dir, tab, toggle, account, message) => {
+    serve(ALL, [])
+    vi.spyOn(finance, "createBill").mockResolvedValue(bill({id: "new"}))
+    let fail: () => void = () => undefined
+    vi.spyOn(finance, "settleBill").mockImplementation(() => new Promise((_, reject) => (fail = () => reject({code: "ERR_NETWORK"}))))
+    renderWithQuery(<BillsView/>)
+    await userEvent.click(await screen.findByRole("button", {name: tab}))
+    await userEvent.click(screen.getByRole("button", {name: "Adicionar"}))
+    await userEvent.type(screen.getByLabelText(/^Valor/), "50,00")
+    await pick("Categoria", tab === "A pagar" ? "Aluguel" : "Salário")
+    await userEvent.click(screen.getAllByLabelText(toggle)[0])
+    await pick(account, "Conta corrente")
+    await userEvent.click(screen.getByRole("button", {name: "Criar"}))
+    await waitFor(() => expect(finance.settleBill).toHaveBeenCalled())
+    await userEvent.click(screen.getAllByRole("button", {name: "Fechar"})[0])
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
+    const calls = vi.mocked(finance.listBills).mock.calls.length
+    fail()
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(message))
+    await waitFor(() => expect(vi.mocked(finance.listBills).mock.calls.length).toBeGreaterThan(calls))
+  })
+
   it("shows the auto-settle switch only to a role that may settle", async () => {
     serve(["finance.read", "finance.write"], [])
     renderWithQuery(<BillsView/>)

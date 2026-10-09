@@ -343,13 +343,14 @@ function NewBillPanel({direction, accounts, onDone}: {direction: Direction; acco
   // The list is refreshed once, after the LAST step: a create that a settle
   // follows invalidates nothing, or the refetch in between shows the bill open
   // under "A pagar" for as long as the settle takes and then drops it. If the
-  // settle fails the bill really is open, so the list is refreshed then too.
-  const client = useQueryClient()
-  const ctx = useFinanceCtx()
+  // settle fails the bill really is open, so the list is refreshed then too,
+  // and the person is told: the panel (and its inline retry) may already be
+  // closed, and they would believe the bill was paid.
   const settle = useFinanceMutation(
     (c, v: {id: string; body: Settlement}, key) => settleBill(c, v.id, v.body, key), touched,
     () => { toast.success(t(`bills.new.settled.${direction}`)); onDone() },
-    () => { for (const key of touched(ctx)) void client.invalidateQueries({queryKey: key}) },
+    () => { toast.error(t(`bills.new.settleError.${direction}`)) },
+    {invalidateOnError: true},
   )
   const fe = useFieldErrors(["description", "amount", "due_date", "competence_date", "category_id", "account_id"])
   const create = useFinanceMutation(
