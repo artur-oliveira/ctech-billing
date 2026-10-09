@@ -1,5 +1,6 @@
 "use client"
 
+import limits from "@/lib/limits.json"
 import {Button, Field, Input} from "@aoctech/ui"
 
 import {messageFor} from "@/lib/api/client"
@@ -9,7 +10,7 @@ import {DateField} from "@/components/ui/DateField"
 import {Select} from "@/components/ui/Select"
 import {todayIso} from "@/lib/finance/today"
 import {useFinanceMutation} from "@/lib/finance/useFinanceMutation"
-import {limitMoneyDecimals, parseMoney} from "@/lib/money"
+import {maskMoney, parseMoney} from "@/lib/money"
 import {useState} from "react"
 
 /** A transfer moves balances and every report reads them: refresh the whole space. */
@@ -48,13 +49,13 @@ export function TransferPanel({accounts, from: initialFrom = "", onDone}: {accou
           options={active.filter(a => a.id !== from).map(a => ({value: a.id, label: a.name}))}/>
       </Field>
       <Field label="Valor" htmlFor="tr-amount">
-        <Input id="tr-amount" inputMode="decimal" placeholder="0,00" value={amountText} onChange={e => setAmountText(limitMoneyDecimals(e.target.value))}/>
+        <Input id="tr-amount" inputMode="decimal" placeholder="0,00" value={amountText} onChange={e => setAmountText(maskMoney(e.target.value))}/>
       </Field>
       <Field label="Data" htmlFor="tr-date">
-        <DateField id="tr-date" value={date} onValueChange={setDate}/>
+        <DateField id="tr-date" min={limits.minDate} max={todayIso()} value={date} onValueChange={setDate}/>
       </Field>
       <Field label="Descrição" htmlFor="tr-memo">
-        <Input id="tr-memo" maxLength={140} placeholder="Transferência" value={memo} onChange={e => setMemo(e.target.value)}/>
+        <Input id="tr-memo" maxLength={limits.text.memo} placeholder="Transferência" value={memo} onChange={e => setMemo(e.target.value)}/>
       </Field>
       <div className="flex flex-wrap items-center gap-2 sm:col-span-2 lg:col-span-5">
         <Button type="submit" variant="brand" size="sm" disabled={!ready}>Transferir</Button>

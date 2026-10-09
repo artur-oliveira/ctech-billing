@@ -1,5 +1,6 @@
 "use client"
 
+import limits from "@/lib/limits.json"
 import {Button, EmptyState, Field, Input, Skeleton, Switch} from "@aoctech/ui"
 import {useQuery} from "@tanstack/react-query"
 import {Repeat} from "lucide-react"
@@ -16,11 +17,11 @@ import {
 } from "@/lib/api/finance"
 import type {Account, Adjust, Direction, NewRecurrence, Occurrence, Recurrence, RecurrencePatch} from "@/lib/api/financeTypes"
 import {defaultModel, describeModel, type EditorModel, fromExpression, toExpression, validate} from "@/lib/finance/expression"
-import {todayIso} from "@/lib/finance/today"
+import {addYearsIso, todayIso} from "@/lib/finance/today"
 import {useFinanceMutation} from "@/lib/finance/useFinanceMutation"
 import {useFinanceCtx, useFinanceSpaces} from "@/lib/finance/useFinanceSpaces"
 import {money, shortDate} from "@/lib/format"
-import {formatMoneyInput, limitMoneyDecimals, parseMoney} from "@/lib/money"
+import {formatMoneyInput, maskMoney, parseMoney} from "@/lib/money"
 
 const PREVIEW_COUNT = 6
 const DEBOUNCE_MS = 300
@@ -219,8 +220,8 @@ function RecurrencePanel({editing, accounts, onDone}: {editing?: Recurrence; acc
       </div>
       <form className="space-y-4" onSubmit={submit}>
         <div className="grid items-start gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <Field label="Descrição" htmlFor="rc-desc" className="lg:col-span-2"><Input id="rc-desc" value={description} onChange={e => setDescription(e.target.value)}/></Field>
-          <Field label="Valor" htmlFor="rc-amount" required><Input id="rc-amount" inputMode="decimal" placeholder="0,00" value={amountText} onChange={e => setAmountText(limitMoneyDecimals(e.target.value))}/></Field>
+          <Field label="Descrição" htmlFor="rc-desc" className="lg:col-span-2"><Input id="rc-desc" maxLength={limits.text.description} value={description} onChange={e => setDescription(e.target.value)}/></Field>
+          <Field label="Valor" htmlFor="rc-amount" required><Input id="rc-amount" inputMode="decimal" placeholder="0,00" value={amountText} onChange={e => setAmountText(maskMoney(e.target.value))}/></Field>
           <Field label="Categoria" htmlFor="rc-cat" required hint={cats.length === 0 ? `Nenhuma categoria de ${direction === "payable" ? "despesa" : "receita"}. Crie uma em Contas.` : undefined}>
             <Select id="rc-cat" value={category} onValueChange={setCategory} options={cats.map(a => ({value: a.id, label: a.name}))}/>
           </Field>
@@ -230,11 +231,11 @@ function RecurrencePanel({editing, accounts, onDone}: {editing?: Recurrence; acc
           {!editing && (
             <>
               <PatternFields model={model} start={start} errors={errors} onChange={setModel}/>
-              <Field label="Começa em" htmlFor="rc-start"><DateField id="rc-start" value={start} onValueChange={setStart}/></Field>
+              <Field label="Começa em" htmlFor="rc-start"><DateField id="rc-start" min={limits.minDate} max={addYearsIso(todayIso(), limits.maxFutureYears)} value={start} onValueChange={setStart}/></Field>
             </>
           )}
           {editing && (
-            <Field label="Termina em" htmlFor="rc-end-edit"><DateField id="rc-end-edit" value={end} onValueChange={setEnd} placeholder="Não termina"/></Field>
+            <Field label="Termina em" htmlFor="rc-end-edit"><DateField id="rc-end-edit" min={start || limits.minDate} max={addYearsIso(start || todayIso(), limits.maxRecurrenceYears)} value={end} onValueChange={setEnd} placeholder="Não termina"/></Field>
           )}
         </div>
 
@@ -272,7 +273,7 @@ function RecurrencePanel({editing, accounts, onDone}: {editing?: Recurrence; acc
               </button>
               {more && (
                 <div className="mt-3 grid items-start gap-4 border-t border-border pt-4 lg:grid-cols-[1fr_1fr_2fr]">
-                  <Field label="Termina em" htmlFor="rc-end"><DateField id="rc-end" value={end} onValueChange={setEnd} placeholder="Não termina"/></Field>
+                  <Field label="Termina em" htmlFor="rc-end"><DateField id="rc-end" min={start || limits.minDate} max={addYearsIso(start || todayIso(), limits.maxRecurrenceYears)} value={end} onValueChange={setEnd} placeholder="Não termina"/></Field>
                   <Field label="Se cair em fim de semana ou feriado" htmlFor="rc-adjust">
                     <Select id="rc-adjust" value={adjust} onValueChange={v => setAdjust(v as Adjust)} options={ADJUST_OPTIONS}/>
                   </Field>

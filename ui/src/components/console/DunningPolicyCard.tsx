@@ -138,6 +138,7 @@ function PolicyEditor({
             <li key={i} className="flex flex-wrap items-center gap-2">
               <Input
                 aria-label={`Dia do passo ${i + 1}`}
+                maxLength={3}
                 inputMode="numeric"
                 value={String(step.offset)}
                 onChange={event =>

@@ -1,3 +1,5 @@
+import limits from "@/lib/limits.json"
+
 /**
  * Brazilian money input to integer centavos, without ever touching a float.
  *
@@ -20,7 +22,9 @@ export function parseMoney(input: string): number | null {
   if (!/^(\d{1,3}(\.\d{3})+|\d+)$/.test(whole)) return null
   if (!/^\d{0,2}$/.test(frac)) return null
   const cents = BigInt(whole.replaceAll(".", "")) * BigInt(100) + BigInt(frac.padEnd(2, "0"))
-  if (cents <= BigInt(0) || cents > BigInt(Number.MAX_SAFE_INTEGER)) return null
+  // The ceiling is the API's (limits.json): nobody types a bigger amount than
+  // R$ 9.999.999.999,99, and the server would refuse it anyway.
+  if (cents <= BigInt(0) || cents > BigInt(limits.maxAmountCents)) return null
   return Number(cents)
 }
 
@@ -41,8 +45,24 @@ export function parseSignedMoney(input: string): number | null {
   return cents === null ? null : negative ? -cents : cents
 }
 
-/** What a money input keeps while typing: nothing past two decimals after the comma. */
-export function limitMoneyDecimals(typed: string): string {
+/** Integer digits a money field accepts: R$ 9.999.999.999 is ten. */
+const MAX_INT_DIGITS = String(Math.floor(limits.maxAmountCents / 100)).length
+
+/**
+ * The pt-BR mask applied while typing: thousands grouped with ".", one ","
+ * before at most two decimals, no other characters, no leading zeros, and at
+ * most ten integer digits, so the field cannot even show an amount past the
+ * ceiling. `signed` keeps a leading minus (an overdrawn opening balance).
+ */
+export function maskMoney(typed: string, opts: {signed?: boolean} = {}): string {
+  const trimmed = typed.trimStart()
+  const negative = !!opts.signed && (trimmed.startsWith("-") || trimmed.startsWith("−"))
   const comma = typed.indexOf(",")
-  return comma < 0 ? typed : typed.slice(0, comma + 3)
+  const intRaw = (comma < 0 ? typed : typed.slice(0, comma)).replace(/\D/g, "")
+  const decRaw = comma < 0 ? null : typed.slice(comma + 1).replace(/\D/g, "").slice(0, 2)
+  let int = intRaw.replace(/^0+(?=\d)/, "").slice(0, MAX_INT_DIGITS)
+  if (int === "" && decRaw !== null) int = "0"
+  const grouped = int.replace(/\B(?=(\d{3})+(?!\d))/g, ".")
+  const body = decRaw === null ? grouped : `${grouped},${decRaw}`
+  return negative && body !== "" ? `-${body}` : negative ? "-" : body
 }

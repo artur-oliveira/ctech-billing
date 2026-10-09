@@ -1,6 +1,6 @@
 import {describe, expect, it} from "vitest"
 
-import {formatMoneyInput, limitMoneyDecimals, parseMoney, parseSignedMoney} from "@/lib/money"
+import {formatMoneyInput, maskMoney, parseMoney, parseSignedMoney} from "@/lib/money"
 
 describe("parseMoney", () => {
   it.each([
@@ -57,15 +57,28 @@ describe("parseSignedMoney", () => {
   })
 })
 
-describe("limitMoneyDecimals", () => {
+describe("maskMoney", () => {
   it.each([
-    ["10,999", "10,99"],
-    ["1.234,5", "1.234,5"],
-    ["1.234,56", "1.234,56"],
-    ["-20,123", "-20,12"],
-    ["100", "100"],
+    ["1234", "1.234"],
+    ["1234567,8", "1.234.567,8"],
+    ["1.234,567", "1.234,56"],
+    ["12a3", "123"],
+    ["0001", "1"],
+    [",5", "0,5"],
+    ["1,2,3", "1,23"],
+    ["99999999999", "9.999.999.999"], // ten digits: the R$ 9.999.999.999,99 ceiling
     ["", ""],
-  ])("keeps %j as %j while typing", (typed, kept) => {
-    expect(limitMoneyDecimals(typed)).toBe(kept)
+  ])("masks %j as %j", (typed, shown) => {
+    expect(maskMoney(typed)).toBe(shown)
+  })
+
+  it("keeps a minus only where a balance may be negative", () => {
+    expect(maskMoney("-1500,5", {signed: true})).toBe("-1.500,5")
+    expect(maskMoney("-1500,5")).toBe("1.500,5")
+  })
+
+  it("never yields an amount parseMoney would refuse for size", () => {
+    expect(parseMoney(maskMoney("99999999999,99"))).toBe(999_999_999_999)
+    expect(parseMoney("10.000.000.000,00")).toBeNull()
   })
 })

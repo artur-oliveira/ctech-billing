@@ -1,0 +1,24 @@
+{
+  "maxAmountCents": 999999999999,
+  "minDate": "2000-01-01",
+  "maxFutureYears": 10,
+  "maxRecurrenceYears": 50,
+  "text": {
+    "accountName": 80,
+    "description": 200,
+    "memo": 140,
+    "productName": 120,
+    "ownerKey": 64,
+    "customerName": 200,
+    "legalName": 120,
+    "address": 240,
+    "email": 254,
+    "reason": 500,
+    "externalRef": 128,
+    "taxID": 18
+  },
+  "maxInstallments": 48,
+  "maxNetDays": 90,
+  "maxSubscriptionItems": 20,
+  "maxUsageQuantity": 1000000000
+}

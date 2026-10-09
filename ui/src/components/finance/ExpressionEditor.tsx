@@ -1,5 +1,7 @@
 "use client"
 
+import {addYearsIso, todayIso} from "@/lib/finance/today"
+import limits from "@/lib/limits.json"
 import {Button, Field, Input} from "@aoctech/ui"
 import {X} from "lucide-react"
 import {useState} from "react"
@@ -59,7 +61,7 @@ export function PatternFields({model, start, errors, onChange}: EditorProps) {
 
       {p.kind === "day_of_month" && (
         <Field label="Dia do mês" htmlFor="rx-day" error={err("day")}>
-          <Input id="rx-day" inputMode="numeric" value={Number.isNaN(p.day) ? "" : String(p.day)} onChange={e => setPattern({...p, day: Number.parseInt(e.target.value, 10)})} aria-invalid={!!err("day")}/>
+          <Input id="rx-day" maxLength={2} inputMode="numeric" value={Number.isNaN(p.day) ? "" : String(p.day)} onChange={e => setPattern({...p, day: Number.parseInt(e.target.value, 10)})} aria-invalid={!!err("day")}/>
         </Field>
       )}
 
@@ -91,11 +93,11 @@ export function PatternFields({model, start, errors, onChange}: EditorProps) {
             />
           </Field>
           <Field label="A cada quantas semanas" htmlFor="rx-every" error={err("every")}>
-            <Input id="rx-every" inputMode="numeric" value={Number.isNaN(p.every) ? "" : String(p.every)} onChange={e => setPattern({...p, every: Number.parseInt(e.target.value, 10)})} aria-invalid={!!err("every")}/>
+            <Input id="rx-every" maxLength={2} inputMode="numeric" value={Number.isNaN(p.every) ? "" : String(p.every)} onChange={e => setPattern({...p, every: Number.parseInt(e.target.value, 10)})} aria-invalid={!!err("every")}/>
           </Field>
           {p.every > 1 && (
             <Field label="Primeira data" htmlFor="rx-anchor" error={err("anchor")} hint="As semanas contam a partir dela.">
-              <DateField id="rx-anchor" value={p.anchor} onValueChange={anchor => setPattern({...p, anchor})}/>
+              <DateField id="rx-anchor" min={limits.minDate} max={addYearsIso(todayIso(), limits.maxRecurrenceYears)} value={p.anchor} onValueChange={anchor => setPattern({...p, anchor})}/>
             </Field>
           )}
         </>
@@ -107,7 +109,7 @@ export function PatternFields({model, start, errors, onChange}: EditorProps) {
             <Select id="rx-month" value={String(p.month)} onValueChange={v => setPattern({...p, month: Number(v)})} options={MONTHS}/>
           </Field>
           <Field label="Dia" htmlFor="rx-yday" error={err("day")}>
-            <Input id="rx-yday" inputMode="numeric" value={Number.isNaN(p.day) ? "" : String(p.day)} onChange={e => setPattern({...p, day: Number.parseInt(e.target.value, 10)})} aria-invalid={!!err("day")}/>
+            <Input id="rx-yday" maxLength={2} inputMode="numeric" value={Number.isNaN(p.day) ? "" : String(p.day)} onChange={e => setPattern({...p, day: Number.parseInt(e.target.value, 10)})} aria-invalid={!!err("day")}/>
           </Field>
         </>
       )}
@@ -146,7 +148,7 @@ export function ExceptionsFields({model, errors, onChange}: Omit<EditorProps, "s
       <div className="space-y-2">
         <Field label="Exceto nas datas" htmlFor="rx-date-add">
           <div className="flex gap-2">
-            <DateField id="rx-date-add" value={newDate} onValueChange={setNewDate}/>
+            <DateField id="rx-date-add" min={limits.minDate} max={addYearsIso(todayIso(), limits.maxRecurrenceYears)} value={newDate} onValueChange={setNewDate}/>
             <Button
               type="button"
               variant="outline"

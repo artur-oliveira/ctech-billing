@@ -287,8 +287,8 @@ func TestConsoleRefusesACreditNoteWithNoReason(t *testing.T) {
 
 	res := e.consolePost(t, "/v1.0/console/invoices/"+inv.ID+"/credit-notes", token, "live",
 		`{"amount":100}`)
-	if res.status != http.StatusBadRequest {
-		t.Fatalf("status = %d, want 400: %s", res.status, res.body)
+	if res.status != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want 422: %s", res.status, res.body)
 	}
 }
 

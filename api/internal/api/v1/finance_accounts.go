@@ -8,6 +8,7 @@ import (
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
 	"gopkg.aoctech.app/billing/api/internal/domain/finance"
 	"gopkg.aoctech.app/billing/api/internal/domain/id"
+	"gopkg.aoctech.app/billing/api/internal/limits"
 	"gopkg.aoctech.app/billing/api/internal/middleware"
 	"gopkg.aoctech.app/billing/api/internal/problem"
 )
@@ -51,15 +52,13 @@ func (h *financeHandlers) createAccount(c fiber.Ctx) error {
 	if p := decodeStrict(c, &req); p != nil {
 		return p.Send(c)
 	}
-	var errs []problem.FieldError
-	if strings.TrimSpace(req.Name) == "" {
-		errs = append(errs, fieldErr("name", "obrigatório", "required"))
-	}
-	if len(errs) > 0 {
-		return problem.Validation(errs).Send(c)
+	ch := &checks{}
+	ch.text("name", req.Name, true, limits.AccountName)
+	if len(ch.errs) > 0 {
+		return problem.Validation(ch.errs).Send(c)
 	}
 	a := finance.LedgerAccount{
-		ID: id.New(), Name: req.Name, Class: finance.AccountClass(req.Class), Group: finance.DREGroup(req.DREGroup),
+		ID: id.New(), Name: strings.TrimSpace(req.Name), Class: finance.AccountClass(req.Class), Group: finance.DREGroup(req.DREGroup),
 	}
 	if err := h.ledger.CreateAccount(c.Context(), middleware.GetSpace(c), a, h.now()); err != nil {
 		return fail(c, err)
@@ -91,8 +90,10 @@ func (h *financeHandlers) setDefaultReceivingAccount(c fiber.Ctx) error {
 	if p := decodeStrict(c, &req); p != nil {
 		return p.Send(c)
 	}
-	if req.DefaultReceivingAccountID == "" {
-		return problem.Validation([]problem.FieldError{fieldErr("default_receiving_account_id", "obrigatório", "required")}).Send(c)
+	ch := &checks{}
+	ch.id("default_receiving_account_id", req.DefaultReceivingAccountID, true)
+	if len(ch.errs) > 0 {
+		return problem.Validation(ch.errs).Send(c)
 	}
 	if err := h.ledger.SetDefaultReceivingAccount(c.Context(), middleware.GetSpace(c), req.DefaultReceivingAccountID, h.now()); err != nil {
 		return fail(c, err)

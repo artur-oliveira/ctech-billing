@@ -8,6 +8,7 @@ import (
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
 	"gopkg.aoctech.app/billing/api/internal/domain/brcal"
 	"gopkg.aoctech.app/billing/api/internal/domain/finance"
+	"gopkg.aoctech.app/billing/api/internal/limits"
 	"gopkg.aoctech.app/billing/api/internal/middleware"
 	"gopkg.aoctech.app/billing/api/internal/problem"
 	"gopkg.aoctech.app/billing/api/internal/repositories"
@@ -54,8 +55,17 @@ type scheduleRequest struct {
 	Adjust     string          `json:"business_day_adjust"`
 }
 
-func (s scheduleRequest) schedule() (finance.Schedule, []problem.FieldError) {
+// schedule parses and bounds a rule: it starts between limits.MinDate and ten
+// years from today, and ends (when it ends) after it starts and within fifty
+// years of it — enough for a mortgage, short of a typo in the year.
+func (s scheduleRequest) schedule(today brcal.Date) (finance.Schedule, []problem.FieldError) {
 	var errs []problem.FieldError
+	c := &checks{}
+	c.date("start", s.Start, limits.MinDate, limits.MaxDate(today))
+	if s.End != nil && !s.End.IsZero() && !s.Start.IsZero() {
+		c.date("end", *s.End, s.Start, s.Start.AddYears(limits.MaxRecurrenceYears))
+	}
+	errs = append(errs, c.errs...)
 	if len(s.Expression) == 0 {
 		return finance.Schedule{}, []problem.FieldError{fieldErr("expression", "obrigatório", "required")}
 	}
@@ -66,9 +76,6 @@ func (s scheduleRequest) schedule() (finance.Schedule, []problem.FieldError) {
 	adjust := finance.BusinessDayAdjust(s.Adjust)
 	if adjust == "" {
 		adjust = finance.AdjustNone
-	}
-	if s.Start.IsZero() {
-		errs = append(errs, fieldErr("start", "obrigatório", "required"))
 	}
 	sched := finance.Schedule{Expression: expr, Start: s.Start, Adjust: adjust}
 	if s.End != nil {
@@ -92,13 +99,16 @@ func (h *financeHandlers) createRecurrence(c fiber.Ctx) error {
 	if p := decodeStrict(c, &req); p != nil {
 		return p.Send(c)
 	}
-	sched, errs := req.scheduleRequest.schedule()
+	sched, errs := req.scheduleRequest.schedule(h.today())
 	if req.Direction != string(finance.Payable) && req.Direction != string(finance.Receivable) {
 		errs = append(errs, fieldErr("direction", "use payable ou receivable", "oneof"))
 	}
-	if req.Amount <= 0 {
-		errs = append(errs, fieldErr("amount", "informe um valor em centavos maior que zero", "gt"))
-	}
+	ch := &checks{}
+	ch.amount("amount", req.Amount)
+	ch.id("category_id", req.CategoryID, true)
+	ch.id("account_id", req.AccountID, true)
+	ch.text("description", req.Description, false, limits.Description)
+	errs = append(errs, ch.errs...)
 	if len(errs) > 0 {
 		return problem.Validation(errs).Send(c)
 	}
@@ -146,8 +156,24 @@ func (h *financeHandlers) patchRecurrence(c fiber.Ctx) error {
 	if p := decodeStrict(c, &req); p != nil {
 		return p.Send(c)
 	}
-	if req.Amount != nil && *req.Amount <= 0 {
-		return problem.Validation([]problem.FieldError{fieldErr("amount", "informe um valor em centavos maior que zero", "gt")}).Send(c)
+	ch := &checks{}
+	if req.Amount != nil {
+		ch.amount("amount", *req.Amount)
+	}
+	if req.CategoryID != nil {
+		ch.id("category_id", *req.CategoryID, true)
+	}
+	if req.AccountID != nil {
+		ch.id("account_id", *req.AccountID, true)
+	}
+	if req.Description != nil {
+		ch.text("description", *req.Description, false, limits.Description)
+	}
+	if req.End != nil && !req.End.IsZero() {
+		ch.date("end", *req.End, limits.MinDate, h.today().AddYears(limits.MaxRecurrenceYears))
+	}
+	if len(ch.errs) > 0 {
+		return problem.Validation(ch.errs).Send(c)
 	}
 	sp := middleware.GetSpace(c)
 	if err := h.recs.Update(c.Context(), sp, c.Params("id"), repositories.RecurrencePatch{
@@ -193,7 +219,12 @@ func (h *financeHandlers) previewRecurrence(c fiber.Ctx) error {
 	if p := decodeStrict(c, &req); p != nil {
 		return p.Send(c)
 	}
-	sched, errs := req.scheduleRequest.schedule()
+	sched, errs := req.scheduleRequest.schedule(h.today())
+	if req.From != nil && !req.From.IsZero() {
+		ch := &checks{}
+		ch.date("from", *req.From, limits.MinDate, h.today().AddYears(limits.MaxRecurrenceYears))
+		errs = append(errs, ch.errs...)
+	}
 	if req.Count < 1 || req.Count > finance.MaxPreview {
 		errs = append(errs, fieldErr("count", "entre 1 e 24", "range"))
 	}

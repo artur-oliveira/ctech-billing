@@ -290,7 +290,7 @@ func TestConsoleSetsTheIssuerAsABlock(t *testing.T) {
 	token := e.sessionToken(t, middleware.ScopeInvoicesWrite, middleware.ScopeOrganizationRead)
 
 	res := e.consolePut(t, "/v1.0/console/settings/issuer", token, "live",
-		`{"legal_name":"A O CARVALHO TECH LTDA","tax_id":"12.345.678/0001-90","address":"São Paulo/SP","email":"cobranca@aoctech.app"}`)
+		`{"legal_name":"A O CARVALHO TECH LTDA","tax_id":"11.222.333/0001-81","address":"São Paulo/SP","email":"cobranca@aoctech.app"}`)
 	if res.status != http.StatusOK {
 		t.Fatalf("status = %d: %s", res.status, res.body)
 	}
