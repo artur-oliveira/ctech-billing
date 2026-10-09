@@ -114,6 +114,14 @@ func FromError(err error) *Problem {
 	case errors.Is(err, finance.ErrBillState), errors.Is(err, repositories.ErrAlreadyReversed):
 		return New(409, TypeInvalidTransition, "Invalid Transition", err.Error())
 
+	case errors.Is(err, repositories.ErrOpeningExists):
+		return New(409, TypeInvalidTransition, "Invalid Transition",
+			"Esta conta já tem saldo inicial. Estorne o atual para lançar outro.")
+
+	case errors.Is(err, repositories.ErrNotManual):
+		return New(409, TypeInvalidTransition, "Invalid Transition",
+			"Só transferências e saldos iniciais são estornados pelo extrato. Para um pagamento, use Desfazer pagamento.")
+
 	case errors.Is(err, repositories.ErrUnknownAccount):
 		return Unprocessable("conta ou categoria desconhecida neste espaço")
 

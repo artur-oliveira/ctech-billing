@@ -88,3 +88,14 @@ func TestFinanceIsNotBehindTheConsoleTenantResolver(t *testing.T) {
 	}
 	f.must(t, 200, "GET", "/accounts", "", nil)
 }
+
+// A space is created by its first write: nothing else ever makes its system
+// accounts, and without them a bill's recognition names an account that does
+// not exist (422 "conta ou categoria desconhecida").
+func TestTheFirstWriteCreatesTheSpace(t *testing.T) {
+	f := newFinanceEnv(t)
+	var bank, rent struct{ ID string }
+	f.must(t, 201, "POST", "/accounts", `{"name":"Banco","class":"asset"}`, &bank)
+	f.must(t, 201, "POST", "/accounts", `{"name":"Aluguel","class":"expense","dre_group":"operating_expenses"}`, &rent)
+	f.must(t, 201, "POST", "/bills", `{"direction":"payable","amount":100,"account_id":"`+bank.ID+`","category_id":"`+rent.ID+`","due_date":"2026-03-10"}`, nil)
+}

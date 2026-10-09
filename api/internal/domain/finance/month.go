@@ -41,3 +41,20 @@ func (m Month) Compare(o Month) int { return m.First().Compare(o.First()) }
 
 // String renders YYYY-MM, the form a statement and a summary key carry.
 func (m Month) String() string { return fmt.Sprintf("%04d-%02d", m.Year, int(m.Month)) }
+
+// ParseMonth reads YYYY-MM, strictly: "2026-1" and "2026-00" are refused.
+func ParseMonth(s string) (Month, error) {
+	if len(s) != 7 || s[4] != '-' {
+		return Month{}, fmt.Errorf("month %q: use YYYY-MM", s)
+	}
+	d, err := brcal.Parse(s + "-01")
+	if err != nil {
+		return Month{}, fmt.Errorf("month %q: %w", s, err)
+	}
+	return MonthOf(d), nil
+}
+
+// MonthsSince returns how many months m is after o (negative when before).
+func (m Month) MonthsSince(o Month) int {
+	return (m.Year-o.Year)*12 + int(m.Month) - int(o.Month)
+}
