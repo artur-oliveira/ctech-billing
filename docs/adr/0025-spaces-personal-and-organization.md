@@ -89,3 +89,10 @@ organization" is not thereby allowed to enumerate a person's organizations.
 The list stays information, not authority: every request still resolves its space through the
 membership check. When account is unreachable the list answers the personal space with
 `organizations_unavailable: true`, and the console says so instead of failing.
+
+## Amendment, 2026-10-09 — personal workspaces
+
+Additional and shared personal spaces are ctech-account workspaces of `kind: personal`, selected with
+`org:{id}` through this same resolver; verbs depend on kind and role. See
+[ADR 0027](0027-personal-workspaces-in-account.md). The default personal space (`USER#{sub}`) is
+unchanged and never shareable.

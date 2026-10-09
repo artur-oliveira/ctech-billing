@@ -643,6 +643,21 @@ gates nothing by plan.
 - [ ] 6.6 Import and reconciliation — F6.
 - [ ] 6.7 Billing integration — `invoice.paid` as revenue in the issuing organization and as an
       expense in the paying customer's own space (personal or organization).
+- [ ] 6.8 Shared and additional personal spaces —
+      [spec](docs/specs/2026-10-09-shared-spaces-design.md), [ADR 0027](docs/adr/0027-personal-workspaces-in-account.md).
+      A ctech-account workspace of `kind: personal`, created and managed by handoff; verbs by kind and
+      role; the resolver gains no path; the default personal space is never shareable. **Deploy
+      ctech-account first** (`ctech-account/docs/specs/2026-10-09-personal-workspaces.md`).
+
+**Still open in Phase 6 (recorded 2026-10-09):**
+- **6.6 import and reconciliation**: not started (no OFX/FITID code, no `imports` table).
+- **6.7 billing integration**: not started.
+- **Purge (ADR 0026)**: no code. ctech-account's account-deletion specs (2026-10-06) name billing
+  as a participant with an eligibility check and a purge on `user.erase`; billing's side is unbuilt.
+  Shared spaces (6.8) add personal workspaces to its scope.
+- **Left out of 6.5:** opening debt on a card, interest/IOF lines (with 6.6), business-day roll of a
+  statement's due date.
+- **Userdata:** AL2023 is at ~15.9 KB of 16,384. The next timer moves the timers to an S3 asset.
 
 Cross-repo: ctech-account's account-deletion spec must emit the personal-space purge trigger
 (ADR 0026). After v1, each with its own spec: billing's own plans and entitlements (decided

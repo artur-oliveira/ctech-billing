@@ -35,6 +35,7 @@ re-litigate settled questions. Every ADR here is already decided — the analysi
 | [0024](0024-billing-keeps-a-management-ledger.md) | Billing keeps a management ledger (finance / "mini ERP"), with internal double entry, and it is not custody | supersedes in part assessment § 14.3, § 14.11, § 20.2 (2026-10-07) |
 | [0025](0025-spaces-personal-and-organization.md) | Spaces: a personal space per user, and a space selector that is never authority | extends 0003 and 0011 (2026-10-07) |
 | [0026](0026-finance-retention-by-purge.md) | Finance records live as long as their space and leave by explicit purge | extends 0009 (2026-10-07) |
+| [0027](0027-personal-workspaces-in-account.md) | Shared and additional personal spaces are ctech-account workspaces of kind `personal`; verbs by kind and role | extends 0025 (2026-10-09) |
 
 ## Status of the record itself
 
