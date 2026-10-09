@@ -129,6 +129,23 @@ describe("F8 — accounts", () => {
     expect(screen.queryByLabelText("Saldo inicial")).not.toBeInTheDocument()
   })
 
+  it("posts an opening balance on an account created before there was one", async () => {
+    serve(ALL)
+    const opening = vi.spyOn(finance, "postOpeningBalance")
+      .mockRejectedValueOnce({response: {status: 409, data: {detail: "Esta conta já tem saldo inicial. Estorne o atual para lançar outro."}}})
+      .mockResolvedValueOnce({transaction_id: "t"})
+    renderWithQuery(<AccountsView/>)
+    const cc = await row("Conta corrente")
+    expect(within(await row("Aluguel")).queryByRole("button", {name: "Saldo inicial"})).not.toBeInTheDocument()
+    await userEvent.click(within(cc).getByRole("button", {name: "Saldo inicial"}))
+    await userEvent.type(within(cc).getByLabelText("Valor"), "-200,00")
+    await userEvent.click(within(cc).getByRole("button", {name: "Lançar"}))
+    expect(await within(cc).findByText(/já tem saldo inicial/)).toBeInTheDocument()
+    await userEvent.click(within(cc).getByRole("button", {name: "Lançar"}))
+    await waitFor(() => expect(opening).toHaveBeenLastCalledWith(expect.anything(), "cc", expect.objectContaining({amount: -20000}), expect.any(String)))
+    await waitFor(() => expect(within(cc).queryByLabelText("Valor")).not.toBeInTheDocument())
+  })
+
   it("asks before archiving and says nothing is deleted", async () => {
     serve(ALL)
     const archive = vi.spyOn(finance, "archiveAccount").mockResolvedValue(undefined)

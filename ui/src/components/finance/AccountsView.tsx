@@ -91,6 +91,7 @@ export function AccountsView() {
 
 function AccountRow({account, configure}: {account: Account; configure: boolean}) {
   const [confirming, setConfirming] = useState(false)
+  const [opening, setOpening] = useState(false)
   const archive = useFinanceMutation(
     (c, id: string, key) => archiveAccount(c, id, key),
     c => [financeKeys.accounts(c.mode, c.space)],
@@ -106,6 +107,9 @@ function AccountRow({account, configure}: {account: Account; configure: boolean}
         <div className="flex shrink-0 items-center gap-3">
           {account.class === "asset" && <span data-numeric className="text-sm tabular-nums">{money(account.balance)}</span>}
           {account.archived && <span className="text-xs">Arquivada</span>}
+          {configure && account.class === "asset" && !account.archived && !opening && (
+            <Button variant="ghost" size="sm" onClick={() => setOpening(true)}>Saldo inicial</Button>
+          )}
           {configure && !account.archived && !confirming && (
             <Button variant="ghost" size="sm" onClick={() => setConfirming(true)}>Arquivar</Button>
           )}
@@ -119,7 +123,45 @@ function AccountRow({account, configure}: {account: Account; configure: boolean}
           {archive.error && <p role="alert" className="w-full text-danger">{messageFor(archive.error)}</p>}
         </div>
       )}
+      {opening && <OpeningForm account={account} onDone={() => setOpening(false)}/>}
     </li>
+  )
+}
+
+/**
+ * The opening balance of an account that already exists (one created before
+ * 6.4, or whose opening was reversed). Once per account: a second one is
+ * refused by the server, which says how to correct it.
+ */
+function OpeningForm({account, onDone}: {account: Account; onDone: () => void}) {
+  const [text, setText] = useState("")
+  const [date, setDate] = useState(todayIso())
+  const post = useFinanceMutation(
+    (c, body: OpeningBalance, key) => postOpeningBalance(c, account.id, body, key),
+    c => [financeKeys.all(c.mode, c.space)],
+    onDone,
+  )
+  const amount = parseSignedMoney(text)
+  return (
+    <form
+      className="mt-2 grid items-start gap-3 rounded-lg bg-surface p-3 sm:grid-cols-[1fr_1fr_auto] motion-safe:animate-in motion-safe:fade-in"
+      onSubmit={e => {
+        e.preventDefault()
+        if (amount !== null) post.mutate({amount, date})
+      }}
+    >
+      <Field label="Valor" htmlFor={`ob-${account.id}`} hint="Negativo se a conta estava no vermelho.">
+        <Input id={`ob-${account.id}`} inputMode="decimal" placeholder="0,00" value={text} onChange={e => setText(e.target.value)} autoFocus/>
+      </Field>
+      <Field label="Em" htmlFor={`obd-${account.id}`}>
+        <Input id={`obd-${account.id}`} type="date" value={date} onChange={e => setDate(e.target.value)}/>
+      </Field>
+      <div className="flex gap-2 sm:pt-6">
+        <Button type="button" variant="outline" size="sm" onClick={onDone}>Fechar</Button>
+        <Button type="submit" variant="brand" size="sm" disabled={amount === null || post.isPending}>Lançar</Button>
+      </div>
+      {post.error ? <p role="alert" className="text-sm text-danger sm:col-span-3">{messageFor(post.error)}</p> : null}
+    </form>
   )
 }
 
