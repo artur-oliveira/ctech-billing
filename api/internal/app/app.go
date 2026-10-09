@@ -182,7 +182,8 @@ func Build(ctx context.Context, cfg *config.Config, clock func() time.Time) (*fi
 // and credit notes in Finanças (spec § 3.8), for the server and the reconciler
 // alike. Tenant zero is the only tenant whose customers' own spaces it writes.
 func financeInvoices(db *dynamodb.Client, cfg *config.Config, orgs *repositories.OrganizationRepository, customers *repositories.CustomerRepository) *services.FinanceInvoices {
-	return services.NewFinanceInvoices(repositories.NewBillRepository(db, cfg), orgs, customers, cfg.PortalOrganizationID)
+	return services.NewFinanceInvoices(repositories.NewBillRepository(db, cfg), orgs, customers,
+		repositories.NewInvoiceRepository(db, cfg), repositories.NewCreditNoteRepository(db, cfg), cfg.PortalOrganizationID)
 }
 
 // BuildInvoicer wires only what the daily sweep needs.
@@ -284,7 +285,10 @@ func BuildDunner(ctx context.Context, cfg *config.Config) (*services.Dunner, err
 // than the warning it is in Build. The API degrades by unmounting its checkout
 // routes; a reconciler that started and reconciled nothing would report success
 // every hour while payments sat unsettled.
-func BuildCollector(ctx context.Context, cfg *config.Config) (*services.Collector, error) {
+//
+// It also returns the finance posting rule, whose Replay the same job runs: the
+// postings a settlement could not write are retried on the reconciler's clock.
+func BuildCollector(ctx context.Context, cfg *config.Config) (*services.Collector, *services.FinanceInvoices, error) {
 	walletCfg := wallet.Config{
 		BaseURL:       cfg.WalletBaseURL,
 		TokenURL:      cfg.WalletTokenURL,
@@ -294,14 +298,15 @@ func BuildCollector(ctx context.Context, cfg *config.Config) (*services.Collecto
 		Cache:         newCache(cfg),
 	}
 	if !walletCfg.Enabled() {
-		return nil, fmt.Errorf("reconciliation needs wallet configured (WALLET_BASE_URL, WALLET_TOKEN_URL, WALLET_CLIENT_ID, WALLET_CLIENT_SECRET, WALLET_WEBHOOK_SECRET)")
+		return nil, nil, fmt.Errorf("reconciliation needs wallet configured (WALLET_BASE_URL, WALLET_TOKEN_URL, WALLET_CLIENT_ID, WALLET_CLIENT_SECRET, WALLET_WEBHOOK_SECRET)")
 	}
 	db, err := newDynamoDB(ctx, cfg)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	customers := repositories.NewCustomerRepository(db, cfg)
 	orgs := repositories.NewOrganizationRepository(db, cfg)
+	finance := financeInvoices(db, cfg, orgs, customers)
 	collector := services.NewCollector(
 		repositories.NewInvoiceRepository(db, cfg),
 		repositories.NewPaymentRepository(db, cfg),
@@ -309,7 +314,7 @@ func BuildCollector(ctx context.Context, cfg *config.Config) (*services.Collecto
 		orgs,
 		repositories.NewSubscriptionRepository(db, cfg),
 		wallet.New(walletCfg),
-	).WithFinance(financeInvoices(db, cfg, orgs, customers))
+	).WithFinance(finance)
 	// The reconciler settles invoices the webhook missed, so it records them in
 	// Finanças too (spec § 3.8); the bill's id makes it a no-op when the webhook
 	// already did.
@@ -324,7 +329,7 @@ func BuildCollector(ctx context.Context, cfg *config.Config) (*services.Collecto
 			collector = collector.WithSettlementBus(bus)
 		}
 	}
-	return collector, nil
+	return collector, finance, nil
 }
 
 func newFiber(cfg *config.Config) *fiber.App {

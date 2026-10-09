@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
 	"gopkg.aoctech.app/billing/api/internal/domain/brcal"
 	"gopkg.aoctech.app/billing/api/internal/domain/finance"
@@ -351,6 +353,7 @@ type financePayEnv struct {
 	issuer, payer space.ResolvedSpace
 	ledger        *repositories.LedgerRepository
 	bills         *repositories.BillRepository
+	finance       *services.FinanceInvoices
 }
 
 func newFinancePayEnv(t *testing.T, payerHasSpace bool) *financePayEnv {
@@ -371,9 +374,134 @@ func newFinancePayEnv(t *testing.T, payerHasSpace bool) *financePayEnv {
 	if payerHasSpace {
 		f.payer = invoiceSpace(t, "USER#"+e.userID, true)
 	}
-	// The reconciler's collector, wired the way app.BuildReconciler wires it.
-	e.collector.WithFinance(services.NewFinanceInvoices(f.bills, orgs, repositories.NewCustomerRepository(testDB, testCfg), e.org.ID))
+	// The reconciler's collector and replay pass, wired the way cmd/reconcile
+	// wires them.
+	f.finance = services.NewFinanceInvoices(f.bills, orgs, repositories.NewCustomerRepository(testDB, testCfg),
+		repositories.NewInvoiceRepository(testDB, testCfg), repositories.NewCreditNoteRepository(testDB, testCfg), e.org.ID)
+	e.collector.WithFinance(f.finance)
 	return f
+}
+
+// pendingPosting reports whether the invoice is still queued for its finance
+// posting; pendingCredit the same for a credit note.
+func (f *financePayEnv) pendingPosting(t *testing.T, invoiceID string) bool {
+	t.Helper()
+	var start map[string]types.AttributeValue
+	for {
+		page, err := repositories.NewInvoiceRepository(testDB, testCfg).PendingFinancePostings(ctxT(t), true, 100, start)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, inv := range page.Items {
+			if inv.ID == invoiceID {
+				return true
+			}
+		}
+		if page.LastEvaluatedKey == nil {
+			return false
+		}
+		start = page.LastEvaluatedKey
+	}
+}
+
+func (f *financePayEnv) pendingCredit(t *testing.T, invoiceID string) bool {
+	t.Helper()
+	var start map[string]types.AttributeValue
+	for {
+		page, err := repositories.NewCreditNoteRepository(testDB, testCfg).PendingFinanceCredits(ctxT(t), true, 100, start)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, cn := range page.Items {
+			if cn.InvoiceID == invoiceID {
+				return true
+			}
+		}
+		if page.LastEvaluatedKey == nil {
+			return false
+		}
+		start = page.LastEvaluatedKey
+	}
+}
+
+// I1 (review): a paid invoice whose posting is complete leaves nothing queued.
+func TestAPostingDoneAtOnceLeavesNothingPending(t *testing.T) {
+	f := newFinancePayEnv(t, true)
+	inv, _ := f.payByWebhook(t)
+	if f.pendingPosting(t, inv.ID) {
+		t.Fatal("a fully recorded invoice is still queued")
+	}
+}
+
+// I1 (review): a posting that could not be written — here the payer had no
+// receiving account yet — stays queued, and the replay pass writes it once the
+// space can take it, without writing the issuer's twice.
+func TestAPostingThatCouldNotBeWrittenIsReplayed(t *testing.T) {
+	f := newFinancePayEnv(t, false)
+	inv, _ := f.payByWebhook(t)
+	if !f.pendingPosting(t, inv.ID) {
+		t.Fatal("the payer's posting was skipped and nothing remembers it")
+	}
+	f.payer = invoiceSpace(t, "USER#"+f.userID, true) // a week later the person opens Finanças
+	later := now().Add(7 * 24 * time.Hour)
+	for i := 0; i < 2; i++ {
+		if res := f.finance.Replay(ctxT(t), true, later); len(res.Errors) != 0 {
+			t.Fatalf("replay %d: %v", i, res.Errors)
+		}
+	}
+	if got := f.bal(t, f.payer, "bank"); got != -inv.Total {
+		t.Errorf("payer bank = %d, want %d", got, -inv.Total)
+	}
+	if got := f.bal(t, f.issuer, "bank"); got != inv.Total {
+		t.Errorf("issuer bank = %d, want %d once", got, inv.Total)
+	}
+	if f.pendingPosting(t, inv.ID) {
+		t.Error("still queued after the replay recorded it")
+	}
+}
+
+// I1 (review): the replay is bounded, so a space that never sets a receiving
+// account is not retried forever.
+func TestReplayGivesUpAfterTheWindow(t *testing.T) {
+	f := newFinancePayEnv(t, false)
+	inv, _ := f.payByWebhook(t)
+	f.finance.Replay(ctxT(t), true, now().Add(services.FinanceReplayWindow+time.Hour))
+	if f.pendingPosting(t, inv.ID) {
+		t.Fatal("an invoice paid outside the window is still queued")
+	}
+	accts, err := f.ledger.ListAccounts(ctxT(t), f.payer)
+	if err != nil || len(accts) != 0 {
+		t.Fatalf("giving up wrote into the payer's space: %d accounts, %v", len(accts), err)
+	}
+}
+
+// I1 (review): a credit note that could not reach a space is replayed too,
+// after the invoice it credits.
+func TestACreditThatCouldNotBeWrittenIsReplayed(t *testing.T) {
+	f := newFinancePayEnv(t, false)
+	inv, _ := f.payByWebhook(t)
+	token := f.sessionToken(t, middleware.ScopeInvoicesWrite, middleware.ScopeInvoicesRead)
+	if res := f.consolePost(t, "/v1.0/console/invoices/"+inv.ID+"/credit-notes", token, "live",
+		`{"amount":1990,"reason":"cobrança em duplicidade"}`); res.status != http.StatusCreated {
+		t.Fatalf("credit note: %d %s", res.status, res.body)
+	}
+	if !f.pendingCredit(t, inv.ID) {
+		t.Fatal("the payer's credit was skipped and nothing remembers it")
+	}
+	f.payer = invoiceSpace(t, "USER#"+f.userID, true)
+	if res := f.finance.Replay(ctxT(t), true, now().Add(24*time.Hour)); len(res.Errors) != 0 {
+		t.Fatalf("replay: %v", res.Errors)
+	}
+	kept := inv.Total - 1990
+	if got := f.bal(t, f.payer, "bank"); got != -kept {
+		t.Errorf("payer bank = %d, want %d", got, -kept)
+	}
+	if got := f.bal(t, f.issuer, "bank"); got != kept {
+		t.Errorf("issuer bank = %d, want %d (credited once)", got, kept)
+	}
+	if f.pendingCredit(t, inv.ID) {
+		t.Error("the credit is still queued after the replay recorded it")
+	}
 }
 
 // payByWebhook opens the invoice, pays it in the fake wallet and delivers the

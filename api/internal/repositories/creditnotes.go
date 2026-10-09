@@ -81,11 +81,19 @@ func (r *CreditNoteRepository) Issue(
 	cn.CreatedAt = now.UTC()
 
 	pk := TenantPK(inv.OrganizationID, inv.Livemode)
-	item, err := Encode(creditNoteRow{
+	row := creditNoteRow{
 		keys:        newKeys(pk, CreditNoteSK(inv.ID, cn.ID), RetentionCreditNote, now),
 		PeriodAttrs: NewPeriodAttrs(inv.OrganizationID, inv.Livemode, EntityCreditNote, brcal.FromTime(now), cn.ID),
 		CreditNote:  *cn,
-	})
+	}
+	if inv.Status == billing.InvoicePaid {
+		// A credit on a paid invoice is money going back in Finanças (spec
+		// § 3.8): queued for the finance replay in the note's own write, and
+		// taken off once both ledgers have it.
+		row.SchedulePK = FinanceQueuePK(inv.Livemode, JobFinanceCredit)
+		row.ScheduleSK = FinanceQueueSK(cn.CreatedAt.Format(time.RFC3339Nano), inv.OrganizationID, inv.ID, cn.ID)
+	}
+	item, err := Encode(row)
 	if err != nil {
 		return err
 	}

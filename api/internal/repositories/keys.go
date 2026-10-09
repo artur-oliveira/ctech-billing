@@ -266,7 +266,31 @@ const (
 	// JobWebhookDelivery finds deliveries that are due — a first attempt, or one
 	// whose backoff has elapsed. Also read by cmd/deliver.
 	JobWebhookDelivery = "WEBHOOK_DELIVERY"
+
+	// JobFinancePosting finds paid invoices whose finance posting (spec § 3.8)
+	// is not complete in both spaces yet. Armed in the same write that marks the
+	// invoice PAID, disarmed by the posting rule once both sides are settled
+	// either way; read by cmd/reconcile's replay pass. One partition per mode,
+	// ordered by paid_at, so the pass reads the oldest first and gives up on
+	// what fell out of its window.
+	JobFinancePosting = "FINANCE_POSTING"
+
+	// JobFinanceCredit is the same for a credit note issued on a PAID invoice.
+	// Armed in the note's own write.
+	JobFinanceCredit = "FINANCE_CREDIT"
 )
+
+// FinanceQueuePK is the partition of the finance replay pass: one per mode and
+// job, no date, like WebhookQueuePK.
+func FinanceQueuePK(livemode bool, job string) string {
+	return Mode(livemode) + "#" + job
+}
+
+// FinanceQueueSK orders the queue by when the fact happened (RFC 3339 UTC),
+// then by the ids that make it unique.
+func FinanceQueueSK(at string, ids ...string) string {
+	return at + "#" + strings.Join(ids, "#")
+}
 
 // SchedulePK is the partition a daily sweep reads.
 //

@@ -2,6 +2,9 @@ package services
 
 import (
 	"context"
+
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+
 	"errors"
 	"strings"
 	"testing"
@@ -22,6 +25,7 @@ type fakeBooks struct {
 	calls    int
 	failPK   string // writes fail in this space
 	noRecvPK string // this space has no receiving account
+	overPK   string // a credit in this space exceeds what is left on the bill
 	panics   bool
 }
 
@@ -52,8 +56,50 @@ func (f *fakeBooks) RecordInvoiceCredit(_ context.Context, sp space.ResolvedSpac
 	if _, ok := f.recorded[sp.PK()]; !ok {
 		return false, repositories.ErrNotFound
 	}
+	if sp.PK() == f.overPK {
+		return false, finance.ErrInvalidTransaction
+	}
 	f.credits[sp.PK()] += amount
 	return true, nil
+}
+
+// fakeQueue is the finance replay queue: what is still pending, and what was
+// taken off it.
+type fakeQueue struct {
+	postings []billing.Invoice
+	credits  []billing.CreditNote
+	invoices map[string]*billing.Invoice
+	posted   map[string]bool // invoice id -> taken off
+	credited map[string]bool // credit note id -> taken off
+}
+
+func newFakeQueue() *fakeQueue {
+	return &fakeQueue{invoices: map[string]*billing.Invoice{}, posted: map[string]bool{}, credited: map[string]bool{}}
+}
+
+func (q *fakeQueue) PendingFinancePostings(context.Context, bool, int, map[string]types.AttributeValue) (*repositories.Page[billing.Invoice], error) {
+	return &repositories.Page[billing.Invoice]{Items: q.postings}, nil
+}
+
+func (q *fakeQueue) FinancePosted(_ context.Context, inv *billing.Invoice, _ time.Time) error {
+	q.posted[inv.ID] = true
+	return nil
+}
+
+func (q *fakeQueue) Get(_ context.Context, _ string, _ bool, id string) (*billing.Invoice, error) {
+	if inv, ok := q.invoices[id]; ok {
+		return inv, nil
+	}
+	return nil, repositories.ErrNotFound
+}
+
+func (q *fakeQueue) PendingFinanceCredits(context.Context, bool, int, map[string]types.AttributeValue) (*repositories.Page[billing.CreditNote], error) {
+	return &repositories.Page[billing.CreditNote]{Items: q.credits}, nil
+}
+
+func (q *fakeQueue) FinanceCredited(_ context.Context, cn *billing.CreditNote, _ time.Time) error {
+	q.credited[cn.ID] = true
+	return nil
 }
 
 type fakeOrgReader map[string]*billing.Organization
@@ -86,6 +132,7 @@ type invoiceFixture struct {
 	books     *fakeBooks
 	orgs      fakeOrgReader
 	customers fakeCustomerReader
+	queue     *fakeQueue
 	rule      *FinanceInvoices
 	inv       *billing.Invoice
 }
@@ -95,8 +142,9 @@ func newInvoiceFixture() *invoiceFixture {
 		books:     newFakeBooks(),
 		orgs:      fakeOrgReader{"ctech": {ID: "ctech", DisplayName: "CTech", Livemode: true, AccountOrganizationID: linkedOrg}},
 		customers: fakeCustomerReader{"cus_1": {ID: "cus_1", OrganizationID: "ctech", Livemode: true, UserID: "sub-1"}},
+		queue:     newFakeQueue(),
 	}
-	f.rule = NewFinanceInvoices(f.books, f.orgs, f.customers, "ctech")
+	f.rule = NewFinanceInvoices(f.books, f.orgs, f.customers, f.queue, f.queue, "ctech")
 	f.inv = &billing.Invoice{
 		ID: "in_1", OrganizationID: "ctech", Livemode: true, CustomerID: "cus_1", Status: billing.InvoicePaid,
 		Number: 12, Period: billing.Period{Start: brcal.New(2026, time.February, 1), End: brcal.New(2026, time.March, 1)},
@@ -191,7 +239,7 @@ func TestOnlyTenantZeroPostsToThePayer(t *testing.T) {
 	wantResult(t, out, SidePayer, PostingSkipped, "not_tenant_zero")
 
 	g := newInvoiceFixture()
-	g.rule = NewFinanceInvoices(g.books, g.orgs, g.customers, "") // no tenant zero configured
+	g.rule = NewFinanceInvoices(g.books, g.orgs, g.customers, g.queue, g.queue, "") // no tenant zero configured
 	wantResult(t, g.rule.Paid(context.Background(), g.inv, "a", "r", at), SidePayer, PostingSkipped, "not_tenant_zero")
 }
 
@@ -277,4 +325,85 @@ func TestACreditNoteOnAPaidInvoicePostsInBothSpaces(t *testing.T) {
 	out = never.rule.Credited(context.Background(), never.inv, cn, "u", "r", at)
 	wantResult(t, out, SideIssuer, PostingSkipped, "invoice_not_recorded")
 	wantResult(t, out, SidePayer, PostingSkipped, "invoice_not_recorded")
+}
+
+// ---- the replay queue (6.7 review, I1) ------------------------------------------
+
+func TestACompletePostingLeavesTheQueue(t *testing.T) {
+	f := newInvoiceFixture()
+	f.rule.Paid(context.Background(), f.inv, "a", "r", at)
+	if !f.queue.posted["in_1"] {
+		t.Fatal("both spaces recorded, but the invoice stays queued")
+	}
+	g := newInvoiceFixture()
+	g.orgs["merchant"] = &billing.Organization{ID: "merchant", Livemode: true, AccountOrganizationID: linkedOrg}
+	g.inv.OrganizationID = "merchant" // payer side skipped for good: not tenant zero
+	g.rule.Paid(context.Background(), g.inv, "a", "r", at)
+	if !g.queue.posted["in_1"] {
+		t.Fatal("a side skipped for good must not keep the invoice queued")
+	}
+}
+
+func TestASideThatCanStillBeWrittenKeepsItQueued(t *testing.T) {
+	for name, mutate := range map[string]func(*invoiceFixture){
+		"a failed write":           func(f *invoiceFixture) { f.books.failPK = issuerPK },
+		"no receiving account":     func(f *invoiceFixture) { f.books.noRecvPK = payerPK },
+		"an issuer not linked yet": func(f *invoiceFixture) { f.orgs["ctech"].AccountOrganizationID = "" },
+		"a panic":                  func(f *invoiceFixture) { f.books.panics = true },
+	} {
+		f := newInvoiceFixture()
+		mutate(f)
+		f.rule.Paid(context.Background(), f.inv, "a", "r", at)
+		if f.queue.posted["in_1"] {
+			t.Errorf("%s: taken off the queue", name)
+		}
+	}
+}
+
+func TestReplayPostsWhatIsPendingAndGivesUpOutsideTheWindow(t *testing.T) {
+	f := newInvoiceFixture()
+	old := *f.inv
+	old.ID, old.PaidAt = "in_old", at.Add(-FinanceReplayWindow-time.Hour).Format(time.RFC3339)
+	f.queue.postings = []billing.Invoice{old, *f.inv}
+	res := f.rule.Replay(context.Background(), true, at)
+	if res.GivenUp != 1 || res.Done != 1 || len(res.Errors) != 0 {
+		t.Fatalf("result = %+v", res)
+	}
+	if !f.queue.posted["in_old"] || !f.queue.posted["in_1"] {
+		t.Fatalf("taken off = %v", f.queue.posted)
+	}
+	if _, ok := f.books.recorded[issuerPK]; !ok {
+		t.Fatal("the pending invoice was not recorded")
+	}
+	if f.books.calls != 2 {
+		t.Fatalf("%d writes: the invoice outside the window must not be posted", f.books.calls)
+	}
+}
+
+func TestReplayCreditsAfterTheInvoiceAndKeepsWhatCannotLandYet(t *testing.T) {
+	f := newInvoiceFixture()
+	f.queue.invoices["in_1"] = f.inv
+	cn := billing.CreditNote{ID: "cn_1", OrganizationID: "ctech", Livemode: true, InvoiceID: "in_1", Amount: 1990, CreatedAt: at}
+	f.queue.credits = []billing.CreditNote{cn}
+	f.rule.Replay(context.Background(), true, at) // nothing recorded yet: invoice_not_recorded
+	if f.queue.credited["cn_1"] {
+		t.Fatal("a credit whose invoice is not recorded yet left the queue")
+	}
+	f.queue.postings = []billing.Invoice{*f.inv}
+	res := f.rule.Replay(context.Background(), true, at)
+	if !f.queue.credited["cn_1"] || f.books.credits[issuerPK] != 1990 || len(res.Errors) != 0 {
+		t.Fatalf("credited = %v, credits = %v, errors = %v", f.queue.credited, f.books.credits, res.Errors)
+	}
+}
+
+func TestACreditBeyondTheBillIsSettledNotRetried(t *testing.T) {
+	f := newInvoiceFixture()
+	f.books.overPK = issuerPK
+	f.rule.Paid(context.Background(), f.inv, "a", "r", at)
+	cn := &billing.CreditNote{ID: "cn_1", OrganizationID: "ctech", Livemode: true, InvoiceID: "in_1", Amount: 1990, CreatedAt: at}
+	out := f.rule.Credited(context.Background(), f.inv, cn, "u", "r", at)
+	wantResult(t, out, SideIssuer, PostingSkipped, "credit_exceeds_bill")
+	if !f.queue.credited["cn_1"] {
+		t.Fatal("a credit the bill can never take stays queued forever")
+	}
 }

@@ -358,7 +358,16 @@ func (r *InvoiceRepository) Transition(
 			set["paid_at"] = &types.AttributeValueMemberS{Value: updated.PaidAt}
 		}
 	}
-	if to != billing.InvoiceOpen {
+	switch {
+	case to == billing.InvoicePaid && updated.AmountPaid > 0:
+		// Leaves the settlement sweep and joins the finance replay queue in the
+		// same write that makes it PAID (spec § 3.8): the posting rule disarms it
+		// once both spaces are settled, and if the process dies first, or the
+		// posting fails, the replay pass finds it. A zero-total invoice posts
+		// nothing and is never queued.
+		set["schedule_pk"] = &types.AttributeValueMemberS{Value: FinanceQueuePK(inv.Livemode, JobFinancePosting)}
+		set["schedule_sk"] = &types.AttributeValueMemberS{Value: FinanceQueueSK(updated.PaidAt, inv.OrganizationID, inv.ID)}
+	case to != billing.InvoiceOpen:
 		remove = append(remove, "schedule_pk", "schedule_sk")
 	}
 

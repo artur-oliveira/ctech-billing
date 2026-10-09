@@ -339,7 +339,12 @@ comes from billing: open invoices plus the subscription's next renewals, compute
 - Zero-total invoices post nothing. A credit note posts one adjustment (`finance.CreditBill`) dated
   the note's day, in each space where the invoice was recorded and its bill is still paid.
 - Idempotent by the bill's id (space, invoice) and the credit's transaction id (space, note). The
-  settlement never fails because of finance; failures are logged per side.
+  settlement never fails because of finance. What could not be written (a failed write, no receiving
+  account yet, an unlinked tenant) stays on a durable queue armed in the same write that makes the
+  invoice PAID (or issues the note), and `cmd/reconcile` replays it hourly for 30 days. It is a retry,
+  not a backfill.
+- Credits never sum past the invoice: billing's `credited_total` and the finance bill's `credited` move
+  by compare-and-set in the same write as the note or the credit.
 
 ## 4. Persistence
 

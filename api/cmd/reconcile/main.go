@@ -60,7 +60,7 @@ func main() {
 
 	ctx := context.Background()
 	alerter := jobs.Alerts(ctx, cfg)
-	collector, err := app.BuildCollector(ctx, cfg)
+	collector, finance, err := app.BuildCollector(ctx, cfg)
 	if err != nil {
 		jobs.Startup(ctx, alerter, "reconcile", err)
 	}
@@ -93,6 +93,17 @@ func main() {
 		abandoned += res.Abandoned
 		run(ctx, collector, false, date, now)
 	}
+
+	// The finance postings a settlement or a credit note could not write (spec
+	// § 3.8): replayed here, after this run's own settlements, on the same
+	// hourly clock. A posting still pending for want of a receiving account is
+	// not an error; a write that failed is, in live mode.
+	liveReplay := replay(ctx, finance, true, now)
+	if len(liveReplay.Errors) > 0 {
+		failed = true
+		errs = append(errs, jobs.Rendered(liveReplay.Errors)...)
+	}
+	replay(ctx, finance, false, now)
 
 	// ABANDONED is the one outcome worth waking somebody for, and it is
 	// deliberately reported before the failure check rather than folded into it:
@@ -151,5 +162,23 @@ func run(ctx context.Context, collector *services.Collector, livemode bool, date
 		"abandoned", res.Abandoned,
 		"waiting", res.Waiting,
 		"duration_ms", time.Since(started).Milliseconds())
+	return res
+}
+
+func replay(ctx context.Context, finance *services.FinanceInvoices, livemode bool, now time.Time) services.ReplayResult {
+	mode := "test"
+	if livemode {
+		mode = "live"
+	}
+	res := finance.Replay(ctx, livemode, now)
+	level := slog.LevelInfo
+	if len(res.Errors) > 0 {
+		level = slog.LevelError
+	}
+	for _, e := range res.Errors {
+		slog.Log(ctx, level, "finance replay error", "mode", mode, "error", e)
+	}
+	slog.Log(ctx, level, "finance replay finished", "mode", mode,
+		"examined", res.Examined, "done", res.Done, "pending", res.Pending, "given_up", res.GivenUp)
 	return res
 }
