@@ -28,6 +28,14 @@ var ErrUnknownAccount = errors.New("ledger: unknown account in this space")
 // ErrAlreadyReversed is a second reversal of the same transaction.
 var ErrAlreadyReversed = errors.New("ledger: transaction already reversed")
 
+// ErrOpeningExists is a second opening balance on the same account. Reverse the
+// first one to post a corrected one.
+var ErrOpeningExists = errors.New("ledger: the account already has an opening balance")
+
+// ErrNotManual is a reversal asked for a fact that is changed through its bill
+// (a recognition, an adjustment) or through undoing the payment (a settlement).
+var ErrNotManual = errors.New("ledger: only transfers and opening balances are reversed directly")
+
 // LedgerRepository stores a space's management ledger (ADR 0024).
 //
 // Every method takes a space.ResolvedSpace and nothing else that names a
@@ -281,6 +289,11 @@ type PostMeta struct {
 	// conditional put and make ONE row. The idempotency middleware only replays
 	// requests that already finished.
 	IdempotencyKey string
+	Memo           string // shown on the statement
+	Ref            string // "bill:{id}" when a bill produced the fact
+	// txID, when set, is the transaction's id instead of a fresh one: a fact
+	// whose id comes from its idempotency key collides with its own duplicate.
+	txID string
 }
 
 type txItem struct {
@@ -292,19 +305,31 @@ type txItem struct {
 	Adjusts string         `dynamodbav:"adjusts,omitempty"`
 	Origin  string         `dynamodbav:"origin,omitempty"`
 	Actor   string         `dynamodbav:"actor,omitempty"`
+	Memo    string         `dynamodbav:"memo,omitempty"`
+	Ref     string         `dynamodbav:"ref,omitempty"`
 }
 
 type legItem struct {
 	Account string `dynamodbav:"account"`
 	Amount  int64  `dynamodbav:"amount"`
+	Flow    string `dynamodbav:"flow,omitempty"`
 }
 
+// entryItem is one leg on its account's partition. Kind, flow, memo and ref are
+// what the statement and the cash flow read without loading the header; a
+// reversal's entries carry the ORIGINAL's kind, flow, memo and ref, marked
+// Reversal. Entries posted before 6.4 have none of them.
 type entryItem struct {
 	keys
-	TxID   string `dynamodbav:"tx_id"`
-	Date   string `dynamodbav:"date"`
-	Leg    int    `dynamodbav:"leg"`
-	Amount int64  `dynamodbav:"amount"`
+	TxID     string         `dynamodbav:"tx_id"`
+	Date     string         `dynamodbav:"date"`
+	Leg      int            `dynamodbav:"leg"`
+	Amount   int64          `dynamodbav:"amount"`
+	Kind     finance.TxKind `dynamodbav:"kind,omitempty"`
+	Flow     string         `dynamodbav:"flow,omitempty"`
+	Memo     string         `dynamodbav:"memo,omitempty"`
+	Ref      string         `dynamodbav:"ref,omitempty"`
+	Reversal bool           `dynamodbav:"reversal,omitempty"`
 }
 
 // Post writes one balanced transaction atomically: the header, one entry per
@@ -336,6 +361,12 @@ type ledgerPlan struct {
 // planPost validates a transaction against the space's verbs and builds its
 // write items. It writes nothing.
 func (r *LedgerRepository) planPost(sp space.ResolvedSpace, tx finance.Transaction, meta PostMeta, now time.Time) (ledgerPlan, error) {
+	return r.planPostAs(sp, tx, meta, now, tx.Kind, false)
+}
+
+// planPostAs is planPost with the kind the entries carry: a reversal's entries
+// keep the original's kind, so the reports place them where the original was.
+func (r *LedgerRepository) planPostAs(sp space.ResolvedSpace, tx finance.Transaction, meta PostMeta, now time.Time, entryKind finance.TxKind, reversal bool) (ledgerPlan, error) {
 	need := space.Write
 	if tx.Kind == finance.KindSettlement {
 		need |= space.Settle
@@ -352,7 +383,10 @@ func (r *LedgerRepository) planPost(sp space.ResolvedSpace, tx finance.Transacti
 	checked.Adjusts = tx.Adjusts
 
 	txID := id.New()
-	items, markerIdx, err := r.postItems(sp, txID, checked, meta, now)
+	if meta.txID != "" {
+		txID = meta.txID
+	}
+	items, markerIdx, err := r.postItems(sp, txID, checked, meta, now, entryKind, reversal)
 	if err != nil {
 		return ledgerPlan{}, err
 	}
@@ -424,16 +458,16 @@ func classifyPostCancel(err error, markerIdx int) error {
 	return ErrUnknownAccount
 }
 
-func (r *LedgerRepository) postItems(sp space.ResolvedSpace, txID string, tx finance.Transaction, meta PostMeta, now time.Time) (items []types.TransactWriteItem, markerIdx int, err error) {
+func (r *LedgerRepository) postItems(sp space.ResolvedSpace, txID string, tx finance.Transaction, meta PostMeta, now time.Time, entryKind finance.TxKind, reversal bool) (items []types.TransactWriteItem, markerIdx int, err error) {
 	markerIdx = -1
 	legs := make([]legItem, len(tx.Legs))
 	for i, l := range tx.Legs {
-		legs[i] = legItem{Account: l.AccountID, Amount: int64(l.Amount)}
+		legs[i] = legItem{Account: l.AccountID, Amount: int64(l.Amount), Flow: l.Flow}
 	}
 	header, err := Encode(txItem{
 		keys: newKeys(sp.PK(), LedgerTxSK(txID), RetentionPermanent, now),
 		ID:   txID, Kind: tx.Kind, Date: tx.Date.String(), Legs: legs,
-		Adjusts: tx.Adjusts, Origin: meta.Origin, Actor: meta.Actor,
+		Adjusts: tx.Adjusts, Origin: meta.Origin, Actor: meta.Actor, Memo: meta.Memo, Ref: meta.Ref,
 	})
 	if err != nil {
 		return nil, -1, err
@@ -445,6 +479,7 @@ func (r *LedgerRepository) postItems(sp space.ResolvedSpace, txID string, tx fin
 		entry, err := Encode(entryItem{
 			keys: newKeys(LedgerEntryPK(sp, l.AccountID), LedgerEntrySK(tx.Date, txID, i), RetentionPermanent, now),
 			TxID: txID, Date: tx.Date.String(), Leg: i, Amount: int64(l.Amount),
+			Kind: entryKind, Flow: l.Flow, Memo: meta.Memo, Ref: meta.Ref, Reversal: reversal,
 		})
 		if err != nil {
 			return nil, -1, err
@@ -497,9 +532,10 @@ func numberValue(n int64) types.AttributeValue {
 
 // StoredTx is a transaction as written, with its id.
 type StoredTx struct {
-	ID     string
-	Tx     finance.Transaction
-	Origin string
+	ID        string
+	Tx        finance.Transaction
+	Origin    string
+	Memo, Ref string
 }
 
 // GetTransaction reads a transaction inside the space. An id from another space
@@ -529,14 +565,14 @@ func (i txItem) stored() (*StoredTx, error) {
 	}
 	legs := make([]finance.Leg, len(i.Legs))
 	for n, l := range i.Legs {
-		legs[n] = finance.Leg{AccountID: l.Account, Amount: billing.Cents(l.Amount)}
+		legs[n] = finance.Leg{AccountID: l.Account, Amount: billing.Cents(l.Amount), Flow: l.Flow}
 	}
 	tx, err := finance.NewTransaction(i.Kind, date, legs...)
 	if err != nil {
 		return nil, fmt.Errorf("stored transaction %s is not balanced: %w", i.ID, err)
 	}
 	tx.Adjusts = i.Adjusts
-	return &StoredTx{ID: i.ID, Tx: tx, Origin: i.Origin}, nil
+	return &StoredTx{ID: i.ID, Tx: tx, Origin: i.Origin, Memo: i.Memo, Ref: i.Ref}, nil
 }
 
 // Reverse posts the exact opposite of a stored transaction on date. Both the
@@ -575,7 +611,195 @@ func (r *LedgerRepository) planReverse(ctx context.Context, sp space.ResolvedSpa
 	if err != nil {
 		return ledgerPlan{}, err
 	}
-	return r.planPost(sp, rev, meta, now)
+	if meta.Memo == "" {
+		meta.Memo = orig.Memo
+	}
+	if meta.Ref == "" {
+		meta.Ref = orig.Ref
+	}
+	return r.planPostAs(sp, rev, meta, now, orig.Tx.Kind, true)
+}
+
+// EntriesFrom returns an account's entries dated from onward, in key order, with
+// Reversed set on those whose transaction has been reversed. It is what a
+// statement and the cash flow fold: the entries since from give the period's
+// rows and, subtracted from the cached balance, the opening balance.
+func (r *LedgerRepository) EntriesFrom(ctx context.Context, sp space.ResolvedSpace, accountID string, from brcal.Date) ([]finance.Entry, error) {
+	if err := sp.Require(space.Read); err != nil {
+		return nil, err
+	}
+	items, err := r.queryRange(ctx, r.txs, LedgerEntryPK(sp, accountID), "ENTRY#"+from.String(), "ENTRY#~")
+	if err != nil {
+		return nil, err
+	}
+	rows, err := DecodeItems[entryItem](items)
+	if err != nil {
+		return nil, err
+	}
+	reversed, err := r.reversedIDs(ctx, sp)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]finance.Entry, len(rows))
+	for i, e := range rows {
+		d, err := brcal.Parse(e.Date)
+		if err != nil {
+			return nil, fmt.Errorf("entry %s has a malformed date: %w", e.SK, err)
+		}
+		out[i] = finance.Entry{
+			AccountID: accountID, TxID: e.TxID, Leg: e.Leg, Date: d, Amount: billing.Cents(e.Amount),
+			Kind: e.Kind, Flow: e.Flow, Memo: e.Memo, Ref: e.Ref, Reversal: e.Reversal, Reversed: reversed[e.TxID],
+		}
+	}
+	return out, nil
+}
+
+// reversedIDs reads the space's reversal markers: one Query, and markers are few.
+func (r *LedgerRepository) reversedIDs(ctx context.Context, sp space.ResolvedSpace) (map[string]bool, error) {
+	items, err := r.queryPrefix(ctx, r.txs, sp.PK(), "REVERSAL#")
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]bool, len(items))
+	for _, it := range items {
+		if v, ok := it["sk"].(*types.AttributeValueMemberS); ok {
+			out[strings.TrimPrefix(v.Value, "REVERSAL#")] = true
+		}
+	}
+	return out, nil
+}
+
+// activeCash loads an account money can be moved in: an active asset the user
+// holds. Anything else, a category or a system account included, is
+// ErrUnknownAccount — it is not an account in that sense.
+func (r *LedgerRepository) activeCash(ctx context.Context, sp space.ResolvedSpace, id string) error {
+	acct, err := r.getAccount(ctx, sp, id)
+	if errors.Is(err, ErrNotFound) {
+		return fmt.Errorf("%w: %s", ErrUnknownAccount, id)
+	}
+	if err != nil {
+		return err
+	}
+	if acct.Class != finance.ClassAsset || acct.System || acct.Archived {
+		return fmt.Errorf("%w: %s is not an active account", ErrUnknownAccount, id)
+	}
+	return nil
+}
+
+// PostOpeningBalance records what an account held before the ledger started,
+// once per account: a conditional OPENING# marker in the same transaction makes
+// a second one ErrOpeningExists. Reversing it removes the marker.
+func (r *LedgerRepository) PostOpeningBalance(ctx context.Context, sp space.ResolvedSpace, accountID string, amount billing.Cents, date brcal.Date, meta PostMeta, now time.Time) (string, error) {
+	if err := sp.Require(space.Configure); err != nil {
+		return "", err
+	}
+	if err := r.activeCash(ctx, sp, accountID); err != nil {
+		return "", err
+	}
+	sys, _ := finance.DefaultSystemAccounts()
+	tx, err := finance.OpeningBalance(sys, accountID, amount, date)
+	if err != nil {
+		return "", err
+	}
+	if meta.Memo == "" {
+		meta.Memo = "Saldo inicial"
+	}
+	plan, err := r.planPost(sp, tx, meta, now)
+	if err != nil {
+		return "", err
+	}
+	marker, err := Encode(struct {
+		keys
+		TxID string `dynamodbav:"tx_id"`
+	}{newKeys(sp.PK(), LedgerOpeningSK(accountID), RetentionPermanent, now), plan.TxID})
+	if err != nil {
+		return "", err
+	}
+	openingIdx := len(plan.Items)
+	items := append(plan.Items, r.accounts.BuildPutTxItemIfAbsent(marker))
+	if err := r.txs.TransactWrite(ctx, items); err != nil {
+		if codes := cancellationCodes(err); onlyConditionFailed(err) && codes[openingIdx] == codeConditionFailed {
+			return "", ErrOpeningExists
+		}
+		return "", classifyPostCancel(err, plan.MarkerIdx)
+	}
+	return plan.TxID, nil
+}
+
+// PostTransfer moves money between two of the space's own accounts. It is not
+// income or spending: both legs carry FlowNone.
+func (r *LedgerRepository) PostTransfer(ctx context.Context, sp space.ResolvedSpace, from, to string, amount billing.Cents, date brcal.Date, meta PostMeta, now time.Time) (string, error) {
+	if err := sp.Require(space.Write); err != nil {
+		return "", err
+	}
+	if from == to {
+		return "", fmt.Errorf("%w: a transfer needs two different accounts", finance.ErrInvalidTransaction)
+	}
+	for _, id := range []string{from, to} {
+		if err := r.activeCash(ctx, sp, id); err != nil {
+			return "", err
+		}
+	}
+	tx, err := finance.Transfer(from, to, amount, date)
+	if err != nil {
+		return "", err
+	}
+	if meta.Memo == "" {
+		meta.Memo = "Transferência"
+	}
+	if meta.IdempotencyKey == "" {
+		return r.post(ctx, sp, tx, meta, now)
+	}
+	// Two overlapping requests with one key (a retry while the first is in
+	// flight) build the same header; the second's conditional put fails and it
+	// answers with the transfer that exists, so money moves once.
+	meta.txID = idempotentID(sp, "transfer", meta.IdempotencyKey)
+	plan, err := r.planPost(sp, tx, meta, now)
+	if err != nil {
+		return "", err
+	}
+	if err := r.txs.TransactWrite(ctx, plan.Items); err != nil {
+		if codes := cancellationCodes(err); onlyConditionFailed(err) && len(codes) > 0 && codes[0] == codeConditionFailed {
+			return plan.TxID, nil
+		}
+		return "", classifyPostCancel(err, plan.MarkerIdx)
+	}
+	return plan.TxID, nil
+}
+
+// ReverseManual reverses a transfer or an opening balance, the facts a person
+// posts directly. Bill facts are changed through the bill. Reversing an opening
+// balance also frees its account for a corrected one.
+func (r *LedgerRepository) ReverseManual(ctx context.Context, sp space.ResolvedSpace, txID string, date brcal.Date, meta PostMeta, now time.Time) (string, error) {
+	orig, err := r.GetTransaction(ctx, sp, txID)
+	if err != nil {
+		return "", err
+	}
+	if orig.Tx.Kind != finance.KindTransfer && orig.Tx.Kind != finance.KindOpeningBalance {
+		return "", ErrNotManual
+	}
+	if orig.Tx.Kind == finance.KindOpeningBalance {
+		// Posting one needs configure; so does taking it back.
+		if err := sp.Require(space.Configure); err != nil {
+			return "", err
+		}
+	}
+	plan, err := r.planReverse(ctx, sp, txID, date, meta, now)
+	if err != nil {
+		return "", err
+	}
+	items := plan.Items
+	if orig.Tx.Kind == finance.KindOpeningBalance {
+		for _, l := range orig.Tx.Legs {
+			if l.Flow == finance.FlowNone {
+				items = append(items, r.accounts.BuildDeleteTxItem(sp.PK(), LedgerOpeningSK(l.AccountID)))
+			}
+		}
+	}
+	if err := r.txs.TransactWrite(ctx, items); err != nil {
+		return "", classifyPostCancel(err, plan.MarkerIdx)
+	}
+	return plan.TxID, nil
 }
 
 // EntryRow is one leg of a posted transaction on an account.

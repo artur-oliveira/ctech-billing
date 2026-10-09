@@ -7,6 +7,7 @@ import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import {OverviewView} from "@/components/finance/OverviewView"
 import {pick, renderWithQuery} from "@/components/finance/finance.test-utils"
 import * as finance from "@/lib/api/finance"
+import {todayIso} from "@/lib/finance/today"
 import type {Account, Bill, ProjectionMonth, Verb} from "@/lib/api/financeTypes"
 
 const ALL: Verb[] = ["finance.read", "finance.write", "finance.settle", "finance.import", "finance.configure"]
@@ -32,6 +33,10 @@ function serve() {
       ? [bill({id: "a", description: "Aluguel atrasado", bucket: "overdue"}), bill({id: "b", description: "Internet", bucket: "upcoming"})]
       : [bill({id: "c", direction: "receivable", description: "Freela", bucket: "upcoming"})],
     has_more: false,
+  }))
+  vi.spyOn(finance, "getCashFlow").mockImplementation(async (_c, from, to) => ({
+    from, to, opening_cash: 0, closing_cash: 120000,
+    months: [{month: from, in: 300000, out: 180000, openings: 0, lines: []}],
   }))
   return vi.spyOn(finance, "getProjection").mockResolvedValue({data: MONTHS, has_more: false})
 }
@@ -69,6 +74,19 @@ describe("F1 — visão geral", () => {
     expect(headers).toEqual(["Mês", "A receber", "A pagar", "Recorrências ainda não geradas"])
     const dec = within(table).getByRole("row", {name: /dez/i})
     expect(within(dec).getByText("-R$ 1.500,00")).toBeInTheDocument()
+  })
+
+  it("shows the month's realised result, by cash, and links to the cash flow", async () => {
+    serve()
+    renderWithQuery(<OverviewView/>)
+    const block = await screen.findByRole("region", {name: "Resultado do mês"})
+    expect(await within(block).findByText("R$ 3.000,00")).toBeInTheDocument()
+    expect(within(block).getByText("R$ 1.800,00")).toBeInTheDocument()
+    expect(within(block).getByText("R$ 1.200,00")).toBeInTheDocument()
+    expect(within(block).getByText(/Pelo caixa/)).toBeInTheDocument()
+    expect(within(block).getByRole("link", {name: "Ver relatórios"})).toHaveAttribute("href", "/console/finance/reports?view=cash")
+    const month = todayIso().slice(0, 7)
+    expect(finance.getCashFlow).toHaveBeenCalledWith(expect.anything(), month, month)
   })
 
   it("fails one block without blanking the others", async () => {

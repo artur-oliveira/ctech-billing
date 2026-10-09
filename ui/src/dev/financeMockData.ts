@@ -2,7 +2,7 @@
  * A small stateful finance backend for `npm run dev:mock`.
  *
  * It is strict about the contract on purpose: no `X-Billing-Mode` or
- * `Billing-Space`, 400; a write without `Idempotency-Key`, 400; a repeated key
+ * `X-Billing-Space`, 400; a write without `Idempotency-Key`, 400; a repeated key
  * replays the stored response; an organization that is not the reader's, 404
  * space-not-found; a verb the role does not hold, 403. A mock that let the UI
  * forget a header would make a broken screen look fine — the opposite of why
@@ -14,7 +14,8 @@
  * (this is a development fixture, not the scheduler).
  */
 import type {
-  Account, AccountClass, Bill, Direction, ExpressionJSON, FinanceSpaceEntry, ProjectionMonth, Recurrence, Verb,
+  Account, AccountClass, Bill, CashFlowMonth, DREGroupLine, Direction, ExpressionJSON, FinanceSpaceEntry, ProjectionMonth,
+  Recurrence, StatementEntry, TxKind, Verb,
 } from "@/lib/api/financeTypes"
 
 export const FINANCE_MOCK_ORG = "0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b"
@@ -30,12 +31,29 @@ const SPACES: FinanceSpaceEntry[] = [
   {kind: "organization", organization_id: FINANCE_MOCK_ORG, label: "Acme Serviços LTDA", role: "member", verbs: MEMBER},
 ]
 
+/** One leg on a cash account, as the API's entry rows (flow "-" = not cash flow). */
+interface MEntry {
+  account: string
+  tx: string
+  date: string
+  amount: number
+  kind: TxKind
+  flow: string
+  memo: string
+  ref?: string
+  reversal?: boolean
+}
+
 interface SpaceState {
   accounts: Account[]
   bills: Bill[]
   recurrences: Recurrence[]
   defaultReceiving?: string
   seq: number
+  /** Cash entries posted in this session; seeded balances predate them. */
+  entries: MEntry[]
+  reversed: Set<string>
+  openings: Set<string>
 }
 
 // ---- dates (civil, no Date parsing of ISO strings) ---------------------------
@@ -76,8 +94,10 @@ function seed(kind: "personal" | "org", mode: string): SpaceState {
     id, direction: dir, amount, account_id: "conta-corrente", category_id: category, description,
     competence_date: due, due_date: due, status: "forecast", origin: "manual", auto_settle: false, ...extra,
   })
+  const ledger = {entries: [] as MEntry[], reversed: new Set<string>(), openings: new Set<string>()}
   if (kind === "personal") {
     return {
+      ...ledger,
       seq: 1,
       accounts: [
         acct("conta-corrente", "Conta corrente", "asset", live ? 842_315 : 50_000),
@@ -102,6 +122,7 @@ function seed(kind: "personal" | "org", mode: string): SpaceState {
     }
   }
   return {
+    ...ledger,
     seq: 1,
     accounts: [
       acct("conta-corrente", "Conta PJ", "asset", live ? 4_120_000 : 0),
@@ -174,8 +195,8 @@ export function financeMock(r: Req): Res {
   if (path === "/spaces" && method === "get") return ok({spaces: SPACES, organizations_unavailable: false})
 
   const mode = header(r, "X-Billing-Mode")
-  const selector = header(r, "Billing-Space")
-  if (!mode || !selector) return problem(400, "about:blank", "Bad Request", "informe X-Billing-Mode e Billing-Space")
+  const selector = header(r, "X-Billing-Space")
+  if (!mode || !selector) return problem(400, "about:blank", "Bad Request", "informe X-Billing-Mode e X-Billing-Space")
   const entry = selector === "personal"
     ? SPACES[0]
     : SPACES.find(s => `org:${s.organization_id}` === selector)
@@ -206,7 +227,20 @@ function route(method: string, path: string, r: Req, s: SpaceState, can: (v: Ver
   const withBucket = (b: Bill): Bill =>
     b.status === "forecast" ? {...b, bucket: b.due_date < today ? "overdue" : b.due_date === today ? "today" : "upcoming"} : b
   const nextId = (p: string) => `${p}-${++s.seq}`
-  const billMatch = path.match(/^\/bills\/([^/]+)(?:\/(settle|cancel))?$/)
+  const billMatch = path.match(/^\/bills\/([^/]+)(?:\/(settle|cancel|unsettle))?$/)
+  const post = (entries: Omit<MEntry, "tx">[]) => {
+    const tx = nextId("tx")
+    for (const e of entries) {
+      s.entries.push({...e, tx})
+      const a = s.accounts.find(x => x.id === e.account)
+      if (a) a.balance += e.amount
+    }
+    return tx
+  }
+  const reverse = (tx: string) => {
+    s.reversed.add(tx)
+    return post(s.entries.filter(e => e.tx === tx).map(e => ({...e, amount: -e.amount, reversal: true, date: today})))
+  }
   const recMatch = path.match(/^\/recurrences\/([^/]+)(?:\/archive)?$/)
 
   if (path === "/space") return ok({kind: "personal", mode: "live", verbs: ALL})
@@ -243,10 +277,21 @@ function route(method: string, path: string, r: Req, s: SpaceState, can: (v: Ver
       const req = body<{paid_amount?: number; paid_date?: string; difference_category_id?: string}>(r)
       const paid = req.paid_amount ?? bill.amount
       if (paid !== bill.amount && !req.difference_category_id) return problem(422, "about:blank", "Unprocessable", "a different amount needs a category for the gap")
-      const acct = s.accounts.find(a => a.id === bill.account_id)
-      if (acct) acct.balance += bill.direction === "payable" ? -paid : paid
-      Object.assign(bill, {status: "paid", paid_date: req.paid_date ?? today})
+      const date = req.paid_date ?? today
+      post([{
+        account: bill.account_id, date, amount: bill.direction === "payable" ? -paid : paid, kind: "settlement",
+        flow: bill.category_id, memo: bill.description ?? "Sem descrição", ref: `bill:${bill.id}`,
+      }])
+      Object.assign(bill, {status: "paid", paid_date: date})
       return ok(bill)
+    }
+    if (action === "unsettle") {
+      if (!can("finance.settle")) return forbidden()
+      if (bill.status !== "paid") return transition()
+      const paid = s.entries.findLast(e => e.ref === `bill:${bill.id}` && e.kind === "settlement" && !e.reversal && !s.reversed.has(e.tx))
+      if (paid) reverse(paid.tx)
+      Object.assign(bill, {status: "forecast", paid_date: undefined, auto_settle: false})
+      return ok(withBucket(bill))
     }
     if (action === "cancel") {
       if (!can("finance.write")) return forbidden()
@@ -333,6 +378,105 @@ function route(method: string, path: string, r: Req, s: SpaceState, can: (v: Ver
     a.archived = true
     return {status: 204, data: ""}
   }
+  // statement, transfers, reversals, reports
+  const cash = (id: string) => s.accounts.some(a => a.id === id && a.class === "asset" && !a.system && !a.archived)
+  const opening = path.match(/^\/accounts\/([^/]+)\/opening-balance$/)
+  if (opening && method === "post") {
+    if (!can("finance.configure")) return forbidden()
+    const id = opening[1]
+    if (!cash(id)) return problem(422, "about:blank", "Unprocessable", "conta ou categoria desconhecida neste espaço")
+    if (s.openings.has(id)) return problem(409, "/problems/invalid-transition", "Invalid Transition", "Esta conta já tem saldo inicial. Estorne o atual para lançar outro.")
+    const p = body<{amount: number; date: string}>(r)
+    s.openings.add(id)
+    return ok({transaction_id: post([{account: id, date: p.date, amount: p.amount, kind: "opening_balance", flow: "-", memo: "Saldo inicial"}])}, 201)
+  }
+  if (path === "/transfers" && method === "post") {
+    if (!can("finance.write")) return forbidden()
+    const p = body<{from_account_id: string; to_account_id: string; amount: number; date: string; memo?: string}>(r)
+    if (!cash(p.from_account_id) || !cash(p.to_account_id) || p.from_account_id === p.to_account_id) {
+      return problem(422, "about:blank", "Unprocessable", "conta ou categoria desconhecida neste espaço")
+    }
+    const memo = p.memo || "Transferência"
+    return ok({transaction_id: post([
+      {account: p.to_account_id, date: p.date, amount: p.amount, kind: "transfer", flow: "-", memo},
+      {account: p.from_account_id, date: p.date, amount: -p.amount, kind: "transfer", flow: "-", memo},
+    ])}, 201)
+  }
+  const rev = path.match(/^\/transactions\/([^/]+)\/reverse$/)
+  if (rev && method === "post") {
+    if (!can("finance.write")) return forbidden()
+    const legs = s.entries.filter(e => e.tx === rev[1])
+    if (!legs.length) return problem(404, "about:blank", "Not Found", "recurso não encontrado")
+    if (legs[0].reversal || (legs[0].kind !== "transfer" && legs[0].kind !== "opening_balance")) {
+      return problem(409, "/problems/invalid-transition", "Invalid Transition", "Só transferências e saldos iniciais são estornados pelo extrato. Para um pagamento, use Desfazer pagamento.")
+    }
+    if (s.reversed.has(rev[1])) return problem(409, "/problems/invalid-transition", "Invalid Transition", "ledger: transaction already reversed")
+    if (legs[0].kind === "opening_balance") s.openings.delete(legs[0].account)
+    return ok({transaction_id: reverse(rev[1])}, 201)
+  }
+  const stmt = path.match(/^\/accounts\/([^/]+)\/statement$/)
+  if (stmt && method === "get") {
+    const a = s.accounts.find(x => x.id === stmt[1] && x.class === "asset" && !x.system)
+    if (!a) return problem(404, "about:blank", "Not Found", "recurso não encontrado")
+    const from = String(r.params?.from), to = String(r.params?.to)
+    const since = s.entries.filter(e => e.account === a.id && e.date >= from).sort((x, y) => x.date.localeCompare(y.date))
+    let bal = a.balance - since.reduce((t, e) => t + e.amount, 0)
+    const opening = bal
+    const entries: StatementEntry[] = since.filter(e => e.date < to).map(e => ({
+      transaction_id: e.tx, date: e.date, amount: e.amount, balance: (bal += e.amount), kind: e.kind, memo: e.memo,
+      category_id: e.flow && e.flow !== "-" ? e.flow : undefined, bill_id: e.ref?.replace(/^bill:/, ""),
+      reversal: !!e.reversal, reversed: s.reversed.has(e.tx),
+    }))
+    return ok({account_id: a.id, from, to, opening, closing: bal, entries})
+  }
+  if (path === "/reports/cash-flow" || path === "/reports/dre") {
+    const from = String(r.params?.from), to = String(r.params?.to)
+    const months: string[] = []
+    for (let [y, m] = parts(`${from}-01`); `${y}-${String(m).padStart(2, "0")}` <= to; m === 12 ? (y++, m = 1) : m++) {
+      months.push(`${y}-${String(m).padStart(2, "0")}`)
+    }
+    if (path === "/reports/dre") {
+      const rows = new Map<string, number[]>()
+      for (const b of s.bills.filter(x => x.status !== "canceled")) {
+        const i = months.indexOf(b.competence_date.slice(0, 7))
+        if (i < 0) continue
+        const v = rows.get(b.category_id) ?? months.map(() => 0)
+        v[i] += b.direction === "payable" ? -b.amount : b.amount
+        rows.set(b.category_id, v)
+      }
+      const order = ["gross_revenue", "deductions", "costs", "operating_expenses", "financial_result", "other"] as const
+      const sum = (xs: number[][]) => months.map((_, i) => xs.reduce((t, x) => t + x[i], 0))
+      const groups: DREGroupLine[] = order.map(g => {
+        const categories = [...rows].filter(([id]) => (s.accounts.find(a => a.id === id)?.dre_group ?? "other") === g)
+          .map(([id, amounts]) => ({category_id: id, amounts, total: amounts.reduce((t, x) => t + x, 0)}))
+        const amounts = sum(categories.map(c => c.amounts))
+        return {group: g, categories, amounts, total: amounts.reduce((t, x) => t + x, 0)}
+      }).filter(g => g.categories.length > 0)
+      const result = sum(groups.map(g => g.amounts))
+      return ok({months, groups, result, total: result.reduce((t, x) => t + x, 0)})
+    }
+    const cashIds = new Set(s.accounts.filter(a => a.class === "asset" && !a.system).map(a => a.id))
+    const since = s.entries.filter(e => cashIds.has(e.account) && e.date >= `${from}-01`)
+    const now = s.accounts.filter(a => cashIds.has(a.id)).reduce((t, a) => t + a.balance, 0)
+    const opening_cash = now - since.reduce((t, e) => t + e.amount, 0)
+    const out: CashFlowMonth[] = months.map(month => {
+      const m: CashFlowMonth = {month, in: 0, out: 0, openings: 0, lines: []}
+      const by = new Map<string, number>()
+      for (const e of since.filter(x => x.date.slice(0, 7) === month)) {
+        if (e.kind === "opening_balance") m.openings += e.amount
+        else if (e.flow !== "-") {
+          if ((e.reversal ? -e.amount : e.amount) > 0) m.in += e.amount
+          else m.out -= e.amount
+          by.set(e.flow, (by.get(e.flow) ?? 0) + e.amount)
+        }
+      }
+      m.lines = [...by].filter(([, a]) => a !== 0).map(([category_id, amount]) => ({category_id, amount}))
+      return m
+    })
+    const closing_cash = out.reduce((t, m) => t + m.in - m.out + m.openings, opening_cash)
+    return ok({from, to, opening_cash, closing_cash, months: out})
+  }
+
   if (path === "/settings" && method === "get") return ok({default_receiving_account_id: s.defaultReceiving})
   if (path === "/settings/default-receiving-account") {
     if (!can("finance.configure")) return forbidden()

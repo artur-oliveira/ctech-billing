@@ -9,11 +9,11 @@ import (
 )
 
 func TestDeriveAddsLegsPerAccountAndMonth(t *testing.T) {
-	a, err := NewTransaction(KindTransfer, d(2026, time.March, 31), Leg{"bank", -1000}, Leg{"cash", 1000})
+	a, err := NewTransaction(KindTransfer, d(2026, time.March, 31), Leg{AccountID: "bank", Amount: -1000}, Leg{AccountID: "cash", Amount: 1000})
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := NewTransaction(KindTransfer, d(2026, time.April, 1), Leg{"bank", -500}, Leg{"cash", 500})
+	b, err := NewTransaction(KindTransfer, d(2026, time.April, 1), Leg{AccountID: "bank", Amount: -500}, Leg{AccountID: "cash", Amount: 500})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,7 +32,7 @@ func TestDeriveAddsLegsPerAccountAndMonth(t *testing.T) {
 }
 
 func TestDeriveOfATransactionAndItsReversalIsZero(t *testing.T) {
-	orig, _ := NewTransaction(KindTransfer, d(2026, time.March, 2), Leg{"a", 700}, Leg{"b", -700})
+	orig, _ := NewTransaction(KindTransfer, d(2026, time.March, 2), Leg{AccountID: "a", Amount: 700}, Leg{AccountID: "b", Amount: -700})
 	rev, err := Reverse(orig, "tx1", d(2026, time.March, 3))
 	if err != nil {
 		t.Fatal(err)
@@ -61,13 +61,13 @@ func TestDeriveInvariantsOverARandomHistory(t *testing.T) {
 			if r.IntN(2) == 0 {
 				amt = -amt
 			}
-			legs = append(legs, Leg{accounts[perm[i]], amt})
+			legs = append(legs, Leg{AccountID: accounts[perm[i]], Amount: amt})
 			sum += amt
 		}
 		if sum == 0 {
 			continue
 		}
-		legs = append(legs, Leg{accounts[perm[n-1]], -sum})
+		legs = append(legs, Leg{AccountID: accounts[perm[n-1]], Amount: -sum})
 		date := d(2026, time.Month(1+r.IntN(12)), 1+r.IntN(28))
 		tx, err := NewTransaction(KindTransfer, date, legs...)
 		if err != nil {

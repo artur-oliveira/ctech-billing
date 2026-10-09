@@ -176,11 +176,15 @@ func Register(app *fiber.App, d Deps) {
 	m2m("/entitlements").Get("",
 		middleware.RequireM2MScope(middleware.ScopeEntitlementsRead), h.getEntitlements)
 
-	registerConsole(v1, d, h, auth)
-
-	// Not inside registerConsole's group: that group resolves one organization
-	// per owner (ResolveConsoleTenant), which is not the finance space model.
+	// Finance is registered BEFORE the console group, and the order matters:
+	// Fiber mounts a group's handlers as prefix middleware, so the "/console"
+	// group's ResolveConsoleTenant (one organization per owner, mode required)
+	// would otherwise also run in front of /console/finance and refuse a person
+	// with no organization, and /spaces without a mode. Finance resolves its own
+	// space; its handlers end the chain, so the console middleware never runs for
+	// them (TestFinanceIsNotBehindTheConsoleTenantResolver).
 	registerFinance(v1, d, auth, clock)
+	registerConsole(v1, d, h, auth)
 	registerPortal(v1, d, h, auth)
 	registerCheckout(v1, d, h)
 }

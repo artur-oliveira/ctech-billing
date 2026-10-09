@@ -5,7 +5,7 @@ import {useQuery} from "@tanstack/react-query"
 import Image from "next/image"
 import Link from "next/link"
 import {usePathname, useRouter} from "next/navigation"
-import {useEffect} from "react"
+import {useEffect, useRef} from "react"
 
 import {ModeSwitch} from "@/components/console/ModeSwitch"
 import {NoOrganization} from "@/components/console/NoOrganization"
@@ -49,6 +49,14 @@ const FINANCE_HREF = "/console/finance"
  */
 export default function ConsoleLayout({children}: LayoutProps<"/console">) {
   const pathname = usePathname()
+  // The nav scrolls sideways without a visible bar on a phone, so the current
+  // section is brought into view; only the row scrolls, never the page.
+  const navRef = useRef<HTMLUListElement>(null)
+  useEffect(() => {
+    const ul = navRef.current
+    const active = ul?.querySelector<HTMLElement>('[aria-current="page"]')
+    if (ul && active) ul.scrollLeft = active.offsetLeft - (ul.clientWidth - active.offsetWidth) / 2
+  }, [pathname])
   const router = useRouter()
   const {authenticated, loading, logout} = useAuth()
   const mode = useMode()
@@ -132,7 +140,7 @@ export default function ConsoleLayout({children}: LayoutProps<"/console">) {
         </div>
 
         <nav className="mx-auto max-w-6xl px-4" aria-label="Seções">
-          <ul className="-mb-px flex gap-1 overflow-x-auto">
+          <ul ref={navRef} className="relative -mb-px flex gap-1 overflow-x-auto overscroll-x-contain scrollbar-none">
             {nav.map(item => {
               const active = pathname.startsWith(item.href)
               return (

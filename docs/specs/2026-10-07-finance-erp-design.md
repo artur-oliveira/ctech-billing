@@ -95,7 +95,7 @@ No row ever crosses modes.
 
 ### 2.1 Space resolution — the selector is not authority
 
-The console sends `Billing-Space: personal` or `Billing-Space: org:{id}`. That header is a
+The console sends `X-Billing-Space: personal` or `X-Billing-Space: org:{id}`. That header is a
 **request, never a permission**. The rules (ADR 0025):
 
 1. `personal` carries no id. It always resolves to `USER#{sub of the token}`. There is no syntax
@@ -137,6 +137,9 @@ Transaction**, **Posting Rule**, and corrections by **Reversal / Replacement Adj
 - **`LedgerTransaction`**: one business fact. It holds N ≥ 2 **`LedgerEntry`** legs whose amounts
   **sum to zero**, or nothing is written. A transaction carries one date, which every one of its entries shares (every fact in v1 is single-date). Transactions and entries are
   **immutable**.
+- Every leg on a cash account carries a **flow**, chosen by the posting rule: the bill's category
+  for a settlement, *none* for a transfer or an opening balance. The cash flow reads it; a leg
+  posted before flows existed counts as cash under *Sem categoria*.
 - **Corrections** never edit:
   - *reversal*: post the exact opposite of a transaction;
   - *replacement*: reversal plus the corrected transaction, linked to each other.
@@ -328,8 +331,8 @@ Every partition key begins with `S`.
 
 | Table | Rows (pk → sk) | Serves |
 |---|---|---|
-| `ledger_accounts` | `S` → `SPACE` (settings) · `ACCOUNT#{id}` (account, category or system account, with cached `balance`) · `SUMMARY#{yyyy-mm}#{account}` (month debits/credits) | chart of accounts: one Query · balance: one GetItem · **DRE and cash flow for a period: one range Query** `SUMMARY#2026-01` … `SUMMARY#2026-12` |
-| `ledger_transactions` | `S` → `TX#{ulid}` (immutable header with legs embedded, origin, `adjusts`) · `S#ACCOUNT#{id}` → `ENTRY#{date}#{tx}#{leg}` | account statement by date range · trace from an entry to the fact that produced it and back |
+| `ledger_accounts` | `S` → `SPACE` (settings) · `ACCOUNT#{id}` (account, category or system account, with cached `balance`) · `SUMMARY#{yyyy-mm}#{account}` (month debits/credits) · `OPENING#{account}` (once-only opening balance marker) | chart of accounts: one Query · balance: one GetItem · **DRE for a period: one range Query** `SUMMARY#2026-01` … `SUMMARY#2026-12` · cash flow and statements: one range Query per cash account on its entries (a cash account's summary mixes transfers and opening balances with cash movement) |
+| `ledger_transactions` | `S` → `TX#{ulid}` (immutable header with legs embedded, origin, `adjusts`, memo, ref) · `S#ACCOUNT#{id}` → `ENTRY#{date}#{tx}#{leg}` (amount, kind, flow, memo, ref, reversal) · `S` → `REVERSAL#{tx}` marker | account statement by date range · trace from an entry to the fact that produced it and back |
 | `bills` | `S` → `BILL#{ulid}` · `OCCURRENCE#{recurrence}#{date}` (materialisation lock) | payables/receivables · sparse `open-index` (`S#{direction}` → due date), present only while `forecast`, so "a pagar", "a receber" and "vencidos" never read history · `schedule-index` for auto-settle |
 | `recurrences` | `S` → `RECURRENCE#{id}` | `schedule-index` (`{mode}#finance-materialize#{date}`) points at the next materialisation |
 | `cards` | `S#CARD#{id}` → `PURCHASE#{id}` (installments embedded) · `STATEMENT#{yyyy-mm}` · `STATEMENT#{yyyy-mm}#ITEM#{purchase}#{n}` | one statement with all its items: one prefix Query · `schedule-index` for closing |
@@ -371,7 +374,7 @@ the bootstrap moves to an S3 asset as PLAN.md already anticipates.
 ## 6. API
 
 Under `/v1.0/console/finance/*`:
-- the mode comes from the existing header, the space from `Billing-Space`;
+- the mode comes from the existing header, the space from `X-Billing-Space`;
 - every mutating route goes through the existing idempotency middleware;
 - the OAuth scopes are `billing:finance:read` and `billing:finance:write`, added to
   `scope-manifest.json` and `middleware.AllScopes`.
@@ -414,7 +417,7 @@ amendment 2026-10-08).
 
 | | Screen | Answers |
 |---|---|---|
-| F1 | Visão geral | balance per account; realised result this month (ships with the cash read in 6.4: the cached summaries do not separate opening balances and transfers from cash movement); projection 3–6 months (realised + forecast + virtual occurrences, forecast visibly distinct); overdue first |
+| F1 | Resumo | balance per account; realised result this month (by cash, from the entries' flows); projection 3–6 months (realised + forecast + virtual occurrences, forecast visibly distinct); overdue first |
 | F2 | A pagar / a receber | `open-index` list: overdue, today, upcoming; settle (full or different amount); cancel |
 | F3 | Contas e extrato | statement per account and period with running balance; transfer; reverse an entry |
 | F4 | Recorrências | list and expression editor with a **preview of the next occurrences before saving**; auto-settle toggle |

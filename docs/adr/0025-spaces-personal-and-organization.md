@@ -23,8 +23,8 @@ and the personal space is a new kind of tenant, not an exception.
 
 **The selector is a request, resolved on the server every time:**
 
-1. `Billing-Space: personal` carries no id and resolves to the token's own `sub`.
-2. `Billing-Space: org:{id}` requires a ctech-account membership for the token's `sub`, checked
+1. `X-Billing-Space: personal` carries no id and resolves to the token's own `sub`.
+2. `X-Billing-Space: org:{id}` requires a ctech-account membership for the token's `sub`, checked
    before any table read; the role found there decides the verbs (ADR 0023).
 3. No membership is **404**, indistinguishable from a space that does not exist.
 4. Repositories take a `ResolvedSpace` that only the resolver constructs, so no handler can key a

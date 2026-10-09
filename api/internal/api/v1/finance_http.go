@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"sync"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
@@ -27,6 +28,8 @@ type financeHandlers struct {
 	ledger *repositories.LedgerRepository
 	clock  func() time.Time
 	spaces spaceLister
+	// ensured holds the space keys this process has already created.
+	ensured sync.Map
 }
 
 func (h *financeHandlers) now() time.Time    { return h.clock() }
@@ -54,6 +57,7 @@ func financeRoutes() []financeRoute {
 		{"PATCH", "/bills/:id", space.Write, true, func(h *financeHandlers) fiber.Handler { return h.patchBill }},
 		{"POST", "/bills/:id/settle", space.Settle, true, func(h *financeHandlers) fiber.Handler { return h.settleBill }},
 		{"POST", "/bills/:id/cancel", space.Write, true, func(h *financeHandlers) fiber.Handler { return h.cancelBill }},
+		{"POST", "/bills/:id/unsettle", space.Settle, true, func(h *financeHandlers) fiber.Handler { return h.unsettleBill }},
 
 		{"GET", "/recurrences", space.Read, false, func(h *financeHandlers) fiber.Handler { return h.listRecurrences }},
 		{"POST", "/recurrences", space.Write, true, func(h *financeHandlers) fiber.Handler { return h.createRecurrence }},
@@ -66,6 +70,12 @@ func financeRoutes() []financeRoute {
 		{"GET", "/accounts", space.Read, false, func(h *financeHandlers) fiber.Handler { return h.listAccounts }},
 		{"POST", "/accounts", space.Configure, true, func(h *financeHandlers) fiber.Handler { return h.createAccount }},
 		{"POST", "/accounts/:id/archive", space.Configure, true, func(h *financeHandlers) fiber.Handler { return h.archiveAccount }},
+		{"GET", "/accounts/:id/statement", space.Read, false, func(h *financeHandlers) fiber.Handler { return h.statement }},
+		{"POST", "/accounts/:id/opening-balance", space.Configure, true, func(h *financeHandlers) fiber.Handler { return h.openingBalance }},
+		{"POST", "/transfers", space.Write, true, func(h *financeHandlers) fiber.Handler { return h.transfer }},
+		{"POST", "/transactions/:id/reverse", space.Write, true, func(h *financeHandlers) fiber.Handler { return h.reverse }},
+		{"GET", "/reports/dre", space.Read, false, func(h *financeHandlers) fiber.Handler { return h.dre }},
+		{"GET", "/reports/cash-flow", space.Read, false, func(h *financeHandlers) fiber.Handler { return h.cashFlow }},
 		{"GET", "/settings", space.Read, false, func(h *financeHandlers) fiber.Handler { return h.getSettings }},
 		{"PUT", "/settings/default-receiving-account", space.Configure, true, func(h *financeHandlers) fiber.Handler { return h.setDefaultReceivingAccount }},
 	}
@@ -98,7 +108,34 @@ func registerFinance(v1 fiber.Router, d Deps, auth fiber.Handler, clock func() t
 	idem := middleware.SpaceIdempotency(d.Idempotency, clock)
 	fin := v1.Group("/console/finance", auth)
 	mountSpaces(fin, h)
-	mountFinance(fin, d.Spaces, idem, func(r financeRoute) fiber.Handler { return r.Handler(h) })
+	mountFinance(fin, d.Spaces, idem, func(r financeRoute) fiber.Handler {
+		if r.Write {
+			return h.ensuringSpace(r.Handler(h))
+		}
+		return r.Handler(h)
+	})
+}
+
+// ensuringSpace creates the space (its settings row and system accounts) before
+// the first write that reaches this process. EnsureSpace is idempotent, so the
+// in-memory set only saves the conditional write on every later request; a
+// restart costs one more. A role that may not write (configure only) skips it:
+// the write routes it can reach touch no system account.
+func (h *financeHandlers) ensuringSpace(next fiber.Handler) fiber.Handler {
+	return func(c fiber.Ctx) error {
+		sp := middleware.GetSpace(c)
+		key := sp.PK()
+		if _, done := h.ensured.Load(key); !done {
+			err := h.ledger.EnsureSpace(c.Context(), sp, h.now())
+			switch {
+			case err == nil:
+				h.ensured.Store(key, struct{}{})
+			case !errors.Is(err, space.ErrDenied):
+				return fail(c, err)
+			}
+		}
+		return next(c)
+	}
 }
 
 // mountFinance registers every route of the table with its chain. The tests call

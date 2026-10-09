@@ -115,3 +115,55 @@ func TestPreviewCountMustBeBetween1And24(t *testing.T) {
 		t.Errorf("a valid preview answered %d %v", resp.StatusCode, err)
 	}
 }
+
+func TestReportPeriodsAreBounded(t *testing.T) {
+	for _, tc := range []struct {
+		from, to string
+		ok       bool
+	}{
+		{"2026-01", "2026-12", true},
+		{"2026-01", "2027-12", true},  // 24 months
+		{"2026-01", "2028-01", false}, // 25
+		{"2026-05", "2026-04", false},
+		{"2026-13", "2026-12", false},
+		{"", "2026-12", false},
+	} {
+		_, _, err := parseMonthRange(tc.from, tc.to)
+		if (err == nil) != tc.ok {
+			t.Errorf("%s..%s: err=%v, want ok=%v", tc.from, tc.to, err, tc.ok)
+		}
+	}
+}
+
+func TestStatementPeriodIsBounded(t *testing.T) {
+	for _, tc := range []struct {
+		from, to string
+		ok       bool
+	}{
+		{"2026-03-01", "2026-04-01", true},
+		{"2026-01-01", "2027-01-02", true},  // 366 days
+		{"2026-01-01", "2027-01-03", false}, // 367
+		{"2026-04-01", "2026-04-01", false},
+		{"2026-02-30", "2026-03-01", false},
+	} {
+		_, _, err := parseDateRange(tc.from, tc.to)
+		if (err == nil) != tc.ok {
+			t.Errorf("%s..%s: err=%v, want ok=%v", tc.from, tc.to, err, tc.ok)
+		}
+	}
+}
+
+func TestTransferValidationNamesTheFields(t *testing.T) {
+	var req transferRequest
+	if code := decodeProbe(t, `{"from_account_id":"a","to_account_id":"a","amount":0,"date":"x"}`, &req); code != 200 {
+		t.Fatalf("decode %d", code)
+	}
+	errs := req.validate()
+	want := map[string]bool{"to_account_id": true, "amount": true, "date": true}
+	for _, e := range errs {
+		delete(want, e.Field)
+	}
+	if len(want) != 0 {
+		t.Fatalf("missing field errors: %v (got %+v)", want, errs)
+	}
+}

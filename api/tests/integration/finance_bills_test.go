@@ -544,3 +544,34 @@ func TestAWriterCannotExtendAnAutoSettlingRecurrencesEnd(t *testing.T) {
 		t.Fatalf("shortening is removing power and must be allowed: %v", err)
 	}
 }
+
+func TestUnsettleReopensTheBillAndReversesTheCash(t *testing.T) {
+	f := newBillsFixture(t)
+	ctx, now := context.Background(), time.Now()
+	b := f.payable(t, 10000, brcal.New(2026, time.March, 10))
+	paid, err := f.bills.Settle(ctx, f.sp, b.ID, 10000, "", brcal.New(2026, time.March, 9), repositories.PostMeta{Actor: "u"}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	back, err := f.bills.Unsettle(ctx, f.sp, b.ID, brcal.New(2026, time.March, 11), repositories.PostMeta{Actor: "u"}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if back.Status != finance.BillForecast || !back.PaidDate.IsZero() || back.AutoSettle || len(back.TransactionIDs) != len(paid.TransactionIDs)+1 {
+		t.Fatalf("bill after unsettle = %+v", back)
+	}
+	if f.bal(t, "bank") != 0 {
+		t.Fatalf("bank = %d, want 0", f.bal(t, "bank"))
+	}
+	page, err := f.bills.ListOpen(ctx, f.sp, finance.Payable, 10, nil)
+	if err != nil || len(page.Items) != 1 || page.Items[0].ID != b.ID {
+		t.Fatalf("not back in the open list: %+v %v", page, err)
+	}
+	if _, err := f.bills.Unsettle(ctx, f.sp, b.ID, brcal.New(2026, time.March, 11), repositories.PostMeta{Actor: "u"}, now); !errors.Is(err, finance.ErrBillState) {
+		t.Fatalf("second unsettle: %v", err)
+	}
+	es, _ := f.ledger.EntriesFrom(ctx, f.sp, "bank", brcal.New(2026, time.March, 1))
+	if len(es) != 2 || es[0].Flow != "rent" || es[0].Memo != "Aluguel" || es[0].Ref != "bill:"+b.ID {
+		t.Fatalf("settlement entry = %+v", es)
+	}
+}

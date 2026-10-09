@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
+	"gopkg.aoctech.app/billing/api/internal/domain/brcal"
 )
 
 var sys = SystemAccounts{Payables: "sys_payables", Receivables: "sys_receivables", OpeningBalance: "sys_opening"}
@@ -168,6 +169,44 @@ func TestCancellingARecognisedBillIsAReversal(t *testing.T) {
 	for account, v := range balances(rec, rev) {
 		if v != 0 {
 			t.Fatalf("%s = %d after the reversal, want 0", account, v)
+		}
+	}
+}
+
+func TestSettlementAttributesTheCashToTheBillsCategory(t *testing.T) {
+	sys, _ := DefaultSystemAccounts()
+	for _, dir := range []Direction{Payable, Receivable} {
+		b := BillFacts{Direction: dir, Amount: 10000, CategoryID: "rent", AccountID: "bank"}
+		tx, err := SettleBill(sys, b, 10500, "interest", brcal.New(2026, time.March, 10))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, l := range tx.Legs {
+			want := ""
+			if l.AccountID == "bank" {
+				want = "rent"
+			}
+			if l.Flow != want {
+				t.Errorf("%s: leg %s flow = %q, want %q", dir, l.AccountID, l.Flow, want)
+			}
+		}
+	}
+}
+
+func TestTransfersAndOpeningBalancesAreNotCashFlow(t *testing.T) {
+	sys, _ := DefaultSystemAccounts()
+	d := brcal.New(2026, time.March, 1)
+	tr, err := Transfer("bank", "cash", 5000, d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ob, err := OpeningBalance(sys, "bank", 100000, d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, l := range append(tr.Legs, ob.Legs[0]) {
+		if l.Flow != FlowNone {
+			t.Errorf("leg %s flow = %q, want FlowNone", l.AccountID, l.Flow)
 		}
 	}
 }

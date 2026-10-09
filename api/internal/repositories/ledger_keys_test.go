@@ -23,6 +23,7 @@ func TestLedgerKeys(t *testing.T) {
 		LedgerEntryPK(sp, "bank"): "USER#u1#live#ACCOUNT#bank",
 		LedgerEntrySK(brcal.New(2026, time.March, 2), "01J", 1): "ENTRY#2026-03-02#01J#01",
 		LedgerReversalSK("01J"):                                 "REVERSAL#01J",
+		LedgerOpeningSK("bank"):                                 "OPENING#bank",
 	}
 	for got, want := range cases {
 		if got != want {

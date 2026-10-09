@@ -15,3 +15,11 @@ export function monthLabel(iso: string): string {
   const [y, m] = iso.split("-").map(Number)
   return new Intl.DateTimeFormat("pt-BR", {month: "long", year: "numeric"}).format(new Date(y, m - 1, 1))
 }
+
+const MONTHS = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"]
+
+/** "Mar/26" — a month in a table header or an axis, from `YYYY-MM`. */
+export function monthShort(ym: string): string {
+  const [y, m] = ym.split("-")
+  return `${MONTHS[Number(m) - 1]}/${y.slice(2)}`
+}

@@ -169,3 +169,76 @@ export interface NewAccount {
   class: AccountClass
   dre_group?: DREGroup
 }
+
+// --- 6.4: statement and reports -----------------------------------------------------
+
+/** What produced a ledger fact; "" on entries posted before 6.4. */
+export type TxKind = "" | "recognition" | "settlement" | "transfer" | "opening_balance" | "reversal" | "adjustment" | "card_purchase" | "statement_payment"
+
+export interface StatementEntry {
+  transaction_id: string
+  date: IsoDate
+  /** Signed: positive is money in. */
+  amount: Cents
+  balance: Cents
+  kind: TxKind
+  memo: string
+  category_id?: string
+  bill_id?: string
+  reversal: boolean
+  reversed: boolean
+}
+
+export interface Statement {
+  account_id: string
+  from: IsoDate
+  /** Exclusive. */
+  to: IsoDate
+  opening: Cents
+  closing: Cents
+  entries: StatementEntry[]
+}
+
+export interface CashFlowMonth {
+  month: string
+  in: Cents
+  out: Cents
+  openings: Cents
+  /** category_id "" is "Sem categoria". */
+  lines: {category_id: string; amount: Cents}[]
+}
+
+export interface CashFlow {
+  from: string
+  to: string
+  opening_cash: Cents
+  closing_cash: Cents
+  months: CashFlowMonth[]
+}
+
+export interface DREGroupLine {
+  group: DREGroup
+  categories: {category_id: string; amounts: Cents[]; total: Cents}[]
+  amounts: Cents[]
+  total: Cents
+}
+
+export interface DRE {
+  months: string[]
+  groups: DREGroupLine[]
+  result: Cents[]
+  total: Cents
+}
+
+export interface NewTransfer {
+  from_account_id: string
+  to_account_id: string
+  amount: Cents
+  date: IsoDate
+  memo?: string
+}
+
+export interface OpeningBalance {
+  amount: Cents
+  date: IsoDate
+}

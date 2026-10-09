@@ -8,11 +8,12 @@ import {useState} from "react"
 
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
 import {Select} from "@/components/ui/Select"
-import {financeKeys, getProjection, listAccounts, listBills} from "@/lib/api/finance"
+import {financeKeys, getCashFlow, getProjection, listAccounts, listBills} from "@/lib/api/finance"
 import type {Bill, ProjectionMonth} from "@/lib/api/financeTypes"
 import {BUCKET_LABEL} from "@/lib/finance/labels"
+import {monthShort, todayIso} from "@/lib/finance/today"
 import {useFinanceCtx} from "@/lib/finance/useFinanceSpaces"
-import {money, shortDate} from "@/lib/format"
+import {money, shortDate, signedMoney} from "@/lib/format"
 
 const WINDOWS = [
   {value: "3", label: "3 meses"},
@@ -23,15 +24,15 @@ const WINDOWS = [
 /**
  * F1 — the finance overview: three independent blocks separated by rules. Each
  * fetches and fails on its own, so one slow or broken request never blanks the
- * page. There is deliberately no "resultado realizado" tile: it ships with the
- * cash read in 6.4.
+ * page.
  */
 export function OverviewView() {
   return (
     <div className="space-y-8">
-      <h1 className="text-lg font-semibold tracking-[-0.01em] text-foreground">Visão geral</h1>
-      <div className="grid items-start gap-8 lg:grid-cols-2">
+      <h1 className="text-lg font-semibold tracking-[-0.01em] text-foreground">Resumo</h1>
+      <div className="grid items-start gap-8 lg:grid-cols-3">
         <Balances/>
+        <Realised/>
         <DueSoon/>
       </div>
       <Projection/>
@@ -82,6 +83,33 @@ function Balances() {
   )
 }
 
+/**
+ * What actually came in and went out of the person's accounts this month: the
+ * cash result. The accrual one (by competence) is the DRE, one click away.
+ */
+function Realised() {
+  const ctx = useFinanceCtx()
+  const month = todayIso().slice(0, 7)
+  const q = useQuery({queryKey: financeKeys.cashFlow(ctx.mode, ctx.space, month, month), queryFn: () => getCashFlow(ctx, month, month)})
+  const m = q.data?.months[0]
+  return (
+    <Block title="Resultado do mês" action={<Link href="/console/finance/reports?view=cash" className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline">Ver relatórios</Link>}>
+      {q.isLoading ? <Skeleton className="h-20 w-full"/> : q.error || !m ? (
+        <ErrorBlock error={q.error} onRetry={() => void q.refetch()}/>
+      ) : (
+        <>
+          <dl className="divide-y divide-border border-y border-border text-sm">
+            <div className="flex items-center justify-between py-2"><dt>Entrou</dt><dd data-numeric className="tabular-nums">{money(m.in)}</dd></div>
+            <div className="flex items-center justify-between py-2"><dt>Saiu</dt><dd data-numeric className="tabular-nums">{money(m.out)}</dd></div>
+            <div className="flex items-center justify-between py-2 font-medium"><dt>Resultado</dt><dd data-numeric className="tabular-nums">{signedMoney(m.in - m.out)}</dd></div>
+          </dl>
+          <p className="text-xs text-muted-foreground">Pelo caixa: o que de fato entrou e saiu das suas contas neste mês.</p>
+        </>
+      )}
+    </Block>
+  )
+}
+
 const DUE_SOON = 5
 
 function DueSoon() {
@@ -116,11 +144,6 @@ function DueSoon() {
       )}
     </Block>
   )
-}
-
-function monthShort(ym: string): string {
-  const [y, m] = ym.split("-").map(Number)
-  return new Intl.DateTimeFormat("pt-BR", {month: "short", year: "2-digit"}).format(new Date(y, m - 1, 1))
 }
 
 function Projection() {
@@ -161,7 +184,7 @@ function ProjectionTable({data}: {data: ProjectionMonth[]}) {
       <tbody>
         {data.map(m => (
           <tr key={m.month} className="border-b border-border">
-            <th scope="row" className="py-2 text-left font-normal capitalize">{monthShort(m.month)}</th>
+            <th scope="row" className="py-2 text-left font-normal">{monthShort(m.month)}</th>
             <td className="py-2 text-right">{money(m.receivable)}</td>
             <td className="py-2 text-right">{money(m.payable)}</td>
             <td className="py-2 text-right">{money(m.virtual)}</td>
@@ -200,7 +223,7 @@ function ProjectionChart({data}: {data: ProjectionMonth[]}) {
               {vUp > 0 && <rect x={x + 0.5} y={MID - rec - vUp} width={bw - 1} height={vUp} className="fill-none stroke-success" strokeWidth={1} strokeDasharray="3 2"/>}
               {pay > 0 && <rect x={x} y={MID} width={bw} height={pay} className="fill-foreground/70"/>}
               {vDown > 0 && <rect x={x + 0.5} y={MID + pay} width={bw - 1} height={vDown} className="fill-none stroke-foreground/70" strokeWidth={1} strokeDasharray="3 2"/>}
-              <text x={i * slot + slot / 2} y={H - PAD} textAnchor="middle" className="fill-muted-foreground text-[11px] capitalize">{monthShort(m.month)}</text>
+              <text x={i * slot + slot / 2} y={H - PAD} textAnchor="middle" className="fill-muted-foreground text-[11px]">{monthShort(m.month)}</text>
             </g>
           )
         })}

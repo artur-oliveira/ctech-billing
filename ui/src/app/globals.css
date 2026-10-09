@@ -90,3 +90,16 @@
         outline-offset: 2px;
     }
 }
+
+/*
+ * A row that scrolls sideways by swipe (or trackpad) without a visible bar: the
+ * console's section nav on a phone. Native scrolling, so touch, keyboard focus
+ * and momentum all keep working; only the chrome is hidden. Candidate for
+ * @aoctech/ui.
+ */
+@utility scrollbar-none {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}

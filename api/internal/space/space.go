@@ -1,6 +1,6 @@
 // Package space is the authority on which finance partition a request may touch.
 //
-// The console sends Billing-Space: personal | org:{id}. That header is a
+// The console sends X-Billing-Space: personal | org:{id}. That header is a
 // request. The only way to obtain a ResolvedSpace for it is Resolver.Resolve,
 // which checks the token's own subject and ctech-account membership first; and
 // the type has no exported field, so no handler can build one from the header
@@ -23,7 +23,7 @@ var (
 	// ErrSpaceUnavailable is ctech-account being unreachable. Access fails
 	// closed; this is never read as permission and never as "not found".
 	ErrSpaceUnavailable = errors.New("space: membership unavailable")
-	// ErrBadSelector is a Billing-Space value that is not personal or org:{id}.
+	// ErrBadSelector is a X-Billing-Space value that is not personal or org:{id}.
 	ErrBadSelector = errors.New("space: malformed selector")
 	// ErrInvalidSubject is a token whose subject cannot be a key component.
 	ErrInvalidSubject = errors.New("space: invalid subject")

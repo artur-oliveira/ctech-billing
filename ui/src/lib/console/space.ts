@@ -2,7 +2,7 @@
 
 /**
  * The finance space the console is looking at (ADR 0025): personal, or one of
- * the person's organizations. It is a REQUEST — the `Billing-Space` header — and
+ * the person's organizations. It is a REQUEST — the `X-Billing-Space` header — and
  * the server re-authorizes it on every call, so a stale or tampered value grants
  * nothing; the worst it can do is answer 404 and fall back to personal.
  *
@@ -20,7 +20,7 @@ const EVENT = "ctech-finance-space"
 // canonical lower-case UUID. Anything else is read as personal, never sent.
 const ORG_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
-/** The `Billing-Space` header value: "personal" or "org:{id}". */
+/** The `X-Billing-Space` header value: "personal" or "org:{id}". */
 export function spaceHeader(s: Space): string {
   return s.kind === "personal" ? "personal" : `org:${s.organizationId}`
 }

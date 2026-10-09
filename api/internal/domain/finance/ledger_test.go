@@ -36,11 +36,11 @@ func TestNewTransactionRefuses(t *testing.T) {
 	}
 	nine[8].Amount = -8
 	for name, legs := range map[string][]Leg{
-		"unbalanced":    {{"a", 1000}, {"b", -999}},
-		"one leg":       {{"a", 0}},
+		"unbalanced":    {{AccountID: "a", Amount: 1000}, {AccountID: "b", Amount: -999}},
+		"one leg":       {{AccountID: "a", Amount: 0}},
 		"no legs":       nil,
-		"zero leg":      {{"a", 1000}, {"b", -1000}, {"c", 0}},
-		"no account":    {{"", 1000}, {"b", -1000}},
+		"zero leg":      {{AccountID: "a", Amount: 1000}, {AccountID: "b", Amount: -1000}, {AccountID: "c", Amount: 0}},
+		"no account":    {{AccountID: "", Amount: 1000}, {AccountID: "b", Amount: -1000}},
 		"too many legs": nine,
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -49,13 +49,13 @@ func TestNewTransactionRefuses(t *testing.T) {
 			}
 		})
 	}
-	if _, err := NewTransaction(KindTransfer, brcal.Date{}, Leg{"a", 1000}, Leg{"b", -1000}); !errors.Is(err, ErrInvalidTransaction) {
+	if _, err := NewTransaction(KindTransfer, brcal.Date{}, Leg{AccountID: "a", Amount: 1000}, Leg{AccountID: "b", Amount: -1000}); !errors.Is(err, ErrInvalidTransaction) {
 		t.Fatalf("no date: err = %v, want ErrInvalidTransaction", err)
 	}
 }
 
 func TestNewTransactionCopiesItsLegs(t *testing.T) {
-	legs := []Leg{{"a", 1000}, {"b", -1000}}
+	legs := []Leg{{AccountID: "a", Amount: 1000}, {AccountID: "b", Amount: -1000}}
 	tx, err := NewTransaction(KindTransfer, d(2026, time.March, 5), legs...)
 	if err != nil {
 		t.Fatal(err)
@@ -67,7 +67,7 @@ func TestNewTransactionCopiesItsLegs(t *testing.T) {
 }
 
 func TestReverseNegatesEveryLegAndPointsBack(t *testing.T) {
-	orig, err := NewTransaction(KindCardPurchase, d(2026, time.March, 5), Leg{"groceries", 12000}, Leg{"card", -12000})
+	orig, err := NewTransaction(KindCardPurchase, d(2026, time.March, 5), Leg{AccountID: "groceries", Amount: 12000}, Leg{AccountID: "card", Amount: -12000})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,5 +103,19 @@ func TestDREGroupAllowsClass(t *testing.T) {
 	}
 	if GroupOther.AllowsClass(ClassAsset) || DREGroup("made_up").AllowsClass(ClassIncome) {
 		t.Fatal("assets never sit in the DRE, and unknown groups take nothing")
+	}
+}
+
+func TestReverseCarriesFlowOver(t *testing.T) {
+	sys, _ := DefaultSystemAccounts()
+	tx, _ := SettleBill(sys, BillFacts{Direction: Payable, Amount: 100, CategoryID: "rent", AccountID: "bank"}, 100, "", d(2026, time.March, 9))
+	rev, err := Reverse(tx, "tx_1", d(2026, time.March, 10))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, l := range rev.Legs {
+		if l.Flow != tx.Legs[i].Flow || l.Amount != -tx.Legs[i].Amount {
+			t.Errorf("leg %d = %+v, want the negation of %+v with the same flow", i, l, tx.Legs[i])
+		}
 	}
 }

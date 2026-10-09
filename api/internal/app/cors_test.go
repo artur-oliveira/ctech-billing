@@ -81,9 +81,25 @@ func TestPreflightAllowsEveryHeaderTheClientSends(t *testing.T) {
 		fiber.HeaderContentType,
 		middleware.IdempotencyHeader,
 		middleware.ModeHeader,
+		middleware.SpaceHeader,
 	} {
 		if !strings.Contains(allowed, strings.ToLower(h)) {
 			t.Errorf("preflight does not allow %q (allows %q)", h, allowed)
+		}
+	}
+}
+
+// The console edits with PATCH and PUT (bills, recurrences, settings); a method missing
+// here fails preflight in the browser and nowhere else.
+func TestPreflightAllowsEveryMethodTheConsoleUses(t *testing.T) {
+	res := request(t, corsApp(t, portalOrigin), http.MethodOptions, "/v1.0/customers", map[string]string{
+		fiber.HeaderOrigin:                     portalOrigin,
+		fiber.HeaderAccessControlRequestMethod: http.MethodPatch,
+	})
+	allowed := res.Header.Get(fiber.HeaderAccessControlAllowMethods)
+	for _, m := range []string{http.MethodGet, http.MethodPost, http.MethodPatch, http.MethodPut} {
+		if !strings.Contains(allowed, m) {
+			t.Errorf("preflight does not allow %s (allows %q)", m, allowed)
 		}
 	}
 }

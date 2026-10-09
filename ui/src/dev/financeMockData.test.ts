@@ -4,8 +4,8 @@ import {FINANCE_MOCK_ORG, financeMock, resetFinanceMock} from "@/dev/financeMock
 
 type Req = {method?: string; url: string; headers?: Record<string, string>; data?: unknown; params?: Record<string, unknown>}
 
-const personal = {"X-Billing-Mode": "live", "Billing-Space": "personal"}
-const org = {"X-Billing-Mode": "live", "Billing-Space": `org:${FINANCE_MOCK_ORG}`}
+const personal = {"X-Billing-Mode": "live", "X-Billing-Space": "personal"}
+const org = {"X-Billing-Mode": "live", "X-Billing-Space": `org:${FINANCE_MOCK_ORG}`}
 const call = (r: Req) => financeMock({method: "get", ...r, url: "/v1.0/console/finance" + r.url})
 
 beforeEach(() => resetFinanceMock())
@@ -13,7 +13,7 @@ beforeEach(() => resetFinanceMock())
 describe("the finance mock enforces the contract", () => {
   it("refuses a request without the mode or the space", () => {
     expect(call({url: "/accounts", headers: {"X-Billing-Mode": "live"}}).status).toBe(400)
-    expect(call({url: "/accounts", headers: {"Billing-Space": "personal"}}).status).toBe(400)
+    expect(call({url: "/accounts", headers: {"X-Billing-Space": "personal"}}).status).toBe(400)
   })
 
   it("lists spaces without a space header", () => {
@@ -34,7 +34,7 @@ describe("the finance mock enforces the contract", () => {
   })
 
   it("answers 404 space-not-found for an organization that is not the reader's", () => {
-    const r = call({url: "/accounts", headers: {...org, "Billing-Space": "org:0190a1b2-c3d4-7e5f-8a9b-ffffffffffff"}})
+    const r = call({url: "/accounts", headers: {...org, "X-Billing-Space": "org:0190a1b2-c3d4-7e5f-8a9b-ffffffffffff"}})
     expect(r.status).toBe(404)
     expect((r.data as {type: string}).type).toBe("/problems/space-not-found")
   })
@@ -73,5 +73,35 @@ describe("the finance mock enforces the contract", () => {
     const ok = call({method: "post", url: "/recurrences/preview", headers: personal, data: {expression: {kind: "day_of_month", day: 31}, start: "2026-01-01", count: 3, from: "2026-01-01"}})
     expect((ok.data as {data: {nominal: string}[]}).data.map(o => o.nominal)).toEqual(["2026-01-31", "2026-02-28", "2026-03-31"])
     expect(call({method: "post", url: "/recurrences/preview", headers: personal, data: {expression: {kind: "day_of_month", day: 10}, start: "2026-01-01", count: 0}}).status).toBe(422)
+  })
+})
+
+describe("the finance mock's ledger facts", () => {
+  const w = (url: string, data: unknown, key: string) =>
+    call({method: "post", url, headers: {...personal, "Idempotency-Key": key}, data})
+  const month = () => new Date().toISOString().slice(0, 7)
+  const day = () => `${month()}-01`
+  const balance = (id: string) =>
+    (call({url: "/accounts", headers: personal}).data as {data: {id: string; balance: number}[]}).data.find(a => a.id === id)!.balance
+
+  it("moves both balances on a transfer and keeps it out of the cash flow", () => {
+    const before = [balance("conta-corrente"), balance("poupanca")]
+    expect(w("/transfers", {from_account_id: "conta-corrente", to_account_id: "poupanca", amount: 1000, date: day()}, "t1").status).toBe(201)
+    expect([balance("conta-corrente"), balance("poupanca")]).toEqual([before[0] - 1000, before[1] + 1000])
+    const cf = call({url: "/reports/cash-flow", headers: personal, params: {from: month(), to: month()}})
+    const m = (cf.data as {months: {in: number; out: number}[]}).months[0]
+    expect([m.in, m.out]).toEqual([0, 0])
+  })
+
+  it("puts an unsettled bill back in the open list", () => {
+    expect(w("/bills/b-mercado/settle", {}, "s1").status).toBe(200)
+    expect(w("/bills/b-mercado/unsettle", {}, "u1").status).toBe(200)
+    const open = call({url: "/bills", headers: personal, params: {direction: "payable"}}).data as {data: {id: string; auto_settle: boolean}[]}
+    expect(open.data.find(b => b.id === "b-mercado")?.auto_settle).toBe(false)
+  })
+
+  it("refuses a second opening balance on one account", () => {
+    expect(w("/accounts/poupanca/opening-balance", {amount: 500, date: day()}, "o1").status).toBe(201)
+    expect(w("/accounts/poupanca/opening-balance", {amount: 500, date: day()}, "o2").status).toBe(409)
   })
 })

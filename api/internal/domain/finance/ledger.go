@@ -70,10 +70,20 @@ const (
 // is a debit, negative a credit.** One sign convention for every class keeps the
 // invariant a single sum; what "debit" means for an asset versus an expense is
 // the report's business, not the leg's.
+//
+// Flow says what a leg on a cash account (a non-system asset) counts as in the
+// cash flow: a category id, FlowNone for movements that are not income or
+// spending (a transfer between own accounts, an opening balance), or "" when
+// unknown (entries posted before 6.4, reported as "Sem categoria"). The posting
+// rule decides it; the reports only read it.
 type Leg struct {
 	AccountID string
 	Amount    billing.Cents
+	Flow      string
 }
+
+// FlowNone marks a cash leg that is not cash flow.
+const FlowNone = "-"
 
 // Transaction is one business fact as double entry, after Fowler's Accounting
 // Transaction: two or more legs that sum to zero, all on one date. It is
@@ -148,7 +158,7 @@ func Reverse(original Transaction, originalID string, date brcal.Date) (Transact
 	}
 	legs := make([]Leg, len(original.Legs))
 	for i, l := range original.Legs {
-		legs[i] = Leg{AccountID: l.AccountID, Amount: -l.Amount}
+		legs[i] = Leg{AccountID: l.AccountID, Amount: -l.Amount, Flow: l.Flow}
 	}
 	tx, err := NewTransaction(KindReversal, date, legs...)
 	if err != nil {

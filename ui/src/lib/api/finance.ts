@@ -4,8 +4,9 @@ import {toast} from "sonner"
 
 import {apiClient, isSpaceNotFound} from "@/lib/api/client"
 import type {
-  Account, Bill, BillPatch, CurrentSpace, Direction, FinanceSpaces, ListResponse, NewAccount, NewBill,
-  NewRecurrence, Occurrence, PreviewInput, ProjectionMonth, Recurrence, RecurrencePatch, Settings, Settlement,
+  Account, Bill, BillPatch, CashFlow, CurrentSpace, Direction, DRE, FinanceSpaces, ListResponse, NewAccount, NewBill,
+  NewRecurrence, NewTransfer, Occurrence, OpeningBalance, PreviewInput, ProjectionMonth, Recurrence, RecurrencePatch,
+  Settings, Settlement, Statement,
 } from "@/lib/api/financeTypes"
 import {getSpace, PERSONAL, type Space, setSpace, spaceHeader} from "@/lib/console/space"
 import type {Mode} from "@/lib/console/mode"
@@ -25,7 +26,7 @@ export interface FinanceCtx {
 const BASE = "/v1.0/console/finance"
 
 function headers(c: FinanceCtx, idempotencyKey?: string): Record<string, string> {
-  const h: Record<string, string> = {"X-Billing-Mode": c.mode, "Billing-Space": spaceHeader(c.space)}
+  const h: Record<string, string> = {"X-Billing-Mode": c.mode, "X-Billing-Space": spaceHeader(c.space)}
   if (idempotencyKey) h["Idempotency-Key"] = idempotencyKey
   return h
 }
@@ -46,9 +47,9 @@ function spaceGone(c: FinanceCtx, error: unknown): never {
   throw error
 }
 
-async function read<T>(c: FinanceCtx, url: string, params?: Record<string, unknown>): Promise<T> {
+async function read<T>(c: FinanceCtx, url: string, params?: Record<string, unknown>, signal?: AbortSignal): Promise<T> {
   try {
-    const {data} = await apiClient.request<T>({method: "GET", url: BASE + url, headers: headers(c), params})
+    const {data} = await apiClient.request<T>({method: "GET", url: BASE + url, headers: headers(c), params, signal})
     return data
   } catch (e) {
     return spaceGone(c, e)
@@ -78,6 +79,10 @@ export const financeKeys = {
   projection: (mode: Mode, space: Space, months: number) => ["finance", mode, spaceHeader(space), "projection", months] as const,
   accounts: (mode: Mode, space: Space) => ["finance", mode, spaceHeader(space), "accounts"] as const,
   settings: (mode: Mode, space: Space) => ["finance", mode, spaceHeader(space), "settings"] as const,
+  statement: (mode: Mode, space: Space, accountId: string, from: string, to: string) =>
+    ["finance", mode, spaceHeader(space), "statement", accountId, from, to] as const,
+  cashFlow: (mode: Mode, space: Space, from: string, to: string) => ["finance", mode, spaceHeader(space), "cash-flow", from, to] as const,
+  dre: (mode: Mode, space: Space, from: string, to: string) => ["finance", mode, spaceHeader(space), "dre", from, to] as const,
   spaces: () => ["finance", "spaces"] as const,
 }
 
@@ -104,6 +109,9 @@ export const settleBill = (c: FinanceCtx, id: string, body: Settlement, idempote
   write<Bill>(c, "POST", `/bills/${encodeURIComponent(id)}/settle`, body, idempotencyKey)
 export const cancelBill = (c: FinanceCtx, id: string, idempotencyKey: string) =>
   write<Bill>(c, "POST", `/bills/${encodeURIComponent(id)}/cancel`, {}, idempotencyKey)
+/** Undoes a payment: the bill returns to the open list with auto-settle off. */
+export const unsettleBill = (c: FinanceCtx, id: string, idempotencyKey: string) =>
+  write<Bill>(c, "POST", `/bills/${encodeURIComponent(id)}/unsettle`, {}, idempotencyKey)
 
 // --- recurrences ----------------------------------------------------------------
 
@@ -136,3 +144,19 @@ export const archiveAccount = (c: FinanceCtx, id: string, idempotencyKey: string
 export const getSettings = (c: FinanceCtx) => read<Settings>(c, "/settings")
 export const setDefaultReceivingAccount = (c: FinanceCtx, accountId: string, idempotencyKey: string) =>
   write<Settings>(c, "PUT", "/settings/default-receiving-account", {default_receiving_account_id: accountId}, idempotencyKey)
+
+// --- statement, transfers, reports ------------------------------------------------
+
+/** `to` is exclusive. */
+export const getStatement = (c: FinanceCtx, accountId: string, from: string, to: string, signal?: AbortSignal) =>
+  read<Statement>(c, `/accounts/${encodeURIComponent(accountId)}/statement`, {from, to}, signal)
+export const postOpeningBalance = (c: FinanceCtx, accountId: string, body: OpeningBalance, idempotencyKey: string) =>
+  write<{transaction_id: string}>(c, "POST", `/accounts/${encodeURIComponent(accountId)}/opening-balance`, body, idempotencyKey)
+export const createTransfer = (c: FinanceCtx, body: NewTransfer, idempotencyKey: string) =>
+  write<{transaction_id: string}>(c, "POST", "/transfers", body, idempotencyKey)
+/** Only transfers and opening balances; a payment is undone with unsettleBill. */
+export const reverseTransaction = (c: FinanceCtx, txId: string, idempotencyKey: string) =>
+  write<{transaction_id: string}>(c, "POST", `/transactions/${encodeURIComponent(txId)}/reverse`, {}, idempotencyKey)
+/** Months `YYYY-MM`, both inclusive. */
+export const getCashFlow = (c: FinanceCtx, from: string, to: string) => read<CashFlow>(c, "/reports/cash-flow", {from, to})
+export const getDRE = (c: FinanceCtx, from: string, to: string) => read<DRE>(c, "/reports/dre", {from, to})

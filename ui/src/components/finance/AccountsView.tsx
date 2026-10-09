@@ -8,12 +8,14 @@ import {useState} from "react"
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
 import {Select} from "@/components/ui/Select"
 import {messageFor} from "@/lib/api/client"
-import {archiveAccount, createAccount, financeKeys, getSettings, listAccounts, setDefaultReceivingAccount} from "@/lib/api/finance"
-import type {Account, AccountClass, DREGroup} from "@/lib/api/financeTypes"
+import {archiveAccount, createAccount, financeKeys, getSettings, listAccounts, postOpeningBalance, setDefaultReceivingAccount} from "@/lib/api/finance"
+import type {Account, AccountClass, DREGroup, OpeningBalance} from "@/lib/api/financeTypes"
 import {CLASS_LABEL, DRE_GROUP_LABEL, groupsForClass} from "@/lib/finance/labels"
 import {useFinanceMutation} from "@/lib/finance/useFinanceMutation"
 import {useFinanceCtx, useFinanceSpaces} from "@/lib/finance/useFinanceSpaces"
 import {money} from "@/lib/format"
+import {todayIso} from "@/lib/finance/today"
+import {parseSignedMoney} from "@/lib/money"
 
 const SECTIONS: {title: string; classes: AccountClass[]}[] = [
   {title: "Contas", classes: ["asset"]},
@@ -89,6 +91,7 @@ export function AccountsView() {
 
 function AccountRow({account, configure}: {account: Account; configure: boolean}) {
   const [confirming, setConfirming] = useState(false)
+  const [opening, setOpening] = useState(false)
   const archive = useFinanceMutation(
     (c, id: string, key) => archiveAccount(c, id, key),
     c => [financeKeys.accounts(c.mode, c.space)],
@@ -104,6 +107,9 @@ function AccountRow({account, configure}: {account: Account; configure: boolean}
         <div className="flex shrink-0 items-center gap-3">
           {account.class === "asset" && <span data-numeric className="text-sm tabular-nums">{money(account.balance)}</span>}
           {account.archived && <span className="text-xs">Arquivada</span>}
+          {configure && account.class === "asset" && !account.archived && !opening && (
+            <Button variant="ghost" size="sm" onClick={() => setOpening(true)}>Saldo inicial</Button>
+          )}
           {configure && !account.archived && !confirming && (
             <Button variant="ghost" size="sm" onClick={() => setConfirming(true)}>Arquivar</Button>
           )}
@@ -117,7 +123,45 @@ function AccountRow({account, configure}: {account: Account; configure: boolean}
           {archive.error && <p role="alert" className="w-full text-danger">{messageFor(archive.error)}</p>}
         </div>
       )}
+      {opening && <OpeningForm account={account} onDone={() => setOpening(false)}/>}
     </li>
+  )
+}
+
+/**
+ * The opening balance of an account that already exists (one created before
+ * 6.4, or whose opening was reversed). Once per account: a second one is
+ * refused by the server, which says how to correct it.
+ */
+function OpeningForm({account, onDone}: {account: Account; onDone: () => void}) {
+  const [text, setText] = useState("")
+  const [date, setDate] = useState(todayIso())
+  const post = useFinanceMutation(
+    (c, body: OpeningBalance, key) => postOpeningBalance(c, account.id, body, key),
+    c => [financeKeys.all(c.mode, c.space)],
+    onDone,
+  )
+  const amount = parseSignedMoney(text)
+  return (
+    <form
+      className="mt-2 grid items-start gap-3 rounded-lg bg-surface p-3 sm:grid-cols-[1fr_1fr_auto] motion-safe:animate-in motion-safe:fade-in"
+      onSubmit={e => {
+        e.preventDefault()
+        if (amount !== null) post.mutate({amount, date})
+      }}
+    >
+      <Field label="Valor" htmlFor={`ob-${account.id}`} hint="Negativo se a conta estava no vermelho.">
+        <Input id={`ob-${account.id}`} inputMode="decimal" placeholder="0,00" value={text} onChange={e => setText(e.target.value)} autoFocus/>
+      </Field>
+      <Field label="Em" htmlFor={`obd-${account.id}`}>
+        <Input id={`obd-${account.id}`} type="date" value={date} onChange={e => setDate(e.target.value)}/>
+      </Field>
+      <div className="flex gap-2 sm:pt-6">
+        <Button type="button" variant="outline" size="sm" onClick={onDone}>Fechar</Button>
+        <Button type="submit" variant="brand" size="sm" disabled={amount === null || post.isPending}>Lançar</Button>
+      </div>
+      {post.error ? <p role="alert" className="text-sm text-danger sm:col-span-3">{messageFor(post.error)}</p> : null}
+    </form>
   )
 }
 
@@ -126,10 +170,22 @@ function AccountForm({onDone}: {onDone: () => void}) {
   const [cls, setCls] = useState<AccountClass>("asset")
   const groups = groupsForClass(cls)
   const [group, setGroup] = useState<DREGroup | "">("")
+  const [openingText, setOpeningText] = useState("")
+  const [openingDate, setOpeningDate] = useState(todayIso())
+  const asset = cls === "asset"
+  const openingAmount = asset ? parseSignedMoney(openingText) : null
+  const openingInvalid = asset && openingText.trim() !== "" && openingAmount === null
+  // The opening balance is its own fact with its own intent: when only it fails,
+  // the account exists and a retry must not create a second one.
+  const opening = useFinanceMutation(
+    (c, v: {id: string; body: OpeningBalance}, key) => postOpeningBalance(c, v.id, v.body, key),
+    c => [financeKeys.all(c.mode, c.space)],
+    onDone,
+  )
   const create = useFinanceMutation(
     (c, body: {name: string; class: AccountClass; dre_group?: DREGroup}, key) => createAccount(c, body, key),
     c => [financeKeys.accounts(c.mode, c.space)],
-    onDone,
+    created => (openingAmount ? opening.mutate({id: created.id, body: {amount: openingAmount, date: openingDate}}) : onDone()),
   )
   const chosenGroup = groups.includes(group as DREGroup) ? (group as DREGroup) : groups[0]
   return (
@@ -137,7 +193,7 @@ function AccountForm({onDone}: {onDone: () => void}) {
       className="grid gap-3 border-y border-border py-4 sm:grid-cols-[2fr_1fr_1fr_auto] sm:items-end"
       onSubmit={e => {
         e.preventDefault()
-        if (!name.trim()) return
+        if (!name.trim() || openingInvalid) return
         create.mutate({name: name.trim(), class: cls, ...(chosenGroup ? {dre_group: chosenGroup} : {})})
       }}
     >
@@ -151,12 +207,30 @@ function AccountForm({onDone}: {onDone: () => void}) {
         <Field label="Grupo na DRE" htmlFor="acc-group">
           <Select id="acc-group" value={chosenGroup} onValueChange={v => setGroup(v as DREGroup)} options={groups.map(g => ({value: g, label: DRE_GROUP_LABEL[g]}))}/>
         </Field>
+      ) : asset ? (
+        <div className="grid grid-cols-2 items-start gap-3">
+          <Field label="Saldo inicial" htmlFor="acc-opening" hint="Opcional. Negativo se a conta está no vermelho.">
+            <Input id="acc-opening" inputMode="decimal" placeholder="0,00" value={openingText} onChange={e => setOpeningText(e.target.value)} aria-invalid={openingInvalid}/>
+          </Field>
+          {openingText.trim() !== "" && (
+            <Field label="Em" htmlFor="acc-opening-date">
+              <Input id="acc-opening-date" type="date" value={openingDate} onChange={e => setOpeningDate(e.target.value)}/>
+            </Field>
+          )}
+        </div>
       ) : <div/>}
       <div className="flex gap-2">
         <Button type="button" variant="outline" size="sm" onClick={onDone}>Cancelar</Button>
-        <Button type="submit" variant="brand" size="sm" disabled={create.isPending || !name.trim()}>Criar</Button>
+        <Button type="submit" variant="brand" size="sm" disabled={create.isPending || opening.isPending || create.isSuccess || !name.trim() || openingInvalid}>Criar</Button>
       </div>
       {create.error && <p role="alert" className="text-sm text-danger sm:col-span-4">{messageFor(create.error)}</p>}
+      {opening.error && opening.variables && (
+        <div role="alert" className="flex flex-wrap items-center gap-2 text-sm sm:col-span-4">
+          <p className="text-danger">A conta foi criada, mas o saldo inicial não foi lançado.</p>
+          <Button type="button" size="sm" variant="outline" disabled={opening.isPending} onClick={() => opening.mutate(opening.variables!)}>Tentar de novo</Button>
+          <Button type="button" size="sm" variant="ghost" onClick={onDone}>Deixar sem saldo inicial</Button>
+        </div>
+      )}
     </form>
   )
 }

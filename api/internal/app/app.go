@@ -346,7 +346,7 @@ func newFiber(cfg *config.Config) *fiber.App {
 	// answers 401 and the page reports it as a CORS failure, pointing every
 	// investigation at the wrong layer.
 	corsCfg := cors.Config{
-		AllowMethods: []string{fiber.MethodGet, fiber.MethodPost, fiber.MethodOptions},
+		AllowMethods: []string{fiber.MethodGet, fiber.MethodPost, fiber.MethodPatch, fiber.MethodPut, fiber.MethodOptions},
 		AllowHeaders: []string{
 			fiber.HeaderOrigin,
 			fiber.HeaderContentType,
@@ -357,6 +357,8 @@ func newFiber(cfg *config.Config) *fiber.App {
 			// The console names its own mode in a header (ADR 0011). Omitted, every
 			// console request fails preflight and nowhere else.
 			middleware.ModeHeader,
+			// The finance console names its space the same way (ADR 0025).
+			middleware.SpaceHeader,
 		},
 		// What a script may read cross-origin. Both are acted on: the request id
 		// is what a support conversation is keyed on, and the replay flag tells an
