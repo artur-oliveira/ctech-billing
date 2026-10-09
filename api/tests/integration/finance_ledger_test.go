@@ -473,3 +473,25 @@ func TestTransferMovesBalancesButNotTheReports(t *testing.T) {
 		t.Fatalf("entries after reversal = %+v", es)
 	}
 }
+
+// Two requests with one Idempotency-Key that overlap (a timeout retry while the
+// first is in flight) are ONE transfer: the middleware only replays requests
+// that already finished, so the transaction id itself comes from the key.
+func TestATransferWithOneKeyMovesMoneyOnce(t *testing.T) {
+	r := ledgerFor(t, testDB)
+	sp := jobSpace(t, newSpaceOrgID(), true)
+	seedSpace(t, r, sp)
+	ctx, now, d := context.Background(), time.Now(), brcal.New(2026, time.March, 2)
+	meta := repositories.PostMeta{Actor: "u", IdempotencyKey: "k-transfer"}
+	a, err := r.PostTransfer(ctx, sp, "bank", "cash", 2500, d, meta, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := r.PostTransfer(ctx, sp, "bank", "cash", 2500, d, meta, now)
+	if err != nil || a != b {
+		t.Fatalf("second post with the same key = %q, %v; want %q, nil", b, err, a)
+	}
+	if got := balance(t, r, sp, "cash"); got != 2500 {
+		t.Fatalf("cash = %d, want 2500 (moved once)", got)
+	}
+}

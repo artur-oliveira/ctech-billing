@@ -80,7 +80,10 @@ type transactionCreatedDTO struct {
 }
 
 func (h *financeHandlers) postMeta(c fiber.Ctx, memo string) repositories.PostMeta {
-	return repositories.PostMeta{Origin: "manual", Actor: actorOfUser(c), RequestID: middleware.GetRequestID(c), Memo: memo}
+	return repositories.PostMeta{
+		Origin: "manual", Actor: actorOfUser(c), RequestID: middleware.GetRequestID(c), Memo: memo,
+		IdempotencyKey: c.Get(middleware.IdempotencyHeader),
+	}
 }
 
 // parseDay reads a YYYY-MM-DD request field; the field error names it.

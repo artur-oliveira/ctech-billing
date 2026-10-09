@@ -291,6 +291,9 @@ type PostMeta struct {
 	IdempotencyKey string
 	Memo           string // shown on the statement
 	Ref            string // "bill:{id}" when a bill produced the fact
+	// txID, when set, is the transaction's id instead of a fresh one: a fact
+	// whose id comes from its idempotency key collides with its own duplicate.
+	txID string
 }
 
 type txItem struct {
@@ -380,6 +383,9 @@ func (r *LedgerRepository) planPostAs(sp space.ResolvedSpace, tx finance.Transac
 	checked.Adjusts = tx.Adjusts
 
 	txID := id.New()
+	if meta.txID != "" {
+		txID = meta.txID
+	}
 	items, markerIdx, err := r.postItems(sp, txID, checked, meta, now, entryKind, reversal)
 	if err != nil {
 		return ledgerPlan{}, err
@@ -741,7 +747,24 @@ func (r *LedgerRepository) PostTransfer(ctx context.Context, sp space.ResolvedSp
 	if meta.Memo == "" {
 		meta.Memo = "Transferência"
 	}
-	return r.post(ctx, sp, tx, meta, now)
+	if meta.IdempotencyKey == "" {
+		return r.post(ctx, sp, tx, meta, now)
+	}
+	// Two overlapping requests with one key (a retry while the first is in
+	// flight) build the same header; the second's conditional put fails and it
+	// answers with the transfer that exists, so money moves once.
+	meta.txID = idempotentID(sp, "transfer", meta.IdempotencyKey)
+	plan, err := r.planPost(sp, tx, meta, now)
+	if err != nil {
+		return "", err
+	}
+	if err := r.txs.TransactWrite(ctx, plan.Items); err != nil {
+		if codes := cancellationCodes(err); onlyConditionFailed(err) && len(codes) > 0 && codes[0] == codeConditionFailed {
+			return plan.TxID, nil
+		}
+		return "", classifyPostCancel(err, plan.MarkerIdx)
+	}
+	return plan.TxID, nil
 }
 
 // ReverseManual reverses a transfer or an opening balance, the facts a person
