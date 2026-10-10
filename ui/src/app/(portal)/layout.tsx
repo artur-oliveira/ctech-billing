@@ -11,6 +11,7 @@ import {useTranslation} from "react-i18next"
 import {LanguageSwitcher} from "@/components/LanguageSwitcher"
 import {AccountMenu} from "@/components/AccountMenu"
 import {NoBillingAccount} from "@/components/portal/NoBillingAccount"
+import {PortalSpaceSwitch} from "@/components/portal/PortalSpaceSwitch"
 import {TermsGate} from "@/components/portal/TermsGate"
 import {isNoBillingAccount} from "@/lib/api/client"
 import {getSession, portalKeys} from "@/lib/api/portal"
@@ -37,9 +38,10 @@ const NAV = [
  * unauthenticated request whatever this renders. It exists so somebody whose
  * session ended sees a login instead of four failed panels.
  *
- * There is no organization anywhere on this screen. The reader is a customer
- * of CTech; the tenant is resolved from their session server-side, and a
- * tenant switcher here would be asking them a question they cannot answer.
+ * The tenant is never on this screen: the reader is a customer of CTech, and
+ * the tenant is resolved from their session server-side. What can be on it is
+ * whose bills these are — the person's own, or an organization they own or
+ * administer (ADR 0025) — and only for someone who has such an organization.
  */
 export default function PortalLayout({children}: LayoutProps<"/">) {
   const {t} = useTranslation()
@@ -96,6 +98,13 @@ export default function PortalLayout({children}: LayoutProps<"/">) {
             <LanguageSwitcher className="shrink-0"/>
             {(session || noAccount) && <AccountMenu view="portal"/>}
           </div>
+        </div>
+        {/* Whose bills: its own row, above the tabs it governs. Renders
+            nothing for a person with no organization to pick. Stays with no
+            billing account: an admin with nothing of their own still has the
+            organization's bills to open. */}
+        <div className="mx-auto max-w-2xl px-4">
+          <PortalSpaceSwitch/>
         </div>
         {/* Hidden with no billing account. Three tabs that all lead to the same
             empty state read as three broken screens. */}

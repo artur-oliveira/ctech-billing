@@ -231,7 +231,8 @@ and no scroll-reveal. Every animation has a `motion-reduce` alternative;
 - No timeline, attempt list, charge id or metadata on a portal screen. They are
   not hidden — ADR 0012 keeps them out of the payload.
 - No internal status string anywhere. The server sends a sentence; render it.
-- No tenant or organization on any portal screen.
+- No tenant on any portal screen. An organization appears only as the answer to "whose bills",
+  in the selector row below (see "Portal: whose bills").
 - No uppercase tracked eyebrow above sections, no numbered section markers, no
   gradient text, no glassmorphism, no side-stripe borders.
 
@@ -459,3 +460,31 @@ os 3 lançamentos do arquivo."), then, muted, the one way it drifts (an ignored 
 account; unread lines are out of the sum). Two buttons, 8px apart: **Usar como saldo inicial**
 (brand) and **Agora não** (outline). Nothing is posted without the press; once posted the box
 becomes one status line. Only offered with `finance.configure`.
+
+## Portal: whose bills (plans, 2026-10-10)
+
+An organization's CTech subscription is paid by its owners and admins (ADR 0025, 2026-10-07
+amendment), so the portal gained the one question it never asked: **whose bills are these**.
+
+**Its own row, above the tabs.** "Faturas de [Pessoal ▾]", label in muted ink, the `@aoctech/ui`
+`Select` beside it. At 320px the header is already the mark, the language and the avatar; a select
+squeezed between them cut "Acme Comércio" to "Ac…". In its own row the name reads whole at 1280px
+and ends in an ellipsis only past ~24 characters on a phone. Chosen over the avatar menu, where the
+current answer would be invisible until opened.
+
+**Only for people who have somewhere else to go.** The row renders nothing unless the server lists
+an organization the person owns or administers. Most portal readers never see it.
+
+**Switching is a clean cut.** Every `["portal"]` query is cancelled and reset before the new
+selection is read, and the person lands on Início: an invoice open in one organization does not
+exist in the next, and the last one's figures never flash under the new name.
+
+**Losing access is said once, never silently.** A remembered organization missing from a loaded
+list, or a 404 `space-not-found` from any portal call, puts the person back on Pessoal with one
+toast (`portal-space-lost`). "Organizations unavailable" is not a loss and moves nothing.
+
+**The empty state points up.** With no billing account of their own and an organization to pick,
+the empty state adds "Escolha uma organização acima para ver as faturas dela."
+
+The selection is stored apart from Finanças' space (`ctech-billing-portal-space`): paying an
+organization's invoice and keeping your own budget are two questions.

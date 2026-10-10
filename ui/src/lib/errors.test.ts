@@ -98,9 +98,13 @@ describe("invoiceTitle", () => {
 
 describe("invoice PDF language", () => {
   it("passes ?lang= on both shells", async () => {
-    const get = vi.spyOn(apiClient, "get").mockResolvedValue({data: {url: "u", expires_in: 1}})
+    const request = vi.spyOn(apiClient, "request").mockResolvedValue({data: {url: "u", expires_in: 1}})
     await getInvoicePDF("i1", "en")
-    expect(get).toHaveBeenLastCalledWith("/v1.0/portal/invoices/i1/pdf", {params: {lang: "en"}})
+    expect(request).toHaveBeenLastCalledWith(expect.objectContaining({
+      url: "/v1.0/portal/invoices/i1/pdf", params: {lang: "en"}, headers: {"X-Billing-Space": "personal"},
+    }))
+    request.mockRestore()
+    const get = vi.spyOn(apiClient, "get").mockResolvedValue({data: {url: "u", expires_in: 1}})
     await getConsoleInvoicePDF("i1", "live", "pt-BR")
     expect(get).toHaveBeenLastCalledWith("/v1.0/console/invoices/i1/pdf", expect.objectContaining({params: {lang: "pt-BR"}}))
     get.mockRestore()

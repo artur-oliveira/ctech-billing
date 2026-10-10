@@ -4,6 +4,9 @@ import {Button, EmptyState} from "@aoctech/ui"
 import {Receipt} from "lucide-react"
 import {useTranslation} from "react-i18next"
 
+import {usePortalSpaces} from "@/components/portal/PortalSpaceSwitch"
+import {usePortalSpace} from "@/lib/portal/space"
+
 const ACCOUNTS = process.env.NEXT_PUBLIC_CTECH_CLIENT_URL || "https://accounts.aoctech.app"
 
 /**
@@ -26,11 +29,18 @@ const ACCOUNTS = process.env.NEXT_PUBLIC_CTECH_CLIENT_URL || "https://accounts.a
  */
 export function NoBillingAccount() {
   const {t} = useTranslation()
+  const space = usePortalSpace()
+  const {hasOrganizations} = usePortalSpaces()
+  // Pointed at the switch above when the person's own account is the empty
+  // one and an organization's may not be.
+  const description = hasOrganizations && space.kind === "personal"
+    ? `${t("portal.noAccount.description")} ${t("portal.space.pickOrganization")}`
+    : t("portal.noAccount.description")
   return (
     <EmptyState
       icon={<Receipt/>}
       title={t("portal.noAccount.title")}
-      description={t("portal.noAccount.description")}
+      description={description}
       action={
         <Button
           variant="outline"
