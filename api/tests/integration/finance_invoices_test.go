@@ -35,6 +35,46 @@ func provisionRepos() provision.Repos {
 	}
 }
 
+// An existing tenant created API-only (tenant zero in production) gains its
+// owner from the plan once, and the console then finds it by that person; the
+// same plan again changes nothing; a plan naming a different owner is refused
+// and the stored owner stays.
+func TestProvisioningGivesAnOwnerlessTenantItsOwnerOnce(t *testing.T) {
+	ctx := ctxT(t)
+	repos := provisionRepos()
+	plan := &provision.Plan{Organization: provision.Organization{ID: "org_" + id.New(), DisplayName: "CTech"}}
+	if _, err := provision.Apply(ctx, repos, plan, true, now()); err != nil {
+		t.Fatal(err)
+	}
+
+	owner := "user_" + id.New()
+	plan.Organization.OwnerUserID = owner
+	res, err := provision.Apply(ctx, repos, plan, true, now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !contains(res.Created, "organization owner "+plan.Organization.ID) {
+		t.Fatalf("created = %v", res.Created)
+	}
+	found, err := repos.Organizations.GetByOwner(ctx, owner, true)
+	if err != nil || found.ID != plan.Organization.ID {
+		t.Fatalf("GetByOwner = %v, %v; want %s", found, err, plan.Organization.ID)
+	}
+	res, err = provision.Apply(ctx, repos, plan, true, now())
+	if err != nil || !contains(res.Skipped, "organization owner "+plan.Organization.ID) {
+		t.Fatalf("second apply: %v, skipped = %v", err, res.Skipped)
+	}
+
+	plan.Organization.OwnerUserID = "user_" + id.New()
+	if _, err := provision.Apply(ctx, repos, plan, true, now()); !errors.Is(err, repositories.ErrOrganizationOwned) {
+		t.Fatalf("a diverging owner: err = %v", err)
+	}
+	org, err := repos.Organizations.Get(ctx, plan.Organization.ID, true)
+	if err != nil || org.OwnerUserID != owner {
+		t.Fatalf("stored owner = %q, %v; want %q", org.OwnerUserID, err, owner)
+	}
+}
+
 // An existing tenant (tenant zero is one in every environment) gains its link
 // from the plan once; the same plan again changes nothing; a plan that names a
 // different organization is refused and the stored link stays.

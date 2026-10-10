@@ -87,6 +87,16 @@ func Apply(ctx context.Context, repos Repos, plan *Plan, livemode bool, now time
 				res.created("account organization link", orgID)
 			}
 		}
+		if owner := plan.Organization.OwnerUserID; owner != "" {
+			if existing.OwnerUserID == owner {
+				res.skipped("organization owner", orgID)
+			} else {
+				if err := repos.Organizations.SetOwner(ctx, existing, owner, provisionActor, "", now); err != nil {
+					return res, fmt.Errorf("setting the owner of organization %s: %w", orgID, err)
+				}
+				res.created("organization owner", orgID)
+			}
+		}
 	case errors.Is(err, repositories.ErrNotFound):
 		org := &billing.Organization{
 			ID:                    orgID,

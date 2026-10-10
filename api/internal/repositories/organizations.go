@@ -389,3 +389,61 @@ func describeSchedule(p billing.DunningSchedule) string {
 func (r *OrganizationRepository) tables() Tables {
 	return Tables{Rows: r.base, Audit: r.audit, Events: r.events}
 }
+
+// ErrOrganizationOwned is a tenant plan naming a different owner than the one
+// the tenant already has. Changing who reaches a tenant's console is a
+// deliberate act, not something a seed does.
+var ErrOrganizationOwned = errors.New("organization already has another owner")
+
+// SetOwner gives a tenant with no owner (one provisioned API-only) the person
+// who reaches its console, once, with its audit entry, and indexes it so the
+// console finds the tenant by that person.
+func (r *OrganizationRepository) SetOwner(
+	ctx context.Context,
+	org *billing.Organization,
+	ownerUserID, actor, requestID string,
+	now time.Time,
+) error {
+	if org.OwnerUserID == ownerUserID {
+		return nil
+	}
+	if org.OwnerUserID != "" {
+		return fmt.Errorf("%w: %s is owned by %s", ErrOrganizationOwned, org.ID, org.OwnerUserID)
+	}
+	if actor == "" {
+		return fmt.Errorf("repositories: setting the owner of %s needs an actor", org.ID)
+	}
+	auditItem, err := buildAuditItem(org.ID, org.Livemode, AuditEntry{
+		Entity:    EntityOrganization,
+		EntityID:  org.ID,
+		Action:    billing.AuditOrganizationOwnerSet,
+		Cause:     billing.CauseManual,
+		Actor:     actor,
+		RequestID: requestID,
+		After:     ownerUserID,
+	}, "", "", now)
+	if err != nil {
+		return err
+	}
+	// An API-only tenant stores the owner as an empty string, not as absent.
+	update := r.base.BuildRawUpdateTxItem(
+		TenantPK(org.ID, org.Livemode), new(OrganizationSK()),
+		"SET owner_user_id = :o, lookup_pk = :l, updated_at = :now",
+		"attribute_exists(pk) AND (attribute_not_exists(owner_user_id) OR owner_user_id = :empty)", nil,
+		map[string]types.AttributeValue{
+			":o":     &types.AttributeValueMemberS{Value: ownerUserID},
+			":l":     &types.AttributeValueMemberS{Value: LookupOrganizationOwnerPK(org.Livemode, ownerUserID)},
+			":empty": &types.AttributeValueMemberS{Value: ""},
+			":now":   &types.AttributeValueMemberS{Value: now.UTC().Format(time.RFC3339Nano)},
+		},
+	)
+	err = r.base.TransactWrite(ctx, txItems(update, r.audit.BuildPutTxItemIfAbsent(auditItem)))
+	if onlyConditionFailed(err) {
+		return fmt.Errorf("%w: %s was given an owner while this plan was being applied", ErrOrganizationOwned, org.ID)
+	}
+	if err != nil {
+		return err
+	}
+	org.OwnerUserID = ownerUserID
+	return nil
+}

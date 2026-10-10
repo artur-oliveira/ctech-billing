@@ -17,6 +17,9 @@ const (
 	// AuditAccountOrganizationLinked records a tenant being linked, once, to its
 	// ctech-account organization by the tenant plan.
 	AuditAccountOrganizationLinked = "organization.account_organization_linked"
+	// AuditOrganizationOwnerSet records an API-only tenant gaining, once, the
+	// person who reaches its console, from the tenant plan.
+	AuditOrganizationOwnerSet = "organization.owner_set"
 	// AuditManualPaymentRecorded records an out-of-band receipt, naming who
 	// recorded it. It must never be indistinguishable from an automatic payment.
 	AuditManualPaymentRecorded = "invoice.manual_payment_recorded"
