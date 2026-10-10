@@ -412,6 +412,9 @@ func (s *Invoicer) invoiceOne(ctx context.Context, sub *billing.Subscription, ac
 	if len(items) == 0 {
 		return fmt.Errorf("%w: subscription %s has no items", billing.ErrInvalidSubscriptionItem, sub.ID)
 	}
+	if sub.CancelAtPeriodEnd {
+		return s.endAtBoundary(ctx, sub, items, actor, now)
+	}
 
 	period := billing.PeriodToInvoice(sub)
 	genErr := error(nil)
@@ -432,4 +435,22 @@ func (s *Invoicer) invoiceOne(ctx context.Context, sub *billing.Subscription, ac
 		}
 	}
 	return genErr
+}
+
+// endAtBoundary executes a cancellation scheduled for the period end. In
+// arrears the period that just ended was served and is billed now; in advance
+// the period that would start is not billed. Re-runnable: an already generated
+// period and an already canceled subscription are not failures.
+func (s *Invoicer) endAtBoundary(ctx context.Context, sub *billing.Subscription, items []billing.SubscriptionItem, actor string, now time.Time) error {
+	if sub.Timing == billing.BillArrears {
+		if _, err := s.GenerateForPeriod(ctx, sub, items, billing.PeriodToInvoice(sub), actor, now); err != nil &&
+			!errors.Is(err, repositories.ErrAlreadyGenerated) {
+			return err
+		}
+	}
+	if _, err := s.subs.Transition(ctx, sub, billing.SubscriptionCanceled, billing.CauseScheduler, actor, "", now); err != nil &&
+		!errors.Is(err, repositories.ErrConcurrentModification) && !errors.Is(err, billing.ErrInvalidTransition) {
+		return err
+	}
+	return nil
 }
