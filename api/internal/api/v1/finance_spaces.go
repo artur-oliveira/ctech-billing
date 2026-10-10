@@ -8,14 +8,14 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 
-	"gopkg.aoctech.app/billing/api/internal/accountclient"
+	"gopkg.aoctech.app/api-commons/accountorgs"
 	"gopkg.aoctech.app/billing/api/internal/middleware"
 	"gopkg.aoctech.app/billing/api/internal/space"
 )
 
 // spaceLister is the one question the switcher asks ctech-account.
 type spaceLister interface {
-	Organizations(ctx context.Context, userID string) ([]accountclient.Organization, error)
+	Organizations(ctx context.Context, userID string) ([]accountorgs.Organization, error)
 }
 
 type spaceDTO struct {

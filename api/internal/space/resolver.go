@@ -5,17 +5,18 @@ import (
 	"encoding/json"
 	"log/slog"
 
+	"gopkg.aoctech.app/api-commons/accountorgs"
 	"gopkg.aoctech.app/api-commons/cache"
 )
 
-// MembershipSource is the one question the resolver asks ctech-account.
-// A refusal is ("", "", false, nil) — "not a member" is an answer, and it
+// MembershipSource is the one question the resolver asks ctech-account
+// (accountorgs.Client satisfies it). A refusal is (accountorgs.Membership{}, nil) — "not a member" is an answer, and it
 // carries no kind (ctech-account never tells a non-member which ids are
 // spaces). kind is the workspace's, raw: "" when ctech-account did not send
 // one. Anything that stops us from knowing is an error, and the resolver
 // refuses (ADR 0025 rule 7).
 type MembershipSource interface {
-	Membership(ctx context.Context, organizationID, userID string) (kind, role string, member bool, err error)
+	Membership(ctx context.Context, organizationID, userID string) (accountorgs.Membership, error)
 }
 
 // MembershipTTLSeconds is how long an answer — positive or negative — is
@@ -92,14 +93,14 @@ func (r *Resolver) membership(ctx context.Context, orgID, userID string) (cached
 	if r.src == nil {
 		return cachedMembership{}, ErrSpaceUnavailable
 	}
-	kind, role, member, err := r.src.Membership(ctx, orgID, userID)
+	am, err := r.src.Membership(ctx, orgID, userID)
 	if err != nil {
 		// Not cached: the answer would be "we do not know", and caching it turns
 		// a blip into a minute of refusals for people who are entitled.
 		slog.Warn("space: membership lookup failed", "organization", orgID, "error", err)
 		return cachedMembership{}, ErrSpaceUnavailable
 	}
-	m := cachedMembership{Member: member, Role: role, Kind: kind}
+	m := cachedMembership{Member: am.Member, Role: am.Role, Kind: am.Kind}
 	if r.cache != nil {
 		if raw, merr := json.Marshal(m); merr == nil {
 			// Best effort: a cache that cannot be written costs a round trip,

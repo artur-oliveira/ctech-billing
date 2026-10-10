@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
+	"gopkg.aoctech.app/api-commons/accountorgs"
 	"gopkg.aoctech.app/api-commons/cache"
 
 	"gopkg.aoctech.app/billing/api/internal/space"
@@ -26,13 +27,13 @@ type members struct {
 }
 
 // Membership answers organizations ("" kind, read as organization).
-func (f *members) Membership(_ context.Context, org, user string) (string, string, bool, error) {
+func (f *members) Membership(_ context.Context, org, user string) (accountorgs.Membership, error) {
 	f.calls++
 	if f.err != nil {
-		return "", "", false, f.err
+		return accountorgs.Membership{}, f.err
 	}
 	role, ok := f.m[org+"|"+user]
-	return "", role, ok, nil
+	return accountorgs.Membership{Member: ok, Role: role}, nil
 }
 
 // spaceApp mounts the real chain: claims -> user scope -> ResolveSpace ->

@@ -15,9 +15,9 @@ import (
 	"github.com/gofiber/fiber/v3/middleware/cors"
 	"github.com/gofiber/fiber/v3/middleware/logger"
 	"github.com/gofiber/fiber/v3/middleware/recover"
+	"gopkg.aoctech.app/api-commons/accountorgs"
 	"gopkg.aoctech.app/api-commons/cache"
 
-	"gopkg.aoctech.app/billing/api/internal/accountclient"
 	v1 "gopkg.aoctech.app/billing/api/internal/api/v1"
 	"gopkg.aoctech.app/billing/api/internal/config"
 	"gopkg.aoctech.app/billing/api/internal/email"
@@ -119,11 +119,11 @@ func Build(ctx context.Context, cfg *config.Config, clock func() time.Time) (*fi
 	oauthresource.Register(app, cfg.ServiceAudience, cfg.CtechIssuerURL)
 
 	// One ctech-account client, one token cache, for the resolver and the
-	// switcher. accountclient.New returns a typed nil when the credential is not
-	// configured; that is safe in both places: a nil *Client answers every call
+	// switcher. accountorgs.New returns a typed nil when the credential is not
+	// configured; that is safe in both places: a nil *accountorgs.Client answers every call
 	// with an error, which the resolver reads as "unavailable" and the switcher
 	// as "organizations unavailable".
-	account := accountclient.New(accountclient.Config{
+	account := accountorgs.New(accountorgs.Config{
 		BaseURL: cfg.AccountBaseURL, TokenURL: cfg.AccountTokenURL,
 		ClientID: cfg.AccountClientID, ClientSecret: cfg.AccountClientSecret, Cache: cacheBackend,
 	})
@@ -151,8 +151,8 @@ func Build(ctx context.Context, cfg *config.Config, clock func() time.Time) (*fi
 		Documents:  documents,
 		Collector:  collector,
 		Links:      links,
-		// accountclient.New returns a typed nil when the credential is not
-		// configured. That is deliberate and safe: a nil *Client answers
+		// accountorgs.New returns a typed nil when the credential is not
+		// configured. That is deliberate and safe: a nil *accountorgs.Client answers
 		// Membership with an error, which the resolver reads as "unavailable".
 		FinanceBills:    services.NewFinanceBills(billRepo),
 		FinanceInvoices: finance,

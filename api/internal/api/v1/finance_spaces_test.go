@@ -11,18 +11,18 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 
-	"gopkg.aoctech.app/billing/api/internal/accountclient"
+	"gopkg.aoctech.app/api-commons/accountorgs"
 	"gopkg.aoctech.app/billing/api/internal/middleware"
 )
 
 // fakeLister answers per user, as ctech-account does: each person's own list.
 type fakeLister struct {
-	orgs  map[string][]accountclient.Organization
+	orgs  map[string][]accountorgs.Organization
 	err   error
 	asked []string
 }
 
-func (f *fakeLister) Organizations(_ context.Context, userID string) ([]accountclient.Organization, error) {
+func (f *fakeLister) Organizations(_ context.Context, userID string) ([]accountorgs.Organization, error) {
 	f.asked = append(f.asked, userID)
 	return f.orgs[userID], f.err
 }
@@ -66,7 +66,7 @@ func getSpaces(t *testing.T, app *fiber.App) (int, spacesBody) {
 var userClaims = &middleware.Claims{Sub: "alice", SID: "s", Scope: middleware.ScopeFinanceRead}
 
 func TestSpacesListPessoalThenPersonalWorkspacesThenOrganizations(t *testing.T) {
-	l := &fakeLister{orgs: map[string][]accountclient.Organization{"alice": {
+	l := &fakeLister{orgs: map[string][]accountorgs.Organization{"alice": {
 		{ID: "0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b", DisplayName: "acme", Role: "admin", Kind: "organization"},
 		{ID: "0190a1b2-c3d4-7e5f-8a9b-dddddddddddd", DisplayName: "Viagem", Role: "viewer", Kind: "personal"},
 		{ID: "0190a1b2-c3d4-7e5f-8a9b-ffffffffffff", DisplayName: "Beta", Role: "viewer"}, // no kind: an organization
@@ -111,7 +111,7 @@ func TestSpacesListPessoalThenPersonalWorkspacesThenOrganizations(t *testing.T) 
 // whatever the request carries.
 func TestTheSpacesListHoldsOnlyTheTokensOwnWorkspaces(t *testing.T) {
 	bobs := "0190a1b2-c3d4-7e5f-8a9b-bbbbbbbbbbbb"
-	l := &fakeLister{orgs: map[string][]accountclient.Organization{
+	l := &fakeLister{orgs: map[string][]accountorgs.Organization{
 		"alice": {{ID: "0190a1b2-c3d4-7e5f-8a9b-aaaaaaaaaaaa", DisplayName: "Casa", Role: "owner", Kind: "personal"}},
 		"bob":   {{ID: bobs, DisplayName: "Bob", Role: "owner", Kind: "personal"}},
 	}}
