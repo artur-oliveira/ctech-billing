@@ -67,7 +67,9 @@ type Organization struct {
 	DisplayName string `json:"display_name"`
 	// OwnerUserID is the ctech-account subject who reaches this tenant's console.
 	// Optional: a tenant with no owner is API-only, which is the correct shape
-	// for one that only ever receives M2M calls.
+	// for one that only ever receives M2M calls. An existing tenant with none
+	// gets it once; a plan naming a different one than the tenant holds is
+	// refused rather than applied.
 	OwnerUserID string `json:"owner_user_id,omitempty"`
 	// PayoutStatus is the charge gate (ADR 0005). Absent means `not_configured`,
 	// which is the only safe default — an organization that could collect money
