@@ -437,6 +437,7 @@ func TestTheSettingDoesNotTouchTheIssuer(t *testing.T) {
 	f.books.optedOut = map[string]bool{issuerPK: true}
 	wantResult(t, f.rule.Paid(context.Background(), f.inv, "a", "r", at), SideIssuer, PostingPosted, "")
 }
+
 // An organization's invoice is nobody's personal expense, even if a user id
 // was stored on it somehow.
 func TestAnOrganizationInvoiceIsNobodysPersonalExpense(t *testing.T) {
