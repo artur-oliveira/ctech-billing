@@ -851,3 +851,42 @@ func (r *BillRepository) ForRecurrence(ctx context.Context, sp space.ResolvedSpa
 	}
 	return out, nil
 }
+
+// MadeAfter returns every bill a recurrence made for a nominal date after end,
+// oldest first: one range Query on its OCCURRENCE# lock rows inside the space
+// (all of them, paginated), then one read per bill. It is what ending the
+// recurrence cancels (UX batch 5): the job materialises at most two months
+// ahead, so these are few. Another space's recurrence id finds nothing here.
+func (r *BillRepository) MadeAfter(ctx context.Context, sp space.ResolvedSpace, recurrenceID string, end brcal.Date) ([]OccurrenceBill, error) {
+	if err := sp.Require(space.Read); err != nil {
+		return nil, err
+	}
+	prefix := "OCCURRENCE#" + recurrenceID + "#"
+	items, err := r.ledger.queryRange(ctx, r.bills, sp.PK(), prefix+end.AddDays(1).String(), prefix+"9999-12-31")
+	if err != nil {
+		return nil, err
+	}
+	locks, err := DecodeItems[struct {
+		SK     string `dynamodbav:"sk"`
+		BillID string `dynamodbav:"bill_id"`
+	}](items)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]OccurrenceBill, 0, len(locks))
+	for _, l := range locks {
+		nominal, err := brcal.Parse(strings.TrimPrefix(l.SK, prefix))
+		if err != nil {
+			return nil, fmt.Errorf("malformed occurrence lock %q: %w", l.SK, err)
+		}
+		b, err := r.get(ctx, sp, l.BillID)
+		if errors.Is(err, ErrNotFound) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, OccurrenceBill{Nominal: nominal, Bill: *b})
+	}
+	return out, nil
+}

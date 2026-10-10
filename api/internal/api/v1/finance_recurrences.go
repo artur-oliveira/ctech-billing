@@ -196,15 +196,33 @@ func (h *financeHandlers) patchRecurrence(c fiber.Ctx) error {
 	if err := h.recs.Update(c.Context(), sp, c.Params("id"), edit, h.now()); err != nil {
 		return fail(c, err)
 	}
+	// Ending and archiving cancels the unpaid bills made for dates after the
+	// end (UX batch 5), after the end and the archive are written. A failure
+	// half-way answers an error with the rule already archived; the same PATCH
+	// again finishes the job (FinanceBills.EndRecurrence).
+	out := patchRecurrenceResponse{CanceledBillIDs: []string{}}
+	if end, ok := req.End.Get(); ok && req.Archive {
+		canceled, err := h.bills.EndRecurrence(c.Context(), sp, c.Params("id"), end, actorOfUser(c), middleware.GetRequestID(c), h.now())
+		if err != nil {
+			return fail(c, err)
+		}
+		out.CanceledBillIDs = canceled
+	}
 	rec, err := h.recs.Get(c.Context(), sp, c.Params("id"))
 	if err != nil {
 		return fail(c, err)
 	}
-	dto, err := newRecurrenceDTO(*rec)
-	if err != nil {
+	if out.recurrenceDTO, err = newRecurrenceDTO(*rec); err != nil {
 		return fail(c, err)
 	}
-	return c.JSON(dto)
+	return c.JSON(out)
+}
+
+// patchRecurrenceResponse is the recurrence as edited, plus the bills an end
+// with archive cancelled (empty otherwise).
+type patchRecurrenceResponse struct {
+	recurrenceDTO
+	CanceledBillIDs []string `json:"canceled_bill_ids"`
 }
 
 func (h *financeHandlers) archiveRecurrence(c fiber.Ctx) error {

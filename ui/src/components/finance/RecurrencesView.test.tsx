@@ -312,10 +312,10 @@ describe("F4 — a recurrence's detail, in place (UX batch 3)", () => {
   })
 })
 
-// Review fix: ending a recurrence keeps the bills it already made after the new
-// end (the owner's decision); the confirmation says which, and that an
-// auto-settling one is still paid on its date.
-describe("F4 — ending a recurrence says which bills keep going", () => {
+// UX batch 5 (the owner's decision): ending a recurrence CANCELS the unpaid
+// bills it already made after the new end; a paid one stays. The confirmation
+// says which, before anything is sent.
+describe("F4 — ending a recurrence says which bills it cancels", () => {
   beforeEach(() => {
     vi.useFakeTimers({toFake: ["Date"]})
     vi.setSystemTime(new Date(2026, 9, 9, 9, 0)) // 9 October 2026
@@ -336,25 +336,30 @@ describe("F4 — ending a recurrence says which bills keep going", () => {
     return dialog
   }
 
-  const made = (nominal: string, state: "paid" | "forecast", auto: boolean) =>
+  const made = (nominal: string, state: "paid" | "forecast" | "overdue" | "skipped", auto = false) =>
     ({nominal, due: nominal, bill_id: `b-${nominal}`, amount: 180000, state, auto_settle: auto})
 
-  it("lists the bills already made after the new end, and that auto-pay still pays them", async () => {
-    const dialog = await confirmEndToday([made("2026-09-10", "paid", true), made("2026-10-10", "forecast", true), made("2026-11-10", "forecast", false)])
-    expect(await within(dialog).findByText("2 lançamentos já gerados continuam: 10/10 e 10/11.")).toBeInTheDocument()
-    expect(within(dialog).getByText("Os que estão em pagamento automático ainda serão pagos nas datas deles.")).toBeInTheDocument()
-    expect(within(dialog).getByRole("link", {name: "Ver em A pagar"})).toHaveAttribute("href", "/console/finance/bills?direction=payable")
-  })
-
-  it("says nothing about auto-pay when none of them has it, and nothing at all when none is left", async () => {
-    const dialog = await confirmEndToday([made("2026-10-10", "forecast", false)])
-    expect(await within(dialog).findByText("1 lançamento já gerado continua: 10/10.")).toBeInTheDocument()
+  it("names the forecast bills after the new end that will be cancelled", async () => {
+    const dialog = await confirmEndToday([made("2026-09-10", "paid"), made("2026-10-10", "forecast", true), made("2026-11-10", "forecast")])
+    expect(await within(dialog).findByText("Os 2 lançamentos previstos depois do fim (10/10 e 10/11) serão cancelados.")).toBeInTheDocument()
+    // Cancelled, so auto-pay no longer pays them: the old promise is gone.
     expect(within(dialog).queryByText(/pagamento automático/)).toBeNull()
   })
 
+  it("says it in the singular for one", async () => {
+    const dialog = await confirmEndToday([made("2026-10-10", "forecast")])
+    expect(await within(dialog).findByText("O lançamento previsto depois do fim (10/10) será cancelado.")).toBeInTheDocument()
+  })
+
+  it("says that a paid one after the end stays, and leaves a skipped one out", async () => {
+    const dialog = await confirmEndToday([made("2026-10-10", "skipped"), made("2026-11-10", "forecast"), made("2026-12-10", "paid")])
+    expect(await within(dialog).findByText("O lançamento previsto depois do fim (10/11) será cancelado.")).toBeInTheDocument()
+    expect(within(dialog).getByText("O já pago (10/12) continua: o pagamento está no extrato.")).toBeInTheDocument()
+  })
+
   it("adds nothing when no bill was made after the new end", async () => {
-    const dialog = await confirmEndToday([made("2026-09-10", "paid", false)])
+    const dialog = await confirmEndToday([made("2026-09-10", "paid")])
     await act(() => new Promise(r => setTimeout(r, 50)))
-    expect(within(dialog).queryByText(/já gerad/)).toBeNull()
+    expect(within(dialog).queryByText(/cancelad|já pago/)).toBeNull()
   })
 })

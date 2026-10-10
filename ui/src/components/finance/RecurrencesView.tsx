@@ -38,6 +38,10 @@ const adjustOptions = (): {value: Adjust; label: string}[] => [
   {value: "none", label: t("bills.rec.adjust.none")},
 ]
 const touched = (c: FinanceCtx) => [financeKeys.recurrences(c.mode, c.space), [...financeKeys.all(c.mode, c.space), "projection"]]
+// Ending and archiving also cancels bills and reverses their recognition (UX
+// batch 5): Agenda, balances, statements and reports all move, so the whole space.
+const touchedByEdit = (c: FinanceCtx, _: unknown, body: RecurrencePatch) =>
+  body.archive ? [financeKeys.all(c.mode, c.space)] : touched(c)
 
 function ruleOf(r: Recurrence): string {
   const model = fromExpression(r.expression)
@@ -199,26 +203,25 @@ function RecurrenceDetail({id, rec}: {id: string; rec: Recurrence}) {
 }
 
 /**
- * Ending a recurrence keeps the bills it already made after the new end (they
- * exist and can be edited or cancelled one by one); the confirmation says which,
- * and that one set to auto-settle is still paid on its date by the daily job.
+ * Ending and archiving a recurrence cancels the bills it already made for dates
+ * after the new end that are not paid (UX batch 5, spec § 3.5); a paid one stays,
+ * since the money moved and the statement shows it. The confirmation names both
+ * before anything is sent, from the recurrence's own history (the latest bills
+ * it made, which are the ones after any end).
  */
-function StillGoing({rec, end}: {rec: Recurrence; end: string}) {
+function EndCancels({rec, end}: {rec: Recurrence; end: string}) {
   const {t} = useTranslation()
   const ctx = useFinanceCtx()
   const q = useQuery({queryKey: financeKeys.recurrenceOccurrences(ctx.mode, ctx.space, rec.id), queryFn: () => getRecurrenceOccurrences(ctx, rec.id)})
-  const going = (q.data?.history ?? []).filter(o => o.nominal > end && (o.state === "forecast" || o.state === "overdue"))
-  if (going.length === 0) return null
-  const dates = new Intl.ListFormat(currentLocale(), {type: "conjunction"}).format(going.map(o => dayMonth(o.due)))
+  const after = (q.data?.history ?? []).filter(o => o.nominal > end)
+  const canceled = after.filter(o => o.state === "forecast" || o.state === "overdue")
+  const paid = after.filter(o => o.state === "paid")
+  if (canceled.length === 0 && paid.length === 0) return null
+  const list = (xs: typeof after) => new Intl.ListFormat(currentLocale(), {type: "conjunction"}).format(xs.map(o => dayMonth(o.due)))
   return (
-    <div className="w-full space-y-1 text-muted-foreground">
-      <p>
-        {t("bills.rec.stillGoing", {count: going.length, dates})}{" "}
-        <Link href={`/console/finance/bills?direction=${rec.direction}`} className="inline-flex items-center text-foreground underline underline-offset-4 hover:text-brand-700 touch-target">
-          {t(`bills.rec.openBill.${rec.direction}`)}
-        </Link>
-      </p>
-      {going.some(o => o.auto_settle) && <p>{t(`bills.rec.stillAuto.${rec.direction}`)}</p>}
+    <div className="w-full space-y-1">
+      {canceled.length > 0 && <p className="text-foreground">{t("bills.rec.endCancels", {count: canceled.length, dates: list(canceled)})}</p>}
+      {paid.length > 0 && <p className="text-muted-foreground">{t("bills.rec.endKeepsPaid", {count: paid.length, dates: list(paid)})}</p>}
     </div>
   )
 }
@@ -295,7 +298,7 @@ function RecurrencePanel({editing, accounts, onDone}: {editing?: Recurrence; acc
   // otherwise its error is shown as the general message.
   const fe = useFieldErrors(["description", "amount", "category_id", "account_id", ...(editing ? [] : ["start"]), ...(editing || more ? ["end"] : [])])
   const create = useFinanceMutation((c, body: NewRecurrence, key) => createRecurrence(c, body, key), touched, onDone, fe.set)
-  const patch = useFinanceMutation((c, body: RecurrencePatch, key) => patchRecurrence(c, editing!.id, body, key), touched, onDone, e => {
+  const patch = useFinanceMutation((c, body: RecurrencePatch, key) => patchRecurrence(c, editing!.id, body, key), touchedByEdit, onDone, e => {
     if (problemCode(e) === "recurrence_would_end" && lastPatch.current.end) {
       setEndsAt(lastPatch.current.end)
       setConfirmEnd(true)
@@ -438,7 +441,7 @@ function RecurrencePanel({editing, accounts, onDone}: {editing?: Recurrence; acc
         {confirmEnd && editing && (
           <div className="flex flex-wrap items-center gap-2 rounded-lg bg-surface p-3 text-sm motion-safe:animate-in motion-safe:fade-in">
             <p role="alert" className="w-full text-foreground">{t("bills.rec.endsConfirm")}</p>
-            <StillGoing rec={editing} end={endsAt ?? ""}/>
+            <EndCancels rec={editing} end={endsAt ?? ""}/>
             <Button type="button" size="sm" variant="outline" onClick={() => setConfirmEnd(false)}>{t("bills.rec.back")}</Button>
             <Button type="button" size="sm" variant="danger" disabled={patch.isPending}
               onClick={() => patch.mutate({...lastPatch.current, archive: true})}>{t("bills.rec.endAndArchive")}</Button>

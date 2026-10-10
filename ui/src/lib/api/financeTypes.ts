@@ -191,7 +191,9 @@ export interface RecurrencePatch {
   /** "" removes the end (sent as null): the recurrence has no end again. So does "" on description. */
   end?: IsoDate | ""
   /** Confirms an end that leaves nothing to come: saved and archived in one write.
-   *  Without it the API answers 422 `recurrence_would_end` and saves nothing. */
+   *  Without it the API answers 422 `recurrence_would_end` and saves nothing. With it
+   *  the API then cancels the unpaid bills made after the end (UX batch 5) and
+   *  answers their ids in `canceled_bill_ids`. */
   archive?: boolean
 }
 

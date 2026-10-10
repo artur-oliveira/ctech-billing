@@ -104,11 +104,17 @@ func TestAnEndThatLeavesNothingToComeIsRefusedUnlessTheRequestArchives(t *testin
 	if !saved.Archived || saved.End != "2026-03-10" {
 		t.Fatalf("PATCH with archive = %+v, want archived with the end saved", saved)
 	}
+	// UX batch 5: the bills on or before the end stay; the unpaid one after it
+	// (10/04) is cancelled (finance_recurrence_end_test.go).
 	for nominal, billID := range bills {
 		var b struct{ Status string }
 		f.must(t, 200, "GET", "/bills/"+billID, "", &b)
-		if b.Status != "forecast" {
-			t.Errorf("bill of %s is %q after the recurrence ended, want it untouched", nominal, b.Status)
+		want := "forecast"
+		if nominal == "2026-04-10" {
+			want = "canceled"
+		}
+		if b.Status != want {
+			t.Errorf("bill of %s is %q after the recurrence ended, want %q", nominal, b.Status, want)
 		}
 	}
 }

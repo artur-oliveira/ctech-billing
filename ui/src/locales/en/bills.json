@@ -163,12 +163,10 @@
     "endsConfirm": "This ends the recurrence; it will be archived.",
     "back": "Back",
     "endAndArchive": "End and archive",
-    "stillGoing_one": "{{count}} bill already made stays: {{dates}}.",
-    "stillGoing_other": "{{count}} bills already made stay: {{dates}}.",
-    "stillAuto": {
-      "payable": "Those set to pay automatically will still be paid on their dates.",
-      "receivable": "Those set to receive automatically will still be received on their dates."
-    }
+    "endCancels_one": "The bill due after the end ({{dates}}) will be canceled.",
+    "endCancels_other": "The {{count}} bills due after the end ({{dates}}) will be canceled.",
+    "endKeepsPaid_one": "The one already paid ({{dates}}) stays: the payment is in the statement.",
+    "endKeepsPaid_other": "The {{count}} already paid ({{dates}}) stay: the payments are in the statement."
   },
   "editor": {
     "repeat": "Repeat",
