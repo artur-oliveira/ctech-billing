@@ -878,6 +878,19 @@ executed by the sweep, so a subscription cancelled at period end renewed and bil
 boundary; (4) `ErrUserAlreadyCustomer` was a 500 — now 409 `user_already_customer`; (5) scoped credentials may
 still write subscriptions for other owners (only reads and reports are scoped).
 
+**Plans — deploy step 3 (Plano), 2026-10-10** ([spec](docs/specs/2026-10-10-plans-design.md),
+[plan](docs/plans/2026-10-10-plans-2-plan-screen.md)). Shipped: `/finance/plans` (Pessoal only) with usage from
+ctech-account's counts, the plan cards, subscribe/change through the existing `Subscriber` and the invoice's
+`checkout_url`, the over-limit banner, the on-demand projection and the Basic suggestion; the
+`/v1.0/console/finance/plan` routes (always tenant zero, live); a plan change **scheduled** for the end of the
+paid period (advance → Sob demanda), applied by the sweep with the renewal in one transaction.
+**Found on the way:** (1) the projection reads billing's own levels, because per-space counts cannot give
+distinct people; (2) a scheduled cancellation is not undone by choosing again (no route undoes it); (3) Basic →
+Sob demanda no longer bills one period twice: it is scheduled for the period end; Sob demanda → Basic/Pro stays
+immediate and the open on-demand peak up to the switch is not billed (existing change rules); (4) a customer
+made by hand under another external ref blocks the plan (`customer_ref_mismatch`); (5) choosing the current
+plan again while its first invoice is unpaid answers the state, never a 409.
+
 **Finanças is its own area (2026-10-10).** Owner's decision: `/finance/*` beside the portal and the console,
 same app and API; the console is invoicing only; the avatar switches Portal / Console (operators) /
 Finanças; old `/console/finance/*` links redirect. Specs and ADR 0027 amended.

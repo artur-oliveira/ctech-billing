@@ -1,6 +1,6 @@
 # Spec — Plans: CTech Finanças plans, level metering, organization customers
 
-Status: **Deploy step 1 implemented (2026-10-10)** · 2026-10-10 ·
+Status: **Deploy steps 1 and 3 implemented (2026-10-10)** · 2026-10-10 ·
 Builds on: [`2026-10-09-shared-spaces-design.md`](2026-10-09-shared-spaces-design.md) § 7 (the deferred plan table),
 [ADR 0008](../adr/0008-opaque-metadata.md) (price metadata is opaque), [ADR 0025](../adr/0025-spaces-personal-and-organization.md)
 (the portal selector amendment), [ADR 0027](../adr/0027-personal-workspaces-in-account.md) ·
@@ -192,6 +192,12 @@ invoiced is corrected by a credit note, as today.
 - **Sob demanda above Basic**: when the month's projected on-demand amount passes R$ 19,90, a suggestion to switch.
   Never automatic.
 - **Phone**: its own layout — usage first, plan cards stacked, one primary action.
+
+**As built (deploy step 3):** `GET /v1.0/console/finance/plan`, `POST /plan` and `POST /plan/cancel`, Pessoal
+only (`404 plan_personal_only` elsewhere), always against tenant zero in live mode whatever the console's mode
+(the screen says so in test mode). A paid plan whose first invoice is still open answers `409
+plan_payment_pending` with that invoice's link when another plan is chosen. *Voltar ao Free* is a cancellation
+at the period end.
 
 ## 8. Organization customers
 
