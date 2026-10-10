@@ -91,6 +91,10 @@ type Credential struct {
 	// OwnerKey scopes the credential to one owner's products (owner_key of a
 	// product in this plan). An existing credential with none gets it once.
 	OwnerKey string `json:"owner_key,omitempty"`
+	// Test admits the credential in test mode. A client id resolves to one row,
+	// so a credential lives in one mode; absent, it is live, and only the live
+	// run creates it — the test run, which the deploy runs first, leaves it.
+	Test bool `json:"test,omitempty"`
 }
 
 // Product is a thing sold. OwnerKey is what routes its events (ADR 0016) and is

@@ -143,6 +143,9 @@ WEBHOOK_SECRET_DFE=… \
 Until it runs there is no organization, no credential and no catalogue, so every M2M call resolves
 to a tenant that does not exist.
 
+A credential lives in one mode (its client id resolves to one row). Only the **live** run creates a new
+one; the test run, which goes first, leaves it — unless the plan marks it `"test": true`.
+
 **Run both modes in every environment, dev included.** The portal resolves its customer with
 livemode hardcoded to `true` (`middleware.ResolvePortalIdentity`) — test mode exists so an
 integration cannot touch real data, and a consumer does not integrate — so a dev environment seeded
