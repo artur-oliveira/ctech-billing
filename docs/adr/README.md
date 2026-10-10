@@ -36,6 +36,7 @@ re-litigate settled questions. Every ADR here is already decided — the analysi
 | [0025](0025-spaces-personal-and-organization.md) | Spaces: a personal space per user, and a space selector that is never authority | extends 0003 and 0011 (2026-10-07) |
 | [0026](0026-finance-retention-by-purge.md) | Finance records live as long as their space and leave by explicit purge | extends 0009 (2026-10-07) |
 | [0027](0027-personal-workspaces-in-account.md) | Shared and additional personal spaces are ctech-account workspaces of kind `personal`; verbs by kind and role | extends 0025 (2026-10-09) |
+| [0028](0028-console-tenant-from-membership.md) | The console's tenant comes from the selected organization's membership, not from an owner | supersedes 0011 in part (2026-10-10) |
 
 ## Status of the record itself
 

@@ -1,6 +1,7 @@
 # ADR 0011 — Console sessions: tenant from the owner, mode from the request
 
-Status: Accepted (2026-08-15) · Extends [ADR 0003](0003-tenant-and-livemode-partition-key.md)
+Status: Accepted (2026-08-15) · Extends [ADR 0003](0003-tenant-and-livemode-partition-key.md) · **Superseded in part by [ADR 0028](0028-console-tenant-from-membership.md) (2026-10-10)**: the tenant comes from
+the selected organization's membership, not from the owner; the mode from the request stands
 · Precondition for the console screens (assessment § 15, C1–C9 and C17)
 
 ## Context
