@@ -500,3 +500,25 @@ console's density, width and header grammar — the mark (*CTech Finanças*), th
 side so "Pessoal · Teste" reads as one answer, then the language and the avatar — and its own sections:
 the column, the tablet picker and the bottom bar, unchanged. The console is invoicing only, and someone
 with no organization who opens it lands on `/finance`. Old `/console/finance/*` links redirect, query kept.
+
+## Finance → Plano (plans, 2026-10-10)
+
+`/finance/plans`, in *Pessoal* only (the plan is the person's): the nav lists it there and nowhere
+else, and opened elsewhere it is an empty state with **Abrir Pessoal**.
+
+**Usage first.** "{n} de {limite} espaços", then one hairline row per owned space with its people
+(pending invitations counted and said: "inclui 1 convite pendente"). It is what the person came to
+check and, on a phone, the only thing above the fold. Unknown numbers say so ("Não foi possível ver o
+uso agora.") and never raise the banner.
+
+**Over the limit is a warning `Alert`, never a removal.** The copy names the numbers and the plan and
+says nothing was removed.
+
+**Cards, not a table.** One `<article>` per plan from the catalogue (never hard-coded prices), Free
+first, then by price, Sob demanda last; four columns on a desk, two on a tablet, stacked on a phone.
+The current plan is a brand ring **and** a "Seu plano" badge — shape and word, never colour alone.
+Sob demanda writes its prices as "R$ 4,90 por espaço além do 1º" and its limits as "Espaços
+ilimitados". **One primary action**: the plan right after the current one is brand; the rest are
+outline. The Basic suggestion, when Sob demanda is projected above it, sits inside the current card.
+**Candidate for `@aoctech/ui`**: the plan card (title, price block, facts, one action) — no pricing
+card exists in the shared package or in ctech-ui.
