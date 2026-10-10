@@ -232,3 +232,40 @@ What the DF-e needs (its spec § 1):
 - Finanças plans for organizations.
 - Posting organization CTech invoices into the organization's Finanças space.
 - Deleting a space (shared-spaces spec § 5.4).
+
+## Amendment, 2026-10-10 — planning
+
+Recorded while writing the implementation plans
+([`plans-1-backend`](../plans/2026-10-10-plans-1-backend.md), [`plans-2-plan-screen`](../plans/2026-10-10-plans-2-plan-screen.md)).
+
+1. **A level never expires while it is the latest.** Each report still has the 13-month TTL (§ 6.2), and each
+   `(customer_ref, meter)` also keeps one item **without TTL**, `LEVEL_LATEST#{customer_ref}#{meter}`, holding the newest
+   level. It is written in the same transaction as the report that makes it the newest, conditional on still being the
+   one read; a race re-reads and retries. Each report also records the level held just before it. The carried-in level
+   at close (§ 6.3) is the newest in-TTL report before the period start; else the previous level recorded on the first
+   report from the start; else the latest item; else 0. A level unchanged for more than 13 months is therefore still
+   billed, for a subscriber and for a person who moves to Sob demanda after a quiet year.
+2. **Both on-demand prices carry the quotas.** `price_finance_ondemand_people` has the same metadata as the spaces price:
+   `plan: ondemand`, `quota_spaces: -1`, `quota_people_per_space: -1` (§ 3), so either item of a Sob demanda subscription
+   answers the limits.
+3. **A second customer for the same user is 409** `user_already_customer` (it was an unmapped 500).
+4. **Basic/Pro → Sob demanda is scheduled for the end of the paid period** (owner's decision). The subscription records a
+   pending change; its items, entitlement and limits stay the current plan's until the period ends; the daily sweep then
+   swaps the items, moves the subscription to arrears and renews it in one write, and bills nothing for the new period
+   until it ends. No period is billed both in advance and in arrears. **Sob demanda → Basic/Pro stays immediate** under
+   the existing change rules: the remainder of the period is invoiced at the new plan's prorated price, and the open
+   arrears period's on-demand part up to the switch is not billed (its metered items are replaced). Choosing the current
+   plan again drops a scheduled change; an immediate change supersedes one; a cancellation at period end wins over one.
+   While planning this it was found that `cancel_at_period_end` was never executed by the sweep (an advance subscription
+   cancelled at period end was renewed and billed); deploy step 1 fixes that.
+5. **DF-e on-demand companies are billed monthly by peak** (owner's decision), through level metering. Prices are
+   immutable, so the catalogue adds `price_dfe_ondemand_companies_monthly` (product `prod_dfe_ondemand`, metered,
+   `aggregation: max`, `meter: dfe_companies`, `included_quantity: 0`, R$ 5,00, monthly, arrears; metadata
+   `plan: ondemand`, `quota_companies: -1`) and archives `price_dfe_ondemand_company` with the same seed exception that
+   archives `price_dfe_ondemand_user`. `dfe-billing` (owner `dfe`) reports `dfe_companies` levels; a credential may report
+   levels only for meters of its own owner's prices. `quota_companies` on the fixed DF-e plans is unchanged. ctech-dfe must
+   report the level (its enabled companies) on every enable and disable, move existing on-demand subscriptions onto the
+   new price, and offer the new price id.
+6. **Credentials are scoped to an owner.** `dfe-billing` was not actually scoped to `dfe` in code (§ 4 assumed it was);
+   deploy step 1 adds `owner_key` to credentials, and the seed scopes `dfe-billing` to `dfe` and `account-billing` to
+   `finance`. `default` and the 200-instead-of-404 answer apply only when the caller sends `owner_key`.
