@@ -73,6 +73,11 @@ type membershipResponse struct {
 	// Kind is the workspace's: "organization" or "personal" (ctech-billing
 	// ADR 0027), absent on a refusal and on a ctech-account that predates kinds.
 	Kind string `json:"kind"`
+	// People (members, owner excluded) and PendingInvitations are sent only on
+	// personal workspaces the user owns (ctech-account spec § 6). Absent is
+	// "not known", never zero.
+	People             *int `json:"people,omitempty"`
+	PendingInvitations *int `json:"pending_invitations,omitempty"`
 }
 
 // Membership reports whether userID belongs to organizationID (any workspace,
