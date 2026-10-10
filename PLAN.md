@@ -837,8 +837,9 @@ gates nothing by plan.
       which would repaint the portals). Every `Select` spreads `selectCopy()` (billing's placeholder, the console's
       language). `LedgerRow` is built on `SwipeRow`/`RowMenu`. **Found on the way:** measured in Chrome with touch,
       0.4.0's `SwipeRow` cancelled every real swipe (the title's implicit pointer capture moves to the front, the
-      title's `lostpointercapture` bubbles to the front's handler) — `LedgerRow` stops a child's event; fix
-      upstream in ctech-ui (check `e.target === e.currentTarget`). Hand-drawn segments (mode switch, Relatórios'
+      title's `lostpointercapture` bubbles to the front's handler) — fixed upstream in 0.4.1 (`e.target ===
+      e.currentTarget`, once the x axis is locked), which billing now uses (`^0.4.1`, `@aoctech/ui/touch.css` by
+      its official export); the interim shim in `LedgerRow` is gone, its regression test stays. Hand-drawn segments (mode switch, Relatórios'
       and Importar's tabs) lost the global hit area with the old touch block and take `segmentHit`; Importar's
       tabs wrap their labels on a phone, not the row. Measured at 320/375 (36 drawn / 44 hit, segments 30/44, no
       tap stolen, swipe and the next tap, the Mais sheet) and 1280. (3) **Ending a recurrence cancels its unpaid

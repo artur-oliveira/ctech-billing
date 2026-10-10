@@ -7,8 +7,9 @@
    styles.css: styles.css also brings themes.css, and @aoctech/ui's portals
    carry `data-ctech-theme` (the "account" theme with no ThemeProvider), which
    would repaint every drawer in another product's palette. Billing's colours
-   are its own @theme below. See DESIGN.md, "Density". */
-@import "../../node_modules/@aoctech/ui/dist/touch.css";
+   are its own @theme below. See DESIGN.md, "Density". Exported as
+   `@aoctech/ui/touch.css` since 0.4.1. */
+@import "@aoctech/ui/touch.css";
 
 /* Tailwind only emits classes it can see, and it does not scan node_modules.
    Without this line every @aoctech/ui component renders unstyled. */

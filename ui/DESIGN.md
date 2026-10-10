@@ -170,7 +170,7 @@ mostly chrome; the finger needs the target, not the paint. The rule is
 `select-trigger`, `date-picker-trigger`, `input` through its Field label,
 `segmented-item`, `select-item`, `menu-item`) under any `[data-density=compact]`,
 the overlays' portals included, and on the class `touch-target` for anything
-else drawn as a control. `globals.css` imports `touch.css` alone, not
+else drawn as a control. `globals.css` imports `@aoctech/ui/touch.css` alone (its export since 0.4.1), not
 `styles.css`: that also brings `themes.css`, and the portals carry
 `data-ctech-theme` (the account theme with no `ThemeProvider`), which would
 repaint every drawer. Billing keeps only the `touch:` variant and
@@ -337,10 +337,11 @@ a form for an edit; nothing is done by the swipe itself. The gesture locks to an
 of the revealed width and snaps back otherwise, keeps one row open per page, closes on a
 press elsewhere or Escape, and follows `prefers-reduced-motion`. A laptop row is unchanged:
 the same actions are inline buttons. Since UX batch 5 the gesture and the menu are
-`@aoctech/ui`'s `SwipeRow` and `RowMenu`; `LedgerRow` lays out the front. It stops a child's
-`lostpointercapture` from reaching the front: @aoctech/ui 0.4.0 cancels the swipe on any of them,
-and a finger's implicit capture moving from the title to the front sends one on every real swipe
-(to be fixed in ctech-ui).
+`@aoctech/ui`'s `SwipeRow` and `RowMenu`; `LedgerRow` lays out the front. Measured in Chrome,
+0.4.0 cancelled every real swipe (a finger's implicit capture moving from the title to the front
+fires the title's `lostpointercapture`, which bubbled to the front); 0.4.1 cancels only on the
+front's own loss, once the x axis is locked, and billing's interim shim is gone. `LedgerRow`'s
+test for it stays as the regression guard.
 
 **An optional field can be emptied** (UX batch 4). An optional date has **Limpar** beside it
 while it has a value, named for the date ("Limpar data de término"); an optional select lists

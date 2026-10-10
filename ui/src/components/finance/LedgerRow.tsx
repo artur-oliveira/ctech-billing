@@ -76,14 +76,7 @@ export function LedgerRow({
       {/* The front is opaque and covers what a left swipe uncovers (a phone
           only; SwipeRow renders no strip elsewhere). */}
       <SwipeRow actions={more} frontClassName={cn("py-2.5", current && "bg-brand-50")}>
-        {/* A finger's pointer is implicitly captured by what it landed on; when
-            the swipe locks, SwipeRow captures it on the front and that child
-            gets `lostpointercapture`, which bubbles. @aoctech/ui 0.4.0's front
-            reads any of them as "the browser took the gesture" and cancels the
-            swipe (measured in Chrome, UX batch 5). Only the front's own loss
-            means that, so a child's stops here. Remove once ctech-ui checks
-            `e.target === e.currentTarget`. */}
-        <div onLostPointerCapture={e => e.stopPropagation()} className={cn(
+        <div className={cn(
           "grid items-start gap-x-3 gap-y-1.5 sm:flex sm:flex-wrap sm:items-center sm:gap-x-4 sm:gap-y-1",
           hasMore ? "grid-cols-[minmax(0,1fr)_auto_auto]" : "grid-cols-[minmax(0,1fr)_auto]",
         )}>
