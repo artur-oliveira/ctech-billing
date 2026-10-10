@@ -240,6 +240,16 @@ func BuildLedger(ctx context.Context, cfg *config.Config) (*repositories.LedgerR
 	return repositories.NewLedgerRepository(db, cfg), nil
 }
 
+// BuildSubscriptions wires the subscription repository for
+// cmd/backfill-subscription-lookup.
+func BuildSubscriptions(ctx context.Context, cfg *config.Config) (*repositories.SubscriptionRepository, error) {
+	db, err := newDynamoDB(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+	return repositories.NewSubscriptionRepository(db, cfg), nil
+}
+
 // BuildDeliverer wires only what the outbound webhook job needs.
 //
 // One repository: the delivery job reads endpoints, events and deliveries, and

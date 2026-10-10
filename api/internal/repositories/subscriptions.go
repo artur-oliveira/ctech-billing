@@ -62,6 +62,7 @@ func subscriptionRowOf(s *billing.Subscription, now time.Time) subscriptionRow {
 		keys:         newKeys(TenantPK(s.OrganizationID, s.Livemode), SubscriptionSK(s.ID), RetentionSubscription, now),
 		PeriodAttrs:  NewPeriodAttrs(s.OrganizationID, s.Livemode, EntitySubscription, brcal.FromTime(now), s.ID),
 		Subscription: *s,
+		LookupPK:     LookupCustomerSubscriptionsPK(s.OrganizationID, s.Livemode, s.CustomerID),
 	}
 	row.SchedulePK, row.ScheduleSK = scheduleKeys(
 		s.Livemode, JobSubscriptionDue, nextSweepDate(s), s.ID, sweepable(s),
@@ -410,10 +411,12 @@ func priceIDsOf(items []billing.SubscriptionItem) []string {
 
 // ListByCustomer returns a customer's subscriptions, up to limit.
 //
-// It filters the tenant partition rather than adding an index. That is a bounded
-// compromise, not a shortcut: the read is already confined to one organization,
-// and the entitlement check is called per customer, not per page view. If it
-// ever becomes a hot path the fix is an index — never a Scan.
+// It still filters the tenant partition. The index that replaces it,
+// lookup-index on LookupCustomerSubscriptionsPK, is written by Create and
+// backfilled by cmd/backfill-subscription-lookup; this read moves onto it only
+// once the backfill has reported nothing missing in production, because an
+// index query cannot see a row without its key (.github/workflows/README.md,
+// "Adding an index to a live table").
 //
 // It follows the continuation key to the end of the partition: DynamoDB applies
 // a Query's Limit BEFORE its filter, so one page of the tenant's rows says

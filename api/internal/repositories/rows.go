@@ -90,6 +90,10 @@ type subscriptionRow struct {
 	// the size of the work to do rather than the size of the history.
 	SchedulePK string `dynamodbav:"schedule_pk,omitempty"`
 	ScheduleSK string `dynamodbav:"schedule_sk,omitempty"`
+	// LookupPK groups the subscription under its customer
+	// (LookupCustomerSubscriptionsPK). Written once at Create: the customer of a
+	// subscription never changes, so no update path has to maintain it.
+	LookupPK string `dynamodbav:"lookup_pk,omitempty"`
 }
 
 // entity is the subscription as the rest of the service sees it, with the one

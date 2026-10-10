@@ -81,7 +81,8 @@
       "period_pk": "S",
       "period_sk": "S",
       "schedule_pk": "S",
-      "schedule_sk": "S"
+      "schedule_sk": "S",
+      "lookup_pk": "S"
     },
     "indexes": [
       {
@@ -93,6 +94,11 @@
         "name": "schedule-index",
         "hash_key": "schedule_pk",
         "range_key": "schedule_sk"
+      },
+      {
+        "name": "lookup-index",
+        "hash_key": "lookup_pk",
+        "range_key": "sk"
       }
     ]
   },
