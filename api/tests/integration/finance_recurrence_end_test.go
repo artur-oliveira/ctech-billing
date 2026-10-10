@@ -4,6 +4,7 @@ package integration
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"testing"
@@ -69,7 +70,7 @@ func TestEndingARecurrenceCancelsItsUnpaidBillsAfterTheEnd(t *testing.T) {
 	recognised := accountBalance(t, f, "Aluguel")
 
 	var saved endedRecurrence
-	f.must(t, 200, "PATCH", "/recurrences/"+recID, `{"end":"2026-02-10","archive":true}`, &saved)
+	f.must(t, 200, "PATCH", "/recurrences/"+recID, `{"end":"2026-02-10","archive":true,"cancel_after_end":true}`, &saved)
 	if !saved.Archived || saved.End != "2026-02-10" {
 		t.Fatalf("PATCH = %+v, want archived with the end", saved)
 	}
@@ -119,9 +120,9 @@ func TestEndingARecurrenceAgainCancelsNothingMore(t *testing.T) {
 	f := newFinanceEnv(t)
 	recID, bills, _ := recurrenceThroughHTTP(t, f)
 	var first, second endedRecurrence
-	f.must(t, 200, "PATCH", "/recurrences/"+recID, `{"end":"2026-02-10","archive":true}`, &first)
+	f.must(t, 200, "PATCH", "/recurrences/"+recID, `{"end":"2026-02-10","archive":true,"cancel_after_end":true}`, &first)
 	recognised := accountBalance(t, f, "Aluguel")
-	f.must(t, 200, "PATCH", "/recurrences/"+recID, `{"end":"2026-02-10","archive":true}`, &second)
+	f.must(t, 200, "PATCH", "/recurrences/"+recID, `{"end":"2026-02-10","archive":true,"cancel_after_end":true}`, &second)
 	got := append([]string(nil), first.CanceledBillIDs...)
 	sort.Strings(got)
 	wantIDs := []string{bills["2026-03-10"], bills["2026-04-10"]}
@@ -172,12 +173,129 @@ func TestEndingARecurrenceFromAnotherSpaceCancelsNothing(t *testing.T) {
 	f := newFinanceEnv(t)
 	recID, bills, _ := recurrenceThroughHTTP(t, f)
 	other := otherPersonalSpace(t, f)
-	if res := other.call(t, "PATCH", "/recurrences/"+recID, `{"end":"2026-02-10","archive":true}`); res.status != 404 {
+	if res := other.call(t, "PATCH", "/recurrences/"+recID, `{"end":"2026-02-10","archive":true,"cancel_after_end":true}`); res.status != 404 {
 		t.Fatalf("PATCH from another space = %d %s, want 404", res.status, res.body)
 	}
 	for nominal, billID := range bills {
 		if got := billStatus(t, f, billID); got != "forecast" {
 			t.Errorf("bill of %s is %q after another space's PATCH", nominal, got)
 		}
+	}
+}
+
+// day25Recurrence is a payable "every 25th" since January, materialised as the
+// job would on now() (10/03/2026): bills for 25/01, 25/02, 25/03 and 25/04.
+// An end on 31/03 still leaves 25/03 to come, so it does not end the rule.
+func day25Recurrence(t *testing.T, f financeEnv) (recID string, bills map[string]string) {
+	t.Helper()
+	var bank, rent, rec struct{ ID string }
+	f.must(t, 201, "POST", "/accounts", `{"name":"Banco","class":"asset"}`, &bank)
+	f.must(t, 201, "POST", "/accounts", `{"name":"Aluguel","class":"expense","dre_group":"operating_expenses"}`, &rent)
+	f.must(t, 201, "POST", "/recurrences", `{"direction":"payable","amount":150000,"category_id":"`+rent.ID+`","account_id":"`+bank.ID+`","description":"Aluguel","expression":{"kind":"day_of_month","day":25},"start":"2026-01-01","business_day_adjust":"none"}`, &rec)
+	sp := jobSpace(t, "USER#"+f.org.OwnerUserID, true)
+	recs := repositories.NewRecurrenceRepository(testDB, testCfg)
+	billRepo := repositories.NewBillRepository(testDB, testCfg)
+	ctx := context.Background()
+	r, err := recs.Get(ctx, sp, rec.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	drafts, err := r.Materialise(brcal.Date{}, brcal.FromTime(now()))
+	if err != nil || len(drafts) != 4 {
+		t.Fatalf("drafts = %d, %v", len(drafts), err)
+	}
+	bills = map[string]string{}
+	for _, d := range drafts {
+		_, b, err := billRepo.CreateFromOccurrence(ctx, sp, d, rec.ID, repositories.PostMeta{Actor: "scheduler"}, now())
+		if err != nil {
+			t.Fatal(err)
+		}
+		bills[d.Nominal.String()] = b.ID
+	}
+	if err := recs.MarkMaterialised(ctx, sp, rec.ID, drafts[len(drafts)-1].Nominal, now()); err != nil {
+		t.Fatal(err)
+	}
+	return rec.ID, bills
+}
+
+// UX batch 5 review (I2): ANY end that leaves unpaid bills after it cancels them,
+// not only one that ends the rule — and only once the request confirms it.
+func TestAnEarlierEndCancelsTheUnpaidBillsAfterItOnlyWhenConfirmed(t *testing.T) {
+	f := newFinanceEnv(t)
+	recID, bills := day25Recurrence(t, f)
+
+	res := f.call(t, "PATCH", "/recurrences/"+recID, `{"end":"2026-03-31"}`)
+	if res.status != 422 || problemCodeOf(t, res) != "end_cancels_bills" {
+		t.Fatalf("PATCH end 31/03 = %d %s, want 422 end_cancels_bills", res.status, res.body)
+	}
+	if got := findRecurrence(t, f, recID); got.End != "" {
+		t.Fatalf("an unconfirmed end was saved: %+v", got)
+	}
+	if got := billStatus(t, f, bills["2026-04-25"]); got != "forecast" {
+		t.Fatalf("25/04 is %q before any confirmation", got)
+	}
+
+	var saved endedRecurrence
+	f.must(t, 200, "PATCH", "/recurrences/"+recID, `{"end":"2026-03-31","cancel_after_end":true}`, &saved)
+	if saved.Archived || saved.End != "2026-03-31" {
+		t.Fatalf("PATCH = %+v, want the end saved and the rule still running", saved)
+	}
+	if fmt.Sprint(saved.CanceledBillIDs) != fmt.Sprint([]string{bills["2026-04-25"]}) {
+		t.Fatalf("canceled_bill_ids = %v, want only 25/04", saved.CanceledBillIDs)
+	}
+	for nominal, want := range map[string]string{"2026-01-25": "forecast", "2026-02-25": "forecast", "2026-03-25": "forecast", "2026-04-25": "canceled"} {
+		if got := billStatus(t, f, bills[nominal]); got != want {
+			t.Errorf("bill of %s is %q, want %q", nominal, got, want)
+		}
+	}
+}
+
+// Only unpaid ones ask: an earlier end with nothing but paid bills after it is
+// an ordinary edit, and the paid bill stays.
+func TestAnEarlierEndWithOnlyPaidBillsAfterItNeedsNoConfirmation(t *testing.T) {
+	f := newFinanceEnv(t)
+	recID, bills := day25Recurrence(t, f)
+	f.must(t, 200, "POST", "/bills/"+bills["2026-04-25"]+"/settle", `{"paid_date":"2026-03-09"}`, nil)
+	var saved endedRecurrence
+	f.must(t, 200, "PATCH", "/recurrences/"+recID, `{"end":"2026-03-31"}`, &saved)
+	if len(saved.CanceledBillIDs) != 0 || billStatus(t, f, bills["2026-04-25"]) != "paid" {
+		t.Fatalf("PATCH = %+v; 25/04 is %s", saved, billStatus(t, f, bills["2026-04-25"]))
+	}
+}
+
+// I3: a cancellation cancelled once by a concurrent transaction is retried.
+func TestCancelOccurrencesRetriesATransactionConflict(t *testing.T) {
+	f := newFinanceEnv(t)
+	recID, bills, sp := recurrenceThroughHTTP(t, f)
+	made, err := repositories.NewBillRepository(testDB, testCfg).MadeAfter(context.Background(), sp, recID, brcal.New(2026, time.March, 31))
+	if err != nil || len(made) != 1 {
+		t.Fatalf("made after 31/03 = %d, %v", len(made), err)
+	}
+	client, fired := conflictOnce("_bills", nil)
+	canceled, err := services.NewFinanceBills(repositories.NewBillRepository(client, testCfg)).CancelOccurrences(context.Background(), sp, made, "user", "req", now())
+	if err != nil || fmt.Sprint(canceled) != fmt.Sprint([]string{bills["2026-04-10"]}) {
+		t.Fatalf("CancelOccurrences after a conflict = %v, %v; want 10/04 cancelled", canceled, err)
+	}
+	if fired.Load() < 1 {
+		t.Fatal("the conflict was never injected")
+	}
+}
+
+// M2: a forecast bill that still could not be cancelled is an error (the route's
+// "encerrada, mas alguns lançamentos não foram cancelados"), never a 200.
+func TestCancelOccurrencesFailsWhenAForecastStaysOpen(t *testing.T) {
+	f := newFinanceEnv(t)
+	recID, bills, sp := recurrenceThroughHTTP(t, f)
+	made, err := repositories.NewBillRepository(testDB, testCfg).MadeAfter(context.Background(), sp, recID, brcal.New(2026, time.March, 31))
+	if err != nil || len(made) != 1 {
+		t.Fatalf("made after 31/03 = %d, %v", len(made), err)
+	}
+	client, _ := conflictTimes("_bills", 100, nil)
+	_, err = services.NewFinanceBills(repositories.NewBillRepository(client, testCfg)).CancelOccurrences(context.Background(), sp, made, "user", "req", now())
+	if !errors.Is(err, services.ErrEndIncomplete) {
+		t.Fatalf("CancelOccurrences with the bill still open = %v, want ErrEndIncomplete", err)
+	}
+	if got := billStatus(t, f, bills["2026-04-10"]); got != "forecast" {
+		t.Fatalf("10/04 is %q", got)
 	}
 }

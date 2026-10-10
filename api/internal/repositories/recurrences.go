@@ -37,6 +37,16 @@ var ErrRecurrenceChanged = errors.New("recurrence changed since it was read")
 // has not confirmed that this ends it, so nothing is saved (UX batch 3).
 var ErrRecurrenceWouldEnd = errors.New("this end date leaves the recurrence with no occurrence to come")
 
+// ErrEndCancelsBills is an end date with unpaid bills made after it, sent
+// without cancel_after_end: ending there cancels them, so the person confirms
+// first and nothing is saved until then (UX batch 5 review, I2).
+var ErrEndCancelsBills = errors.New("this end date cancels unpaid bills the recurrence made after it")
+
+// ErrEndIncomplete is an end whose cancellations did not all happen: the end is
+// saved (and the rule archived, if asked) and some unpaid bill after it is
+// still open. The same request again finishes it (UX batch 5 review, I3/M2).
+var ErrEndIncomplete = errors.New("the recurrence's end was saved, but some bills after it are still open")
+
 // catchUpSlackDays is the month of slack the first materialisation and an edit
 // allow on the creation-time bound, so a recurrence created on the last day of a
 // month with the oldest allowed Start does not become a poison row when the

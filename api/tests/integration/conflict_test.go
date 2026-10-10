@@ -31,6 +31,11 @@ import (
 // may be nil) and the call answers TransactionCanceledException with
 // TransactionConflict on its last item. Every other call goes through.
 func conflictOnce(table string, before func()) (*dynamodb.Client, *atomic.Int64) {
+	return conflictTimes(table, 1, before)
+}
+
+// conflictTimes is conflictOnce for the first n such calls (before runs on the first).
+func conflictTimes(table string, n int64, before func()) (*dynamodb.Client, *atomic.Int64) {
 	var fired atomic.Int64
 	c := dynamodb.NewFromConfig(testAWSConf, func(o *dynamodb.Options) {
 		o.BaseEndpoint = aws.String(os.Getenv("DYNAMODB_ENDPOINT"))
@@ -38,10 +43,10 @@ func conflictOnce(table string, before func()) (*dynamodb.Client, *atomic.Int64)
 			return stack.Initialize.Add(middleware.InitializeMiddlewareFunc("conflict-once",
 				func(ctx context.Context, in middleware.InitializeInput, next middleware.InitializeHandler) (middleware.InitializeOutput, middleware.Metadata, error) {
 					tw, ok := in.Parameters.(*dynamodb.TransactWriteItemsInput)
-					if !ok || !touches(tw, table) || !fired.CompareAndSwap(0, 1) {
+					if !ok || !touches(tw, table) || fired.Add(1) > n {
 						return next.HandleInitialize(ctx, in)
 					}
-					if before != nil {
+					if before != nil && fired.Load() == 1 {
 						before()
 					}
 					reasons := make([]types.CancellationReason, len(tw.TransactItems))
@@ -91,7 +96,7 @@ func TestFinalizeRetriesATransactionConflictOnTheCounter(t *testing.T) {
 	if _, err := repo.Finalize(ctxT(t), inv, due, brcal.Date{}, billing.CauseScheduler, "scheduler", "req_conflict", now()); err != nil {
 		t.Fatalf("Finalize after one TransactionConflict = %v, want a retry that issues it", err)
 	}
-	if fired.Load() != 1 {
+	if fired.Load() < 1 {
 		t.Fatal("the conflict was never injected")
 	}
 	got, err := repositories.NewInvoiceRepository(testDB, testCfg).Get(ctxT(t), org.ID, true, inv.ID)
@@ -113,7 +118,7 @@ func TestRecordingThePDFKeyIgnoresATransactionConflict(t *testing.T) {
 	if err := repositories.NewInvoiceRepository(client, testCfg).RecordPDFKey(ctxT(t), inv, "pdf/"+inv.ID+".pdf", now()); err != nil {
 		t.Fatalf("RecordPDFKey after a TransactionConflict = %v, want nil", err)
 	}
-	if fired.Load() != 1 {
+	if fired.Load() < 1 {
 		t.Fatal("the conflict was never injected")
 	}
 }
@@ -141,7 +146,7 @@ func TestTwoPayPressesShowTheSameChargeOnATransactionConflict(t *testing.T) {
 		e.collectorCharges(),
 	)
 	got, _, err := loser.Pay(ctxT(t), e.org.ID, true, inv.ID, "test", "req_loser", now())
-	if fired.Load() != 1 {
+	if fired.Load() < 1 {
 		t.Fatal("the conflict was never injected")
 	}
 	if err != nil {

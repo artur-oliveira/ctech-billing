@@ -261,21 +261,35 @@ needs them yet, and the tree format admits them later without migration.
   after today and none the job still owes after its cursor, the edit is refused (422
   `recurrence_would_end`) unless it also asks to archive, and then the end and the archive are one
   conditional write. The console asks first: "Isso encerra a recorrência; ela será arquivada."
-- **Ending cancels what it made after the end** (UX batch 5, the owner's decision; batch 3 kept
-  them). On end-and-archive, every bill the recurrence made for a nominal date after the new end
-  that is **not paid** is cancelled through the ordinary cancel path (the bill's guarded update and
-  the reversal of its recognition, one transaction per bill). A paid one stays: real money moved
-  and the statement shows it. The confirmation names them before anything is sent: "Os 2
-  lançamentos previstos depois do fim (10/10 e 10/11) serão cancelados." and "O já pago (10/12)
-  continua: o pagamento está no extrato." PATCH answers the cancelled ids in `canceled_bill_ids`.
-  **Ruling — an ordered, re-runnable sequence, not one transaction:** the end and the archive are
-  written first (the conditional update above), then each forecast bill after the end is
-  cancelled. One `TransactWriteItems` would carry ~10 items per bill toward the 100-item limit and
-  would fail whole when any single bill moved. Archived first, nothing new is made for those dates;
-  the `OCCURRENCE#` locks stay, so the job never makes them again; a failure half-way answers an
-  error with the rule archived, and the same PATCH again cancels only what is still open. A bill
-  paid or cancelled between the confirmation and the request is refused by the cancel guard (still a
-  forecast, same transaction list) and stays as it is; one only edited is tried once more.
+- **An end cancels what it made after the end** (UX batch 5, the owner's decision; batch 3 kept
+  them). **Any** end edit — set for the first time or moved earlier, whether or not it ends the
+  rule — cancels every bill the recurrence made for a nominal date after the new end that is **not
+  paid** (forecast or overdue), through the ordinary cancel path (the bill's guarded update and the
+  reversal of its recognition, one transaction per bill). A paid one stays: real money moved and
+  the statement shows it. Otherwise a bill after the end would stay open, and auto-settle could pay
+  it.
+  **Ruling — confirmation is a coded 422, like `recurrence_would_end`:** an end with open bills after
+  it, sent without `cancel_after_end: true`, is 422 `end_cancels_bills` and **nothing is saved**
+  (checked before the write); the console then shows what will happen and resends with the flag
+  (and `archive: true` when the end also ends the rule — its preview has no date left, or the
+  server said `recurrence_would_end`). The list is not in the 422: the console already reads the
+  rule's history (`GET /recurrences/:id/occurrences`), whose latest bills are the ones after any
+  end. Cost: a bill made between the check and the write is not asked about (only the flag cancels).
+  The confirmation: "Os 2 lançamentos em aberto depois do fim (10/10 e 10/11) serão cancelados." and
+  "O já pago (10/12) continua: o pagamento está no extrato."; its button is **Encerrar e arquivar**
+  when the rule ends, **Salvar e cancelar** otherwise. PATCH answers the cancelled ids in
+  `canceled_bill_ids`.
+  **Ruling — an ordered, re-runnable sequence, not one transaction:** the end (and the archive) are
+  written first (the conditional update above), then each open bill after the end is cancelled. One
+  `TransactWriteItems` would carry ~10 items per bill toward the 100-item limit and would fail whole
+  when any single bill moved. With the end written, the job makes nothing new after it; the
+  `OCCURRENCE#` locks stay, so it never makes those dates again. A cancel refused by a concurrent
+  transaction (TransactionConflict) is retried a few times; a bill paid or cancelled meanwhile is
+  refused by the cancel guard and stays as it is; one only edited is tried again. Any open bill left
+  after that is 409 `recurrence_end_incomplete` (never a 200): the end is saved, the console says "A
+  recorrência foi encerrada, mas alguns lançamentos não foram cancelados — tente de novo." (or "O fim
+  foi salvo, …"), keeps the panel open with **Tentar de novo**, refreshes the space, and the same
+  PATCH again cancels only what is still open.
 - **A recurrence's detail** (`GET /recurrences/:id/occurrences`, read verb, inside the space) lists
   the latest bills it made, each paid, forecast, overdue or skipped (its bill cancelled), and the
   next dates the rule will make (computed on read, from after the cursor, never before today; none

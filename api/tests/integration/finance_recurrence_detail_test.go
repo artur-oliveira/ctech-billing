@@ -86,7 +86,12 @@ func TestAnEndThatLeavesNothingToComeIsRefusedUnlessTheRequestArchives(t *testin
 	f := newFinanceEnv(t)
 	recID, bills, _ := recurrenceThroughHTTP(t, f)
 
-	res := f.call(t, "PATCH", "/recurrences/"+recID, `{"end":"2026-03-10"}`)
+	// UX batch 5 review: an end with unpaid bills after it asks for that first
+	// (end_cancels_bills); confirmed, the end that leaves nothing asks to archive.
+	if res := f.call(t, "PATCH", "/recurrences/"+recID, `{"end":"2026-03-10"}`); res.status != 422 || problemCodeOf(t, res) != "end_cancels_bills" {
+		t.Fatalf("PATCH end today = %d %s, want 422 end_cancels_bills", res.status, res.body)
+	}
+	res := f.call(t, "PATCH", "/recurrences/"+recID, `{"end":"2026-03-10","cancel_after_end":true}`)
 	if res.status != 422 {
 		t.Fatalf("PATCH end today = %d %s, want 422", res.status, res.body)
 	}
@@ -100,7 +105,7 @@ func TestAnEndThatLeavesNothingToComeIsRefusedUnlessTheRequestArchives(t *testin
 	}
 
 	var saved recurrenceView
-	f.must(t, 200, "PATCH", "/recurrences/"+recID, `{"end":"2026-03-10","archive":true}`, &saved)
+	f.must(t, 200, "PATCH", "/recurrences/"+recID, `{"end":"2026-03-10","archive":true,"cancel_after_end":true}`, &saved)
 	if !saved.Archived || saved.End != "2026-03-10" {
 		t.Fatalf("PATCH with archive = %+v, want archived with the end saved", saved)
 	}

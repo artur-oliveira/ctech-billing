@@ -203,6 +203,12 @@ func FromError(err error) *Problem {
 		return New(409, TypeInvalidTransition, "Invalid Transition", "This statement line was already reconciled.").WithCode("line_already_reconciled")
 	case errors.Is(err, repositories.ErrRecurrenceWouldEnd):
 		return Unprocessable("this end date leaves the recurrence with no occurrence to come; send archive:true to end and archive it").WithCode("recurrence_would_end")
+	case errors.Is(err, repositories.ErrEndCancelsBills):
+		return Unprocessable("this end date cancels the unpaid bills the recurrence made after it; send cancel_after_end:true to confirm").WithCode("end_cancels_bills")
+	case errors.Is(err, repositories.ErrEndIncomplete):
+		// Before the generic conflict case: a retry of the same request finishes it.
+		return New(409, TypeConcurrentUpdate, "Concurrent Update",
+			"the end was saved, but some bills after it could not be cancelled; send the same request again").WithCode("recurrence_end_incomplete")
 	case errors.Is(err, repositories.ErrBillLinked):
 		return New(409, TypeInvalidTransition, "Invalid Transition", "This bill is already linked to another statement line.").WithCode("bill_already_linked")
 	case errors.Is(err, repositories.ErrLineMismatch):

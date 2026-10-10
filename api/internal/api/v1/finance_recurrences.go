@@ -154,6 +154,10 @@ type patchRecurrenceRequest struct {
 	// Archive confirms an end that leaves nothing to come: the edit and the
 	// archive are one write. Without it such an end is 422 recurrence_would_end.
 	Archive bool `json:"archive"`
+	// CancelAfterEnd confirms that an end date with unpaid bills made after it
+	// cancels them (UX batch 5 review, I2). Without it such an end is 422
+	// end_cancels_bills and nothing is saved.
+	CancelAfterEnd bool `json:"cancel_after_end"`
 }
 
 // edit validates the body under the PATCH rule (package patch): absent keeps,
@@ -193,15 +197,27 @@ func (h *financeHandlers) patchRecurrence(c fiber.Ctx) error {
 		return problem.Validation(errs).Send(c)
 	}
 	sp := middleware.GetSpace(c)
+	end, hasEnd := req.End.Get()
+	// An end date with unpaid bills made after it cancels them (UX batch 5,
+	// review I2), whether or not the rule ends: asked first, before anything is
+	// written. The bills are read in the resolved space only.
+	if hasEnd && !req.CancelAfterEnd {
+		n, err := h.bills.UnpaidAfter(c.Context(), sp, c.Params("id"), end)
+		if err != nil {
+			return fail(c, err)
+		}
+		if n > 0 {
+			return fail(c, repositories.ErrEndCancelsBills)
+		}
+	}
 	if err := h.recs.Update(c.Context(), sp, c.Params("id"), edit, h.now()); err != nil {
 		return fail(c, err)
 	}
-	// Ending and archiving cancels the unpaid bills made for dates after the
-	// end (UX batch 5), after the end and the archive are written. A failure
-	// half-way answers an error with the rule already archived; the same PATCH
-	// again finishes the job (FinanceBills.EndRecurrence).
+	// Then the confirmed cancellations, after the end (and the archive) are
+	// written. A failure half-way is 409 recurrence_end_incomplete with the end
+	// saved; the same PATCH again finishes the job (FinanceBills.EndRecurrence).
 	out := patchRecurrenceResponse{CanceledBillIDs: []string{}}
-	if end, ok := req.End.Get(); ok && req.Archive {
+	if hasEnd && req.CancelAfterEnd {
 		canceled, err := h.bills.EndRecurrence(c.Context(), sp, c.Params("id"), end, actorOfUser(c), middleware.GetRequestID(c), h.now())
 		if err != nil {
 			return fail(c, err)
