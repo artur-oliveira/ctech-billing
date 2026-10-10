@@ -195,6 +195,11 @@ export interface RecurrencePatch {
    *  the API then cancels the unpaid bills made after the end (UX batch 5) and
    *  answers their ids in `canceled_bill_ids`. */
   archive?: boolean
+  /** Confirms that an end with open bills made after it cancels them (UX batch 5
+   *  review). Without it the API answers 422 `end_cancels_bills` and saves nothing;
+   *  a cancellation left half-done is 409 `recurrence_end_incomplete`, and the same
+   *  request again finishes it. */
+  cancel_after_end?: boolean
 }
 
 export interface PreviewInput extends ScheduleInput {

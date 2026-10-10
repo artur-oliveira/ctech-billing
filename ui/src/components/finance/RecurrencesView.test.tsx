@@ -307,7 +307,7 @@ describe("F4 — a recurrence's detail, in place (UX batch 3)", () => {
     await userEvent.click(within(dialog).getByRole("button", {name: "Salvar"}))
     // The confirmation appears again from the same refusal (no second request needed).
     await userEvent.click(await within(dialog).findByRole("button", {name: "Encerrar e arquivar"}))
-    await waitFor(() => expect(patch).toHaveBeenLastCalledWith(expect.anything(), "r1", {end: "2026-10-09", archive: true}, expect.any(String)))
+    await waitFor(() => expect(patch).toHaveBeenLastCalledWith(expect.anything(), "r1", {end: "2026-10-09", archive: true, cancel_after_end: true}, expect.any(String)))
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
   })
 })
@@ -341,19 +341,19 @@ describe("F4 — ending a recurrence says which bills it cancels", () => {
 
   it("names the forecast bills after the new end that will be cancelled", async () => {
     const dialog = await confirmEndToday([made("2026-09-10", "paid"), made("2026-10-10", "forecast", true), made("2026-11-10", "forecast")])
-    expect(await within(dialog).findByText("Os 2 lançamentos previstos depois do fim (10/10 e 10/11) serão cancelados.")).toBeInTheDocument()
+    expect(await within(dialog).findByText("Os 2 lançamentos em aberto depois do fim (10/10 e 10/11) serão cancelados.")).toBeInTheDocument()
     // Cancelled, so auto-pay no longer pays them: the old promise is gone.
     expect(within(dialog).queryByText(/pagamento automático/)).toBeNull()
   })
 
   it("says it in the singular for one", async () => {
     const dialog = await confirmEndToday([made("2026-10-10", "forecast")])
-    expect(await within(dialog).findByText("O lançamento previsto depois do fim (10/10) será cancelado.")).toBeInTheDocument()
+    expect(await within(dialog).findByText("O lançamento em aberto depois do fim (10/10) será cancelado.")).toBeInTheDocument()
   })
 
   it("says that a paid one after the end stays, and leaves a skipped one out", async () => {
     const dialog = await confirmEndToday([made("2026-10-10", "skipped"), made("2026-11-10", "forecast"), made("2026-12-10", "paid")])
-    expect(await within(dialog).findByText("O lançamento previsto depois do fim (10/11) será cancelado.")).toBeInTheDocument()
+    expect(await within(dialog).findByText("O lançamento em aberto depois do fim (10/11) será cancelado.")).toBeInTheDocument()
     expect(within(dialog).getByText("O já pago (10/12) continua: o pagamento está no extrato.")).toBeInTheDocument()
   })
 
@@ -361,5 +361,67 @@ describe("F4 — ending a recurrence says which bills it cancels", () => {
     const dialog = await confirmEndToday([made("2026-09-10", "paid")])
     await act(() => new Promise(r => setTimeout(r, 50)))
     expect(within(dialog).queryByText(/cancelad|já pago/)).toBeNull()
+  })
+})
+
+// UX batch 5 review (I2, I3): ANY end with open bills after it cancels them,
+// asked first; a cancellation that did not finish says so and can be retried.
+describe("F4 — an end that cancels bills, and one that did not finish", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({toFake: ["Date"]})
+    vi.setSystemTime(new Date(2026, 9, 9, 9, 0)) // 9 October 2026
+  })
+
+  const made = (nominal: string, state: "paid" | "forecast" | "overdue") =>
+    ({nominal, due: nominal, bill_id: `b-${nominal}`, amount: 180000, state, auto_settle: false})
+
+  async function saveEnd(patch: ReturnType<typeof vi.spyOn>) {
+    void patch
+    renderWithQuery(<RecurrencesView/>)
+    const row = (await screen.findByText("Aluguel do apartamento")).closest("li") as HTMLElement
+    await userEvent.click(within(row).getByRole("button", {name: "Editar"}))
+    const dialog = screen.getByRole("dialog", {name: "Editar recorrência"})
+    await userEvent.click(within(dialog).getByLabelText("Termina em"))
+    await userEvent.click(await screen.findByRole("button", {name: /sexta-feira, 9 de outubro de 2026$/}))
+    await userEvent.click(within(dialog).getByRole("button", {name: "Salvar"}))
+    return dialog
+  }
+
+  it("asks before an earlier end that cancels open bills while the rule keeps going, and sends the confirmation", async () => {
+    serve(ALL) // the preview still has dates: the rule does not end
+    vi.spyOn(finance, "getRecurrenceOccurrences").mockResolvedValue({history: [made("2026-10-10", "forecast"), made("2026-11-10", "forecast")], upcoming: []})
+    const patch = vi.spyOn(finance, "patchRecurrence")
+      .mockRejectedValueOnce({response: {status: 422, data: {code: "end_cancels_bills", detail: "x"}}})
+      .mockResolvedValueOnce({...REC, end: "2026-10-09"})
+    const dialog = await saveEnd(patch)
+    expect(await within(dialog).findByText("Os 2 lançamentos em aberto depois do fim (10/10 e 10/11) serão cancelados.")).toBeInTheDocument()
+    expect(within(dialog).queryByText(/ela será arquivada/)).toBeNull()
+    expect(patch).toHaveBeenCalledTimes(1)
+
+    await userEvent.click(within(dialog).getByRole("button", {name: "Voltar"}))
+    expect(patch).toHaveBeenCalledTimes(1)
+    await userEvent.click(within(dialog).getByRole("button", {name: "Salvar"}))
+    await userEvent.click(await within(dialog).findByRole("button", {name: "Salvar e cancelar"}))
+    await waitFor(() => expect(patch).toHaveBeenLastCalledWith(expect.anything(), "r1", {end: "2026-10-09", cancel_after_end: true}, expect.any(String)))
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
+  })
+
+  it("says the end was saved but bills stayed open, keeps the panel, and the same request finishes it", async () => {
+    serve(ALL)
+    vi.spyOn(finance, "getRecurrenceOccurrences").mockResolvedValue({history: [made("2026-10-10", "forecast")], upcoming: []})
+    const patch = vi.spyOn(finance, "patchRecurrence")
+      .mockRejectedValueOnce({response: {status: 422, data: {code: "recurrence_would_end", detail: "x"}}})
+      .mockRejectedValueOnce({response: {status: 409, data: {code: "recurrence_end_incomplete", detail: "x"}}})
+      .mockResolvedValueOnce({...REC, end: "2026-10-09", archived: true})
+    const dialog = await saveEnd(patch)
+    await userEvent.click(await within(dialog).findByRole("button", {name: "Encerrar e arquivar"}))
+    expect(await within(dialog).findByText("A recorrência foi encerrada, mas alguns lançamentos não foram cancelados — tente de novo.")).toBeInTheDocument()
+    expect(screen.getByRole("dialog", {name: "Editar recorrência"})).toBeInTheDocument()
+
+    await userEvent.click(within(dialog).getByRole("button", {name: "Tentar de novo"}))
+    await waitFor(() => expect(patch).toHaveBeenCalledTimes(3))
+    expect(patch.mock.calls[2][2]).toEqual(patch.mock.calls[1][2])
+    expect(patch.mock.calls[2][2]).toEqual({end: "2026-10-09", archive: true, cancel_after_end: true})
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
   })
 })

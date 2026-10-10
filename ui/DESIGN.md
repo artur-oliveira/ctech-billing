@@ -438,13 +438,17 @@ portal's modals are not inside the scope and keep their own sizes (see "Density"
 
 ## Confirmations that say what they do (UX batch 5, 2026-10-09)
 
-**An end names the bills it cancels.** "Encerrar e arquivar" now cancels the unpaid bills made after
-the new end, so its inline confirmation (the `surface` box under the form, as before) reads: the
-fact ("Isso encerra a recorrência; ela será arquivada."), then the consequence with the dates, in
-`foreground` ("Os 2 lançamentos previstos depois do fim (10/10 e 10/11) serão cancelados."), then
-what stays, in `muted-foreground` ("O já pago (10/12) continua: o pagamento está no extrato."). The
-button keeps its name; the message carries the consequence. Nothing about auto-pay any more: a
-cancelled bill is not paid.
+**An end names the bills it cancels.** Any end with open bills made after it cancels them, so
+saving it shows the inline confirmation first (the `surface` box under the form): when the end
+also ends the rule, the fact ("Isso encerra a recorrência; ela será arquivada."); then the
+consequence with the dates, in `foreground` ("Os 2 lançamentos em aberto depois do fim (10/10 e
+10/11) serão cancelados." — "em aberto", since an overdue one is cancelled too); then what stays,
+in `muted-foreground` ("O já pago (10/12) continua: o pagamento está no extrato."). The button
+says the act: **Encerrar e arquivar** when the rule ends, **Salvar e cancelar** when it keeps going;
+**Voltar** sends nothing. Nothing about auto-pay any more: a cancelled bill is not paid. If the
+cancellations did not all happen, the panel stays open with one line ("A recorrência foi
+encerrada, mas alguns lançamentos não foram cancelados — tente de novo.") and **Tentar de novo**,
+which sends the same request.
 
 **An offer shows its arithmetic.** After an OFX import into an account with no opening balance and
 no entry, a `surface` box under the upload result asks one question as its heading ("Usar o saldo do

@@ -41,7 +41,7 @@ const touched = (c: FinanceCtx) => [financeKeys.recurrences(c.mode, c.space), [.
 // Ending and archiving also cancels bills and reverses their recognition (UX
 // batch 5): Agenda, balances, statements and reports all move, so the whole space.
 const touchedByEdit = (c: FinanceCtx, _: unknown, body: RecurrencePatch) =>
-  body.archive ? [financeKeys.all(c.mode, c.space)] : touched(c)
+  body.archive || body.cancel_after_end ? [financeKeys.all(c.mode, c.space)] : touched(c)
 
 function ruleOf(r: Recurrence): string {
   const model = fromExpression(r.expression)
@@ -284,11 +284,20 @@ function RecurrencePanel({editing, accounts, onDone}: {editing?: Recurrence; acc
   // tells the person that an end will close the recurrence.
   const preview = usePreview(ctx, editing ? editing.expression : toExpression(model), start, end,
     editing ? editing.business_day_adjust : adjust, editing ? nextDay(todayIso()) : todayIso(), errors.length === 0)
-  // An end the server said leaves nothing to come (422 recurrence_would_end):
-  // saving it again asks for confirmation instead of repeating the request.
-  const [endsAt, setEndsAt] = useState<string | null>(null)
-  const [confirmEnd, setConfirmEnd] = useState(false)
+  // An end the server asked about — it cancels open bills after it (422
+  // end_cancels_bills, UX batch 5 review) or leaves nothing to come (422
+  // recurrence_would_end): saving it again asks first instead of repeating the
+  // request. `archive` is whether the confirmed request must also archive.
+  const [asked, setAsked] = useState<{end: string; archive: boolean} | null>(null)
+  const [confirming, setConfirming] = useState(false)
+  // A confirmed end whose cancellations did not all happen (409
+  // recurrence_end_incomplete): the end is saved; the same request finishes it.
+  const [incomplete, setIncomplete] = useState<RecurrencePatch | null>(null)
   const lastPatch = useRef<RecurrencePatch>({})
+  const sent = useRef<RecurrencePatch>({})
+  // The preview of an edit lists the dates left after today: none means this
+  // end also ends the rule, so the one confirmation archives it too.
+  const endsByPreview = !!editing && preview.done && !preview.loading && !preview.error && preview.occ.length === 0
   const amount = parseMoney(amountText)
   const cats = accounts.filter(a => a.class === (direction === "payable" ? "expense" : "income") && !a.archived && !a.system)
   const assets = accounts.filter(a => a.class === "asset" && !a.archived && !a.system)
@@ -299,13 +308,25 @@ function RecurrencePanel({editing, accounts, onDone}: {editing?: Recurrence; acc
   const fe = useFieldErrors(["description", "amount", "category_id", "account_id", ...(editing ? [] : ["start"]), ...(editing || more ? ["end"] : [])])
   const create = useFinanceMutation((c, body: NewRecurrence, key) => createRecurrence(c, body, key), touched, onDone, fe.set)
   const patch = useFinanceMutation((c, body: RecurrencePatch, key) => patchRecurrence(c, editing!.id, body, key), touchedByEdit, onDone, e => {
-    if (problemCode(e) === "recurrence_would_end" && lastPatch.current.end) {
-      setEndsAt(lastPatch.current.end)
-      setConfirmEnd(true)
+    const code = problemCode(e)
+    const end = lastPatch.current.end
+    if ((code === "recurrence_would_end" || code === "end_cancels_bills") && end) {
+      setAsked(a => ({end, archive: code === "recurrence_would_end" || endsByPreview || (a?.end === end && a.archive)}))
+      setConfirming(true)
+      return
+    }
+    if (code === "recurrence_end_incomplete") {
+      setIncomplete(sent.current)
       return
     }
     fe.set(e)
-  })
+  }, {invalidateOnError: true}) // a half-done end moved bills: show what is true now
+  const send = (body: RecurrencePatch) => {
+    sent.current = body
+    setIncomplete(null)
+    setConfirming(false)
+    patch.mutate(body)
+  }
   const pending = create.isPending || patch.isPending
   const ready = amount !== null && category !== "" && account !== "" && errors.length === 0 && !pending
   const showAuto = can("finance.settle") || (editing?.auto_settle ?? false)
@@ -331,11 +352,11 @@ function RecurrencePanel({editing, accounts, onDone}: {editing?: Recurrence; acc
     if (end !== (editing.end ?? "")) body.end = end
     if (Object.keys(body).length === 0) return onDone()
     lastPatch.current = body
-    if (body.end && body.end === endsAt) {
-      setConfirmEnd(true)
+    if (body.end && body.end === asked?.end) {
+      setConfirming(true)
       return
     }
-    patch.mutate(body)
+    send(body)
   }
 
   const nextDates = preview.occ.slice(0, PREVIEW_COUNT)
@@ -438,13 +459,21 @@ function RecurrencePanel({editing, accounts, onDone}: {editing?: Recurrence; acc
             <Button type="button" variant="outline" size="sm" onClick={onDone}>{t("bills.common.close")}</Button>
           </div>
         </div>
-        {confirmEnd && editing && (
-          <div className="flex flex-wrap items-center gap-2 rounded-lg bg-surface p-3 text-sm motion-safe:animate-in motion-safe:fade-in">
-            <p role="alert" className="w-full text-foreground">{t("bills.rec.endsConfirm")}</p>
-            <EndCancels rec={editing} end={endsAt ?? ""}/>
-            <Button type="button" size="sm" variant="outline" onClick={() => setConfirmEnd(false)}>{t("bills.rec.back")}</Button>
+        {confirming && asked && editing && (
+          <div role="alert" className="flex flex-wrap items-center gap-2 rounded-lg bg-surface p-3 text-sm motion-safe:animate-in motion-safe:fade-in">
+            {asked.archive && <p className="w-full text-foreground">{t("bills.rec.endsConfirm")}</p>}
+            <EndCancels rec={editing} end={asked.end}/>
+            <Button type="button" size="sm" variant="outline" onClick={() => setConfirming(false)}>{t("bills.rec.back")}</Button>
             <Button type="button" size="sm" variant="danger" disabled={patch.isPending}
-              onClick={() => patch.mutate({...lastPatch.current, archive: true})}>{t("bills.rec.endAndArchive")}</Button>
+              onClick={() => send({...lastPatch.current, cancel_after_end: true, ...(asked.archive ? {archive: true} : {})})}>
+              {asked.archive ? t("bills.rec.endAndArchive") : t("bills.rec.saveAndCancel")}
+            </Button>
+          </div>
+        )}
+        {incomplete && (
+          <div className="flex flex-wrap items-center gap-2 rounded-lg bg-surface p-3 text-sm">
+            <p role="alert" className="w-full text-foreground">{t(`bills.rec.endIncomplete.${incomplete.archive ? "archived" : "saved"}`)}</p>
+            <Button type="button" size="sm" variant="brand" disabled={patch.isPending} onClick={() => send(incomplete)}>{t("bills.rec.retry")}</Button>
           </div>
         )}
         {fe.general && <p role="alert" className="text-sm text-danger">{fe.general}</p>}

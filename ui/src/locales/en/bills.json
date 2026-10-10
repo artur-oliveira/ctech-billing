@@ -163,8 +163,14 @@
     "endsConfirm": "This ends the recurrence; it will be archived.",
     "back": "Back",
     "endAndArchive": "End and archive",
-    "endCancels_one": "The bill due after the end ({{dates}}) will be canceled.",
-    "endCancels_other": "The {{count}} bills due after the end ({{dates}}) will be canceled.",
+    "endCancels_one": "The open bill after the end ({{dates}}) will be canceled.",
+    "endCancels_other": "The {{count}} open bills after the end ({{dates}}) will be canceled.",
+    "saveAndCancel": "Save and cancel",
+    "endIncomplete": {
+      "archived": "The recurrence was ended, but some bills were not canceled — try again.",
+      "saved": "The end was saved, but some bills were not canceled — try again."
+    },
+    "retry": "Try again",
     "endKeepsPaid_one": "The one already paid ({{dates}}) stays: the payment is in the statement.",
     "endKeepsPaid_other": "The {{count}} already paid ({{dates}}) stay: the payments are in the statement."
   },
