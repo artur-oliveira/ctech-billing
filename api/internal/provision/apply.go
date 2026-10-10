@@ -141,6 +141,13 @@ func Apply(ctx context.Context, repos Repos, plan *Plan, livemode bool, now time
 			return nil, fmt.Errorf("resolving credential %s: %w", c.ClientID, err)
 		}
 
+		// A credential lives in one mode (its client id resolves to one row), and
+		// the deploy seeds test before live: creating it in whichever run comes
+		// first put live integrations on test data.
+		if c.Test != !livemode {
+			res.skipped("credential", c.ClientID+" (created by the "+modeName(c.Test)+" run)")
+			continue
+		}
 		cred := &billing.APICredential{
 			ClientID:       c.ClientID,
 			OrganizationID: orgID,
@@ -213,4 +220,11 @@ func Apply(ctx context.Context, repos Repos, plan *Plan, livemode bool, now time
 	}
 
 	return res, nil
+}
+
+func modeName(test bool) string {
+	if test {
+		return "test"
+	}
+	return "live"
 }

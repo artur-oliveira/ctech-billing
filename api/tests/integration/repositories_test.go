@@ -620,3 +620,36 @@ func TestApplyScopesAnUnscopedCredentialOnceAndArchivesAPrice(t *testing.T) {
 		t.Fatal("re-scoping through a seed must be refused")
 	}
 }
+
+// Production, 2026-10-10: the documented order is seed test, then live. A new
+// credential was created by the test run in test mode, and since a client id
+// resolves to one row, the live run skipped it and the integration ended up
+// reading test data. A credential is live unless the plan says test.
+func TestATestSeedLeavesANewCredentialToTheLiveRun(t *testing.T) {
+	ctx := ctxT(t)
+	repos := provision.Repos{
+		Organizations: repositories.NewOrganizationRepository(testDB, testCfg),
+		Credentials:   repositories.NewCredentialRepository(testDB, testCfg),
+		Catalog:       repositories.NewCatalogRepository(testDB, testCfg),
+		Webhooks:      repositories.NewWebhookRepository(testDB, testCfg),
+	}
+	orgID, client := "org_"+id.New(), "cli_"+id.New()
+	plan, err := provision.Parse(strings.NewReader(`{"organization":{"id":"` + orgID + `","display_name":"T"},
+	  "credentials":[{"client_id":"` + client + `"}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := provision.Apply(ctx, repos, plan, false, now()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repos.Credentials.Resolve(ctx, client); !errors.Is(err, repositories.ErrNotFound) {
+		t.Fatalf("the test run created the credential: %v", err)
+	}
+	if _, err := provision.Apply(ctx, repos, plan, true, now()); err != nil {
+		t.Fatal(err)
+	}
+	cred, err := repos.Credentials.Resolve(ctx, client)
+	if err != nil || !cred.Livemode {
+		t.Fatalf("credential = %+v, %v (want live)", cred, err)
+	}
+}
