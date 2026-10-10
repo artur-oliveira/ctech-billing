@@ -1,6 +1,6 @@
 import {beforeEach, describe, expect, it} from "vitest"
 
-import {FINANCE_MOCK_ORG, financeMock, resetFinanceMock, setFinanceScenario} from "@/dev/financeMockData"
+import {FINANCE_MOCK_HOUSE, FINANCE_MOCK_ORG, financeMock, resetFinanceMock, setFinanceScenario} from "@/dev/financeMockData"
 import {STATEMENT_WITH_MEMOS} from "@/dev/fixtures/statementWithMemos"
 
 type Req = {method?: string; url: string; headers?: Record<string, string>; data?: unknown; params?: Record<string, unknown>}
@@ -280,5 +280,61 @@ describe("the finance mock's scenario extrato_memos (UX batch 4)", () => {
     } finally {
       setFinanceScenario("padrao")
     }
+  })
+})
+
+describe("the plan in the mock", () => {
+  const w = (k: string) => ({...personal, "Idempotency-Key": k})
+  type Plan = {
+    subscription: {status: string; price_ids: string[]; period: {period_end: string}; pending_change: {at: string} | null} | null
+    invoice?: {checkout_url?: string}
+    prices: unknown[]
+    usage: {spaces: unknown[]; unavailable: boolean}
+    projected_ondemand_cents: number
+  }
+  const plan = (r: {data: unknown}) => r.data as Plan
+
+  it("answers Free with the five prices in Pessoal", () => {
+    const r = call({url: "/plan", headers: personal})
+    expect(r.status).toBe(200)
+    expect(plan(r).prices).toHaveLength(5)
+    expect(plan(r).subscription).toBeNull()
+  })
+
+  it("is Pessoal only", () => {
+    const r = call({url: "/plan", headers: {...personal, "X-Billing-Space": `org:${FINANCE_MOCK_HOUSE}`}})
+    expect(r.status).toBe(404)
+    expect((r.data as {code: string}).code).toBe("plan_personal_only")
+  })
+
+  it("subscribes Basic with a checkout link, then refuses another plan until it is paid", () => {
+    const r = call({method: "post", url: "/plan", headers: w("p1"), data: {price_ids: ["price_finance_basic_monthly"], name: "Ana"}})
+    expect(plan(r).subscription?.status).toBe("INCOMPLETE")
+    expect(plan(r).invoice?.checkout_url).toBe("/checkout?token=mock")
+    const again = call({method: "post", url: "/plan", headers: w("p2"), data: {price_ids: ["price_finance_pro_monthly"], name: "Ana"}})
+    expect(again.status).toBe(409)
+    expect((again.data as {code: string}).code).toBe("plan_payment_pending")
+  })
+
+  it("schedules Sob demanda for the end of a paid Basic", () => {
+    setFinanceScenario("plan_basic")
+    const r = call({method: "post", url: "/plan", headers: w("p3"),
+      data: {price_ids: ["price_finance_ondemand_spaces", "price_finance_ondemand_people"], name: "Ana"}})
+    const sub = plan(r).subscription!
+    expect(sub.price_ids).toEqual(["price_finance_basic_monthly"])
+    expect(sub.pending_change?.at).toBe(sub.period.period_end)
+    expect(plan(r).invoice).toBeUndefined()
+  })
+
+  it("seeds the over-limit and on-demand scenarios", () => {
+    setFinanceScenario("plan_over")
+    expect(plan(call({url: "/plan", headers: personal})).usage.spaces).toHaveLength(3)
+    resetFinanceMock()
+    setFinanceScenario("plan_ondemand")
+    expect(plan(call({url: "/plan", headers: personal})).projected_ondemand_cents).toBe(2830)
+    resetFinanceMock()
+    setFinanceScenario("plan_no_usage")
+    expect(plan(call({url: "/plan", headers: personal})).usage.unavailable).toBe(true)
+    setFinanceScenario("padrao")
   })
 })

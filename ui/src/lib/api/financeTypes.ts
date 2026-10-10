@@ -458,3 +458,27 @@ export interface CsvMapping {
   amount_column: number
   debit_column: number
 }
+
+// ---- plan (Finanças → Plano) ----------------------------------------------------
+
+export interface PlanPrice {
+  id: string; type: "fixed" | "metered"; unit_amount: Cents
+  aggregation: "" | "sum" | "max"; meter: string; included_quantity: number
+  metadata: Record<string, string>
+}
+export interface PlanState {
+  live_only: boolean
+  subscription: {
+    id: string; status: string; cancel_at_period_end: boolean; price_ids: string[]
+    period: {period_start: string; period_end: string}
+    pending_change: {price_ids: string[]; at: string} | null
+  } | null
+  open_invoice: {id: string; total_cents: Cents; due_date: string; checkout_url?: string} | null
+  invoice?: {id: string; checkout_url?: string}
+  default_price_id: string
+  prices: PlanPrice[]
+  usage: {unavailable: boolean; spaces: {id: string; display_name: string; people: number; pending_invitations: number}[]}
+  levels: Record<string, {current: number; peak: number}>
+  projected_ondemand_cents: Cents
+}
+export interface ChoosePlan {price_ids: string[]; name: string; email?: string}

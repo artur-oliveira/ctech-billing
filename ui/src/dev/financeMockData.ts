@@ -208,6 +208,7 @@ const replays = new Map<string, Res>()
 export function resetFinanceMock() {
   state.clear()
   replays.clear()
+  plans.clear()
 }
 
 // ---- helpers -------------------------------------------------------------------
@@ -248,8 +249,8 @@ function applyPatch(target: object, patch: object) {
  * production statement that broke Extrato on a phone (UX batch 4) to Pessoal ·
  * Produção.
  */
-export type FinanceScenario = "padrao" | "extrato_memos"
-const FINANCE_SCENARIOS: FinanceScenario[] = ["padrao", "extrato_memos"]
+export type FinanceScenario = "padrao" | "extrato_memos" | "plan_basic" | "plan_over" | "plan_ondemand" | "plan_no_usage"
+const FINANCE_SCENARIOS: FinanceScenario[] = ["padrao", "extrato_memos", "plan_basic", "plan_over", "plan_ondemand", "plan_no_usage"]
 const SCENARIO_KEY = "ctech-billing-finance-scenario"
 let scenarioOverride: FinanceScenario | null = null
 
@@ -374,6 +375,22 @@ export function financeMock(r: Req): Res {
   if (!mode || !selector) return problem(400, "about:blank", "Bad Request", "informe X-Billing-Mode e X-Billing-Space", "bad_request")
   const entry = SPACES.find(s => s.selector === selector)
   if (!entry) return problem(404, "/problems/space-not-found", "Space not found", "espaço não encontrado", "space_not_found")
+
+  // Before the per-space state: a plan request never seeds a finance space.
+  if (path === "/plan" || path.startsWith("/plan/")) {
+    if (entry.kind !== "personal_default") {
+      return problem(404, "/problems/not-found", "Not Found", "o plano é da pessoa: abra Pessoal", "plan_personal_only")
+    }
+    if (method === "get") return planRoute(method, path, r, mode)
+    const idem = header(r, "Idempotency-Key")
+    if (!idem) return problem(400, "about:blank", "Bad Request", "cabeçalho Idempotency-Key obrigatório", "idempotency_key_required")
+    const replayKey = `plan|${financeScenario()}|${method}|${path}|${idem}`
+    const stored = replays.get(replayKey)
+    if (stored) return stored
+    const res = planRoute(method, path, r, mode)
+    if (res.status >= 200 && res.status < 300) replays.set(replayKey, res)
+    return res
+  }
   const can = (v: Verb) => entry.verbs.includes(v)
 
   const scenario = financeScenario()
@@ -998,4 +1015,117 @@ function route(method: string, path: string, r: Req, s: SpaceState, can: (v: Ver
   }
 
   return problem(404, "about:blank", "Not Found", "rota de finanças desconhecida no mock", "resource_not_found")
+}
+
+// ---- plan (Finanças → Plano): Pessoal only, tenant zero, live ----------------------
+
+type PlanSub = {
+  id: string; status: "ACTIVE" | "INCOMPLETE"; cancel_at_period_end: boolean; price_ids: string[]
+  period: {period_start: string; period_end: string}
+  pending_change: {price_ids: string[]; at: string} | null
+}
+type PlanMock = {subscription: PlanSub | null; openInvoice: {id: string; total_cents: number; due_date: string; checkout_url: string} | null}
+
+const PLAN_PRICES = [
+  {id: "price_finance_free", type: "fixed", unit_amount: 0, aggregation: "", meter: "", included_quantity: 0,
+    metadata: {plan: "free", quota_spaces: "1", quota_people_per_space: "1"}},
+  {id: "price_finance_basic_monthly", type: "fixed", unit_amount: 1990, aggregation: "", meter: "", included_quantity: 0,
+    metadata: {plan: "basic", quota_spaces: "3", quota_people_per_space: "5"}},
+  {id: "price_finance_pro_monthly", type: "fixed", unit_amount: 4990, aggregation: "", meter: "", included_quantity: 0,
+    metadata: {plan: "pro", quota_spaces: "10", quota_people_per_space: "10"}},
+  {id: "price_finance_ondemand_spaces", type: "metered", unit_amount: 490, aggregation: "max", meter: "finance_spaces", included_quantity: 1,
+    metadata: {plan: "ondemand", quota_spaces: "-1", quota_people_per_space: "-1"}},
+  {id: "price_finance_ondemand_people", type: "metered", unit_amount: 290, aggregation: "max", meter: "finance_people", included_quantity: 1,
+    metadata: {plan: "ondemand", quota_spaces: "-1", quota_people_per_space: "-1"}},
+] as const
+
+const plans = new Map<string, PlanMock>()
+
+function planPeriod(): {period_start: string; period_end: string} {
+  const [y, m] = parts(todayIso())
+  const [ny, nm] = m === 12 ? [y + 1, 1] : [y, m + 1]
+  return {period_start: iso(y, m, 1), period_end: iso(ny, nm, 1)}
+}
+
+function planFor(scenario: FinanceScenario): PlanMock {
+  let p = plans.get(scenario)
+  if (!p) {
+    const base = (ids: string[]): PlanSub => ({id: "sub-plan", status: "ACTIVE", cancel_at_period_end: false, price_ids: ids, period: planPeriod(), pending_change: null})
+    p = {subscription: null, openInvoice: null}
+    if (scenario === "plan_basic") p.subscription = base(["price_finance_basic_monthly"])
+    if (scenario === "plan_ondemand") p.subscription = base(["price_finance_ondemand_spaces", "price_finance_ondemand_people"])
+    plans.set(scenario, p)
+  }
+  return p
+}
+
+function renderPlan(p: PlanMock, scenario: FinanceScenario, mode: string, invoice?: {id: string; checkout_url: string}): Res {
+  const casa = {id: FINANCE_MOCK_HOUSE, display_name: "Casa", people: 1, pending_invitations: 0}
+  const spaces = scenario === "plan_over"
+    ? [casa, {id: "0190a1b2-c3d4-7e5f-8a9b-dddddddddddd", display_name: "Viagem", people: 1, pending_invitations: 0},
+      {id: "0190a1b2-c3d4-7e5f-8a9b-eeeeeeeeeeee", display_name: "Reforma", people: 0, pending_invitations: 1}]
+    : [casa]
+  return ok({
+    live_only: mode === "test",
+    subscription: p.subscription,
+    open_invoice: p.openInvoice,
+    ...(invoice ? {invoice} : {}),
+    default_price_id: "price_finance_free",
+    prices: PLAN_PRICES,
+    usage: scenario === "plan_no_usage" ? {unavailable: true, spaces: []} : {unavailable: false, spaces},
+    levels: scenario === "plan_ondemand"
+      ? {finance_spaces: {current: 4, peak: 4}, finance_people: {current: 6, peak: 6}}
+      : {finance_spaces: {current: spaces.length, peak: spaces.length}, finance_people: {current: 1, peak: 1}},
+    // Above Basic's R$ 19,90, so the screen offers the switch (spec § 7).
+    projected_ondemand_cents: scenario === "plan_ondemand" ? 2830 : 0,
+  })
+}
+
+function planRoute(method: string, path: string, r: Req, mode: string): Res {
+  const scenario = financeScenario()
+  const p = planFor(scenario)
+  if (method === "get" && path === "/plan") return renderPlan(p, scenario, mode)
+
+  if (method === "post" && path === "/plan/cancel") {
+    if (!p.subscription) return problem(404, "/problems/not-found", "Not Found", "não há plano a cancelar", "no_finance_plan")
+    p.subscription.cancel_at_period_end = true
+    return renderPlan(p, scenario, mode)
+  }
+
+  if (method === "post" && path === "/plan") {
+    const {price_ids: ids = []} = body<{price_ids?: string[]}>(r)
+    const known = ids.length > 0 && ids.every(id => PLAN_PRICES.some(x => x.id === id) && id !== "price_finance_free")
+    if (!known) return problem(422, "about:blank", "Unprocessable", "escolha um plano do catálogo", "not_a_plan_price")
+    const metered = ids.every(id => PLAN_PRICES.find(x => x.id === id)!.type === "metered")
+    const total = ids.reduce((sum, id) => sum + PLAN_PRICES.find(x => x.id === id)!.unit_amount, 0)
+    const same = (a: string[]) => a.length === ids.length && a.every(id => ids.includes(id))
+    const invoiceFor = () => {
+      p.openInvoice = {id: "in-plan", total_cents: total, due_date: todayIso(), checkout_url: "/checkout?token=mock"}
+      return {id: p.openInvoice.id, checkout_url: p.openInvoice.checkout_url}
+    }
+
+    if (!p.subscription) {
+      p.subscription = {id: "sub-plan", status: metered ? "ACTIVE" : "INCOMPLETE", cancel_at_period_end: false,
+        price_ids: ids, period: planPeriod(), pending_change: null}
+      return renderPlan(p, scenario, mode, metered ? undefined : invoiceFor())
+    }
+    const sub = p.subscription
+    if (same(sub.price_ids)) {
+      sub.pending_change = null
+      return renderPlan(p, scenario, mode)
+    }
+    if (sub.status === "INCOMPLETE") {
+      return {status: 409, data: {type: "about:blank", title: "Payment pending", status: 409, code: "plan_payment_pending",
+        invoice_id: p.openInvoice?.id, checkout_url: p.openInvoice?.checkout_url}}
+    }
+    const currentAdvance = sub.price_ids.every(id => PLAN_PRICES.find(x => x.id === id)?.type === "fixed")
+    if (currentAdvance && metered) {
+      sub.pending_change = {price_ids: ids, at: sub.period.period_end}
+      return renderPlan(p, scenario, mode)
+    }
+    sub.price_ids = ids
+    sub.pending_change = null
+    return renderPlan(p, scenario, mode, metered ? undefined : invoiceFor())
+  }
+  return problem(404, "/problems/not-found", "Not Found", "rota não mockada", "resource_not_found")
 }
