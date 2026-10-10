@@ -415,7 +415,7 @@ describe("F4 — an end that cancels bills, and one that did not finish", () => 
       .mockResolvedValueOnce({...REC, end: "2026-10-09", archived: true})
     const dialog = await saveEnd(patch)
     await userEvent.click(await within(dialog).findByRole("button", {name: "Encerrar e arquivar"}))
-    expect(await within(dialog).findByText("A recorrência foi encerrada, mas alguns lançamentos não foram cancelados — tente de novo.")).toBeInTheDocument()
+    expect(await within(dialog).findByText("A recorrência foi encerrada, mas alguns lançamentos não foram cancelados. Tente de novo.")).toBeInTheDocument()
     expect(screen.getByRole("dialog", {name: "Editar recorrência"})).toBeInTheDocument()
 
     await userEvent.click(within(dialog).getByRole("button", {name: "Tentar de novo"}))

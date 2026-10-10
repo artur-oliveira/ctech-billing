@@ -287,7 +287,7 @@ needs them yet, and the tree format admits them later without migration.
   transaction (TransactionConflict) is retried a few times; a bill paid or cancelled meanwhile is
   refused by the cancel guard and stays as it is; one only edited is tried again. Any open bill left
   after that is 409 `recurrence_end_incomplete` (never a 200): the end is saved, the console says "A
-  recorrência foi encerrada, mas alguns lançamentos não foram cancelados — tente de novo." (or "O fim
+  recorrência foi encerrada, mas alguns lançamentos não foram cancelados. Tente de novo." (or "O fim
   foi salvo, …"), keeps the panel open with **Tentar de novo**, refreshes the space, and the same
   PATCH again cancels only what is still open.
 - **A recurrence's detail** (`GET /recurrences/:id/occurrences`, read verb, inside the space) lists

@@ -448,7 +448,7 @@ in `muted-foreground` ("O já pago (10/12) continua: o pagamento está no extrat
 says the act: **Encerrar e arquivar** when the rule ends, **Salvar e cancelar** when it keeps going;
 **Voltar** sends nothing. Nothing about auto-pay any more: a cancelled bill is not paid. If the
 cancellations did not all happen, the panel stays open with one line ("A recorrência foi
-encerrada, mas alguns lançamentos não foram cancelados — tente de novo.") and **Tentar de novo**,
+encerrada, mas alguns lançamentos não foram cancelados. Tente de novo.") and **Tentar de novo**,
 which sends the same request.
 
 **An offer shows its arithmetic.** After an OFX import into an account with no opening balance and

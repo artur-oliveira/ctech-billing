@@ -167,8 +167,8 @@
     "endCancels_other": "Os {{count}} lançamentos em aberto depois do fim ({{dates}}) serão cancelados.",
     "saveAndCancel": "Salvar e cancelar",
     "endIncomplete": {
-      "archived": "A recorrência foi encerrada, mas alguns lançamentos não foram cancelados — tente de novo.",
-      "saved": "O fim foi salvo, mas alguns lançamentos não foram cancelados — tente de novo."
+      "archived": "A recorrência foi encerrada, mas alguns lançamentos não foram cancelados. Tente de novo.",
+      "saved": "O fim foi salvo, mas alguns lançamentos não foram cancelados. Tente de novo."
     },
     "retry": "Tentar de novo",
     "endKeepsPaid_one": "O já pago ({{dates}}) continua: o pagamento está no extrato.",
