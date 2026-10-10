@@ -30,20 +30,27 @@ import type {
  * leaf; `invoices` is a prefix and nothing else.
  */
 export const portalKeys = {
-  session: ["portal", "session"] as const,
+  get session() { return [...scope(), "session"] as const },
   /** Prefix only — never a query's own key. Invalidating it catches every
    *  list shape and every detail below it. */
-  invoices: ["portal", "invoices"] as const,
+  get invoices() { return [...scope(), "invoices"] as const },
   /** One page, for composing the home screen. */
-  invoiceList: ["portal", "invoices", "list"] as const,
+  get invoiceList() { return [...scope(), "invoices", "list"] as const },
   /** Cursor pages, for the list screen. */
-  invoicePages: ["portal", "invoices", "pages"] as const,
-  invoice: (id: string) => ["portal", "invoices", "detail", id] as const,
-  subscriptions: ["portal", "subscriptions"] as const,
-  subscription: (id: string) => ["portal", "subscriptions", "detail", id] as const,
-  /** Outside the ["portal"] prefix: switching resets everything under it, and
-   *  the list the switch is drawn from must survive its own switch. */
+  get invoicePages() { return [...scope(), "invoices", "pages"] as const },
+  invoice: (id: string) => [...scope(), "invoices", "detail", id] as const,
+  get subscriptions() { return [...scope(), "subscriptions"] as const },
+  subscription: (id: string) => [...scope(), "subscriptions", "detail", id] as const,
+  /** Not keyed by the space: it is the list the switch is drawn from, the same
+   *  whichever space is selected. */
   spaces: ["portal-spaces"] as const,
+}
+
+/** Every portal key starts with the selection it was read for, like
+ *  financeKeys: two spaces are two caches, so a change of selection from
+ *  anywhere can never serve one space's bills under the other's name. */
+function scope() {
+  return ["portal", spaceHeader(getPortalSpace())] as const
 }
 
 /** The portal's selector header, read at call time (ADR 0025). */

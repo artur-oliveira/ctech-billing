@@ -3,6 +3,7 @@
 package integration
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -121,5 +122,31 @@ func TestAMaxPriceOnACustomerWithoutRefFailsLoudly(t *testing.T) {
 	if _, err := m.invoicer.GenerateForPeriod(ctxT(t), m.sub, m.items,
 		billing.Period{Start: brcal.New(2026, time.February, 1), End: brcal.New(2026, time.March, 1)}, "scheduler", now()); err == nil {
 		t.Fatal("a max price with no customer reference must not bill 0")
+	}
+}
+
+// Review finding: a max price for a customer with no external reference is
+// refused at subscribe, not left to fail at every close and never be billed.
+func TestAMaxPriceNeedsACustomerWithAReference(t *testing.T) {
+	ctx := ctxT(t)
+	f := newCatalog(t, "finance")
+	customers := repositories.NewCustomerRepository(testDB, testCfg)
+	cust := &billing.Customer{ID: id.NewWithPrefix(id.PrefixCustomer), OrganizationID: f.org.ID, Livemode: true, Name: "No ref"}
+	if err := customers.Create(ctx, cust, "test", "r", now()); err != nil {
+		t.Fatal(err)
+	}
+	price := &billing.Price{ID: id.NewWithPrefix(id.PrefixPrice), OrganizationID: f.org.ID, Livemode: true, ProductID: f.product.ID,
+		Type: billing.PriceMetered, Currency: billing.CurrencyBRL, UnitAmount: 490,
+		Recurrence: billing.Recurrence{Interval: billing.IntervalMonth, Count: 1}, Timing: billing.BillArrears,
+		Aggregation: billing.AggregationMax, Meter: "finance_spaces"}
+	if err := f.catalog.CreatePrice(ctx, price, "test", "r", now()); err != nil {
+		t.Fatal(err)
+	}
+	inv := services.NewInvoicer(f.subs, f.invoices, f.catalog, f.usage).WithLevels(repositories.NewLevelRepository(testDB, testCfg), customers)
+	subber := services.NewSubscriber(f.subs, f.catalog, inv)
+	_, _, err := subber.Subscribe(ctx, services.SubscribeInput{OrganizationID: f.org.ID, Livemode: true, CustomerID: cust.ID,
+		Items: []services.SubscribeItem{{PriceID: price.ID}}, Actor: "test"}, now())
+	if !errors.Is(err, billing.ErrInvalidSubscriptionItem) {
+		t.Fatalf("err = %v, want ErrInvalidSubscriptionItem", err)
 	}
 }

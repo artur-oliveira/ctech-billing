@@ -21,6 +21,7 @@ type ownersEnv struct {
 	*apiEnv
 	finClient, dfeClient          string
 	free, basic, spaces, dfePrice string
+	dfeMax                        string
 }
 
 func newOwnersEnv(t *testing.T) ownersEnv {
@@ -57,7 +58,7 @@ func newOwnersEnv(t *testing.T) ownersEnv {
 	dfe := "prod_dfe_" + id.New()
 	mk(&billing.Product{ID: dfe, Name: "DF-e Pro", OwnerKey: "dfe"})
 	o.dfePrice = price(dfe, billing.PriceFixed, 0, billing.Metadata{"plan": "pro"}, nil)
-	price(dfe, billing.PriceMetered, 500, billing.Metadata{"plan": "ondemand"}, func(p *billing.Price) {
+	o.dfeMax = price(dfe, billing.PriceMetered, 500, billing.Metadata{"plan": "ondemand"}, func(p *billing.Price) {
 		p.Timing, p.Aggregation, p.Meter = billing.BillArrears, billing.AggregationMax, "dfe_companies"
 	})
 
@@ -233,5 +234,21 @@ func TestAScopedCredentialCannotAskForAnotherOwner(t *testing.T) {
 	o := newOwnersEnv(t)
 	if code, _ := o.entitlements(t, o.finClient, "customer_ref=USER_x&owner_key=dfe"); code != http.StatusForbidden {
 		t.Fatalf("status %d", code)
+	}
+}
+
+// Review finding: a summed usage report against an item billed on levels would
+// be stored and never read at close; it is refused so the integration learns.
+func TestUsageAgainstALevelPricedItemIsRefused(t *testing.T) {
+	o := newOwnersEnv(t)
+	cust := o.customerWith(t, "ORG_"+newSpaceOrgID(), o.dfeMax)
+	subs, _ := repositories.NewSubscriptionRepository(testDB, testCfg).ListByCustomer(ctxT(t), o.org.ID, true, cust, 10)
+	if len(subs) != 1 {
+		t.Fatalf("%d subscriptions", len(subs))
+	}
+	tok := o.token(t, o.dfeClient, "", middleware.ScopeUsageWrite)
+	r := o.do(t, http.MethodPost, "/v1.0/usage", tok, id.New(), `{"subscription_id":"`+subs[0].ID+`","quantity":1,"idempotency_key":"`+id.New()+`"}`)
+	if r.status != http.StatusUnprocessableEntity || !strings.Contains(string(r.body), "use_levels") {
+		t.Fatalf("%d %s", r.status, r.body)
 	}
 }

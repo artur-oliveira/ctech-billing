@@ -38,10 +38,10 @@ export function usePortalSpaces() {
  * organization, and they never see this row.
  *
  * The value is a request the server re-authorizes on every call (ADR 0025); the
- * switch only makes the current answer visible. Switching drops everything the
- * portal had loaded — the other organization's invoices must never flash on
- * screen under the new name — and lands on Início, since an invoice open in one
- * organization does not exist in the next.
+ * switch only makes the current answer visible. Every portal query is keyed by
+ * the space, so the other organization's invoices never show under the new
+ * name; switching lands on Início, since an invoice open in one organization
+ * does not exist in the next.
  */
 export function PortalSpaceSwitch() {
   const {t} = useTranslation()
@@ -66,9 +66,10 @@ export function PortalSpaceSwitch() {
 
   const choose = async (value: string) => {
     if (value === current) return
-    setPortalSpace(parseSpace(value))
+    // The old space's requests are not wanted any more; its cache is a
+    // separate key and simply stops being read (portalKeys, PortalSpaceScope).
     await queryClient.cancelQueries({queryKey: ["portal"]})
-    await queryClient.resetQueries({queryKey: ["portal"]})
+    setPortalSpace(parseSpace(value))
     router.push("/dashboard")
   }
 

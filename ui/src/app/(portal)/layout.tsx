@@ -11,11 +11,13 @@ import {useTranslation} from "react-i18next"
 import {LanguageSwitcher} from "@/components/LanguageSwitcher"
 import {AccountMenu} from "@/components/AccountMenu"
 import {NoBillingAccount} from "@/components/portal/NoBillingAccount"
+import {PortalSpaceScope} from "@/components/portal/PortalSpaceScope"
 import {PortalSpaceSwitch} from "@/components/portal/PortalSpaceSwitch"
 import {TermsGate} from "@/components/portal/TermsGate"
 import {isNoBillingAccount} from "@/lib/api/client"
 import {getSession, portalKeys} from "@/lib/api/portal"
 import {useAuth} from "@/lib/auth/AuthContext"
+import {usePortalSpace} from "@/lib/portal/space"
 
 const NAV = [
   {href: "/dashboard", labelKey: "portal.nav.home"},
@@ -48,6 +50,9 @@ export default function PortalLayout({children}: LayoutProps<"/">) {
   const pathname = usePathname()
   const router = useRouter()
   const {authenticated, loading} = useAuth()
+  // Read so the shell re-renders on a change of selection: the session key
+  // below carries the space (portalKeys), and so must this read of it.
+  usePortalSpace()
 
   const {data: session, error: sessionError} = useQuery({
     queryKey: portalKeys.session,
@@ -141,15 +146,17 @@ export default function PortalLayout({children}: LayoutProps<"/">) {
             it applies, and the gate comes before the children because it needs
             the session to have answered — rendering it on `undefined` would ask
             somebody who already agreed to agree again on every refresh. */}
-        {loading || !authenticated ? (
-          <GateSkeleton/>
-        ) : noAccount ? (
-          <NoBillingAccount/>
-        ) : session && !session.terms_accepted ? (
-          <TermsGate/>
-        ) : (
-          children
-        )}
+        <PortalSpaceScope>
+          {loading || !authenticated ? (
+            <GateSkeleton/>
+          ) : noAccount ? (
+            <NoBillingAccount/>
+          ) : session && !session.terms_accepted ? (
+            <TermsGate/>
+          ) : (
+            children
+          )}
+        </PortalSpaceScope>
       </main>
     </div>
   )

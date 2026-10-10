@@ -382,6 +382,14 @@ func (h *handlers) reportUsage(c fiber.Ctx) error {
 			usageItemFieldErr(err),
 		}).Send(c)
 	}
+	// A price billed on levels never reads usage records at close, so a summed
+	// report against it would be stored and never billed. Refused, so the
+	// integration moves to POST /usage/levels instead of believing it metered.
+	if price, err := h.cat.GetPrice(c.Context(), t.OrganizationID, t.Livemode, item.PriceID); err != nil {
+		return fail(c, err)
+	} else if price.Aggregation == billing.AggregationMax {
+		return problem.Unprocessable("this price is billed on levels: report them to POST /v1.0/usage/levels").WithCode("use_levels").Send(c)
+	}
 
 	occurred := h.now()
 	if req.OccurredAt != "" {
