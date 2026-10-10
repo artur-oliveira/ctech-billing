@@ -143,6 +143,12 @@ WEBHOOK_SECRET_DFE=… \
 Until it runs there is no organization, no credential and no catalogue, so every M2M call resolves
 to a tenant that does not exist.
 
+`api/cmd/seed/run.sh {env}` does both runs in that order, reading `FIELD_ENCRYPTION_KEY` and
+`WEBHOOK_SECRET_DFE` from SSM without printing them (operator's AWS profile, `ctech` by default).
+
+The plan's `owner_user_id` is who reaches the tenant's console. A tenant first seeded without one
+(API-only, as `ctech` was in production until 2026-10-10) gets it on the next run, once.
+
 A credential lives in one mode (its client id resolves to one row). Only the **live** run creates a new
 one; the test run, which goes first, leaves it — unless the plan marks it `"test": true`.
 
