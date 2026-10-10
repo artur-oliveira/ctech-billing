@@ -210,3 +210,11 @@ func scheduleKeys(livemode bool, job string, due brcal.Date, id string, active b
 	}
 	return SchedulePK(livemode, job, due), id
 }
+
+// customerOrgRow points a ctech-account organization at its customer, written
+// in the customer's transaction and conditionally, like customerUserRow.
+type customerOrgRow struct {
+	keys
+	AccountOrganizationID string `dynamodbav:"account_organization_id"`
+	CustomerID            string `dynamodbav:"customer_id"`
+}

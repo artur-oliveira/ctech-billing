@@ -155,3 +155,14 @@ func TestLevelSortKeysOrderByTime(t *testing.T) {
 		t.Fatal("bound")
 	}
 }
+func TestOrganizationOfRef(t *testing.T) {
+	id, ok := OrganizationOfRef("ORG_0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b")
+	if !ok || id != "0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b" {
+		t.Fatal(id, ok)
+	}
+	for _, ref := range []string{"ORG_acme", "ORG_0190A1B2-C3D4-7E5F-8A9B-0C1D2E3F4A5B", "USER_x", "org_0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b"} {
+		if _, ok := OrganizationOfRef(ref); ok {
+			t.Errorf("%q read as an organization", ref)
+		}
+	}
+}

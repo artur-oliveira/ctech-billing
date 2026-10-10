@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"gopkg.aoctech.app/billing/api/internal/domain/brcal"
+	"gopkg.aoctech.app/billing/api/internal/space"
 )
 
 // Logical table names. The physical name is {prefix}_{table}, and the company
@@ -140,6 +141,7 @@ const (
 	skAudit        = "AUDIT#"
 	skCounter      = "COUNTER#"
 	skCustomerUser = "CUSTOMER_USER#"
+	skCustomerOrg  = "CUSTOMER_ORG#"
 	skCredential   = "CREDENTIAL#"
 	skIdempotency  = "IDEMPOTENCY#"
 	skEndpoint     = "ENDPOINT#"
@@ -405,6 +407,26 @@ func LookupOrganizationOwnerPK(livemode bool, userID string) string {
 // the caller was always entitled to read. An index would be machinery for a
 // question nobody asks.
 func CustomerUserSK(userID string) string { return skCustomerUser + userID }
+
+// OrgRefPrefix marks an external reference that names a ctech-account
+// organization (spec § 8).
+const OrgRefPrefix = "ORG_"
+
+// OrganizationOfRef reads ORG_{organization_id}. Only a canonical organization
+// id counts: any other ORG_… is an ordinary external reference, so a merchant
+// already using the prefix is unaffected.
+func OrganizationOfRef(ref string) (string, bool) {
+	id, ok := strings.CutPrefix(ref, OrgRefPrefix)
+	if !ok || !space.IsOrganizationID(id) {
+		return "", false
+	}
+	return id, true
+}
+
+// CustomerOrgSK is the pointer from a ctech-account organization to its
+// customer, the organization counterpart of CustomerUserSK (ADR 0025,
+// 2026-10-07 amendment).
+func CustomerOrgSK(organizationID string) string { return skCustomerOrg + organizationID }
 
 // CredentialSK and IdempotencySK are tenant-scoped rows.
 func CredentialSK(clientID string) string { return skCredential + clientID }

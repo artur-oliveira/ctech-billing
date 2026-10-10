@@ -110,6 +110,10 @@ func (h *handlers) createCustomerAs(c fiber.Ctx, actor string) error {
 	ch.taxID("tax_id", req.TaxID, false, false)
 	ch.text("external_ref", req.ExternalRef, false, limits.ExternalRef)
 	ch.text("user_id", req.UserID, false, limits.ExternalRef)
+	orgRef, isOrg := repositories.OrganizationOfRef(req.ExternalRef)
+	if isOrg && req.UserID != "" {
+		ch.fail("user_id", "not_allowed", "an organization customer has no user")
+	}
 	if len(ch.errs) > 0 {
 		return problem.Validation(ch.errs).Send(c)
 	}
@@ -125,9 +129,15 @@ func (h *handlers) createCustomerAs(c fiber.Ctx, actor string) error {
 		TaxID:          req.TaxID,
 		Metadata:       req.Metadata,
 	}
-	if err := h.customers.Create(
-		c.Context(), customer, actor, middleware.GetRequestID(c), h.now(),
-	); err != nil {
+	if err := h.customers.Create(c.Context(), customer, actor, middleware.GetRequestID(c), h.now()); err != nil {
+		if isOrg && errors.Is(err, repositories.ErrOrganizationAlreadyCustomer) {
+			// Creating again for the same organization returns it (spec § 8).
+			existing, gerr := h.customers.GetByOrganization(c.Context(), t.OrganizationID, t.Livemode, orgRef)
+			if gerr != nil {
+				return fail(c, gerr)
+			}
+			return c.Status(fiber.StatusOK).JSON(newCustomerResponse(existing))
+		}
 		return fail(c, err)
 	}
 	return c.Status(fiber.StatusCreated).JSON(newCustomerResponse(customer))
