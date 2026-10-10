@@ -64,7 +64,7 @@ function invoice(over: Partial<ConsoleInvoiceRow> & Pick<ConsoleInvoice, "id" | 
     customer_name: "Ana Ribeiro",
     subscription_id: "sub_mock_ana",
     overdue: false,
-    period: {start: day(-42), end: day(-13)},
+    period: {period_start: day(-42), period_end: day(-13)},
     due_date: day(-27),
     currency: "BRL",
     subtotal: total,
@@ -77,7 +77,7 @@ function invoice(over: Partial<ConsoleInvoiceRow> & Pick<ConsoleInvoice, "id" | 
     lines: [
       {
         description: "Plano Essencial · mensal",
-        period: {start: day(-42), end: day(-13)},
+        period: {period_start: day(-42), period_end: day(-13)},
         quantity: 1,
         unit_amount: 8900,
         amount: 8900,
@@ -85,7 +85,7 @@ function invoice(over: Partial<ConsoleInvoiceRow> & Pick<ConsoleInvoice, "id" | 
       },
       {
         description: "Emissões adicionais (120 documentos)",
-        period: {start: day(-42), end: day(-13)},
+        period: {period_start: day(-42), period_end: day(-13)},
         quantity: 120,
         unit_amount: 20,
         amount: 2400,
@@ -103,7 +103,7 @@ const LIVE: ConsoleInvoiceRow[] = [
     status: "OPEN",
     overdue: true,
     due_date: day(-6),
-    period: {start: day(-36), end: day(-7)},
+    period: {period_start: day(-36), period_end: day(-7)},
     checkout_url: "https://billing.aoctech.app/checkout?token=mock",
   }),
   invoice({
@@ -135,7 +135,7 @@ const LIVE: ConsoleInvoiceRow[] = [
     lines: [
       {
         description: "Plano Essencial · mensal",
-        period: {start: day(-12), end: day(18)},
+        period: {period_start: day(-12), period_end: day(18)},
         quantity: 1,
         unit_amount: 8900,
         amount: 8900,
@@ -158,7 +158,7 @@ const TEST: ConsoleInvoiceRow[] = [
     lines: [
       {
         description: "Plano de testes",
-        period: {start: day(-25), end: day(5)},
+        period: {period_start: day(-25), period_end: day(5)},
         quantity: 1,
         unit_amount: 100,
         amount: 100,
@@ -294,7 +294,7 @@ const SUBSCRIPTIONS: ConsoleSubscription[] = [
     recurrence: {interval: "month", count: 1},
     billing_timing: "advance",
     anchor: day(-42),
-    current_period: {start: day(-12), end: day(18)},
+    current_period: {period_start: day(-12), period_end: day(18)},
     cancel_at_period_end: false,
     livemode: true,
   },
@@ -306,7 +306,7 @@ const SUBSCRIPTIONS: ConsoleSubscription[] = [
     recurrence: {interval: "month", count: 1},
     billing_timing: "arrears",
     anchor: day(-70),
-    current_period: {start: day(-10), end: day(20)},
+    current_period: {period_start: day(-10), period_end: day(20)},
     cancel_at_period_end: true,
     livemode: true,
   },
@@ -318,7 +318,7 @@ const SUBSCRIPTIONS: ConsoleSubscription[] = [
     recurrence: {interval: "month", count: 1},
     billing_timing: "advance",
     anchor: day(-2),
-    current_period: {start: day(-2), end: day(28)},
+    current_period: {period_start: day(-2), period_end: day(28)},
     cancel_at_period_end: false,
     livemode: true,
   },

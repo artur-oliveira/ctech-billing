@@ -163,7 +163,7 @@ function Detail() {
           <Amount label={t("console.invoice.open")} cents={invoice.amount_due} currency={invoice.currency} strong/>
         </dl>
         <dl className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-3">
-          <Fact label={t("console.invoice.period")} value={period(invoice.period.start, invoice.period.end)}/>
+          <Fact label={t("console.invoice.period")} value={period(invoice.period.period_start, invoice.period.period_end)}/>
           <Fact label={t("console.invoice.due")} value={longDate(invoice.due_date)}/>
           <Fact
             label={t("console.invoice.customer")}
@@ -208,7 +208,7 @@ function Detail() {
                   </td>
                   <td data-numeric className="py-2 pr-4 text-muted-foreground">
                     {line.period
-                      ? `${shortDate(line.period.start)} – ${shortDate(line.period.end)}`
+                      ? `${shortDate(line.period.period_start)} – ${shortDate(line.period.period_end)}`
                       : "—"}
                   </td>
                   <td data-numeric className="py-2 pr-4 text-right text-muted-foreground">

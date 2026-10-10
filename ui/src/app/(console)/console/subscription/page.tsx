@@ -106,7 +106,7 @@ function Detail() {
           value={sub.customer_id}
           href={`/console/customer?id=${sub.customer_id}`}
         />
-        <Fact label={t("console.subscription.period")} value={t("common.periodRange", {start: longDate(sub.current_period.start), end: longDate(sub.current_period.end)})}/>
+        <Fact label={t("console.subscription.period")} value={t("common.periodRange", {start: longDate(sub.current_period.period_start), end: longDate(sub.current_period.period_end)})}/>
         <Fact label={t("console.subscription.anchor")} value={longDate(sub.anchor)}/>
         <Fact label={t("console.subscription.access")} value={sub.entitled ? t("console.subscription.allowed") : t("console.subscription.blocked")}/>
         <Fact
@@ -147,7 +147,7 @@ function Detail() {
         description={
           ending === "now"
             ? t("console.subscription.nowBody")
-            : t("console.subscription.endBody", {date: longDate(sub.current_period.end)})
+            : t("console.subscription.endBody", {date: longDate(sub.current_period.period_end)})
         }
         cancelLabel={t("console.subscription.keep")}
         submitLabel={ending === "now" ? t("console.subscription.endNow") : t("console.subscription.endAtPeriodEnd")}

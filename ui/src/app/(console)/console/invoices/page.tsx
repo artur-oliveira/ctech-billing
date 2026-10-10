@@ -118,7 +118,7 @@ export default function ConsoleInvoicesPage() {
                   </td>
                   <td className="py-2 pr-4"><InvoiceStatusBadge invoice={invoice}/></td>
                   <td data-numeric className="py-2 pr-4 text-muted-foreground">
-                    {shortDate(invoice.period.start)} – {shortDate(invoice.period.end)}
+                    {shortDate(invoice.period.period_start)} – {shortDate(invoice.period.period_end)}
                   </td>
                   <td data-numeric className="py-2 pr-4 text-muted-foreground">
                     {shortDate(invoice.due_date)}

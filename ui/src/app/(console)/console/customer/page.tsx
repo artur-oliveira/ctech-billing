@@ -107,7 +107,7 @@ function Detail() {
                   />
                 </div>
                 <span data-numeric className="text-xs text-muted-foreground">
-                  {shortDate(sub.current_period.start)} – {shortDate(sub.current_period.end)}
+                  {shortDate(sub.current_period.period_start)} – {shortDate(sub.current_period.period_end)}
                 </span>
               </li>
             ))}

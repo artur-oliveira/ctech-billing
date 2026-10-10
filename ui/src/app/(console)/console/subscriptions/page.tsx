@@ -84,7 +84,7 @@ export default function ConsoleSubscriptionsPage() {
                     />
                   </td>
                   <td data-numeric className="py-2 pr-4 text-muted-foreground">
-                    {shortDate(sub.current_period.start)} – {shortDate(sub.current_period.end)}
+                    {shortDate(sub.current_period.period_start)} – {shortDate(sub.current_period.period_end)}
                   </td>
                   <td className="py-2 pr-4 text-muted-foreground">
                     {sub.recurrence.count === 1
