@@ -43,17 +43,17 @@ describe("PortalSpaceSwitch", () => {
   it("lists Pessoal first, then the organizations the server sent", async () => {
     vi.spyOn(portal, "listPortalSpaces").mockResolvedValue(withAcme)
     renderWithQuery(<PortalSpaceSwitch/>)
-    await screen.findByRole("combobox", {name: "Faturas de"})
-    await expectOptionsEventually("Faturas de", ["Pessoal", "Acme LTDA"])
-    expect(selectByLabel("Faturas de")).toHaveTextContent("Pessoal")
+    await screen.findByRole("combobox", {name: "Conta"})
+    await expectOptionsEventually("Conta", ["Pessoal", "Acme LTDA"])
+    expect(selectByLabel("Conta")).toHaveTextContent("Pessoal")
   })
 
   it("switches to the organization, and the next portal call carries it", async () => {
     vi.spyOn(portal, "listPortalSpaces").mockResolvedValue(withAcme)
     renderWithQuery(<PortalSpaceSwitch/>)
-    await screen.findByRole("combobox", {name: "Faturas de"})
-    await expectOptionsEventually("Faturas de", ["Pessoal", "Acme LTDA"])
-    await pick("Faturas de", "Acme LTDA")
+    await screen.findByRole("combobox", {name: "Conta"})
+    await expectOptionsEventually("Conta", ["Pessoal", "Acme LTDA"])
+    await pick("Conta", "Acme LTDA")
     expect(getPortalSpace()).toEqual({kind: "organization", organizationId: ACME})
     await waitFor(() => expect(push).toHaveBeenCalledWith("/dashboard"))
     await portal.listInvoices()

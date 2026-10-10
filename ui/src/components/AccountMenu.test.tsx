@@ -100,3 +100,23 @@ describe("AccountMenu", () => {
     expect(screen.queryByRole("button", {name: /Menu da conta/})).toBeNull()
   })
 })
+
+// Production: an organization with no billing account. The shell shows the
+// empty state because the session answered 403, and mounts this menu; if the
+// menu re-asked for the session on mount, the refetch would clear the error,
+// the shell would drop the empty state and the menu, the 403 would come back,
+// and the two would trade places forever.
+describe("AccountMenu with no billing account", () => {
+  it("does not ask for the session again when it mounts on a 403", async () => {
+    const getSession = vi.spyOn(portal, "getSession").mockRejectedValue({response: {status: 403, data: {type: "/problems/no-billing-account"}}})
+    vi.spyOn(consoleApi, "getConsoleSession").mockRejectedValue(forbidden)
+    const {client} = renderWithQuery(<p>shell</p>)
+    await client.prefetchQuery({queryKey: portal.portalKeys.session, queryFn: portal.getSession, retry: false})
+    expect(getSession).toHaveBeenCalledTimes(1)
+    const {QueryClientProvider} = await import("@tanstack/react-query")
+    const {render} = await import("@testing-library/react")
+    render(<QueryClientProvider client={client}><AccountMenu view="portal"/></QueryClientProvider>)
+    await screen.findByRole("button", {name: /Menu da conta/})
+    expect(getSession).toHaveBeenCalledTimes(1)
+  })
+})

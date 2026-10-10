@@ -202,7 +202,7 @@ export const mockAdapter: AxiosAdapter = async config => {
 
   // Above every portal route, which is where the real refusal is: identity is
   // resolved in middleware, so no handler below it is reachable.
-  if (scenario === "sem_conta" && !portalOrg && url.includes("/v1.0/portal/")) {
+  if (((scenario === "sem_conta" && !portalOrg) || (scenario === "org_sem_conta" && portalOrg)) && url.includes("/v1.0/portal/")) {
     fail(
       config,
       403,

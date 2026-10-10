@@ -151,7 +151,7 @@
     "active": "Ativa"
   },
   "space": {
-    "label": "Faturas de",
+    "label": "Conta",
     "personal": "Pessoal",
     "lost": "Você não gerencia mais essa organização. Mostrando suas faturas pessoais.",
     "pickOrganization": "Escolha uma organização acima para ver as faturas dela.",

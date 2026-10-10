@@ -58,6 +58,9 @@ export default function PortalLayout({children}: LayoutProps<"/">) {
     queryKey: portalKeys.session,
     queryFn: getSession,
     enabled: authenticated,
+    // "No billing account" is an answer, not a hiccup: re-asking on focus
+    // would clear it and flash the screens behind it before the 403 returns.
+    refetchOnWindowFocus: query => !isNoBillingAccount(query.state.error),
   })
 
   // Signed in, nothing bought yet. Decided from the session alone rather than
@@ -72,12 +75,12 @@ export default function PortalLayout({children}: LayoutProps<"/">) {
   return (
     <div data-density="comfortable" className="min-h-dvh">
       <header className="border-b border-border">
-        <div className="mx-auto flex h-16 max-w-2xl items-center justify-between gap-4 px-4">
+        <div className="mx-auto flex min-h-16 max-w-2xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2">
           {/* The mark plus the wordmark, and the wordmark is the fourth place
               the brand colour appears — after the primary button, the active
               nav item and the selected row. A header that renders the company
               name in body ink is a header that could belong to anybody. */}
-          <Link href="/dashboard" className="flex items-center gap-2.5 touch:min-h-11">
+          <Link href="/dashboard" className="order-1 flex items-center gap-2.5 touch:min-h-11">
             <Image
               src="/android-chrome-192x192.png"
               alt=""
@@ -99,17 +102,15 @@ export default function PortalLayout({children}: LayoutProps<"/">) {
           {/* The person behind the avatar: the whole name and e-mail, the
               switch to the console, and Sair. It holds three things now, so it
               is a menu; it was plain text while Sair was its only entry. */}
-          <div className="flex min-w-0 items-center gap-2">
+          {/* Whose bills, the console's way: beside the avatar on a desk, the
+              row under the mark on a phone. Renders nothing for a person with
+              no organization to pick; stays with no billing account, since an
+              admin with nothing of their own still has the organization's. */}
+          <PortalSpaceSwitch/>
+          <div className="order-2 ml-auto flex min-w-0 items-center gap-2 sm:order-3 sm:ml-0">
             <LanguageSwitcher className="shrink-0"/>
             {(session || noAccount) && <AccountMenu view="portal"/>}
           </div>
-        </div>
-        {/* Whose bills: its own row, above the tabs it governs. Renders
-            nothing for a person with no organization to pick. Stays with no
-            billing account: an admin with nothing of their own still has the
-            organization's bills to open. */}
-        <div className="mx-auto max-w-2xl px-4">
-          <PortalSpaceSwitch/>
         </div>
         {/* Hidden with no billing account. Three tabs that all lead to the same
             empty state read as three broken screens. */}
