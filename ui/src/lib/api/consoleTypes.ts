@@ -8,7 +8,7 @@
  * two payloads, and the console must never render the portal's phrasing back at
  * somebody who needs the enum (PRODUCT.md).
  */
-import type {Cents, DocumentLink, IsoDate, Period} from "@/lib/api/types"
+import type {Cents, DocumentLink, IsoDate} from "@/lib/api/types"
 
 export type {DocumentLink}
 
@@ -36,9 +36,17 @@ export interface AuditEntry {
   created_at: string
 }
 
+/** A service window as the API sends it on the console: the domain's own
+ *  field names. The portal maps it to `start`/`end` server-side (portal DTO);
+ *  the console does not, and reading `start` here is reading `undefined`. */
+export interface BillingPeriod {
+  period_start: IsoDate
+  period_end: IsoDate
+}
+
 export interface ConsoleInvoiceLine {
   description: string
-  period?: Period
+  period?: BillingPeriod
   quantity: number
   unit_amount: Cents
   amount: Cents
@@ -53,7 +61,7 @@ export interface ConsoleInvoice {
   status: InvoiceStatus
   /** Derived on read, never stored — which is why "overdue" is not a status. */
   overdue: boolean
-  period: Period
+  period: BillingPeriod
   due_date: IsoDate
   currency: string
   subtotal: Cents
@@ -137,7 +145,7 @@ export interface ConsoleSubscription {
   recurrence: Recurrence
   billing_timing: string
   anchor: IsoDate
-  current_period: Period
+  current_period: BillingPeriod
   cancel_at_period_end: boolean
   metadata?: Record<string, string>
   livemode: boolean
