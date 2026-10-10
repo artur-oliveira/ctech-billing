@@ -375,8 +375,11 @@ func registerConsole(v1 fiber.Router, d Deps, h *handlers, auth fiber.Handler) {
 // every user shares one tenant, so tenant scoping alone would show each of them
 // all of the others.
 func registerPortal(v1 fiber.Router, d Deps, h *handlers, auth fiber.Handler) {
-	ph := &portalHandlers{handlers: h, collector: d.Collector, bus: d.SettlementBus}
-	identity := middleware.ResolvePortalIdentity(d.Customers, d.PortalOrganizationID)
+	ph := &portalHandlers{handlers: h, collector: d.Collector, bus: d.SettlementBus, spaces: d.SpaceLister, portalOrg: d.PortalOrganizationID}
+	// Before the group: the list must answer for a person who is not themselves
+	// a customer but administers an organization that is (scope decision 12).
+	v1.Get("/portal/spaces", auth, middleware.RequireUserScope(middleware.ScopeMySubscriptionsRead), ph.listSpaces)
+	identity := middleware.ResolvePortalIdentity(d.Customers, d.PortalOrganizationID, d.Spaces)
 	portal := v1.Group("/portal", auth, identity)
 
 	portal.Get("/session",
