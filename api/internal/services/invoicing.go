@@ -415,6 +415,9 @@ func (s *Invoicer) invoiceOne(ctx context.Context, sub *billing.Subscription, ac
 	if sub.CancelAtPeriodEnd {
 		return s.endAtBoundary(ctx, sub, items, actor, now)
 	}
+	if pc := sub.PendingChange; pc != nil && pc.At == sub.CurrentPeriod().End {
+		return s.changeAtBoundary(ctx, sub, items, pc, actor, now)
+	}
 
 	period := billing.PeriodToInvoice(sub)
 	genErr := error(nil)
@@ -451,6 +454,45 @@ func (s *Invoicer) endAtBoundary(ctx context.Context, sub *billing.Subscription,
 	if _, err := s.subs.Transition(ctx, sub, billing.SubscriptionCanceled, billing.CauseScheduler, actor, "", now); err != nil &&
 		!errors.Is(err, repositories.ErrConcurrentModification) && !errors.Is(err, billing.ErrInvalidTransition) {
 		return err
+	}
+	return nil
+}
+
+// changeAtBoundary applies a scheduled plan change as the period ends. The
+// period that ends is billed under the old items only if they bill in arrears
+// (an advance one was paid already); the change and the renewal are one write;
+// the period that starts is billed now only if the new items bill in advance.
+func (s *Invoicer) changeAtBoundary(ctx context.Context, sub *billing.Subscription, items []billing.SubscriptionItem,
+	pc *billing.PendingChange, actor string, now time.Time) error {
+	if sub.Timing == billing.BillArrears {
+		if _, err := s.GenerateForPeriod(ctx, sub, items, billing.PeriodToInvoice(sub), actor, now); err != nil &&
+			!errors.Is(err, repositories.ErrAlreadyGenerated) {
+			return err
+		}
+	}
+	newItems := make([]billing.SubscriptionItem, len(pc.PriceIDs))
+	timing, owner := sub.Timing, sub.OwnerKey
+	for i, priceID := range pc.PriceIDs {
+		price, err := s.catalog.GetPrice(ctx, sub.OrganizationID, sub.Livemode, priceID)
+		if err != nil {
+			return err
+		}
+		product, err := s.catalog.GetProduct(ctx, sub.OrganizationID, sub.Livemode, price.ProductID)
+		if err != nil {
+			return err
+		}
+		timing, owner = price.Timing, product.OwnerKey
+		newItems[i] = billing.SubscriptionItem{ID: id.NewWithPrefix(id.PrefixSubscriptionItm), OrganizationID: sub.OrganizationID,
+			Livemode: sub.Livemode, SubscriptionID: sub.ID, PriceID: priceID, Quantity: 1}
+	}
+	if err := s.subs.ApplyScheduledChange(ctx, sub, items, newItems, timing, owner, actor, now); err != nil {
+		return err
+	}
+	if timing == billing.BillAdvance {
+		if _, err := s.GenerateForPeriod(ctx, sub, newItems, sub.CurrentPeriod(), actor, now); err != nil &&
+			!errors.Is(err, repositories.ErrAlreadyGenerated) {
+			return err
+		}
 	}
 	return nil
 }

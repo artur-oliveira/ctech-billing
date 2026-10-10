@@ -278,3 +278,11 @@ func TestOrganizationChargeGate(t *testing.T) {
 		t.Fatal("the zero-value organization must not be able to charge")
 	}
 }
+
+// The boundary applies a scheduled change as the scheduler.
+func TestTheSchedulerMayUpdateAnActiveSubscription(t *testing.T) {
+	s := &Subscription{Status: SubscriptionActive}
+	if _, err := s.Transition(SubscriptionActive, CauseScheduler); err != nil {
+		t.Fatal(err)
+	}
+}
