@@ -112,11 +112,23 @@ func Apply(ctx context.Context, repos Repos, plan *Plan, livemode bool, now time
 		switch existing, err := repos.Credentials.Resolve(ctx, c.ClientID); {
 		case err == nil:
 			if existing.OrganizationID != orgID {
-				return nil, fmt.Errorf(
-					"credential %s is already admitted to organization %s, not %s",
+				return nil, fmt.Errorf("credential %s is already admitted to organization %s, not %s",
 					c.ClientID, existing.OrganizationID, orgID)
 			}
-			res.skipped("credential", c.ClientID)
+			switch {
+			case c.OwnerKey == "" || existing.OwnerKey == c.OwnerKey:
+				res.skipped("credential", c.ClientID)
+			case existing.OwnerKey == "":
+				// The one change a seed makes to a credential: scoping an
+				// unscoped one, once (scope decision 1).
+				if err := repos.Credentials.SetOwnerKey(ctx, existing, c.OwnerKey, now); err != nil {
+					return res, fmt.Errorf("scoping credential %s: %w", c.ClientID, err)
+				}
+				res.created("credential owner", c.ClientID)
+			default:
+				return nil, fmt.Errorf("credential %s is scoped to %q, plan says %q — re-scope deliberately, not through a seed",
+					c.ClientID, existing.OwnerKey, c.OwnerKey)
+			}
 			continue
 		case !errors.Is(err, repositories.ErrNotFound):
 			// An inactive credential fails Validate inside Resolve rather than
@@ -134,6 +146,7 @@ func Apply(ctx context.Context, repos Repos, plan *Plan, livemode bool, now time
 			OrganizationID: orgID,
 			Livemode:       livemode,
 			Description:    c.Description,
+			OwnerKey:       c.OwnerKey,
 			Active:         true,
 		}
 		if err := repos.Credentials.Create(ctx, cred, now); err != nil {
@@ -157,8 +170,15 @@ func Apply(ctx context.Context, repos Repos, plan *Plan, livemode bool, now time
 	}
 
 	for _, p := range plan.Prices {
-		switch _, err := repos.Catalog.GetPrice(ctx, orgID, livemode, p.ID); {
+		switch existing, err := repos.Catalog.GetPrice(ctx, orgID, livemode, p.ID); {
 		case err == nil:
+			if p.Archived && !existing.Archived {
+				if err := repos.Catalog.ArchivePrice(ctx, existing, provisionActor, "", now); err != nil {
+					return res, fmt.Errorf("archiving price %s: %w", p.ID, err)
+				}
+				res.created("price archive", p.ID)
+				continue
+			}
 			res.skipped("price", p.ID)
 			continue
 		case !errors.Is(err, repositories.ErrNotFound):

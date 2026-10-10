@@ -4,6 +4,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"gopkg.aoctech.app/billing/api/internal/domain/billing"
 )
 
 const minimal = `{
@@ -102,5 +104,51 @@ func TestPlanRefusesAnAccountOrganizationThatIsNotAnID(t *testing.T) {
 	p, err := Parse(strings.NewReader(`{"organization":{"id":"ctech","display_name":"CTech","account_organization_id":"0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b"}}`))
 	if err != nil || p.Organization.AccountOrganizationID != "0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b" {
 		t.Fatalf("plan = %+v, %v", p, err)
+	}
+}
+func TestParseRejectsABadDefaultPrice(t *testing.T) {
+	base := func(products, prices string) string {
+		return `{"organization":{"id":"o","display_name":"O"},"products":[` + products + `],"prices":[` + prices + `]}`
+	}
+	free := `{"id":"free","product_id":"fin","type":"fixed","unit_amount":0,"recurrence":{"interval":"month","count":1},"billing_timing":"advance"}`
+	paid := `{"id":"paid","product_id":"fin","type":"fixed","unit_amount":1990,"recurrence":{"interval":"month","count":1},"billing_timing":"advance"}`
+	other := `{"id":"oth","product_id":"dfe","type":"fixed","unit_amount":0,"recurrence":{"interval":"month","count":1},"billing_timing":"advance"}`
+	cases := map[string]string{
+		"not free":          base(`{"id":"fin","name":"F","owner_key":"finance","default_price_id":"paid"}`, paid),
+		"another product":   base(`{"id":"fin","name":"F","owner_key":"finance","default_price_id":"oth"},{"id":"dfe","name":"D","owner_key":"dfe"}`, other),
+		"not declared":      base(`{"id":"fin","name":"F","owner_key":"finance","default_price_id":"ghost"}`, free),
+		"two for one owner": base(`{"id":"fin","name":"F","owner_key":"finance","default_price_id":"free"},{"id":"fin2","name":"G","owner_key":"finance","default_price_id":"free2"}`, free+`,`+strings.Replace(free, `"free","product_id":"fin"`, `"free2","product_id":"fin2"`, 1)),
+		"archived default":  base(`{"id":"fin","name":"F","owner_key":"finance","default_price_id":"free"}`, strings.Replace(free, `"billing_timing"`, `"archived":true,"billing_timing"`, 1)),
+	}
+	for name, doc := range cases {
+		if _, err := Parse(strings.NewReader(doc)); err == nil || !strings.Contains(err.Error(), "default_price_id") {
+			t.Errorf("%s: err = %v", name, err)
+		}
+	}
+	ok := base(`{"id":"fin","name":"F","owner_key":"finance","default_price_id":"free"}`, free+","+paid)
+	if _, err := Parse(strings.NewReader(ok)); err != nil {
+		t.Fatalf("a valid default: %v", err)
+	}
+}
+
+func TestACredentialOwnerMustBeAnOwnerOfThePlan(t *testing.T) {
+	doc := `{"organization":{"id":"o","display_name":"O"},"credentials":[{"client_id":"c","owner_key":"finnace"}],
+	         "products":[{"id":"fin","name":"F","owner_key":"finance"}]}`
+	if _, err := Parse(strings.NewReader(doc)); err == nil || !strings.Contains(err.Error(), "owner_key") {
+		t.Fatalf("a typo in a credential's owner must be refused, err = %v", err)
+	}
+}
+
+func TestPriceMeteringFieldsReachTheDomain(t *testing.T) {
+	doc := `{"organization":{"id":"o","display_name":"O"},"products":[{"id":"fin","name":"F"}],
+	  "prices":[{"id":"sp","product_id":"fin","type":"metered","unit_amount":490,"aggregation":"max","meter":"finance_spaces",
+	    "included_quantity":1,"recurrence":{"interval":"month","count":1},"billing_timing":"arrears"}]}`
+	p, err := Parse(strings.NewReader(doc))
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := p.Prices[0].entity("o", true)
+	if e.Aggregation != billing.AggregationMax || e.Meter != "finance_spaces" || e.IncludedQuantity != 1 {
+		t.Fatalf("entity = %+v", e)
 	}
 }

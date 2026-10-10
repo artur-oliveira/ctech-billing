@@ -2,10 +2,12 @@ package repositories
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 
 	"gopkg.aoctech.app/billing/api/internal/config"
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
@@ -100,4 +102,30 @@ func (r *CredentialRepository) Deactivate(ctx context.Context, cred *billing.API
 		cred.Active = false
 	}
 	return err
+}
+
+// ErrCredentialOwnerSet reports a credential that already has an owner.
+var ErrCredentialOwnerSet = errors.New("credential already has an owner")
+
+// SetOwnerKey scopes an unscoped credential to one owner, once. Changing an
+// owner is not a seed operation: it changes what an integration can read.
+func (r *CredentialRepository) SetOwnerKey(ctx context.Context, cred *billing.APICredential, ownerKey string, now time.Time) error {
+	update := r.base.BuildRawUpdateTxItem(
+		TenantPK(cred.OrganizationID, cred.Livemode), new(CredentialSK(cred.ClientID)),
+		"SET owner_key = :o, updated_at = :u",
+		"attribute_exists(pk) AND attribute_not_exists(owner_key)",
+		nil,
+		map[string]types.AttributeValue{
+			":o": &types.AttributeValueMemberS{Value: ownerKey},
+			":u": &types.AttributeValueMemberS{Value: now.UTC().Format(time.RFC3339Nano)},
+		})
+	err := r.base.TransactWrite(ctx, txItems(update))
+	if IsConditionFailed(err) {
+		return fmt.Errorf("%w: %s", ErrCredentialOwnerSet, cred.ClientID)
+	}
+	if err != nil {
+		return conflictErr(err)
+	}
+	cred.OwnerKey = ownerKey
+	return nil
 }

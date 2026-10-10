@@ -17,6 +17,7 @@ import (
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
 	"gopkg.aoctech.app/billing/api/internal/domain/brcal"
 	"gopkg.aoctech.app/billing/api/internal/domain/id"
+	"gopkg.aoctech.app/billing/api/internal/provision"
 	"gopkg.aoctech.app/billing/api/internal/repositories"
 )
 
@@ -572,4 +573,50 @@ func containsSubscription(subs []billing.Subscription, id string) bool {
 		}
 	}
 	return false
+}
+func TestApplyScopesAnUnscopedCredentialOnceAndArchivesAPrice(t *testing.T) {
+	ctx := ctxT(t)
+	repos := provision.Repos{
+		Organizations: repositories.NewOrganizationRepository(testDB, testCfg),
+		Credentials:   repositories.NewCredentialRepository(testDB, testCfg),
+		Catalog:       repositories.NewCatalogRepository(testDB, testCfg),
+		Webhooks:      repositories.NewWebhookRepository(testDB, testCfg),
+	}
+	orgID, client := "org_"+id.New(), "cli_"+id.New()
+	doc := func(owner string, archived bool) *provision.Plan {
+		ownerField, archivedField := "", ""
+		if owner != "" {
+			ownerField = `,"owner_key":"` + owner + `"`
+		}
+		if archived {
+			archivedField = `,"archived":true`
+		}
+		raw := `{"organization":{"id":"` + orgID + `","display_name":"T"},
+		  "credentials":[{"client_id":"` + client + `"` + ownerField + `}],
+		  "products":[{"id":"p","name":"P","owner_key":"dfe"},{"id":"q","name":"Q","owner_key":"finance"}],
+		  "prices":[{"id":"x","product_id":"p","type":"fixed","unit_amount":10,"recurrence":{"interval":"month","count":1},"billing_timing":"advance"` +
+			archivedField + `}]}`
+		p, err := provision.Parse(strings.NewReader(raw))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	if _, err := provision.Apply(ctx, repos, doc("", false), true, now()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := provision.Apply(ctx, repos, doc("dfe", true), true, now()); err != nil {
+		t.Fatal(err)
+	}
+	cred, err := repos.Credentials.Resolve(ctx, client)
+	if err != nil || cred.OwnerKey != "dfe" {
+		t.Fatalf("credential = %+v, %v", cred, err)
+	}
+	price, _ := repos.Catalog.GetPrice(ctx, orgID, true, "x")
+	if !price.Archived {
+		t.Fatal("the plan archived the price")
+	}
+	if _, err := provision.Apply(ctx, repos, doc("finance", true), true, now()); err == nil {
+		t.Fatal("re-scoping through a seed must be refused")
+	}
 }
