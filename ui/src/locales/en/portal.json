@@ -151,7 +151,7 @@
     "active": "Active"
   },
   "space": {
-    "label": "Bills for",
+    "label": "Account",
     "personal": "Personal",
     "lost": "You no longer manage that organization. Showing your personal bills.",
     "pickOrganization": "Choose an organization above to see its bills.",

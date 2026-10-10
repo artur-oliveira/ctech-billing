@@ -31,11 +31,11 @@ export function usePortalSpaces() {
 }
 
 /**
- * "Faturas de [Pessoal ▾]" — its own row above the tabs, because at 320px the
- * header is already the mark, the language and the avatar, and a select squeezed
- * between them would cut "Acme Comércio" to "Ac…". Shown only when there is
- * somewhere other than Pessoal to go: most people never manage an
- * organization, and they never see this row.
+ * Whose bills — Pessoal or an organization — in the console's form: a select
+ * beside the avatar that names the current answer, no label in front of it.
+ * On a phone it takes the header's second row, so a long organization name
+ * still reads. Shown only when there is somewhere other than Pessoal to go:
+ * most people never manage an organization, and they never see it.
  *
  * The value is a request the server re-authorizes on every call (ADR 0025); the
  * switch only makes the current answer visible. Every portal query is keyed by
@@ -74,20 +74,15 @@ export function PortalSpaceSwitch() {
   }
 
   return (
-    <div className="flex min-w-0 items-center gap-3 py-2">
-      <span aria-hidden className="shrink-0 text-sm text-muted-foreground">
-        {t("portal.space.label")}
-      </span>
-      <Select {...selectCopy()}
-        aria-label={t("portal.space.label")}
-        className="min-w-0 flex-1 sm:max-w-72 sm:flex-none"
-        value={current}
-        onValueChange={v => void choose(v)}
-        options={spaces.map(s => ({
-          value: s.selector,
-          label: s.selector === "personal" ? t("portal.space.personal") : s.display_name,
-        }))}
-      />
-    </div>
+    <Select {...selectCopy()}
+      aria-label={t("portal.space.label")}
+      className="order-3 w-full min-w-0 sm:order-2 sm:ml-auto sm:w-auto sm:min-w-36 sm:max-w-56"
+      value={current}
+      onValueChange={v => void choose(v)}
+      options={spaces.map(s => ({
+        value: s.selector,
+        label: s.selector === "personal" ? t("portal.space.personal") : s.display_name,
+      }))}
+    />
   )
 }

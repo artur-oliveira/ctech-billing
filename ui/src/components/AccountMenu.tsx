@@ -7,6 +7,7 @@ import Link from "next/link"
 import {useTranslation} from "react-i18next"
 
 import {consoleKeys, getConsoleSession} from "@/lib/api/console"
+import {isNoBillingAccount} from "@/lib/api/client"
 import {getSession, portalKeys} from "@/lib/api/portal"
 import {useAuth} from "@/lib/auth/AuthContext"
 
@@ -37,6 +38,11 @@ export function AccountMenu({view}: {view: "portal" | "console"}) {
     queryFn: getSession,
     enabled: authenticated,
     retry: false,
+    // The portal shell mounts this menu BECAUSE the session answered 403 (no
+    // billing account). Asking again on mount would clear that error, unmount
+    // the empty state and this menu, get the 403 back, and loop forever.
+    retryOnMount: false,
+    refetchOnWindowFocus: query => !isNoBillingAccount(query.state.error),
   })
   const {data: operator} = useQuery({
     // Live: the portal has no mode switch, and the console opens on live too.

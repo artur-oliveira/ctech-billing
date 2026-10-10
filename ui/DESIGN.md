@@ -232,7 +232,7 @@ and no scroll-reveal. Every animation has a `motion-reduce` alternative;
   not hidden — ADR 0012 keeps them out of the payload.
 - No internal status string anywhere. The server sends a sentence; render it.
 - No tenant on any portal screen. An organization appears only as the answer to "whose bills",
-  in the selector row below (see "Portal: whose bills").
+  in the header select (see "Portal: whose bills").
 - No uppercase tracked eyebrow above sections, no numbered section markers, no
   gradient text, no glassmorphism, no side-stripe borders.
 
@@ -466,11 +466,10 @@ becomes one status line. Only offered with `finance.configure`.
 An organization's CTech subscription is paid by its owners and admins (ADR 0025, 2026-10-07
 amendment), so the portal gained the one question it never asked: **whose bills are these**.
 
-**Its own row, above the tabs.** "Faturas de [Pessoal ▾]", label in muted ink, the `@aoctech/ui`
-`Select` beside it. At 320px the header is already the mark, the language and the avatar; a select
-squeezed between them cut "Acme Comércio" to "Ac…". In its own row the name reads whole at 1280px
-and ends in an ellipsis only past ~24 characters on a phone. Chosen over the avatar menu, where the
-current answer would be invisible until opened.
+**The console's form** (revised the same day, owner's call). The first cut was its own row,
+"Faturas de [Pessoal ▾]", and it read as a form field on a screen that has none. Now it is the console's
+space select: no label, the current answer as its value, beside the language and the avatar on a desk,
+and the header's second row on a phone, where a long organization name still reads.
 
 **Only for people who have somewhere else to go.** The row renders nothing unless the server lists
 an organization the person owns or administers. Most portal readers never see it.
@@ -485,6 +484,11 @@ toast (`portal-space-lost`). "Organizations unavailable" is not a loss and moves
 
 **The empty state points up.** With no billing account of their own and an organization to pick,
 the empty state adds "Escolha uma organização acima para ver as faturas dela."
+
+**"No billing account" is an answer, not a hiccup.** The session's 403 is never re-asked on mount or
+on focus: the shell mounts the avatar menu because of that 403, and a menu that refetched on mount
+cleared the error, unmounted the empty state and itself, and got the 403 back — a loop, in production,
+the first time an organization with no customer was picked.
 
 The selection is stored apart from Finanças' space (`ctech-billing-portal-space`): paying an
 organization's invoice and keeping your own budget are two questions.

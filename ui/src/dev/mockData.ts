@@ -269,6 +269,16 @@ export const FIXTURES: Record<MockScenario, Fixture> = {
     pixTtlSeconds: 1800,
   },
 
+  // The person has an account of their own; the organization they administer
+  // has none yet, so picking it answers 403 no-billing-account like the real
+  // portal does for an organization with no customer.
+  org_sem_conta: {
+    invoices: [],
+    subscriptions: [],
+    settleAfterSeconds: null,
+    pixTtlSeconds: 1800,
+  },
+
   // Every request fails. The fixture is empty because nothing is ever served.
   erro_de_rede: {
     invoices: [],
