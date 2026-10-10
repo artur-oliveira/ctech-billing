@@ -8,7 +8,13 @@
   "credentials": [
     {
       "client_id": "dfe-billing",
-      "description": "CTech DF-e — creates subscriptions and reports usage for DF-e plans"
+      "description": "CTech DF-e — creates subscriptions and reports usage for DF-e plans",
+      "owner_key": "dfe"
+    },
+    {
+      "client_id": "account-billing",
+      "description": "ctech-account — reads Finanças entitlements and reports space and people levels",
+      "owner_key": "finance"
     }
   ],
   "products": [
@@ -36,6 +42,12 @@
       "id": "prod_dfe_unlimited_internal",
       "name": "DF-e Ilimitado - Interno",
       "owner_key": "dfe"
+    },
+    {
+      "id": "prod_finance",
+      "name": "CTech Finanças",
+      "owner_key": "finance",
+      "default_price_id": "price_finance_free"
     }
   ],
   "webhook_endpoints": [
@@ -60,7 +72,6 @@
       "metadata": {
         "plan": "free",
         "quota_companies": "1",
-        "quota_users": "1",
         "quota_nfe": "3",
         "quota_nfce": "15",
         "quota_nfse": "3",
@@ -83,7 +94,6 @@
         "plan": "unlimited",
         "visibility": "internal",
         "quota_companies": "-1",
-        "quota_users": "-1",
         "quota_nfe": "-1",
         "quota_nfce": "-1",
         "quota_nfse": "-1",
@@ -104,7 +114,6 @@
       "metadata": {
         "plan": "pro",
         "quota_companies": "10",
-        "quota_users": "25",
         "quota_nfe": "1200",
         "quota_nfce": "6000",
         "quota_nfse": "1200",
@@ -125,7 +134,6 @@
       "metadata": {
         "plan": "unlimited",
         "quota_companies": "-1",
-        "quota_users": "-1",
         "quota_nfe": "-1",
         "quota_nfce": "-1",
         "quota_nfse": "-1",
@@ -143,6 +151,7 @@
         "count": 1
       },
       "billing_timing": "arrears",
+      "archived": true,
       "metadata": {
         "plan": "ondemand",
         "meter": "companies",
@@ -159,10 +168,10 @@
         "count": 1
       },
       "billing_timing": "arrears",
+      "archived": true,
       "metadata": {
         "plan": "ondemand",
-        "meter": "users",
-        "quota_users": "-1"
+        "meter": "users"
       }
     },
     {
@@ -243,6 +252,110 @@
         "plan": "ondemand",
         "meter": "mdfe",
         "quota_mdfe": "-1"
+      }
+    },
+    {
+      "id": "price_finance_free",
+      "product_id": "prod_finance",
+      "type": "fixed",
+      "unit_amount": 0,
+      "recurrence": {
+        "interval": "month",
+        "count": 1
+      },
+      "billing_timing": "advance",
+      "metadata": {
+        "plan": "free",
+        "quota_spaces": "1",
+        "quota_people_per_space": "1"
+      }
+    },
+    {
+      "id": "price_finance_basic_monthly",
+      "product_id": "prod_finance",
+      "type": "fixed",
+      "unit_amount": 1990,
+      "recurrence": {
+        "interval": "month",
+        "count": 1
+      },
+      "billing_timing": "advance",
+      "metadata": {
+        "plan": "basic",
+        "quota_spaces": "3",
+        "quota_people_per_space": "5"
+      }
+    },
+    {
+      "id": "price_finance_pro_monthly",
+      "product_id": "prod_finance",
+      "type": "fixed",
+      "unit_amount": 4990,
+      "recurrence": {
+        "interval": "month",
+        "count": 1
+      },
+      "billing_timing": "advance",
+      "metadata": {
+        "plan": "pro",
+        "quota_spaces": "10",
+        "quota_people_per_space": "10"
+      }
+    },
+    {
+      "id": "price_finance_ondemand_spaces",
+      "product_id": "prod_finance",
+      "type": "metered",
+      "unit_amount": 490,
+      "aggregation": "max",
+      "meter": "finance_spaces",
+      "included_quantity": 1,
+      "recurrence": {
+        "interval": "month",
+        "count": 1
+      },
+      "billing_timing": "arrears",
+      "metadata": {
+        "plan": "ondemand",
+        "quota_spaces": "-1",
+        "quota_people_per_space": "-1"
+      }
+    },
+    {
+      "id": "price_finance_ondemand_people",
+      "product_id": "prod_finance",
+      "type": "metered",
+      "unit_amount": 290,
+      "aggregation": "max",
+      "meter": "finance_people",
+      "included_quantity": 1,
+      "recurrence": {
+        "interval": "month",
+        "count": 1
+      },
+      "billing_timing": "arrears",
+      "metadata": {
+        "plan": "ondemand",
+        "quota_spaces": "-1",
+        "quota_people_per_space": "-1"
+      }
+    },
+    {
+      "id": "price_dfe_ondemand_companies_monthly",
+      "product_id": "prod_dfe_ondemand",
+      "type": "metered",
+      "unit_amount": 500,
+      "aggregation": "max",
+      "meter": "dfe_companies",
+      "included_quantity": 0,
+      "recurrence": {
+        "interval": "month",
+        "count": 1
+      },
+      "billing_timing": "arrears",
+      "metadata": {
+        "plan": "ondemand",
+        "quota_companies": "-1"
       }
     }
   ]
