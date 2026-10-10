@@ -1,12 +1,12 @@
 "use client"
 
 import limits from "@/lib/limits.json"
-import {Button, Field, Input} from "@aoctech/ui"
+import {Button, Field, Input, Select} from "@aoctech/ui"
 
 import {createTransfer, type FinanceCtx, financeKeys} from "@/lib/api/finance"
 import type {Account, NewTransfer} from "@/lib/api/financeTypes"
 import {DateField} from "@/components/ui/DateField"
-import {Select} from "@/components/ui/Select"
+import {selectCopy} from "@/lib/selectCopy"
 import {todayIso} from "@/lib/finance/today"
 import {useFinanceMutation} from "@/lib/finance/useFinanceMutation"
 import {maskMoney, moneyPlaceholder, parseMoney} from "@/lib/money"
@@ -46,11 +46,11 @@ export function TransferPanel({accounts, from: initialFrom = "", onDone}: {accou
       }}
     >
       <Field label={t("bills.transfer.from")} htmlFor="tr-from" error={fe.of("from_account_id")}>
-        <Select id="tr-from" aria-label={t("bills.transfer.from")} value={from} options={active.map(a => ({value: a.id, label: accountName(a)}))} {...fe.props("from_account_id", "tr-from")}
+        <Select {...selectCopy()} id="tr-from" aria-label={t("bills.transfer.from")} value={from} options={active.map(a => ({value: a.id, label: accountName(a)}))} {...fe.props("from_account_id", "tr-from")}
           onValueChange={v => { setFrom(v); fe.clear("from_account_id"); if (v === to) setTo("") }}/>
       </Field>
       <Field label={t("bills.transfer.to")} htmlFor="tr-to" error={fe.of("to_account_id")}>
-        <Select id="tr-to" aria-label={t("bills.transfer.to")} value={to} {...fe.props("to_account_id", "tr-to")} onValueChange={v => { setTo(v); fe.clear("to_account_id") }}
+        <Select {...selectCopy()} id="tr-to" aria-label={t("bills.transfer.to")} value={to} {...fe.props("to_account_id", "tr-to")} onValueChange={v => { setTo(v); fe.clear("to_account_id") }}
           options={active.filter(a => a.id !== from).map(a => ({value: a.id, label: accountName(a)}))}/>
       </Field>
       <Field label={t("bills.common.amount")} htmlFor="tr-amount" error={fe.of("amount")}>

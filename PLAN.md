@@ -616,12 +616,13 @@ gates nothing by plan.
       occurrence after today and none the job still owes, `Recurrence.Ended`) is 422 `recurrence_would_end` unless
       the PATCH carries `archive: true`, and then the end and the archive are ONE conditional UpdateItem (both, not
       either: the 422 keeps an old client from silently leaving a dead rule, the flag makes the confirmed case
-      atomic). The console confirms "Isso encerra a recorrência; ela será arquivada."; bills already made stay.
+      atomic). The console confirms "Isso encerra a recorrência; ela será arquivada."; bills already made stay
+      (superseded by UX batch 5: the unpaid ones after the end are cancelled).
       F8: creating an account with an opening balance no longer flashes R$ 0,00 (value-aware invalidation plus
       `invalidateOnError`), and a new bank/cash account offers "Importar um extrato agora?" (a link to Importar
       with it chosen). **Left out:** an opening balance from the OFX `LEDGERBAL` — dated `DTASOF` it double-counts
       the file's own lines once they are reconciled; the right rule (`LEDGERBAL` minus the file's lines, before
-      the first line, and what an ignored line does to it) needs its own decision.
+      the first line, and what an ignored line does to it) needs its own decision (decided and built in UX batch 5).
 - [x] 6.4 Reports — F3 statement (running balance, transfer, reverse a transfer or an opening balance,
       undo a payment), F7 DRE (accrual, from the cached SUMMARY rows) and cash flow (from the entries),
       F1's realised result of the month, and an opening balance when creating an account.
@@ -818,6 +819,50 @@ gates nothing by plan.
       (`useSwipeReveal`) and a visible "⋯" (`RowMenu`), each opening the row's confirmation; desktop unchanged.
       (6) Contas uses `LedgerRow`, so names wrap. Candidates for the family: `patch.Optional` → ctech-go-common;
       the swipe row, `RowMenu` and the hit-area rule → `@aoctech/ui`.
+- [x] **UX batch 5 (2026-10-09), shared packages, ending a recurrence, opening balance from OFX.**
+      (1) **api-commons v1.8.0 → v1.14.0**; billing's `internal/patch` is now `gopkg.aoctech.app/api-commons/patch`
+      (extracted from here, same API). Findings in the range: v1.11.0 narrowed `dynamo.IsConditionFailed` to a
+      cancellation carrying `ConditionalCheckFailed` — a `TransactionConflict` or a throttle used to read as one,
+      so the dunning step ("another instance did this step") and the renewal transition ("the subscription already
+      moved on") could take a write that never happened as done; now the error surfaces and the job re-runs
+      (finance already classified reasons itself). A test pins the narrow meaning on billing's alias. No change
+      needed: v1.9.2 sampled `ReturnConsumedCapacity` (off until a recorder is wired), v1.10.0 `problem.NextAction`
+      / `RetryAfterSeconds` and `TooManyRequests` carrying `retry` (billing emits no 429), v1.13.x `jwtverify`
+      revocation (off unless `WithRevocation`; `IssuedAt` added), the new `erasure` package (relevant to ADR 0026's
+      purge, not adopted), `ws`/`drain` (unused); `email`, `cache`, `oauth2client`, `observability`, `alerts`,
+      `awsconfig` unchanged. (2) **`@aoctech/ui` ^0.4.0:** `Segmented`, `Select`, `RowMenu`, `SwipeRow`,
+      `DensityScope`, `Drawer`, `Modal` from the package; billing's copies and `ConsoleOverlay` deleted. The console
+      root is a `DensityScope`, so its drawers, modals, selects and menus are compact on a desk too (owner's
+      decision); the touch rule is `@aoctech/ui`'s `touch.css` (imported alone: `styles.css` brings `themes.css`,
+      which would repaint the portals). Every `Select` spreads `selectCopy()` (billing's placeholder, the console's
+      language). `LedgerRow` is built on `SwipeRow`/`RowMenu`. **Found on the way:** measured in Chrome with touch,
+      0.4.0's `SwipeRow` cancelled every real swipe (the title's implicit pointer capture moves to the front, the
+      title's `lostpointercapture` bubbles to the front's handler) — fixed upstream in 0.4.1 (`e.target ===
+      e.currentTarget`, once the x axis is locked), which billing now uses (`^0.4.1`, `@aoctech/ui/touch.css` by
+      its official export); the interim shim in `LedgerRow` is gone, its regression test stays. Hand-drawn segments (mode switch, Relatórios'
+      and Importar's tabs) lost the global hit area with the old touch block and take `segmentHit`; Importar's
+      tabs wrap their labels on a phone, not the row. Measured at 320/375 (36 drawn / 44 hit, segments 30/44, no
+      tap stolen, swipe and the next tap, the Mais sheet) and 1280. (3) **Ending a recurrence cancels its unpaid
+      bills after the end** (spec § 3.5): end + archive first, then each forecast bill after the end through the
+      cancel path, re-runnable; paid ones stay; `canceled_bill_ids`; the confirmation names them. (4) **Opening
+      balance from an OFX `LEDGERBAL`** (spec § 3.7): `LEDGERBAL` − every parsed line, the day before the first
+      line, offered after an import into an account with no opening and no entry, posted on confirmation by
+      `POST /imports/:id/opening-balance` (configure, idempotent by import, 409 `opening_balance_exists` /
+      `account_has_entries`, 422 `no_statement_balance`).
+      **Review fixes (batch 5):** (I1) the narrowed `IsConditionFailed` broke invoice numbering's retry — two
+      finalizers on one counter cancel each other with a `TransactionConflict`, the loop retried only
+      `ErrConcurrentModification`, the invoice stayed DRAFT and the next sweep skipped it. `commitWithExtraWrites`
+      now returns `ErrTransactionConflict` for it and `Finalize` retries it. Audit of the 17 `TransactWrite` sites
+      that used the old wide meaning: numbering (fixed), `RecordPDFKey` (two downloads; a conflict is benign
+      again, fixed), the payment attempt (M1, fixed), dunning step and renewal transition (now an error, the job
+      re-runs: correct), the idempotency `Store` (an error the middleware ignores), webhook fan-out (an error, the
+      event stays queued for the next pass), invoice generation (an error, the next run finds it generated or makes
+      it), create-if-absent rows (credentials, organizations, subscriptions, webhook endpoints, products, prices,
+      usage) and console writes (credit note, price archive, customer): 409 below. (M1) two "Pagar" presses: a
+      conflict on the attempt row takes the same recovery as a lost condition and shows the winner's checkout
+      (re-read briefly, else a 409 the page re-reads). Any `TransactionConflict` reaching a route is a 409
+      `concurrent_update`, not a 500. **Cross-repo candidate:** that mapping belongs in api-commons `problem` (and
+      the retry-on-conflict around `TransactWrite` in api-commons `dynamo`), for every service.
 
 **Still open in Phase 6 (recorded 2026-10-09):**
 - **After 6.7:** run `seed` in both modes after deploy (the link is in `api/tenants/ctech.json`); organization

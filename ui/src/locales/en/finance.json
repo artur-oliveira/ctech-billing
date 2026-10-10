@@ -322,6 +322,17 @@
     "fileHint": "OFX or CSV, up to 1 MB. The file is not kept; its lines stay 90 days for you to reconcile.",
     "submit": "Import",
     "columns": "CSV columns",
+    "opening": {
+      "ask": "Use the statement's balance as the opening balance?",
+      "math_one": "Opening balance of {{amount}} on {{date}}: the statement's balance ({{ledger}} on {{asOf}}) minus the file's line.",
+      "math_other": "Opening balance of {{amount}} on {{date}}: the statement's balance ({{ledger}} on {{asOf}}) minus the file's {{count}} lines.",
+      "ignored": "A line you ignore does not enter the account: the account's balance then differs from the statement by that amount.",
+      "unread_one": "{{count}} unread line was left out of the sum.",
+      "unread_other": "{{count}} unread lines were left out of the sum.",
+      "confirm": "Use as opening balance",
+      "decline": "Not now",
+      "posted": "Opening balance posted: {{amount}} on {{date}}."
+    },
     "added_one": "{{count}} new line",
     "added_other": "{{count}} new lines",
     "duplicates_one": "{{count}} imported before",

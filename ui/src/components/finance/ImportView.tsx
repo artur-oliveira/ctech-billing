@@ -1,22 +1,22 @@
 "use client"
 
-import {Button, EmptyState, Field, Skeleton} from "@aoctech/ui"
+import {Button, EmptyState, Field, Select, Skeleton} from "@aoctech/ui"
 import {useQuery} from "@tanstack/react-query"
 import {FileUp} from "lucide-react"
-import {useState} from "react"
+import {useId, useState} from "react"
 import {useTranslation} from "react-i18next"
 
 import {CsvMappingForm} from "@/components/finance/CsvMappingForm"
 import {ImportLines} from "@/components/finance/ImportLines"
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
-import {Select} from "@/components/ui/Select"
 import {messageFor, problemCode} from "@/lib/api/client"
-import {type FinanceCtx, fileToBase64, financeKeys, listAccounts, listImports, uploadImport} from "@/lib/api/finance"
-import type {ImportFormat, ImportSummary} from "@/lib/api/financeTypes"
+import {selectCopy} from "@/lib/selectCopy"
+import {type FinanceCtx, fileToBase64, financeKeys, listAccounts, listImports, postImportOpening, uploadImport} from "@/lib/api/finance"
+import type {ImportFormat, ImportSummary, OpeningProposal} from "@/lib/api/financeTypes"
 import {accountName, byAccountName} from "@/lib/finance/accountName"
 import {useFinanceMutation} from "@/lib/finance/useFinanceMutation"
 import {useFinanceCtx, useFinanceSpaces} from "@/lib/finance/useFinanceSpaces"
-import {shortDate} from "@/lib/format"
+import {money, shortDate} from "@/lib/format"
 import {currentLocale, t as tr} from "@/lib/i18n"
 
 /** OFX by its extension; anything else is read as CSV with the account's columns. */
@@ -54,15 +54,15 @@ export function ImportView({account: initial = ""}: {account?: string}) {
   return (
     <div className="space-y-6">
       <Field label={t("finance.import.account")} htmlFor="im-account">
-        <Select id="im-account" aria-label={t("finance.import.account")} value={account.id} className="w-64"
+        <Select {...selectCopy()} id="im-account" aria-label={t("finance.import.account")} value={account.id} className="w-64"
           onValueChange={setPicked} options={cash.map(a => ({value: a.id, label: accountName(a)}))}/>
       </Field>
-      <AccountImports key={account.id} accountId={account.id} canImport={can("finance.import")}/>
+      <AccountImports key={account.id} accountId={account.id} canImport={can("finance.import")} canConfigure={can("finance.configure")}/>
     </div>
   )
 }
 
-function AccountImports({accountId, canImport}: {accountId: string; canImport: boolean}) {
+function AccountImports({accountId, canImport, canConfigure}: {accountId: string; canImport: boolean; canConfigure: boolean}) {
   const {t} = useTranslation()
   const ctx = useFinanceCtx()
   const imports = useQuery({queryKey: financeKeys.imports(ctx.mode, ctx.space, accountId), queryFn: () => listImports(ctx, accountId)})
@@ -74,7 +74,7 @@ function AccountImports({accountId, canImport}: {accountId: string; canImport: b
   return (
     <>
       {canImport && (
-        <Upload accountId={accountId} onImported={id => setSelected(id)} onNeedsColumns={() => setMapping(true)} onColumns={() => setMapping(m => !m)}/>
+        <Upload accountId={accountId} canConfigure={canConfigure} onImported={id => setSelected(id)} onNeedsColumns={() => setMapping(true)} onColumns={() => setMapping(m => !m)}/>
       )}
       {canImport && mapping && <CsvMappingForm accountId={accountId} onDone={() => setMapping(false)}/>}
       <section aria-label={t("finance.import.history")} className="space-y-3">
@@ -101,18 +101,23 @@ function AccountImports({accountId, canImport}: {accountId: string; canImport: b
   )
 }
 
-function Upload({accountId, onImported, onNeedsColumns, onColumns}: {
-  accountId: string; onImported: (id: string) => void; onNeedsColumns: () => void; onColumns: () => void
+function Upload({accountId, canConfigure, onImported, onNeedsColumns, onColumns}: {
+  accountId: string; canConfigure: boolean; onImported: (id: string) => void; onNeedsColumns: () => void; onColumns: () => void
 }) {
   const {t} = useTranslation()
   const [file, setFile] = useState<File | null>(null)
   const [done, setDone] = useState<string | null>(null)
+  const [offer, setOffer] = useState<{importId: string; proposal: OpeningProposal; rejected: number} | null>(null)
   const upload = useFinanceMutation(
     async (c: FinanceCtx, f: File, key) => uploadImport(c, {account_id: accountId, format: formatOf(f.name), content: await fileToBase64(f)}, key),
     c => [financeKeys.imports(c.mode, c.space, accountId)],
     result => {
       setDone(uploadSummary(result))
       if (result.id) onImported(result.id)
+      // Opening balances are configuration (finance.configure), like the one
+      // asked when an account is created; without the verb it is not offered.
+      setOffer(result.id && result.opening_proposal && canConfigure
+        ? {importId: result.id, proposal: result.opening_proposal, rejected: result.rejected_count} : null)
     },
     error => { if (problemCode(error) === "csv_mapping_required") onNeedsColumns() },
   )
@@ -130,7 +135,7 @@ function Upload({accountId, onImported, onNeedsColumns, onColumns}: {
       <Field label={t("finance.import.file")} htmlFor="im-file" hint={t("finance.import.fileHint")}>
         <input id="im-file" type="file" accept=".ofx,.qfx,.csv,.txt"
           className="block w-full max-w-md text-sm text-muted-foreground file:mr-3 file:rounded-md file:border file:border-border file:bg-surface file:px-3 file:py-1.5 file:text-sm file:text-foreground touch:file:min-h-11"
-          onChange={e => { setFile(e.target.files?.[0] ?? null); setDone(null); upload.reset(); upload.newIntent() }}/>
+          onChange={e => { setFile(e.target.files?.[0] ?? null); setDone(null); setOffer(null); upload.reset(); upload.newIntent() }}/>
       </Field>
       <div className="flex flex-wrap items-center gap-2">
         <Button type="submit" variant="brand" size="sm" disabled={!file || upload.isPending}>{t("finance.import.submit")}</Button>
@@ -138,6 +143,45 @@ function Upload({accountId, onImported, onNeedsColumns, onColumns}: {
       </div>
       {done && <p role="status" className="text-sm text-foreground">{done}</p>}
       {upload.error ? <p role="alert" className="text-sm text-danger">{messageFor(upload.error)}</p> : null}
+      {offer && <OpeningOffer {...offer} onClose={() => setOffer(null)}/>}
     </form>
+  )
+}
+
+/**
+ * The statement's balance as the account's opening balance (UX batch 5, spec
+ * § 3.7): offered once, right after an OFX import into an account with no
+ * opening balance and no entry, and posted only when the person says so. The
+ * arithmetic is on screen, and so is the one way it can drift: a line ignored
+ * later is in the bank's balance but never in the account.
+ */
+function OpeningOffer({importId, proposal: p, rejected, onClose}: {importId: string; proposal: OpeningProposal; rejected: number; onClose: () => void}) {
+  const {t} = useTranslation()
+  const headingId = useId()
+  const [posted, setPosted] = useState(false)
+  const post = useFinanceMutation(
+    (c: FinanceCtx, _: void, key) => postImportOpening(c, importId, key),
+    // The account's balance, its statement, Resumo and the reports all move.
+    c => [financeKeys.all(c.mode, c.space)],
+    () => setPosted(true),
+  )
+  const opening = {amount: money(p.amount), date: shortDate(p.date)}
+  if (posted) return <p role="status" className="text-sm text-foreground">{t("finance.import.opening.posted", opening)}</p>
+  return (
+    <section aria-labelledby={headingId} className="max-w-xl space-y-2 rounded-lg bg-surface p-3 text-sm">
+      <h3 id={headingId} className="font-medium text-foreground">{t("finance.import.opening.ask")}</h3>
+      <p className="text-foreground">
+        {t("finance.import.opening.math", {...opening, ledger: money(p.ledger_balance), asOf: shortDate(p.ledger_as_of), count: p.lines})}
+      </p>
+      <p className="text-muted-foreground">
+        {t("finance.import.opening.ignored")}
+        {rejected > 0 && <> {t("finance.import.opening.unread", {count: rejected})}</>}
+      </p>
+      {post.error ? <p role="alert" className="text-danger">{messageFor(post.error)}</p> : null}
+      <div className="flex flex-wrap gap-2 pt-1">
+        <Button type="button" variant="brand" size="sm" disabled={post.isPending} onClick={() => post.mutate()}>{t("finance.import.opening.confirm")}</Button>
+        <Button type="button" variant="outline" size="sm" disabled={post.isPending} onClick={onClose}>{t("finance.import.opening.decline")}</Button>
+      </div>
+    </section>
   )
 }

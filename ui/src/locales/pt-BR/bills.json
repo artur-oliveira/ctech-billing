@@ -163,12 +163,16 @@
     "endsConfirm": "Isso encerra a recorrência; ela será arquivada.",
     "back": "Voltar",
     "endAndArchive": "Encerrar e arquivar",
-    "stillGoing_one": "{{count}} lançamento já gerado continua: {{dates}}.",
-    "stillGoing_other": "{{count}} lançamentos já gerados continuam: {{dates}}.",
-    "stillAuto": {
-      "payable": "Os que estão em pagamento automático ainda serão pagos nas datas deles.",
-      "receivable": "Os que estão em recebimento automático ainda serão recebidos nas datas deles."
-    }
+    "endCancels_one": "O lançamento em aberto depois do fim ({{dates}}) será cancelado.",
+    "endCancels_other": "Os {{count}} lançamentos em aberto depois do fim ({{dates}}) serão cancelados.",
+    "saveAndCancel": "Salvar e cancelar",
+    "endIncomplete": {
+      "archived": "A recorrência foi encerrada, mas alguns lançamentos não foram cancelados. Tente de novo.",
+      "saved": "O fim foi salvo, mas alguns lançamentos não foram cancelados. Tente de novo."
+    },
+    "retry": "Tentar de novo",
+    "endKeepsPaid_one": "O já pago ({{dates}}) continua: o pagamento está no extrato.",
+    "endKeepsPaid_other": "Os {{count}} já pagos ({{dates}}) continuam: os pagamentos estão no extrato."
   },
   "editor": {
     "repeat": "Repetição",

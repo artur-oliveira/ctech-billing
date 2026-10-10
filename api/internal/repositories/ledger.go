@@ -32,6 +32,12 @@ var ErrAlreadyReversed = errors.New("ledger: transaction already reversed")
 // first one to post a corrected one.
 var ErrOpeningExists = errors.New("ledger: the account already has an opening balance")
 
+// ErrAccountHasEntries refuses an opening balance taken from a statement for an
+// account the ledger already moved (UX batch 5): the statement's balance minus
+// its lines is what the account held before the file only if nothing else was
+// recorded in it.
+var ErrAccountHasEntries = errors.New("ledger: the account already has entries")
+
 // ErrNotManual is a reversal asked for a fact that is changed through its bill
 // (a recognition, an adjustment) or through undoing the payment (a settlement).
 var ErrNotManual = errors.New("ledger: only transfers and opening balances are reversed directly")
@@ -976,6 +982,91 @@ func (r *LedgerRepository) PostOpeningBalance(ctx context.Context, sp space.Reso
 		return "", classifyPostCancel(err, plan.MarkerIdx)
 	}
 	return plan.TxID, nil
+}
+
+// Untouched reports whether an account has neither an opening balance nor any
+// entry: one GetItem of its OPENING# marker and a one-item Query of its entry
+// partition. It is the condition for offering a statement's balance as its
+// opening (UX batch 5).
+func (r *LedgerRepository) Untouched(ctx context.Context, sp space.ResolvedSpace, accountID string) (bool, error) {
+	if err := sp.Require(space.Read); err != nil {
+		return false, err
+	}
+	opening, err := r.openingTx(ctx, sp, accountID)
+	if err != nil || opening != "" {
+		return false, err
+	}
+	return r.noEntries(ctx, sp, accountID)
+}
+
+// openingTx is the transaction id the account's OPENING# marker names, or "".
+func (r *LedgerRepository) openingTx(ctx context.Context, sp space.ResolvedSpace, accountID string) (string, error) {
+	raw, err := r.accounts.GetItem(ctx, sp.PK(), LedgerOpeningSK(accountID))
+	if err != nil || raw == nil {
+		return "", err
+	}
+	m, err := Decode[struct {
+		TxID string `dynamodbav:"tx_id"`
+	}](raw)
+	if err != nil {
+		return "", err
+	}
+	return m.TxID, nil
+}
+
+func (r *LedgerRepository) noEntries(ctx context.Context, sp space.ResolvedSpace, accountID string) (bool, error) {
+	res, err := r.txs.Query(ctx, QueryOpts{PK: LedgerEntryPK(sp, accountID), SKPrefix: "ENTRY#", Limit: 1, ConsistentRead: true})
+	if err != nil {
+		return false, err
+	}
+	return len(res.Items) == 0, nil
+}
+
+// PostStatementOpening posts an opening balance taken from an imported
+// statement (UX batch 5, spec § 3.7), through the ordinary opening-balance rule
+// (Configure, once per account, the OPENING# marker). Its transaction id derives
+// from the import, so the same request again answers the fact it already made
+// (replay true) rather than a conflict. An account that already has another
+// opening balance is ErrOpeningExists; one with entries is ErrAccountHasEntries.
+//
+// The entries are read before the write, not conditioned in it (entries are
+// many rows, not one): a first entry racing this request can land beside the
+// opening. The marker still makes the opening once-only, and it is reversible
+// from the statement.
+func (r *LedgerRepository) PostStatementOpening(ctx context.Context, sp space.ResolvedSpace, accountID, importID string, amount billing.Cents, date brcal.Date, meta PostMeta, now time.Time) (txID string, replay bool, err error) {
+	if err := sp.Require(space.Configure); err != nil {
+		return "", false, err
+	}
+	txID = idempotentID(sp, "statement-opening", importID)
+	existing, err := r.openingTx(ctx, sp, accountID)
+	if err != nil {
+		return "", false, err
+	}
+	if existing == txID {
+		return txID, true, nil
+	}
+	if existing != "" {
+		return "", false, ErrOpeningExists
+	}
+	empty, err := r.noEntries(ctx, sp, accountID)
+	if err != nil {
+		return "", false, err
+	}
+	if !empty {
+		return "", false, ErrAccountHasEntries
+	}
+	meta.txID = txID
+	if meta.Memo == "" {
+		meta.Memo = "Saldo inicial (extrato)"
+	}
+	got, err := r.PostOpeningBalance(ctx, sp, accountID, amount, date, meta, now)
+	if errors.Is(err, ErrOpeningExists) {
+		// A twin request won the marker: it is ours if it names our transaction.
+		if again, rerr := r.openingTx(ctx, sp, accountID); rerr == nil && again == txID {
+			return txID, true, nil
+		}
+	}
+	return got, false, err
 }
 
 // PostTransfer moves money between two of the space's own accounts. It is not

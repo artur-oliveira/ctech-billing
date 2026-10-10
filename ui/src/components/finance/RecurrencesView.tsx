@@ -1,21 +1,18 @@
 "use client"
 
 import limits from "@/lib/limits.json"
-import {Button, EmptyState, Field, Input, Skeleton, Switch} from "@aoctech/ui"
+import {Button, Drawer, EmptyState, Field, Input, Segmented, Select, Skeleton, Switch} from "@aoctech/ui"
 import {useQuery} from "@tanstack/react-query"
 import {ChevronDown, Repeat} from "lucide-react"
 import Link from "next/link"
 import {useEffect, useId, useRef, useState} from "react"
 import {useTranslation} from "react-i18next"
 
-import {Drawer} from "@/components/ui/ConsoleOverlay"
 import {ExceptionsFields, PatternFields} from "@/components/finance/ExpressionEditor"
 import {LedgerRow} from "@/components/finance/LedgerRow"
 import {OccurrenceTimeline, type TimelineEntry} from "@/components/finance/OccurrenceTimeline"
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
 import {DateField} from "@/components/ui/DateField"
-import {Segmented} from "@/components/ui/Segmented"
-import {Select} from "@/components/ui/Select"
 import {messageFor, problemCode} from "@/lib/api/client"
 import {
   archiveRecurrence, createRecurrence, type FinanceCtx, financeKeys, getRecurrenceOccurrences, listAccounts, listRecurrences,
@@ -25,6 +22,7 @@ import type {Account, Adjust, Direction, ExpressionJSON, NewRecurrence, Occurren
 import {defaultModel, describeModel, type EditorModel, fromExpression, toExpression, validate} from "@/lib/finance/expression"
 import {currentLocale, t} from "@/lib/i18n"
 import {addYearsIso, todayIso} from "@/lib/finance/today"
+import {selectCopy} from "@/lib/selectCopy"
 import {useFinanceMutation} from "@/lib/finance/useFinanceMutation"
 import {useCreateRequest} from "@/lib/finance/createRequest"
 import {useFinanceCtx, useFinanceSpaces} from "@/lib/finance/useFinanceSpaces"
@@ -40,6 +38,10 @@ const adjustOptions = (): {value: Adjust; label: string}[] => [
   {value: "none", label: t("bills.rec.adjust.none")},
 ]
 const touched = (c: FinanceCtx) => [financeKeys.recurrences(c.mode, c.space), [...financeKeys.all(c.mode, c.space), "projection"]]
+// Ending and archiving also cancels bills and reverses their recognition (UX
+// batch 5): Agenda, balances, statements and reports all move, so the whole space.
+const touchedByEdit = (c: FinanceCtx, _: unknown, body: RecurrencePatch) =>
+  body.archive || body.cancel_after_end ? [financeKeys.all(c.mode, c.space)] : touched(c)
 
 function ruleOf(r: Recurrence): string {
   const model = fromExpression(r.expression)
@@ -201,26 +203,25 @@ function RecurrenceDetail({id, rec}: {id: string; rec: Recurrence}) {
 }
 
 /**
- * Ending a recurrence keeps the bills it already made after the new end (they
- * exist and can be edited or cancelled one by one); the confirmation says which,
- * and that one set to auto-settle is still paid on its date by the daily job.
+ * Ending and archiving a recurrence cancels the bills it already made for dates
+ * after the new end that are not paid (UX batch 5, spec § 3.5); a paid one stays,
+ * since the money moved and the statement shows it. The confirmation names both
+ * before anything is sent, from the recurrence's own history (the latest bills
+ * it made, which are the ones after any end).
  */
-function StillGoing({rec, end}: {rec: Recurrence; end: string}) {
+function EndCancels({rec, end}: {rec: Recurrence; end: string}) {
   const {t} = useTranslation()
   const ctx = useFinanceCtx()
   const q = useQuery({queryKey: financeKeys.recurrenceOccurrences(ctx.mode, ctx.space, rec.id), queryFn: () => getRecurrenceOccurrences(ctx, rec.id)})
-  const going = (q.data?.history ?? []).filter(o => o.nominal > end && (o.state === "forecast" || o.state === "overdue"))
-  if (going.length === 0) return null
-  const dates = new Intl.ListFormat(currentLocale(), {type: "conjunction"}).format(going.map(o => dayMonth(o.due)))
+  const after = (q.data?.history ?? []).filter(o => o.nominal > end)
+  const canceled = after.filter(o => o.state === "forecast" || o.state === "overdue")
+  const paid = after.filter(o => o.state === "paid")
+  if (canceled.length === 0 && paid.length === 0) return null
+  const list = (xs: typeof after) => new Intl.ListFormat(currentLocale(), {type: "conjunction"}).format(xs.map(o => dayMonth(o.due)))
   return (
-    <div className="w-full space-y-1 text-muted-foreground">
-      <p>
-        {t("bills.rec.stillGoing", {count: going.length, dates})}{" "}
-        <Link href={`/console/finance/bills?direction=${rec.direction}`} className="inline-flex items-center text-foreground underline underline-offset-4 hover:text-brand-700 touch-target">
-          {t(`bills.rec.openBill.${rec.direction}`)}
-        </Link>
-      </p>
-      {going.some(o => o.auto_settle) && <p>{t(`bills.rec.stillAuto.${rec.direction}`)}</p>}
+    <div className="w-full space-y-1">
+      {canceled.length > 0 && <p className="text-foreground">{t("bills.rec.endCancels", {count: canceled.length, dates: list(canceled)})}</p>}
+      {paid.length > 0 && <p className="text-muted-foreground">{t("bills.rec.endKeepsPaid", {count: paid.length, dates: list(paid)})}</p>}
     </div>
   )
 }
@@ -283,11 +284,20 @@ function RecurrencePanel({editing, accounts, onDone}: {editing?: Recurrence; acc
   // tells the person that an end will close the recurrence.
   const preview = usePreview(ctx, editing ? editing.expression : toExpression(model), start, end,
     editing ? editing.business_day_adjust : adjust, editing ? nextDay(todayIso()) : todayIso(), errors.length === 0)
-  // An end the server said leaves nothing to come (422 recurrence_would_end):
-  // saving it again asks for confirmation instead of repeating the request.
-  const [endsAt, setEndsAt] = useState<string | null>(null)
-  const [confirmEnd, setConfirmEnd] = useState(false)
+  // An end the server asked about — it cancels open bills after it (422
+  // end_cancels_bills, UX batch 5 review) or leaves nothing to come (422
+  // recurrence_would_end): saving it again asks first instead of repeating the
+  // request. `archive` is whether the confirmed request must also archive.
+  const [asked, setAsked] = useState<{end: string; archive: boolean} | null>(null)
+  const [confirming, setConfirming] = useState(false)
+  // A confirmed end whose cancellations did not all happen (409
+  // recurrence_end_incomplete): the end is saved; the same request finishes it.
+  const [incomplete, setIncomplete] = useState<RecurrencePatch | null>(null)
   const lastPatch = useRef<RecurrencePatch>({})
+  const sent = useRef<RecurrencePatch>({})
+  // The preview of an edit lists the dates left after today: none means this
+  // end also ends the rule, so the one confirmation archives it too.
+  const endsByPreview = !!editing && preview.done && !preview.loading && !preview.error && preview.occ.length === 0
   const amount = parseMoney(amountText)
   const cats = accounts.filter(a => a.class === (direction === "payable" ? "expense" : "income") && !a.archived && !a.system)
   const assets = accounts.filter(a => a.class === "asset" && !a.archived && !a.system)
@@ -297,14 +307,26 @@ function RecurrencePanel({editing, accounts, onDone}: {editing?: Recurrence; acc
   // otherwise its error is shown as the general message.
   const fe = useFieldErrors(["description", "amount", "category_id", "account_id", ...(editing ? [] : ["start"]), ...(editing || more ? ["end"] : [])])
   const create = useFinanceMutation((c, body: NewRecurrence, key) => createRecurrence(c, body, key), touched, onDone, fe.set)
-  const patch = useFinanceMutation((c, body: RecurrencePatch, key) => patchRecurrence(c, editing!.id, body, key), touched, onDone, e => {
-    if (problemCode(e) === "recurrence_would_end" && lastPatch.current.end) {
-      setEndsAt(lastPatch.current.end)
-      setConfirmEnd(true)
+  const patch = useFinanceMutation((c, body: RecurrencePatch, key) => patchRecurrence(c, editing!.id, body, key), touchedByEdit, onDone, e => {
+    const code = problemCode(e)
+    const end = lastPatch.current.end
+    if ((code === "recurrence_would_end" || code === "end_cancels_bills") && end) {
+      setAsked(a => ({end, archive: code === "recurrence_would_end" || endsByPreview || (a?.end === end && a.archive)}))
+      setConfirming(true)
+      return
+    }
+    if (code === "recurrence_end_incomplete") {
+      setIncomplete(sent.current)
       return
     }
     fe.set(e)
-  })
+  }, {invalidateOnError: true}) // a half-done end moved bills: show what is true now
+  const send = (body: RecurrencePatch) => {
+    sent.current = body
+    setIncomplete(null)
+    setConfirming(false)
+    patch.mutate(body)
+  }
   const pending = create.isPending || patch.isPending
   const ready = amount !== null && category !== "" && account !== "" && errors.length === 0 && !pending
   const showAuto = can("finance.settle") || (editing?.auto_settle ?? false)
@@ -330,11 +352,11 @@ function RecurrencePanel({editing, accounts, onDone}: {editing?: Recurrence; acc
     if (end !== (editing.end ?? "")) body.end = end
     if (Object.keys(body).length === 0) return onDone()
     lastPatch.current = body
-    if (body.end && body.end === endsAt) {
-      setConfirmEnd(true)
+    if (body.end && body.end === asked?.end) {
+      setConfirming(true)
       return
     }
-    patch.mutate(body)
+    send(body)
   }
 
   const nextDates = preview.occ.slice(0, PREVIEW_COUNT)
@@ -374,10 +396,10 @@ function RecurrencePanel({editing, accounts, onDone}: {editing?: Recurrence; acc
           <Field label={t("bills.common.description")} htmlFor="rc-desc" error={fe.of("description")} className="sm:col-span-2"><Input id="rc-desc" maxLength={limits.text.description} value={description} {...fe.props("description", "rc-desc")} onChange={e => { setDescription(e.target.value); fe.clear("description") }}/></Field>
           <Field label={t("bills.common.amount")} htmlFor="rc-amount" required error={fe.of("amount")}><Input id="rc-amount" inputMode="decimal" placeholder={moneyPlaceholder()} value={amountText} {...fe.props("amount", "rc-amount")} onChange={e => { setAmountText(maskMoney(e.target.value)); fe.clear("amount") }}/></Field>
           <Field label={t("bills.common.category")} htmlFor="rc-cat" required error={fe.of("category_id")} hint={cats.length === 0 ? t(`bills.noCategory.${direction === "payable" ? "expense" : "income"}`) : undefined}>
-            <Select id="rc-cat" value={category} {...fe.props("category_id", "rc-cat")} onValueChange={v => { setCategory(v); fe.clear("category_id") }} options={cats.map(a => ({value: a.id, label: accountName(a)}))}/>
+            <Select {...selectCopy()} id="rc-cat" value={category} {...fe.props("category_id", "rc-cat")} onValueChange={v => { setCategory(v); fe.clear("category_id") }} options={cats.map(a => ({value: a.id, label: accountName(a)}))}/>
           </Field>
           <Field label={t(`bills.common.payWith.${direction}`)} htmlFor="rc-acct" required error={fe.of("account_id")} hint={assets.length === 0 ? t("bills.noAccount") : undefined}>
-            <Select id="rc-acct" value={account} {...fe.props("account_id", "rc-acct")} onValueChange={v => { setAccount(v); fe.clear("account_id") }} options={assets.map(a => ({value: a.id, label: accountName(a)}))}/>
+            <Select {...selectCopy()} id="rc-acct" value={account} {...fe.props("account_id", "rc-acct")} onValueChange={v => { setAccount(v); fe.clear("account_id") }} options={assets.map(a => ({value: a.id, label: accountName(a)}))}/>
           </Field>
           {!editing && (
             <>
@@ -415,7 +437,7 @@ function RecurrencePanel({editing, accounts, onDone}: {editing?: Recurrence; acc
                 <div className="mt-3 grid items-start gap-4 border-t border-border pt-4 sm:grid-cols-2">
                   <Field label={t("bills.rec.endsOn")} htmlFor="rc-end" error={fe.of("end")}><DateField id="rc-end" min={start || limits.minDate} max={addYearsIso(start || todayIso(), limits.maxRecurrenceYears)} value={end} invalid={!!fe.of("end")} onValueChange={v => { setEnd(v); fe.clear("end") }} placeholder={t("bills.rec.noEnd")} clearLabel={t("bills.rec.clearEnd")}/></Field>
                   <Field label={t("bills.rec.weekend")} htmlFor="rc-adjust">
-                    <Select id="rc-adjust" value={adjust} onValueChange={v => setAdjust(v as Adjust)} options={adjustOptions()}/>
+                    <Select {...selectCopy()} id="rc-adjust" value={adjust} onValueChange={v => setAdjust(v as Adjust)} options={adjustOptions()}/>
                   </Field>
                   <ExceptionsFields model={model} errors={errors} onChange={setModel}/>
                 </div>
@@ -437,13 +459,21 @@ function RecurrencePanel({editing, accounts, onDone}: {editing?: Recurrence; acc
             <Button type="button" variant="outline" size="sm" onClick={onDone}>{t("bills.common.close")}</Button>
           </div>
         </div>
-        {confirmEnd && editing && (
-          <div className="flex flex-wrap items-center gap-2 rounded-lg bg-surface p-3 text-sm motion-safe:animate-in motion-safe:fade-in">
-            <p role="alert" className="w-full text-foreground">{t("bills.rec.endsConfirm")}</p>
-            <StillGoing rec={editing} end={endsAt ?? ""}/>
-            <Button type="button" size="sm" variant="outline" onClick={() => setConfirmEnd(false)}>{t("bills.rec.back")}</Button>
+        {confirming && asked && editing && (
+          <div role="alert" className="flex flex-wrap items-center gap-2 rounded-lg bg-surface p-3 text-sm motion-safe:animate-in motion-safe:fade-in">
+            {asked.archive && <p className="w-full text-foreground">{t("bills.rec.endsConfirm")}</p>}
+            <EndCancels rec={editing} end={asked.end}/>
+            <Button type="button" size="sm" variant="outline" onClick={() => setConfirming(false)}>{t("bills.rec.back")}</Button>
             <Button type="button" size="sm" variant="danger" disabled={patch.isPending}
-              onClick={() => patch.mutate({...lastPatch.current, archive: true})}>{t("bills.rec.endAndArchive")}</Button>
+              onClick={() => send({...lastPatch.current, cancel_after_end: true, ...(asked.archive ? {archive: true} : {})})}>
+              {asked.archive ? t("bills.rec.endAndArchive") : t("bills.rec.saveAndCancel")}
+            </Button>
+          </div>
+        )}
+        {incomplete && (
+          <div className="flex flex-wrap items-center gap-2 rounded-lg bg-surface p-3 text-sm">
+            <p role="alert" className="w-full text-foreground">{t(`bills.rec.endIncomplete.${incomplete.archive ? "archived" : "saved"}`)}</p>
+            <Button type="button" size="sm" variant="brand" disabled={patch.isPending} onClick={() => send(incomplete)}>{t("bills.rec.retry")}</Button>
           </div>
         )}
         {fe.general && <p role="alert" className="text-sm text-danger">{fe.general}</p>}

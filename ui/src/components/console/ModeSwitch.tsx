@@ -3,6 +3,7 @@
 import {useQueryClient} from "@tanstack/react-query"
 import {useTranslation} from "react-i18next"
 
+import {segmentHit} from "@/components/ui/segmentHit"
 import {setMode} from "@/lib/console/mode"
 import {useMode} from "@/lib/console/useMode"
 
@@ -41,7 +42,10 @@ export function ModeSwitch() {
           <button
             key={option.id}
             type="button"
-            // A segment like any other: under touch 32px drawn with a 44px target (globals.css); 24px on a desk.
+            // A segment like any other (its colours are the mode's): drawn 30px
+            // under touch by @aoctech/ui's touch.css, 24px on a desk. Its 44px
+            // hit area is drawn here, as @aoctech/ui's Segmented draws its own:
+            // full height, exactly as wide as the segment, never into a neighbour.
             data-slot="segmented-item"
             aria-pressed={active}
             onClick={() => {
@@ -49,7 +53,7 @@ export function ModeSwitch() {
               setMode(option.id)
               void queryClient.removeQueries({queryKey: ["console", mode]})
             }}
-            className={`rounded-md px-2.5 py-1 text-xs transition-colors ${
+            className={`${segmentHit} rounded-md px-2.5 py-1 text-xs transition-colors ${
               active
                 ? option.id === "test"
                   ? "bg-warning text-background"

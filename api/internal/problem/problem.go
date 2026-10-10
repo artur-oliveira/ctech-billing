@@ -188,6 +188,13 @@ func FromError(err error) *Problem {
 		return New(409, TypeInvalidTransition, "Invalid Transition",
 			"This account already has an opening balance. Reverse the current one to post another.").WithCode("opening_balance_exists")
 
+	case errors.Is(err, repositories.ErrAccountHasEntries):
+		return New(409, TypeInvalidTransition, "Invalid Transition",
+			"This account already has entries, so the statement's balance is not its opening balance.").WithCode("account_has_entries")
+
+	case errors.Is(err, repositories.ErrNoStatementBalance):
+		return Unprocessable("this statement declares no balance (LEDGERBAL)").WithCode("no_statement_balance")
+
 	case errors.Is(err, repositories.ErrNotManual):
 		return New(409, TypeInvalidTransition, "Invalid Transition",
 			"Only transfers and opening balances are reversed from the statement. For a payment, use Undo payment.").WithCode("not_reversible_entry")
@@ -196,6 +203,12 @@ func FromError(err error) *Problem {
 		return New(409, TypeInvalidTransition, "Invalid Transition", "This statement line was already reconciled.").WithCode("line_already_reconciled")
 	case errors.Is(err, repositories.ErrRecurrenceWouldEnd):
 		return Unprocessable("this end date leaves the recurrence with no occurrence to come; send archive:true to end and archive it").WithCode("recurrence_would_end")
+	case errors.Is(err, repositories.ErrEndCancelsBills):
+		return Unprocessable("this end date cancels the unpaid bills the recurrence made after it; send cancel_after_end:true to confirm").WithCode("end_cancels_bills")
+	case errors.Is(err, repositories.ErrEndIncomplete):
+		// Before the generic conflict case: a retry of the same request finishes it.
+		return New(409, TypeConcurrentUpdate, "Concurrent Update",
+			"the end was saved, but some bills after it could not be cancelled; send the same request again").WithCode("recurrence_end_incomplete")
 	case errors.Is(err, repositories.ErrBillLinked):
 		return New(409, TypeInvalidTransition, "Invalid Transition", "This bill is already linked to another statement line.").WithCode("bill_already_linked")
 	case errors.Is(err, repositories.ErrLineMismatch):
@@ -239,6 +252,14 @@ func FromError(err error) *Problem {
 	case errors.Is(err, repositories.ErrConcurrentModification):
 		return New(409, TypeConcurrentUpdate, "Concurrent Update",
 			"the resource changed since it was read; reload and try again")
+
+	// A write cancelled by another transaction on the same items (api-commons
+	// v1.11.0 no longer reads it as a failed condition): nothing was written, the
+	// same request may be repeated. Not a 500. Cross-repo candidate: this
+	// mapping belongs in api-commons `problem`, for every service.
+	case errors.Is(err, repositories.ErrTransactionConflict), repositories.IsTransactionConflict(err):
+		return New(409, TypeConcurrentUpdate, "Concurrent Update",
+			"another request was changing the same data; try again").WithCode("concurrent_update")
 
 	case errors.Is(err, repositories.ErrAttemptExists):
 		// Two "pay" clicks arrived together. The caller re-reads and shows the

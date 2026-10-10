@@ -234,14 +234,15 @@ func (c *Collector) Pay(
 	attempt.WalletChargeID = charge.ID
 
 	if err := c.payments.CreateAttempt(ctx, attempt, now); err != nil {
-		if errors.Is(err, repositories.ErrAttemptExists) {
+		if errors.Is(err, repositories.ErrAttemptExists) || errors.Is(err, repositories.ErrTransactionConflict) {
 			// Two clicks arrived together and the other one won. Its session is the
 			// one to show — and its charge is this same charge, because the
 			// idempotency key both computed is identical.
-			session, readErr := c.payments.LatestSession(ctx, organizationID, livemode, invoiceID)
-			if readErr == nil && session != nil && session.IsUsable(now) {
+			if session := c.winnerSession(ctx, organizationID, livemode, invoiceID, now); session != nil {
 				return session, inv, nil
 			}
+			// Nothing to show yet: a 409 the page re-reads, never a 500.
+			return nil, inv, fmt.Errorf("%w: %v", repositories.ErrAttemptExists, err)
 		}
 		return nil, inv, err
 	}
@@ -263,6 +264,24 @@ func (c *Collector) Pay(
 		"invoice_id", inv.ID, "attempt", attempt.AttemptNumber,
 		"charge_id", charge.ID, "actor", actor, "request_id", requestID)
 	return session, inv, nil
+}
+
+// winnerSession reads the checkout the other press opened. The winner writes its
+// attempt and then its session, so a press that lost the attempt row can be a
+// few milliseconds early: it looks again, briefly, before giving up.
+func (c *Collector) winnerSession(ctx context.Context, organizationID string, livemode bool, invoiceID string, now time.Time) *billing.CheckoutSession {
+	for attempt := 1; attempt <= 4; attempt++ {
+		session, err := c.payments.LatestSession(ctx, organizationID, livemode, invoiceID)
+		if err == nil && session != nil && session.IsUsable(now) {
+			return session
+		}
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-time.After(time.Duration(attempt) * 50 * time.Millisecond):
+		}
+	}
+	return nil
 }
 
 // Confirm settles an invoice from a wallet charge.

@@ -1,13 +1,13 @@
 "use client"
 
-import {Button, Field, Input, Skeleton} from "@aoctech/ui"
+import {Button, Field, Input, Select, Skeleton} from "@aoctech/ui"
 import {useQuery} from "@tanstack/react-query"
 import {useState} from "react"
 import {useTranslation} from "react-i18next"
 
-import {Select} from "@/components/ui/Select"
 import {financeKeys, getCsvMapping, putCsvMapping} from "@/lib/api/finance"
 import type {CsvDateFormat, CsvDelimiter, CsvMapping} from "@/lib/api/financeTypes"
+import {selectCopy} from "@/lib/selectCopy"
 import {useFinanceMutation} from "@/lib/finance/useFinanceMutation"
 import {useFinanceCtx} from "@/lib/finance/useFinanceSpaces"
 import {useFieldErrors} from "@/lib/useFieldErrors"
@@ -64,15 +64,15 @@ function MappingFields({accountId, initial, onDone}: {accountId: string; initial
       }}
     >
       <Field label={t("finance.import.mapping.delimiter")} htmlFor="csv-delimiter" error={fe.of("delimiter")}>
-        <Select id="csv-delimiter" aria-label={t("finance.import.mapping.delimiter")} value={m.delimiter} onValueChange={v => setM(x => ({...x, delimiter: v as CsvDelimiter}))}
+        <Select {...selectCopy()} id="csv-delimiter" aria-label={t("finance.import.mapping.delimiter")} value={m.delimiter} onValueChange={v => setM(x => ({...x, delimiter: v as CsvDelimiter}))}
           options={[{value: ";", label: t("finance.import.mapping.semicolon")}, {value: ",", label: t("finance.import.mapping.comma")}, {value: "\t", label: t("finance.import.mapping.tab")}]}/>
       </Field>
       <Field label={t("finance.import.mapping.decimal")} htmlFor="csv-decimal" error={fe.of("decimal")}>
-        <Select id="csv-decimal" aria-label={t("finance.import.mapping.decimal")} value={m.decimal} onValueChange={v => setM(x => ({...x, decimal: v as "," | "."}))}
+        <Select {...selectCopy()} id="csv-decimal" aria-label={t("finance.import.mapping.decimal")} value={m.decimal} onValueChange={v => setM(x => ({...x, decimal: v as "," | "."}))}
           options={[{value: ",", label: t("finance.import.mapping.decimalComma")}, {value: ".", label: t("finance.import.mapping.decimalDot")}]}/>
       </Field>
       <Field label={t("finance.import.mapping.dateFormat")} htmlFor="csv-date-format" error={fe.of("date_format")}>
-        <Select id="csv-date-format" aria-label={t("finance.import.mapping.dateFormat")} value={m.date_format} onValueChange={v => setM(x => ({...x, date_format: v as CsvDateFormat}))}
+        <Select {...selectCopy()} id="csv-date-format" aria-label={t("finance.import.mapping.dateFormat")} value={m.date_format} onValueChange={v => setM(x => ({...x, date_format: v as CsvDateFormat}))}
           options={(["dd/mm/yyyy", "yyyy-mm-dd", "mm/dd/yyyy"] as const).map(f => ({value: f, label: t(`finance.import.mapping.formats.${f.replaceAll("/", "").replaceAll("-", "")}`)}))}/>
       </Field>
       {number("skip_rows", t("finance.import.mapping.skipRows"))}

@@ -154,6 +154,18 @@ func (s *FinanceImports) Reopen(ctx context.Context, sp space.ResolvedSpace, imp
 	return s.repo.Reopen(ctx, sp, importID, n, now)
 }
 
+// OpeningProposal is the opening balance an import's statement proposes, while
+// its account can still take one (UX batch 5).
+func (s *FinanceImports) OpeningProposal(ctx context.Context, sp space.ResolvedSpace, imp repositories.Import) (*statement.Opening, error) {
+	return s.repo.OpeningProposal(ctx, sp, imp)
+}
+
+// PostOpening posts it, on the person's explicit confirmation. replay is true
+// when this import's opening was already posted (the same fact answered again).
+func (s *FinanceImports) PostOpening(ctx context.Context, sp space.ResolvedSpace, importID, actor, requestID string, now time.Time) (string, bool, error) {
+	return s.repo.PostOpening(ctx, sp, importID, repositories.PostMeta{Origin: "statement_opening", Actor: actor, RequestID: requestID}, now)
+}
+
 func (s *FinanceImports) GetMapping(ctx context.Context, sp space.ResolvedSpace, accountID string) (statement.Mapping, error) {
 	return s.repo.GetMapping(ctx, sp, accountID)
 }

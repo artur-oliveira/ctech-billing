@@ -55,10 +55,10 @@ export function DateField({id, value, onValueChange, min, max, placeholder, disa
       max={max ? toDate(max) : undefined}
       placeholder={placeholder ?? t("auth.date.placeholder")}
       disabled={disabled}
-      // The DatePicker's trigger carries no data-slot, so the global touch rule
-      // cannot find it by slot: `touch-target` asks for the compact look and
-      // the 44px target under touch (globals.css).
-      className={["touch-target", className, invalid && "border-danger ring-3 ring-danger/20"].filter(Boolean).join(" ")}
+      // Under touch the trigger (`data-slot="date-picker-trigger"` since
+      // @aoctech/ui 0.4) gets the compact look and the 44px target from
+      // @aoctech/ui's touch.css, like any control.
+      className={[className, invalid && "border-danger ring-3 ring-danger/20"].filter(Boolean).join(" ")}
     />
   )
   if (!clearLabel) return picker

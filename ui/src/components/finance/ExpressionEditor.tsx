@@ -2,16 +2,16 @@
 
 import {addYearsIso, todayIso} from "@/lib/finance/today"
 import limits from "@/lib/limits.json"
-import {Button, Field, Input} from "@aoctech/ui"
+import {Button, Field, Input, Select} from "@aoctech/ui"
 import {X} from "lucide-react"
 import {useState} from "react"
 import {useTranslation} from "react-i18next"
 
 import {DateField} from "@/components/ui/DateField"
-import {Select} from "@/components/ui/Select"
 import {
   defaultAnchor, type EditorModel, type ModelError, monthName, ordinal, type Pattern,
 } from "@/lib/finance/expression"
+import {selectCopy} from "@/lib/selectCopy"
 import {weekdayLabel} from "@/lib/finance/labels"
 import {shortDate} from "@/lib/format"
 import {t} from "@/lib/i18n"
@@ -59,7 +59,7 @@ export function PatternFields({model, start, errors, onChange}: EditorProps) {
   return (
     <>
       <Field label={t("bills.editor.repeat")} htmlFor="rx-kind">
-        <Select id="rx-kind" value={p.kind} onValueChange={k => setPattern(patternFor(k as Pattern["kind"], start, p))} options={kindOptions()}/>
+        <Select {...selectCopy()} id="rx-kind" value={p.kind} onValueChange={k => setPattern(patternFor(k as Pattern["kind"], start, p))} options={kindOptions()}/>
       </Field>
 
       {p.kind === "day_of_month" && (
@@ -70,17 +70,17 @@ export function PatternFields({model, start, errors, onChange}: EditorProps) {
 
       {p.kind === "workday_of_month" && (
         <Field label={t("bills.editor.workday")} htmlFor="rx-n" error={err("n")}>
-          <Select id="rx-n" value={String(p.n)} onValueChange={v => setPattern({...p, n: Number(v)})} options={workdayOptions()}/>
+          <Select {...selectCopy()} id="rx-n" value={String(p.n)} onValueChange={v => setPattern({...p, n: Number(v)})} options={workdayOptions()}/>
         </Field>
       )}
 
       {p.kind === "nth_weekday_of_month" && (
         <>
           <Field label={t("bills.editor.which")} htmlFor="rx-nth" error={err("n")}>
-            <Select id="rx-nth" value={String(p.n)} onValueChange={v => setPattern({...p, n: Number(v)})} options={nthOptions()}/>
+            <Select {...selectCopy()} id="rx-nth" value={String(p.n)} onValueChange={v => setPattern({...p, n: Number(v)})} options={nthOptions()}/>
           </Field>
           <Field label={t("bills.editor.weekday")} htmlFor="rx-wd" error={err("weekday")}>
-            <Select id="rx-wd" value={String(p.weekday)} onValueChange={v => setPattern({...p, weekday: Number(v)})} options={weekdayOptions()}/>
+            <Select {...selectCopy()} id="rx-wd" value={String(p.weekday)} onValueChange={v => setPattern({...p, weekday: Number(v)})} options={weekdayOptions()}/>
           </Field>
         </>
       )}
@@ -88,7 +88,7 @@ export function PatternFields({model, start, errors, onChange}: EditorProps) {
       {p.kind === "weekly" && (
         <>
           <Field label={t("bills.editor.weekday")} htmlFor="rx-wd" error={err("weekday")}>
-            <Select
+            <Select {...selectCopy()}
               id="rx-wd"
               value={String(p.weekday)}
               onValueChange={v => setPattern({...p, weekday: Number(v), anchor: defaultAnchor(Number(v), start)})}
@@ -109,7 +109,7 @@ export function PatternFields({model, start, errors, onChange}: EditorProps) {
       {p.kind === "yearly" && (
         <>
           <Field label={t("bills.editor.month")} htmlFor="rx-month" error={err("month")}>
-            <Select id="rx-month" value={String(p.month)} onValueChange={v => setPattern({...p, month: Number(v)})} options={monthOptions()}/>
+            <Select {...selectCopy()} id="rx-month" value={String(p.month)} onValueChange={v => setPattern({...p, month: Number(v)})} options={monthOptions()}/>
           </Field>
           <Field label={t("bills.editor.day")} htmlFor="rx-yday" error={err("day")}>
             <Input id="rx-yday" maxLength={2} inputMode="numeric" value={Number.isNaN(p.day) ? "" : String(p.day)} onChange={e => setPattern({...p, day: Number.parseInt(e.target.value, 10)})} aria-invalid={!!err("day")}/>

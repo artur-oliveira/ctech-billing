@@ -1,7 +1,7 @@
 "use client"
 
 import limits from "@/lib/limits.json"
-import {Button, buttonVariants, EmptyState, Field, Input, Skeleton, Switch} from "@aoctech/ui"
+import {Button, buttonVariants, Drawer, EmptyState, Field, Input, Select, Skeleton, Switch} from "@aoctech/ui"
 import {useQuery} from "@tanstack/react-query"
 import {CircleCheck, FileUp, Landmark} from "lucide-react"
 import Link from "next/link"
@@ -9,15 +9,14 @@ import {useState} from "react"
 import {useTranslation} from "react-i18next"
 
 import {CardBrandMark, maskedLast4} from "@/components/finance/CardBrandMark"
-import {Drawer} from "@/components/ui/ConsoleOverlay"
 import {LedgerRow} from "@/components/finance/LedgerRow"
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
 import {DateField} from "@/components/ui/DateField"
-import {Select} from "@/components/ui/Select"
 import {messageFor} from "@/lib/api/client"
 import {archiveAccount, createAccount, financeKeys, getSettings, listAccounts, listCards, postOpeningBalance, setDefaultReceivingAccount, setPostCTechInvoices} from "@/lib/api/finance"
 import type {Account, AccountClass, Card, DREGroup, OpeningBalance} from "@/lib/api/financeTypes"
 import {classLabel, dreGroupLabel, groupsForClass} from "@/lib/finance/labels"
+import {selectCopy} from "@/lib/selectCopy"
 import {useFinanceMutation} from "@/lib/finance/useFinanceMutation"
 import {useCreateRequest} from "@/lib/finance/createRequest"
 import {useFinanceCtx, useFinanceSpaces} from "@/lib/finance/useFinanceSpaces"
@@ -259,11 +258,11 @@ function AccountForm({onDone, offerImport}: {onDone: () => void; offerImport: bo
         <Input id="acc-name" maxLength={limits.text.accountName} value={name} {...fe.props("name", "acc-name")} onChange={e => { setName(e.target.value); fe.clear("name") }} autoFocus/>
       </Field>
       <Field label={t("finance.accounts.type")} htmlFor="acc-class" error={fe.of("class")}>
-        <Select id="acc-class" value={cls} {...fe.props("class", "acc-class")} onValueChange={v => { setCls(v as AccountClass); fe.clear("class") }} options={(["asset", "income", "expense"] as AccountClass[]).map(c => ({value: c, label: classLabel(c)}))}/>
+        <Select {...selectCopy()} id="acc-class" value={cls} {...fe.props("class", "acc-class")} onValueChange={v => { setCls(v as AccountClass); fe.clear("class") }} options={(["asset", "income", "expense"] as AccountClass[]).map(c => ({value: c, label: classLabel(c)}))}/>
       </Field>
       {groups.length > 0 ? (
         <Field label={t("finance.accounts.dreGroup")} htmlFor="acc-group" error={fe.of("dre_group")}>
-          <Select id="acc-group" value={chosenGroup} {...fe.props("dre_group", "acc-group")} onValueChange={v => { setGroup(v as DREGroup); fe.clear("dre_group") }} options={groups.map(g => ({value: g, label: dreGroupLabel(g)}))}/>
+          <Select {...selectCopy()} id="acc-group" value={chosenGroup} {...fe.props("dre_group", "acc-group")} onValueChange={v => { setGroup(v as DREGroup); fe.clear("dre_group") }} options={groups.map(g => ({value: g, label: dreGroupLabel(g)}))}/>
         </Field>
       ) : asset ? (
         <>
@@ -330,7 +329,7 @@ function DefaultReceiving({accounts}: {accounts: Account[]}) {
     <section className="space-y-2 border-t border-border pt-4">
       <Field label={t("finance.accounts.defaultReceiving")} htmlFor="default-receiving">
         <div className="max-w-xs">
-          <Select
+          <Select {...selectCopy()}
             id="default-receiving"
             value={settings.data?.default_receiving_account_id ?? ""}
             // "" is Nenhuma: the API clears the setting.

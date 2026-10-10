@@ -1,7 +1,7 @@
 "use client"
 
 import limits from "@/lib/limits.json"
-import {Badge, Button, EmptyState, Field, Input, Skeleton, Switch} from "@aoctech/ui"
+import {Badge, Button, Drawer, EmptyState, Field, Input, Segmented, Select, Skeleton, Switch} from "@aoctech/ui"
 import {useQuery, useQueryClient} from "@tanstack/react-query"
 import {AlertCircle, CalendarClock, Clock, Receipt} from "lucide-react"
 import Link from "next/link"
@@ -9,17 +9,15 @@ import {useEffect, useState} from "react"
 import {useTranslation} from "react-i18next"
 import {toast} from "sonner"
 
-import {Drawer} from "@/components/ui/ConsoleOverlay"
 import {LedgerRow} from "@/components/finance/LedgerRow"
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
 import {DateField} from "@/components/ui/DateField"
-import {Segmented} from "@/components/ui/Segmented"
-import {Select} from "@/components/ui/Select"
 import {messageFor, statusOf} from "@/lib/api/client"
 import {cancelBill, createBill, financeKeys, listAccounts, listBills, patchBill, settleBill} from "@/lib/api/finance"
 import type {Account, Bill, BillPatch, Bucket, Direction, NewBill, Settlement} from "@/lib/api/financeTypes"
 import {bucketLabel} from "@/lib/finance/labels"
 import {addYearsIso, monthLabel, todayIso} from "@/lib/finance/today"
+import {selectCopy} from "@/lib/selectCopy"
 import {useFinanceMutation} from "@/lib/finance/useFinanceMutation"
 import {type FinanceCtx} from "@/lib/api/finance"
 import {useCreateRequest} from "@/lib/finance/createRequest"
@@ -232,7 +230,7 @@ export function SettleForm({bill, accounts, onDone}: {bill: Bill; accounts: Acco
       {gap !== 0 && (
         <>
           <Field label={t("bills.settle.diffCategory")} htmlFor={`c-${bill.id}`} error={fe.of("difference_category_id")}>
-            <Select id={`c-${bill.id}`} value={category} {...fe.props("difference_category_id", `c-${bill.id}`)} onValueChange={v => { setCategory(v); fe.clear("difference_category_id") }} options={categories.map(a => ({value: a.id, label: accountName(a)}))}/>
+            <Select {...selectCopy()} id={`c-${bill.id}`} value={category} {...fe.props("difference_category_id", `c-${bill.id}`)} onValueChange={v => { setCategory(v); fe.clear("difference_category_id") }} options={categories.map(a => ({value: a.id, label: accountName(a)}))}/>
           </Field>
           <p className="text-sm text-muted-foreground sm:pt-7">
             {t(gap > 0 ? "bills.settle.more" : "bills.settle.less", {amount: money(Math.abs(gap)), bill: money(bill.amount)})}
@@ -290,11 +288,11 @@ function EditForm({bill, accounts, onDone}: {bill: Bill; accounts: Account[]; on
       <Field label={t("bills.common.due")} htmlFor={`eu-${bill.id}`} error={fe.of("due_date")}><DateField id={`eu-${bill.id}`} min={limits.minDate} max={addYearsIso(todayIso(), limits.maxFutureYears)} value={due} invalid={!!fe.of("due_date")} onValueChange={v => { setDue(v); fe.clear("due_date") }}/></Field>
       {!statement && (
         <Field label={t("bills.common.category")} htmlFor={`ec-${bill.id}`} error={fe.of("category_id")}>
-          <Select id={`ec-${bill.id}`} value={category} {...fe.props("category_id", `ec-${bill.id}`)} onValueChange={v => { setCategory(v); fe.clear("category_id") }} options={cats.map(a => ({value: a.id, label: accountName(a)}))}/>
+          <Select {...selectCopy()} id={`ec-${bill.id}`} value={category} {...fe.props("category_id", `ec-${bill.id}`)} onValueChange={v => { setCategory(v); fe.clear("category_id") }} options={cats.map(a => ({value: a.id, label: accountName(a)}))}/>
         </Field>
       )}
       <Field label={t(`bills.common.payWith.${bill.direction}`)} htmlFor={`ea-${bill.id}`} error={fe.of("account_id")}>
-        <Select id={`ea-${bill.id}`} value={account} {...fe.props("account_id", `ea-${bill.id}`)} onValueChange={v => { setAccount(v); fe.clear("account_id") }} options={assets.map(a => ({value: a.id, label: accountName(a)}))}/>
+        <Select {...selectCopy()} id={`ea-${bill.id}`} value={account} {...fe.props("account_id", `ea-${bill.id}`)} onValueChange={v => { setAccount(v); fe.clear("account_id") }} options={assets.map(a => ({value: a.id, label: accountName(a)}))}/>
       </Field>
       {showAuto && (
         <label className="flex items-center gap-2 self-end text-sm">
@@ -390,7 +388,7 @@ function NewBillPanel({direction, accounts, onDone}: {direction: Direction; acco
           <DateField id="nb-comp" min={limits.minDate} max={addYearsIso(todayIso(), limits.maxFutureYears)} value={competence} invalid={!!fe.of("competence_date")} onValueChange={v => { setCompetence(v); fe.clear("competence_date") }} placeholder={t("bills.new.competencePlaceholder")} clearLabel={t("bills.new.clearCompetence")}/>
         </Field>
         <Field label={t("bills.common.category")} htmlFor="nb-cat" required error={fe.of("category_id")} hint={cats.length === 0 ? t(`bills.noCategory.${direction === "payable" ? "expense" : "income"}`) : undefined}>
-          <Select id="nb-cat" value={category} {...fe.props("category_id", "nb-cat")} onValueChange={v => { setCategory(v); fe.clear("category_id") }} options={cats.map(a => ({value: a.id, label: accountName(a)}))}/>
+          <Select {...selectCopy()} id="nb-cat" value={category} {...fe.props("category_id", "nb-cat")} onValueChange={v => { setCategory(v); fe.clear("category_id") }} options={cats.map(a => ({value: a.id, label: accountName(a)}))}/>
         </Field>
         {can("finance.settle") && (
           <label className="flex min-h-11 items-center gap-2 text-sm">
@@ -415,7 +413,7 @@ function NewBillPanel({direction, accounts, onDone}: {direction: Direction; acco
             </Field>
           )}
           <Field label={t(paidNow ? `bills.new.paidWith.${direction}` : `bills.common.payWith.${direction}`)} htmlFor="nb-acct" required error={fe.of("account_id")} hint={assets.length === 0 ? t("bills.noAccount") : undefined}>
-            <Select id="nb-acct" value={account} {...fe.props("account_id", "nb-acct")} onValueChange={v => { setAccount(v); fe.clear("account_id") }} options={assets.map(a => ({value: a.id, label: accountName(a)}))}/>
+            <Select {...selectCopy()} id="nb-acct" value={account} {...fe.props("account_id", "nb-acct")} onValueChange={v => { setAccount(v); fe.clear("account_id") }} options={assets.map(a => ({value: a.id, label: accountName(a)}))}/>
           </Field>
           {can("finance.settle") && !paidNow && (
             <label className="flex min-h-11 items-center gap-2 text-sm">

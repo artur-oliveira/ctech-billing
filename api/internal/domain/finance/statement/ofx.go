@@ -48,6 +48,7 @@ func ParseOFX(b []byte) (Parsed, error) {
 	var (
 		out        Parsed
 		cur        *rawTxn
+		bal        *rawBalance
 		statements int
 		n          int
 	)
@@ -109,12 +110,29 @@ func ParseOFX(b []byte) (Parsed, error) {
 			if err := finish(); err != nil {
 				return Parsed{}, err
 			}
+		// The ledger balance (UX batch 5). Its BALAMT and DTASOF are leaves
+		// that AVAILBAL repeats, so they count only inside LEDGERBAL, which
+		// ends at its closing tag or at the next aggregate.
+		case tag == "LEDGERBAL":
+			bal = &rawBalance{}
+		case tag == "/LEDGERBAL", tag == "AVAILBAL", tag == "/STMTRS":
+			if bal != nil {
+				out.Ledger = bal.balance()
+				bal = nil
+			}
+		case bal != nil && tag == "BALAMT":
+			bal.amount = value
+		case bal != nil && tag == "DTASOF":
+			bal.asOf = value
 		case cur != nil && tag[0] != '/':
 			cur.set(tag, value)
 		}
 	}
 	if err := finish(); err != nil {
 		return Parsed{}, err
+	}
+	if bal != nil { // a file cut inside LEDGERBAL
+		out.Ledger = bal.balance()
 	}
 	if n == 0 {
 		return Parsed{}, ErrEmpty

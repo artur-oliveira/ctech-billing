@@ -35,6 +35,45 @@ type importDTO struct {
 	RejectedCount int           `json:"rejected_count"`
 	Rejected      []rejectedDTO `json:"rejected"`
 	Pending       int           `json:"pending"`
+	// OpeningProposal is offered on the upload and the detail only, while the
+	// account has no opening balance and no entry (UX batch 5).
+	OpeningProposal *openingProposalDTO `json:"opening_proposal,omitempty"`
+}
+
+// openingProposalDTO is the statement's balance as an opening balance: amount =
+// ledger_balance − the sum of the file's `lines`, on date (the day before the
+// first line).
+type openingProposalDTO struct {
+	Amount        billing.Cents `json:"amount"`
+	Date          brcal.Date    `json:"date"`
+	LedgerBalance billing.Cents `json:"ledger_balance"`
+	LedgerAsOf    brcal.Date    `json:"ledger_as_of"`
+	Lines         int           `json:"lines"`
+}
+
+// withOpening fills the proposal when the account can still take it.
+func (h *financeHandlers) withOpening(c fiber.Ctx, imp repositories.Import, out *importDTO) error {
+	o, err := h.imports.OpeningProposal(c.Context(), middleware.GetSpace(c), imp)
+	if err != nil || o == nil {
+		return err
+	}
+	out.OpeningProposal = &openingProposalDTO{Amount: o.Amount, Date: o.Date, LedgerBalance: o.Ledger.Amount, LedgerAsOf: o.Ledger.AsOf, Lines: o.Lines}
+	return nil
+}
+
+// postImportOpening posts the import's proposed opening balance (the amounts
+// are the server's, computed from the file at upload). 201 the first time, 200
+// with the same transaction when it was already posted.
+func (h *financeHandlers) postImportOpening(c fiber.Ctx) error {
+	txID, replay, err := h.imports.PostOpening(c.Context(), middleware.GetSpace(c), c.Params("id"), actorOfUser(c), middleware.GetRequestID(c), h.now())
+	if err != nil {
+		return fail(c, err)
+	}
+	status := fiber.StatusCreated
+	if replay {
+		status = fiber.StatusOK
+	}
+	return c.Status(status).JSON(transactionCreatedDTO{TransactionID: txID})
 }
 
 func newImportDTO(i repositories.Import) importDTO {
@@ -137,7 +176,11 @@ func (h *financeHandlers) uploadImport(c fiber.Ctx) error {
 	if imp.ID == "" {
 		status = fiber.StatusOK // nothing new: no import was created
 	}
-	return c.Status(status).JSON(newImportDTO(imp))
+	out := newImportDTO(imp)
+	if err := h.withOpening(c, imp, &out); err != nil {
+		return fail(c, err)
+	}
+	return c.Status(status).JSON(out)
 }
 
 func (h *financeHandlers) getImport(c fiber.Ctx) error {
@@ -147,6 +190,9 @@ func (h *financeHandlers) getImport(c fiber.Ctx) error {
 	}
 	today := h.today()
 	out := importDetailDTO{Import: newImportDTO(imp), Lines: make([]importLineDTO, len(lines))}
+	if err := h.withOpening(c, imp, &out.Import); err != nil {
+		return fail(c, err)
+	}
 	for i, l := range lines {
 		cands := make([]billDTO, len(l.Candidates))
 		for k, b := range l.Candidates {

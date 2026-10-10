@@ -245,3 +245,62 @@ describe("F6 — a pending line's last days", () => {
     expect(within(await screen.findByText("Feita").then(e => e.closest("li") as HTMLElement)).queryByText(/expira/)).not.toBeInTheDocument()
   })
 })
+
+// UX batch 5: an OFX into an account with no opening balance and no entries
+// offers the statement's balance as the opening one. Invented values.
+describe("F6 — the statement's balance as the opening balance", () => {
+  const PROPOSAL = {amount: 274950, date: "2026-02-01", ledger_balance: 500000, ledger_as_of: "2026-02-28", lines: 3}
+
+  async function uploadWith(verbs: Verb[], result: Partial<ImportSummary>) {
+    serve(verbs)
+    vi.spyOn(finance, "uploadImport").mockResolvedValue({...SUMMARY, id: "imp2", ...result})
+    renderWithQuery(<ImportView/>)
+    await screen.findByText("Pagamento aluguel")
+    await userEvent.upload(screen.getByLabelText("Arquivo do extrato"), ofxFile())
+    await userEvent.click(screen.getByRole("button", {name: "Importar"}))
+    await screen.findByRole("status")
+  }
+
+  it("asks, shows the arithmetic and says what an ignored line does", async () => {
+    await uploadWith(ALL, {opening_proposal: PROPOSAL})
+    const offer = await screen.findByRole("region", {name: "Usar o saldo do extrato como saldo inicial?"})
+    expect(offer).toHaveTextContent("Saldo inicial de R$ 2.749,50 em 01/02/2026: o saldo do extrato (R$ 5.000,00 em 28/02/2026) menos os 3 lançamentos do arquivo.")
+    expect(offer).toHaveTextContent("Uma linha que você ignorar não entra na conta: o saldo da conta fica diferente do extrato nesse valor.")
+  })
+
+  it("posts only on confirmation, to the import's own route", async () => {
+    await uploadWith(ALL, {opening_proposal: PROPOSAL})
+    const post = vi.spyOn(finance, "postImportOpening").mockResolvedValue({transaction_id: "tx1"})
+    const offer = await screen.findByRole("region", {name: "Usar o saldo do extrato como saldo inicial?"})
+    expect(post).not.toHaveBeenCalled()
+    await userEvent.click(within(offer).getByRole("button", {name: "Usar como saldo inicial"}))
+    await waitFor(() => expect(post).toHaveBeenCalledWith(expect.anything(), "imp2", expect.any(String)))
+    expect(await screen.findByText("Saldo inicial lançado: R$ 2.749,50 em 01/02/2026.")).toBeInTheDocument()
+    expect(screen.queryByRole("region", {name: "Usar o saldo do extrato como saldo inicial?"})).toBeNull()
+  })
+
+  it("can be declined, and nothing is sent", async () => {
+    await uploadWith(ALL, {opening_proposal: PROPOSAL})
+    const post = vi.spyOn(finance, "postImportOpening")
+    const offer = await screen.findByRole("region", {name: "Usar o saldo do extrato como saldo inicial?"})
+    await userEvent.click(within(offer).getByRole("button", {name: "Agora não"}))
+    expect(screen.queryByRole("region", {name: "Usar o saldo do extrato como saldo inicial?"})).toBeNull()
+    expect(post).not.toHaveBeenCalled()
+  })
+
+  it("says that unread lines are out of the sum too", async () => {
+    await uploadWith(ALL, {opening_proposal: PROPOSAL, rejected_count: 2})
+    const offer = await screen.findByRole("region", {name: "Usar o saldo do extrato como saldo inicial?"})
+    expect(offer).toHaveTextContent("2 linhas não lidas ficaram fora do cálculo.")
+  })
+
+  it("is not offered without a proposal", async () => {
+    await uploadWith(ALL, {})
+    expect(screen.queryByRole("region", {name: /saldo inicial/})).toBeNull()
+  })
+
+  it("is not offered to someone who cannot configure accounts", async () => {
+    await uploadWith(ALL.filter(v => v !== "finance.configure"), {opening_proposal: PROPOSAL})
+    expect(screen.queryByRole("region", {name: /saldo inicial/})).toBeNull()
+  })
+})

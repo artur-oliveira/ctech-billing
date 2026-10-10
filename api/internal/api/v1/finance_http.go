@@ -119,6 +119,8 @@ func financeRoutes() []financeRoute {
 		{"GET", "/imports", space.Read, false, func(h *financeHandlers) fiber.Handler { return h.listImports }},
 		{"POST", "/imports", space.Import, true, func(h *financeHandlers) fiber.Handler { return h.uploadImport }},
 		{"GET", "/imports/:id", space.Read, false, func(h *financeHandlers) fiber.Handler { return h.getImport }},
+		// The statement's balance as the account's opening: the same verb as any opening balance.
+		{"POST", "/imports/:id/opening-balance", space.Configure, true, func(h *financeHandlers) fiber.Handler { return h.postImportOpening }},
 		{"POST", "/imports/:id/lines/:n/match", space.Import | space.Write | space.Settle, true, func(h *financeHandlers) fiber.Handler { return h.matchLine }},
 		{"POST", "/imports/:id/lines/:n/new", space.Import | space.Write | space.Settle, true, func(h *financeHandlers) fiber.Handler { return h.newFromLine }},
 		// Linking posts nothing (the job already paid the bill), but it binds a bill.

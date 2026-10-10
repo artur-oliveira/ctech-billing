@@ -260,8 +260,36 @@ needs them yet, and the tree format admits them later without migration.
 - **An end that leaves nothing to come ends it** (UX batch 3): when the new end leaves no occurrence
   after today and none the job still owes after its cursor, the edit is refused (422
   `recurrence_would_end`) unless it also asks to archive, and then the end and the archive are one
-  conditional write. Bills already made are untouched. The console asks first: "Isso encerra a
-  recorrência; ela será arquivada."
+  conditional write. The console asks first: "Isso encerra a recorrência; ela será arquivada."
+- **An end cancels what it made after the end** (UX batch 5, the owner's decision; batch 3 kept
+  them). **Any** end edit — set for the first time or moved earlier, whether or not it ends the
+  rule — cancels every bill the recurrence made for a nominal date after the new end that is **not
+  paid** (forecast or overdue), through the ordinary cancel path (the bill's guarded update and the
+  reversal of its recognition, one transaction per bill). A paid one stays: real money moved and
+  the statement shows it. Otherwise a bill after the end would stay open, and auto-settle could pay
+  it.
+  **Ruling — confirmation is a coded 422, like `recurrence_would_end`:** an end with open bills after
+  it, sent without `cancel_after_end: true`, is 422 `end_cancels_bills` and **nothing is saved**
+  (checked before the write); the console then shows what will happen and resends with the flag
+  (and `archive: true` when the end also ends the rule — its preview has no date left, or the
+  server said `recurrence_would_end`). The list is not in the 422: the console already reads the
+  rule's history (`GET /recurrences/:id/occurrences`), whose latest bills are the ones after any
+  end. Cost: a bill made between the check and the write is not asked about (only the flag cancels).
+  The confirmation: "Os 2 lançamentos em aberto depois do fim (10/10 e 10/11) serão cancelados." and
+  "O já pago (10/12) continua: o pagamento está no extrato."; its button is **Encerrar e arquivar**
+  when the rule ends, **Salvar e cancelar** otherwise. PATCH answers the cancelled ids in
+  `canceled_bill_ids`.
+  **Ruling — an ordered, re-runnable sequence, not one transaction:** the end (and the archive) are
+  written first (the conditional update above), then each open bill after the end is cancelled. One
+  `TransactWriteItems` would carry ~10 items per bill toward the 100-item limit and would fail whole
+  when any single bill moved. With the end written, the job makes nothing new after it; the
+  `OCCURRENCE#` locks stay, so it never makes those dates again. A cancel refused by a concurrent
+  transaction (TransactionConflict) is retried a few times; a bill paid or cancelled meanwhile is
+  refused by the cancel guard and stays as it is; one only edited is tried again. Any open bill left
+  after that is 409 `recurrence_end_incomplete` (never a 200): the end is saved, the console says "A
+  recorrência foi encerrada, mas alguns lançamentos não foram cancelados. Tente de novo." (or "O fim
+  foi salvo, …"), keeps the panel open with **Tentar de novo**, refreshes the space, and the same
+  PATCH again cancels only what is still open.
 - **A recurrence's detail** (`GET /recurrences/:id/occurrences`, read verb, inside the space) lists
   the latest bills it made, each paid, forecast, overdue or skipped (its bill cancelled), and the
   next dates the rule will make (computed on read, from after the cursor, never before today; none
@@ -324,6 +352,24 @@ Rules:
   the statement resolves the line.
 - **Expiry is shown where it matters:** the pending list says lines stay 90 days after the import, and
   a pending line in its last 15 days says when it expires. No banner.
+- **Opening balance from the statement** (UX batch 5). An OFX bank statement's `LEDGERBAL`
+  (`BALAMT` on `DTASOF`; `AVAILBAL` is not it) proposes the opening balance of an account that
+  starts with the file: **`LEDGERBAL` minus the sum of every parsed line** (credits in, debits out),
+  **dated the day before the file's first line**, so the opening plus the file's lines lands on the
+  bank's balance. Computed from the whole file at upload (`statement.OpeningFrom`) and kept on the
+  import row; the upload and the import's detail answer it as `opening_proposal` only while the
+  account has **no opening balance and no entry**. The console asks "Usar o saldo do extrato como
+  saldo inicial?", shows the arithmetic, and says what can make it drift: a line the person ignores
+  is in the bank's balance but never enters the account, so the account then differs from the
+  statement by that amount (and lines the parser could not read are out of the sum too). Posting
+  needs an explicit confirmation: `POST /imports/:id/opening-balance`, `finance.configure` like any
+  opening balance, no body (amount and date are the server's), through the ordinary rule and its
+  `OPENING#` marker, inside the resolved space (another space's import is 404). Its transaction id
+  derives from the import, so the same request again answers 200 with the same fact; another
+  opening balance is 409 `opening_balance_exists`, an account with entries 409
+  `account_has_entries`, a file without `LEDGERBAL` 422 `no_statement_balance`. The entries are read
+  before the write (they are many rows, not one condition): a first entry racing the request can
+  land beside the opening, which stays once-only and reversible from the statement.
 - Nothing is settled without a confirmation in v1. Auto-confirming exact matches can come later.
 
 ### 3.8 Billing integration in v1

@@ -322,6 +322,17 @@
     "fileHint": "OFX ou CSV, até 1 MB. O arquivo não fica guardado; os lançamentos ficam 90 dias para você conciliar.",
     "submit": "Importar",
     "columns": "Colunas do CSV",
+    "opening": {
+      "ask": "Usar o saldo do extrato como saldo inicial?",
+      "math_one": "Saldo inicial de {{amount}} em {{date}}: o saldo do extrato ({{ledger}} em {{asOf}}) menos o lançamento do arquivo.",
+      "math_other": "Saldo inicial de {{amount}} em {{date}}: o saldo do extrato ({{ledger}} em {{asOf}}) menos os {{count}} lançamentos do arquivo.",
+      "ignored": "Uma linha que você ignorar não entra na conta: o saldo da conta fica diferente do extrato nesse valor.",
+      "unread_one": "{{count}} linha não lida ficou fora do cálculo.",
+      "unread_other": "{{count}} linhas não lidas ficaram fora do cálculo.",
+      "confirm": "Usar como saldo inicial",
+      "decline": "Agora não",
+      "posted": "Saldo inicial lançado: {{amount}} em {{date}}."
+    },
     "added_one": "{{count}} lançamento novo",
     "added_other": "{{count}} lançamentos novos",
     "duplicates_one": "{{count}} já importado antes",

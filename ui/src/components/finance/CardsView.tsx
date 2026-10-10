@@ -1,12 +1,11 @@
 "use client"
 
-import {Badge, Button, EmptyState, Field, Skeleton} from "@aoctech/ui"
+import {Badge, Button, Drawer, EmptyState, Field, Select, Skeleton} from "@aoctech/ui"
 import {useQuery} from "@tanstack/react-query"
 import {AlertCircle, ChevronLeft, ChevronRight, CircleCheck, CircleDot, Clock, CreditCard, Lock} from "lucide-react"
 import {useState} from "react"
 import {useTranslation} from "react-i18next"
 
-import {Drawer} from "@/components/ui/ConsoleOverlay"
 import {SettleForm} from "@/components/finance/BillsView"
 import {CardBrandMark, maskedLast4} from "@/components/finance/CardBrandMark"
 import {CardForm} from "@/components/finance/CardForm"
@@ -14,7 +13,6 @@ import {LedgerRow} from "@/components/finance/LedgerRow"
 import {PurchasePanel} from "@/components/finance/PurchasePanel"
 import {wholeSpace} from "@/components/finance/TransferPanel"
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
-import {Select} from "@/components/ui/Select"
 import {messageFor} from "@/lib/api/client"
 import {
   advancePurchase, closeStatement, type FinanceCtx, financeKeys, getBill, getCardStatement, listAccounts, listCards, listPurchases,
@@ -23,6 +21,7 @@ import {
 import type {Account, Card, CardStatement, CardStatementStatus, Purchase, StatementItem} from "@/lib/api/financeTypes"
 import {currentLocale} from "@/lib/i18n"
 import {monthShort, todayIso} from "@/lib/finance/today"
+import {selectCopy} from "@/lib/selectCopy"
 import {useFinanceMutation} from "@/lib/finance/useFinanceMutation"
 import {useCreateRequest} from "@/lib/finance/createRequest"
 import {useFinanceCtx, useFinanceSpaces} from "@/lib/finance/useFinanceSpaces"
@@ -122,7 +121,7 @@ export function CardsView({card: initial = ""}: {card?: string}) {
     <div className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <Field label={t("finance.cards.card")} htmlFor="cd-pick">
-          <Select id="cd-pick" aria-label={t("finance.cards.card")} value={card.id} className="w-56"
+          <Select {...selectCopy()} id="cd-pick" aria-label={t("finance.cards.card")} value={card.id} className="w-56"
             onValueChange={v => { setPicked(v); setMonth(null); setPanel(null) }}
             options={active.map(c => ({value: c.id, label: cardLabel(c), icon: <CardBrandMark brand={c.brand ?? "other"}/>}))}/>
         </Field>

@@ -63,6 +63,41 @@ const importChunk = 49
 // a hash collision or a bug, never a retry; nothing is overwritten.
 var ErrImportConflict = errors.New("the import already holds a different line at this position")
 
+// ErrNoStatementBalance is an opening balance asked of an import whose file
+// declared no readable LEDGERBAL (a CSV, or an OFX without one).
+var ErrNoStatementBalance = errors.New("this statement declares no balance to open the account with")
+
+// OpeningProposal is the import's proposed opening balance while its account
+// can still take one (no opening balance, no entry), else nil (UX batch 5).
+func (r *ImportRepository) OpeningProposal(ctx context.Context, sp space.ResolvedSpace, imp Import) (*statement.Opening, error) {
+	if imp.Opening == nil || imp.ID == "" {
+		return nil, nil
+	}
+	ok, err := r.ledger.Untouched(ctx, sp, imp.AccountID)
+	if err != nil || !ok {
+		return nil, err
+	}
+	return imp.Opening, nil
+}
+
+// PostOpening posts the import's proposed opening balance on its account
+// (LedgerRepository.PostStatementOpening): the amount and date are the ones
+// computed from the file at upload, never sent by the client. The import is
+// read inside the resolved space, so another space's id is ErrNotFound.
+func (r *ImportRepository) PostOpening(ctx context.Context, sp space.ResolvedSpace, importID string, meta PostMeta, now time.Time) (txID string, replay bool, err error) {
+	if err := sp.Require(space.Configure); err != nil {
+		return "", false, err
+	}
+	imp, err := r.getImport(ctx, sp, importID, now)
+	if err != nil {
+		return "", false, err
+	}
+	if imp.Opening == nil {
+		return "", false, ErrNoStatementBalance
+	}
+	return r.ledger.PostStatementOpening(ctx, sp, imp.AccountID, imp.ID, imp.Opening.Amount, imp.Opening.Date, meta, now)
+}
+
 // ImportRepository stores statement imports (spec § 3.7, § 4 `imports`):
 //
 //   - S → IMPORT#{id}: the import (account, format, counts), TTL 90 days;
@@ -95,6 +130,11 @@ type Import struct {
 	RejectedCount int
 	Rejected      []statement.Rejected
 	Resolved      int // lines matched, created or ignored
+	// Opening is the opening balance the file's LEDGERBAL proposes for an
+	// account that starts with it (statement.OpeningFrom), computed from the
+	// whole parsed file at upload and kept on the row; nil without LEDGERBAL.
+	// Whether it is still offered depends on the account (Untouched).
+	Opening *statement.Opening
 }
 
 // Pending is how many lines still wait for a decision.
@@ -130,6 +170,37 @@ type importItem struct {
 	RejectedCount int            `dynamodbav:"rejected_count"`
 	Rejected      []rejectedItem `dynamodbav:"rejected,omitempty"`
 	Resolved      int            `dynamodbav:"resolved"`
+	Opening       *openingItem   `dynamodbav:"opening,omitempty"`
+}
+
+type openingItem struct {
+	Amount   int64  `dynamodbav:"amount"`
+	Date     string `dynamodbav:"date"`
+	Ledger   int64  `dynamodbav:"ledger_balance"`
+	LedgerAt string `dynamodbav:"ledger_as_of"`
+	Lines    int    `dynamodbav:"lines"`
+}
+
+func newOpeningItem(o *statement.Opening) *openingItem {
+	if o == nil {
+		return nil
+	}
+	return &openingItem{Amount: int64(o.Amount), Date: o.Date.String(), Ledger: int64(o.Ledger.Amount), LedgerAt: o.Ledger.AsOf.String(), Lines: o.Lines}
+}
+
+func (o *openingItem) entity() (*statement.Opening, error) {
+	if o == nil {
+		return nil, nil
+	}
+	date, err := brcal.Parse(o.Date)
+	if err != nil {
+		return nil, fmt.Errorf("import opening has a malformed date: %w", err)
+	}
+	asOf, err := brcal.Parse(o.LedgerAt)
+	if err != nil {
+		return nil, fmt.Errorf("import opening has a malformed ledger date: %w", err)
+	}
+	return &statement.Opening{Amount: billing.Cents(o.Amount), Date: date, Ledger: statement.Balance{Amount: billing.Cents(o.Ledger), AsOf: asOf}, Lines: o.Lines}, nil
 }
 
 func (i importItem) entity() (Import, error) {
@@ -151,6 +222,9 @@ func (i importItem) entity() (Import, error) {
 	}
 	for _, r := range i.Rejected {
 		out.Rejected = append(out.Rejected, statement.Rejected{Line: r.Line, Reason: r.Reason})
+	}
+	if out.Opening, err = i.Opening.entity(); err != nil {
+		return Import{}, err
 	}
 	return out, nil
 }
@@ -236,6 +310,9 @@ func (r *ImportRepository) Import(ctx context.Context, sp space.ResolvedSpace, a
 		imp.ID = idempotentID(sp, "import", idempotencyKey+"\x00"+fileFingerprint(accountID, format, keyed, parsed.Rejected))
 	}
 	imp.Rejected = parsed.Rejected[:min(len(parsed.Rejected), maxStoredRejections)]
+	if o, ok := statement.OpeningFrom(parsed); ok {
+		imp.Opening = &o
+	}
 	for _, l := range parsed.Lines {
 		if imp.From.IsZero() || l.Date.Before(imp.From) {
 			imp.From = l.Date
@@ -331,6 +408,7 @@ func (r *ImportRepository) newImportItem(sp space.ResolvedSpace, imp Import, now
 	if !imp.From.IsZero() {
 		it.From, it.To = imp.From.String(), imp.To.String()
 	}
+	it.Opening = newOpeningItem(imp.Opening)
 	return it
 }
 

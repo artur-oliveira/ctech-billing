@@ -1,12 +1,12 @@
 "use client"
 
-import {Button, Field, Input} from "@aoctech/ui"
+import {Button, Field, Input, Select} from "@aoctech/ui"
 import {useState} from "react"
 import {useTranslation} from "react-i18next"
 
 import {wholeSpace} from "@/components/finance/TransferPanel"
 import {DateField} from "@/components/ui/DateField"
-import {Select} from "@/components/ui/Select"
+import {selectCopy} from "@/lib/selectCopy"
 import {useFieldErrors} from "@/lib/useFieldErrors"
 import {createPurchase} from "@/lib/api/finance"
 import type {Account, NewPurchase} from "@/lib/api/financeTypes"
@@ -68,13 +68,13 @@ export function PurchasePanel({cardId, accounts, onDone}: {cardId: string; accou
         <Input id="pu-amount" inputMode="decimal" placeholder={moneyPlaceholder()} value={amountText} {...fe.props("total", "pu-amount")} onChange={e => { setAmountText(maskMoney(e.target.value)); fe.clear("total") }}/>
       </Field>
       <Field label={t("bills.purchase.installments")} htmlFor="pu-count" error={fe.of("installments")}>
-        <Select id="pu-count" aria-label={t("bills.purchase.installments")} value={count} {...fe.props("installments", "pu-count")} onValueChange={v => { setCount(v); fe.clear("installments") }} options={countOptions()}/>
+        <Select {...selectCopy()} id="pu-count" aria-label={t("bills.purchase.installments")} value={count} {...fe.props("installments", "pu-count")} onValueChange={v => { setCount(v); fe.clear("installments") }} options={countOptions()}/>
       </Field>
       <Field label={t("bills.common.date")} htmlFor="pu-date" error={fe.of("date")}>
         <DateField id="pu-date" value={date} invalid={!!fe.of("date")} onValueChange={v => { setDate(v); fe.clear("date") }} min={limits.minDate} max={todayIso()}/>
       </Field>
       <Field label={t("bills.common.category")} htmlFor="pu-cat" required error={fe.of("category_id")} hint={cats.length === 0 ? t("bills.noCategory.expense") : undefined}>
-        <Select id="pu-cat" aria-label={t("bills.common.category")} value={category} {...fe.props("category_id", "pu-cat")} onValueChange={v => { setCategory(v); fe.clear("category_id") }} options={cats.map(a => ({value: a.id, label: accountName(a)}))}/>
+        <Select {...selectCopy()} id="pu-cat" aria-label={t("bills.common.category")} value={category} {...fe.props("category_id", "pu-cat")} onValueChange={v => { setCategory(v); fe.clear("category_id") }} options={cats.map(a => ({value: a.id, label: accountName(a)}))}/>
       </Field>
       <div className="flex flex-wrap items-center gap-2 sm:col-span-2">
         <Button type="submit" variant="brand" size="sm" disabled={!ready}>{t("bills.purchase.save")}</Button>

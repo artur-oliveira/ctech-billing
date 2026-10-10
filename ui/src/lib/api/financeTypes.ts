@@ -191,8 +191,15 @@ export interface RecurrencePatch {
   /** "" removes the end (sent as null): the recurrence has no end again. So does "" on description. */
   end?: IsoDate | ""
   /** Confirms an end that leaves nothing to come: saved and archived in one write.
-   *  Without it the API answers 422 `recurrence_would_end` and saves nothing. */
+   *  Without it the API answers 422 `recurrence_would_end` and saves nothing. With it
+   *  the API then cancels the unpaid bills made after the end (UX batch 5) and
+   *  answers their ids in `canceled_bill_ids`. */
   archive?: boolean
+  /** Confirms that an end with open bills made after it cancels them (UX batch 5
+   *  review). Without it the API answers 422 `end_cancels_bills` and saves nothing;
+   *  a cancellation left half-done is 409 `recurrence_end_incomplete`, and the same
+   *  request again finishes it. */
+  cancel_after_end?: boolean
 }
 
 export interface PreviewInput extends ScheduleInput {
@@ -388,6 +395,19 @@ export interface ImportSummary {
   rejected_count: number
   rejected: {line: number; reason: RejectReason}[]
   pending: number
+  /** On the upload and the detail only, while the account has no opening balance
+   *  and no entry and the OFX declared LEDGERBAL (UX batch 5). */
+  opening_proposal?: OpeningProposal
+}
+
+/** The statement's balance as an opening balance: `amount` = `ledger_balance` minus
+ *  the file's `lines`, on `date`, the day before the first line. */
+export interface OpeningProposal {
+  amount: Cents
+  date: IsoDate
+  ledger_balance: Cents
+  ledger_as_of: IsoDate
+  lines: number
 }
 
 export interface ImportLine {

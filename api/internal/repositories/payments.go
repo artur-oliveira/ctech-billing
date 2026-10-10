@@ -87,7 +87,9 @@ func (r *PaymentRepository) CreateAttempt(ctx context.Context, a *billing.Paymen
 	if IsConditionFailed(err) {
 		return fmt.Errorf("%w: %s attempt %d", ErrAttemptExists, a.InvoiceID, a.AttemptNumber)
 	}
-	return err
+	// Two presses writing the same attempt row at once: the loser may see a
+	// TransactionConflict instead of a failed condition. Same recovery.
+	return conflictErr(err)
 }
 
 // ListAttempts returns an invoice's attempts, oldest first.

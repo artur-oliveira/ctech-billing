@@ -6,12 +6,12 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 
+	"gopkg.aoctech.app/api-commons/patch"
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
 	"gopkg.aoctech.app/billing/api/internal/domain/brcal"
 	"gopkg.aoctech.app/billing/api/internal/domain/finance"
 	"gopkg.aoctech.app/billing/api/internal/limits"
 	"gopkg.aoctech.app/billing/api/internal/middleware"
-	"gopkg.aoctech.app/billing/api/internal/patch"
 	"gopkg.aoctech.app/billing/api/internal/problem"
 	"gopkg.aoctech.app/billing/api/internal/repositories"
 )
@@ -154,6 +154,10 @@ type patchRecurrenceRequest struct {
 	// Archive confirms an end that leaves nothing to come: the edit and the
 	// archive are one write. Without it such an end is 422 recurrence_would_end.
 	Archive bool `json:"archive"`
+	// CancelAfterEnd confirms that an end date with unpaid bills made after it
+	// cancels them (UX batch 5 review, I2). Without it such an end is 422
+	// end_cancels_bills and nothing is saved.
+	CancelAfterEnd bool `json:"cancel_after_end"`
 }
 
 // edit validates the body under the PATCH rule (package patch): absent keeps,
@@ -193,18 +197,48 @@ func (h *financeHandlers) patchRecurrence(c fiber.Ctx) error {
 		return problem.Validation(errs).Send(c)
 	}
 	sp := middleware.GetSpace(c)
+	end, hasEnd := req.End.Get()
+	// An end date with unpaid bills made after it cancels them (UX batch 5,
+	// review I2), whether or not the rule ends: asked first, before anything is
+	// written. The bills are read in the resolved space only.
+	if hasEnd && !req.CancelAfterEnd {
+		n, err := h.bills.UnpaidAfter(c.Context(), sp, c.Params("id"), end)
+		if err != nil {
+			return fail(c, err)
+		}
+		if n > 0 {
+			return fail(c, repositories.ErrEndCancelsBills)
+		}
+	}
 	if err := h.recs.Update(c.Context(), sp, c.Params("id"), edit, h.now()); err != nil {
 		return fail(c, err)
+	}
+	// Then the confirmed cancellations, after the end (and the archive) are
+	// written. A failure half-way is 409 recurrence_end_incomplete with the end
+	// saved; the same PATCH again finishes the job (FinanceBills.EndRecurrence).
+	out := patchRecurrenceResponse{CanceledBillIDs: []string{}}
+	if hasEnd && req.CancelAfterEnd {
+		canceled, err := h.bills.EndRecurrence(c.Context(), sp, c.Params("id"), end, actorOfUser(c), middleware.GetRequestID(c), h.now())
+		if err != nil {
+			return fail(c, err)
+		}
+		out.CanceledBillIDs = canceled
 	}
 	rec, err := h.recs.Get(c.Context(), sp, c.Params("id"))
 	if err != nil {
 		return fail(c, err)
 	}
-	dto, err := newRecurrenceDTO(*rec)
-	if err != nil {
+	if out.recurrenceDTO, err = newRecurrenceDTO(*rec); err != nil {
 		return fail(c, err)
 	}
-	return c.JSON(dto)
+	return c.JSON(out)
+}
+
+// patchRecurrenceResponse is the recurrence as edited, plus the bills an end
+// with archive cancelled (empty otherwise).
+type patchRecurrenceResponse struct {
+	recurrenceDTO
+	CanceledBillIDs []string `json:"canceled_bill_ids"`
 }
 
 func (h *financeHandlers) archiveRecurrence(c fiber.Ctx) error {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
@@ -36,9 +37,32 @@ var (
 	// Encode marshals a value into DynamoDB attribute values, omitting nulls.
 	Encode = dynamo.Encode
 	// IsConditionFailed reports a conditional-check failure, whether it came
-	// from a single write or from inside a cancelled transaction.
+	// from a single write or from inside a cancelled transaction. Since
+	// api-commons v1.11.0 a transaction cancelled by a TransactionConflict or a
+	// throttle is NOT a condition failure: nothing was decided, so it comes
+	// back as an error (and a job re-runs it) instead of reading as "another
+	// instance already did it".
 	IsConditionFailed = dynamo.IsConditionFailed
+	// IsTransactionConflict reports a transaction cancelled because another one
+	// was writing the same items: nothing was written and nothing was decided,
+	// so the same write may be retried (api-commons v1.11.0).
+	IsTransactionConflict = dynamo.IsTransactionConflict
 )
+
+// ErrTransactionConflict wraps a write cancelled by a concurrent transaction on
+// its items. Unlike ErrConcurrentModification it is not "someone else already
+// did it": the write never happened and may be retried. A route answers it as
+// 409 concurrent_update.
+var ErrTransactionConflict = errors.New("a concurrent transaction touched the same items")
+
+// conflictErr wraps a TransactionConflict as ErrTransactionConflict, keeping the
+// original; anything else is returned as it is.
+func conflictErr(err error) error {
+	if err != nil && IsTransactionConflict(err) {
+		return fmt.Errorf("%w: %w", ErrTransactionConflict, err)
+	}
+	return err
+}
 
 // txItems is sugar for composing a transaction, so call sites read as a list of
 // writes rather than a slice literal with a type name in it.
