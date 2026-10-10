@@ -29,7 +29,9 @@ func TestCreatingAnOrganizationCustomerTwiceIsOneCustomer(t *testing.T) {
 	if first.status != http.StatusCreated || second.status != http.StatusOK {
 		t.Fatalf("first %d %s, second %d %s", first.status, first.body, second.status, second.body)
 	}
-	var a, b struct{ ID string `json:"id"` }
+	var a, b struct {
+		ID string `json:"id"`
+	}
 	first.decode(t, &a)
 	second.decode(t, &b)
 	if a.ID != b.ID {

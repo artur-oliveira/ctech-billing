@@ -75,7 +75,6 @@ func levelBody(ref, meter, key, at string, v int) string {
 	return `{"customer_ref":"` + ref + `","meter":"` + meter + `","value":` + itoa(v) + `,"occurred_at":"` + at + `","idempotency_key":"` + key + `"}`
 }
 
-
 // Spec test 4.
 func TestLevelReportsAreIdempotentByBodyKey(t *testing.T) {
 	o := newOwnersEnv(t)
@@ -130,6 +129,7 @@ func TestALevelNeedsNoCustomerAndCreatesNone(t *testing.T) {
 		t.Fatalf("a report created a customer: %v", err)
 	}
 }
+
 // subscribeIn creates a customer and an ACTIVE subscription on prices via the
 // service, the way newCatalog's subscriber does.
 func (o ownersEnv) customerWith(t *testing.T, ref string, priceIDs ...string) string {
