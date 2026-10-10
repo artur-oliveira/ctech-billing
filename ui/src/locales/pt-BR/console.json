@@ -191,14 +191,16 @@
  "subscriptions": {
   "title": "Assinaturas",
   "empty": "Nenhuma assinatura",
-  "subscription": "Assinatura",
+  "plan": "Plano",
   "customer": "Cliente",
   "status": "Status",
   "period": "Período",
   "recurrence": "Recorrência",
   "access": "Acesso",
   "allowed": "Liberado",
-  "blocked": "Bloqueado"
+  "blocked": "Bloqueado",
+  "accessAllowed": "Acesso liberado",
+  "accessBlocked": "Acesso bloqueado"
  },
  "subscription": {
   "endAtPeriodEnd": "Encerrar no fim do período",

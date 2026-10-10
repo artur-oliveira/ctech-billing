@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -255,5 +256,90 @@ func TestConsoleInvoiceDetailCarriesItsTimeline(t *testing.T) {
 	}
 	if body.Timeline[0].Actor != "console-test" {
 		t.Fatalf("actor = %q, want the actor that caused the change", body.Timeline[0].Actor)
+	}
+}
+
+// C4 and C7 name a subscription the way an operator does: by its plan and its
+// customer, not by sub_… and cus_…. The names are the console's; the M2M
+// subscription JSON, which ctech-dfe decodes, stays as it was.
+func TestConsoleSubscriptionsCarryTheCustomerAndPlanNames(t *testing.T) {
+	e := newAPI(t)
+	m2m := e.token(t, e.client, "", middleware.ScopeCustomersWrite, middleware.ScopeSubscriptionsWrite,
+		middleware.ScopeSubscriptionsRead)
+
+	res := e.do(t, http.MethodPost, "/v1.0/customers", m2m, "cust-names",
+		`{"name":"A O CARVALHO TECH","email":"a@example.com","external_ref":"user_names"}`)
+	if res.status != http.StatusCreated {
+		t.Fatalf("create customer: %d %s", res.status, res.body)
+	}
+	var customer struct {
+		ID string `json:"id"`
+	}
+	res.decode(t, &customer)
+	res = e.do(t, http.MethodPost, "/v1.0/subscriptions", m2m, "sub-names",
+		`{"customer_id":"`+customer.ID+`","items":[{"price_id":"`+e.priceID+`"}],"anchor":"2026-03-10"}`)
+	if res.status != http.StatusCreated {
+		t.Fatalf("subscribe: %d %s", res.status, res.body)
+	}
+	var created struct {
+		Subscription struct {
+			ID string `json:"id"`
+		} `json:"subscription"`
+	}
+	res.decode(t, &created)
+
+	type row struct {
+		ID            string `json:"id"`
+		CustomerID    string `json:"customer_id"`
+		CustomerName  string `json:"customer_name"`
+		PlanName      string `json:"plan_name"`
+		CurrentPeriod struct {
+			Start string `json:"period_start"`
+		} `json:"current_period"`
+	}
+	token := e.sessionToken(t, middleware.ScopeSubscriptionsRead, middleware.ScopeCustomersRead)
+
+	res = e.console(t, "/v1.0/console/subscriptions", token, "live")
+	if res.status != http.StatusOK {
+		t.Fatalf("list: %d %s", res.status, res.body)
+	}
+	var page struct {
+		Data []row `json:"data"`
+	}
+	res.decode(t, &page)
+	var found *row
+	for i := range page.Data {
+		if page.Data[i].ID == created.Subscription.ID {
+			found = &page.Data[i]
+		}
+	}
+	if found == nil {
+		t.Fatalf("subscription missing from the listing: %s", res.body)
+	}
+	if found.CustomerName != "A O CARVALHO TECH" || found.PlanName != "DF-e Basic" {
+		t.Fatalf("row = %+v, want the customer's name and the plan's", *found)
+	}
+	if found.CustomerID != customer.ID || found.CurrentPeriod.Start == "" {
+		t.Fatalf("row lost a shared field: %+v", *found)
+	}
+
+	res = e.console(t, "/v1.0/console/customers/"+customer.ID, token, "live")
+	if res.status != http.StatusOK {
+		t.Fatalf("customer: %d %s", res.status, res.body)
+	}
+	var detail struct {
+		Subscriptions []row `json:"subscriptions"`
+	}
+	res.decode(t, &detail)
+	if len(detail.Subscriptions) != 1 || detail.Subscriptions[0].PlanName != "DF-e Basic" {
+		t.Fatalf("customer subscriptions = %+v, want the plan's name", detail.Subscriptions)
+	}
+
+	res = e.do(t, http.MethodGet, "/v1.0/subscriptions/"+created.Subscription.ID, m2m, "", "")
+	if res.status != http.StatusOK {
+		t.Fatalf("m2m get: %d %s", res.status, res.body)
+	}
+	if strings.Contains(string(res.body), "plan_name") || strings.Contains(string(res.body), "customer_name") {
+		t.Fatalf("the M2M subscription JSON changed: %s", res.body)
 	}
 }

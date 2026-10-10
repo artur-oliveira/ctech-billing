@@ -16,6 +16,7 @@ import type {
   ConsoleSettings,
   ConsoleSubscription,
   ConsoleSubscriptionDetail,
+  ConsoleSubscriptionRow,
   DocumentLink,
   DunningPolicy,
   DunningStep,
@@ -156,8 +157,8 @@ export async function getConsoleCustomer(id: string, mode?: Mode): Promise<Conso
 
 export async function listConsoleSubscriptions(
   mode?: Mode,
-): Promise<ConsolePage<ConsoleSubscription>> {
-  const {data} = await apiClient.get<ConsolePage<ConsoleSubscription>>(
+): Promise<ConsolePage<ConsoleSubscriptionRow>> {
+  const {data} = await apiClient.get<ConsolePage<ConsoleSubscriptionRow>>(
     "/v1.0/console/subscriptions",
     modeHeaders(mode),
   )

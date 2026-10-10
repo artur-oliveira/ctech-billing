@@ -191,14 +191,16 @@
  "subscriptions": {
   "title": "Subscriptions",
   "empty": "No subscriptions",
-  "subscription": "Subscription",
+  "plan": "Plan",
   "customer": "Customer",
   "status": "Status",
   "period": "Period",
   "recurrence": "Recurrence",
   "access": "Access",
   "allowed": "Granted",
-  "blocked": "Blocked"
+  "blocked": "Blocked",
+  "accessAllowed": "Access granted",
+  "accessBlocked": "Access blocked"
  },
  "subscription": {
   "endAtPeriodEnd": "End at period end",

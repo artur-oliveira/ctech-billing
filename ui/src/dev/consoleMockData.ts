@@ -10,6 +10,7 @@ import type {
   ConsoleSession,
   ConsoleSubscription,
   ConsoleSubscriptionDetail,
+  ConsoleSubscriptionRow,
   DunningPolicy,
   DunningStep,
 } from "@/lib/api/consoleTypes"
@@ -285,10 +286,12 @@ const CUSTOMERS: ConsoleCustomer[] = [
   },
 ]
 
-const SUBSCRIPTIONS: ConsoleSubscription[] = [
+const SUBSCRIPTIONS: ConsoleSubscriptionRow[] = [
   {
     id: "sub_mock_ana",
     customer_id: "cus_mock_ana",
+    customer_name: "Ana Ribeiro",
+    plan_name: "Plano Essencial",
     status: "ACTIVE",
     entitled: true,
     recurrence: {interval: "month", count: 1},
@@ -301,6 +304,8 @@ const SUBSCRIPTIONS: ConsoleSubscription[] = [
   {
     id: "sub_mock_padaria",
     customer_id: "cus_mock_padaria",
+    customer_name: "Padaria do Bairro Ltda",
+    plan_name: "Emissões adicionais",
     status: "PAST_DUE",
     entitled: false,
     recurrence: {interval: "month", count: 1},
@@ -313,6 +318,8 @@ const SUBSCRIPTIONS: ConsoleSubscription[] = [
   {
     id: "sub_mock_novo",
     customer_id: "cus_mock_anon",
+    customer_name: "Cliente anonimizado",
+    plan_name: "Plano Essencial",
     status: "INCOMPLETE",
     entitled: false,
     recurrence: {interval: "month", count: 1},
@@ -416,7 +423,7 @@ export function consoleCustomerDetail(customer: ConsoleCustomer): ConsoleCustome
   }
 }
 
-export function consoleSubscriptions(mode: "live" | "test"): ConsoleSubscription[] {
+export function consoleSubscriptions(mode: "live" | "test"): ConsoleSubscriptionRow[] {
   return mode === "test" ? SUBSCRIPTIONS.slice(0, 1) : SUBSCRIPTIONS
 }
 

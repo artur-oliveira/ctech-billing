@@ -140,9 +140,29 @@ func (h *consoleHandlers) listInvoices(c fiber.Ctx) error {
 	// real document and the row renders without a name. Failing the whole
 	// listing because one customer row is missing would take the screen down
 	// for a defect it can survive.
-	names := map[string]string{}
+	ids := make([]string, 0, len(page.Items))
 	for i := range page.Items {
-		id := page.Items[i].CustomerID
+		ids = append(ids, page.Items[i].CustomerID)
+	}
+	names := h.customerNames(c, ids)
+
+	out := make([]consoleInvoiceListItem, 0, len(page.Items))
+	for i := range page.Items {
+		out = append(out, consoleInvoiceListItem{
+			invoiceResponse: newInvoiceResponse(&page.Items[i], nil, today, h.links),
+			CustomerName:    names[page.Items[i].CustomerID],
+		})
+	}
+	return c.JSON(pageOf(out, page.LastEvaluatedKey))
+}
+
+// customerNames reads each distinct customer once and maps its id to its name.
+// A customer that cannot be read maps to "": the row is still real and renders
+// with the id instead, rather than one missing record taking the screen down.
+func (h *consoleHandlers) customerNames(c fiber.Ctx, ids []string) map[string]string {
+	t := middleware.GetTenant(c)
+	names := make(map[string]string, len(ids))
+	for _, id := range ids {
 		if _, seen := names[id]; seen || id == "" {
 			continue
 		}
@@ -153,15 +173,71 @@ func (h *consoleHandlers) listInvoices(c fiber.Ctx) error {
 		}
 		names[id] = customer.Name
 	}
+	return names
+}
 
-	out := make([]consoleInvoiceListItem, 0, len(page.Items))
-	for i := range page.Items {
-		out = append(out, consoleInvoiceListItem{
-			invoiceResponse: newInvoiceResponse(&page.Items[i], nil, today, h.links),
-			CustomerName:    names[page.Items[i].CustomerID],
-		})
+// subscriptionRows labels a page of subscriptions with their customer's name
+// and their plan's (consoleSubscriptionRow).
+//
+// The cost is one Query per subscription for its items (they sit under the
+// subscription's sort key in the tenant's partition) and then one point read
+// per *distinct* price, product and customer on the page. A tenant has a
+// handful of plans, so those reads stay a handful however long the page is;
+// the item Query is the only per-row read, and it is the same one C5 makes.
+// Not a denormalized plan name on the subscription row: a product gets renamed,
+// and a copy would keep the old name.
+//
+// Nothing here fails the listing. A row whose items, price or product cannot be
+// read goes without a plan name and the screen shows its id.
+func (h *consoleHandlers) subscriptionRows(c fiber.Ctx, subs []billing.Subscription, names map[string]string) []consoleSubscriptionRow {
+	t := middleware.GetTenant(c)
+	ctx := c.Context()
+	if names == nil {
+		ids := make([]string, 0, len(subs))
+		for i := range subs {
+			ids = append(ids, subs[i].CustomerID)
+		}
+		names = h.customerNames(c, ids)
 	}
-	return c.JSON(pageOf(out, page.LastEvaluatedKey))
+	priceProduct := map[string]string{} // price id → product id ("" when unreadable)
+	productName := map[string]string{}  // product id → name ("" when unreadable)
+	nameOfPrice := func(priceID string) string {
+		productID, seen := priceProduct[priceID]
+		if !seen {
+			if price, err := h.cat.GetPrice(ctx, t.OrganizationID, t.Livemode, priceID); err == nil {
+				productID = price.ProductID
+			}
+			priceProduct[priceID] = productID
+		}
+		if productID == "" {
+			return ""
+		}
+		name, seen := productName[productID]
+		if !seen {
+			if product, err := h.cat.GetProduct(ctx, t.OrganizationID, t.Livemode, productID); err == nil {
+				name = product.Name
+			}
+			productName[productID] = name
+		}
+		return name
+	}
+
+	out := make([]consoleSubscriptionRow, 0, len(subs))
+	for i := range subs {
+		row := consoleSubscriptionRow{
+			subscriptionResponse: newSubscriptionResponse(&subs[i]),
+			CustomerName:         names[subs[i].CustomerID],
+		}
+		if items, err := h.subs.ListItems(ctx, t.OrganizationID, t.Livemode, subs[i].ID); err == nil {
+			products := make([]string, 0, len(items))
+			for _, it := range items {
+				products = append(products, nameOfPrice(it.PriceID))
+			}
+			row.PlanName = planName(products)
+		}
+		out = append(out, row)
+	}
+	return out
 }
 
 // getInvoice is C3, the product's most important screen: the invoice with its
@@ -445,11 +521,7 @@ func (h *consoleHandlers) listSubscriptions(c fiber.Ctx) error {
 	if err != nil {
 		return fail(c, err)
 	}
-	out := make([]subscriptionResponse, 0, len(page.Items))
-	for i := range page.Items {
-		out = append(out, newSubscriptionResponse(&page.Items[i]))
-	}
-	return c.JSON(pageOf(out, page.LastEvaluatedKey))
+	return c.JSON(pageOf(h.subscriptionRows(c, page.Items, nil), page.LastEvaluatedKey))
 }
 
 // getSubscription is C5: the subscription, what it bills, and its history.
@@ -524,10 +596,9 @@ func (h *consoleHandlers) getCustomer(c fiber.Ctx) error {
 	}
 	out := customerDetailResponse{
 		Customer: newCustomerResponse(customer),
-		Timeline: trail,
-	}
-	for i := range subs {
-		out.Subscriptions = append(out.Subscriptions, newSubscriptionResponse(&subs[i]))
+		// The customer is already in hand, so their name costs nothing here.
+		Subscriptions: h.subscriptionRows(c, subs, map[string]string{customer.ID: customer.Name}),
+		Timeline:      trail,
 	}
 	return c.JSON(out)
 }

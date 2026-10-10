@@ -45,6 +45,7 @@ describe("console periods", () => {
       has_more: false,
     } as unknown as Awaited<ReturnType<typeof consoleApi.listConsoleSubscriptions>>)
     wrap(<ConsoleSubscriptionsPage/>)
-    expect(await screen.findByText(/10\/10\/2026.*10\/11\/2026/)).toBeInTheDocument()
+    // Twice: the table, and the list a phone gets instead.
+    expect(await screen.findAllByText(/10\/10\/2026.*10\/11\/2026/)).toHaveLength(2)
   })
 })
