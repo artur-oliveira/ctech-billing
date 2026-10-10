@@ -188,6 +188,13 @@ func FromError(err error) *Problem {
 		return New(409, TypeInvalidTransition, "Invalid Transition",
 			"This account already has an opening balance. Reverse the current one to post another.").WithCode("opening_balance_exists")
 
+	case errors.Is(err, repositories.ErrAccountHasEntries):
+		return New(409, TypeInvalidTransition, "Invalid Transition",
+			"This account already has entries, so the statement's balance is not its opening balance.").WithCode("account_has_entries")
+
+	case errors.Is(err, repositories.ErrNoStatementBalance):
+		return Unprocessable("this statement declares no balance (LEDGERBAL)").WithCode("no_statement_balance")
+
 	case errors.Is(err, repositories.ErrNotManual):
 		return New(409, TypeInvalidTransition, "Invalid Transition",
 			"Only transfers and opening balances are reversed from the statement. For a payment, use Undo payment.").WithCode("not_reversible_entry")

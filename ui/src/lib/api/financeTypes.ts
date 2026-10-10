@@ -390,6 +390,19 @@ export interface ImportSummary {
   rejected_count: number
   rejected: {line: number; reason: RejectReason}[]
   pending: number
+  /** On the upload and the detail only, while the account has no opening balance
+   *  and no entry and the OFX declared LEDGERBAL (UX batch 5). */
+  opening_proposal?: OpeningProposal
+}
+
+/** The statement's balance as an opening balance: `amount` = `ledger_balance` minus
+ *  the file's `lines`, on `date`, the day before the first line. */
+export interface OpeningProposal {
+  amount: Cents
+  date: IsoDate
+  ledger_balance: Cents
+  ledger_as_of: IsoDate
+  lines: number
 }
 
 export interface ImportLine {

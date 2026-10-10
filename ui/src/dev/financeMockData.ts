@@ -15,7 +15,7 @@
  */
 import type {
   Account, AccountClass, Bill, Card, CardStatement, CashFlowMonth, Purchase, StatementItem, DREGroupLine, Direction, ExpressionJSON, FinanceSpaceEntry, ProjectionMonth,
-  Recurrence, StatementEntry, TxKind, Verb, CsvMapping, ImportFormat, ImportLine, ImportSummary, RejectReason,
+  Recurrence, StatementEntry, TxKind, Verb, CsvMapping, ImportFormat, ImportLine, ImportSummary, OpeningProposal, RejectReason,
 } from "@/lib/api/financeTypes"
 import {STATEMENT_WITH_MEMOS, STATEMENT_WITH_MEMOS_ACCOUNTS} from "@/dev/fixtures/statementWithMemos"
 
@@ -65,7 +65,7 @@ interface SpaceState {
   items: (StatementItem & {card: string; month: string; key: string})[]
   closed: Map<string, {total: number; bill_id?: string}>
   /** Statement imports (F6): each with its lines; locks make a line import once per account. */
-  imports: (ImportSummary & {id: string; lines_: Omit<ImportLine, "candidates">[]})[]
+  imports: (ImportSummary & {id: string; lines_: Omit<ImportLine, "candidates">[]; opening_?: OpeningProposal})[]
   locks: Set<string>
   mappings: Map<string, CsvMapping>
   /** Bills the daily job paid (auto-settle), and those a statement line holds. */
@@ -295,7 +295,20 @@ function mockOFX(text: string) {
     if (amount === 0) return rejected.push({line: i + 1, reason: "zero_amount"})
     lines.push({date: `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`, amount, description: field(m[1], "MEMO") || field(m[1], "NAME"), fitid: field(m[1], "FITID") || undefined})
   })
-  return {lines, rejected}
+  // LEDGERBAL, as the API reads it (UX batch 5); AVAILBAL is not it.
+  const bal = text.match(/<LEDGERBAL>([\s\S]*?)(?:<\/LEDGERBAL>|<AVAILBAL>|<\/STMTRS>)/i)?.[1]
+  const balAmount = bal ? mockAmount(field(bal, "BALAMT").replace(",", ".")) : null
+  const asOf = bal ? field(bal, "DTASOF") : ""
+  const ledger = balAmount !== null && /^\d{8}/.test(asOf) ? {amount: balAmount, asOf: `${asOf.slice(0, 4)}-${asOf.slice(4, 6)}-${asOf.slice(6, 8)}`} : undefined
+  return {lines, rejected, ledger}
+}
+
+/** The API's statement.OpeningFrom: LEDGERBAL − every parsed line, the day before the first. */
+function mockOpening(p: ReturnType<typeof mockOFX>): OpeningProposal | undefined {
+  if (!p.ledger || p.lines.length === 0) return undefined
+  const first = p.lines.map(l => l.date).sort()[0]
+  return {amount: p.ledger.amount - p.lines.reduce((t, l) => t + l.amount, 0), date: addDays(first, -1),
+    ledger_balance: p.ledger.amount, ledger_as_of: p.ledger.asOf, lines: p.lines.length}
 }
 
 function mockCSV(text: string, m: CsvMapping) {
@@ -803,8 +816,25 @@ function route(method: string, path: string, r: Req, s: SpaceState, can: (v: Ver
   const importMatch = path.match(/^\/imports\/([^/]+)(?:\/lines\/(\d+)\/(match|new|ignore|reopen|link))?$/)
   const mappingMatch = path.match(/^\/accounts\/([^/]+)\/csv-mapping$/)
   const summary = (i: SpaceState["imports"][number]): ImportSummary => {
-    const {lines_, ...rest} = i
+    const {lines_, opening_: _opening, ...rest} = i
+    void _opening
     return {...rest, pending: lines_.filter(l => l.status === "pending").length}
+  }
+  // UX batch 5: offered on the upload and the detail while the account has no
+  // opening balance and no entry.
+  const untouched = (account: string) => !s.openings.has(account) && !s.entries.some(e => e.account === account)
+  const withOpening = (i: SpaceState["imports"][number]): ImportSummary =>
+    i.opening_ && untouched(i.account_id) ? {...summary(i), opening_proposal: i.opening_} : summary(i)
+  const importOpening = path.match(/^\/imports\/([^/]+)\/opening-balance$/)
+  if (importOpening && method === "post") {
+    if (!can("finance.configure")) return forbidden()
+    const imp = s.imports.find(i => i.id === importOpening[1])
+    if (!imp) return problem(404, "about:blank", "Not Found", "recurso não encontrado", "resource_not_found")
+    if (!imp.opening_) return problem(422, "about:blank", "Unprocessable", "este extrato não traz saldo", "no_statement_balance")
+    if (s.openings.has(imp.account_id)) return problem(409, "/problems/invalid-transition", "Invalid Transition", "Esta conta já tem saldo inicial.", "opening_balance_exists")
+    if (!untouched(imp.account_id)) return problem(409, "/problems/invalid-transition", "Invalid Transition", "Esta conta já tem lançamentos.", "account_has_entries")
+    s.openings.add(imp.account_id)
+    return ok({transaction_id: post([{account: imp.account_id, date: imp.opening_.date, amount: imp.opening_.amount, kind: "opening_balance", flow: "-", memo: "Saldo inicial (extrato)"}])}, 201)
   }
   if (path === "/imports" && method === "get") {
     const account = r.params?.account_id
@@ -820,7 +850,7 @@ function route(method: string, path: string, r: Req, s: SpaceState, can: (v: Ver
     } catch {
       return problem(422, "about:blank", "Unprocessable", "invalid body", "validation_error", [{field: "content", code: "invalid_format", message: "base64"}])
     }
-    let parsed: {lines: {date: string; amount: number; description: string; fitid?: string}[]; rejected: {line: number; reason: RejectReason}[]}
+    let parsed: {lines: {date: string; amount: number; description: string; fitid?: string}[]; rejected: {line: number; reason: RejectReason}[]; ledger?: {amount: number; asOf: string}}
     if (req.format === "ofx") {
       if (/<CCSTMTRS>/i.test(text)) return problem(422, "about:blank", "Unprocessable", "card statement", "statement_card_not_supported")
       if (!/<OFX>/i.test(text)) return problem(422, "about:blank", "Unprocessable", "not an OFX file", "statement_unreadable")
@@ -850,7 +880,7 @@ function route(method: string, path: string, r: Req, s: SpaceState, can: (v: Ver
     const imp: SpaceState["imports"][number] = {
       id: nextId("imp"), account_id: req.account_id, format: req.format, created_at: new Date().toISOString(),
       from: dates[0], to: dates[dates.length - 1], lines: fresh.length, duplicates,
-      rejected_count: parsed.rejected.length, rejected: parsed.rejected.slice(0, 50), pending: fresh.length, lines_: fresh,
+      rejected_count: parsed.rejected.length, rejected: parsed.rejected.slice(0, 50), pending: fresh.length, lines_: fresh, opening_: req.format === "ofx" ? mockOpening(parsed as ReturnType<typeof mockOFX>) : undefined,
     }
     if (fresh.length === 0) {
       const {id: _drop, ...rest} = summary(imp)
@@ -858,7 +888,7 @@ function route(method: string, path: string, r: Req, s: SpaceState, can: (v: Ver
       return ok(rest)
     }
     s.imports.push(imp)
-    return ok(summary(imp), 201)
+    return ok(withOpening(imp), 201)
   }
   if (importMatch) {
     const imp = s.imports.find(i => i.id === importMatch[1])
@@ -879,7 +909,7 @@ function route(method: string, path: string, r: Req, s: SpaceState, can: (v: Ver
             Math.abs(daysBetween(l.date, b.paid_date)) <= 5),
         ].slice(0, 5),
       }))
-      return ok({import: summary(imp), lines})
+      return ok({import: withOpening(imp), lines})
     }
     const line = imp.lines_.find(l => l.n === Number(n))
     if (!line) return problem(404, "about:blank", "Not Found", "recurso não encontrado", "resource_not_found")

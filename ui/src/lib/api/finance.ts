@@ -222,6 +222,11 @@ export const getImport = (c: FinanceCtx, id: string) => read<ImportDetail>(c, `/
 /** 201 with an id when lines were added; 200 with no id when the file held nothing new. */
 export const uploadImport = (c: FinanceCtx, body: NewImport, idempotencyKey: string) =>
   write<ImportSummary>(c, "POST", "/imports", body, idempotencyKey)
+/** Posts the import's `opening_proposal` as its account's opening balance (UX batch 5).
+ *  No body: the amount and date are the server's, computed from the file. 409
+ *  `opening_balance_exists` / `account_has_entries` when the account can no longer take it. */
+export const postImportOpening = (c: FinanceCtx, importId: string, idempotencyKey: string) =>
+  write<{transaction_id: string}>(c, "POST", `/imports/${encodeURIComponent(importId)}/opening-balance`, {}, idempotencyKey)
 /** Settles the bill with the line's date and amount. */
 export const matchLine = (c: FinanceCtx, importId: string, n: number, body: {bill_id: string; difference_category_id?: string}, idempotencyKey: string) =>
   write<LineResult>(c, "POST", `${line(importId, n)}/match`, body, idempotencyKey)

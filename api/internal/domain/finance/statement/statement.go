@@ -84,6 +84,9 @@ type Rejected struct {
 type Parsed struct {
 	Lines    []Line
 	Rejected []Rejected
+	// Ledger is the balance an OFX statement declares (LEDGERBAL), when it
+	// declares a readable one; nil otherwise and always for a CSV.
+	Ledger *Balance
 }
 
 // decodeText turns the file into UTF-8. Brazilian banks declare OFX 1.x as
