@@ -55,7 +55,7 @@ func Build(ctx context.Context, cfg *config.Config, clock func() time.Time) (*fi
 	audit := repositories.NewAuditRepository(db, cfg)
 	payments := repositories.NewPaymentRepository(db, cfg)
 
-	invoicer := services.NewInvoicer(subs, invoices, catalog, usage).WithOrganizations(orgs)
+	invoicer := services.NewInvoicer(subs, invoices, catalog, usage).WithOrganizations(orgs).WithLevels(levels, customers)
 	subscriber := services.NewSubscriber(subs, catalog, invoicer)
 
 	cacheBackend := newCache(cfg)
@@ -208,7 +208,8 @@ func BuildInvoicer(ctx context.Context, cfg *config.Config) (*services.Invoicer,
 		repositories.NewInvoiceRepository(db, cfg),
 		repositories.NewCatalogRepository(db, cfg),
 		repositories.NewUsageRepository(db, cfg),
-	).WithOrganizations(repositories.NewOrganizationRepository(db, cfg)), nil
+	).WithOrganizations(repositories.NewOrganizationRepository(db, cfg)).
+		WithLevels(repositories.NewLevelRepository(db, cfg), repositories.NewCustomerRepository(db, cfg)), nil
 }
 
 // BuildProvisioner wires only what applying a tenant plan needs.

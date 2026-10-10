@@ -31,6 +31,19 @@ type Invoicer struct {
 	// nil one resolves every invoice to the product's policy or the built-in
 	// default, which is what a test that does not care about dunning wants.
 	orgs *repositories.OrganizationRepository
+	// levels and customers bill prices aggregated by max (WithLevels).
+	levels    *repositories.LevelRepository
+	customers *repositories.CustomerRepository
+}
+
+// ErrLevelsNotWired is a max price closed by an Invoicer built without levels.
+var ErrLevelsNotWired = errors.New("level metering is not wired into this invoicer")
+
+// WithLevels lets the invoicer bill prices aggregated by max (spec § 6.3). A
+// nil one refuses them rather than billing 0.
+func (s *Invoicer) WithLevels(levels *repositories.LevelRepository, customers *repositories.CustomerRepository) *Invoicer {
+	s.levels, s.customers = levels, customers
+	return s
 }
 
 func NewInvoicer(
@@ -220,12 +233,68 @@ func (s *Invoicer) buildLine(
 		return billing.FixedLine(price, product.Name, period, item.Quantity), nil
 	}
 
+	if price.Aggregation == billing.AggregationMax {
+		units, err := s.maxLevel(ctx, sub, price, period)
+		if err != nil {
+			return billing.InvoiceItem{}, fmt.Errorf("levels for item %s: %w", item.ID, err)
+		}
+		return billing.MeteredLine(price, product.Name, period, units), nil
+	}
+
 	records, err := s.usage.ListForPeriod(ctx, sub.OrganizationID, sub.Livemode, item.ID, period.Start)
 	if err != nil {
 		return billing.InvoiceItem{}, fmt.Errorf("usage for item %s: %w", item.ID, err)
 	}
 	units := billing.SumUsage(billing.DeduplicateUsage(records), period)
 	return billing.MeteredLine(price, product.Name, period, units), nil
+}
+
+// maxLevel is the highest level of the price's meter for the subscription's
+// customer reference during period (spec § 6.3). A customer with no external
+// reference cannot have levels, and that is an error, not a free month.
+func (s *Invoicer) maxLevel(ctx context.Context, sub *billing.Subscription, price *billing.Price, period billing.Period) (int64, error) {
+	if s.levels == nil || s.customers == nil {
+		return 0, ErrLevelsNotWired
+	}
+	customer, err := s.customers.Get(ctx, sub.OrganizationID, sub.Livemode, sub.CustomerID)
+	if err != nil {
+		return 0, err
+	}
+	if customer.ExternalRef == "" {
+		return 0, fmt.Errorf("customer %s has no external reference to read %s levels under", customer.ID, price.Meter)
+	}
+	carried, err := s.carriedIn(ctx, sub, customer.ExternalRef, price.Meter, period.Start.Time())
+	if err != nil {
+		return 0, err
+	}
+	records, err := s.levels.InPeriod(ctx, sub.OrganizationID, sub.Livemode, customer.ExternalRef, price.Meter, period.Start.Time(), period.End.Time())
+	if err != nil {
+		return 0, err
+	}
+	return billing.MaxLevel(records, carried, period), nil
+}
+
+// carriedIn is the level held at start (scope decision 9): the newest in-TTL
+// report before it; else the `previous` of the first report from it; else the
+// no-TTL latest level, which is then before start; else 0.
+func (s *Invoicer) carriedIn(ctx context.Context, sub *billing.Subscription, ref, meter string, start time.Time) (int64, error) {
+	if before, err := s.levels.LatestBefore(ctx, sub.OrganizationID, sub.Livemode, ref, meter, start); err != nil || before != nil {
+		if before == nil {
+			return 0, err
+		}
+		return before.Value, nil
+	}
+	if first, err := s.levels.FirstFrom(ctx, sub.OrganizationID, sub.Livemode, ref, meter, start); err != nil || first != nil {
+		if first == nil {
+			return 0, err
+		}
+		return first.Previous, nil
+	}
+	latest, err := s.levels.Latest(ctx, sub.OrganizationID, sub.Livemode, ref, meter)
+	if err != nil || latest == nil {
+		return 0, err
+	}
+	return latest.Value, nil
 }
 
 // SweepResult reports what a daily run did. Counts rather than a bare error,
