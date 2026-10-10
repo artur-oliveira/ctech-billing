@@ -68,3 +68,8 @@ is `personal_default`, `personal` or `organization`; the kind is normalised once
 ctech-account's people page is `/account/spaces/people?id={id}` and its create handoff returns to
 `/console/finance/spaces/created`. A personal workspace gets the personal chart of categories. See the spec's
 implementation amendment and PLAN.md 6.8.
+
+## Amendment, 2026-10-10 — Finanças is its own area
+
+The create handoff returns to `/finance/spaces/created` (the old `/console/finance/...` path redirects).
+Finanças is now an area of its own beside the portal and the console; see the shared-spaces spec.

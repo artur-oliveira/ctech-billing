@@ -10,14 +10,14 @@ import {selectCopy} from "@/lib/selectCopy"
 // "Resumo" (not "Visão geral") "Visão geral": the console's own nav already has a "Visão geral"
 // one row up, and two items with one name read as one menu printed twice.
 export const FINANCE_SECTIONS = [
-  {href: "/console/finance", key: "overview", exact: true},
-  {href: "/console/finance/bills", key: "bills"},
-  {href: "/console/finance/statement", key: "statement"},
-  {href: "/console/finance/import", key: "import"},
-  {href: "/console/finance/cards", key: "cards"},
-  {href: "/console/finance/recurrences", key: "recurrences"},
-  {href: "/console/finance/reports", key: "reports"},
-  {href: "/console/finance/accounts", key: "accounts"},
+  {href: "/finance", key: "overview", exact: true},
+  {href: "/finance/bills", key: "bills"},
+  {href: "/finance/statement", key: "statement"},
+  {href: "/finance/import", key: "import"},
+  {href: "/finance/cards", key: "cards"},
+  {href: "/finance/recurrences", key: "recurrences"},
+  {href: "/finance/reports", key: "reports"},
+  {href: "/finance/accounts", key: "accounts"},
 ] as const
 
 /** The section a path belongs to; Resumo when none matches. */

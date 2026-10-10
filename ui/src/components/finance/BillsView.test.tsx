@@ -64,7 +64,7 @@ describe("F2 — a pagar e a receber", () => {
     renderWithQuery(<BillsView/>)
     const row = (await screen.findByText("Fatura Visa 2026-03")).closest("li") as HTMLElement
     expect(within(row).getByText(/Fatura do cartão/)).toBeInTheDocument()
-    expect(within(row).getByRole("link", {name: "Ver fatura"})).toHaveAttribute("href", "/console/finance/cards?card=visa")
+    expect(within(row).getByRole("link", {name: "Ver fatura"})).toHaveAttribute("href", "/finance/cards?card=visa")
     expect(within(row).queryByRole("button", {name: "Excluir"})).not.toBeInTheDocument()
     await userEvent.click(within(row).getByRole("button", {name: "Editar"}))
     expect(within(row).queryByLabelText(/^Valor/)).not.toBeInTheDocument()

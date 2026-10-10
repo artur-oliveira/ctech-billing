@@ -141,7 +141,7 @@ function AccountRow({account, card, configure}: {account: Account; card?: Card; 
         : isCard ? <span data-numeric>{account.balance < 0 ? t("finance.accounts.owed", {amount: money(-account.balance)}) : money(account.balance)}</span>
           : null}
       actions={isCard && (
-        <Link href={`/console/finance/cards?card=${encodeURIComponent(account.id)}`} className="inline-flex items-center px-2.5 text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline touch-target">{t("finance.accounts.open")}</Link>
+        <Link href={`/finance/cards?card=${encodeURIComponent(account.id)}`} className="inline-flex items-center px-2.5 text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline touch-target">{t("finance.accounts.open")}</Link>
       )}
       more={configure && !account.archived ? [
         ...(account.class === "asset" ? [{key: "opening", label: t("finance.accounts.openingBalance"), expanded: opening, onSelect: () => setOpening(v => !v)}] : []),
@@ -307,7 +307,7 @@ function ImportOffer({account, onDone}: {account: Account; onDone: () => void}) 
       <div className="flex flex-wrap gap-2">
         {/* A link, not a button: it goes to Importar. data-slot keeps the 44px touch rule. */}
         <Link data-slot="button" className={buttonVariants({variant: "brand", size: "sm"})}
-          href={`/console/finance/import?account=${encodeURIComponent(account.id)}`}>
+          href={`/finance/import?account=${encodeURIComponent(account.id)}`}>
           <FileUp aria-hidden className="size-4"/>{t("finance.accounts.created.import")}
         </Link>
         <Button variant="outline" size="sm" onClick={onDone}>{t("finance.accounts.created.later")}</Button>

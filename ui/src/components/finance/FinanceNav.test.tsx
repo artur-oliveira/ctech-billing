@@ -5,7 +5,7 @@ import userEvent from "@testing-library/user-event"
 import {afterEach, describe, expect, it, vi} from "vitest"
 
 const push = vi.fn()
-vi.mock("next/navigation", () => ({usePathname: () => "/console/finance/statement", useRouter: () => ({push})}))
+vi.mock("next/navigation", () => ({usePathname: () => "/finance/statement", useRouter: () => ({push})}))
 
 import {FinanceNav} from "@/components/finance/FinanceNav"
 
@@ -27,6 +27,6 @@ describe("FinanceNav", () => {
     expect(picker).toHaveTextContent("Extrato")
     await userEvent.click(picker)
     await userEvent.click(await screen.findByRole("option", {name: "Relatórios"}))
-    expect(push).toHaveBeenCalledWith("/console/finance/reports")
+    expect(push).toHaveBeenCalledWith("/finance/reports")
   })
 })

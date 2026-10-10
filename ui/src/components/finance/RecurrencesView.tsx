@@ -167,7 +167,7 @@ function RecurrenceDetail({id, rec}: {id: string; rec: Recurrence}) {
     key: o.bill_id, nominal: o.nominal, due: o.due, kind: o.state, amount: money(o.amount),
     state: o.state === "paid" && o.paid_date ? t("bills.rec.state.paidOn", {date: shortDate(o.paid_date)}) : t(`bills.rec.state.${o.state}`),
     action: o.state === "overdue"
-      ? <Link href={`/console/finance/bills?direction=${rec.direction}&bill=${encodeURIComponent(o.bill_id)}`} className="inline-flex items-center text-sm text-foreground underline underline-offset-4 hover:text-brand-700 touch-target">{t(`bills.rec.openBill.${rec.direction}`)}</Link>
+      ? <Link href={`/finance/bills?direction=${rec.direction}&bill=${encodeURIComponent(o.bill_id)}`} className="inline-flex items-center text-sm text-foreground underline underline-offset-4 hover:text-brand-700 touch-target">{t(`bills.rec.openBill.${rec.direction}`)}</Link>
       : undefined,
   })
   const next: TimelineEntry[] = [

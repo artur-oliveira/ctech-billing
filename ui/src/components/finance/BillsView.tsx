@@ -137,7 +137,7 @@ function BillRow({bill, current, accountName, accounts}: {bill: Bill; current?: 
       title={bill.description || t("bills.common.noDescription")}
       meta={<>
         {t("bills.row.due", {date: shortDate(bill.due_date)})}{accountName ? ` • ${accountName}` : ""}{bill.auto_settle ? ` • ${t(`bills.row.autoNote.${bill.direction}`)}` : ""}
-        {statement && <> • {t("bills.row.statement")} • <Link href={`/console/finance/cards?card=${encodeURIComponent(bill.category_id)}`} className="underline-offset-4 hover:underline">{t("bills.row.viewStatement")}</Link></>}
+        {statement && <> • {t("bills.row.statement")} • <Link href={`/finance/cards?card=${encodeURIComponent(bill.category_id)}`} className="underline-offset-4 hover:underline">{t("bills.row.viewStatement")}</Link></>}
       </>}
       // On a phone the group heading (Vencidas, A vencer) already says it.
       aside={<Badge tone={BADGE[bucket].tone}><Icon aria-hidden className="size-3"/>{bucketLabel(bucket)}</Badge>}

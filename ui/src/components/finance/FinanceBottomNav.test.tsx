@@ -5,7 +5,7 @@ import {screen, within} from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 
-const nav = vi.hoisted(() => ({pathname: "/console/finance", push: vi.fn()}))
+const nav = vi.hoisted(() => ({pathname: "/finance", push: vi.fn()}))
 vi.mock("next/navigation", () => ({usePathname: () => nav.pathname, useRouter: () => ({push: nav.push})}))
 
 import {FinanceBottomNav} from "@/components/finance/FinanceBottomNav"
@@ -43,7 +43,7 @@ afterEach(() => vi.restoreAllMocks())
 
 describe("FinanceBottomNav", () => {
   it("has three tabs and Mais, the current one marked", async () => {
-    at("/console/finance/statement")
+    at("/finance/statement")
     const tabs = within(bar()).getAllByRole("link").map(l => l.getAttribute("aria-label"))
     expect(tabs).toEqual(["Resumo", "Agenda", "Extrato"])
     expect(within(bar()).getByRole("link", {name: "Extrato"})).toHaveAttribute("aria-current", "page")
@@ -52,7 +52,7 @@ describe("FinanceBottomNav", () => {
   })
 
   it("puts the secondary sections in the Mais sheet, grouped", async () => {
-    at("/console/finance/cards")
+    at("/finance/cards")
     // The verbs arrive first: the bar gains its action slot then, and the
     // sheet is opened after that.
     await within(bar()).findByRole("button", {name: "Nova compra"})
@@ -66,16 +66,16 @@ describe("FinanceBottomNav", () => {
     const manage = within(sheet).getByRole("region", {name: "Análise e cadastro"})
     expect(within(manage).getAllByRole("link").map(l => l.textContent)).toEqual(["Relatórios", "Contas"])
     expect(within(sheet).getByRole("link", {name: "Cartões"})).toHaveAttribute("aria-current", "page")
-    expect(within(sheet).getByRole("link", {name: "Relatórios"})).toHaveAttribute("href", "/console/finance/reports")
+    expect(within(sheet).getByRole("link", {name: "Relatórios"})).toHaveAttribute("href", "/finance/reports")
   })
 
   describe("the central action creates what the screen lists", () => {
     it.each([
-      ["/console/finance/bills", "Adicionar", "bill"],
-      ["/console/finance/cards", "Nova compra", "purchase"],
-      ["/console/finance/recurrences", "Recorrência", "recurrence"],
-      ["/console/finance/statement", "Transferir", "transfer"],
-      ["/console/finance/accounts", "Nova conta", "account"],
+      ["/finance/bills", "Adicionar", "bill"],
+      ["/finance/cards", "Nova compra", "purchase"],
+      ["/finance/recurrences", "Recorrência", "recurrence"],
+      ["/finance/statement", "Transferir", "transfer"],
+      ["/finance/accounts", "Nova conta", "account"],
     ] as const)("on %s it is %s, on the same screen", async (path, label, kind) => {
       const request = vi.spyOn(create, "requestCreate")
       at(path)
@@ -84,19 +84,19 @@ describe("FinanceBottomNav", () => {
       expect(nav.push).not.toHaveBeenCalled()
     })
 
-    it.each(["/console/finance", "/console/finance/import", "/console/finance/reports"])(
+    it.each(["/finance", "/finance/import", "/finance/reports"])(
       "on %s, with nothing of its own to create, it adds a lançamento in Agenda",
       async path => {
         const request = vi.spyOn(create, "requestCreate")
         at(path)
         await userEvent.click(await within(bar()).findByRole("button", {name: "Adicionar"}))
-        expect(request).toHaveBeenCalledWith("bill", "/console/finance/bills")
-        expect(nav.push).toHaveBeenCalledWith("/console/finance/bills")
+        expect(request).toHaveBeenCalledWith("bill", "/finance/bills")
+        expect(nav.push).toHaveBeenCalledWith("/finance/bills")
       },
     )
 
     it("is absent for a role that cannot create there", async () => {
-      at("/console/finance/bills", ["finance.read"])
+      at("/finance/bills", ["finance.read"])
       // Wait for the space's verbs to arrive, then the slot must still be empty.
       await screen.findByRole("navigation", {name: "Navegação principal"})
       await new Promise(r => setTimeout(r, 0))
@@ -105,20 +105,20 @@ describe("FinanceBottomNav", () => {
 
     it("on Cartões with no card yet, it is Novo cartão for a role that may configure", async () => {
       const request = vi.spyOn(create, "requestCreate")
-      at("/console/finance/cards", ALL, [])
+      at("/finance/cards", ALL, [])
       await userEvent.click(await within(bar()).findByRole("button", {name: "Novo cartão"}))
       expect(request).toHaveBeenCalledWith("purchase")
     })
 
     it("on Cartões with no card and no configure, there is no action: a button that does nothing is worse", async () => {
-      at("/console/finance/cards", ["finance.read", "finance.write"], [])
+      at("/finance/cards", ["finance.read", "finance.write"], [])
       await new Promise(r => setTimeout(r, 50))
       expect(within(bar()).queryByRole("button", {name: "Nova compra"})).toBeNull()
       expect(within(bar()).queryByRole("button", {name: "Novo cartão"})).toBeNull()
     })
 
     it("asks for configure, not write, for Nova conta", async () => {
-      at("/console/finance/accounts", ["finance.read", "finance.write"])
+      at("/finance/accounts", ["finance.read", "finance.write"])
       await new Promise(r => setTimeout(r, 0))
       expect(within(bar()).queryByRole("button", {name: "Nova conta"})).toBeNull()
     })
@@ -146,20 +146,20 @@ describe("createRequest", () => {
   })
 
   it("drops Resumo's Adicionar when the person goes somewhere else before Agenda opens", async () => {
-    const {rerender, client} = at("/console/finance")
+    const {rerender, client} = at("/finance")
     await userEvent.click(await within(bar()).findByRole("button", {name: "Adicionar"}))
-    expect(nav.push).toHaveBeenCalledWith("/console/finance/bills")
+    expect(nav.push).toHaveBeenCalledWith("/finance/bills")
     // They tap Extrato before the bills screen mounted.
-    nav.pathname = "/console/finance/statement"
+    nav.pathname = "/finance/statement"
     rerender(<QueryClientProvider client={client}><FinanceBottomNav/></QueryClientProvider>)
     // Minutes later, opening Agenda must not open Novo lançamento.
     expect(create.takePendingCreate("bill")).toBe(false)
   })
 
   it("keeps Resumo's Adicionar when the navigation lands on Agenda", async () => {
-    const {rerender, client} = at("/console/finance")
+    const {rerender, client} = at("/finance")
     await userEvent.click(await within(bar()).findByRole("button", {name: "Adicionar"}))
-    nav.pathname = "/console/finance/bills"
+    nav.pathname = "/finance/bills"
     rerender(<QueryClientProvider client={client}><FinanceBottomNav/></QueryClientProvider>)
     expect(create.takePendingCreate("bill")).toBe(true)
   })

@@ -13,7 +13,7 @@ const ACCOUNTS = process.env.NEXT_PUBLIC_CTECH_CLIENT_URL || "https://accounts.a
 const CLIENT_ID = process.env.NEXT_PUBLIC_CTECH_CLIENT_ID || "billing"
 
 /** Where ctech-account sends the browser back after "Novo espaço". */
-export const SPACE_CREATED_PATH = "/console/finance/spaces/created"
+export const SPACE_CREATED_PATH = "/finance/spaces/created"
 
 /** The state we sent, kept in sessionStorage for the return leg to check. */
 export const SPACE_HANDOFF_STATE_KEY = "billing:space-handoff-state"
@@ -64,7 +64,7 @@ export function managePeopleURL(workspaceId: string, origin: string): string {
   const u = new URL("/account/spaces/people", ACCOUNTS)
   u.searchParams.set("id", workspaceId)
   u.searchParams.set("client_id", CLIENT_ID)
-  u.searchParams.set("return_to", origin + "/console/finance")
+  u.searchParams.set("return_to", origin + "/finance")
   return u.toString()
 }
 

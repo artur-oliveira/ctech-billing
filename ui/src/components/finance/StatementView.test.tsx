@@ -127,7 +127,7 @@ describe("F3 — extrato", () => {
     vi.spyOn(finance, "listAccounts").mockResolvedValue({data: [], has_more: false})
     renderWithQuery(<StatementView/>)
     expect(await screen.findByText("Nenhuma conta ainda.")).toBeInTheDocument()
-    await waitFor(() => expect(screen.getByText("Criar conta").closest("a")).toHaveAttribute("href", "/console/finance/accounts"))
+    await waitFor(() => expect(screen.getByText("Criar conta").closest("a")).toHaveAttribute("href", "/finance/accounts"))
   })
 })
 

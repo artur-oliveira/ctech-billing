@@ -247,7 +247,7 @@ describe("F4 — a recurrence's detail, in place (UX batch 3)", () => {
       expect.stringMatching(/10\/07\/2026.*Paga em 10\/07\/2026/),
     ])
     expect(within(pastItems[0]).getByRole("link", {name: "Ver em A pagar"}))
-      .toHaveAttribute("href", "/console/finance/bills?direction=payable&bill=b9")
+      .toHaveAttribute("href", "/finance/bills?direction=payable&bill=b9")
   })
 
   it("says when there is nothing to come", async () => {

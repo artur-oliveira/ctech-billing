@@ -225,3 +225,13 @@ PR #46 as merged-to-be:
 - **The 6.7 CTech-invoice switch** shows in Pessoal only — the one space the payer side posts to (§ 2).
 - **§ 5.1 "Finanças only"** needed no code: the invoicing sections follow the console session (ADR 0011), not the
   finance space. **The portal selector** is not built yet; when it is, it must filter `kind = personal`.
+
+## Amendment, 2026-10-10 — Finanças is its own area
+
+Finanças moved out of the console into its own area of the same app, `/finance/*` (owner's decision): most
+people who use it have no organization, and nothing else in the console is theirs. The API is unchanged
+(`/v1.0/console/finance/*`). The console is invoicing only, and someone with no organization who opens it is
+sent to `/finance`. The avatar menu switches between **Portal**, **Console** (operators only) and
+**Finanças**. Old `/console/finance/*` links redirect to the same place under `/finance`, query kept.
+The create handoff now returns to `/finance/spaces/created` and "Gerenciar acesso" to `/finance`; a return
+to the old `/console/finance/spaces/created` still lands, through the redirect.

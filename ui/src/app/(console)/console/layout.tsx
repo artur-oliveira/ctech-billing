@@ -11,17 +11,17 @@ import {useTranslation} from "react-i18next"
 import {AccountMenu} from "@/components/AccountMenu"
 import {LanguageSwitcher} from "@/components/LanguageSwitcher"
 import {ModeSwitch} from "@/components/console/ModeSwitch"
-import {NoOrganization} from "@/components/console/NoOrganization"
-import {SpaceSwitch} from "@/components/finance/SpaceSwitch"
 import {statusOf} from "@/lib/api/client"
 import {consoleKeys, getConsoleSession} from "@/lib/api/console"
 import {useAuth} from "@/lib/auth/AuthContext"
-import {consoleNav, FINANCE_HREF} from "@/lib/console/nav"
+import {consoleNav} from "@/lib/console/nav"
 import {useMode} from "@/lib/console/useMode"
+import {FINANCE_HREF} from "@/lib/finance/href"
 
 /**
- * The operator shell — the second of the two the app ships, and the same
- * components as the first at a different density.
+ * The operator shell — invoicing, the second of the three areas the app ships
+ * (portal, console, Finanças), and the same components as the first at a
+ * different density.
  *
  * `<DensityScope density="compact">` is the whole of that difference: every
  * control from `@aoctech/ui` reads its `data-density` and sizes itself to 32px
@@ -64,21 +64,18 @@ export default function ConsoleLayout({children}: LayoutProps<"/console">) {
     retry: false,
   })
 
-  // Signed in, no organization: the invoicing sections are not theirs, but
-  // Finanças is — everyone has a personal space. Decided from the session alone
-  // rather than per screen.
+  // Signed in, no organization: nothing in the console is theirs. Finanças is
+  // (everyone has a personal space), and it is its own area now, so that is
+  // where they go. Decided from the session alone rather than per screen.
   const noOrganization = statusOf(error) === 403 || statusOf(error) === 404
-  const inFinance = pathname === FINANCE_HREF || pathname.startsWith(FINANCE_HREF + "/")
 
   useEffect(() => {
     if (!loading && !authenticated) router.replace("/login")
   }, [loading, authenticated, router])
 
-  // The console's default landing is invoicing's overview; a person with no
-  // organization lands on their finances instead of on an explanation.
   useEffect(() => {
-    if (noOrganization && pathname === "/console/overview") router.replace(FINANCE_HREF)
-  }, [noOrganization, pathname, router])
+    if (noOrganization) router.replace(FINANCE_HREF)
+  }, [noOrganization, router])
 
   const nav = consoleNav(session !== undefined)
 
@@ -100,10 +97,7 @@ export default function ConsoleLayout({children}: LayoutProps<"/console">) {
                 <span className="ml-1.5 font-normal text-muted-foreground">Billing</span>
               </span>
             </Link>
-            {/* In Finanças the space switcher names the space; the invoicing
-                organization's name here would read as the space and contradict
-                it ("CTech Tecnologia" beside "Pessoal"). */}
-            {session && !inFinance && (
+            {session && (
               <span className="truncate border-l border-border pl-4 text-sm text-foreground">
                 {session.display_name}
               </span>
@@ -111,10 +105,8 @@ export default function ConsoleLayout({children}: LayoutProps<"/console">) {
           </div>
 
           <div className="order-3 flex w-full min-w-0 items-center gap-x-3 gap-y-2 sm:order-2 sm:ml-auto sm:w-auto">
-            {/* Space and mode side by side, so "Pessoal · Teste" reads as one
-                answer. The space only exists in Finanças: invoicing's
-                organization comes from the signed-in owner (ADR 0011). */}
-            {inFinance && <SpaceSwitch/>}
+            {/* The organization comes from the signed-in owner (ADR 0011);
+                the mode is the one thing an operator switches. */}
             <ModeSwitch/>
           </div>
           {/* The person, the way to the portal, and Sair, all behind the
@@ -163,10 +155,8 @@ export default function ConsoleLayout({children}: LayoutProps<"/console">) {
       )}
 
       <main className="mx-auto max-w-6xl px-4 py-8 pb-20">
-        {loading || !authenticated ? (
+        {loading || !authenticated || noOrganization ? (
           <ShellSkeleton/>
-        ) : noOrganization && !inFinance ? (
-          <NoOrganization/>
         ) : (
           children
         )}

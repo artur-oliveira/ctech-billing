@@ -6,8 +6,7 @@
   "subscriptions": "Subscriptions",
   "customers": "Customers",
   "catalog": "Catalog",
-  "settings": "Settings",
-  "finance": "Finance"
+  "settings": "Settings"
  },
  "shell": {
   "testBanner": "Test mode. Nothing here charges real money."
@@ -18,12 +17,6 @@
   "test": "Test"
  },
  "wrongMode": "Check that you are in Live or Test.",
- "noOrg": {
-  "title": "This account has no organization",
-  "description": "Invoices, subscriptions and customers are for those who bill.",
-  "finance": "Go to Finance",
-  "bills": "My bills"
- },
  "invoiceStatus": {
   "DRAFT": "Draft",
   "OPEN": "Issued",

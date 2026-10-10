@@ -390,12 +390,11 @@ changing the current space (`Select`'s `actions`). There is no second button bes
 Gerenciar acesso stays beside it, only for the owner of a personal workspace. On a phone the
 select fills the row next to the mode switch.
 
-**The person is an avatar, in both shells.** `UserMenu` from `@aoctech/ui` holds the whole name
-and the e-mail (never cut), the view switch **Portal / Console** with the current one checked,
-and **Sair**. It is the only way between the shells: no "Console" link in the portal, no "Minhas
-cobranças" link in the console. Console is offered to everyone signed in, since each has a
-personal finance space; the operator probe only decides whether it opens on invoicing's overview
-or on Finanças. On a phone it stays in the header; the bottom bar never repeats it.
+**The person is an avatar, in all three areas.** `UserMenu` from `@aoctech/ui` holds the whole name
+and the e-mail (never cut), the view switch **Portal / Console / Finanças** with the current one
+checked, and **Sair**. It is the only way between the areas: no "Console" link in the portal, no
+"Minhas cobranças" link in the console. Portal and Finanças are offered to everyone; Console only
+when the operator probe answers. On a phone it stays in the header; the bottom bar never repeats it.
 
 **Shell controls under touch.** The space select (36px) and the mode switch (a segment, 30px)
 keep the compact look with 44px targets; the section tabs stay 40px with a 4px target above
@@ -492,3 +491,12 @@ the first time an organization with no customer was picked.
 
 The selection is stored apart from Finanças' space (`ctech-billing-portal-space`): paying an
 organization's invoice and keeping your own budget are two questions.
+
+## Finanças is its own area (2026-10-10)
+
+Finanças left the console for `/finance/*`, the app's third area: most of the people who keep their books
+here have no organization, and the console around it was invoicing they could not use. It keeps the
+console's density, width and header grammar — the mark (*CTech Finanças*), then space and mode side by
+side so "Pessoal · Teste" reads as one answer, then the language and the avatar — and its own sections:
+the column, the tablet picker and the bottom bar, unchanged. The console is invoicing only, and someone
+with no organization who opens it lands on `/finance`. Old `/console/finance/*` links redirect, query kept.

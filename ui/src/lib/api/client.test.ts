@@ -40,7 +40,7 @@ describe("the 503 rule", () => {
   async function reject503(data: unknown) {
     const {apiClient} = await import("./client")
     const replace = vi.fn()
-    vi.stubGlobal("location", {...window.location, pathname: "/console/finance", search: "", replace})
+    vi.stubGlobal("location", {...window.location, pathname: "/finance", search: "", replace})
     const handler = (apiClient.interceptors.response as unknown as {handlers: {rejected: (e: unknown) => Promise<unknown>}[]}).handlers[0].rejected
     await handler({response: {status: 503, data}, config: {}}).catch(() => undefined)
     vi.unstubAllGlobals()
