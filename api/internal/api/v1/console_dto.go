@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
@@ -164,9 +165,42 @@ type subscriptionDetailResponse struct {
 }
 
 type customerDetailResponse struct {
-	Customer      customerResponse       `json:"customer"`
-	Subscriptions []subscriptionResponse `json:"subscriptions"`
-	Timeline      []auditResponse        `json:"timeline"`
+	Customer      customerResponse         `json:"customer"`
+	Subscriptions []consoleSubscriptionRow `json:"subscriptions"`
+	Timeline      []auditResponse          `json:"timeline"`
+}
+
+// consoleSubscriptionRow is one row of C4 (and of C7's subscriptions).
+//
+// The subscription plus the two names an operator reads it by: whose it is
+// and what it is for. sub_… and cus_… answer neither, the same reason C2
+// carries the customer's name. Like that name, these stay off the shared
+// subscriptionResponse: ctech-dfe decodes that JSON and holds its own records.
+//
+// Both are omitted when they cannot be resolved (a customer or product row that
+// cannot be read): the row renders with the ids instead of the screen failing.
+type consoleSubscriptionRow struct {
+	subscriptionResponse
+	CustomerName string `json:"customer_name,omitempty"`
+	// PlanName is the products the subscription's items bill, joined (see
+	// planName): the same names its invoice lines carry.
+	PlanName string `json:"plan_name,omitempty"`
+}
+
+// planName names a subscription's plan from its items' product names, in item
+// order: each product once, empty names skipped, joined with " + ". A base
+// price and a metered price of one product are one plan, not "X + X".
+func planName(productNames []string) string {
+	seen := make(map[string]bool, len(productNames))
+	out := make([]string, 0, len(productNames))
+	for _, name := range productNames {
+		if name == "" || seen[name] {
+			continue
+		}
+		seen[name] = true
+		out = append(out, name)
+	}
+	return strings.Join(out, " + ")
 }
 
 type priceResponse struct {

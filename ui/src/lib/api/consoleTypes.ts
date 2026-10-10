@@ -151,6 +151,15 @@ export interface ConsoleSubscription {
   livemode: boolean
 }
 
+/** One row of C4 (and of C7's subscriptions): the subscription, plus the names
+ *  an operator reads it by. `plan_name` is the products its items bill, joined
+ *  with " + ". Either is absent when the server could not read it, and the
+ *  screen falls back to the id. */
+export interface ConsoleSubscriptionRow extends ConsoleSubscription {
+  customer_name?: string
+  plan_name?: string
+}
+
 export interface ConsolePrice {
   id: string
   product_id: string
@@ -248,7 +257,7 @@ export interface ConsoleSubscriptionDetail {
 
 export interface ConsoleCustomerDetail {
   customer: ConsoleCustomer
-  subscriptions: ConsoleSubscription[]
+  subscriptions: ConsoleSubscriptionRow[]
   timeline: AuditEntry[]
 }
 

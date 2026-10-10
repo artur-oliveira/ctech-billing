@@ -94,12 +94,14 @@ function Detail() {
           <ul className="divide-y divide-border border-y border-border">
             {subscriptions.map(sub => (
               <li key={sub.id} className="flex flex-wrap items-center justify-between gap-3 py-2">
-                <div className="flex flex-wrap items-center gap-3">
+                <div className="flex min-w-0 flex-wrap items-center gap-3">
+                  {/* The plan names the row, as on C4; the id is the
+                      fallback when the server could not read it. */}
                   <Link
                     href={`/console/subscription?id=${sub.id}`}
-                    className="text-sm text-brand-600 underline-offset-4 hover:underline"
+                    className="text-sm font-medium text-brand-600 underline-offset-4 hover:underline"
                   >
-                    {sub.id}
+                    {sub.plan_name || sub.id}
                   </Link>
                   <SubscriptionStatusBadge
                     status={sub.status}
