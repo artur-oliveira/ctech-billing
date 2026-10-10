@@ -229,6 +229,36 @@ func UsagePK(organizationID string, livemode bool, subscriptionItemID string, pe
 	return TenantPK(organizationID, livemode) + "#USAGE#" + subscriptionItemID + "#" + periodStart.String()
 }
 
+// levelTimeLayout is fixed-width UTC, so a level's sort key orders by time.
+const levelTimeLayout = "2006-01-02T15:04:05.000000000Z"
+
+// LevelPK is the partition of one customer reference's levels on one meter
+// (spec § 6.2), inside the tenant's mode partition like UsagePK.
+func LevelPK(organizationID string, livemode bool, customerRef, meter string) string {
+	return TenantPK(organizationID, livemode) + "#LEVEL#" + customerRef + "#" + meter
+}
+
+// LevelSK orders reports by when the level was reached; the key makes two
+// reports at the same instant two items.
+func LevelSK(at time.Time, key string) string { return levelBound(at) + "#" + key }
+
+// levelBound is the sort-key prefix of an instant. Every report at that
+// instant sorts after it ("…Z#key" > "…Z"), so `sk < levelBound(t)` is
+// "strictly before t".
+func levelBound(t time.Time) string { return t.UTC().Format(levelTimeLayout) }
+
+// LevelKeyPK is the idempotency marker of a level report: keyed by the
+// caller's key alone, so a reuse with another instant is seen (scope decision 8).
+func LevelKeyPK(organizationID string, livemode bool, key string) string {
+	return TenantPK(organizationID, livemode) + "#LEVEL_KEY#" + key
+}
+
+// LevelLatestPK holds the newest level of (customer_ref, meter) with no TTL, so
+// a level that never changes is never lost (scope decision 9).
+func LevelLatestPK(organizationID string, livemode bool, customerRef, meter string) string {
+	return TenantPK(organizationID, livemode) + "#LEVEL_LATEST#" + customerRef + "#" + meter
+}
+
 // Schedule-index job names. One constant per job that exists, and the list is
 // short on purpose: a job name with no writer and no reader describes a sweep
 // nobody runs, which reads to the next person as a feature that is merely

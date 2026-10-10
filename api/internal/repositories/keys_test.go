@@ -138,3 +138,20 @@ func TestInvoiceCounterIsPerYear(t *testing.T) {
 		t.Fatalf("got %q", InvoiceCounterSK(2026))
 	}
 }
+
+// Fixed width, so the sort key orders by time: RFC 3339 Nano would trim
+// ".500000000" to ".5" and sort it after ".123".
+func TestLevelSortKeysOrderByTime(t *testing.T) {
+	a := LevelSK(time.Date(2026, 10, 1, 0, 0, 0, 123_000_000, time.UTC), "k")
+	b := LevelSK(time.Date(2026, 10, 1, 0, 0, 0, 500_000_000, time.UTC), "k")
+	if !(a < b) {
+		t.Fatalf("%q !< %q", a, b)
+	}
+	if LevelPK("ctech", true, "USER_x", "finance_spaces") != "ctech#live#LEVEL#USER_x#finance_spaces" {
+		t.Fatal(LevelPK("ctech", true, "USER_x", "finance_spaces"))
+	}
+	// A report at exactly the bound sorts after it: "before t" excludes t.
+	if !(levelBound(time.Date(2026, 10, 1, 3, 0, 0, 0, time.UTC)) < LevelSK(time.Date(2026, 10, 1, 3, 0, 0, 0, time.UTC), "k")) {
+		t.Fatal("bound")
+	}
+}

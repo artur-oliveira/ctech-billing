@@ -85,3 +85,10 @@ func TestUnknownRetentionPanics(t *testing.T) {
 	}()
 	Retention(99).ExpiresAt(time.Now())
 }
+func TestALevelIsKeptThirteenMonths(t *testing.T) {
+	now := time.Date(2026, time.October, 10, 12, 0, 0, 0, time.UTC)
+	got := RetentionLevel.ExpiresAt(now)
+	if got == nil || *got != now.AddDate(0, 13, 0).Unix() {
+		t.Fatalf("ExpiresAt = %v", got)
+	}
+}
