@@ -134,6 +134,11 @@ type Organization struct {
 	// Kind is raw: "" before ctech-account sent kinds, read as organization
 	// (space.WorkspaceKind).
 	Kind string `json:"kind"`
+	// People (members, owner excluded) and PendingInvitations are sent only on
+	// personal workspaces the user owns (ctech-account spec § 6). Absent is
+	// "not known", never zero.
+	People             *int `json:"people,omitempty"`
+	PendingInvitations *int `json:"pending_invitations,omitempty"`
 }
 
 // Organizations lists the organizations userID belongs to, with their role in

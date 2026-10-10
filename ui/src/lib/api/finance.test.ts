@@ -214,3 +214,31 @@ describe("a space that is no longer the reader's", () => {
     window.localStorage.clear()
   })
 })
+
+describe("the plan calls", () => {
+  const pessoal = {mode: "live" as const, space: personal}
+
+  it("reads the plan with both headers", async () => {
+    await finance.getPlan(pessoal)
+    expect(seen[0].url).toBe("/v1.0/console/finance/plan")
+    expect(seen[0].headers).toMatchObject({"X-Billing-Mode": "live", "X-Billing-Space": "personal"})
+  })
+
+  it("chooses with an Idempotency-Key and the body as given", async () => {
+    await finance.choosePlan(pessoal, {price_ids: ["price_finance_basic_monthly"], name: "Ana"}, "K1")
+    expect(seen[0]).toMatchObject({method: "POST", url: "/v1.0/console/finance/plan", data: {price_ids: ["price_finance_basic_monthly"], name: "Ana"}})
+    expect(seen[0].headers).toMatchObject({"Idempotency-Key": "K1"})
+  })
+
+  it("goes back to Free through /plan/cancel", async () => {
+    await finance.cancelPlan(pessoal, "K2")
+    expect(seen[0]).toMatchObject({method: "POST", url: "/v1.0/console/finance/plan/cancel"})
+  })
+
+  it("recognises the pending first invoice and nothing else", () => {
+    const pending = {response: {status: 409, data: {code: "plan_payment_pending", checkout_url: "https://pay/x", invoice_id: "in_1"}}}
+    expect(finance.isPlanPaymentPending(pending)).toMatchObject({checkout_url: "https://pay/x", invoice_id: "in_1"})
+    expect(finance.isPlanPaymentPending({response: {status: 409, data: {code: "concurrent_update"}}})).toBeNull()
+    expect(finance.isPlanPaymentPending(new Error("x"))).toBeNull()
+  })
+})

@@ -537,3 +537,28 @@ func (s *Subscriber) requireLevelReference(ctx context.Context, in SubscribeInpu
 	}
 	return nil
 }
+
+// SchedulePlanChange records a change for the end of the current period (plans
+// spec, amendment: advance → arrears never bills a paid period twice).
+func (s *Subscriber) SchedulePlanChange(ctx context.Context, sub *billing.Subscription, in ChangeInput, now time.Time) error {
+	prices, _, err := s.resolveItemPrices(ctx, SubscribeInput{OrganizationID: sub.OrganizationID, Livemode: sub.Livemode, Items: in.Items})
+	if err != nil {
+		return err
+	}
+	if prices[0].Recurrence != sub.Recurrence {
+		return fmt.Errorf("%w: changing the cycle means a new subscription", billing.ErrInvalidSubscriptionItem)
+	}
+	ids := make([]string, len(in.Items))
+	for i, it := range in.Items {
+		ids[i] = it.PriceID
+	}
+	return s.subs.SchedulePlanChange(ctx, sub, &billing.PendingChange{PriceIDs: ids, At: sub.CurrentPeriod().End}, in.Cause, in.Actor, in.RequestID, now)
+}
+
+// ClearPlanChange drops a scheduled change (the person chose their current plan again).
+func (s *Subscriber) ClearPlanChange(ctx context.Context, sub *billing.Subscription, in ChangeInput, now time.Time) error {
+	if sub.PendingChange == nil {
+		return nil
+	}
+	return s.subs.SchedulePlanChange(ctx, sub, nil, in.Cause, in.Actor, in.RequestID, now)
+}

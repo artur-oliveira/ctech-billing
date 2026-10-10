@@ -265,6 +265,29 @@ func (r *SubscriptionRepository) ChangeItems(
 	actor, requestID string,
 	now time.Time,
 ) error {
+	return r.changeItems(ctx, s, oldItems, newItems, timing, ownerKey, cause, actor, requestID, now, false)
+}
+
+// ApplyScheduledChange swaps the items of a change scheduled for the period end
+// and renews the subscription into the next period, in one transaction: a crash
+// cannot leave the new items on the old period, and a re-run finds the
+// subscription already moved on.
+func (r *SubscriptionRepository) ApplyScheduledChange(ctx context.Context, s *billing.Subscription,
+	oldItems, newItems []billing.SubscriptionItem, timing billing.BillingTiming, ownerKey, actor string, now time.Time) error {
+	return r.changeItems(ctx, s, oldItems, newItems, timing, ownerKey, billing.CauseScheduler, actor, "", now, true)
+}
+
+func (r *SubscriptionRepository) changeItems(
+	ctx context.Context,
+	s *billing.Subscription,
+	oldItems, newItems []billing.SubscriptionItem,
+	timing billing.BillingTiming,
+	ownerKey string,
+	cause billing.Cause,
+	actor, requestID string,
+	now time.Time,
+	renew bool,
+) error {
 	if len(newItems) == 0 {
 		return fmt.Errorf("%w: a subscription needs at least one item", billing.ErrInvalidSubscriptionItem)
 	}
@@ -275,6 +298,12 @@ func (r *SubscriptionRepository) ChangeItems(
 	events, err := updated.Transition(s.Status, cause)
 	if err != nil {
 		return err
+	}
+	// Any change supersedes one scheduled for later.
+	updated.PendingChange = nil
+	if renew {
+		updated.PeriodIndex++
+		events = append(events, billing.EventSubscriptionRenewed)
 	}
 
 	pk := TenantPK(s.OrganizationID, s.Livemode)
@@ -309,8 +338,10 @@ func (r *SubscriptionRepository) ChangeItems(
 			// Recomputed even though the period is unchanged: the timing may have
 			// moved, and the sweep date is derived from the row rather than stored
 			// independently of it.
-			"schedule_pk": &types.AttributeValueMemberS{Value: SchedulePK(updated.Livemode, JobSubscriptionDue, nextSweepDate(&updated))},
-			"schedule_sk": &types.AttributeValueMemberS{Value: updated.ID},
+			"schedule_pk":    &types.AttributeValueMemberS{Value: SchedulePK(updated.Livemode, JobSubscriptionDue, nextSweepDate(&updated))},
+			"schedule_sk":    &types.AttributeValueMemberS{Value: updated.ID},
+			"pending_change": &types.AttributeValueMemberNULL{Value: true},
+			"period_index":   &types.AttributeValueMemberN{Value: strconv.Itoa(updated.PeriodIndex)},
 		},
 		Audit: AuditEntry{
 			Entity:    EntitySubscription,
@@ -335,6 +366,39 @@ func (r *SubscriptionRepository) ChangeItems(
 	return nil
 }
 
+// SchedulePlanChange records (or, with nil, clears) a change for the period end.
+// A self-edge like ScheduleCancellation: the status does not move.
+func (r *SubscriptionRepository) SchedulePlanChange(ctx context.Context, s *billing.Subscription, pc *billing.PendingChange,
+	cause billing.Cause, actor, requestID string, now time.Time) error {
+	if _, err := (&billing.Subscription{Status: s.Status}).Transition(s.Status, cause); err != nil {
+		return err
+	}
+	value := types.AttributeValue(&types.AttributeValueMemberNULL{Value: true})
+	after := "pending_change=none"
+	if pc != nil {
+		m, err := Encode(pc)
+		if err != nil {
+			return err
+		}
+		value, after = &types.AttributeValueMemberM{Value: m}, "pending_change="+strings.Join(pc.PriceIDs, ",")+"@"+pc.At.String()
+	}
+	change := StatusChange{
+		OrganizationID: s.OrganizationID, Livemode: s.Livemode,
+		PK: TenantPK(s.OrganizationID, s.Livemode), SK: SubscriptionSK(s.ID),
+		From: string(s.Status), To: string(s.Status),
+		Set: map[string]types.AttributeValue{"pending_change": value},
+		Audit: AuditEntry{Entity: EntitySubscription, EntityID: s.ID, Action: string(billing.EventSubscriptionUpdated),
+			Cause: cause, Actor: actor, RequestID: requestID, Before: "pending_change", After: after},
+		Emit:    []billing.EventType{billing.EventSubscriptionUpdated},
+		Subject: subscriptionSubject(s),
+	}
+	if err := CommitStatusChange(ctx, r.tables(), change, now); err != nil {
+		return err
+	}
+	s.PendingChange = pc
+	return nil
+}
+
 // priceIDsOf renders an item set for the audit trail.
 func priceIDsOf(items []billing.SubscriptionItem) []string {
 	out := make([]string, 0, len(items))
@@ -344,40 +408,55 @@ func priceIDsOf(items []billing.SubscriptionItem) []string {
 	return out
 }
 
-// ListByCustomer returns a customer's subscriptions.
+// ListByCustomer returns a customer's subscriptions, up to limit.
 //
 // It filters the tenant partition rather than adding an index. That is a bounded
 // compromise, not a shortcut: the read is already confined to one organization,
 // and the entitlement check is called per customer, not per page view. If it
 // ever becomes a hot path the fix is an index — never a Scan.
 //
+// It follows the continuation key to the end of the partition: DynamoDB applies
+// a Query's Limit BEFORE its filter, so one page of the tenant's rows says
+// nothing about this customer's. Reading only the first page made a subscriber
+// past it invisible — Free on screen and in entitlements, and a second paid
+// subscription on the next choice.
+//
 // The `#ITEM#` rows share the SUB# prefix, so they come back too and are
 // discarded by the decode filter below.
 func (r *SubscriptionRepository) ListByCustomer(ctx context.Context, organizationID string, livemode bool, customerID string, limit int) ([]billing.Subscription, error) {
-	res, err := r.base.Query(ctx, QueryOpts{
-		PK:               TenantPK(organizationID, livemode),
-		SKPrefix:         skSubscription,
-		FilterField:      "customer_id",
-		FilterValue:      customerID,
-		Limit:            limit,
-		ScanIndexForward: true,
-	})
-	if err != nil {
-		return nil, err
-	}
-	rows, err := DecodeItems[subscriptionRow](res.Items)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]billing.Subscription, 0, len(rows))
-	for _, row := range rows {
-		// Item rows carry no status; only subscriptions do.
-		if row.Subscription.Status == "" {
-			continue
+	out := make([]billing.Subscription, 0)
+	var start map[string]types.AttributeValue
+	for {
+		res, err := r.base.Query(ctx, QueryOpts{
+			PK:                TenantPK(organizationID, livemode),
+			SKPrefix:          skSubscription,
+			FilterField:       "customer_id",
+			FilterValue:       customerID,
+			ScanIndexForward:  true,
+			ExclusiveStartKey: start,
+		})
+		if err != nil {
+			return nil, err
 		}
-		out = append(out, row.entity())
+		rows, err := DecodeItems[subscriptionRow](res.Items)
+		if err != nil {
+			return nil, err
+		}
+		for _, row := range rows {
+			// Item rows carry no status; only subscriptions do.
+			if row.Subscription.Status == "" {
+				continue
+			}
+			out = append(out, row.entity())
+			if limit > 0 && len(out) >= limit {
+				return out, nil
+			}
+		}
+		if len(res.LastEvaluatedKey) == 0 {
+			return out, nil
+		}
+		start = res.LastEvaluatedKey
 	}
-	return out, nil
 }
 
 // List pages the tenant's subscriptions, newest first.

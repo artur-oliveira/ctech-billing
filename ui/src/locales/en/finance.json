@@ -79,7 +79,8 @@
       "recurrence": "Recurrence",
       "transfer": "Transfer",
       "account": "Account"
-    }
+    },
+    "plan": "Plan"
   },
   "space": {
     "label": "Space",
@@ -415,5 +416,88 @@
   "shell": {
     "product": "Finances",
     "testBanner": "Test mode. Nothing here is real."
+  },
+  "plan": {
+    "title": "Plan",
+    "description": "How many spaces you can create and how many people fit in each.",
+    "liveOnly": "Plans always belong to live mode.",
+    "names": {
+      "free": "Free",
+      "basic": "Basic",
+      "pro": "Pro",
+      "ondemand": "On demand"
+    },
+    "current": "Your plan",
+    "perMonth": "{{amount}} per month",
+    "free": "No charge",
+    "spaces_one": "{{count}} extra space",
+    "spaces_other": "{{count}} extra spaces",
+    "spacesUnlimited": "Unlimited spaces",
+    "people_one": "{{count}} person per space",
+    "people_other": "{{count}} people per space",
+    "peopleUnlimited": "Unlimited people",
+    "meteredSpaces": "{{amount}} per space after the 1st",
+    "meteredPeople": "{{amount}} per person after the 1st",
+    "meteredNote": "Billed at the end of the month on the highest use.",
+    "projected": "This month so far: {{amount}}",
+    "subscribe": "Subscribe",
+    "changeTo": "Change to {{plan}}",
+    "backToFree": "Back to Free",
+    "pay": "Pay invoice",
+    "keep": "Keep {{plan}}",
+    "endsOn": "Ends on {{date}}",
+    "changesOn": "Changes to {{plan}} on {{date}}",
+    "startsOn": "Starts on {{date}}",
+    "usage": {
+      "title": "Your usage",
+      "spaces": "{{used}} of {{limit}} spaces",
+      "space": "{{name}} · {{used}} of {{limit}} people",
+      "pending_one": "includes {{count}} pending invitation",
+      "pending_other": "includes {{count}} pending invitations",
+      "unavailable": "Could not read your usage right now.",
+      "spacesUnlimited_one": "{{count}} space",
+      "spacesUnlimited_other": "{{count}} spaces",
+      "spaceUnlimited_one": "{{name}} · {{count}} person",
+      "spaceUnlimited_other": "{{name}} · {{count}} people"
+    },
+    "over": {
+      "title": "Above the plan's limit",
+      "spaces": "You have {{used}} spaces and the {{plan}} plan allows {{limit}}. Nothing was removed; to create new ones, get back under the limit or change plan.",
+      "people": "{{space}} has {{used}} people and the {{plan}} plan allows {{limit}}. Nobody was removed; to invite more, get back under the limit or change plan."
+    },
+    "suggest": "On demand should cost {{projected}} this month. Basic costs {{basic}}. Switch?",
+    "suggestAction": "Change to Basic",
+    "confirmFree": {
+      "title": "Back to Free?",
+      "body": "Your plan continues until {{date}}. Nothing is removed.",
+      "submit": "Back to Free"
+    },
+    "confirmSchedule": {
+      "title": "Change to On demand?",
+      "body": "Your {{plan}} plan continues until {{date}}. On demand starts that day and is billed at the end of each month on the highest use.",
+      "submit": "Confirm"
+    },
+    "pending": {
+      "title": "There is an open invoice for your plan.",
+      "body": "Pay the open invoice before changing plan.",
+      "submit": "Pay"
+    },
+    "name": {
+      "title": "Name on the invoice",
+      "label": "Full name",
+      "submit": "Continue"
+    },
+    "toast": {
+      "changed": "Plan changed.",
+      "scheduled": "Change scheduled for {{date}}.",
+      "invoiceNoLink": "Invoice created. Pay it in the portal.",
+      "openInvoice": "Open invoice",
+      "freeScheduled": "Your plan ends on {{date}}."
+    },
+    "outside": {
+      "title": "The plan is the person's.",
+      "description": "Open Personal to see it.",
+      "action": "Open Personal"
+    }
   }
 }

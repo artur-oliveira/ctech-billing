@@ -8,7 +8,7 @@ import {apiClient, isSpaceNotFound} from "@/lib/api/client"
 import type {
   Account, Bill, BillPatch, Card, CardPatch, CardStatement, CashFlow, CurrentSpace, Direction, DRE, FinanceSpaces, ListResponse, NewAccount, NewBill,
   NewCard, NewPurchase, NewRecurrence, NewTransfer, Purchase, Occurrence, OpeningBalance, PreviewInput, ProjectionMonth, Recurrence, RecurrenceOccurrences, RecurrencePatch,
-  Settings, Settlement, Statement, CsvMapping, ImportDetail, ImportSummary, LineResult, NewImport,
+  ChoosePlan, PlanState, Settings, Settlement, Statement, CsvMapping, ImportDetail, ImportSummary, LineResult, NewImport,
 } from "@/lib/api/financeTypes"
 import {getSpace, PERSONAL, type Space, setSpace, spaceHeader} from "@/lib/console/space"
 import type {Mode} from "@/lib/console/mode"
@@ -103,6 +103,9 @@ export const financeKeys = {
     ["finance", mode, spaceHeader(space), "card-statement", cardId, month] as const,
   purchases: (mode: Mode, space: Space, cardId: string) => ["finance", mode, spaceHeader(space), "purchases", cardId] as const,
   imports: (mode: Mode, space: Space, accountId: string) => ["finance", mode, spaceHeader(space), "imports", accountId] as const,
+  // No mode: the plan is always read live (tenant zero), so a change made from
+  // test mode must show in live mode too.
+  plan: (_mode: Mode, space: Space) => ["finance", "plan", spaceHeader(space)] as const,
   importDetail: (mode: Mode, space: Space, id: string) => ["finance", mode, spaceHeader(space), "import", id] as const,
   csvMapping: (mode: Mode, space: Space, accountId: string) => ["finance", mode, spaceHeader(space), "csv-mapping", accountId] as const,
   spaces: () => ["finance", "spaces"] as const,
@@ -254,4 +257,18 @@ export async function fileToBase64(file: Blob): Promise<string> {
   let binary = ""
   for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
   return btoa(binary)
+}
+
+// --- plan (Pessoal only; always tenant zero, live) ---------------------------------
+
+export const getPlan = (c: FinanceCtx) => read<PlanState>(c, "/plan")
+export const choosePlan = (c: FinanceCtx, body: ChoosePlan, idempotencyKey: string) =>
+  write<PlanState>(c, "POST", "/plan", body, idempotencyKey)
+export const cancelPlan = (c: FinanceCtx, idempotencyKey: string) =>
+  write<PlanState>(c, "POST", "/plan/cancel", {}, idempotencyKey)
+
+/** The 409 that says "pay the first invoice before changing plan". */
+export function isPlanPaymentPending(e: unknown): {invoice_id?: string; checkout_url?: string} | null {
+  const data = (e as {response?: {status?: number; data?: Record<string, string>}})?.response
+  return data?.status === 409 && data.data?.code === "plan_payment_pending" ? data.data : null
 }

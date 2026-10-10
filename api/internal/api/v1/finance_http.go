@@ -164,6 +164,13 @@ func registerFinance(v1 fiber.Router, d Deps, auth fiber.Handler, clock func() t
 	idem := middleware.SpaceIdempotency(d.Idempotency, clock)
 	fin := v1.Group("/console/finance", auth)
 	mountSpaces(fin, h)
+	if d.FinancePlan.Enabled() {
+		ph := &planHandlers{handlers: &handlers{clock: clock}, plan: d.FinancePlan, spaces: d.SpaceLister}
+		if checkoutMounted(d) {
+			ph.handlers.links = d.Links
+		}
+		mountPlan(fin, d.Spaces, idem, ph)
+	}
 	mountFinance(fin, d.Spaces, idem, func(r financeRoute) fiber.Handler { return h.ensuringSpace(r.Handler(h)) })
 }
 

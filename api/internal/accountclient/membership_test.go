@@ -171,3 +171,22 @@ func TestOrganizationsCarryTheKind(t *testing.T) {
 		t.Fatalf("got %+v, %v", got, err)
 	}
 }
+func TestOrganizationsCarryCountsOnOwnedPersonalWorkspaces(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"organizations":[
+		  {"id":"a","display_name":"Casa","role":"owner","kind":"personal","people":3,"pending_invitations":1},
+		  {"id":"b","display_name":"Viagem","role":"viewer","kind":"personal"}]}`))
+	}))
+	defer srv.Close()
+	c := &Client{http: srv.Client(), baseURL: srv.URL}
+	got, err := c.organizationsWithToken(context.Background(), "tok", "alice")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got[0].People == nil || *got[0].People != 3 || got[0].PendingInvitations == nil || *got[0].PendingInvitations != 1 {
+		t.Fatalf("owned = %+v", got[0])
+	}
+	if got[1].People != nil || got[1].PendingInvitations != nil {
+		t.Fatalf("a space not owned has no counts: %+v", got[1])
+	}
+}

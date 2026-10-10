@@ -1,6 +1,6 @@
 # Spec — Plans: CTech Finanças plans, level metering, organization customers
 
-Status: **Deploy step 1 implemented (2026-10-10)** · 2026-10-10 ·
+Status: **Deploy steps 1 and 3 implemented (2026-10-10)** · 2026-10-10 ·
 Builds on: [`2026-10-09-shared-spaces-design.md`](2026-10-09-shared-spaces-design.md) § 7 (the deferred plan table),
 [ADR 0008](../adr/0008-opaque-metadata.md) (price metadata is opaque), [ADR 0025](../adr/0025-spaces-personal-and-organization.md)
 (the portal selector amendment), [ADR 0027](../adr/0027-personal-workspaces-in-account.md) ·
@@ -193,6 +193,12 @@ invoiced is corrected by a credit note, as today.
   Never automatic.
 - **Phone**: its own layout — usage first, plan cards stacked, one primary action.
 
+**As built (deploy step 3):** `GET /v1.0/console/finance/plan`, `POST /plan` and `POST /plan/cancel`, Pessoal
+only (`404 plan_personal_only` elsewhere), always against tenant zero in live mode whatever the console's mode
+(the screen says so in test mode). A paid plan whose first invoice is still open answers `409
+plan_payment_pending` with that invoice's link when another plan is chosen. *Voltar ao Free* is a cancellation
+at the period end.
+
 ## 8. Organization customers
 
 What the DF-e needs (its spec § 1):
@@ -287,3 +293,16 @@ Recorded while writing the implementation plans
 6. **Credentials are scoped to an owner.** `dfe-billing` was not actually scoped to `dfe` in code (§ 4 assumed it was);
    deploy step 1 adds `owner_key` to credentials, and the seed scopes `dfe-billing` to `dfe` and `account-billing` to
    `finance`. `default` and the 200-instead-of-404 answer apply only when the caller sends `owner_key`.
+
+## Amendment, 2026-10-10 — final review of deploy step 3
+
+- **A plan is a whole price set.** `POST /plan` accepts exactly the prices of one plan, grouped by
+  `metadata.plan` — the one metadata key billing reads, as a grouping label and never a quota (a narrow exception
+  to ADR 0008). A subset is refused: either on-demand price alone carries the unlimited quotas and would meter
+  only half of them.
+- **One plan choice at a time per person**, under a 30-second lease on the customer, so two first choices cannot
+  both subscribe.
+- **The projection and the close share one carried-in rule** (`LevelRepository.CarriedIn`).
+- **The per-customer subscription lookup reads the whole tenant partition** (it follows the continuation key):
+  a filtered Query applies its limit before the filter, and one page made a subscriber past it invisible to the
+  portal, the plan screen and entitlements. An index by customer is the follow-up when the tenant grows.

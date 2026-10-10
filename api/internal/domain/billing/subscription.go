@@ -74,7 +74,8 @@ var subscriptionTransitions = map[edge[SubscriptionStatus]][]rule{
 	// later, during the argument about it.
 	{SubscriptionActive, SubscriptionActive}: {
 		{event: EventSubscriptionRenewed, causes: []Cause{CauseRenewal}},
-		{event: EventSubscriptionUpdated, causes: []Cause{CauseScheduleCancel, CauseManual, CauseCustomer}},
+		// CauseScheduler: the sweep applies a change scheduled for the boundary.
+		{event: EventSubscriptionUpdated, causes: []Cause{CauseScheduleCancel, CauseManual, CauseCustomer, CauseScheduler}},
 	},
 	{SubscriptionActive, SubscriptionPastDue}: {{
 		event:  EventSubscriptionPastDue,
@@ -151,6 +152,8 @@ type Subscription struct {
 	// scheduler performs the actual transition when the period closes.
 	CancelAtPeriodEnd bool   `dynamodbav:"cancel_at_period_end" json:"cancel_at_period_end"`
 	CancelReason      string `dynamodbav:"cancel_reason,omitempty" json:"cancel_reason,omitempty"`
+	// PendingChange is a plan change scheduled for the end of the current period.
+	PendingChange *PendingChange `dynamodbav:"pending_change,omitempty" json:"pending_change,omitempty"`
 
 	// OwnerKey names the service whose product this subscription is for, copied
 	// from that product when the subscription is created. It routes every event
@@ -211,4 +214,12 @@ func (s *Subscription) Transition(to SubscriptionStatus, cause Cause) ([]EventTy
 		s.PeriodIndex++
 	}
 	return []EventType{event}, nil
+}
+
+// PendingChange is a plan change the customer asked for, applied by the sweep
+// at the boundary `At` (the end of the period already paid for). Until then
+// the subscription's items — and so its entitlement — are unchanged.
+type PendingChange struct {
+	PriceIDs []string   `dynamodbav:"price_ids" json:"price_ids"`
+	At       brcal.Date `dynamodbav:"at"        json:"at"`
 }

@@ -79,7 +79,8 @@
       "recurrence": "Recorrência",
       "transfer": "Transferir",
       "account": "Nova conta"
-    }
+    },
+    "plan": "Plano"
   },
   "space": {
     "label": "Espaço",
@@ -415,5 +416,88 @@
   "shell": {
     "product": "Finanças",
     "testBanner": "Modo de teste. Nada aqui é real."
+  },
+  "plan": {
+    "title": "Plano",
+    "description": "Quantos espaços você pode criar e quantas pessoas cabem em cada um.",
+    "liveOnly": "Planos são sempre do modo real.",
+    "names": {
+      "free": "Free",
+      "basic": "Basic",
+      "pro": "Pro",
+      "ondemand": "Sob demanda"
+    },
+    "current": "Seu plano",
+    "perMonth": "{{amount}} por mês",
+    "free": "Grátis",
+    "spaces_one": "{{count}} espaço extra",
+    "spaces_other": "{{count}} espaços extras",
+    "spacesUnlimited": "Espaços ilimitados",
+    "people_one": "{{count}} pessoa por espaço",
+    "people_other": "{{count}} pessoas por espaço",
+    "peopleUnlimited": "Pessoas ilimitadas",
+    "meteredSpaces": "{{amount}} por espaço além do 1º",
+    "meteredPeople": "{{amount}} por pessoa além da 1ª",
+    "meteredNote": "Cobrado no fim do mês pelo maior uso.",
+    "projected": "Previsão do mês: {{amount}}",
+    "subscribe": "Assinar",
+    "changeTo": "Mudar para {{plan}}",
+    "backToFree": "Voltar ao Free",
+    "pay": "Pagar fatura",
+    "keep": "Manter {{plan}}",
+    "endsOn": "Termina em {{date}}",
+    "changesOn": "Muda para {{plan}} em {{date}}",
+    "startsOn": "Começa em {{date}}",
+    "usage": {
+      "title": "Seu uso",
+      "spaces": "{{used}} de {{limit}} espaços",
+      "space": "{{name}} · {{used}} de {{limit}} pessoas",
+      "pending_one": "inclui {{count}} convite pendente",
+      "pending_other": "inclui {{count}} convites pendentes",
+      "unavailable": "Não foi possível ver o uso agora.",
+      "spacesUnlimited_one": "{{count}} espaço",
+      "spacesUnlimited_other": "{{count}} espaços",
+      "spaceUnlimited_one": "{{name}} · {{count}} pessoa",
+      "spaceUnlimited_other": "{{name}} · {{count}} pessoas"
+    },
+    "over": {
+      "title": "Acima do limite do plano",
+      "spaces": "Você tem {{used}} espaços e o plano {{plan}} permite {{limit}}. Nada foi removido; para criar novos, volte ao limite ou mude de plano.",
+      "people": "{{space}} tem {{used}} pessoas e o plano {{plan}} permite {{limit}}. Ninguém foi removido; para convidar mais, volte ao limite ou mude de plano."
+    },
+    "suggest": "Este mês o Sob demanda deve custar {{projected}}. O Basic custa {{basic}}. Quer mudar?",
+    "suggestAction": "Mudar para Basic",
+    "confirmFree": {
+      "title": "Voltar ao Free?",
+      "body": "Seu plano continua até {{date}}. Nada é removido.",
+      "submit": "Voltar ao Free"
+    },
+    "confirmSchedule": {
+      "title": "Mudar para Sob demanda?",
+      "body": "Seu plano {{plan}} continua até {{date}}. O Sob demanda começa nesse dia e é cobrado no fim de cada mês pelo maior uso.",
+      "submit": "Confirmar"
+    },
+    "pending": {
+      "title": "Há uma fatura em aberto do seu plano.",
+      "body": "Pague a fatura aberta antes de mudar de plano.",
+      "submit": "Pagar"
+    },
+    "name": {
+      "title": "Nome na fatura",
+      "label": "Nome completo",
+      "submit": "Continuar"
+    },
+    "toast": {
+      "changed": "Plano alterado.",
+      "scheduled": "Mudança agendada para {{date}}.",
+      "invoiceNoLink": "Fatura criada. Pague pelo portal.",
+      "openInvoice": "Abrir fatura",
+      "freeScheduled": "Seu plano termina em {{date}}."
+    },
+    "outside": {
+      "title": "O plano é da pessoa.",
+      "description": "Abra Pessoal para vê-lo.",
+      "action": "Abrir Pessoal"
+    }
   }
 }

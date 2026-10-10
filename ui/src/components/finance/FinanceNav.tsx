@@ -5,6 +5,7 @@ import Link from "next/link"
 import {usePathname, useRouter} from "next/navigation"
 import {useTranslation} from "react-i18next"
 
+import {useSpace} from "@/lib/console/useSpace"
 import {selectCopy} from "@/lib/selectCopy"
 
 // "Resumo" (not "Visão geral") "Visão geral": the console's own nav already has a "Visão geral"
@@ -18,6 +19,8 @@ export const FINANCE_SECTIONS = [
   {href: "/finance/recurrences", key: "recurrences"},
   {href: "/finance/reports", key: "reports"},
   {href: "/finance/accounts", key: "accounts"},
+  // The plan is the person's (plans spec D2): listed in Pessoal only.
+  {href: "/finance/plans", key: "plan", personalOnly: true},
 ] as const
 
 /** The section a path belongs to; Resumo when none matches. */
@@ -36,14 +39,16 @@ export function FinanceNav() {
   const pathname = usePathname()
   const router = useRouter()
   const current = currentFinanceSection(pathname)
+  const personal = useSpace().kind === "personal"
+  const sections = FINANCE_SECTIONS.filter(s => personal || !("personalOnly" in s))
   return (
     <>
       <div className="hidden md:block lg:hidden">
-        <Select {...selectCopy()} aria-label={t("finance.nav.section")} value={current} onValueChange={href => router.push(href)} options={FINANCE_SECTIONS.map(s => ({value: s.href, label: t(`finance.nav.${s.key}`)}))}/>
+        <Select {...selectCopy()} aria-label={t("finance.nav.section")} value={current} onValueChange={href => router.push(href)} options={sections.map(s => ({value: s.href, label: t(`finance.nav.${s.key}`)}))}/>
       </div>
       <nav aria-label={t("finance.nav.label")} className="hidden lg:block">
         <ul className="space-y-0.5 border-l border-border">
-          {FINANCE_SECTIONS.map(s => {
+          {sections.map(s => {
             const active = s.href === current
             return (
               <li key={s.href}>
