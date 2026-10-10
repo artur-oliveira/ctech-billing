@@ -51,7 +51,10 @@ func NewFinancePlan(customers *repositories.CustomerRepository, subs *repositori
 // Enabled is false where no tenant zero is configured.
 func (s *FinancePlan) Enabled() bool { return s != nil && s.tenant != "" }
 
-type LevelView struct{ Current, Peak int64 }
+type LevelView struct {
+	Current int64 `json:"current"`
+	Peak    int64 `json:"peak"`
+}
 
 type PlanState struct {
 	Subscription   *billing.Subscription
@@ -263,17 +266,22 @@ func (s *FinancePlan) Choose(ctx context.Context, in ChooseInput, now time.Time)
 	if err != nil {
 		return nil, nil, err
 	}
-	if sub.Status == billing.SubscriptionIncomplete {
-		return nil, nil, &PlanPaymentPending{Invoice: open}
-	}
 	current, err := s.subs.ListItems(ctx, s.tenant, true, sub.ID)
 	if err != nil {
 		return nil, nil, err
 	}
 	change := ChangeInput{Items: items, Cause: billing.CauseCustomer, Actor: actor, RequestID: in.RequestID}
 	if samePrices(current, in.PriceIDs) {
-		// The current plan again: drop a change scheduled away from it.
+		// The current plan again — a double click, or a retry while the first
+		// invoice is still open — is the current state, never an error; it also
+		// drops a change scheduled away from it.
+		if sub.Status == billing.SubscriptionIncomplete {
+			return sub, open, nil
+		}
 		return sub, open, s.subscriber.ClearPlanChange(ctx, sub, change, now)
+	}
+	if sub.Status == billing.SubscriptionIncomplete {
+		return nil, nil, &PlanPaymentPending{Invoice: open}
 	}
 	newTiming, err := s.timingOf(ctx, in.PriceIDs[0])
 	if err != nil {

@@ -17,11 +17,13 @@ import (
 // Deps is everything the routes need, passed explicitly rather than assembled
 // from a container here — wiring belongs in one place, and that place is app.
 type Deps struct {
-	Customers     *repositories.CustomerRepository
-	Subs          *repositories.SubscriptionRepository
-	Invoices      *repositories.InvoiceRepository
-	Usage         *repositories.UsageRepository
-	Levels        *repositories.LevelRepository
+	Customers *repositories.CustomerRepository
+	Subs      *repositories.SubscriptionRepository
+	Invoices  *repositories.InvoiceRepository
+	Usage     *repositories.UsageRepository
+	Levels    *repositories.LevelRepository
+	// FinancePlan is Finanças → Plano; disabled without a portal organization.
+	FinancePlan   *services.FinancePlan
 	Catalog       *repositories.CatalogRepository
 	Credentials   *repositories.CredentialRepository
 	Idempotency   *repositories.IdempotencyRepository

@@ -15,6 +15,7 @@ import (
 	"gopkg.aoctech.app/billing/api/internal/domain/finance"
 	"gopkg.aoctech.app/billing/api/internal/domain/finance/statement"
 	"gopkg.aoctech.app/billing/api/internal/repositories"
+	"gopkg.aoctech.app/billing/api/internal/services"
 	"gopkg.aoctech.app/billing/api/internal/space"
 )
 
@@ -278,6 +279,13 @@ func FromError(err error) *Problem {
 	case errors.Is(err, repositories.ErrUserAlreadyCustomer):
 		return New(409, TypeInvalidTransition, "Already a Customer",
 			"this account is already a customer of this organization").WithCode("user_already_customer")
+	case errors.Is(err, services.ErrNotAPlanPrice):
+		return Unprocessable(err.Error()).WithCode("not_a_plan_price")
+	case errors.Is(err, services.ErrCustomerRefMismatch):
+		return New(409, TypeInvalidTransition, "Customer Mismatch",
+			"this account's billing customer is not set up for plans; contact support").WithCode("customer_ref_mismatch")
+	case errors.Is(err, services.ErrNoFinancePlan):
+		return NotFound("no plan to cancel").WithCode("no_finance_plan")
 	case errors.Is(err, repositories.ErrDuplicateUsage):
 		// A repeated usage report is the caller's retry succeeding, not a
 		// failure. Reporting it as an error would make every well-behaved

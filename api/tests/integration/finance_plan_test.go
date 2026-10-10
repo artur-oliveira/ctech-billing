@@ -4,14 +4,17 @@ package integration
 
 import (
 	"errors"
+	"net/http"
 	"os"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"gopkg.aoctech.app/billing/api/internal/config"
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
 	"gopkg.aoctech.app/billing/api/internal/domain/id"
+	"gopkg.aoctech.app/billing/api/internal/middleware"
 	"gopkg.aoctech.app/billing/api/internal/provision"
 	"gopkg.aoctech.app/billing/api/internal/repositories"
 	"gopkg.aoctech.app/billing/api/internal/services"
@@ -245,5 +248,159 @@ func payInvoice(t *testing.T, tenant string, inv *billing.Invoice) {
 	}
 	if _, err := subs.Transition(ctx, sub, billing.SubscriptionActive, billing.CauseInvoicePaid, "test", "r", now()); err != nil {
 		t.Fatal(err)
+	}
+}
+
+type planEnv struct {
+	*apiEnv
+	account *fakeAccount
+	tenant  string
+}
+
+func newPlanEnv(t *testing.T) planEnv {
+	t.Helper()
+	tenant := seedCTechCatalogue(t)
+	acct := &fakeAccount{members: map[string][2]string{}, names: map[string]string{}, counts: map[string][2]int{}}
+	srv := acct.serve(t)
+	e := newAPIWith(t, func(c *config.Config) {
+		c.PortalOrganizationID = tenant
+		c.AccountBaseURL, c.AccountTokenURL = srv.URL, srv.URL+"/token"
+		c.AccountClientID, c.AccountClientSecret = "billing-test", "secret"
+	})
+	return planEnv{apiEnv: e, account: acct, tenant: tenant}
+}
+
+func (p planEnv) call(t *testing.T, token, selector, method, path, body string) apiResponse {
+	t.Helper()
+	return spacesEnv{apiEnv: p.apiEnv, account: p.account}.in(t, token, selector, method, path, body)
+}
+
+type planBody struct {
+	Subscription *struct {
+		Status   string   `json:"status"`
+		PriceIDs []string `json:"price_ids"`
+	} `json:"subscription"`
+	OpenInvoice *struct {
+		ID          string `json:"id"`
+		CheckoutURL string `json:"checkout_url"`
+	} `json:"open_invoice"`
+	Prices []struct {
+		ID string `json:"id"`
+	} `json:"prices"`
+	Usage struct {
+		Unavailable bool `json:"unavailable"`
+		Spaces      []struct {
+			ID                 string `json:"id"`
+			People             int    `json:"people"`
+			PendingInvitations int    `json:"pending_invitations"`
+		} `json:"spaces"`
+	} `json:"usage"`
+	Invoice *struct {
+		ID string `json:"id"`
+	} `json:"invoice"`
+}
+
+// Spec test 7.
+func TestSubscribingFromThePlanScreenCreatesTheCustomerOnce(t *testing.T) {
+	p := newPlanEnv(t)
+	sub := "usr_" + id.New()
+	tok := p.token(t, sub, "sess_"+id.New(), middleware.ScopeFinanceRead, middleware.ScopeFinanceWrite)
+	for i := 0; i < 2; i++ {
+		r := p.call(t, tok, "personal", http.MethodPost, "/plan", `{"price_ids":["price_finance_basic_monthly"],"name":"Ana"}`)
+		if r.status != http.StatusOK {
+			t.Fatalf("choose %d: %d %s", i, r.status, r.body)
+		}
+	}
+	var b planBody
+	p.call(t, tok, "personal", http.MethodGet, "/plan", "").decode(t, &b)
+	if b.Subscription == nil || b.Subscription.Status != "INCOMPLETE" || b.OpenInvoice == nil {
+		t.Fatalf("state = %+v", b)
+	}
+	if _, err := repositories.NewCustomerRepository(testDB, testCfg).GetByExternalRef(ctxT(t), p.tenant, true, "USER_"+sub); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestPlanUsageComesFromOwnedPersonalSpaces(t *testing.T) {
+	p := newPlanEnv(t)
+	sub := "usr_" + id.New()
+	owned, shared, org := newSpaceOrgID(), newSpaceOrgID(), newSpaceOrgID()
+	p.account.set(owned, sub, "personal", "owner")
+	p.account.count(owned, 3, 1)
+	p.account.set(shared, sub, "personal", "member")
+	p.account.set(org, sub, "organization", "owner")
+	var b planBody
+	p.call(t, p.token(t, sub, "s", middleware.ScopeFinanceRead), "personal", http.MethodGet, "/plan", "").decode(t, &b)
+	if b.Usage.Unavailable || len(b.Usage.Spaces) != 1 || b.Usage.Spaces[0].ID != owned ||
+		b.Usage.Spaces[0].People != 3 || b.Usage.Spaces[0].PendingInvitations != 1 {
+		t.Fatalf("usage = %+v", b.Usage)
+	}
+	if len(b.Prices) != 5 {
+		t.Fatalf("%d finance prices", len(b.Prices))
+	}
+}
+
+// Review Focus 2.
+func TestUsageUnavailableStillAnswers(t *testing.T) {
+	p := newPlanEnv(t)
+	sub := "usr_" + id.New()
+	ws := newSpaceOrgID()
+	p.account.set(ws, sub, "personal", "owner") // no counts: an older ctech-account
+	var b planBody
+	r := p.call(t, p.token(t, sub, "s", middleware.ScopeFinanceRead), "personal", http.MethodGet, "/plan", "")
+	r.decode(t, &b)
+	if r.status != 200 || !b.Usage.Unavailable || len(b.Prices) != 5 {
+		t.Fatalf("%d %+v", r.status, b)
+	}
+}
+
+// Review Focus 5.
+func TestThePlanIsPessoalOnly(t *testing.T) {
+	p := newPlanEnv(t)
+	sub := "usr_" + id.New()
+	ws, org := newSpaceOrgID(), newSpaceOrgID()
+	p.account.set(ws, sub, "personal", "owner")
+	p.account.set(org, sub, "organization", "owner")
+	tok := p.token(t, sub, "s", middleware.ScopeFinanceRead, middleware.ScopeFinanceWrite)
+	for _, sel := range []string{"org:" + ws, "org:" + org, "org:" + newSpaceOrgID()} {
+		if r := p.call(t, tok, sel, http.MethodGet, "/plan", ""); r.status != http.StatusNotFound {
+			t.Errorf("%s: %d %s", sel, r.status, r.body)
+		}
+	}
+}
+
+func TestAPendingFirstInvoiceIsA409WithItsLink(t *testing.T) {
+	p := newPlanEnv(t)
+	sub := "usr_" + id.New()
+	tok := p.token(t, sub, "s", middleware.ScopeFinanceRead, middleware.ScopeFinanceWrite)
+	p.call(t, tok, "personal", http.MethodPost, "/plan", `{"price_ids":["price_finance_basic_monthly"],"name":"Ana"}`)
+	r := p.call(t, tok, "personal", http.MethodPost, "/plan", `{"price_ids":["price_finance_pro_monthly"],"name":"Ana"}`)
+	if r.status != http.StatusConflict || !strings.Contains(string(r.body), "plan_payment_pending") || !strings.Contains(string(r.body), "invoice_id") {
+		t.Fatalf("%d %s", r.status, r.body)
+	}
+}
+
+// With the wallet configured, choosing a paid plan answers the invoice's
+// checkout link — what the screen redirects to.
+func TestTheChoiceCarriesTheCheckoutURL(t *testing.T) {
+	tenant := seedCTechCatalogue(t)
+	acct := &fakeAccount{members: map[string][2]string{}, names: map[string]string{}, counts: map[string][2]int{}}
+	srv := acct.serve(t)
+	fake := newFakeWallet(t)
+	e := newAPIWith(t, func(c *config.Config) {
+		c.PortalOrganizationID = tenant
+		c.AccountBaseURL, c.AccountTokenURL = srv.URL, srv.URL+"/token"
+		c.AccountClientID, c.AccountClientSecret = "billing-test", "secret"
+		c.WalletBaseURL, c.WalletTokenURL = fake.server.URL, fake.server.URL+"/token"
+		c.WalletClientID, c.WalletClientSecret = "billing", "secret"
+		c.WalletWebhookSecret = testWalletSecret
+		c.CheckoutLinkSecret = testLinkSecret
+		c.CheckoutBaseURL = "https://pay.test/c"
+	})
+	p := planEnv{apiEnv: e, account: acct, tenant: tenant}
+	tok := p.token(t, "usr_"+id.New(), "sess_"+id.New(), middleware.ScopeFinanceRead, middleware.ScopeFinanceWrite)
+	r := p.call(t, tok, "personal", http.MethodPost, "/plan", `{"price_ids":["price_finance_basic_monthly"],"name":"Ana"}`)
+	if r.status != http.StatusOK || !strings.Contains(string(r.body), `"checkout_url":"https://pay.test/c`) {
+		t.Fatalf("%d %s", r.status, r.body)
 	}
 }

@@ -136,6 +136,7 @@ func Build(ctx context.Context, cfg *config.Config, clock func() time.Time) (*fi
 		Invoices:    invoices,
 		Usage:       usage,
 		Levels:      levels,
+		FinancePlan: services.NewFinancePlan(customers, subs, invoices, catalog, levels, subscriber, cfg.PortalOrganizationID),
 		Catalog:     catalog,
 		Credentials: creds,
 		Idempotency: idem,

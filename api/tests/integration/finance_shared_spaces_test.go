@@ -30,6 +30,16 @@ type fakeAccount struct {
 	members map[string][2]string // "ws|user" -> {kind, role}
 	names   map[string]string    // ws -> display name
 	listed  []string             // user ids the list route was asked about
+	counts  map[string][2]int    // ws -> {people, pending}, as on owned personal spaces
+}
+
+func (a *fakeAccount) count(ws string, people, pending int) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.counts == nil {
+		a.counts = map[string][2]int{}
+	}
+	a.counts[ws] = [2]int{people, pending}
 }
 
 func (a *fakeAccount) set(ws, user, kind, role string) {
@@ -63,11 +73,15 @@ func (a *fakeAccount) serve(t *testing.T) *httptest.Server {
 		case strings.HasPrefix(r.URL.Path, "/v1.0/internal/users/"):
 			user := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/v1.0/internal/users/"), "/organizations")
 			a.listed = append(a.listed, user)
-			out := []map[string]string{}
+			out := []map[string]any{}
 			for k, m := range a.members {
 				ws, u, _ := strings.Cut(k, "|")
 				if u == user {
-					out = append(out, map[string]string{"id": ws, "display_name": a.names[ws], "kind": m[0], "role": m[1]})
+					entry := map[string]any{"id": ws, "display_name": a.names[ws], "kind": m[0], "role": m[1]}
+					if c, ok := a.counts[ws]; ok {
+						entry["people"], entry["pending_invitations"] = c[0], c[1]
+					}
+					out = append(out, entry)
 				}
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{"organizations": out})
