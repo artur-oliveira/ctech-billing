@@ -16,6 +16,35 @@ const (
 	PriceMetered PriceType = "metered"
 )
 
+// Aggregation is how a metered price turns a period's reports into units.
+type Aggregation string
+
+const (
+	// AggregationSum adds every usage record of the period. The default: an
+	// empty Aggregation is sum, which is what every price before plans was.
+	AggregationSum Aggregation = "sum"
+	// AggregationMax bills the highest level reached in the period, the level
+	// carried in from before it included (spec § 6.3). Levels belong to the
+	// customer reference and the meter, not to a subscription item.
+	AggregationMax Aggregation = "max"
+)
+
+// ValidMeter accepts a meter name: lower-case letters, digits and "_", starting
+// with a letter, at most 40 characters. It becomes part of a partition key, so
+// it must not be able to carry "#".
+func ValidMeter(s string) bool {
+	if len(s) == 0 || len(s) > 40 || s[0] < 'a' || s[0] > 'z' {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '_') {
+			return false
+		}
+	}
+	return true
+}
+
 // ErrInvalidPrice reports a price that cannot be billed.
 var ErrInvalidPrice = errors.New("invalid price")
 
@@ -54,6 +83,11 @@ type Product struct {
 	// because there is no defensible way to pick one of them and choosing the
 	// first item's would make the answer depend on insertion order.
 	DunningPolicy DunningSchedule `dynamodbav:"dunning_policy,omitempty" json:"dunning_policy,omitempty"`
+	// DefaultPriceID names the price whose metadata describes a customer with no
+	// entitling subscription for this product (spec § 3). Catalogue
+	// configuration: billing carries that metadata, it never reads it (ADR 0008).
+	// The tenant plan refuses one that is not a free fixed price of this product.
+	DefaultPriceID string `dynamodbav:"default_price_id,omitempty" json:"default_price_id,omitempty"`
 
 	Metadata Metadata `dynamodbav:"metadata,omitempty" json:"metadata,omitempty"`
 }
@@ -80,6 +114,15 @@ type Price struct {
 
 	Recurrence Recurrence    `dynamodbav:"recurrence"     json:"recurrence"`
 	Timing     BillingTiming `dynamodbav:"billing_timing" json:"billing_timing"`
+
+	// Aggregation, Meter and IncludedQuantity are pricing parameters of a
+	// metered price, first-class because billing reads them (unlike metadata,
+	// ADR 0008). Empty Aggregation is sum. Meter is required for max: it is the
+	// name levels are reported under. IncludedQuantity units are not charged in
+	// each period, for sum and max alike.
+	Aggregation      Aggregation `dynamodbav:"aggregation,omitempty"       json:"aggregation,omitempty"`
+	Meter            string      `dynamodbav:"meter,omitempty"             json:"meter,omitempty"`
+	IncludedQuantity int64       `dynamodbav:"included_quantity,omitempty" json:"included_quantity,omitempty"`
 
 	// Archived hides the price from the catalogue. It does not affect
 	// subscriptions already on it — that is the point of immutability.
@@ -111,6 +154,23 @@ func (p *Price) Validate() error {
 	}
 	if p.Timing != BillAdvance && p.Timing != BillArrears {
 		return fmt.Errorf("%w: unknown billing timing %q", ErrInvalidPrice, p.Timing)
+	}
+	switch p.Aggregation {
+	case "", AggregationSum, AggregationMax:
+	default:
+		return fmt.Errorf("%w: unknown aggregation %q", ErrInvalidPrice, p.Aggregation)
+	}
+	if p.Type != PriceMetered && (p.Aggregation != "" || p.Meter != "" || p.IncludedQuantity != 0) {
+		return fmt.Errorf("%w: only a metered price aggregates, names a meter or includes units", ErrInvalidPrice)
+	}
+	if p.Aggregation == AggregationMax && p.Meter == "" {
+		return fmt.Errorf("%w: a max price names the meter its levels are reported under", ErrInvalidPrice)
+	}
+	if p.Meter != "" && !ValidMeter(p.Meter) {
+		return fmt.Errorf("%w: meter %q is not a meter name", ErrInvalidPrice, p.Meter)
+	}
+	if p.IncludedQuantity < 0 {
+		return fmt.Errorf("%w: included quantity %d is negative", ErrInvalidPrice, p.IncludedQuantity)
 	}
 	if err := p.Metadata.Validate(); err != nil {
 		return fmt.Errorf("%w: %s", ErrInvalidPrice, err)

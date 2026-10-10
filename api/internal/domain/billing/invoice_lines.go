@@ -49,15 +49,26 @@ func FixedLine(p *Price, productName string, period Period, quantity int64) Invo
 	}
 }
 
-// MeteredLine builds the line for a closed metered period.
+// BillableUnits is what is charged of a period's units: those beyond the
+// price's included quantity, never below zero.
+func BillableUnits(units, included int64) int64 {
+	if units <= included {
+		return 0
+	}
+	return units - included
+}
+
+// MeteredLine builds the line for a closed metered period. Quantity is the
+// billed units: the included ones are not on the bill.
 func MeteredLine(p *Price, productName string, period Period, units int64) InvoiceItem {
+	billed := BillableUnits(units, p.IncludedQuantity)
 	return InvoiceItem{
 		Description: productName,
 		PriceID:     p.ID,
 		Period:      period,
-		Quantity:    units,
+		Quantity:    billed,
 		UnitAmount:  p.UnitAmount,
-		Amount:      p.UnitAmount * Cents(units),
+		Amount:      p.UnitAmount * Cents(billed),
 	}
 }
 
