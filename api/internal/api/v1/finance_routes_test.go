@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
+	"gopkg.aoctech.app/api-commons/accountorgs"
 	"gopkg.aoctech.app/api-commons/cache"
 
 	"gopkg.aoctech.app/billing/api/internal/middleware"
@@ -24,16 +25,16 @@ const (
 // holds role viewer, and so on). The workspace's kind comes from the id asked.
 type roleSource struct{}
 
-func (roleSource) Membership(_ context.Context, org, user string) (string, string, bool, error) {
+func (roleSource) Membership(_ context.Context, org, user string) (accountorgs.Membership, error) {
 	switch org {
 	case gateOrg:
-		return "organization", user, true, nil
+		return accountorgs.Membership{Member: true, Kind: "organization", Role: user}, nil
 	case gatePersonal:
-		return "personal", user, true, nil
+		return accountorgs.Membership{Member: true, Kind: "personal", Role: user}, nil
 	case gateOddKind:
-		return "team", user, true, nil
+		return accountorgs.Membership{Member: true, Kind: "team", Role: user}, nil
 	}
-	return "", "", false, nil
+	return accountorgs.Membership{}, nil
 }
 
 // gateApp mounts every finance route with the REAL chain (financeChain) and a

@@ -7,6 +7,7 @@ import (
 	"sync"
 	"testing"
 
+	"gopkg.aoctech.app/api-commons/accountorgs"
 	"gopkg.aoctech.app/api-commons/cache"
 )
 
@@ -27,15 +28,15 @@ type answer struct {
 	kind   string // raw, as ctech-account sends it; "" is an organization
 }
 
-func (f *fakeSource) Membership(_ context.Context, org, user string) (string, string, bool, error) {
+func (f *fakeSource) Membership(_ context.Context, org, user string) (accountorgs.Membership, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls++
 	if f.err != nil {
-		return "", "", false, f.err
+		return accountorgs.Membership{}, f.err
 	}
 	a := f.answers[org+"|"+user]
-	return a.kind, a.role, a.member, nil
+	return accountorgs.Membership{Member: a.member, Role: a.role, Kind: a.kind}, nil
 }
 
 func newResolver(src MembershipSource) (*Resolver, cache.Backend) {

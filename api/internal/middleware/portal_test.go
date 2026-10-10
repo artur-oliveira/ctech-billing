@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
+	"gopkg.aoctech.app/api-commons/accountorgs"
 
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
 	"gopkg.aoctech.app/billing/api/internal/repositories"
@@ -17,10 +18,10 @@ type kinded struct {
 	m     map[string][2]string // "org|user" -> {kind, role}
 }
 
-func (k *kinded) Membership(_ context.Context, org, user string) (string, string, bool, error) {
+func (k *kinded) Membership(_ context.Context, org, user string) (accountorgs.Membership, error) {
 	k.calls++
 	a, ok := k.m[org+"|"+user]
-	return a[0], a[1], ok, nil
+	return accountorgs.Membership{Member: ok, Kind: a[0], Role: a[1]}, nil
 }
 
 type portalCustomers struct{ reads int }

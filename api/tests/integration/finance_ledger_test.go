@@ -21,6 +21,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/aws/smithy-go/middleware"
 	"github.com/gofiber/fiber/v3"
+	"gopkg.aoctech.app/api-commons/accountorgs"
 	"gopkg.aoctech.app/api-commons/cache"
 
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
@@ -279,9 +280,9 @@ func corruptBalance(t *testing.T, sp space.ResolvedSpace, account string, value 
 
 type staticMembers map[string][2]string // "org|user" -> {kind, role}
 
-func (m staticMembers) Membership(_ context.Context, org, user string) (string, string, bool, error) {
+func (m staticMembers) Membership(_ context.Context, org, user string) (accountorgs.Membership, error) {
 	a, ok := m[org+"|"+user]
-	return a[0], a[1], ok, nil
+	return accountorgs.Membership{Member: ok, Kind: a[0], Role: a[1]}, nil
 }
 
 // countingClient returns a DynamoDB client that counts every API call it makes.
