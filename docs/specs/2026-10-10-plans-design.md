@@ -106,7 +106,7 @@ it; the contract is:
 - Billing unreachable or erroring at the read → **503**, *"Não foi possível verificar seu plano agora. Tente em
   instantes."* Nothing written.
 - Over the limit → **402** `plan_limit`, with `limit`, `used` and the plan. The handoff shows it with a
-  *"Ver planos"* link to `{BILLING}/finance/plano`.
+  *"Ver planos"* link to `{BILLING}/finance/plans`.
 - **Concurrency:** the count and the write are guarded by a per-owner conditional counter
   (`PERSONAL_SPACES#{owner}`) for spaces and a per-workspace one for people, in the same transaction as the
   write. Two tabs cannot both create the fourth space.
@@ -177,7 +177,7 @@ invoiced is corrected by a credit note, as today.
 
 ## 7. The plan screen (Finanças → Plano)
 
-`/finance/plano`, shown in the *Pessoal* space only (the plan is the person's, D2).
+`/finance/plans`, shown in the *Pessoal* space only (the plan is the person's, D2).
 
 - **Usage**: "2 de 3 espaços", and for each personal workspace "4 de 5 pessoas". Read from ctech-account's
   service route that already lists the person's workspaces, extended with member and pending-invitation counts
@@ -248,7 +248,7 @@ What the DF-e needs (its spec § 1):
 
 ## Amendment, 2026-10-10 — the plan screen's path
 
-Finanças became its own area (`/finance/*`), so the plan screen is `/finance/plano` and ctech-account's
+Finanças became its own area (`/finance/*`), so the plan screen is `/finance/plans` and ctech-account's
 *Ver planos* links there.
 
 ## Amendment, 2026-10-10 — planning
