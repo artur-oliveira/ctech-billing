@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Ship deploy step 3 of the plans spec: `/console/finance/plano`, shown in *Pessoal* only, where a person sees how many personal spaces they own and how many people each holds (read from ctech-account), the Finanças plans as cards with the current one marked, subscribes or changes plan through the existing `Subscriber` and is sent to the invoice's `checkout_url`, is told plainly when they are over a limit (nothing removed), and is offered Basic when Sob demanda is projected to cost more than it — with its own phone layout.
+**Goal:** Ship deploy step 3 of the plans spec: `/finance/plano`, shown in *Pessoal* only, where a person sees how many personal spaces they own and how many people each holds (read from ctech-account), the Finanças plans as cards with the current one marked, subscribes or changes plan through the existing `Subscriber` and is sent to the invoice's `checkout_url`, is told plainly when they are over a limit (nothing removed), and is offered Basic when Sob demanda is projected to cost more than it — with its own phone layout.
 
 **Architecture:** A service, `services.FinancePlan`, owns the three use cases (read the state, choose a plan, go back to Free) against tenant zero **live**; it reuses `CustomerRepository` (get-or-create `USER_{sub}` with its `CUSTOMER_USER#` pointer), `Subscriber.Subscribe`/`ChangePlan`/`Cancel`, `LevelRepository` and `billing.MaxLevel` (plan 1) for the on-demand projection. Three routes under `/v1.0/console/finance/plan`, mounted beside `/spaces` (outside the finance route table: they write no finance data and must not create a finance space). The usage counts come from ctech-account's existing `GET /internal/users/:user_id/organizations`, which gains `people` and `pending_invitations` on owned personal workspaces (ctech-account spec § 6). The UI interprets the price metadata (quotas) — the Go side passes it through opaque (ADR 0008).
 
@@ -30,7 +30,7 @@
 - Over-limit copy, verbatim (spec § 7): *"Você tem {n} espaços e o plano {plano} permite {limite}. Nada foi removido; para criar novos, volte ao limite ou mude de plano."* — and the people variant in the same voice: *"{espaço} tem {n} pessoas e o plano {plano} permite {limite}. Ninguém foi removido; para convidar mais, volte ao limite ou mude de plano."*
 - Phone (spec § 7): usage first, plan cards stacked, one primary action.
 - Plan changes (spec amendment 2026-10-10, planning): Basic/Pro → Sob demanda is **scheduled** for the end of the paid period, the current plan's limits hold until then; Sob demanda → Basic/Pro is immediate under the existing change rules.
-- Route: `/console/finance/plano`. ctech-account links `{BILLING}/console/finance/plano` — never rename.
+- Route: `/finance/plano`. ctech-account links `{BILLING}/finance/plano` — never rename.
 - Go: commands from `api/`; `gofmt -l ./internal ./cmd` (no output), `go vet ./...`, `go test ./...`, `make test-integration` (DynamoDB Local).
 - UI: from `ui/`, `npm ci` first (installed `@aoctech/ui` is 0.3.0; `package.json` asks `^0.4.1`). `npx vitest run --maxWorkers=2 <files>; echo "vitest exit=$?"` — **judge by the exit code**. `npx next typegen && npx tsc --noEmit`, `npm run lint`, `npm run build`. UI tasks are executed with the `/impeccable` skill, on `@aoctech/ui` components (`Button`, `Badge`, `Alert`, `Skeleton`, `EmptyState`, `ErrorState`, `PageHeader`, `Modal`) — check ctech-ui for a plan/pricing card before drawing one; no new dependency. Money only through `money()` (`src/lib/format.ts`). pt-BR and en.
 - Never run the Go and UI suites at the same time (the machine is resource-constrained).
@@ -63,7 +63,7 @@
 | `ui/src/dev/financeMockData.ts` (modify) | `/plan` in the mock |
 | `ui/src/lib/finance/plan.ts`, `plan.test.ts` (new) | cards from prices, quotas, over-limit, suggestion |
 | `ui/src/components/finance/PlanView.tsx`, `PlanView.test.tsx` (new) | the screen |
-| `ui/src/app/(console)/console/finance/plano/{layout,page}.tsx` (new) | the route |
+| `ui/src/app/(finance)/finance/plano/{layout,page}.tsx` (new) | the route |
 | `ui/src/components/finance/FinanceNav.tsx`, `FinanceBottomNav.tsx` (modify) | the Pessoal-only entry |
 | `ui/src/locales/{pt-BR,en}/finance.json`, `ui/DESIGN.md` (modify) | copy, design record |
 | `PLAN.md`, `docs/specs/2026-10-10-plans-design.md` (modify) | records |
@@ -1737,12 +1737,12 @@ git commit -m "feat(ui): plan cards, limits and the Basic suggestion from the ca
 ### Task 6: The screen — with `/impeccable`
 
 **Files:**
-- Create: `ui/src/components/finance/PlanView.tsx`, `ui/src/components/finance/PlanView.test.tsx`, `ui/src/app/(console)/console/finance/plano/layout.tsx`, `ui/src/app/(console)/console/finance/plano/page.tsx`
+- Create: `ui/src/components/finance/PlanView.tsx`, `ui/src/components/finance/PlanView.test.tsx`, `ui/src/app/(finance)/finance/plano/layout.tsx`, `ui/src/app/(finance)/finance/plano/page.tsx`
 - Modify: `ui/src/components/finance/FinanceNav.tsx`, `ui/src/components/finance/FinanceBottomNav.tsx`, `ui/src/components/finance/FinanceNav.test.tsx`, `ui/src/locales/{pt-BR,en}/finance.json`, `ui/DESIGN.md`
 
 **Interfaces:**
 - Consumes: Tasks 4–5; `useFinanceCtx`, `useFinanceSpaces`, `useFinanceMutation`, `useAuth().name`, `money()`, `useDocumentTitle`.
-- Produces: the route `/console/finance/plano`; `FINANCE_SECTIONS` gains `{href: "/console/finance/plano", key: "plan", personalOnly: true}`.
+- Produces: the route `/finance/plano`; `FINANCE_SECTIONS` gains `{href: "/finance/plano", key: "plan", personalOnly: true}`.
 
 - [ ] **Step 1: Run `/impeccable`** in `shape` mode for the plan screen, giving it `ui/PRODUCT.md`, `ui/DESIGN.md` (Finance section: compact density, sienna brand, danger the only saturated colour), spec § 7, decisions 4–9 of this plan and the contract below. Check `@aoctech/ui` and ctech-ui for a plan/pricing card and a usage meter first (none exists in `@aoctech/ui` 0.4.x's exports: `Badge`, `Button`, `Alert`, `EmptyState`, `ErrorState`, `PageHeader`, `Skeleton`, `Modal`, `Drawer`, `Segmented`, `Select`); if ctech-ui has one, use it; otherwise build the card from tokens and record it in `ui/DESIGN.md` as a **candidate for `@aoctech/ui`**. Required outcomes in `DESIGN.md` under "Finance → Plano": desktop layout (usage beside or above the cards), the **phone layout** (usage first, cards stacked, one primary action — the chosen card's button; others are secondary), how the current plan is marked (shape + label, never colour alone), how "unlimited" and "R$ 4,90 por espaço além do 1º" are written, the banner's place.
 
@@ -1859,7 +1859,7 @@ import type {Metadata} from "next"
 
 export const metadata: Metadata = {title: "Plano · Finanças"}
 
-export default function Layout({children}: LayoutProps<"/console/finance/plano">) {
+export default function Layout({children}: LayoutProps<"/finance/plano">) {
   return children
 }
 ```
@@ -1888,7 +1888,7 @@ export default function FinancePlanPage() {
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ui/src/components/finance ui/src/app/\(console\)/console/finance/plano ui/src/locales ui/DESIGN.md
+git add ui/src/components/finance ui/src/app/\(finance\)/finance/plano ui/src/locales ui/DESIGN.md
 git commit -m "feat(finance): Plano — usage, plans, subscribe and the over-limit banner"
 ```
 
@@ -1914,7 +1914,7 @@ git commit -m "docs: plans deploy step 3 recorded"
 
 | Spec § 7 / § 9 test 7 | Task |
 |---|---|
-| `/console/finance/plano`, Pessoal only | 3, 6 |
+| `/finance/plano`, Pessoal only | 3, 6 |
 | Usage "2 de 3 espaços", "4 de 5 pessoas", from ctech-account's route | 1, 3, 5, 6 |
 | A card per plan, current marked, subscribe/change | 4, 5, 6 |
 | `USER_{sub}` created once with the portal's pointer; change-plan service; redirect to `checkout_url` | 2, 3, 6 |

@@ -411,5 +411,9 @@
       "debitHint": "Only if the bank splits money in and money out into two columns.",
       "save": "Save columns"
     }
+  },
+  "shell": {
+    "product": "Finances",
+    "testBanner": "Test mode. Nothing here is real."
   }
 }

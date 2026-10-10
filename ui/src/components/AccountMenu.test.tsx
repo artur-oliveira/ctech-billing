@@ -51,16 +51,26 @@ describe("AccountMenu", () => {
     expect(within(menu).getByText(EMAIL)).toBeInTheDocument()
   })
 
-  it("marks the portal as the current view, and offers the console as Finanças to someone with no organization", async () => {
+  it("marks the portal as the current view, offers Finanças to everyone and no console to a non-operator", async () => {
     person({operator: false})
     renderWithQuery(<AccountMenu view="portal"/>)
+    await vi.waitFor(() => expect(consoleApi.getConsoleSession).toHaveBeenCalled())
     const menu = await open()
     const portalItem = within(menu).getByRole("menuitem", {name: "Portal"})
-    const consoleItem = await within(menu).findByRole("menuitem", {name: "Console"})
+    const financeItem = within(menu).getByRole("menuitem", {name: "Finanças"})
     expect(portalItem).toHaveAttribute("aria-current", "true")
     expect(portalItem).toHaveAttribute("href", "/dashboard")
-    expect(consoleItem).not.toHaveAttribute("aria-current")
-    expect(consoleItem).toHaveAttribute("href", "/console/finance")
+    expect(financeItem).toHaveAttribute("href", "/finance")
+    expect(financeItem).not.toHaveAttribute("aria-current")
+    expect(within(menu).queryByRole("menuitem", {name: "Console"})).toBeNull()
+  })
+
+  it("marks Finanças as the current view in its own area", async () => {
+    person({operator: true})
+    renderWithQuery(<AccountMenu view="finance"/>)
+    const menu = await open()
+    expect(within(menu).getByRole("menuitem", {name: "Finanças"})).toHaveAttribute("aria-current", "true")
+    expect(await within(menu).findByRole("menuitem", {name: "Console"})).not.toHaveAttribute("aria-current")
   })
 
   it("marks the console as the current view, and opens an operator's console on invoicing", async () => {
@@ -82,7 +92,7 @@ describe("AccountMenu", () => {
     auth.name = "Ana Ribeiro"
     renderWithQuery(<AccountMenu view="portal"/>)
     await userEvent.click(await screen.findByRole("button", {name: "Menu da conta: Ana Ribeiro"}))
-    expect(within(await screen.findByRole("menu")).getByRole("menuitem", {name: "Console"})).toBeInTheDocument()
+    expect(within(await screen.findByRole("menu")).getByRole("menuitem", {name: "Finanças"})).toBeInTheDocument()
   })
 
   it("signs out from Sair", async () => {

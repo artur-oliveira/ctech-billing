@@ -112,7 +112,7 @@ describe("F1 — visão geral", () => {
     expect(await within(block).findByText("R$ 3.000,00")).toBeInTheDocument()
     expect(within(block).getByText("R$ 1.800,00")).toBeInTheDocument()
     expect(within(block).getByText("R$ 1.200,00")).toBeInTheDocument()
-    expect(within(block).getByRole("link", {name: "Ver relatórios"})).toHaveAttribute("href", "/console/finance/reports?view=cash")
+    expect(within(block).getByRole("link", {name: "Ver relatórios"})).toHaveAttribute("href", "/finance/reports?view=cash")
     const month = todayIso().slice(0, 7)
     expect(finance.getCashFlow).toHaveBeenCalledWith(expect.anything(), month, month)
   })

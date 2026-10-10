@@ -6,8 +6,7 @@
   "subscriptions": "Assinaturas",
   "customers": "Clientes",
   "catalog": "Catálogo",
-  "settings": "Configurações",
-  "finance": "Finanças"
+  "settings": "Configurações"
  },
  "shell": {
   "testBanner": "Modo de teste. Nada aqui cobra de verdade."
@@ -18,12 +17,6 @@
   "test": "Teste"
  },
  "wrongMode": "Confira se você está em Produção ou Teste.",
- "noOrg": {
-  "title": "Esta conta não tem organização",
-  "description": "Faturas, assinaturas e clientes são de quem emite cobranças.",
-  "finance": "Ir para Finanças",
-  "bills": "Minhas cobranças"
- },
  "invoiceStatus": {
   "DRAFT": "Rascunho",
   "OPEN": "Emitida",

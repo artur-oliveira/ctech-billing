@@ -411,5 +411,9 @@
       "debitHint": "Só se o banco separa entradas e saídas em duas colunas.",
       "save": "Salvar colunas"
     }
+  },
+  "shell": {
+    "product": "Finanças",
+    "testBanner": "Modo de teste. Nada aqui é real."
   }
 }

@@ -6,7 +6,7 @@ import {useEffect, useRef} from "react"
 import {useTranslation} from "react-i18next"
 
 import {financeKeys, getFinanceSpaces} from "@/lib/api/finance"
-import {FINANCE_HREF} from "@/lib/console/nav"
+import {FINANCE_HREF} from "@/lib/finance/href"
 import {parseSpace, setSpace} from "@/lib/console/space"
 import {readCreatedReturn} from "@/lib/finance/spaceHandoff"
 

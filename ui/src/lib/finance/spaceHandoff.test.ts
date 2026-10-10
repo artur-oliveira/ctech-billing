@@ -45,7 +45,7 @@ describe("managePeopleURL", () => {
     expect(u.pathname).toBe("/account/spaces/people")
     expect(u.searchParams.get("id")).toBe(WS)
     expect(u.searchParams.get("client_id")).toBeTruthy()
-    expect(u.searchParams.get("return_to")).toBe("https://billing.test/console/finance")
+    expect(u.searchParams.get("return_to")).toBe("https://billing.test/finance")
   })
 })
 

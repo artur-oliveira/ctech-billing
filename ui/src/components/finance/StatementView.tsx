@@ -86,7 +86,7 @@ export function StatementView({account: initial = ""}: {account?: string}) {
       <EmptyState
         icon={<Landmark/>}
         title={t("finance.statement.noAccounts")}
-        action={<Button variant="outline" size="sm" render={<Link href="/console/finance/accounts"/>}>{t("finance.statement.createAccount")}</Button>}
+        action={<Button variant="outline" size="sm" render={<Link href="/finance/accounts"/>}>{t("finance.statement.createAccount")}</Button>}
       />
     )
   }

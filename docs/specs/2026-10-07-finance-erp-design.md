@@ -624,3 +624,11 @@ Each phase ends with something demoable.
      lawyer, do not assume.**
 3. **CTech Ledger account**: an account whose source is the wallet, reading its events. Blocked on
    Asaas production.
+
+## Amendment, 2026-10-10 — Finanças is its own area
+
+Finanças moved out of the console into its own area of the same app, `/finance/*` (owner's decision): most
+people who use it have no organization, and nothing else in the console is theirs. The API is unchanged
+(`/v1.0/console/finance/*`). The console is invoicing only, and someone with no organization who opens it is
+sent to `/finance`. The avatar menu switches between **Portal**, **Console** (operators only) and
+**Finanças**. Old `/console/finance/*` links redirect to the same place under `/finance`, query kept.

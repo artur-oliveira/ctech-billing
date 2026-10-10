@@ -11,8 +11,8 @@ web
 ## Users
 
 Everyone who signs in is a **CTech account holder**. What differs is what they hold, and the same
-person routinely holds both — which is why this is two route shells rather than two apps, and why
-neither is a "role" the user selects.
+person routinely holds several — which is why this is three route areas (portal, console, Finanças)
+rather than three apps, and why none is a "role" the user selects.
 
 **Everyone is a customer.** They buy CTech products and CTech invoices them; billing's tenant zero
 is CTech itself ([ADR 0001](../docs/adr/0001-product-scope-a-and-b.md)). The portal answers their three
@@ -68,10 +68,10 @@ billing's own. A user should recognize the family and still know they changed pr
 
 ## Design Principles
 
-- **Two shells, one system, one account.** The console is dense because an operator works in it all
-  day; the portal is spare because the same person visits it twice a month wearing the other hat.
-  Same tokens and same components, deliberately different densities. A console component appearing
-  in the portal is a bug — and so is asking the user which one they are.
+- **Three areas, one system, one account.** The console (invoicing) and Finanças are dense because
+  people work in them; the portal is spare because the same person visits it twice a month wearing
+  the other hat. Same tokens and same components, deliberately different densities. A console
+  component appearing in the portal is a bug — and so is asking the user which one they are.
 - **The tenant is never typed or guessed.** For invoicing, the organization still comes from the
   signed-in owner. For finance, the person picks a space from a list the server issues — personal
   first, then their organizations — and the server re-authorizes every request against

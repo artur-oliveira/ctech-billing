@@ -16,7 +16,7 @@ import type {Verb} from "@/lib/api/financeTypes"
 import {type CreateKind, dropCreateUnlessAt, requestCreate} from "@/lib/finance/createRequest"
 import {useFinanceCtx, useFinanceSpaces} from "@/lib/finance/useFinanceSpaces"
 
-const BASE = "/console/finance"
+const BASE = "/finance"
 const BILLS = `${BASE}/bills`
 const CARDS = `${BASE}/cards`
 

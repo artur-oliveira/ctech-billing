@@ -2,7 +2,7 @@
 
 import {type RenderLink, UserMenu} from "@aoctech/ui"
 import {useQuery} from "@tanstack/react-query"
-import {LayoutGrid, Receipt} from "lucide-react"
+import {LayoutGrid, Receipt, Wallet} from "lucide-react"
 import Link from "next/link"
 import {useTranslation} from "react-i18next"
 
@@ -10,26 +10,26 @@ import {consoleKeys, getConsoleSession} from "@/lib/api/console"
 import {isNoBillingAccount} from "@/lib/api/client"
 import {getSession, portalKeys} from "@/lib/api/portal"
 import {useAuth} from "@/lib/auth/AuthContext"
+import {FINANCE_HREF} from "@/lib/finance/href"
 
 const renderLink: RenderLink = props => <Link {...props}/>
 
 /**
- * The signed-in person, in both shells: who they are (the whole name and the
- * e-mail, never cut), which of the two views they are in, and Sair. The one
- * place the portal and the console meet, so switching between them happens
+ * The signed-in person, in all three areas: who they are (the whole name and
+ * the e-mail, never cut), which area they are in, and Sair. The one place the
+ * portal, the console and Finanças meet, so switching between them happens
  * here and nowhere else.
  *
- * Console is offered to everyone signed in: every person has a personal
- * finance space (ADR 0025), so there is nobody the console would answer 403.
- * The operator probe (the console session, live) decides only WHERE it opens:
- * an operator on invoicing's overview, everybody else on Finanças. A failed
- * probe is not an error; it means Finanças.
+ * Portal and Finanças are everyone's (everybody is a customer and has a
+ * personal space, ADR 0025). Console is invoicing, so it is offered only when
+ * the operator probe (the console session, live) answers; a failed probe is
+ * not an error, it means no console.
  *
  * The name comes from the portal session, which has the full name and the
  * e-mail; with no billing account behind it, the id_token's name is used and
  * there is no e-mail to show.
  */
-export function AccountMenu({view}: {view: "portal" | "console"}) {
+export function AccountMenu({view}: {view: "portal" | "console" | "finance"}) {
   const {t, i18n} = useTranslation()
   const {name: signedInName, authenticated, logout} = useAuth()
 
@@ -66,12 +66,12 @@ export function AccountMenu({view}: {view: "portal" | "console"}) {
       className="touch:size-11"
       views={[
         {label: t("common.account.portal"), icon: <Receipt/>, href: "/dashboard", current: view === "portal"},
-        {
-          label: t("common.account.console"),
-          icon: <LayoutGrid/>,
-          href: operator ? "/console/overview" : "/console/finance",
-          current: view === "console",
-        },
+        // Only for an operator: the console is invoicing, and somebody with no
+        // organization has nothing there.
+        ...(operator || view === "console"
+          ? [{label: t("common.account.console"), icon: <LayoutGrid/>, href: "/console/overview", current: view === "console"}]
+          : []),
+        {label: t("common.account.finance"), icon: <Wallet/>, href: FINANCE_HREF, current: view === "finance"},
       ]}
       onSignOut={logout}
     />

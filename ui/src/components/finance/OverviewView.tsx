@@ -67,7 +67,7 @@ function Balances() {
         <ErrorBlock error={q.error} onRetry={() => void q.refetch()}/>
       ) : assets.length === 0 ? (
         <EmptyState icon={<Landmark/>} title={t("finance.overview.noAccounts")}
-          action={<Button variant="outline" size="sm" render={<Link href="/console/finance/accounts"/>}>{t("finance.overview.createAccount")}</Button>}/>
+          action={<Button variant="outline" size="sm" render={<Link href="/finance/accounts"/>}>{t("finance.overview.createAccount")}</Button>}/>
       ) : (
         <ul className="divide-y divide-border border-y border-border text-sm">
           {assets.map(a => (
@@ -97,7 +97,7 @@ function Realised() {
   const q = useQuery({queryKey: financeKeys.cashFlow(ctx.mode, ctx.space, month, month), queryFn: () => getCashFlow(ctx, month, month)})
   const m = q.data?.months[0]
   return (
-    <Block title={t("finance.overview.monthResult")} action={<Link href="/console/finance/reports?view=cash" className={quietLink}>{t("finance.overview.seeReports")}</Link>}>
+    <Block title={t("finance.overview.monthResult")} action={<Link href="/finance/reports?view=cash" className={quietLink}>{t("finance.overview.seeReports")}</Link>}>
       {q.isLoading ? <Skeleton className="h-20 w-full"/> : q.error || !m ? (
         <ErrorBlock error={q.error} onRetry={() => void q.refetch()}/>
       ) : (
@@ -126,7 +126,7 @@ function DueSoon() {
     .slice(0, DUE_SOON)
   const error = pay.error ?? rec.error
   return (
-    <Block title={t("finance.overview.dueSoon")} action={<Link href="/console/finance/bills" className={quietLink}>{t("finance.overview.seeAll")}</Link>}>
+    <Block title={t("finance.overview.dueSoon")} action={<Link href="/finance/bills" className={quietLink}>{t("finance.overview.seeAll")}</Link>}>
       {pay.isLoading || rec.isLoading ? <Skeleton className="h-20 w-full"/> : error ? (
         <ErrorBlock error={error} onRetry={() => { void pay.refetch(); void rec.refetch() }}/>
       ) : items.length === 0 ? (

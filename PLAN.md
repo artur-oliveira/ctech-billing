@@ -878,6 +878,10 @@ executed by the sweep, so a subscription cancelled at period end renewed and bil
 boundary; (4) `ErrUserAlreadyCustomer` was a 500 — now 409 `user_already_customer`; (5) scoped credentials may
 still write subscriptions for other owners (only reads and reports are scoped).
 
+**Finanças is its own area (2026-10-10).** Owner's decision: `/finance/*` beside the portal and the console,
+same app and API; the console is invoicing only; the avatar switches Portal / Console (operators) /
+Finanças; old `/console/finance/*` links redirect. Specs and ADR 0027 amended.
+
 **Still open in Phase 6 (recorded 2026-10-09):**
 - **Deploy:** run `seed` in both modes (credential owners, `prod_finance`, the two DF-e archives).
 - **Purge (ADR 0026)**: no code. ctech-account's account-deletion specs (2026-10-06) name billing

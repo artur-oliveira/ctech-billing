@@ -165,7 +165,7 @@ describe("F8 — accounts", () => {
     await userEvent.click(screen.getByRole("button", {name: "Criar"}))
     const dialog = await screen.findByRole("dialog", {name: "Nova conta"})
     expect(await within(dialog).findByText("Conta criada. Importar um extrato agora?")).toBeInTheDocument()
-    expect(within(dialog).getByRole("link", {name: "Importar extrato"})).toHaveAttribute("href", "/console/finance/import?account=new")
+    expect(within(dialog).getByRole("link", {name: "Importar extrato"})).toHaveAttribute("href", "/finance/import?account=new")
     // The import is offered, never part of the create form.
     expect(within(dialog).queryByLabelText("Arquivo do extrato")).toBeNull()
     await userEvent.click(within(dialog).getByRole("button", {name: "Agora não"}))
@@ -227,7 +227,7 @@ describe("F8 — accounts", () => {
     renderWithQuery(<AccountsView/>)
     const visa = await row("Visa")
     expect(within(visa).getByText(/Deve R\$\s1\.200,00/)).toBeInTheDocument()
-    expect(within(visa).getByRole("link", {name: "Abrir"})).toHaveAttribute("href", "/console/finance/cards?card=visa")
+    expect(within(visa).getByRole("link", {name: "Abrir"})).toHaveAttribute("href", "/finance/cards?card=visa")
   })
 
   it("shows a card's mark and last digits in the Cartões list", async () => {
