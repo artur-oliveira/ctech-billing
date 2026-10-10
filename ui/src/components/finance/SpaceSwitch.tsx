@@ -1,9 +1,10 @@
 "use client"
 
+import {Select} from "@aoctech/ui"
 import {Plus} from "lucide-react"
 import {useTranslation} from "react-i18next"
 
-import {Select} from "@/components/ui/Select"
+import {selectCopy} from "@/lib/selectCopy"
 import {spaceHeader, parseSpace, setSpace} from "@/lib/console/space"
 import {useSpace} from "@/lib/console/useSpace"
 import * as handoff from "@/lib/finance/spaceHandoff"
@@ -35,7 +36,7 @@ export function SpaceSwitch() {
 
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 max-sm:flex-1">
-      <Select
+      <Select {...selectCopy()}
         aria-label={t("finance.space.label")}
         className="min-w-36 max-w-56 max-sm:max-w-none max-sm:flex-1"
         value={spaceHeader(space)}

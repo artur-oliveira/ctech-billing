@@ -1,6 +1,6 @@
 "use client"
 
-import {Badge, Button, Field, Input, Skeleton} from "@aoctech/ui"
+import {Badge, Button, Field, Input, Select, Skeleton} from "@aoctech/ui"
 import {useQuery, useQueryClient} from "@tanstack/react-query"
 import {useState} from "react"
 import {useTranslation} from "react-i18next"
@@ -8,11 +8,12 @@ import {useTranslation} from "react-i18next"
 import {wholeSpace} from "@/components/finance/TransferPanel"
 import {LedgerRow} from "@/components/finance/LedgerRow"
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
-import {Select} from "@/components/ui/Select"
+import {segmentHit} from "@/components/ui/segmentHit"
 import {messageFor} from "@/lib/api/client"
 import {financeKeys, getImport, ignoreLine, linkLine, listAccounts, matchLine, newFromLine, reopenLine} from "@/lib/api/finance"
 import type {Account, Bill, ImportLine} from "@/lib/api/financeTypes"
 import {accountName} from "@/lib/finance/accountName"
+import {selectCopy} from "@/lib/selectCopy"
 import {useFinanceMutation} from "@/lib/finance/useFinanceMutation"
 import {useFinanceCtx, useFinanceSpaces} from "@/lib/finance/useFinanceSpaces"
 import {calendarDaysUntil, dayMonth, shortDate, signedMoney} from "@/lib/format"
@@ -46,10 +47,14 @@ export function ImportLines({importId}: {importId: string}) {
 
   return (
     <section aria-label={t("finance.import.lines")} className="space-y-3">
-      <div role="tablist" aria-label={t("finance.import.lines")} className="flex max-w-full flex-wrap items-center gap-0.5 rounded-lg border border-border bg-surface p-0.5">
+      {/* One row at every width (UX batch 5): on a phone the three tabs share
+          it, a label wrapping before its count rather than the row wrapping,
+          since two rows 2px apart would share their 44px targets. No
+          `segmented-item` slot: touch.css would pin a wrapped tab to 30px. */}
+      <div role="tablist" aria-label={t("finance.import.lines")} className="grid w-full grid-cols-3 items-stretch gap-0.5 rounded-lg border border-border bg-surface p-0.5 sm:flex sm:w-max sm:max-w-full">
         {TABS.map(x => (
-          <button key={x} type="button" role="tab" data-slot="segmented-item" id={`im-tab-${x}`} aria-selected={tab === x} aria-controls="im-panel" onClick={() => setTab(x)}
-            className={`rounded-md px-3 py-1 text-sm transition-colors ${tab === x ? "bg-background font-medium text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>
+          <button key={x} type="button" role="tab" id={`im-tab-${x}`} aria-selected={tab === x} aria-controls="im-panel" onClick={() => setTab(x)}
+            className={`${segmentHit} min-h-6.5 touch:min-h-7.5 rounded-md px-1.5 py-1 text-center text-sm leading-tight transition-colors sm:px-3 ${tab === x ? "bg-background font-medium text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>
             {t(`finance.import.tabs.${x}`)} <span className="tabular-nums">({lines.filter(l => tabOf(l) === x).length})</span>
           </button>
         ))}
@@ -130,7 +135,7 @@ function LineRow({importId, line, accounts}: {importId: string; line: ImportLine
             <p className="text-sm text-foreground">{label(candidate)}</p>
           ) : (
             <Field label={t("finance.import.which")} htmlFor={`im-bill-${line.n}`}>
-              <Select id={`im-bill-${line.n}`} aria-label={t("finance.import.which")} value={billId} onValueChange={setBillId} className="w-full sm:w-72"
+              <Select {...selectCopy()} id={`im-bill-${line.n}`} aria-label={t("finance.import.which")} value={billId} onValueChange={setBillId} className="w-full sm:w-72"
                 options={line.candidates.map(b => ({value: b.id, label: label(b)}))}/>
             </Field>
           )}
@@ -176,7 +181,7 @@ function NewBillForm({importId, line, accounts, onDone, onRefused}: {
       }}
     >
       <Field label={t("finance.import.category")} htmlFor={`im-cat-${line.n}`} hint={cats.length === 0 ? t(`finance.import.noCategory.${cls}`) : undefined}>
-        <Select id={`im-cat-${line.n}`} aria-label={t("finance.import.category")} value={category} onValueChange={setCategory}
+        <Select {...selectCopy()} id={`im-cat-${line.n}`} aria-label={t("finance.import.category")} value={category} onValueChange={setCategory}
           options={cats.map(a => ({value: a.id, label: accountName(a)}))}/>
       </Field>
       <Field label={t("finance.import.description")} htmlFor={`im-desc-${line.n}`}>

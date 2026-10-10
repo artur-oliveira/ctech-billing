@@ -1,17 +1,18 @@
 "use client"
 
-import {Field, Skeleton} from "@aoctech/ui"
+import {Field, Select, Skeleton} from "@aoctech/ui"
 import {useQuery} from "@tanstack/react-query"
 import {useState} from "react"
 import {useTranslation} from "react-i18next"
 
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
-import {Select} from "@/components/ui/Select"
+import {segmentHit} from "@/components/ui/segmentHit"
 import {financeKeys, getCashFlow, getDRE, listAccounts} from "@/lib/api/finance"
 import type {Account, CashFlow, DRE, DREGroup} from "@/lib/api/financeTypes"
 import {dreGroupLabel} from "@/lib/finance/labels"
 import {monthRange, type PresetId, PRESETS} from "@/lib/finance/periods"
 import {monthShort, todayIso} from "@/lib/finance/today"
+import {selectCopy} from "@/lib/selectCopy"
 import {useFinanceCtx} from "@/lib/finance/useFinanceSpaces"
 import {money, signedMoney} from "@/lib/format"
 import {currentLocale, t as tr} from "@/lib/i18n"
@@ -74,14 +75,14 @@ export function ReportsView({view: initial = "dre"}: {view?: ReportView}) {
               aria-selected={view === tab}
               aria-controls="report-panel"
               onClick={() => choose(tab)}
-              className={`rounded-md px-3 py-1 text-sm transition-colors ${view === tab ? "bg-background font-medium text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+              className={`${segmentHit} rounded-md px-3 py-1 text-sm transition-colors ${view === tab ? "bg-background font-medium text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
             >
               {t(`finance.reports.tabs.${tab}`)}
             </button>
           ))}
         </div>
         <Field label={t("finance.reports.period")} htmlFor="rp-period">
-          <Select id="rp-period" aria-label={t("finance.reports.period")} value={preset} onValueChange={v => setPreset(v as PresetId)} className="w-48" options={PRESETS.map(p => ({value: p.value, label: t(`finance.presets.${p.value}`)}))}/>
+          <Select {...selectCopy()} id="rp-period" aria-label={t("finance.reports.period")} value={preset} onValueChange={v => setPreset(v as PresetId)} className="w-48" options={PRESETS.map(p => ({value: p.value, label: t(`finance.presets.${p.value}`)}))}/>
         </Field>
       </div>
       <div role="tabpanel" id="report-panel" aria-labelledby={`tab-${view}`}>

@@ -1,18 +1,17 @@
 "use client"
 
-import {Badge, Button, EmptyState, Skeleton} from "@aoctech/ui"
+import {Badge, Button, Drawer, EmptyState, Select, Skeleton} from "@aoctech/ui"
 import {useQuery} from "@tanstack/react-query"
 import {Landmark} from "lucide-react"
 import Link from "next/link"
 import {useState} from "react"
 import {useTranslation} from "react-i18next"
 
-import {Drawer} from "@/components/ui/ConsoleOverlay"
 import {LedgerRow} from "@/components/finance/LedgerRow"
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
 import {TransferPanel, wholeSpace} from "@/components/finance/TransferPanel"
-import {Select} from "@/components/ui/Select"
 import {messageFor} from "@/lib/api/client"
+import {selectCopy} from "@/lib/selectCopy"
 import {type FinanceCtx, financeKeys, getStatement, listAccounts, reverseTransaction, unsettleBill} from "@/lib/api/finance"
 import type {Account, StatementEntry} from "@/lib/api/financeTypes"
 import {dateRange, type PresetId, PRESETS} from "@/lib/finance/periods"
@@ -102,12 +101,12 @@ export function StatementView({account: initial = ""}: {account?: string}) {
         <div className="grid w-full grid-cols-[minmax(0,1fr)_minmax(0,8.75rem)] items-end gap-2 sm:flex sm:w-auto sm:gap-3">
           <div className="flex min-w-0 flex-col gap-1.5">
             <label htmlFor="st-account" className="text-sm font-medium text-foreground max-sm:sr-only">{t("finance.statement.account")}</label>
-            <Select id="st-account" aria-label={t("finance.statement.account")} value={accountId} onValueChange={setPicked} className="sm:w-56"
+            <Select {...selectCopy()} id="st-account" aria-label={t("finance.statement.account")} value={accountId} onValueChange={setPicked} className="sm:w-56"
               options={cash.map(a => ({value: a.id, label: a.archived ? t("finance.statement.archivedName", {name: accountName(a)}) : accountName(a)}))}/>
           </div>
           <div className="flex min-w-0 flex-col gap-1.5">
             <label htmlFor="st-period" className="text-sm font-medium text-foreground max-sm:sr-only">{t("finance.statement.period")}</label>
-            <Select id="st-period" aria-label={t("finance.statement.period")} value={preset} onValueChange={v => setPreset(v as PresetId)} className="sm:w-48" options={PRESETS.map(p => ({value: p.value, label: t(`finance.presets.${p.value}`)}))}/>
+            <Select {...selectCopy()} id="st-period" aria-label={t("finance.statement.period")} value={preset} onValueChange={v => setPreset(v as PresetId)} className="sm:w-48" options={PRESETS.map(p => ({value: p.value, label: t(`finance.presets.${p.value}`)}))}/>
           </div>
         </div>
         {can("finance.write") && (

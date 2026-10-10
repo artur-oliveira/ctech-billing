@@ -1,10 +1,11 @@
 "use client"
 
+import {Select} from "@aoctech/ui"
 import Link from "next/link"
 import {usePathname, useRouter} from "next/navigation"
 import {useTranslation} from "react-i18next"
 
-import {Select} from "@/components/ui/Select"
+import {selectCopy} from "@/lib/selectCopy"
 
 // "Resumo" (not "Visão geral") "Visão geral": the console's own nav already has a "Visão geral"
 // one row up, and two items with one name read as one menu printed twice.
@@ -38,7 +39,7 @@ export function FinanceNav() {
   return (
     <>
       <div className="hidden md:block lg:hidden">
-        <Select aria-label={t("finance.nav.section")} value={current} onValueChange={href => router.push(href)} options={FINANCE_SECTIONS.map(s => ({value: s.href, label: t(`finance.nav.${s.key}`)}))}/>
+        <Select {...selectCopy()} aria-label={t("finance.nav.section")} value={current} onValueChange={href => router.push(href)} options={FINANCE_SECTIONS.map(s => ({value: s.href, label: t(`finance.nav.${s.key}`)}))}/>
       </div>
       <nav aria-label={t("finance.nav.label")} className="hidden lg:block">
         <ul className="space-y-0.5 border-l border-border">

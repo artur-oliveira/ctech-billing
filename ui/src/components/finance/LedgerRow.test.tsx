@@ -27,7 +27,12 @@ function rows(actions: (name: string) => RowAction[]) {
 }
 
 const front = (name: string) => screen.getByText(name).closest("[data-swipe-front]") as HTMLElement
-const strip = (name: string) => screen.getByText(name).closest("li")!.querySelector("[data-swipe-actions]") as HTMLElement
+// SwipeRow (@aoctech/ui) renders the strip only where the gesture applies, so
+// on a laptop there is none: null, not a throw.
+const strip = (name: string) => (screen.getByText(name).closest("li")?.querySelector("[data-swipe-actions]") ?? null) as HTMLElement
+// SwipeRow sets `inert` as a DOM property (React 18 has no prop); a browser
+// reflects it to the attribute, jsdom does not, so read either.
+const inert = (el: HTMLElement) => (el as HTMLElement & {inert?: boolean}).inert === true || el.hasAttribute("inert")
 
 function drag(el: HTMLElement, dx: number, dy = 0) {
   fireEvent.pointerDown(el, {pointerId: 1, pointerType: "touch", clientX: 300, clientY: 100, isPrimary: true, button: 0})
@@ -44,11 +49,36 @@ describe("LedgerRow's actions on a phone", () => {
     rows(() => [{key: "edit", label: "Editar", onSelect: vi.fn()}, {key: "del", label: "Excluir", destructive: true, onSelect: vi.fn()}])
     drag(front("Aluguel"), -20)
     expect(front("Aluguel")).toHaveAttribute("data-open", "false")
-    expect(strip("Aluguel")).toHaveAttribute("inert")
+    expect(inert(strip("Aluguel"))).toBe(true)
     drag(front("Aluguel"), -160)
     expect(front("Aluguel")).toHaveAttribute("data-open", "true")
-    expect(strip("Aluguel")).not.toHaveAttribute("inert")
+    expect(inert(strip("Aluguel"))).toBe(false)
     expect(within(strip("Aluguel")).getByRole("button", {name: "Excluir"})).toBeInTheDocument()
+  })
+
+  // Measured in Chrome with touch (UX batch 5): a finger's pointer is implicitly
+  // captured by what it landed on (the title). When the swipe locks to the x
+  // axis, SwipeRow captures it on the front, and the title receives
+  // `lostpointercapture`. That event bubbles, and @aoctech/ui 0.4.0's front
+  // took it for "the browser took the gesture" and cancelled every swipe.
+  it("keeps the swipe when the title hands its implicit capture to the front", () => {
+    rows(() => [{key: "del", label: "Excluir", destructive: true, onSelect: vi.fn()}])
+    const title = screen.getByText("Aluguel")
+    fireEvent.pointerDown(title, {pointerId: 1, pointerType: "touch", clientX: 300, clientY: 100, isPrimary: true, button: 0})
+    fireEvent.pointerMove(title, {pointerId: 1, pointerType: "touch", clientX: 286, clientY: 100})
+    fireEvent.lostPointerCapture(title, {pointerId: 1, pointerType: "touch"})
+    for (let x = 272; x >= 132; x -= 14) fireEvent.pointerMove(front("Aluguel"), {pointerId: 1, pointerType: "touch", clientX: x, clientY: 100})
+    fireEvent.pointerUp(front("Aluguel"), {pointerId: 1, pointerType: "touch", clientX: 132, clientY: 100})
+    expect(front("Aluguel")).toHaveAttribute("data-open", "true")
+  })
+
+  it("still returns to rest when the front itself loses the capture", () => {
+    rows(() => [{key: "del", label: "Excluir", destructive: true, onSelect: vi.fn()}])
+    const f = front("Aluguel")
+    fireEvent.pointerDown(f, {pointerId: 1, pointerType: "touch", clientX: 300, clientY: 100, isPrimary: true, button: 0})
+    for (let x = 286; x >= 132; x -= 14) fireEvent.pointerMove(f, {pointerId: 1, pointerType: "touch", clientX: x, clientY: 100})
+    fireEvent.lostPointerCapture(f, {pointerId: 1, pointerType: "touch"})
+    expect(f).toHaveAttribute("data-open", "false")
   })
 
   it("keeps one row open at a time", () => {
@@ -89,6 +119,7 @@ describe("LedgerRow's actions on a phone", () => {
     rows(() => [{key: "del", label: "Excluir", destructive: true, onSelect: vi.fn()}])
     drag(front("Aluguel"), -160)
     expect(front("Aluguel")).toHaveAttribute("data-open", "false")
+    expect(strip("Aluguel")).toBeNull()
   })
 
   // Review fix: a real touch browser fires no click after a drag, so a flag set

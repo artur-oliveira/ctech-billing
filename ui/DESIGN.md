@@ -149,37 +149,53 @@ reads it: `comfortable` gives 44px targets (the portal, read on a phone),
 `size="console"` — height is decided by where a button is, not by each call site
 remembering which screen it is on.
 
-**Touch keeps the compact look and grows the target** (UX batch 4; it replaces
-batch 2's "touch overrides compact"). The console's 32px is for a mouse on a
-laptop. Under a coarse pointer, or a viewport under `sm`, a control is **drawn**
-at 36px (a segment at 32px inside its 38px group) and **hit** at 44 x 44px or
-more: an invisible `::after` centred on it, which only grows past the drawing
-on an axis where the control is under 44px. Drawing every control 44px tall
-(batch 2) made a phone screen mostly chrome; the finger needs the target, not
-the paint. One unlayered rule in `globals.css`, keyed on the `data-slot` every
-shared control carries (`button`, `select-trigger`, `segmented-item`, `input`),
-and the class `touch-target` for anything without one (DatePicker's trigger, a
-link drawn as a control). Rules that come with it:
+**The console is a `DensityScope`** (UX batch 5). Its root is
+`<DensityScope density="compact">` from `@aoctech/ui`, not a bare attribute:
+it writes `data-density="compact"` for the controls inside it **and** tells
+the overlays opened from inside it (Drawer, Modal, Select, the row's "⋯" menu),
+which render in a portal outside that element, to be compact as well. Decided
+by the owner: a console drawer, modal, select list or menu is compact **on a
+desk too** (32px controls at 1280px), the same density as the screen that
+opened it. The portal and checkout stay `comfortable`. The bottom bar and its
+Mais sheet are touch-sized whatever the density says.
 
-- **Neighbours never share a target.** Segments touch, so theirs grow up and
-  down only, and they keep a finger's width (`min-w-11`). Stacked controls keep
-  8px between them (`gap-y-2`): two 4px extensions meet and never overlap.
-- **An input is reached through its label.** An `<input>` cannot carry an
-  `::after`; a Field's label already focuses it, so the label's `::after`
-  covers the whole field, behind the input. Measured 36px drawn, 47px hit.
+**Touch keeps the compact look and grows the target** (UX batch 4; @aoctech/ui's
+since batch 5). The console's 32px is for a mouse on a laptop. Under a coarse
+pointer, or a viewport under `sm`, a control is **drawn** at 36px and **hit**
+at 44 x 44px or more: an invisible `::after` centred on it, which only grows
+past the drawing on an axis where the control is under 44px, and sideways by
+at most 4px. Drawing every control 44px tall (batch 2) made a phone screen
+mostly chrome; the finger needs the target, not the paint. The rule is
+`@aoctech/ui`'s `touch.css`, keyed on each control's `data-slot` (`button`,
+`select-trigger`, `date-picker-trigger`, `input` through its Field label,
+`segmented-item`, `select-item`, `menu-item`) under any `[data-density=compact]`,
+the overlays' portals included, and on the class `touch-target` for anything
+else drawn as a control. `globals.css` imports `touch.css` alone, not
+`styles.css`: that also brings `themes.css`, and the portals carry
+`data-ctech-theme` (the account theme with no `ThemeProvider`), which would
+repaint every drawer. Billing keeps only the `touch:` variant and
+`scrollbar-none`. Rules that come with it:
+
+- **Neighbours never share a target.** Keep 8px (`gap-2`) between neighbouring
+  compact controls, in a row or a stack: two 4px extensions meet and never
+  overlap; with less, the later control wins the shared edge. Segments touch,
+  so theirs grow up and down only (`Segmented` draws that hit area itself). A
+  segment billing draws by hand (the mode switch, Relatórios' and Importar's
+  tabs) takes `components/ui/segmentHit` for the same 44px column; a tab row
+  that wraps on a phone does not (Importar's tabs wrap their labels instead).
+- **An input is reached through its label.** The Field's label's `::after`
+  covers the field behind its content. Measured 36px drawn, 47px hit.
 - **A clipped container clips the target.** The tab row scrolls sideways, so
   tabs stay 40px and their target grows 4px up into the row's padding. A list
   row clips only while it is swiped.
-- **Roots.** The console's `[data-density=compact]`, and a dialog that holds
-  `[data-touch-compact]`: portaled drawers and modals are outside the density
-  root (their portal reads `comfortable`) and opt in through
-  `components/ui/ConsoleOverlay`. Batch 3's blanket `[role=dialog]` would now
-  shrink every dialog, the bottom bar's Mais sheet and the portal's modals
-  included, which are touch-sized on purpose and hold no marker. Select options and menu items
-  stay 44px rows: a list of targets with no gap needs its rows to be them.
+- Select options and menu items are 44px rows under touch: a list of targets
+  with no gap needs its rows to be them.
 
-It is still "decided by where a button is"; the where includes the hand
-holding it. Candidate for `@aoctech/ui`, with the components.
+Measured at 320 and 375px with touch emulation (scratchpad `b5/shoot.cjs`,
+`b5/interact.cjs`): compact controls 36 drawn / 44 hit, segments 30 / 44, no
+control's own drawing is reached by a neighbour's target, a swipe opens and
+closes and the next tap goes through, the Mais sheet stays open while the
+central action appears.
 
 ## Depth is hairlines
 
@@ -274,11 +290,11 @@ state changes only (row expanding, panel opening), each with a `motion-reduce` a
 and a paired aside becomes parentheses. The lone `—` standing for an empty value in a table cell or
 a fact is not punctuation and stays. Code comments are not copy.
 
-**Styled selects, never the native one.** Every choice from a list uses `components/ui/Select`
+**Styled selects, never the native one.** Every choice from a list uses `@aoctech/ui`'s `Select` (billing's own until UX batch 5)
 (the shadcn shape on `@base-ui/react`, sized by `data-density`). Once something is chosen the
 trigger shows the option's **label**, never its value: an account shows "Conta corrente", not its
-id, and the space shows "Pessoal", not `personal`. The component's own test pins this.
-`ctech-ui` has no Select yet; this one is written to move there unchanged.
+id, and the space shows "Pessoal", not `personal`. @aoctech/ui's tests pin this; actions run only from a press in the open list.
+Every call site spreads `selectCopy()` first (`lib/selectCopy`): billing's placeholder ("Escolher…" / "Choose…") and the console's language.
 
 ## On a phone (finance, 2026-10-09)
 
@@ -320,8 +336,11 @@ a form for an edit; nothing is done by the swipe itself. The gesture locks to an
 8px (a vertical drag stays the page's scroll, `touch-action: pan-y`), changes state past 35%
 of the revealed width and snaps back otherwise, keeps one row open per page, closes on a
 press elsewhere or Escape, and follows `prefers-reduced-motion`. A laptop row is unchanged:
-the same actions are inline buttons. `useSwipeReveal` and `RowMenu` are candidates for
-`@aoctech/ui`.
+the same actions are inline buttons. Since UX batch 5 the gesture and the menu are
+`@aoctech/ui`'s `SwipeRow` and `RowMenu`; `LedgerRow` lays out the front. It stops a child's
+`lostpointercapture` from reaching the front: @aoctech/ui 0.4.0 cancels the swipe on any of them,
+and a finger's implicit capture moving from the title to the front sends one on every real swipe
+(to be fixed in ctech-ui).
 
 **An optional field can be emptied** (UX batch 4). An optional date has **Limpar** beside it
 while it has a value, named for the date ("Limpar data de término"); an optional select lists
@@ -330,7 +349,7 @@ while it has a value, named for the date ("Limpar data de término"); an optiona
 `null`, which the API reads as "clear" (absent is "keep").
 
 **Segmented, for every two-to-four-way switch.** Direction, projection view, period, chart or
-rows: `components/ui/Segmented`, a group of pressed buttons, full width on a phone when it is
+rows: `@aoctech/ui`'s `Segmented` (billing's own until batch 5), a group of pressed buttons, full width on a phone when it is
 the row's only control. A shortened label carries its full name ("6 m" is "6 meses"), and the
 name contains the visible text.
 
@@ -376,7 +395,7 @@ cobranças" link in the console. Console is offered to everyone signed in, since
 personal finance space; the operator probe only decides whether it opens on invoicing's overview
 or on Finanças. On a phone it stays in the header; the bottom bar never repeats it.
 
-**Shell controls under touch.** The space select (36px) and the mode switch (a segment, 32px)
+**Shell controls under touch.** The space select (36px) and the mode switch (a segment, 30px)
 keep the compact look with 44px targets; the section tabs stay 40px with a 4px target above
 (see "Density"). The logo link, the language switch and the avatar, the header's icons, stay
 44px drawn. On a desk with a mouse the console keeps 32px.
@@ -411,6 +430,8 @@ glyph. No new tone: the four stay the family's closed set.
 **A link to a row marks it.** Agenda reads `?direction=&bill=`, opens on that side, tints
 the row with `brand-50` (the selected row) and scrolls it into view.
 
-**Drawers follow the touch rule too.** A Drawer is portaled out of `[data-density]`; since UX
-batch 4 a console drawer or modal opts in with a marker (`ConsoleOverlay`), not every
-`[role=dialog]` (see "Density").
+**Drawers follow the touch rule too.** A Drawer is portaled out of the console's root; since UX
+batch 5 it follows the console's `DensityScope` (its portal carries `data-density="compact"`),
+so @aoctech/ui's `touch.css` reaches it like any compact surface, and it is compact on a desk
+as well. Batch 4's `ConsoleOverlay` marker is gone; the bottom bar's Mais sheet and the
+portal's modals are not inside the scope and keep their own sizes (see "Density").

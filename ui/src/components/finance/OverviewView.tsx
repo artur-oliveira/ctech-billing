@@ -1,6 +1,6 @@
 "use client"
 
-import {Button, EmptyState, Skeleton} from "@aoctech/ui"
+import {Button, EmptyState, Segmented, Skeleton} from "@aoctech/ui"
 import {useQuery} from "@tanstack/react-query"
 import {BarChart3, Landmark, List, Table2} from "lucide-react"
 import Link from "next/link"
@@ -8,7 +8,6 @@ import {useRef, useState} from "react"
 import {useTranslation} from "react-i18next"
 
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
-import {Segmented} from "@/components/ui/Segmented"
 import {quietLink} from "@/components/ui/quietLink"
 import {financeKeys, getCashFlow, getProjection, listAccounts, listBills} from "@/lib/api/finance"
 import type {Bill, ProjectionMonth} from "@/lib/api/financeTypes"

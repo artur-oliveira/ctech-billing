@@ -1,6 +1,6 @@
 "use client"
 
-import {Skeleton} from "@aoctech/ui"
+import {DensityScope, Skeleton} from "@aoctech/ui"
 import {useQuery} from "@tanstack/react-query"
 import Image from "next/image"
 import Link from "next/link"
@@ -23,8 +23,12 @@ import {useMode} from "@/lib/console/useMode"
  * The operator shell — the second of the two the app ships, and the same
  * components as the first at a different density.
  *
- * `data-density="compact"` is the whole of that difference: every control from
- * `@aoctech/ui` reads it and sizes itself to 32px instead of 44. An operator
+ * `<DensityScope density="compact">` is the whole of that difference: every
+ * control from `@aoctech/ui` reads its `data-density` and sizes itself to 32px
+ * instead of 44, and the drawers, modals, selects and menus opened from here
+ * (portaled, outside this element) follow the scope too, on a desktop as well
+ * (UX batch 5; under touch @aoctech/ui's touch.css draws them 36px with a 44px
+ * target). An operator
  * works in this all day and wants rows on screen; the same person opens the
  * portal twice a month on a phone and wants a thumb target. Neither is a prop
  * a call site remembers to pass.
@@ -79,7 +83,7 @@ export default function ConsoleLayout({children}: LayoutProps<"/console">) {
   const nav = consoleNav(session !== undefined)
 
   return (
-    <div data-density="compact" className="min-h-dvh">
+    <DensityScope density="compact" className="min-h-dvh">
       <header className="border-b border-border">
         <div className="mx-auto flex min-h-14 max-w-6xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2">
           <div className="order-1 flex min-w-0 items-center gap-4">
@@ -167,7 +171,7 @@ export default function ConsoleLayout({children}: LayoutProps<"/console">) {
           children
         )}
       </main>
-    </div>
+    </DensityScope>
   )
 }
 

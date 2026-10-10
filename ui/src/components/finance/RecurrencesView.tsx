@@ -1,21 +1,18 @@
 "use client"
 
 import limits from "@/lib/limits.json"
-import {Button, EmptyState, Field, Input, Skeleton, Switch} from "@aoctech/ui"
+import {Button, Drawer, EmptyState, Field, Input, Segmented, Select, Skeleton, Switch} from "@aoctech/ui"
 import {useQuery} from "@tanstack/react-query"
 import {ChevronDown, Repeat} from "lucide-react"
 import Link from "next/link"
 import {useEffect, useId, useRef, useState} from "react"
 import {useTranslation} from "react-i18next"
 
-import {Drawer} from "@/components/ui/ConsoleOverlay"
 import {ExceptionsFields, PatternFields} from "@/components/finance/ExpressionEditor"
 import {LedgerRow} from "@/components/finance/LedgerRow"
 import {OccurrenceTimeline, type TimelineEntry} from "@/components/finance/OccurrenceTimeline"
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
 import {DateField} from "@/components/ui/DateField"
-import {Segmented} from "@/components/ui/Segmented"
-import {Select} from "@/components/ui/Select"
 import {messageFor, problemCode} from "@/lib/api/client"
 import {
   archiveRecurrence, createRecurrence, type FinanceCtx, financeKeys, getRecurrenceOccurrences, listAccounts, listRecurrences,
@@ -25,6 +22,7 @@ import type {Account, Adjust, Direction, ExpressionJSON, NewRecurrence, Occurren
 import {defaultModel, describeModel, type EditorModel, fromExpression, toExpression, validate} from "@/lib/finance/expression"
 import {currentLocale, t} from "@/lib/i18n"
 import {addYearsIso, todayIso} from "@/lib/finance/today"
+import {selectCopy} from "@/lib/selectCopy"
 import {useFinanceMutation} from "@/lib/finance/useFinanceMutation"
 import {useCreateRequest} from "@/lib/finance/createRequest"
 import {useFinanceCtx, useFinanceSpaces} from "@/lib/finance/useFinanceSpaces"
@@ -374,10 +372,10 @@ function RecurrencePanel({editing, accounts, onDone}: {editing?: Recurrence; acc
           <Field label={t("bills.common.description")} htmlFor="rc-desc" error={fe.of("description")} className="sm:col-span-2"><Input id="rc-desc" maxLength={limits.text.description} value={description} {...fe.props("description", "rc-desc")} onChange={e => { setDescription(e.target.value); fe.clear("description") }}/></Field>
           <Field label={t("bills.common.amount")} htmlFor="rc-amount" required error={fe.of("amount")}><Input id="rc-amount" inputMode="decimal" placeholder={moneyPlaceholder()} value={amountText} {...fe.props("amount", "rc-amount")} onChange={e => { setAmountText(maskMoney(e.target.value)); fe.clear("amount") }}/></Field>
           <Field label={t("bills.common.category")} htmlFor="rc-cat" required error={fe.of("category_id")} hint={cats.length === 0 ? t(`bills.noCategory.${direction === "payable" ? "expense" : "income"}`) : undefined}>
-            <Select id="rc-cat" value={category} {...fe.props("category_id", "rc-cat")} onValueChange={v => { setCategory(v); fe.clear("category_id") }} options={cats.map(a => ({value: a.id, label: accountName(a)}))}/>
+            <Select {...selectCopy()} id="rc-cat" value={category} {...fe.props("category_id", "rc-cat")} onValueChange={v => { setCategory(v); fe.clear("category_id") }} options={cats.map(a => ({value: a.id, label: accountName(a)}))}/>
           </Field>
           <Field label={t(`bills.common.payWith.${direction}`)} htmlFor="rc-acct" required error={fe.of("account_id")} hint={assets.length === 0 ? t("bills.noAccount") : undefined}>
-            <Select id="rc-acct" value={account} {...fe.props("account_id", "rc-acct")} onValueChange={v => { setAccount(v); fe.clear("account_id") }} options={assets.map(a => ({value: a.id, label: accountName(a)}))}/>
+            <Select {...selectCopy()} id="rc-acct" value={account} {...fe.props("account_id", "rc-acct")} onValueChange={v => { setAccount(v); fe.clear("account_id") }} options={assets.map(a => ({value: a.id, label: accountName(a)}))}/>
           </Field>
           {!editing && (
             <>
@@ -415,7 +413,7 @@ function RecurrencePanel({editing, accounts, onDone}: {editing?: Recurrence; acc
                 <div className="mt-3 grid items-start gap-4 border-t border-border pt-4 sm:grid-cols-2">
                   <Field label={t("bills.rec.endsOn")} htmlFor="rc-end" error={fe.of("end")}><DateField id="rc-end" min={start || limits.minDate} max={addYearsIso(start || todayIso(), limits.maxRecurrenceYears)} value={end} invalid={!!fe.of("end")} onValueChange={v => { setEnd(v); fe.clear("end") }} placeholder={t("bills.rec.noEnd")} clearLabel={t("bills.rec.clearEnd")}/></Field>
                   <Field label={t("bills.rec.weekend")} htmlFor="rc-adjust">
-                    <Select id="rc-adjust" value={adjust} onValueChange={v => setAdjust(v as Adjust)} options={adjustOptions()}/>
+                    <Select {...selectCopy()} id="rc-adjust" value={adjust} onValueChange={v => setAdjust(v as Adjust)} options={adjustOptions()}/>
                   </Field>
                   <ExceptionsFields model={model} errors={errors} onChange={setModel}/>
                 </div>

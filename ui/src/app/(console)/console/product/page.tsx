@@ -1,6 +1,6 @@
 "use client"
 
-import {Button, Field, Input, Skeleton} from "@aoctech/ui"
+import {Button, Field, Input, Modal, Skeleton} from "@aoctech/ui"
 import {useMutation, useQuery, useQueryClient} from "@tanstack/react-query"
 import {ArrowLeft} from "lucide-react"
 import Link from "next/link"
@@ -11,7 +11,6 @@ import {toast} from "sonner"
 
 import {DunningPolicyCard} from "@/components/console/DunningPolicyCard"
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
-import {Modal} from "@/components/ui/ConsoleOverlay"
 import {messageFor, statusOf} from "@/lib/api/client"
 import {useFieldErrors} from "@/lib/useFieldErrors"
 import {

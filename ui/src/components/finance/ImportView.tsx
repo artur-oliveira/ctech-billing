@@ -1,6 +1,6 @@
 "use client"
 
-import {Button, EmptyState, Field, Skeleton} from "@aoctech/ui"
+import {Button, EmptyState, Field, Select, Skeleton} from "@aoctech/ui"
 import {useQuery} from "@tanstack/react-query"
 import {FileUp} from "lucide-react"
 import {useState} from "react"
@@ -9,8 +9,8 @@ import {useTranslation} from "react-i18next"
 import {CsvMappingForm} from "@/components/finance/CsvMappingForm"
 import {ImportLines} from "@/components/finance/ImportLines"
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
-import {Select} from "@/components/ui/Select"
 import {messageFor, problemCode} from "@/lib/api/client"
+import {selectCopy} from "@/lib/selectCopy"
 import {type FinanceCtx, fileToBase64, financeKeys, listAccounts, listImports, uploadImport} from "@/lib/api/finance"
 import type {ImportFormat, ImportSummary} from "@/lib/api/financeTypes"
 import {accountName, byAccountName} from "@/lib/finance/accountName"
@@ -54,7 +54,7 @@ export function ImportView({account: initial = ""}: {account?: string}) {
   return (
     <div className="space-y-6">
       <Field label={t("finance.import.account")} htmlFor="im-account">
-        <Select id="im-account" aria-label={t("finance.import.account")} value={account.id} className="w-64"
+        <Select {...selectCopy()} id="im-account" aria-label={t("finance.import.account")} value={account.id} className="w-64"
           onValueChange={setPicked} options={cash.map(a => ({value: a.id, label: accountName(a)}))}/>
       </Field>
       <AccountImports key={account.id} accountId={account.id} canImport={can("finance.import")}/>

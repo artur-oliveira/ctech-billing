@@ -1,11 +1,8 @@
 "use client"
 
-import {Button, cn} from "@aoctech/ui"
+import {Button, cn, RowMenu, SwipeRow} from "@aoctech/ui"
 import {type ReactNode, useEffect, useRef} from "react"
 import {useTranslation} from "react-i18next"
-
-import {RowMenu} from "@/components/ui/RowMenu"
-import {useSwipeReveal} from "@/components/ui/useSwipeReveal"
 
 /** A row's secondary or destructive action: inline on a laptop; on a phone behind a swipe and in "⋯". */
 export interface RowAction {
@@ -47,9 +44,6 @@ interface LedgerRowProps {
   current?: boolean
 }
 
-/** Each revealed action's width on a phone, in px. */
-const ACTION_WIDTH = 88
-
 /**
  * One row of a finance list: bills, recurrences, statement lines, imported
  * lines, accounts.
@@ -62,7 +56,9 @@ const ACTION_WIDTH = 88
  * and the primary actions get lines of their own. Secondary and destructive
  * actions leave the phone's line (UX batch 4): a left swipe reveals them, and
  * the "⋯" button beside the amount lists them for a keyboard or a screen
- * reader. Either way, choosing one opens the row's own confirmation.
+ * reader. Either way, choosing one opens the row's own confirmation. The
+ * gesture, the revealed strip and the menu are @aoctech/ui's `SwipeRow` and
+ * `RowMenu` (UX batch 5): this row only lays out what slides.
  */
 export function LedgerRow({
   title, leading, meta, amount, balance, balanceLabel, aside, asideOnPhone = true, actions, more = [], muted = false, children, current = false,
@@ -72,94 +68,61 @@ export function LedgerRow({
   useEffect(() => {
     if (current) ref.current?.scrollIntoView?.({block: "center"})
   }, [current])
-  const swipe = useSwipeReveal(more.length * ACTION_WIDTH, more.length > 0)
-  const run = (a: RowAction) => {
-    swipe.close()
-    a.onSelect()
-  }
   const hasMore = more.length > 0
   return (
     // The pointed-at row takes the selected-row tint (brand-50), the brand's one
     // home in a list.
-    <li ref={ref} data-swipe-row={swipe.rowId} aria-current={current || undefined} className={cn(current && "-mx-2 rounded-md bg-brand-50 px-2")}>
-      {/* Clipped only while the row is moved: at rest the front covers the
-          actions, and an unclipped row lets the edge controls' 44px targets
-          reach past their drawing (globals.css). */}
-      <div className={cn("relative", swipe.offset !== 0 && "overflow-hidden")}>
-        {hasMore && (
-          // Behind the row, on a phone only: what a left swipe uncovers. Inert
-          // until uncovered, so it is never tabbed to or read twice; "⋯" is
-          // the way in that is always there.
-          <div data-swipe-actions="" inert={!swipe.open} aria-hidden={!swipe.open || undefined} className="absolute inset-y-0 right-0 flex sm:hidden">
-            {more.map(a => (
-              <button
-                key={a.key}
-                type="button"
-                onClick={() => run(a)}
-                style={{width: ACTION_WIDTH}}
-                className={cn(
-                  "flex h-full items-center justify-center px-2 text-center text-sm font-medium leading-tight outline-none focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:ring-inset",
-                  a.destructive ? "bg-danger text-white" : "bg-surface text-foreground",
-                )}
-              >
-                {a.label}
-              </button>
-            ))}
+    <li ref={ref} aria-current={current || undefined} className={cn(current && "-mx-2 rounded-md bg-brand-50 px-2")}>
+      {/* The front is opaque and covers what a left swipe uncovers (a phone
+          only; SwipeRow renders no strip elsewhere). */}
+      <SwipeRow actions={more} frontClassName={cn("py-2.5", current && "bg-brand-50")}>
+        {/* A finger's pointer is implicitly captured by what it landed on; when
+            the swipe locks, SwipeRow captures it on the front and that child
+            gets `lostpointercapture`, which bubbles. @aoctech/ui 0.4.0's front
+            reads any of them as "the browser took the gesture" and cancels the
+            swipe (measured in Chrome, UX batch 5). Only the front's own loss
+            means that, so a child's stops here. Remove once ctech-ui checks
+            `e.target === e.currentTarget`. */}
+        <div onLostPointerCapture={e => e.stopPropagation()} className={cn(
+          "grid items-start gap-x-3 gap-y-1.5 sm:flex sm:flex-wrap sm:items-center sm:gap-x-4 sm:gap-y-1",
+          hasMore ? "grid-cols-[minmax(0,1fr)_auto_auto]" : "grid-cols-[minmax(0,1fr)_auto]",
+        )}>
+          <div className="col-start-1 row-start-1 flex min-w-0 items-start gap-3 sm:flex-1 sm:basis-40 sm:items-center">
+            {leading && <div aria-hidden className="mt-0.5 shrink-0 sm:mt-0">{leading}</div>}
+            <div className="min-w-0">
+              <p title={title} className={cn("line-clamp-2 text-sm [overflow-wrap:anywhere] sm:line-clamp-1", muted ? "text-muted-foreground" : "text-foreground")}>{title}</p>
+              {meta && <div className="text-xs text-muted-foreground [overflow-wrap:anywhere]">{meta}</div>}
+            </div>
           </div>
-        )}
-        <div
-          data-swipe-front=""
-          data-open={swipe.open}
-          {...swipe.bind}
-          style={swipe.offset ? {transform: `translateX(${swipe.offset}px)`} : undefined}
-          className={cn(
-            "relative py-2.5",
-            current ? "bg-brand-50" : "bg-background",
-            hasMore && "max-sm:touch-pan-y",
-            !swipe.dragging && "transition-transform duration-200 ease-out motion-reduce:transition-none",
-          )}
-        >
-          <div className={cn(
-            "grid items-start gap-x-3 gap-y-1.5 sm:flex sm:flex-wrap sm:items-center sm:gap-x-4 sm:gap-y-1",
-            hasMore ? "grid-cols-[minmax(0,1fr)_auto_auto]" : "grid-cols-[minmax(0,1fr)_auto]",
-          )}>
-            <div className="col-start-1 row-start-1 flex min-w-0 items-start gap-3 sm:flex-1 sm:basis-40 sm:items-center">
-              {leading && <div aria-hidden className="mt-0.5 shrink-0 sm:mt-0">{leading}</div>}
-              <div className="min-w-0">
-                <p title={title} className={cn("line-clamp-2 text-sm [overflow-wrap:anywhere] sm:line-clamp-1", muted ? "text-muted-foreground" : "text-foreground")}>{title}</p>
-                {meta && <div className="text-xs text-muted-foreground [overflow-wrap:anywhere]">{meta}</div>}
-              </div>
-            </div>
-            {aside && <div className={cn("col-span-full flex-wrap items-center gap-1.5 sm:flex", asideOnPhone ? "flex" : "hidden")}>{aside}</div>}
-            <div className="col-start-2 row-start-1 shrink-0 text-right text-sm tabular-nums text-foreground sm:w-28">
-              {amount}
-              {balance !== undefined && (
-                <p className="text-xs text-muted-foreground sm:hidden">{balanceLabel ? `${balanceLabel} ` : ""}{balance}</p>
-              )}
-            </div>
+          {aside && <div className={cn("col-span-full flex-wrap items-center gap-1.5 sm:flex", asideOnPhone ? "flex" : "hidden")}>{aside}</div>}
+          <div className="col-start-2 row-start-1 shrink-0 text-right text-sm tabular-nums text-foreground sm:w-28">
+            {amount}
             {balance !== undefined && (
-              <div className="hidden shrink-0 text-right text-sm tabular-nums text-muted-foreground sm:block sm:w-28">
-                {balanceLabel && <span className="sr-only">{balanceLabel} </span>}{balance}
-              </div>
-            )}
-            {hasMore && (
-              <div className="col-start-3 row-start-1 -my-1.5 sm:hidden">
-                <RowMenu label={t("finance.row.more", {name: title})} items={more}/>
-              </div>
-            )}
-            {(actions || hasMore) && (
-              <div className={cn("col-span-full flex-wrap gap-x-1 gap-y-2 sm:flex sm:basis-auto", actions ? "flex" : "hidden")}>
-                {actions}
-                {more.map(a => (
-                  <Button key={a.key} size="sm" variant="ghost" aria-expanded={a.expanded} onClick={a.onSelect} className="max-sm:hidden">
-                    {a.label}
-                  </Button>
-                ))}
-              </div>
+              <p className="text-xs text-muted-foreground sm:hidden">{balanceLabel ? `${balanceLabel} ` : ""}{balance}</p>
             )}
           </div>
+          {balance !== undefined && (
+            <div className="hidden shrink-0 text-right text-sm tabular-nums text-muted-foreground sm:block sm:w-28">
+              {balanceLabel && <span className="sr-only">{balanceLabel} </span>}{balance}
+            </div>
+          )}
+          {hasMore && (
+            <div className="col-start-3 row-start-1 -my-1.5 sm:hidden">
+              <RowMenu label={t("finance.row.more", {name: title})} items={more}/>
+            </div>
+          )}
+          {(actions || hasMore) && (
+            <div className={cn("col-span-full flex-wrap gap-2 sm:flex sm:basis-auto", actions ? "flex" : "hidden")}>
+              {actions}
+              {more.map(a => (
+                <Button key={a.key} size="sm" variant="ghost" aria-expanded={a.expanded} onClick={a.onSelect} className="max-sm:hidden">
+                  {a.label}
+                </Button>
+              ))}
+            </div>
+          )}
         </div>
-      </div>
+      </SwipeRow>
       {/* What opens under the row keeps the row's bottom rhythm; nothing open, nothing drawn. */}
       <div className="pb-2.5 empty:hidden">{children}</div>
     </li>
