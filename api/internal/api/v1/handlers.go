@@ -29,6 +29,7 @@ type handlers struct {
 	subs       *repositories.SubscriptionRepository
 	invoices   *repositories.InvoiceRepository
 	usage      *repositories.UsageRepository
+	levels     *repositories.LevelRepository
 	subscriber *services.Subscriber
 	// cat is the catalogue. It sits on the shared struct rather than on one
 	// surface's because all three read it and they must read it identically: a
@@ -353,6 +354,9 @@ func (h *handlers) reportUsage(c fiber.Ctx) error {
 	sub, err := h.subs.Get(c.Context(), t.OrganizationID, t.Livemode, req.SubscriptionID)
 	if err != nil {
 		return fail(c, err)
+	}
+	if cred := middleware.GetCredential(c); cred != nil && !cred.Allows(sub.OwnerKey) {
+		return ownerNotAllowed(c)
 	}
 	items, err := h.subs.ListItems(c.Context(), t.OrganizationID, t.Livemode, sub.ID)
 	if err != nil {

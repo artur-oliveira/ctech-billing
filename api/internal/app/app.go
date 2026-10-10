@@ -47,6 +47,7 @@ func Build(ctx context.Context, cfg *config.Config, clock func() time.Time) (*fi
 	subs := repositories.NewSubscriptionRepository(db, cfg)
 	invoices := repositories.NewInvoiceRepository(db, cfg)
 	usage := repositories.NewUsageRepository(db, cfg)
+	levels := repositories.NewLevelRepository(db, cfg)
 	catalog := repositories.NewCatalogRepository(db, cfg)
 	creds := repositories.NewCredentialRepository(db, cfg)
 	idem := repositories.NewIdempotencyRepository(db, cfg)
@@ -134,6 +135,7 @@ func Build(ctx context.Context, cfg *config.Config, clock func() time.Time) (*fi
 		Subs:        subs,
 		Invoices:    invoices,
 		Usage:       usage,
+		Levels:      levels,
 		Catalog:     catalog,
 		Credentials: creds,
 		Idempotency: idem,

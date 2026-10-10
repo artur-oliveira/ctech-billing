@@ -21,6 +21,7 @@ type Deps struct {
 	Subs          *repositories.SubscriptionRepository
 	Invoices      *repositories.InvoiceRepository
 	Usage         *repositories.UsageRepository
+	Levels        *repositories.LevelRepository
 	Catalog       *repositories.CatalogRepository
 	Credentials   *repositories.CredentialRepository
 	Idempotency   *repositories.IdempotencyRepository
@@ -104,6 +105,7 @@ func Register(app *fiber.App, d Deps) {
 		subs:       d.Subs,
 		invoices:   d.Invoices,
 		usage:      d.Usage,
+		levels:     d.Levels,
 		subscriber: d.Subscriber,
 		cat:        d.Catalog,
 		clock:      clock,
@@ -171,8 +173,11 @@ func Register(app *fiber.App, d Deps) {
 	products.Get("/:id",
 		middleware.RequireM2MScope(middleware.ScopeProductsRead), h.getProduct)
 
-	m2m("/usage").Post("",
-		middleware.RequireM2MScope(middleware.ScopeUsageWrite), idem, h.reportUsage)
+	usage := m2m("/usage")
+	usage.Post("", middleware.RequireM2MScope(middleware.ScopeUsageWrite), idem, h.reportUsage)
+	// Levels are idempotent by the body's key (spec § 6.1), enforced in the
+	// repository; the header middleware is deliberately not in front of it.
+	usage.Post("/levels", middleware.RequireM2MScope(middleware.ScopeUsageWrite), h.reportLevel)
 
 	invoices := m2m("/invoices")
 	invoices.Get("/:id",
