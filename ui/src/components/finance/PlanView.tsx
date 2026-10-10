@@ -106,7 +106,10 @@ function PlanScreen({state}: {state: PlanState}) {
   const cancel = useFinanceMutation(
     (c, _: void, key) => cancelPlan(c, key),
     c => [financeKeys.plan(c.mode, c.space)],
-    () => toast.success(t("finance.plan.toast.freeScheduled", {date: periodEnd})),
+    // An unpaid first plan is cancelled at once; a paid one runs to its end.
+    () => toast.success(state.subscription?.status === "INCOMPLETE"
+      ? t("finance.plan.toast.changed")
+      : t("finance.plan.toast.freeScheduled", {date: periodEnd})),
     err => toast.error(messageFor(err)),
   )
 
@@ -158,8 +161,11 @@ function PlanScreen({state}: {state: PlanState}) {
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {options.map((option, i) => {
           const isCurrent = option === current
-          // One primary action (spec § 7): the plan right after the current one.
-          const isNext = i === options.indexOf(current) + 1 && !option.isDefault
+          // One primary action (spec § 7): paying an open first invoice when
+          // there is one; otherwise the next priced plan up — an upgrade, never
+          // a scheduled move to Sob demanda.
+          const isNext = !state.open_invoice?.checkout_url && i === options.indexOf(current) + 1 &&
+            !option.isDefault && option.monthly !== null && option.monthly > (current.monthly ?? 0)
           const isPendingTarget = pending?.option === option
           return (
             <article
@@ -177,7 +183,7 @@ function PlanScreen({state}: {state: PlanState}) {
               {isCurrent && state.subscription?.cancel_at_period_end && (
                 <p className="text-sm text-muted-foreground">{t("finance.plan.endsOn", {date: periodEnd})}</p>
               )}
-              {isCurrent && pending && (
+              {isCurrent && pending && !state.subscription?.cancel_at_period_end && (
                 <p className="text-sm text-muted-foreground">{t("finance.plan.changesOn", {plan: label(pending.option), date: shortDate(pending.at)})}</p>
               )}
               {isCurrent && option.monthly === null && !option.isDefault && (

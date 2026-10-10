@@ -103,6 +103,16 @@ func TestTwoFirstChoicesMakeOneCustomer(t *testing.T) {
 	if n != 1 {
 		t.Fatalf("%d customers for one person", n)
 	}
+	// Review finding: one subscription too, not only one customer — two would
+	// bill the person twice every month.
+	customer, err := repositories.NewCustomerRepository(testDB, testCfg).GetByUser(ctxT(t), tenant, true, user)
+	if err != nil {
+		t.Fatal(err)
+	}
+	subs, err := repositories.NewSubscriptionRepository(testDB, testCfg).ListByCustomer(ctxT(t), tenant, true, customer.ID, 10)
+	if err != nil || len(subs) != 1 {
+		t.Fatalf("%d subscriptions for one person (err %v)", len(subs), err)
+	}
 }
 
 // Review Focus 4.
@@ -195,7 +205,12 @@ func TestOnDemandToBasicIsImmediate(t *testing.T) {
 func TestOnlyFinancePlanPricesAreAccepted(t *testing.T) {
 	tenant := seedCTechCatalogue(t)
 	plan, _ := newFinancePlan(t, tenant)
-	for _, ids := range [][]string{{"price_dfe_pro_monthly"}, {"price_finance_free"}, {}, {"price_nope"}} {
+	// Review finding: a subset of a plan (one on-demand price buys unlimited
+	// spaces and meters only people) or a mix of two plans is not a plan.
+	for _, ids := range [][]string{{"price_dfe_pro_monthly"}, {"price_finance_free"}, {}, {"price_nope"},
+		{"price_finance_ondemand_people"}, {"price_finance_ondemand_spaces"},
+		{"price_finance_basic_monthly", "price_finance_pro_monthly"},
+		{"price_finance_basic_monthly", "price_finance_basic_monthly"}} {
 		if _, _, err := plan.Choose(ctxT(t), services.ChooseInput{UserID: "usr_" + id.New(), Name: "A", PriceIDs: ids}, now()); !errors.Is(err, services.ErrNotAPlanPrice) {
 			t.Errorf("%v: %v", ids, err)
 		}
@@ -402,5 +417,56 @@ func TestTheChoiceCarriesTheCheckoutURL(t *testing.T) {
 	r := p.call(t, tok, "personal", http.MethodPost, "/plan", `{"price_ids":["price_finance_basic_monthly"],"name":"Ana"}`)
 	if r.status != http.StatusOK || !strings.Contains(string(r.body), `"checkout_url":"https://pay.test/c`) {
 		t.Fatalf("%d %s", r.status, r.body)
+	}
+}
+
+// Review finding: the per-customer lookup was one filtered Query with Limit 100,
+// which DynamoDB applies before the filter — a subscriber past the first page of
+// the tenant's rows was invisible (Free on screen and in entitlements, and a
+// second paid subscription on the next choice).
+func TestASubscriberPastTheFirstPageIsFound(t *testing.T) {
+	ctx := ctxT(t)
+	f := newCatalog(t, "finance")
+	price := f.price(t, f.product.ID, billing.PriceFixed, billing.BillAdvance, 0, billing.IntervalMonth)
+	for i := 0; i < 60; i++ { // 60 subscriptions + 60 item rows under the same prefix
+		if _, _, err := f.subber.Subscribe(ctx, services.SubscribeInput{OrganizationID: f.org.ID, Livemode: true,
+			CustomerID: "cus_" + id.New(), Items: []services.SubscribeItem{{PriceID: price.ID}}, Actor: "t"}, now()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	target := "cus_" + id.New()
+	if _, _, err := f.subber.Subscribe(ctx, services.SubscribeInput{OrganizationID: f.org.ID, Livemode: true,
+		CustomerID: target, Items: []services.SubscribeItem{{PriceID: price.ID}}, Actor: "t"}, now()); err != nil {
+		t.Fatal(err)
+	}
+	got, err := f.subs.ListByCustomer(ctx, f.org.ID, true, target, 100)
+	if err != nil || len(got) != 1 {
+		t.Fatalf("found %d, err %v", len(got), err)
+	}
+}
+
+// Review finding: the projection read only the newest in-TTL report before the
+// period, while the close also falls back to the no-TTL latest level. A level
+// unchanged for longer than the TTL projected 0 and was billed in full.
+func TestTheProjectionCarriesALevelOlderThanItsTTL(t *testing.T) {
+	tenant := seedCTechCatalogue(t)
+	plan, levels := newFinancePlan(t, tenant)
+	user := "usr_" + id.New()
+	old := now().AddDate(-2, 0, 0)
+	key := "old-" + id.New()
+	if err := levels.Append(ctxT(t), &billing.LevelRecord{OrganizationID: tenant, Livemode: true, CustomerRef: "USER_" + user,
+		Meter: "finance_spaces", Value: 3, OccurredAt: old, IdempotencyKey: key}, now()); err != nil {
+		t.Fatal(err)
+	}
+	usageBase := repositories.NewBase(testDB, testCfg, repositories.TableUsage)
+	if _, err := usageBase.DeleteItem(ctxT(t), repositories.LevelPK(tenant, true, "USER_"+user, "finance_spaces"), repositories.LevelSK(old, key)); err != nil {
+		t.Fatal(err)
+	}
+	st, err := plan.State(ctxT(t), user, now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Levels["finance_spaces"].Current != 3 {
+		t.Fatalf("levels = %+v", st.Levels)
 	}
 }

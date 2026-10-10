@@ -279,6 +279,8 @@ func FromError(err error) *Problem {
 	case errors.Is(err, repositories.ErrUserAlreadyCustomer):
 		return New(409, TypeInvalidTransition, "Already a Customer",
 			"this account is already a customer of this organization").WithCode("user_already_customer")
+	case errors.Is(err, repositories.ErrPlanBusy):
+		return New(409, TypeConcurrentUpdate, "Concurrent Update", "another plan choice is in progress; try again").WithCode("concurrent_update")
 	case errors.Is(err, services.ErrNotAPlanPrice):
 		return Unprocessable(err.Error()).WithCode("not_a_plan_price")
 	case errors.Is(err, services.ErrCustomerRefMismatch):

@@ -293,3 +293,16 @@ Recorded while writing the implementation plans
 6. **Credentials are scoped to an owner.** `dfe-billing` was not actually scoped to `dfe` in code (§ 4 assumed it was);
    deploy step 1 adds `owner_key` to credentials, and the seed scopes `dfe-billing` to `dfe` and `account-billing` to
    `finance`. `default` and the 200-instead-of-404 answer apply only when the caller sends `owner_key`.
+
+## Amendment, 2026-10-10 — final review of deploy step 3
+
+- **A plan is a whole price set.** `POST /plan` accepts exactly the prices of one plan, grouped by
+  `metadata.plan` — the one metadata key billing reads, as a grouping label and never a quota (a narrow exception
+  to ADR 0008). A subset is refused: either on-demand price alone carries the unlimited quotas and would meter
+  only half of them.
+- **One plan choice at a time per person**, under a 30-second lease on the customer, so two first choices cannot
+  both subscribe.
+- **The projection and the close share one carried-in rule** (`LevelRepository.CarriedIn`).
+- **The per-customer subscription lookup reads the whole tenant partition** (it follows the continuation key):
+  a filtered Query applies its limit before the filter, and one page made a subscriber past it invisible to the
+  portal, the plan screen and entitlements. An index by customer is the follow-up when the tenant grows.

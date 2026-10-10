@@ -51,6 +51,13 @@ func NewFinancePlan(customers *repositories.CustomerRepository, subs *repositori
 // Enabled is false where no tenant zero is configured.
 func (s *FinancePlan) Enabled() bool { return s != nil && s.tenant != "" }
 
+// planChoiceLease bounds a plan choice's lock: longer than a choice takes,
+// short enough that a crashed one blocks the person for seconds only.
+const planChoiceLease = 30 * time.Second
+
+// metadataPlan names the plan a price belongs to (see validPrices).
+const metadataPlan = "plan"
+
 type LevelView struct {
 	Current int64 `json:"current"`
 	Peak    int64 `json:"peak"`
@@ -175,13 +182,9 @@ func (s *FinancePlan) project(ctx context.Context, userID string, st *PlanState)
 		if p.Aggregation != billing.AggregationMax {
 			continue
 		}
-		carried := int64(0)
-		before, err := s.levels.LatestBefore(ctx, s.tenant, true, userRef(userID), p.Meter, st.Period.Start.Time())
+		carried, err := s.levels.CarriedIn(ctx, s.tenant, true, userRef(userID), p.Meter, st.Period.Start.Time())
 		if err != nil {
 			return err
-		}
-		if before != nil {
-			carried = before.Value
 		}
 		records, err := s.levels.InPeriod(ctx, s.tenant, true, userRef(userID), p.Meter, st.Period.Start.Time(), st.Period.End.Time())
 		if err != nil {
@@ -222,18 +225,42 @@ func (s *FinancePlan) customerFor(ctx context.Context, in ChooseInput, now time.
 	return c, err
 }
 
+// validPrices accepts exactly one plan's whole price set. A subset is not a
+// plan: either on-demand price alone carries the unlimited quotas and would
+// meter only half of them, and two plans together are no plan at all.
+//
+// Plans are grouped by metadata["plan"], the one metadata key this service
+// reads — a grouping label, never a quota (a narrow exception to ADR 0008,
+// recorded in the plans spec).
 func (s *FinancePlan) validPrices(ctx context.Context, ids []string) error {
 	if len(ids) == 0 {
-		return fmt.Errorf("%w: choose at least one price", ErrNotAPlanPrice)
+		return fmt.Errorf("%w: choose a plan", ErrNotAPlanPrice)
 	}
 	prices, def, err := s.catalogue(ctx)
 	if err != nil {
 		return err
 	}
+	byID := map[string]billing.Price{}
+	for _, p := range prices {
+		byID[p.ID] = p
+	}
+	plan := ""
+	seen := map[string]bool{}
 	for _, want := range ids {
-		ok := want != def && slices.ContainsFunc(prices, func(p billing.Price) bool { return p.ID == want })
-		if !ok {
+		p, ok := byID[want]
+		if !ok || want == def || seen[want] {
 			return fmt.Errorf("%w: %s", ErrNotAPlanPrice, want)
+		}
+		seen[want] = true
+		key := p.Metadata[metadataPlan]
+		if key == "" || (plan != "" && key != plan) {
+			return fmt.Errorf("%w: %s is not part of one plan", ErrNotAPlanPrice, want)
+		}
+		plan = key
+	}
+	for _, p := range prices {
+		if p.ID != def && p.Metadata[metadataPlan] == plan && !seen[p.ID] {
+			return fmt.Errorf("%w: plan %s also needs %s", ErrNotAPlanPrice, plan, p.ID)
 		}
 	}
 	return nil
@@ -247,6 +274,13 @@ func (s *FinancePlan) Choose(ctx context.Context, in ChooseInput, now time.Time)
 	if err != nil {
 		return nil, nil, err
 	}
+	// One choice at a time per person: two first choices would both find no
+	// subscription and both subscribe, billing the person twice a month.
+	release, err := s.customers.LockPlan(ctx, s.tenant, true, customer.ID, id.New(), now, planChoiceLease)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer release()
 	items := make([]SubscribeItem, len(in.PriceIDs))
 	for i, p := range in.PriceIDs {
 		items[i] = SubscribeItem{PriceID: p}

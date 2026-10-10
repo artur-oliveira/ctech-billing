@@ -408,40 +408,55 @@ func priceIDsOf(items []billing.SubscriptionItem) []string {
 	return out
 }
 
-// ListByCustomer returns a customer's subscriptions.
+// ListByCustomer returns a customer's subscriptions, up to limit.
 //
 // It filters the tenant partition rather than adding an index. That is a bounded
 // compromise, not a shortcut: the read is already confined to one organization,
 // and the entitlement check is called per customer, not per page view. If it
 // ever becomes a hot path the fix is an index — never a Scan.
 //
+// It follows the continuation key to the end of the partition: DynamoDB applies
+// a Query's Limit BEFORE its filter, so one page of the tenant's rows says
+// nothing about this customer's. Reading only the first page made a subscriber
+// past it invisible — Free on screen and in entitlements, and a second paid
+// subscription on the next choice.
+//
 // The `#ITEM#` rows share the SUB# prefix, so they come back too and are
 // discarded by the decode filter below.
 func (r *SubscriptionRepository) ListByCustomer(ctx context.Context, organizationID string, livemode bool, customerID string, limit int) ([]billing.Subscription, error) {
-	res, err := r.base.Query(ctx, QueryOpts{
-		PK:               TenantPK(organizationID, livemode),
-		SKPrefix:         skSubscription,
-		FilterField:      "customer_id",
-		FilterValue:      customerID,
-		Limit:            limit,
-		ScanIndexForward: true,
-	})
-	if err != nil {
-		return nil, err
-	}
-	rows, err := DecodeItems[subscriptionRow](res.Items)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]billing.Subscription, 0, len(rows))
-	for _, row := range rows {
-		// Item rows carry no status; only subscriptions do.
-		if row.Subscription.Status == "" {
-			continue
+	out := make([]billing.Subscription, 0)
+	var start map[string]types.AttributeValue
+	for {
+		res, err := r.base.Query(ctx, QueryOpts{
+			PK:                TenantPK(organizationID, livemode),
+			SKPrefix:          skSubscription,
+			FilterField:       "customer_id",
+			FilterValue:       customerID,
+			ScanIndexForward:  true,
+			ExclusiveStartKey: start,
+		})
+		if err != nil {
+			return nil, err
 		}
-		out = append(out, row.entity())
+		rows, err := DecodeItems[subscriptionRow](res.Items)
+		if err != nil {
+			return nil, err
+		}
+		for _, row := range rows {
+			// Item rows carry no status; only subscriptions do.
+			if row.Subscription.Status == "" {
+				continue
+			}
+			out = append(out, row.entity())
+			if limit > 0 && len(out) >= limit {
+				return out, nil
+			}
+		}
+		if len(res.LastEvaluatedKey) == 0 {
+			return out, nil
+		}
+		start = res.LastEvaluatedKey
 	}
-	return out, nil
 }
 
 // List pages the tenant's subscriptions, newest first.

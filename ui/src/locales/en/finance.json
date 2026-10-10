@@ -478,7 +478,7 @@
       "submit": "Confirm"
     },
     "pending": {
-      "title": "There is an invoice from the previous plan to pay.",
+      "title": "There is an open invoice for your plan.",
       "body": "Pay the open invoice before changing plan.",
       "submit": "Pay"
     },

@@ -85,4 +85,16 @@ describe("PlanView", () => {
     renderWithQuery(<PlanView/>)
     expect(await screen.findByText(/O Basic custa R\$\s?19,90/)).toBeInTheDocument()
   })
+
+  // Review finding: with the first invoice open, paying it is THE action; no
+  // plan card competes with it (one primary action, spec § 7).
+  it("has one primary action when the first invoice is open", async () => {
+    serveFinanceMock()
+    renderWithQuery(<PlanView/>)
+    const basic = (await screen.findAllByRole("article"))[1]
+    await userEvent.click(within(basic).getByRole("button", {name: /assinar/i}))
+    await screen.findByRole("button", {name: /pagar fatura/i})
+    const primary = screen.getAllByRole("button").filter(b => b.className.includes("bg-brand-600"))
+    expect(primary.map(b => b.textContent)).toEqual(["Pagar fatura"])
+  })
 })

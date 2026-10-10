@@ -278,23 +278,7 @@ func (s *Invoicer) maxLevel(ctx context.Context, sub *billing.Subscription, pric
 // report before it; else the `previous` of the first report from it; else the
 // no-TTL latest level, which is then before start; else 0.
 func (s *Invoicer) carriedIn(ctx context.Context, sub *billing.Subscription, ref, meter string, start time.Time) (int64, error) {
-	if before, err := s.levels.LatestBefore(ctx, sub.OrganizationID, sub.Livemode, ref, meter, start); err != nil || before != nil {
-		if before == nil {
-			return 0, err
-		}
-		return before.Value, nil
-	}
-	if first, err := s.levels.FirstFrom(ctx, sub.OrganizationID, sub.Livemode, ref, meter, start); err != nil || first != nil {
-		if first == nil {
-			return 0, err
-		}
-		return first.Previous, nil
-	}
-	latest, err := s.levels.Latest(ctx, sub.OrganizationID, sub.Livemode, ref, meter)
-	if err != nil || latest == nil {
-		return 0, err
-	}
-	return latest.Value, nil
+	return s.levels.CarriedIn(ctx, sub.OrganizationID, sub.Livemode, ref, meter, start)
 }
 
 // SweepResult reports what a daily run did. Counts rather than a bare error,

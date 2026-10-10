@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
@@ -400,4 +401,43 @@ func (r *CustomerRepository) RecordTaxIDAccess(ctx context.Context, c *billing.C
 		return err
 	}
 	return r.audit.TransactWrite(ctx, txItems(r.audit.BuildPutTxItemIfAbsent(item)))
+}
+
+// ErrPlanBusy reports a customer whose plan another request is changing.
+var ErrPlanBusy = errors.New("another plan choice for this customer is in progress")
+
+const skPlanLock = "PLAN_LOCK#"
+
+// LockPlan takes a short lease on a customer's plan choice, so two first
+// choices (two tabs, a double click) cannot both find no subscription and both
+// subscribe. A lease rather than a lock row that must be removed: one that a
+// crashed request never released expires on its own. The returned func releases
+// it, only if it is still this request's.
+func (r *CustomerRepository) LockPlan(ctx context.Context, organizationID string, livemode bool, customerID, token string, now time.Time, lease time.Duration) (func(), error) {
+	pk, sk := TenantPK(organizationID, livemode), skPlanLock+customerID
+	until := now.Add(lease)
+	acquire := r.base.BuildRawUpdateTxItem(pk, &sk,
+		"SET lease_until = :until, lease_token = :tok, expires_at = :exp",
+		"attribute_not_exists(pk) OR lease_until < :now", nil,
+		map[string]types.AttributeValue{
+			":until": &types.AttributeValueMemberN{Value: strconv.FormatInt(until.UnixMilli(), 10)},
+			":now":   &types.AttributeValueMemberN{Value: strconv.FormatInt(now.UnixMilli(), 10)},
+			":tok":   &types.AttributeValueMemberS{Value: token},
+			":exp":   &types.AttributeValueMemberN{Value: strconv.FormatInt(until.Add(24*time.Hour).Unix(), 10)},
+		})
+	err := r.base.TransactWrite(ctx, txItems(acquire))
+	if IsConditionFailed(err) {
+		return nil, ErrPlanBusy
+	}
+	if err != nil {
+		return nil, conflictErr(err)
+	}
+	return func() {
+		release := r.base.BuildRawUpdateTxItem(pk, &sk, "SET lease_until = :zero", "lease_token = :tok", nil,
+			map[string]types.AttributeValue{
+				":zero": &types.AttributeValueMemberN{Value: "0"},
+				":tok":  &types.AttributeValueMemberS{Value: token},
+			})
+		_ = r.base.TransactWrite(context.WithoutCancel(ctx), txItems(release))
+	}, nil
 }

@@ -103,7 +103,9 @@ export const financeKeys = {
     ["finance", mode, spaceHeader(space), "card-statement", cardId, month] as const,
   purchases: (mode: Mode, space: Space, cardId: string) => ["finance", mode, spaceHeader(space), "purchases", cardId] as const,
   imports: (mode: Mode, space: Space, accountId: string) => ["finance", mode, spaceHeader(space), "imports", accountId] as const,
-  plan: (mode: Mode, space: Space) => ["finance", mode, spaceHeader(space), "plan"] as const,
+  // No mode: the plan is always read live (tenant zero), so a change made from
+  // test mode must show in live mode too.
+  plan: (_mode: Mode, space: Space) => ["finance", "plan", spaceHeader(space)] as const,
   importDetail: (mode: Mode, space: Space, id: string) => ["finance", mode, spaceHeader(space), "import", id] as const,
   csvMapping: (mode: Mode, space: Space, accountId: string) => ["finance", mode, spaceHeader(space), "csv-mapping", accountId] as const,
   spaces: () => ["finance", "spaces"] as const,

@@ -478,7 +478,7 @@
       "submit": "Confirmar"
     },
     "pending": {
-      "title": "Há uma fatura do plano anterior a pagar.",
+      "title": "Há uma fatura em aberto do seu plano.",
       "body": "Pague a fatura aberta antes de mudar de plano.",
       "submit": "Pagar"
     },

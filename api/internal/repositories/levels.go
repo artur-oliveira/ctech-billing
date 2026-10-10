@@ -272,3 +272,29 @@ func (r *LevelRepository) InPeriod(ctx context.Context, organizationID string, l
 		start = res.LastEvaluatedKey
 	}
 }
+
+// CarriedIn is the level held at start: the newest in-TTL report before it;
+// else the previous level recorded on the first report from it; else the no-TTL
+// latest level, which is then before start; else 0. The one rule both the close
+// and the plan screen's projection use, so the screen shows what is billed.
+func (r *LevelRepository) CarriedIn(ctx context.Context, organizationID string, livemode bool, customerRef, meter string, start time.Time) (int64, error) {
+	before, err := r.LatestBefore(ctx, organizationID, livemode, customerRef, meter, start)
+	if err != nil {
+		return 0, err
+	}
+	if before != nil {
+		return before.Value, nil
+	}
+	first, err := r.FirstFrom(ctx, organizationID, livemode, customerRef, meter, start)
+	if err != nil {
+		return 0, err
+	}
+	if first != nil {
+		return first.Previous, nil
+	}
+	latest, err := r.Latest(ctx, organizationID, livemode, customerRef, meter)
+	if err != nil || latest == nil {
+		return 0, err
+	}
+	return latest.Value, nil
+}
