@@ -1,6 +1,6 @@
 package v1
 
-import "gopkg.aoctech.app/billing/api/internal/patch"
+import "gopkg.aoctech.app/api-commons/patch"
 
 // The two shapes a PATCH field takes (finance spec § 6, UX batch 4).
 

@@ -36,7 +36,11 @@ var (
 	// Encode marshals a value into DynamoDB attribute values, omitting nulls.
 	Encode = dynamo.Encode
 	// IsConditionFailed reports a conditional-check failure, whether it came
-	// from a single write or from inside a cancelled transaction.
+	// from a single write or from inside a cancelled transaction. Since
+	// api-commons v1.11.0 a transaction cancelled by a TransactionConflict or a
+	// throttle is NOT a condition failure: nothing was decided, so it comes
+	// back as an error (and a job re-runs it) instead of reading as "another
+	// instance already did it".
 	IsConditionFailed = dynamo.IsConditionFailed
 )
 

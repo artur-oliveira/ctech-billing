@@ -37,3 +37,26 @@ func TestRetryableCancel(t *testing.T) {
 		}
 	}
 }
+
+// api-commons v1.11.0 narrowed IsConditionFailed to a cancellation that carries a
+// ConditionalCheckFailed reason. Before it, a TransactionConflict answered true,
+// so the dunning step ("another instance did this step") and the renewal
+// transition ("the subscription already moved on") read a write that never
+// happened as done. Billing's alias must keep the narrow meaning.
+func TestIsConditionFailedIsNotAConflict(t *testing.T) {
+	cases := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"a condition failed", cancelled("None", "ConditionalCheckFailed"), true},
+		{"a conflict", cancelled("TransactionConflict", "None"), false},
+		{"a throttle", cancelled("ThrottlingError"), false},
+		{"not a cancellation", errors.New("x"), false},
+	}
+	for _, c := range cases {
+		if got := IsConditionFailed(c.err); got != c.want {
+			t.Errorf("%s: IsConditionFailed = %v, want %v", c.name, got, c.want)
+		}
+	}
+}

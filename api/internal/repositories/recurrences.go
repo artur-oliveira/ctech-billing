@@ -10,12 +10,12 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 
+	"gopkg.aoctech.app/api-commons/patch"
 	"gopkg.aoctech.app/billing/api/internal/config"
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
 	"gopkg.aoctech.app/billing/api/internal/domain/brcal"
 	"gopkg.aoctech.app/billing/api/internal/domain/finance"
 	"gopkg.aoctech.app/billing/api/internal/domain/id"
-	"gopkg.aoctech.app/billing/api/internal/patch"
 	"gopkg.aoctech.app/billing/api/internal/space"
 )
 
