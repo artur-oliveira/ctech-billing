@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"gopkg.aoctech.app/billing/api/internal/domain/brcal"
+	"gopkg.aoctech.app/billing/api/internal/space"
 )
 
 // Logical table names. The physical name is {prefix}_{table}, and the company
@@ -140,6 +141,7 @@ const (
 	skAudit        = "AUDIT#"
 	skCounter      = "COUNTER#"
 	skCustomerUser = "CUSTOMER_USER#"
+	skCustomerOrg  = "CUSTOMER_ORG#"
 	skCredential   = "CREDENTIAL#"
 	skIdempotency  = "IDEMPOTENCY#"
 	skEndpoint     = "ENDPOINT#"
@@ -227,6 +229,36 @@ func InvoiceCounterSK(year int) string {
 // rather than sweeping the tenant's whole partition (ADR 0002).
 func UsagePK(organizationID string, livemode bool, subscriptionItemID string, periodStart brcal.Date) string {
 	return TenantPK(organizationID, livemode) + "#USAGE#" + subscriptionItemID + "#" + periodStart.String()
+}
+
+// levelTimeLayout is fixed-width UTC, so a level's sort key orders by time.
+const levelTimeLayout = "2006-01-02T15:04:05.000000000Z"
+
+// LevelPK is the partition of one customer reference's levels on one meter
+// (spec § 6.2), inside the tenant's mode partition like UsagePK.
+func LevelPK(organizationID string, livemode bool, customerRef, meter string) string {
+	return TenantPK(organizationID, livemode) + "#LEVEL#" + customerRef + "#" + meter
+}
+
+// LevelSK orders reports by when the level was reached; the key makes two
+// reports at the same instant two items.
+func LevelSK(at time.Time, key string) string { return levelBound(at) + "#" + key }
+
+// levelBound is the sort-key prefix of an instant. Every report at that
+// instant sorts after it ("…Z#key" > "…Z"), so `sk < levelBound(t)` is
+// "strictly before t".
+func levelBound(t time.Time) string { return t.UTC().Format(levelTimeLayout) }
+
+// LevelKeyPK is the idempotency marker of a level report: keyed by the
+// caller's key alone, so a reuse with another instant is seen (scope decision 8).
+func LevelKeyPK(organizationID string, livemode bool, key string) string {
+	return TenantPK(organizationID, livemode) + "#LEVEL_KEY#" + key
+}
+
+// LevelLatestPK holds the newest level of (customer_ref, meter) with no TTL, so
+// a level that never changes is never lost (scope decision 9).
+func LevelLatestPK(organizationID string, livemode bool, customerRef, meter string) string {
+	return TenantPK(organizationID, livemode) + "#LEVEL_LATEST#" + customerRef + "#" + meter
 }
 
 // Schedule-index job names. One constant per job that exists, and the list is
@@ -375,6 +407,26 @@ func LookupOrganizationOwnerPK(livemode bool, userID string) string {
 // the caller was always entitled to read. An index would be machinery for a
 // question nobody asks.
 func CustomerUserSK(userID string) string { return skCustomerUser + userID }
+
+// OrgRefPrefix marks an external reference that names a ctech-account
+// organization (spec § 8).
+const OrgRefPrefix = "ORG_"
+
+// OrganizationOfRef reads ORG_{organization_id}. Only a canonical organization
+// id counts: any other ORG_… is an ordinary external reference, so a merchant
+// already using the prefix is unaffected.
+func OrganizationOfRef(ref string) (string, bool) {
+	id, ok := strings.CutPrefix(ref, OrgRefPrefix)
+	if !ok || !space.IsOrganizationID(id) {
+		return "", false
+	}
+	return id, true
+}
+
+// CustomerOrgSK is the pointer from a ctech-account organization to its
+// customer, the organization counterpart of CustomerUserSK (ADR 0025,
+// 2026-10-07 amendment).
+func CustomerOrgSK(organizationID string) string { return skCustomerOrg + organizationID }
 
 // CredentialSK and IdempotencySK are tenant-scoped rows.
 func CredentialSK(clientID string) string { return skCredential + clientID }

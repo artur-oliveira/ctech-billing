@@ -272,6 +272,12 @@ func FromError(err error) *Problem {
 		return New(409, TypeAlreadyGenerated, "Already Generated",
 			"this period has already been invoiced")
 
+	case errors.Is(err, repositories.ErrLevelKeyReused):
+		return New(409, TypeIdempotencyConflict, "Idempotency Conflict",
+			"this idempotency_key was already used for another level").WithCode("idempotency_key_reused")
+	case errors.Is(err, repositories.ErrUserAlreadyCustomer):
+		return New(409, TypeInvalidTransition, "Already a Customer",
+			"this account is already a customer of this organization").WithCode("user_already_customer")
 	case errors.Is(err, repositories.ErrDuplicateUsage):
 		// A repeated usage report is the caller's retry succeeding, not a
 		// failure. Reporting it as an error would make every well-behaved

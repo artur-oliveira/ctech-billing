@@ -358,9 +358,10 @@ func (s *FinanceInvoices) payer(ctx context.Context, inv *billing.Invoice) targe
 	switch {
 	case c.Anonymized:
 		return skipped(SidePayer, "payer_anonymized")
+	case isOrganizationCustomer(c):
+		// Spec § 8: only a USER_ customer's invoice is a person's expense.
+		return skipped(SidePayer, "payer_is_organization")
 	case c.UserID == "":
-		// Organization customers (spec § 1) are not modelled yet: nothing on a
-		// customer names an organization space.
 		return skipped(SidePayer, "payer_has_no_account")
 	}
 	sp, err := space.ForInvoicePayer(c.UserID, inv.Livemode)
@@ -432,4 +433,11 @@ func (s *FinanceInvoices) log(ctx context.Context, inv *billing.Invoice, fact st
 			slog.InfoContext(ctx, "invoice recorded in finance", attrs...)
 		}
 	}
+}
+
+// isOrganizationCustomer reports a customer whose external reference names a
+// ctech-account organization (ORG_{id}).
+func isOrganizationCustomer(c *billing.Customer) bool {
+	_, ok := repositories.OrganizationOfRef(c.ExternalRef)
+	return ok
 }

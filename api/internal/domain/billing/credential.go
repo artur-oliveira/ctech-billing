@@ -30,6 +30,11 @@ type APICredential struct {
 	Livemode       bool   `dynamodbav:"livemode"        json:"livemode"`
 	// Description is for humans reading the console: which integration is this.
 	Description string `dynamodbav:"description,omitempty" json:"description,omitempty"`
+	// OwnerKey scopes the credential to one service's products (ADR 0016's
+	// owner): entitlements, levels and usage of other owners are refused.
+	// Empty is an ordinary merchant's credential, which acts for the whole
+	// tenant. Set by the tenant plan, never by a route.
+	OwnerKey string `dynamodbav:"owner_key,omitempty" json:"owner_key,omitempty"`
 	// Active is billing's own kill switch. Revoking the client in ctech-account
 	// is the real revocation; this is the one billing can flip immediately
 	// without a cross-service call, for the case where a merchant's integration
@@ -46,4 +51,9 @@ func (c *APICredential) Validate() error {
 		return fmt.Errorf("%w: %s", ErrCredentialInactive, c.ClientID)
 	}
 	return nil
+}
+
+// Allows reports whether this credential may act for ownerKey's products.
+func (c *APICredential) Allows(ownerKey string) bool {
+	return c.OwnerKey == "" || c.OwnerKey == ownerKey
 }

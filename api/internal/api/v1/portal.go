@@ -36,6 +36,10 @@ type portalHandlers struct {
 	// bus turns the settlement stream from a poll into a notification. Nil where
 	// no Valkey is configured, which the stream handles by re-reading faster.
 	bus settlement.Bus
+	// spaces lists the organizations the portal selector offers; portalOrg is
+	// tenant zero. Both feed listSpaces only.
+	spaces    spaceLister
+	portalOrg string
 }
 
 // session is who the portal thinks you are. The console has an equivalent, and
@@ -246,7 +250,7 @@ func (h *portalHandlers) payInvoice(c fiber.Ctx) error {
 	}
 
 	session, _, err := h.collector.Pay(
-		c.Context(), t.OrganizationID, t.Livemode, inv.ID, "user:"+customer.UserID, middleware.GetRequestID(c), h.now())
+		c.Context(), t.OrganizationID, t.Livemode, inv.ID, actorOfUser(c), middleware.GetRequestID(c), h.now())
 	if err != nil {
 		return failCheckout(c, err)
 	}
@@ -300,7 +304,7 @@ func (h *portalHandlers) cancelSubscription(c fiber.Ctx) error {
 	}
 
 	if err := h.subscriber.Cancel(
-		c.Context(), sub, true, billing.CauseCustomer, "user:"+customer.UserID, middleware.GetRequestID(c), h.now(),
+		c.Context(), sub, true, billing.CauseCustomer, actorOfUser(c), middleware.GetRequestID(c), h.now(),
 	); err != nil {
 		return fail(c, err)
 	}

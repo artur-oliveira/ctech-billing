@@ -149,5 +149,12 @@
     "incomplete": "Awaiting confirmation",
     "active_until_period_end": "Active until period end",
     "active": "Active"
+  },
+  "space": {
+    "label": "Bills for",
+    "personal": "Personal",
+    "lost": "You no longer manage that organization. Showing your personal bills.",
+    "pickOrganization": "Choose an organization above to see its bills.",
+    "unavailable": "Organizations unavailable right now."
   }
 }

@@ -30,6 +30,9 @@ const (
 	RetentionTwentyFourMonths
 	// RetentionNinetyDays is the redelivery/debugging window.
 	RetentionNinetyDays
+	// RetentionThirteenMonths is for a level report (spec § 6.2): long enough to
+	// carry a level across a year of no change.
+	RetentionThirteenMonths
 )
 
 // Per-record-type retention. Kept as one table so the policy is readable in one
@@ -48,6 +51,7 @@ const (
 	RetentionPaymentAttempt  = RetentionFiveYears
 	RetentionUsageRecord     = RetentionTwentyFourMonths
 	RetentionCredential      = RetentionPermanent // revoking is a flag, not an expiry
+	RetentionLevel           = RetentionThirteenMonths
 	RetentionEvent           = RetentionNinetyDays
 	RetentionWebhookDelivery = RetentionNinetyDays
 	// RetentionCheckoutSession applies to every session, not only expired and
@@ -78,6 +82,9 @@ func (r Retention) ExpiresAt(now time.Time) *int64 {
 		return unixPtr(now.AddDate(0, 24, 0))
 	case RetentionNinetyDays:
 		d = 90 * 24 * time.Hour
+	case RetentionThirteenMonths:
+		return unixPtr(now.AddDate(0, 13, 0))
+
 	default:
 		// An unknown class must not silently mean "keep forever": that is how a
 		// new record type quietly acquires unlimited retention.

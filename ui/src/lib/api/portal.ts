@@ -1,7 +1,12 @@
 "use client"
 
-import {apiClient} from "@/lib/api/client"
-import {currentLocale} from "@/lib/i18n"
+import type {AxiosRequestConfig} from "axios"
+import {toast} from "sonner"
+
+import {apiClient, isSpaceNotFound} from "@/lib/api/client"
+import {spaceHeader, PERSONAL, type Space} from "@/lib/console/space"
+import {currentLocale, t} from "@/lib/i18n"
+import {getPortalSpace, setPortalSpace} from "@/lib/portal/space"
 import type {SupportedLocale} from "@/lib/locale"
 import type {
   DocumentLink,
@@ -25,17 +30,74 @@ import type {
  * leaf; `invoices` is a prefix and nothing else.
  */
 export const portalKeys = {
-  session: ["portal", "session"] as const,
+  get session() { return [...scope(), "session"] as const },
   /** Prefix only — never a query's own key. Invalidating it catches every
    *  list shape and every detail below it. */
-  invoices: ["portal", "invoices"] as const,
+  get invoices() { return [...scope(), "invoices"] as const },
   /** One page, for composing the home screen. */
-  invoiceList: ["portal", "invoices", "list"] as const,
+  get invoiceList() { return [...scope(), "invoices", "list"] as const },
   /** Cursor pages, for the list screen. */
-  invoicePages: ["portal", "invoices", "pages"] as const,
-  invoice: (id: string) => ["portal", "invoices", "detail", id] as const,
-  subscriptions: ["portal", "subscriptions"] as const,
-  subscription: (id: string) => ["portal", "subscriptions", "detail", id] as const,
+  get invoicePages() { return [...scope(), "invoices", "pages"] as const },
+  invoice: (id: string) => [...scope(), "invoices", "detail", id] as const,
+  get subscriptions() { return [...scope(), "subscriptions"] as const },
+  subscription: (id: string) => [...scope(), "subscriptions", "detail", id] as const,
+  /** Not keyed by the space: it is the list the switch is drawn from, the same
+   *  whichever space is selected. */
+  spaces: ["portal-spaces"] as const,
+}
+
+/** Every portal key starts with the selection it was read for, like
+ *  financeKeys: two spaces are two caches, so a change of selection from
+ *  anywhere can never serve one space's bills under the other's name. */
+function scope() {
+  return ["portal", spaceHeader(getPortalSpace())] as const
+}
+
+/** The portal's selector header, read at call time (ADR 0025). */
+export function portalSpaceHeaders(space: Space = getPortalSpace()): Record<string, string> {
+  return {"X-Billing-Space": spaceHeader(space)}
+}
+
+/**
+ * One portal call, sent for the space selected when it started. A 404
+ * space-not-found means that organization is no longer this person's to
+ * manage: fall back to Pessoal, once, and only while it is still the
+ * selection — a late answer from a space already left must not move the
+ * person back. One toast id, so the calls failing together say it once.
+ */
+async function portal<T>(config: AxiosRequestConfig): Promise<T> {
+  const space = getPortalSpace()
+  try {
+    const {data} = await apiClient.request<T>({
+      ...config,
+      headers: {...(config.headers as Record<string, string> | undefined), ...portalSpaceHeaders(space)},
+    })
+    return data
+  } catch (error) {
+    if (space.kind === "organization" && isSpaceNotFound(error) && spaceHeader(getPortalSpace()) === spaceHeader(space)) {
+      setPortalSpace(PERSONAL)
+      toast.info(t("portal.space.lost"), {id: "portal-space-lost"})
+    }
+    throw error
+  }
+}
+
+export interface PortalSpace {
+  selector: string
+  display_name: string
+  role?: string
+}
+
+export interface PortalSpaces {
+  spaces: PortalSpace[]
+  organizations_unavailable: boolean
+}
+
+/** Pessoal, then the organizations this person owns or administers. Information
+ *  only: every other call is re-authorized against the selection it carries. */
+export async function listPortalSpaces(): Promise<PortalSpaces> {
+  const {data} = await apiClient.get<PortalSpaces>("/v1.0/portal/spaces")
+  return data
 }
 
 /**
@@ -66,8 +128,7 @@ export async function getHealth(): Promise<true> {
 }
 
 export async function getSession(): Promise<Session> {
-  const {data} = await apiClient.get<Session>("/v1.0/portal/session")
-  return data
+  return portal<Session>({method: "GET", url: "/v1.0/portal/session"})
 }
 
 /**
@@ -82,20 +143,19 @@ export async function getSession(): Promise<Session> {
  * that visibly hesitates.
  */
 export async function acceptTerms(): Promise<Session> {
-  const {data} = await apiClient.post<Session>("/v1.0/portal/terms/accept")
-  return data
+  return portal<Session>({method: "POST", url: "/v1.0/portal/terms/accept"})
 }
 
 export async function listInvoices(cursor?: string): Promise<ListResponse<Invoice>> {
-  const {data} = await apiClient.get<ListResponse<Invoice>>("/v1.0/portal/invoices", {
+  return portal<ListResponse<Invoice>>({
+    method: "GET",
+    url: "/v1.0/portal/invoices",
     params: cursor ? {cursor} : undefined,
   })
-  return data
 }
 
 export async function getInvoice(id: string): Promise<Invoice> {
-  const {data} = await apiClient.get<Invoice>(`/v1.0/portal/invoices/${id}`)
-  return data
+  return portal<Invoice>({method: "GET", url: `/v1.0/portal/invoices/${id}`})
 }
 
 /**
@@ -107,29 +167,24 @@ export async function getInvoice(id: string): Promise<Invoice> {
  * everybody who looks would be work nobody asked for.
  */
 export async function getInvoicePDF(id: string, lang: SupportedLocale = currentLocale()): Promise<DocumentLink> {
-  const {data} = await apiClient.get<DocumentLink>(`/v1.0/portal/invoices/${id}/pdf`, {params: {lang}})
-  return data
+  return portal<DocumentLink>({method: "GET", url: `/v1.0/portal/invoices/${id}/pdf`, params: {lang}})
 }
 
 /** Opens (or re-opens) the PIX charge. The body is empty by design — the
  *  server decides everything from the session and the invoice. */
 export async function payInvoice(id: string): Promise<PaymentResult> {
-  const {data} = await apiClient.post<PaymentResult>(`/v1.0/portal/invoices/${id}/pay`)
-  return data
+  return portal<PaymentResult>({method: "POST", url: `/v1.0/portal/invoices/${id}/pay`})
 }
 
 export async function listSubscriptions(): Promise<ListResponse<Subscription>> {
-  const {data} = await apiClient.get<ListResponse<Subscription>>("/v1.0/portal/subscriptions")
-  return data
+  return portal<ListResponse<Subscription>>({method: "GET", url: "/v1.0/portal/subscriptions"})
 }
 
 /** The detail, which is the list row plus the plan's own invoice history. */
 export async function getSubscription(id: string): Promise<Subscription> {
-  const {data} = await apiClient.get<Subscription>(`/v1.0/portal/subscriptions/${id}`)
-  return data
+  return portal<Subscription>({method: "GET", url: `/v1.0/portal/subscriptions/${id}`})
 }
 
 export async function cancelSubscription(id: string): Promise<Subscription> {
-  const {data} = await apiClient.post<Subscription>(`/v1.0/portal/subscriptions/${id}/cancel`)
-  return data
+  return portal<Subscription>({method: "POST", url: `/v1.0/portal/subscriptions/${id}/cancel`})
 }

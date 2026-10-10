@@ -95,6 +95,9 @@ func (s *Subscriber) Subscribe(ctx context.Context, in SubscribeInput, now time.
 	if err != nil {
 		return nil, nil, err
 	}
+	if err := s.requireLevelReference(ctx, in, prices); err != nil {
+		return nil, nil, err
+	}
 	// Every price agrees on these two by the check above, so the first one speaks
 	// for all of them.
 	cycle := prices[0]
@@ -508,4 +511,29 @@ func (s *Subscriber) Cancel(ctx context.Context, sub *billing.Subscription, atPe
 	}
 	_, err := s.subs.Transition(ctx, sub, billing.SubscriptionCanceled, cause, actor, requestID, now)
 	return err
+}
+
+// requireLevelReference refuses a price billed on levels (aggregation max) for
+// a customer with no external reference: levels are reported under that
+// reference, so the close could never read one and the subscription would stay
+// active and never be billed. Checked only where the invoicer bills levels.
+func (s *Subscriber) requireLevelReference(ctx context.Context, in SubscribeInput, prices []*billing.Price) error {
+	if s.invoicer == nil || s.invoicer.customers == nil {
+		return nil
+	}
+	for _, p := range prices {
+		if p.Aggregation != billing.AggregationMax {
+			continue
+		}
+		customer, err := s.invoicer.customers.Get(ctx, in.OrganizationID, in.Livemode, in.CustomerID)
+		if err != nil {
+			return err
+		}
+		if customer.ExternalRef == "" {
+			return fmt.Errorf("%w: price %s is billed on levels reported under the customer's external_ref, and customer %s has none",
+				billing.ErrInvalidSubscriptionItem, p.ID, customer.ID)
+		}
+		return nil
+	}
+	return nil
 }

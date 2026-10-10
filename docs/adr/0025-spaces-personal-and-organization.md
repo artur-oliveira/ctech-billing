@@ -104,3 +104,12 @@ also stores the workspace's kind. The switcher's list (2026-10-08 amendment) now
 `display_name`, `role`, `verbs` and `manage_people`, with personal workspaces before organizations. **The portal
 selector** (2026-10-07 amendment) is still unbuilt; when it is built it lists `kind = organization` workspaces only,
 since a personal workspace has no CTech subscription of its own.
+
+## Amendment, 2026-10-10 — the portal selector is built
+
+The portal sends the console's header, `X-Billing-Space`, through the same resolver: zero table reads before
+membership, and every refusal is the same 404. An organization is accepted only when its kind is
+`organization` and the role holds `Configure` — which `VerbsFor` grants to `owner` and `admin` exactly — and its
+customer is read through `CUSTOMER_ORG#{organization_id}`. `GET /v1.0/portal/spaces` is mounted outside the
+identity gate, so an admin who is not personally a customer can still pick the organization. The public signed
+checkout link (`/checkout/:token`) is unchanged: whoever holds it may pay. See the plans spec § 8.

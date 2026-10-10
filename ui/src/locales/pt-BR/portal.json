@@ -149,5 +149,12 @@
     "incomplete": "Aguardando confirmação",
     "active_until_period_end": "Ativa até o fim do período",
     "active": "Ativa"
+  },
+  "space": {
+    "label": "Faturas de",
+    "personal": "Pessoal",
+    "lost": "Você não gerencia mais essa organização. Mostrando suas faturas pessoais.",
+    "pickOrganization": "Escolha uma organização acima para ver as faturas dela.",
+    "unavailable": "Organizações indisponíveis agora."
   }
 }

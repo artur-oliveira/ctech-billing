@@ -3,6 +3,7 @@
 import {useEffect, useRef, useState} from "react"
 
 import {API_BASE_URL, getAccessToken} from "@/lib/api/client"
+import {portalSpaceHeaders} from "@/lib/api/portal"
 import {USE_MOCK} from "@/lib/mockConfig"
 
 export type StreamStatus = "connecting" | "waiting" | "paid" | "lost"
@@ -74,6 +75,8 @@ export function usePaymentStream(invoiceId: string, enabled: boolean): StreamSta
           headers: {
             Accept: "text/event-stream",
             ...(token ? {Authorization: `Bearer ${token}`} : {}),
+            // The same selection as the invoice it is following (ADR 0025).
+            ...portalSpaceHeaders(),
           },
           signal: abort.signal,
         })

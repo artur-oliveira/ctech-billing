@@ -88,29 +88,40 @@ type Organization struct {
 type Credential struct {
 	ClientID    string `json:"client_id"`
 	Description string `json:"description,omitempty"`
+	// OwnerKey scopes the credential to one owner's products (owner_key of a
+	// product in this plan). An existing credential with none gets it once.
+	OwnerKey string `json:"owner_key,omitempty"`
 }
 
 // Product is a thing sold. OwnerKey is what routes its events (ADR 0016) and is
 // empty for an ordinary merchant, who owns everything in their own catalogue.
 type Product struct {
-	ID       string           `json:"id"`
-	Name     string           `json:"name"`
-	OwnerKey string           `json:"owner_key,omitempty"`
-	Active   *bool            `json:"active,omitempty"`
-	Metadata billing.Metadata `json:"metadata,omitempty"`
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	OwnerKey string `json:"owner_key,omitempty"`
+	// DefaultPriceID: see billing.Product.DefaultPriceID.
+	DefaultPriceID string           `json:"default_price_id,omitempty"`
+	Active         *bool            `json:"active,omitempty"`
+	Metadata       billing.Metadata `json:"metadata,omitempty"`
 }
 
 // Price is what a product costs. It is immutable once written, which is why
 // Apply never updates one — see apply.go.
 type Price struct {
-	ID         string                `json:"id"`
-	ProductID  string                `json:"product_id"`
-	Type       billing.PriceType     `json:"type"`
-	Currency   string                `json:"currency,omitempty"`
-	UnitAmount billing.Cents         `json:"unit_amount"`
-	Recurrence billing.Recurrence    `json:"recurrence"`
-	Timing     billing.BillingTiming `json:"billing_timing"`
-	Metadata   billing.Metadata      `json:"metadata,omitempty"`
+	ID               string                `json:"id"`
+	ProductID        string                `json:"product_id"`
+	Type             billing.PriceType     `json:"type"`
+	Currency         string                `json:"currency,omitempty"`
+	UnitAmount       billing.Cents         `json:"unit_amount"`
+	Recurrence       billing.Recurrence    `json:"recurrence"`
+	Timing           billing.BillingTiming `json:"billing_timing"`
+	Aggregation      billing.Aggregation   `json:"aggregation,omitempty"`
+	Meter            string                `json:"meter,omitempty"`
+	IncludedQuantity int64                 `json:"included_quantity,omitempty"`
+	// Archived archives the price: on creation, or — the one update Apply makes
+	// to a price — on an existing active one. Never the reverse.
+	Archived bool             `json:"archived,omitempty"`
+	Metadata billing.Metadata `json:"metadata,omitempty"`
 }
 
 // Parse reads a plan and rejects one that cannot be applied.
@@ -173,7 +184,11 @@ func (p *Plan) Validate() error {
 	}
 
 	products := map[string]bool{}
+	owners := map[string]bool{}
 	for _, prod := range p.Products {
+		if prod.OwnerKey != "" {
+			owners[prod.OwnerKey] = true
+		}
 		if err := claim("product", prod.ID); err != nil {
 			return err
 		}
@@ -184,6 +199,11 @@ func (p *Plan) Validate() error {
 			return fmt.Errorf("product %q: %w", prod.ID, err)
 		}
 		products[prod.ID] = true
+	}
+	for _, c := range p.Credentials {
+		if c.OwnerKey != "" && !owners[c.OwnerKey] {
+			return fmt.Errorf("credential %q: owner_key %q is not the owner_key of any product in this plan", c.ClientID, c.OwnerKey)
+		}
 	}
 
 	for _, e := range p.Endpoints {
@@ -219,6 +239,29 @@ func (p *Plan) Validate() error {
 			return fmt.Errorf("price %q: %w", pr.ID, err)
 		}
 	}
+	byID := map[string]Price{}
+	for _, pr := range p.Prices {
+		byID[pr.ID] = pr
+	}
+	defaults := map[string]string{} // owner -> product
+	for _, prod := range p.Products {
+		if prod.DefaultPriceID == "" {
+			continue
+		}
+		pr, ok := byID[prod.DefaultPriceID]
+		switch {
+		case !ok:
+			return fmt.Errorf("product %q: default_price_id %q is not declared in this plan", prod.ID, prod.DefaultPriceID)
+		case pr.ProductID != prod.ID:
+			return fmt.Errorf("product %q: default_price_id %q belongs to product %q", prod.ID, pr.ID, pr.ProductID)
+		case pr.Type != billing.PriceFixed || pr.UnitAmount != 0 || pr.Archived:
+			return fmt.Errorf("product %q: default_price_id %q must be an active fixed price of 0", prod.ID, pr.ID)
+		}
+		if other, dup := defaults[prod.OwnerKey]; dup {
+			return fmt.Errorf("product %q: owner %q already has a default_price_id on product %q", prod.ID, prod.OwnerKey, other)
+		}
+		defaults[prod.OwnerKey] = prod.ID
+	}
 	return nil
 }
 
@@ -229,16 +272,20 @@ func (p Price) entity(organizationID string, livemode bool) *billing.Price {
 		currency = billing.CurrencyBRL
 	}
 	return &billing.Price{
-		ID:             p.ID,
-		OrganizationID: organizationID,
-		Livemode:       livemode,
-		ProductID:      p.ProductID,
-		Type:           p.Type,
-		Currency:       currency,
-		UnitAmount:     p.UnitAmount,
-		Recurrence:     p.Recurrence,
-		Timing:         p.Timing,
-		Metadata:       p.Metadata,
+		ID:               p.ID,
+		OrganizationID:   organizationID,
+		Livemode:         livemode,
+		ProductID:        p.ProductID,
+		Type:             p.Type,
+		Currency:         currency,
+		UnitAmount:       p.UnitAmount,
+		Recurrence:       p.Recurrence,
+		Timing:           p.Timing,
+		Aggregation:      p.Aggregation,
+		Meter:            p.Meter,
+		IncludedQuantity: p.IncludedQuantity,
+		Archived:         p.Archived,
+		Metadata:         p.Metadata,
 	}
 }
 
@@ -256,6 +303,7 @@ func (p Product) entity(organizationID string, livemode bool) *billing.Product {
 		Livemode:       livemode,
 		Name:           p.Name,
 		OwnerKey:       p.OwnerKey,
+		DefaultPriceID: p.DefaultPriceID,
 		Active:         active,
 		Metadata:       p.Metadata,
 	}

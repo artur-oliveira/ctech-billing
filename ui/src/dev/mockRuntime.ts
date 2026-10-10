@@ -25,6 +25,9 @@ import {
 import {financeMock} from "./financeMockData"
 import {FIXTURES, MOCK_PIX_CODE} from "./mockData"
 
+/** The one organization the portal mock lets a person manage. */
+const MOCK_PORTAL_ORG = "0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b"
+
 const STORAGE_KEY = "ctech-billing-mock-scenario"
 
 /** The scenario is per-tab state, not module state: reading it fresh on every
@@ -184,9 +187,22 @@ export const mockAdapter: AxiosAdapter = async config => {
   // is what makes it fail.
   if (url.endsWith("/v1.0/health")) return ok(config, {status: "pass"})
 
+  // The portal selector's list is mounted before identity, like the real one:
+  // an admin with no account of their own still gets it.
+  if (url.endsWith("/v1.0/portal/spaces")) {
+    return ok(config, {
+      spaces: [
+        {selector: "personal", display_name: "Pessoal"},
+        {selector: `org:${MOCK_PORTAL_ORG}`, display_name: "Acme Comércio e Serviços LTDA", role: "admin"},
+      ],
+      organizations_unavailable: false,
+    })
+  }
+  const portalOrg = String(config.headers?.["X-Billing-Space"] ?? "").startsWith("org:")
+
   // Above every portal route, which is where the real refusal is: identity is
   // resolved in middleware, so no handler below it is reachable.
-  if (scenario === "sem_conta" && url.includes("/v1.0/portal/")) {
+  if (scenario === "sem_conta" && !portalOrg && url.includes("/v1.0/portal/")) {
     fail(
       config,
       403,
@@ -379,7 +395,8 @@ export const mockAdapter: AxiosAdapter = async config => {
   }
 
   if (url.endsWith("/v1.0/portal/subscriptions")) {
-    return ok(config, {data: fixture().subscriptions, has_more: false})
+    // The organization's own, so a switch visibly changes the screen.
+    return ok(config, {data: portalOrg ? fixture().subscriptions.slice(0, 1) : fixture().subscriptions, has_more: false})
   }
 
   // The detail carries the plan's own invoice history, which the list route
@@ -404,7 +421,7 @@ export const mockAdapter: AxiosAdapter = async config => {
   }
 
   if (url.endsWith("/v1.0/portal/invoices")) {
-    return ok(config, {data: invoices(), has_more: false})
+    return ok(config, {data: portalOrg ? invoices().slice(0, 2) : invoices(), has_more: false})
   }
 
   const pay = url.match(/\/v1\.0\/portal\/invoices\/([^/]+)\/pay$/)

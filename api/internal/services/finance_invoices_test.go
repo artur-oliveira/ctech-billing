@@ -437,3 +437,16 @@ func TestTheSettingDoesNotTouchTheIssuer(t *testing.T) {
 	f.books.optedOut = map[string]bool{issuerPK: true}
 	wantResult(t, f.rule.Paid(context.Background(), f.inv, "a", "r", at), SideIssuer, PostingPosted, "")
 }
+
+// An organization's invoice is nobody's personal expense, even if a user id
+// was stored on it somehow.
+func TestAnOrganizationInvoiceIsNobodysPersonalExpense(t *testing.T) {
+	f := newInvoiceFixture()
+	f.customers["cus_1"].ExternalRef = "ORG_" + linkedOrg
+	out := f.rule.Paid(context.Background(), f.inv, "a", "r", at)
+	wantResult(t, out, SidePayer, PostingSkipped, "payer_is_organization")
+	wantResult(t, out, SideIssuer, PostingPosted, "")
+	if _, ok := f.books.recorded[payerPK]; ok {
+		t.Fatal("an expense was posted to a personal space")
+	}
+}

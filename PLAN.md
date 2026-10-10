@@ -864,9 +864,22 @@ gates nothing by plan.
       `concurrent_update`, not a 500. **Cross-repo candidate:** that mapping belongs in api-commons `problem` (and
       the retry-on-conflict around `TransactWrite` in api-commons `dynamo`), for every service.
 
+**Plans — deploy step 1 (billing), 2026-10-10** ([spec](docs/specs/2026-10-10-plans-design.md),
+[plan](docs/plans/2026-10-10-plans-1-backend.md)). Shipped: the CTech Finanças catalogue (`prod_finance`,
+Free/Basic/Pro/Sob demanda, `default_price_id`) and DF-e companies billed monthly by peak
+(`price_dfe_ondemand_companies_monthly`, the summed one archived); credentials scoped to an owner
+(`dfe-billing` → `dfe`, `account-billing` → `finance`); entitlements by `owner_key` with a `default` and no 404
+when asked; `POST /usage/levels` and `MaxLevel` at close, with a latest level that never expires; `ORG_`
+customers with the `CUSTOMER_ORG#` pointer; the portal selector (Pessoal or an organization you own or
+administer); only `USER_` invoices post to *Pessoal* (6.7).
+**Found on the way:** (1) `dfe-billing` was never owner-scoped — now it is; (2) live DF-e prices keep
+`quota_users` (prices are immutable; ctech-dfe stopped reading it); (3) `cancel_at_period_end` was never
+executed by the sweep, so a subscription cancelled at period end renewed and billed again — now it ends at the
+boundary; (4) `ErrUserAlreadyCustomer` was a 500 — now 409 `user_already_customer`; (5) scoped credentials may
+still write subscriptions for other owners (only reads and reports are scoped).
+
 **Still open in Phase 6 (recorded 2026-10-09):**
-- **After 6.7:** run `seed` in both modes after deploy (the link is in `api/tenants/ctech.json`); organization
-  customers (spec § 1), which also needs ctech-dfe to move its subscription to the organization.
+- **Deploy:** run `seed` in both modes (credential owners, `prod_finance`, the two DF-e archives).
 - **Purge (ADR 0026)**: no code. ctech-account's account-deletion specs (2026-10-06) name billing
   as a participant with an eligibility check and a purge on `user.erase`; billing's side is unbuilt.
   Shared spaces (6.8) add personal workspaces to its scope.

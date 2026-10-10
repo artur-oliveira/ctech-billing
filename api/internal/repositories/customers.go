@@ -77,6 +77,10 @@ func (r *CustomerRepository) open(row *customerRow) (*billing.Customer, error) {
 // another customer in the same organization.
 var ErrUserAlreadyCustomer = errors.New("user is already a customer of this organization")
 
+// ErrOrganizationAlreadyCustomer reports an ORG_ customer whose ctech-account
+// organization already has one in this tenant.
+var ErrOrganizationAlreadyCustomer = errors.New("organization is already a customer of this organization")
+
 // Create writes a new customer, failing if the id is taken.
 //
 // When the customer carries a ctech-account subject, the pointer row that lets
@@ -116,6 +120,18 @@ func (r *CustomerRepository) Create(ctx context.Context, c *billing.Customer, ac
 		// somebody else's invoices.
 		writes = append(writes, r.base.BuildPutTxItemIfAbsent(pointer))
 	}
+	orgID, isOrg := OrganizationOfRef(c.ExternalRef)
+	if isOrg {
+		pointer, err := Encode(customerOrgRow{
+			keys:                  newKeys(TenantPK(c.OrganizationID, c.Livemode), CustomerOrgSK(orgID), RetentionCustomer, now),
+			AccountOrganizationID: orgID,
+			CustomerID:            c.ID,
+		})
+		if err != nil {
+			return err
+		}
+		writes = append(writes, r.base.BuildPutTxItemIfAbsent(pointer))
+	}
 
 	// The name, not the tax id: the audit table is not the place to make a
 	// second copy of the one field this repository encrypts.
@@ -138,12 +154,32 @@ func (r *CustomerRepository) Create(ctx context.Context, c *billing.Customer, ac
 		// The transaction cancels as a unit, so either the id or the subject was
 		// taken. Naming the subject is the useful answer: a caller that generated
 		// the id knows it is unique, and a caller that reused one is retrying.
+		if isOrg {
+			return fmt.Errorf("%w: %s", ErrOrganizationAlreadyCustomer, orgID)
+		}
 		if c.UserID != "" {
 			return fmt.Errorf("%w: %s", ErrUserAlreadyCustomer, c.UserID)
 		}
 		return fmt.Errorf("customer %s already exists", c.ID)
 	}
-	return err
+	return conflictErr(err)
+}
+
+// GetByOrganization resolves a ctech-account organization to its customer
+// through the CUSTOMER_ORG# pointer.
+func (r *CustomerRepository) GetByOrganization(ctx context.Context, organizationID string, livemode bool, accountOrganizationID string) (*billing.Customer, error) {
+	item, err := r.base.GetItem(ctx, TenantPK(organizationID, livemode), CustomerOrgSK(accountOrganizationID))
+	if err != nil {
+		return nil, err
+	}
+	if item == nil {
+		return nil, fmt.Errorf("%w: no customer for organization %s", ErrNotFound, accountOrganizationID)
+	}
+	pointer, err := Decode[customerOrgRow](item)
+	if err != nil {
+		return nil, err
+	}
+	return r.Get(ctx, organizationID, livemode, pointer.CustomerID)
 }
 
 // GetByUser resolves a signed-in person to their customer record in one
