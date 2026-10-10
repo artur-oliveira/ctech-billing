@@ -1,6 +1,6 @@
 # Spec — Plans: CTech Finanças plans, level metering, organization customers
 
-Status: **Design approved, not implemented** · 2026-10-10 ·
+Status: **Deploy step 1 implemented (2026-10-10)** · 2026-10-10 ·
 Builds on: [`2026-10-09-shared-spaces-design.md`](2026-10-09-shared-spaces-design.md) § 7 (the deferred plan table),
 [ADR 0008](../adr/0008-opaque-metadata.md) (price metadata is opaque), [ADR 0025](../adr/0025-spaces-personal-and-organization.md)
 (the portal selector amendment), [ADR 0027](../adr/0027-personal-workspaces-in-account.md) ·
@@ -84,6 +84,10 @@ period only changes whether a person may grow.
 `entitlements:read` and `usage:write`. The credential is scoped to the `finance` owner: a report or read for
 another owner's meter or product is refused (403), the way `dfe-billing` is scoped to `dfe`.
 
+**Asked versus implied.** A credential scoped to an owner reads only that owner's subscriptions whether or not
+it sends `owner_key`; the `default` and the "no 404 for a missing customer" answers happen only when the caller
+sends it, so ctech-dfe's get-or-create, which relies on the 404, is unchanged.
+
 ## 5. Enforcement (ctech-account's side)
 
 Only ctech-account writes tenancy, so only ctech-account enforces. The counterpart spec in ctech-account details
@@ -139,6 +143,12 @@ One item per report: `pk = LEVEL#{customer_ref}#{meter}`, `sk = {occurred_at}#{i
 livemode partition, with a 13-month TTL. The latest item before any instant is one `Query` with
 `ScanIndexForward=false, Limit=1`.
 
+The sort key's instant is fixed-width UTC (`2006-01-02T15:04:05.000000000Z`): RFC 3339 Nano trims trailing
+zeros and would sort `.5` after `.123`. Because the idempotency key sits beside the instant in the sort key, each
+report also writes a key marker (`LEVEL_KEY#{key}`, holding a hash of the body) in the same transaction; the
+same key with another instant or value is 409 `idempotency_key_reused`. The newest level of each
+`(customer_ref, meter)` is also kept in one item with no TTL (`LEVEL_LATEST#…`).
+
 ### 6.3 Billing at close
 
 For a metered item whose price has `aggregation: max`:
@@ -154,6 +164,9 @@ billed = max(0, level − included_quantity) × unit_amount
 - A subscription that starts on day 20 has its period start on day 20; the carried-in level covers what existed
   before.
 - Periods are civil dates in America/Sao_Paulo (brcal), as for summed usage.
+
+The carried-in level is, in order: the newest in-TTL report before the period start; else the `previous`
+recorded on the first report at or after the start; else the no-TTL latest level; else 0.
 
 `MaxLevel(records, carriedIn, period)` sits beside `SumUsage` in `internal/domain/billing/usage.go`; the
 period-close path picks one by the price's `aggregation`. `sum` (the default, and every existing price) is
