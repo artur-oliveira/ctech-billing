@@ -167,6 +167,42 @@ It is deliberately not a pipeline stage. Creating a tenant is an admission decis
 that quietly provisions one is a deploy that can quietly provision the wrong one. It is
 create-or-skip, so re-running it is safe and adding a price to the file creates only the price.
 
+## Adding an index to a live table: subscriptions by customer
+
+`SubscriptionRepository.ListByCustomer` used to read the tenant's whole `SUB#` range and filter it
+down to one `customer_id`, following the continuation key to the end of the partition — a read that
+grows with the tenant rather than with the customer. It now has a partition of its own:
+`lookup-index` on `subscriptions` (hash `lookup_pk`, range `sk`), with
+`lookup_pk = {org}#{mode}#CUSTOMER_SUBS#{customer_id}` (`repositories.LookupCustomerSubscriptionsPK`).
+Sparse: only the subscription row carries it, never its `#ITEM#` rows.
+
+A new row gets the attribute at `Create`. A row written before the index existed does not, and an
+index query cannot see a row that lacks its key — so switching the read in the same deploy that
+creates the index would make every existing subscriber disappear (Free on screen and in
+entitlements) until somebody backfilled. The change therefore ships as **two pull requests**, in
+this order:
+
+1. **Index + write + backfill (read unchanged).** `schema.json` gains the index; Terraform creates
+   it and waits for it to be `ACTIVE` before the API stage runs; the API then writes `lookup_pk` on
+   every new subscription, while `ListByCustomer` still reads the old way.
+2. **Backfill production**, from a workstation (the backfill Scans, and the service role denies
+   `dynamodb:Scan`):
+
+   ```sh
+   api/cmd/backfill-subscription-lookup/run.sh prod           # dry run: lists what is missing
+   api/cmd/backfill-subscription-lookup/run.sh prod -apply    # writes it
+   api/cmd/backfill-subscription-lookup/run.sh prod           # must report missing=0, exit 0
+   ```
+
+   Both modes and every tenant in one pass. It reads `FIELD_ENCRYPTION_KEY` from SSM without
+   printing it, writes only `lookup_pk`, and only where it is absent — so it is safe to re-run, and
+   safe to run while the API is creating subscriptions. Exit 1 means something is left (or a row is
+   mismatched or has no customer); read the log lines before re-running.
+3. **Switch the read** to a key-condition query on `lookup-index` — the second pull request, merged
+   only after step 2's final dry run reports `missing=0`.
+
+The same sequence applies to any future index whose read must see rows that already exist.
+
 ## Collection is configured in the other repository
 
 The charge route itself ships (`ctech-wallet/api/internal/services/charge_amount.go`). What does

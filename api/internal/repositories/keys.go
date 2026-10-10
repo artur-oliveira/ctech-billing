@@ -464,6 +464,20 @@ func LookupSubscriptionInvoicesPK(organizationID string, livemode bool, subscrip
 	return TenantPK(organizationID, livemode) + "#SUBINV#" + subscriptionID
 }
 
+// LookupCustomerSubscriptionsPK partitions a customer's subscriptions, so "this
+// customer's subscriptions" is a key condition on lookup-index rather than the
+// tenant's whole SUB# range read and filtered down to one customer_id — a read
+// that grew with the tenant, not with the customer.
+//
+// Same shape as LookupSubscriptionInvoicesPK: the sort key is the table's own
+// `sk` ("SUB#" plus the subscription's ULID), so the partition is in creation
+// order. Sparse: only the subscription row carries it, never its `#ITEM#`
+// rows. Written once at Create — a subscription's customer does not change —
+// and by cmd/backfill-subscription-lookup for rows written before it existed.
+func LookupCustomerSubscriptionsPK(organizationID string, livemode bool, customerID string) string {
+	return TenantPK(organizationID, livemode) + "#CUSTOMER_SUBS#" + customerID
+}
+
 // PeriodPK is the period index's partition: tenant plus entity type, so a
 // period query always names exactly what it is counting.
 //

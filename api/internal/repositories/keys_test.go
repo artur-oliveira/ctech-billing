@@ -16,11 +16,12 @@ func TestEveryTenantKeyStartsWithTheTenant(t *testing.T) {
 	prefix := org + "#live"
 
 	keys := map[string]string{
-		"TenantPK":                  TenantPK(org, true),
-		"UsagePK":                   UsagePK(org, true, "si_1", brcal.New(2026, time.March, 1)),
-		"LookupCustomerRefPK":       LookupCustomerRefPK(org, true, "ref"),
-		"LookupInvoiceGenerationPK": LookupInvoiceGenerationPK(org, true, "si_1:2026-03-01"),
-		"PeriodPK":                  PeriodPK(org, true, EntityInvoice),
+		"TenantPK":                      TenantPK(org, true),
+		"UsagePK":                       UsagePK(org, true, "si_1", brcal.New(2026, time.March, 1)),
+		"LookupCustomerRefPK":           LookupCustomerRefPK(org, true, "ref"),
+		"LookupInvoiceGenerationPK":     LookupInvoiceGenerationPK(org, true, "si_1:2026-03-01"),
+		"PeriodPK":                      PeriodPK(org, true, EntityInvoice),
+		"LookupCustomerSubscriptionsPK": LookupCustomerSubscriptionsPK(org, true, "cus_1"),
 	}
 	for name, key := range keys {
 		if len(key) < len(prefix) || key[:len(prefix)] != prefix {
