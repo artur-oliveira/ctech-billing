@@ -435,3 +435,22 @@ batch 5 it follows the console's `DensityScope` (its portal carries `data-densit
 so @aoctech/ui's `touch.css` reaches it like any compact surface, and it is compact on a desk
 as well. Batch 4's `ConsoleOverlay` marker is gone; the bottom bar's Mais sheet and the
 portal's modals are not inside the scope and keep their own sizes (see "Density").
+
+## Confirmations that say what they do (UX batch 5, 2026-10-09)
+
+**An end names the bills it cancels.** "Encerrar e arquivar" now cancels the unpaid bills made after
+the new end, so its inline confirmation (the `surface` box under the form, as before) reads: the
+fact ("Isso encerra a recorrência; ela será arquivada."), then the consequence with the dates, in
+`foreground` ("Os 2 lançamentos previstos depois do fim (10/10 e 10/11) serão cancelados."), then
+what stays, in `muted-foreground` ("O já pago (10/12) continua: o pagamento está no extrato."). The
+button keeps its name; the message carries the consequence. Nothing about auto-pay any more: a
+cancelled bill is not paid.
+
+**An offer shows its arithmetic.** After an OFX import into an account with no opening balance and
+no entry, a `surface` box under the upload result asks one question as its heading ("Usar o saldo do
+extrato como saldo inicial?", the box is a named region), then the figure and how it was reached
+("Saldo inicial de R$ 2.749,50 em 01/09/2026: o saldo do extrato (R$ 5.000,00 em 30/09/2026) menos
+os 3 lançamentos do arquivo."), then, muted, the one way it drifts (an ignored line never enters the
+account; unread lines are out of the sum). Two buttons, 8px apart: **Usar como saldo inicial**
+(brand) and **Agora não** (outline). Nothing is posted without the press; once posted the box
+becomes one status line. Only offered with `finance.configure`.
