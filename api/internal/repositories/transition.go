@@ -158,7 +158,9 @@ func commitWithExtraWrites(ctx context.Context, t Tables, c StatusChange, now ti
 	if IsConditionFailed(err) {
 		return fmt.Errorf("%w: %s expected to be %s", ErrConcurrentModification, c.SK, c.From)
 	}
-	return err
+	// A conflict decided nothing: ErrTransactionConflict, which a caller that
+	// loops (invoice numbering) retries and a route answers as 409.
+	return conflictErr(err)
 }
 
 // buildCreationEvent renders the outbox row for something that came into

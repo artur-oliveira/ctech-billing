@@ -2,6 +2,7 @@ package repositories
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -34,6 +35,27 @@ func TestRetryableCancel(t *testing.T) {
 	for _, c := range cases {
 		if got := retryableCancel(c.err); got != c.want {
 			t.Errorf("%s: retryableCancel = %v, want %v", c.name, got, c.want)
+		}
+	}
+}
+
+// UX batch 5 review (I1): two finalizers on one counter row cancel each other
+// with a TransactionConflict on the counter (the transaction's last item). The
+// numbering loop must retry it, as it retries a lost condition.
+func TestNumberingRetriesAConflictOnTheCounter(t *testing.T) {
+	cases := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"conflict on the counter", conflictErr(cancelled("None", "None", "None", "TransactionConflict")), true},
+		{"a lost condition", fmt.Errorf("%w: x", ErrConcurrentModification), true},
+		{"a throttle", conflictErr(cancelled("None", "ThrottlingError")), false},
+		{"anything else", errors.New("x"), false},
+	}
+	for _, c := range cases {
+		if got := numberingRetryable(c.err); got != c.want {
+			t.Errorf("%s: numberingRetryable = %v, want %v", c.name, got, c.want)
 		}
 	}
 }

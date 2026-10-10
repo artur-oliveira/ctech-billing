@@ -187,6 +187,7 @@ type payEnv struct {
 	// fake. The reconciliation job has no route by design (ADR 0002), so a test
 	// reaches it the way cmd/reconcile does — directly.
 	collector *services.Collector
+	charges   *wallet.Client
 }
 
 func newPayEnv(t *testing.T) *payEnv {
@@ -213,27 +214,33 @@ func newPayEnv(t *testing.T) *payEnv {
 		t.Fatal(err)
 	}
 	base.app = server
+	charges := wallet.New(wallet.Config{
+		BaseURL:       cfg.WalletBaseURL,
+		TokenURL:      cfg.WalletTokenURL,
+		ClientID:      cfg.WalletClientID,
+		ClientSecret:  cfg.WalletClientSecret,
+		WebhookSecret: cfg.WalletWebhookSecret,
+		Cache:         cache.NewMemoryBackend(10),
+	})
 	return &payEnv{
 		portalEnv: base,
 		wallet:    fake,
 		links:     services.NewPayLink(testLinkSecret, "https://pay.test/c"),
+		charges:   charges,
 		collector: services.NewCollector(
 			repositories.NewInvoiceRepository(testDB, testCfg),
 			repositories.NewPaymentRepository(testDB, testCfg),
 			repositories.NewCustomerRepository(testDB, testCfg),
 			repositories.NewOrganizationRepository(testDB, testCfg),
 			repositories.NewSubscriptionRepository(testDB, testCfg),
-			wallet.New(wallet.Config{
-				BaseURL:       cfg.WalletBaseURL,
-				TokenURL:      cfg.WalletTokenURL,
-				ClientID:      cfg.WalletClientID,
-				ClientSecret:  cfg.WalletClientSecret,
-				WebhookSecret: cfg.WalletWebhookSecret,
-				Cache:         cache.NewMemoryBackend(10),
-			}),
+			charges,
 		),
 	}
 }
+
+// collectorCharges is the wallet client the env's collector opens charges with,
+// for a second collector built against another DynamoDB client.
+func (e *payEnv) collectorCharges() services.ChargeOpener { return e.charges }
 
 // openCharge pays an invoice through the portal and returns the wallet charge id
 // the checkout is waiting on.

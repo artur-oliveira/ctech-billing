@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+
 	"gopkg.aoctech.app/billing/api/internal/domain/finance"
 	"gopkg.aoctech.app/billing/api/internal/domain/finance/statement"
 	"gopkg.aoctech.app/billing/api/internal/repositories"
@@ -94,6 +97,21 @@ func TestImportErrorsHaveTheirCodes(t *testing.T) {
 	} {
 		if p := FromError(err); p.Code != want || p.Status >= 500 {
 			t.Errorf("%v: %d %q, want %q", err, p.Status, p.Code, want)
+		}
+	}
+}
+
+// UX batch 5 review (M1): a write cancelled by a concurrent transaction is a
+// 409 the client may repeat, not a 500 — raw (a credit note, a price archive, a
+// customer) or wrapped by a repository.
+func TestATransactionConflictIsA409(t *testing.T) {
+	raw := &types.TransactionCanceledException{
+		Message:             aws.String("Transaction cancelled, please refer cancellation reasons for specific reasons [TransactionConflict]"),
+		CancellationReasons: []types.CancellationReason{{Code: aws.String("None")}, {Code: aws.String("TransactionConflict")}},
+	}
+	for _, err := range []error{raw, fmt.Errorf("dynamodb: %w", raw), fmt.Errorf("%w: x", repositories.ErrTransactionConflict)} {
+		if p := FromError(err); p.Status != 409 || p.Code != "concurrent_update" {
+			t.Errorf("%v: %d %q, want 409 concurrent_update", err, p.Status, p.Code)
 		}
 	}
 }

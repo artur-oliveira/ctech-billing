@@ -848,6 +848,20 @@ gates nothing by plan.
       line, offered after an import into an account with no opening and no entry, posted on confirmation by
       `POST /imports/:id/opening-balance` (configure, idempotent by import, 409 `opening_balance_exists` /
       `account_has_entries`, 422 `no_statement_balance`).
+      **Review fixes (batch 5):** (I1) the narrowed `IsConditionFailed` broke invoice numbering's retry — two
+      finalizers on one counter cancel each other with a `TransactionConflict`, the loop retried only
+      `ErrConcurrentModification`, the invoice stayed DRAFT and the next sweep skipped it. `commitWithExtraWrites`
+      now returns `ErrTransactionConflict` for it and `Finalize` retries it. Audit of the 17 `TransactWrite` sites
+      that used the old wide meaning: numbering (fixed), `RecordPDFKey` (two downloads; a conflict is benign
+      again, fixed), the payment attempt (M1, fixed), dunning step and renewal transition (now an error, the job
+      re-runs: correct), the idempotency `Store` (an error the middleware ignores), webhook fan-out (an error, the
+      event stays queued for the next pass), invoice generation (an error, the next run finds it generated or makes
+      it), create-if-absent rows (credentials, organizations, subscriptions, webhook endpoints, products, prices,
+      usage) and console writes (credit note, price archive, customer): 409 below. (M1) two "Pagar" presses: a
+      conflict on the attempt row takes the same recovery as a lost condition and shows the winner's checkout
+      (re-read briefly, else a 409 the page re-reads). Any `TransactionConflict` reaching a route is a 409
+      `concurrent_update`, not a 500. **Cross-repo candidate:** that mapping belongs in api-commons `problem` (and
+      the retry-on-conflict around `TransactWrite` in api-commons `dynamo`), for every service.
 
 **Still open in Phase 6 (recorded 2026-10-09):**
 - **After 6.7:** run `seed` in both modes after deploy (the link is in `api/tenants/ctech.json`); organization

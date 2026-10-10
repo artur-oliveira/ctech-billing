@@ -247,6 +247,14 @@ func FromError(err error) *Problem {
 		return New(409, TypeConcurrentUpdate, "Concurrent Update",
 			"the resource changed since it was read; reload and try again")
 
+	// A write cancelled by another transaction on the same items (api-commons
+	// v1.11.0 no longer reads it as a failed condition): nothing was written, the
+	// same request may be repeated. Not a 500. Cross-repo candidate: this
+	// mapping belongs in api-commons `problem`, for every service.
+	case errors.Is(err, repositories.ErrTransactionConflict), repositories.IsTransactionConflict(err):
+		return New(409, TypeConcurrentUpdate, "Concurrent Update",
+			"another request was changing the same data; try again").WithCode("concurrent_update")
+
 	case errors.Is(err, repositories.ErrAttemptExists):
 		// Two "pay" clicks arrived together. The caller re-reads and shows the
 		// charge that already exists — which is why this is a 409 and not a 500:

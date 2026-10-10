@@ -266,7 +266,7 @@ func (r *InvoiceRepository) Finalize(
 			*inv = updated
 			return events, nil
 		}
-		if !errors.Is(err, ErrConcurrentModification) {
+		if !numberingRetryable(err) {
 			return nil, err
 		}
 		// The condition that failed was either the counter or the invoice's
@@ -282,6 +282,16 @@ func (r *InvoiceRepository) Finalize(
 		}
 	}
 	return nil, fmt.Errorf("%w: invoice numbering contended %d times", ErrConcurrentModification, numberingAttempts)
+}
+
+// numberingRetryable reports a finalize write worth another round: a lost race
+// on the counter or the status (a failed condition), or a TransactionConflict —
+// two finalizers on one counter row cancel each other with one, and since
+// api-commons v1.11.0 that is no longer read as a failed condition. Without it
+// the invoice stayed DRAFT and the next sweep skipped it as already generated
+// (UX batch 5 review, I1).
+func numberingRetryable(err error) bool {
+	return errors.Is(err, ErrConcurrentModification) || errors.Is(err, ErrTransactionConflict)
 }
 
 // currentNumber reads the organization's counter for a year. An absent counter
@@ -627,7 +637,11 @@ func (r *InvoiceRepository) RecordPDFKey(ctx context.Context, inv *billing.Invoi
 			":now": &types.AttributeValueMemberS{Value: now.UTC().Format(time.RFC3339Nano)},
 		},
 	)))
-	if IsConditionFailed(err) {
+	// A conflict is the other download writing the same key at the same instant
+	// (api-commons v1.11.0 no longer calls it a failed condition): the same
+	// object, so the same "not an error" — a download must not 500 on it. If
+	// that write fails too, the next download records the key.
+	if IsConditionFailed(err) || IsTransactionConflict(err) {
 		return nil
 	}
 	if err != nil {
