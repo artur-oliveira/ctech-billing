@@ -12,6 +12,7 @@ import (
 	"gopkg.aoctech.app/billing/api/internal/domain/id"
 	"gopkg.aoctech.app/billing/api/internal/middleware"
 	"gopkg.aoctech.app/billing/api/internal/repositories"
+	"gopkg.aoctech.app/billing/api/internal/services"
 )
 
 // ownersEnv is newAPI plus a Finanças product (with its default), a DF-e
@@ -127,5 +128,110 @@ func TestALevelNeedsNoCustomerAndCreatesNone(t *testing.T) {
 	}
 	if _, err := repositories.NewCustomerRepository(testDB, testCfg).GetByExternalRef(ctxT(t), o.org.ID, true, "USER_nobody"); !errors.Is(err, repositories.ErrNotFound) {
 		t.Fatalf("a report created a customer: %v", err)
+	}
+}
+// subscribeIn creates a customer and an ACTIVE subscription on prices via the
+// service, the way newCatalog's subscriber does.
+func (o ownersEnv) customerWith(t *testing.T, ref string, priceIDs ...string) string {
+	t.Helper()
+	ctx := ctxT(t)
+	c := &billing.Customer{ID: id.NewWithPrefix(id.PrefixCustomer), OrganizationID: o.org.ID, Livemode: true, Name: "P", ExternalRef: ref}
+	if err := repositories.NewCustomerRepository(testDB, testCfg).Create(ctx, c, "test", "r", now()); err != nil {
+		t.Fatal(err)
+	}
+	subs := repositories.NewSubscriptionRepository(testDB, testCfg)
+	cat := repositories.NewCatalogRepository(testDB, testCfg)
+	inv := repositories.NewInvoiceRepository(testDB, testCfg)
+	s := services.NewSubscriber(subs, cat, services.NewInvoicer(subs, inv, cat, repositories.NewUsageRepository(testDB, testCfg)))
+	for _, p := range priceIDs {
+		if _, _, err := s.Subscribe(ctx, services.SubscribeInput{OrganizationID: o.org.ID, Livemode: true, CustomerID: c.ID,
+			Items: []services.SubscribeItem{{PriceID: p}}, Actor: "test"}, now()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return c.ID
+}
+
+type entitlementsBody struct {
+	CustomerID    string `json:"customer_id"`
+	Entitled      bool   `json:"entitled"`
+	Subscriptions []struct {
+		PriceID string `json:"price_id"`
+	} `json:"subscriptions"`
+	Default *struct {
+		PriceID  string            `json:"price_id"`
+		Plan     string            `json:"plan"`
+		Metadata map[string]string `json:"metadata"`
+	} `json:"default"`
+}
+
+func (o ownersEnv) entitlements(t *testing.T, client, query string) (int, entitlementsBody) {
+	t.Helper()
+	r := o.do(t, http.MethodGet, "/v1.0/entitlements?"+query, o.token(t, client, "", middleware.ScopeEntitlementsRead), "", "")
+	var b entitlementsBody
+	if r.status == http.StatusOK {
+		r.decode(t, &b)
+	}
+	return r.status, b
+}
+
+func TestOwnerKeyReturnsOnlyThatOwnersSubscriptions(t *testing.T) {
+	o := newOwnersEnv(t)
+	o.customerWith(t, "USER_both", o.basic, o.dfePrice)
+	code, b := o.entitlements(t, o.finClient, "customer_ref=USER_both&owner_key=finance")
+	if code != 200 || len(b.Subscriptions) != 1 || b.Subscriptions[0].PriceID != o.basic {
+		t.Fatalf("%d %+v", code, b)
+	}
+}
+
+// Review Focus 2: ctech-dfe sends no owner_key; its scoped credential still
+// sees only DF-e, and a missing customer is still the 404 it relies on.
+func TestAScopedCredentialWithoutOwnerKeyReadsOnlyItsOwner(t *testing.T) {
+	o := newOwnersEnv(t)
+	o.customerWith(t, "USER_both2", o.basic, o.dfePrice)
+	code, b := o.entitlements(t, o.dfeClient, "customer_ref=USER_both2")
+	if code != 200 || len(b.Subscriptions) != 1 || b.Subscriptions[0].PriceID != o.dfePrice || b.Default != nil {
+		t.Fatalf("%d %+v", code, b)
+	}
+}
+
+func TestWithoutOwnerKeyAMissingCustomerIsStill404(t *testing.T) {
+	o := newOwnersEnv(t)
+	if code, _ := o.entitlements(t, o.dfeClient, "customer_ref=USER_ghost"); code != http.StatusNotFound {
+		t.Fatalf("status %d", code)
+	}
+}
+
+func TestAMissingCustomerWithOwnerKeyGetsTheDefaultAndWritesNothing(t *testing.T) {
+	o := newOwnersEnv(t)
+	code, b := o.entitlements(t, o.finClient, "customer_ref=USER_ghost&owner_key=finance")
+	if code != 200 || b.Entitled || b.Subscriptions == nil || len(b.Subscriptions) != 0 ||
+		b.Default == nil || b.Default.PriceID != o.free || b.Default.Plan != "free" || b.Default.Metadata["quota_spaces"] != "1" {
+		t.Fatalf("%d %+v", code, b)
+	}
+	if _, err := repositories.NewCustomerRepository(testDB, testCfg).GetByExternalRef(ctxT(t), o.org.ID, true, "USER_ghost"); !errors.Is(err, repositories.ErrNotFound) {
+		t.Fatal("reading created a customer")
+	}
+}
+
+func TestACustomerWithNoEntitlingSubscriptionGetsTheDefault(t *testing.T) {
+	o := newOwnersEnv(t)
+	o.customerWith(t, "USER_dfeonly", o.dfePrice)
+	code, b := o.entitlements(t, o.finClient, "customer_ref=USER_dfeonly&owner_key=finance")
+	if code != 200 || b.Entitled || len(b.Subscriptions) != 0 || b.Default == nil {
+		t.Fatalf("%d %+v", code, b)
+	}
+	// An entitled one carries no default.
+	o.customerWith(t, "USER_basic", o.basic) // INCOMPLETE until paid: not entitled
+	_, b = o.entitlements(t, o.finClient, "customer_ref=USER_basic&owner_key=finance")
+	if b.Entitled || b.Default == nil {
+		t.Fatalf("an unpaid Basic is not entitled and gets the default: %+v", b)
+	}
+}
+
+func TestAScopedCredentialCannotAskForAnotherOwner(t *testing.T) {
+	o := newOwnersEnv(t)
+	if code, _ := o.entitlements(t, o.finClient, "customer_ref=USER_x&owner_key=dfe"); code != http.StatusForbidden {
+		t.Fatalf("status %d", code)
 	}
 }

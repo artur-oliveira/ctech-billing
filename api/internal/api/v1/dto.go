@@ -241,9 +241,18 @@ func newInvoiceResponse(inv *billing.Invoice, lines []billing.InvoiceItem, today
 // every product does not reimplement it and then disagree the first time a
 // status is added (assessment § 13).
 type entitlementResponse struct {
-	CustomerID    string                    `json:"customer_id"`
+	CustomerID    string                    `json:"customer_id,omitempty"`
 	Entitled      bool                      `json:"entitled"`
 	Subscriptions []entitlementSubscription `json:"subscriptions"`
+	// Default describes a customer with no entitling subscription for the asked
+	// owner: the metadata of the owner's default price (plans spec § 4).
+	Default *entitlementDefault `json:"default,omitempty"`
+}
+
+type entitlementDefault struct {
+	PriceID  string           `json:"price_id"`
+	Plan     string           `json:"plan"`
+	Metadata billing.Metadata `json:"metadata"`
 }
 
 type entitlementSubscription struct {

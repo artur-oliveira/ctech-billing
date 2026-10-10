@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"time"
@@ -568,43 +569,99 @@ func (h *handlers) getProduct(c fiber.Ctx) error {
 
 func (h *handlers) getEntitlements(c fiber.Ctx) error {
 	t := middleware.GetTenant(c)
+	// asked is what the caller sent; owner is what is read. A scoped credential
+	// reads only its own owner, whether or not it says so; the default and the
+	// missing-customer answer are for callers that ask (scope decision 3).
+	asked := c.Query("owner_key")
+	owner := asked
+	if cred := middleware.GetCredential(c); cred != nil && cred.OwnerKey != "" {
+		switch {
+		case asked == "":
+			owner = cred.OwnerKey
+		case asked != cred.OwnerKey:
+			return ownerNotAllowed(c)
+		}
+	}
+	resp := entitlementResponse{Subscriptions: []entitlementSubscription{}}
 
 	customerID := c.Query("customer_id")
 	if ref := c.Query("customer_ref"); ref != "" {
 		customer, err := h.customers.GetByExternalRef(c.Context(), t.OrganizationID, t.Livemode, ref)
-		if err != nil {
+		switch {
+		case err == nil:
+			customerID = customer.ID
+		case errors.Is(err, repositories.ErrNotFound) && asked != "":
+			// Reading never creates a customer (spec § 4).
+			return h.answerEntitlements(c, t, asked, resp)
+		default:
 			return fail(c, err)
 		}
-		customerID = customer.ID
 	}
 	if customerID == "" {
 		return problem.BadRequest("informe customer_id ou customer_ref").Send(c)
 	}
+	resp.CustomerID = customerID
 
 	subs, err := h.subs.ListByCustomer(c.Context(), t.OrganizationID, t.Livemode, customerID, 100)
 	if err != nil {
 		return fail(c, err)
 	}
-
-	resp := entitlementResponse{CustomerID: customerID}
 	for i := range subs {
 		sub := &subs[i]
+		if owner != "" && sub.OwnerKey != owner {
+			continue
+		}
 		entitled := sub.IsEntitled()
 		resp.Entitled = resp.Entitled || entitled
-
 		out := entitlementSubscription{
-			ID:                sub.ID,
-			Status:            sub.Status,
-			Entitled:          entitled,
-			CancelAtPeriodEnd: sub.CancelAtPeriodEnd,
-			Period:            sub.CurrentPeriod(),
+			ID: sub.ID, Status: sub.Status, Entitled: entitled,
+			CancelAtPeriodEnd: sub.CancelAtPeriodEnd, Period: sub.CurrentPeriod(),
 		}
 		if err := h.describeEntitlement(c, sub, &out); err != nil {
 			return fail(c, err)
 		}
 		resp.Subscriptions = append(resp.Subscriptions, out)
 	}
+	return h.answerEntitlements(c, t, asked, resp)
+}
+
+// answerEntitlements adds the owner's default when the caller asked for an
+// owner and nothing returned is entitled.
+func (h *handlers) answerEntitlements(c fiber.Ctx, t middleware.Tenant, asked string, resp entitlementResponse) error {
+	if asked != "" && !resp.Entitled {
+		d, err := h.entitlementDefaultFor(c.Context(), t, asked)
+		if err != nil {
+			return fail(c, err)
+		}
+		resp.Default = d
+	}
 	return c.JSON(resp)
+}
+
+// entitlementDefaultFor is the default of the owner's one product that names
+// one; none, or more than one, is no default.
+func (h *handlers) entitlementDefaultFor(ctx context.Context, t middleware.Tenant, owner string) (*entitlementDefault, error) {
+	products, err := h.cat.ListProducts(ctx, t.OrganizationID, t.Livemode, pageLimit)
+	if err != nil {
+		return nil, err
+	}
+	var priceID string
+	for _, p := range products {
+		if p.OwnerKey == owner && p.DefaultPriceID != "" {
+			if priceID != "" {
+				return nil, nil
+			}
+			priceID = p.DefaultPriceID
+		}
+	}
+	if priceID == "" {
+		return nil, nil
+	}
+	price, err := h.cat.GetPrice(ctx, t.OrganizationID, t.Livemode, priceID)
+	if err != nil {
+		return nil, err
+	}
+	return &entitlementDefault{PriceID: price.ID, Plan: price.Metadata[metadataKeyPlan], Metadata: price.Metadata}, nil
 }
 
 // describeEntitlement fills in what the consuming product needs beyond
