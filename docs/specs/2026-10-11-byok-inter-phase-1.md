@@ -46,8 +46,8 @@ What it is **not**:
 - Not `lotecobv`, not any payment scope (`pagamento-*`).
 - Not a change to tenant zero's default rail: CTech's own invoices keep the wallet rail (ADR 0004) unless the owner
   moves it during the pilot (§ 12.6).
-- Not the price table: BYOK collection is sold through `prod_billing` plans whose exact prices are **decided
-  separately** and set in the catalogue later (§ 12.5).
+- Not the pricing engine's new pieces: the plan table is decided (§ 12.5), but the Sob demanda automatic cap is a new
+  invoicing rule deferred to the pricing plan.
 - Not the wallet's migration to the shared Inter package (separate work).
 
 ## 2. Decisions
@@ -70,9 +70,9 @@ argued where it is specified.
 | D11 | **Legal gate:** live-mode BYOK collection cannot be enabled until the owner records the lawyer's clearance: `BYOK_LIVE_COLLECTION` defaults off in live, `BYOK_LIVE_PROVIDERS` lists the cleared providers, plus ADR 0030 (R3). Read-only statement sync may go live without it (§ 10 agrees, with conditions). |
 | D12 | `payout_status` (ADR 0005) stays the per-merchant gate; BYOK is a **new rail** `payout_rail: byok` with `payout_provider: inter`, enabled per connection rather than by CTech custody (R3). The existing gate and its single function are kept. |
 | D13 | Onboarding guides the merchant through creating the integration (Inter: scopes, "Em validação", upload), then shows health and certificate expiry, in the console and in Finanças. Routes in English, Portuguese only in i18n. |
-| R1 | **No KMS per call.** A dedicated AES-256 key for bank credentials in an SSM SecureString, read **once per Lambda cold start**, readable only by the outbound Lambda; the `api` never holds it. Credentials reach the Lambda through a sealing op (`Connect`, which tests and seals; `Reseal` on renewal); the Lambda encrypts and returns the ciphertext the `api` stores (§ 3.3). |
+| R1 | **No KMS per call.** A dedicated AES-256 key for bank credentials in an SSM SecureString, read **once per Lambda cold start**, readable only by the outbound Lambda; the `api` never holds it. Credentials reach the Lambda through a sealing op (`Connect`, which tests and seals; `Reseal` on renewal); the Lambda encrypts and returns the ciphertext the `api` stores (§ 3.3). Per-merchant KMS keys are a future option when cost allows; not now. |
 | R3 | **Provider-agnostic:** connections, the rail, the Finanças account, flags and webhook paths carry a `provider`; Inter specifics stay in Inter-named sections. |
-| R4 | **Pricing:** BYOK collection is sold through `prod_billing` plans (free / basic / pro / sob demanda), counted by charges per month and active subscriptions with level metering; prices are set in the catalogue later, never in code. The early access price stays R$ 0 (§ 12.5). |
+| R4 | **Pricing:** BYOK collection is sold through `prod_billing` plans priced by **one unit, "cobrança emitida"** (a charge cancelled within 24 h does not count): Grátis, Sob demanda, Básico, Crescimento, Pro, Empresas (§ 12.5 table). No per-subscription price and no separate subscription quota; active subscriptions are capped at the plan's charge quota; Pix Automático counts as a normal charge. Overage is charged automatically and never blocks, except Grátis. Upsell is by features (bank connections, API access, users). The early access price stays R$ 0. |
 | R5 | **Pilot:** CTech's own CNPJ (account organization `01a04ed6-1af9-745e-bcf7-d3b66fe52321`) on a new internal unlimited price, `price_billing_unlimited_internal_monthly` (§ 12.6). |
 | R6 | **Webhook mTLS uses no merchant certificate:** the provider presents its own client certificate, validated by CTech's truststore; CTech presents its own server certificate (§ 6.1). |
 | D14 | The `api` owns the token lifecycle (single-flight in Valkey, sealed token), as the wallet's token manager does; the Lambda performs the token fetch (§ 4.3). |
@@ -336,6 +336,10 @@ Steps, each idempotent and re-runnable with `-date`:
    re-queried at once.
 5. **Promotion to `enabled`** of `pending_clearance` tenants whose provider is cleared (§ 7.1), registering their
    webhook (§ 6.4).
+6. **Usage (live only):** each BYOK charge created 24–48 hours ago and **not cancelled within 24 hours of its
+   creation** is reported once as one unit of `billing_charges` for the organization's `ORG_` customer in tenant zero
+   (idempotency key: the attempt id), so a charge counts in the month it was issued. Test-mode charges are never
+   reported.
 
 `cmd/byok -retry-callbacks -since=…` is the **recovery tool** after an outage of the webhook host: it lists failed
 callbacks per connection and asks the provider to resend them (Inter: `POST /webhook/callbacks/retry`, ≤ 50 txids per
@@ -459,8 +463,9 @@ only when **all** hold, each with its own reason (409, `problem` code):
   (`byok_collection_not_cleared`) — checked even though the stored status already encodes it, so removing a provider
   from the list stops its collection at once without a migration;
 - in live: the tenant is approved (an entitling `prod_billing` subscription, R4) and not suspended (console spec
-  § 4.3, unchanged). Plan quotas (charges per month, active subscriptions) are read here once the catalogue sets them
-  (§ 12.5): over quota → `byok_quota_exceeded`.
+  § 4.3, unchanged). The entitling price's `quota_charges_month` is read here (§ 12.5): only a plan whose overage is
+  `refuse` (Grátis) answers `byok_quota_exceeded` past its quota, with the upgrade suggestion; every other plan's
+  overage is billed, never refused.
 
 The flag and the provider list are the ecosystem-wide capability, the status is per merchant — exactly ADR 0005's two
 gates (`AsaasCustodyEnabled` / `payout_status`), with the wallet's custody replaced by the lawyer's clearance per
@@ -747,7 +752,7 @@ provider is `404`.
 New `problem` codes: `byok_not_connected`, `byok_certificate_expired`, `byok_certificate_invalid`,
 `byok_key_mismatch`, `byok_credentials_refused`, `byok_collection_scopes_missing`, `byok_open_charges`,
 `byok_webhook_conflict`, `byok_sandbox_busy`, `byok_provider_unavailable`, `byok_collection_not_cleared`,
-`byok_quota_exceeded`, `customer_tax_id_required`, `account_is_synced`, `refund_window_closed`.
+`byok_quota_exceeded`, `subscription_limit_reached`, `customer_tax_id_required`, `account_is_synced`, `refund_window_closed`.
 
 ### 12.2 Data
 
@@ -797,19 +802,49 @@ Phase 2 adds `cobranca`, phase 3 `pixauto`. The wallet migrates its `pix-gateway
 
 ### 12.5 Catalogue and pricing (R4)
 
-- **BYOK collection is sold through `prod_billing`** (owner key `billing`), the product whose active subscription
-  already approves a live merchant (console spec D3). Plans: **free, basic, pro and sob demanda**, counted by **charges
-  per month** and **active subscriptions**, metered through the level metering of the plans spec (as DF-e companies
-  and Finanças spaces are). The meters are `billing_charges` (count of BYOK charges created in the month) and
-  `billing_active_subscriptions` (peak level), reported by billing about its own tenants to tenant zero.
-- **The price table is not in this spec and not in code.** Prices, included quantities and quotas go into
-  `api/tenants/ctech.json` (and `api/cmd/seed/run.sh prod`) when the owner decides them; `AuthorizeCharge` reads quotas
-  from the entitling price's metadata (`quota_charges_month`, `quota_active_subscriptions`, `-1` = unlimited), so a new
-  table is a catalogue change, not a deploy.
-- **`price_billing_early_access` stays R$ 0** (`plan: early_access`); until the table exists it has no quotas
-  (unlimited).
-- Statement sync alone is not priced in phase 1 (D16); the Finanças "Custom (BYOK)" tier is decided with the same
-  pricing work.
+**The unit is the "cobrança emitida"**: one BYOK charge created for an invoice in live mode (a due-date Pix now; a
+Boleto com Pix in phase 2; each Pix Automático cycle charge in phase 3 counts as a normal charge). A charge cancelled
+within 24 hours of its creation does not count (§ 5 step 6). There is **no per-subscription price and no separate
+subscription quota**.
+
+Plans, sold through **`prod_billing`** (owner key `billing`, the product whose active subscription already approves a
+live merchant, console spec D3). Decided catalogue values; prices go into `api/tenants/ctech.json` in centavos when
+the catalogue is written:
+
+| Plan | Monthly fee | Charges included | Past the quota |
+|---|---|---|---|
+| Grátis | R$ 0 | 50 | **refused** (`byok_quota_exceeded`, upgrade suggested); 1 bank connection, 1 user |
+| Sob demanda | none | 0 | R$ 0,49 per charge, with an automatic cap: never more than the cheapest paid plan that would fit the month's volume |
+| Básico | R$ 99,90 | 500 | R$ 0,25 each |
+| Crescimento | R$ 299,90 | 2.000 | R$ 0,18 each |
+| Pro | R$ 699,90 | 5.000 | R$ 0,15 each |
+| Empresas | sob consulta | above 10.000 | negotiated; not in the public catalogue |
+
+- **Overage is charged automatically and never blocks**, except Grátis. **Active subscriptions are capped at the
+  plan's charge quota**: creating a subscription collected through BYOK beyond `quota_charges_month` active ones
+  answers `409 subscription_limit_reached` with the upgrade suggestion; charges themselves are never refused on a paid
+  plan. Sob demanda has no quota, so no cap.
+- **Upsell is by features, not subscription limits:** more bank connections (`quota_bank_connections`), API access
+  (`feature_api_access`) and users (`quota_users`), as price metadata. Grátis has 1 connection and 1 user; the other
+  plans' feature values are set with the catalogue.
+- **Annual billing** with about two months free is optional, later.
+- **`price_billing_early_access` stays R$ 0** (`plan: early_access`, unlimited) until the merchant chooses a plan.
+- Statement sync alone is not priced in phase 1 (D16); the Finanças "Custom (BYOK)" tier follows from this table.
+
+**How it maps onto billing's existing catalogue features** (ADR 0018, plans spec):
+
+- Each paid plan is a subscription with two prices: the **fixed monthly fee** (advance) and a **metered overage
+  price**: `meter: billing_charges`, `aggregation: sum` (the default), `included_quantity` = the plan's included
+  charges, `unit_amount` = the overage price, arrears. `billed = max(0, used − included_quantity) × unit_amount` is the
+  plans spec's existing rule. Metadata carries `quota_charges_month` (equal to `included_quantity`; `-1` unlimited) and
+  `overage: bill | refuse` (`refuse` only on Grátis). **No new invoicing feature is needed** for Grátis, Básico,
+  Crescimento and Pro.
+- **Sob demanda's automatic cap does need a new invoicing rule.** Its bill is `min(0,49 × n, min over the paid plans
+  of fee + max(0, n − included) × overage)`: a metered item whose amount is capped by a function of other prices. No
+  existing price type expresses that (`included_quantity` and `aggregation` cannot). **Deferred to the pricing plan**,
+  not this phase: BYOK phase 1 does not depend on it, and until the rule ships Sob demanda is not offered (not in the
+  public plan list).
+- Empresas is a per-customer price created by the operator, never in the public catalogue.
 
 ### 12.6 The pilot (R5)
 
@@ -821,7 +856,7 @@ Phase 2 adds `cobranca`, phase 3 `pixauto`. The wallet migrates its `pix-gateway
   { "id": "price_billing_unlimited_internal_monthly", "product_id": "prod_billing", "type": "fixed",
     "unit_amount": 0, "recurrence": { "interval": "month", "count": 1 }, "billing_timing": "advance",
     "metadata": { "plan": "unlimited", "visibility": "internal",
-                  "quota_charges_month": "-1", "quota_active_subscriptions": "-1" } }
+                  "quota_charges_month": "-1", "overage": "bill" } }
   ```
 
   The same shape as DF-e's `price_dfe_unlimited_internal_monthly` (R$ 0, unlimited quotas, `visibility: internal`,
@@ -848,7 +883,7 @@ Phase 2 adds `cobranca`, phase 3 `pixauto`. The wallet migrates its `pix-gateway
 | Gate | same `AuthorizeCharge` and provider clearance (the lawyer's question 1 explicitly includes `cobr`) | same | the provider needs its own clearance ADR before joining `BYOK_LIVE_PROVIDERS` |
 | Subscriptions | — | a per-subscription collection method; journey 4 builds on this phase's `cobv` (parecer § 5.3) | — |
 | Statement linking | `seuNumero` / `codigoSolicitacao` as `charge_ref` | `cobr` txid | the provider's `charge_ref` |
-| Pricing | counted as charges (R4) | charges and active subscriptions (R4) | same meters |
+| Pricing | each boleto counts as a charge (R4) | each cycle charge counts as a normal charge (R4) | same unit |
 
 `cobv` is Bacen-standard, so the `inter/pix` subpackage keeps Bacen types apart from Inter-specific ones; another
 Bacen-API PSP can reuse them.
@@ -905,7 +940,7 @@ To verify with Inter or the pilot (parecer § 11), each with the design's curren
     tariffs (their decision, not CTech's).
 13. **For the lawyer:** parecer § 8 questions 1–4. Live collection stays off until answered (§ 10).
 
-Decided separately, not open here: the BYOK price table (§ 12.5). Decided: the pilot (§ 12.6).
+Decided, not open here: the price table (§ 12.5) and the pilot (§ 12.6). Deferred to the pricing plan: Sob demanda's automatic cap (§ 12.5).
 
 ## 16. Deploy
 
@@ -938,7 +973,7 @@ Part of done, not later hardening:
    from `AuthorizeCharge`, and a live `collect` op sent straight to the Lambda is refused there too; read and teardown
    ops still work; removing the provider from the list after `enabled` blocks the next charge at once.
 3. **Single gate:** every collection path (finalization, checkout, new attempt, refund) goes through
-   `AuthorizeCharge`; a table test over rail × provider × status × connection state × flag × list × mode × quota.
+   `AuthorizeCharge`; a table test over rail × provider × status × connection state × flag × list × mode × quota; Grátis refuses past 50 charges, a paid plan never refuses.
 4. **Credentials:** the raw DynamoDB item holds only `b1.` ciphertext; responses, logs and audit rows never contain
    secret, key or token (a log-capture test); the `api` role has no read on the credentials-key parameter (a Terraform
    plan assertion); a bundle copied onto another connection fails to open (AAD); the Lambda refuses to start without
@@ -964,3 +999,5 @@ Part of done, not later hardening:
     every connection route, with zero table reads before membership (ADR 0025).
 14. **Provider seam:** the `api`'s services compile against `byok.Provider` only (no import of `api-commons/inter`
     outside the Lambda); a fake provider runs the whole connect → charge → confirm → statement flow.
+15. **Usage:** a charge cancelled within 24 hours is never reported; one surviving 24 hours is reported once whatever
+    the number of job runs; test-mode charges are never reported.
