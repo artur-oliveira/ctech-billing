@@ -40,6 +40,12 @@ type APICredential struct {
 	// without a cross-service call, for the case where a merchant's integration
 	// is misbehaving right now.
 	Active bool `dynamodbav:"active" json:"active"`
+	// ConnectedBy is the ctech-account user who connected this client from the
+	// console (spec § 5.1), ConnectedAt when (RFC 3339). Both are empty on a
+	// credential the tenant plan provisioned. The credential belongs to the
+	// tenant: the connector leaving the organization does not remove it.
+	ConnectedBy string `dynamodbav:"connected_by,omitempty" json:"connected_by,omitempty"`
+	ConnectedAt string `dynamodbav:"connected_at,omitempty" json:"connected_at,omitempty"`
 }
 
 // Validate checks the credential can be used to act for a tenant.
@@ -57,3 +63,7 @@ func (c *APICredential) Validate() error {
 func (c *APICredential) Allows(ownerKey string) bool {
 	return c.OwnerKey == "" || c.OwnerKey == ownerKey
 }
+
+// Provisioned reports a credential the tenant plan created. The console lists
+// it and never removes it: it is how a CTech service reaches tenant zero.
+func (c *APICredential) Provisioned() bool { return c.ConnectedBy == "" }

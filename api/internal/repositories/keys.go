@@ -123,8 +123,12 @@ const (
 	EntityPrice          Entity = "PRICE"
 	EntityOrganization   Entity = "ORGANIZATION"
 	EntityAudit          Entity = "AUDIT"
-	EntityApplication    Entity = "APPLICATION"
-	EntityLedgerTx       Entity = "LEDGER_TX"
+	// EntityCredential and EntityWebhookEndpoint name audit subjects only;
+	// neither row type is in a period index.
+	EntityCredential      Entity = "CREDENTIAL"
+	EntityWebhookEndpoint Entity = "WEBHOOK_ENDPOINT"
+	EntityApplication     Entity = "APPLICATION"
+	EntityLedgerTx        Entity = "LEDGER_TX"
 	// EntityFinanceSettings is a finance space's settings row (SPACE).
 	EntityFinanceSettings Entity = "FINANCE_SETTINGS"
 )
