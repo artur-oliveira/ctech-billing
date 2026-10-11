@@ -18,7 +18,11 @@ func registerIntegrations(console fiber.Router, ch *consoleHandlers) {
 	console.Get("/credentials", read, ch.listCredentials)
 	console.Post("/credentials", write, ch.connectCredential)
 	console.Delete("/credentials/:client_id", write, ch.disconnectCredential)
-	// Task 10 adds the webhook routes here.
+	console.Get("/webhooks", read, ch.listWebhooks)
+	console.Post("/webhooks", write, ch.createWebhook)
+	console.Delete("/webhooks/:id", write, ch.deleteWebhook)
+	console.Post("/webhooks/:id/rotate-secret", write, ch.rotateWebhookSecret)
+	console.Post("/webhooks/:id/test", write, ch.testWebhook)
 }
 
 // isSuspended reports a suspended live tenant (part 2, spec § 4.3). Scope

@@ -99,6 +99,7 @@ parameter and no `livemode` flag anywhere, deliberately (ADR 0003).
 | `PUT /v1.0/console/settings/issuer` | `billing:invoices:write` |
 | `PUT /v1.0/console/settings/dunning` · `PUT /v1.0/console/products/:id/dunning` | `billing:invoices:write` |
 | `POST /v1.0/console/credentials` · `DELETE /v1.0/console/credentials/:client_id` | `billing:organization:write` |
+| `POST /v1.0/console/webhooks` · `DELETE /v1.0/console/webhooks/:id` · `POST /v1.0/console/webhooks/:id/rotate-secret` · `POST /v1.0/console/webhooks/:id/test` | `billing:organization:write` |
 
 A credential is connected, never created: the merchant creates a machine-only
 client on ctech-account's developer page and gives billing its id; billing asks
@@ -107,6 +108,13 @@ admits it only if the person connecting owns it, it holds only billing scopes
 marked `m2m`, it is active and no tenant has it (console self-service spec § 5.1).
 Credentials and endpoints from the tenant plan are listed as `provisioned` and
 cannot be removed from the console.
+
+Webhook endpoints from the console are `https` URLs on the public internet, at
+most five per tenant and mode. The signing secret is in the create and
+rotate-secret responses only. The test call queues a `ping` event for that
+endpoint through the ordinary delivery job (every minute). Merchant endpoints
+are delivered by a client that never dials a non-public address and follows no
+redirect.
 
 Revealing a tax id is a `POST` because it has an effect — it writes the audit row
 naming who looked — and the row is written **before** the value is returned: the
@@ -247,7 +255,7 @@ request states its own mode, and why that is safe is
 | Route | Scope |
 |---|---|
 | `GET /v1.0/console/session` | `billing:organization:read` |
-| `GET /v1.0/console/credentials` | `billing:organization:read` |
+| `GET /v1.0/console/credentials` · `GET /v1.0/console/webhooks` | `billing:organization:read` |
 | `GET /v1.0/console/invoices?year=&month=&cursor=` · `GET /v1.0/console/invoices/:id` | `billing:invoices:read` |
 | `GET /v1.0/console/subscriptions?cursor=` · `GET /v1.0/console/subscriptions/:id` | `billing:subscriptions:read` |
 | `GET /v1.0/console/customers?cursor=` · `GET /v1.0/console/customers/:id` | `billing:customers:read` |
