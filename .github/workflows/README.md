@@ -297,3 +297,18 @@ mints the token the `azp` comes from.
 `Collector.Pay` refuses a test-mode invoice outright (`services.ErrTestModeNotPayable`) and no
 `checkout_url` is published for one. Integrators exercise the catalogue, subscriptions, usage and
 invoicing in test mode; collection is live-only until wallet has a sandbox charge kind.
+
+## Lifting a merchant suspension
+
+A live tenant whose `prod_billing` subscription in tenant zero is cancelled is
+suspended: its M2M writes answer `403 tenant_suspended`, and `sweep` and
+`dunning` skip it (spec § 4.3). Both jobs read one day's queue, so the days
+skipped stay where they were. When a new entitled subscription lifts the
+suspension, re-run each suspended day, oldest first; both are idempotent:
+
+    # on an instance, as the job user, once per day D of the suspension
+    /opt/app/job.sh sweep -date D
+    /opt/app/job.sh dunning -date D
+
+`reconcile` and `deliver` are never skipped: they record money that arrived and
+tell integrations about it.

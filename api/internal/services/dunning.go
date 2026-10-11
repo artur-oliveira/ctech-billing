@@ -29,6 +29,8 @@ type Dunner struct {
 	customers *repositories.CustomerRepository
 	links     *PayLink
 	mail      email.Sender
+	// orgs lets a run skip a suspended live tenant (spec § 4.3). Optional.
+	orgs *repositories.OrganizationRepository
 }
 
 // dunningActor is the audit actor for everything this job does. It matches the
@@ -53,7 +55,16 @@ type DunningResult struct {
 	Escalated int
 	Abandoned int
 	Skipped   int
+	// Suspended counts invoices of a suspended live tenant, left for a re-run
+	// after the lift (spec § 4.3).
+	Suspended int
 	Errors    []string
+}
+
+// WithOrganizations lets the run skip a suspended live tenant (spec § 4.3).
+func (d *Dunner) WithOrganizations(orgs *repositories.OrganizationRepository) *Dunner {
+	d.orgs = orgs
+	return d
 }
 
 func (r *DunningResult) fail(format string, args ...any) {
@@ -75,8 +86,16 @@ func (d *Dunner) Run(ctx context.Context, livemode bool, date brcal.Date, now ti
 	}
 	res.Examined = len(page.Items)
 
+	suspended := newSuspensionCache(d.orgs)
 	for i := range page.Items {
 		inv := &page.Items[i]
+		if skip, err := suspended.skip(ctx, inv.OrganizationID, inv.Livemode); err != nil {
+			res.fail("invoice %s: reading its tenant: %v", inv.ID, err)
+			continue
+		} else if skip {
+			res.Suspended++
+			continue
+		}
 		if err := d.step(ctx, inv, &res, now); err != nil {
 			res.fail("invoice %s: %v", inv.ID, err)
 		}

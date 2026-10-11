@@ -106,6 +106,7 @@ func run(ctx context.Context, invoicer *services.Invoicer, livemode bool, date b
 		"examined", res.Examined,
 		"invoiced", res.Invoiced,
 		"skipped", res.Skipped,
+		"suspended", res.Suspended,
 		"failed", res.Failed,
 		"duration_ms", time.Since(started).Milliseconds())
 	return res

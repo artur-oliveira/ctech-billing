@@ -289,7 +289,10 @@ type SweepResult struct {
 	Invoiced int
 	Skipped  int // already invoiced for the period — a re-run, which is normal
 	Failed   int
-	Errors   []error
+	// Suspended counts subscriptions of a suspended live tenant, left for a
+	// re-run after the lift (spec § 4.3).
+	Suspended int
+	Errors    []error
 }
 
 // Issue finalizes a draft invoice that the sweep left behind (C3).
@@ -354,6 +357,7 @@ func (s *Invoicer) RunDailySweep(ctx context.Context, livemode bool, date brcal.
 	var result SweepResult
 	var startKey map[string]types.AttributeValue
 
+	suspended := newSuspensionCache(s.orgs)
 	for {
 		page, err := s.subs.DueOn(ctx, livemode, date, 100, startKey)
 		if err != nil {
@@ -363,6 +367,14 @@ func (s *Invoicer) RunDailySweep(ctx context.Context, livemode bool, date brcal.
 		for i := range page.Items {
 			sub := page.Items[i]
 			result.Examined++
+			if skip, err := suspended.skip(ctx, sub.OrganizationID, sub.Livemode); err != nil {
+				result.Failed++
+				result.Errors = append(result.Errors, fmt.Errorf("subscription %s: reading its tenant: %w", sub.ID, err))
+				continue
+			} else if skip {
+				result.Suspended++
+				continue
+			}
 			switch err := s.invoiceOne(ctx, &sub, actor, now); {
 			case err == nil:
 				result.Invoiced++

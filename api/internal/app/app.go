@@ -308,7 +308,7 @@ func BuildDunner(ctx context.Context, cfg *config.Config) (*services.Dunner, err
 		repositories.NewCustomerRepository(db, cfg),
 		links,
 		mail,
-	), nil
+	).WithOrganizations(repositories.NewOrganizationRepository(db, cfg)), nil
 }
 
 // BuildCollector wires only what the reconciliation job needs.

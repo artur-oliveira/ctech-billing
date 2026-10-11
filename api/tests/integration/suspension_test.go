@@ -3,11 +3,14 @@
 package integration
 
 import (
+	"context"
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
+	"gopkg.aoctech.app/billing/api/internal/domain/brcal"
 	"gopkg.aoctech.app/billing/api/internal/domain/id"
 	"gopkg.aoctech.app/billing/api/internal/middleware"
 	"gopkg.aoctech.app/billing/api/internal/repositories"
@@ -200,5 +203,52 @@ func TestASuspendedTenantReadsAndTestModeKeepWorking(t *testing.T) {
 	tok := e.token(t, testClient, "", middleware.ScopeCustomersWrite)
 	if r := e.do(t, http.MethodPost, "/v1.0/customers", tok, id.New(), `{"name":"Ana Ribeiro","email":"ana@example.com"}`); r.status >= 400 {
 		t.Fatalf("test-mode write: %d %s", r.status, r.body)
+	}
+}
+
+func TestTheSweepSkipsASuspendedTenantAndBillsItAfterTheLift(t *testing.T) {
+	ctx := ctxT(t)
+	f := newCatalog(t, "dfe") // its own live tenant
+	// R$ 0: the subscription starts ACTIVE (a priced one waits INCOMPLETE on its
+	// first invoice and is not in the sweep at all).
+	price := f.price(t, f.product.ID, billing.PriceFixed, billing.BillAdvance, 0, billing.IntervalMonth)
+	anchor := brcal.New(2034, time.March, 7)
+	sub, _, err := f.subber.Subscribe(ctx, services.SubscribeInput{OrganizationID: f.org.ID, Livemode: true,
+		CustomerID: "cus_" + id.New(), Items: []services.SubscribeItem{{PriceID: price.ID}}, Anchor: anchor, Actor: "test"}, now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	setSuspended(t, f.org)
+	inv := services.NewInvoicer(f.subs, f.invoices, f.catalog, f.usage).WithOrganizations(orgRepo())
+	day := sub.CurrentPeriod().End
+	if res := inv.RunDailySweep(ctx, true, day, "scheduler", now()); res.Suspended < 1 || res.Failed != 0 {
+		t.Fatalf("sweep while suspended = %+v", res)
+	}
+	if got, _ := f.subs.Get(ctx, f.org.ID, true, sub.ID); got.PeriodIndex != sub.PeriodIndex {
+		t.Fatal("a suspended tenant's subscription was renewed")
+	}
+	setLookupAttr(t, f.org, "suspended_at", "") // not REMOVE, but Suspended() reads "" as active
+	if res := inv.RunDailySweep(ctx, true, day, "scheduler", now()); res.Failed != 0 {
+		t.Fatalf("re-run after the lift = %+v", res)
+	}
+	if got, _ := f.subs.Get(ctx, f.org.ID, true, sub.ID); got.PeriodIndex != sub.PeriodIndex+1 {
+		t.Fatal("re-running the day after the lift did not renew")
+	}
+}
+
+func TestDunningSkipsASuspendedTenant(t *testing.T) {
+	org := newOrg(t, true)
+	inv, _, address := dunnableInvoice(t, org)
+	setSuspended(t, org)
+	box := &mailbox{}
+	d := newDunner(t, box).WithOrganizations(orgRepo())
+	day, _ := inv.Schedule().DunningDate(inv.DueDate, 0)
+	res := d.Run(context.Background(), true, day, now())
+	if res.Suspended < 1 || len(box.to(address)) != 0 {
+		t.Fatalf("dunning while suspended = %+v, mail %d", res, len(box.to(address)))
+	}
+	fresh, _ := repositories.NewInvoiceRepository(testDB, testCfg).Get(ctxT(t), org.ID, true, inv.ID)
+	if fresh.DunningStep != inv.DunningStep {
+		t.Fatal("a skipped invoice advanced its dunning step")
 	}
 }
