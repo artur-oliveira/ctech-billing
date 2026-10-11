@@ -3,9 +3,13 @@
 package integration
 
 import (
+	"net/http"
+	"strings"
 	"testing"
 
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
+	"gopkg.aoctech.app/billing/api/internal/domain/id"
+	"gopkg.aoctech.app/billing/api/internal/middleware"
 	"gopkg.aoctech.app/billing/api/internal/repositories"
 	"gopkg.aoctech.app/billing/api/internal/services"
 )
@@ -161,4 +165,40 @@ func hasAction(trail []billing.AuditLog, action string) bool {
 		}
 	}
 	return false
+}
+
+// setSuspended marks a live tenant suspended directly, as the hook would.
+func setSuspended(t *testing.T, org *billing.Organization) {
+	t.Helper()
+	setLookupAttr(t, org, "suspended_at", "2026-10-10T12:00:00Z")
+}
+
+func TestASuspendedTenantReadsAndTestModeKeepWorking(t *testing.T) {
+	e := newAPI(t)
+	setSuspended(t, e.org)
+	live := e.token(t, e.client, "", middleware.ScopeCustomersWrite, middleware.ScopeProductsRead)
+
+	r := e.do(t, http.MethodPost, "/v1.0/customers", live, id.New(), `{"name":"Ana Ribeiro","email":"ana@example.com"}`)
+	if r.status != http.StatusForbidden || !strings.Contains(string(r.body), `"tenant_suspended"`) {
+		t.Fatalf("live write: %d %s", r.status, r.body)
+	}
+	if r := e.do(t, http.MethodGet, "/v1.0/products", live, "", ""); r.status != http.StatusOK {
+		t.Fatalf("live read: %d %s", r.status, r.body)
+	}
+
+	// The same merchant's test credential keeps writing.
+	test := &billing.Organization{ID: e.org.ID, DisplayName: e.org.DisplayName, Livemode: false, PayoutStatus: billing.PayoutEnabled}
+	if err := orgRepo().Create(ctxT(t), test, now()); err != nil {
+		t.Fatal(err)
+	}
+	testClient := "cli_" + id.New()
+	if err := repositories.NewCredentialRepository(testDB, testCfg).Create(ctxT(t), &billing.APICredential{
+		ClientID: testClient, OrganizationID: e.org.ID, Livemode: false, Description: "test", Active: true,
+	}, now()); err != nil {
+		t.Fatal(err)
+	}
+	tok := e.token(t, testClient, "", middleware.ScopeCustomersWrite)
+	if r := e.do(t, http.MethodPost, "/v1.0/customers", tok, id.New(), `{"name":"Ana Ribeiro","email":"ana@example.com"}`); r.status >= 400 {
+		t.Fatalf("test-mode write: %d %s", r.status, r.body)
+	}
 }

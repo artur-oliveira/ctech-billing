@@ -51,6 +51,9 @@ const (
 	// branches on it; it says nothing a member of the organization does not
 	// already know, and only members get this far.
 	TypeNoMerchant = "/problems/no-merchant"
+	// TypeTenantSuspended is a live tenant whose prod_billing entitlement ended:
+	// writes refused, reads served (spec § 4.3).
+	TypeTenantSuspended = "/problems/tenant-suspended"
 )
 
 // FieldError is a single field-level validation failure.

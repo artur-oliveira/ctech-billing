@@ -143,7 +143,10 @@ func Register(app *fiber.App, d Deps) {
 	// the credential resolver onto the console routes too — and the console has
 	// no credential to resolve, so every one of them would 403. Naming the
 	// prefixes makes the two surfaces independent of registration order.
-	m2m := func(prefix string) fiber.Router { return v1.Group(prefix, auth, tenant) }
+	// A suspended live tenant's writes are refused on every M2M route,
+	// including those added later (spec § 4.3).
+	suspended := middleware.RefuseSuspendedWrites(d.Organizations)
+	m2m := func(prefix string) fiber.Router { return v1.Group(prefix, auth, tenant, suspended) }
 
 	customers := m2m("/customers")
 	customers.Post("",
