@@ -4,24 +4,15 @@ package integration
 
 import (
 	"testing"
-	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
-	"github.com/oklog/ulid/v2"
 
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
 	"gopkg.aoctech.app/billing/api/internal/domain/id"
 	"gopkg.aoctech.app/billing/api/internal/repositories"
 )
-
-// invoiceIDAt makes an invoice id whose ULID carries at, so a test can say
-// which invoice is older — the table's sort key, and so the order a customer's
-// invoices come back in, is that ULID.
-func invoiceIDAt(at time.Time) string {
-	return id.PrefixInvoice + ulid.MustNew(ulid.Timestamp(at), ulid.DefaultEntropy()).String()
-}
 
 // createInvoice writes a DRAFT invoice with two lines for customerID, through
 // the repository's own Create.
