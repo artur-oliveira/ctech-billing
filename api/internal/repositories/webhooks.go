@@ -2,15 +2,18 @@ package repositories
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 
 	"gopkg.aoctech.app/billing/api/internal/config"
 	"gopkg.aoctech.app/billing/api/internal/crypto"
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
+	"gopkg.aoctech.app/billing/api/internal/domain/id"
 )
 
 // WebhookRepository stores endpoints, the events emitted for them, and the
@@ -21,6 +24,8 @@ import (
 // reads a delivery beside the event it carries.
 type WebhookRepository struct {
 	base Base
+	// audit is where the console's endpoint writes record who did what.
+	audit Base
 	// seal protects the signing secret at rest, the same way a tax id is
 	// protected. A leaked endpoint secret lets somebody forge a delivery to a
 	// consumer that trusts this service's signature, which is a worse outcome
@@ -30,8 +35,9 @@ type WebhookRepository struct {
 
 func NewWebhookRepository(db *dynamodb.Client, cfg *config.Config) *WebhookRepository {
 	return &WebhookRepository{
-		base: NewBase(db, cfg, TableWebhooks),
-		seal: crypto.NewSealer(cfg.FieldEncryptionKey),
+		base:  NewBase(db, cfg, TableWebhooks),
+		audit: NewBase(db, cfg, TableAudit),
+		seal:  crypto.NewSealer(cfg.FieldEncryptionKey),
 	}
 }
 
@@ -410,4 +416,194 @@ func truncate(s string, n int) string {
 		return s
 	}
 	return s[:n]
+}
+
+// ── Console writes (spec § 5.2) ─────────────────────────────────────────────
+
+// skEndpointRev is one row per tenant and mode whose `rev` every console add
+// and remove moves. An add conditions on the rev it read before counting, so
+// two concurrent adds cannot both see four endpoints and both write a fifth.
+// Not "ENDPOINT#…": ListEndpoints reads that prefix.
+const skEndpointRev = "ENDPOINT_REV"
+
+var (
+	// ErrEndpointLimit: the tenant already has the most endpoints a mode may.
+	ErrEndpointLimit = errors.New("webhook endpoint limit reached")
+	// ErrEndpointProvisioned: the endpoint came from the tenant plan.
+	ErrEndpointProvisioned = errors.New("webhook endpoint provisioned by the tenant plan")
+	// ErrEndpointsChanged: other adds kept moving the count; the caller retries later.
+	ErrEndpointsChanged = errors.New("the tenant's webhook endpoints changed during the request")
+)
+
+type endpointRevRow struct {
+	Rev int64 `dynamodbav:"rev"`
+}
+
+func (r *WebhookRepository) endpointRev(ctx context.Context, organizationID string, livemode bool) (int64, error) {
+	item, err := r.base.GetItem(ctx, TenantPK(organizationID, livemode), skEndpointRev)
+	if err != nil || item == nil {
+		return 0, err
+	}
+	row, err := Decode[endpointRevRow](item)
+	if err != nil {
+		return 0, err
+	}
+	return row.Rev, nil
+}
+
+// bumpRev moves the revision. seen < 0 means unconditional (a removal only
+// makes room, so it need not win a race; it must only be seen by one).
+func (r *WebhookRepository) bumpRev(organizationID string, livemode bool, seen int64, now time.Time) types.TransactWriteItem {
+	sk := skEndpointRev
+	values := map[string]types.AttributeValue{":one": numberValue(1), ":now": str(now.UTC().Format(time.RFC3339Nano))}
+	cond := ""
+	switch {
+	case seen == 0:
+		cond = "attribute_not_exists(rev)"
+	case seen > 0:
+		cond = "rev = :seen"
+		values[":seen"] = numberValue(seen)
+	}
+	return r.base.BuildRawUpdateTxItem(TenantPK(organizationID, livemode), &sk,
+		"SET updated_at = :now ADD rev :one", cond, nil, values)
+}
+
+func (r *WebhookRepository) endpointAudit(e *billing.WebhookEndpoint, action, before, after, actor, requestID string, now time.Time) (types.TransactWriteItem, error) {
+	item, err := buildAuditItem(e.OrganizationID, e.Livemode, AuditEntry{
+		Entity: EntityWebhookEndpoint, EntityID: e.ID, Action: action,
+		Cause: billing.CauseManual, Actor: actor, RequestID: requestID,
+	}, before, after, now)
+	if err != nil {
+		return types.TransactWriteItem{}, err
+	}
+	return r.audit.BuildPutTxItemIfAbsent(item), nil
+}
+
+// AddEndpoint registers a merchant's endpoint from the console: at most max per
+// tenant and mode, counting every endpoint there (provisioned ones too), with
+// the audit row. Up to three attempts when concurrent adds move the count.
+func (r *WebhookRepository) AddEndpoint(ctx context.Context, e *billing.WebhookEndpoint, max int, actor, requestID string, now time.Time) error {
+	if e.AddedBy == "" || actor == "" {
+		return fmt.Errorf("repositories: adding endpoint %s needs who added it", e.ID)
+	}
+	if e.Status == "" {
+		e.Status = billing.EndpointActive
+	}
+	if err := e.Validate(); err != nil {
+		return err
+	}
+	sealed, err := r.seal.Seal(e.Secret)
+	if err != nil {
+		return fmt.Errorf("sealing endpoint secret: %w", err)
+	}
+	row := endpointRow{
+		keys:            newKeys(TenantPK(e.OrganizationID, e.Livemode), EndpointSK(e.ID), RetentionCredential, now),
+		WebhookEndpoint: *e,
+	}
+	row.WebhookEndpoint.Secret = sealed
+	item, err := Encode(row)
+	if err != nil {
+		return err
+	}
+	audit, err := r.endpointAudit(e, billing.AuditWebhookEndpointCreated, "", e.URL, actor, requestID, now)
+	if err != nil {
+		return err
+	}
+	for attempt := 0; attempt < 3; attempt++ {
+		rev, err := r.endpointRev(ctx, e.OrganizationID, e.Livemode)
+		if err != nil {
+			return err
+		}
+		existing, err := r.ListEndpoints(ctx, e.OrganizationID, e.Livemode)
+		if err != nil {
+			return err
+		}
+		if len(existing) >= max {
+			return fmt.Errorf("%w: %d", ErrEndpointLimit, max)
+		}
+		err = r.base.TransactWrite(ctx, txItems(
+			r.base.BuildPutTxItemIfAbsent(item),
+			r.bumpRev(e.OrganizationID, e.Livemode, rev, now),
+			audit,
+		))
+		// Lost to a concurrent add or remove (the rev moved, or the two
+		// transactions collided): count again.
+		if !IsConditionFailed(err) && !IsTransactionConflict(err) {
+			return err
+		}
+	}
+	return ErrEndpointsChanged
+}
+
+// RemoveEndpoint deletes a console endpoint. Its queued deliveries close as
+// "endpoint no longer exists" on the delivery job's next pass.
+func (r *WebhookRepository) RemoveEndpoint(ctx context.Context, e *billing.WebhookEndpoint, actor, requestID string, now time.Time) error {
+	if e.Provisioned() {
+		return fmt.Errorf("%w: %s", ErrEndpointProvisioned, e.ID)
+	}
+	del := types.TransactWriteItem{Delete: &types.Delete{
+		TableName: aws.String(r.base.TableName),
+		Key: map[string]types.AttributeValue{
+			"pk": str(TenantPK(e.OrganizationID, e.Livemode)),
+			"sk": str(EndpointSK(e.ID)),
+		},
+		ConditionExpression: aws.String("attribute_exists(pk) AND attribute_exists(added_by)"),
+	}}
+	audit, err := r.endpointAudit(e, billing.AuditWebhookEndpointDeleted, e.URL, "", actor, requestID, now)
+	if err != nil {
+		return err
+	}
+	err = r.base.TransactWrite(ctx, txItems(del, r.bumpRev(e.OrganizationID, e.Livemode, -1, now), audit))
+	if IsConditionFailed(err) {
+		return fmt.Errorf("%w: webhook endpoint %s", ErrNotFound, e.ID)
+	}
+	return conflictErr(err)
+}
+
+// RotateEndpointSecret replaces the signing secret at once (scope decision 10).
+func (r *WebhookRepository) RotateEndpointSecret(ctx context.Context, e *billing.WebhookEndpoint, secret, actor, requestID string, now time.Time) error {
+	if e.Provisioned() {
+		return fmt.Errorf("%w: %s", ErrEndpointProvisioned, e.ID)
+	}
+	if len(secret) < 32 {
+		return fmt.Errorf("%w: secret must be at least 32 characters", billing.ErrInvalidEndpoint)
+	}
+	sealed, err := r.seal.Seal(secret)
+	if err != nil {
+		return fmt.Errorf("sealing endpoint secret: %w", err)
+	}
+	sk := EndpointSK(e.ID)
+	update := r.base.BuildRawUpdateTxItem(TenantPK(e.OrganizationID, e.Livemode), &sk,
+		"SET secret = :s, updated_at = :now", "attribute_exists(pk) AND attribute_exists(added_by)", nil,
+		map[string]types.AttributeValue{":s": str(sealed), ":now": str(now.UTC().Format(time.RFC3339Nano))})
+	audit, err := r.endpointAudit(e, billing.AuditWebhookEndpointSecretRotated, "", "", actor, requestID, now)
+	if err != nil {
+		return err
+	}
+	err = r.base.TransactWrite(ctx, txItems(update, audit))
+	if IsConditionFailed(err) {
+		return fmt.Errorf("%w: webhook endpoint %s", ErrNotFound, e.ID)
+	}
+	if err == nil {
+		e.Secret = secret
+	}
+	return conflictErr(err)
+}
+
+// EmitPing queues the console's test event for one endpoint. It goes through
+// the same fan-out and delivery as any event (spec § 5.2), signed with the
+// endpoint's secret, retried on failure, counted in the endpoint's health.
+func (r *WebhookRepository) EmitPing(ctx context.Context, e *billing.WebhookEndpoint, now time.Time) (*billing.Event, error) {
+	ev := &billing.Event{
+		ID: id.NewWithPrefix(id.PrefixEvent), OrganizationID: e.OrganizationID, Livemode: e.Livemode,
+		Type: billing.EventPing, Entity: "webhook_endpoint", EntityID: e.ID, EndpointID: e.ID,
+	}
+	item, err := r.BuildEventTxItem(ev, now)
+	if err != nil {
+		return nil, err
+	}
+	if err := r.base.TransactWrite(ctx, txItems(item)); err != nil {
+		return nil, err
+	}
+	return ev, nil
 }
