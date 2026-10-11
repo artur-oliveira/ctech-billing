@@ -3,6 +3,7 @@
 package integration
 
 import (
+	"context"
 	"errors"
 	"sync"
 	"testing"
@@ -10,9 +11,12 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 
+	"gopkg.aoctech.app/billing/api/internal/accountclient"
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
 	"gopkg.aoctech.app/billing/api/internal/domain/id"
+	"gopkg.aoctech.app/billing/api/internal/email"
 	"gopkg.aoctech.app/billing/api/internal/repositories"
+	"gopkg.aoctech.app/billing/api/internal/services"
 )
 
 // appRepo is an application repository whose tenant zero is tz.
@@ -229,5 +233,232 @@ func TestApplyReusesAProvisionedTestTenant(t *testing.T) {
 	}
 	if got, err := orgRepo().GetByAccountOrganization(ctx, acct, false); err != nil || got.ID != existing.ID {
 		t.Fatalf("lookup = %+v, %v", got, err)
+	}
+}
+
+type fakeCompanies map[string][]accountclient.Company // org -> companies
+
+func (f fakeCompanies) Companies(_ context.Context, org string) (accountclient.CompanyList, error) {
+	list, ok := f[org]
+	if !ok {
+		return accountclient.CompanyList{}, accountclient.ErrOrganizationNotFound
+	}
+	return accountclient.CompanyList{Companies: list}, nil
+}
+
+func (f fakeCompanies) Company(_ context.Context, org, id string) (*accountclient.Company, error) {
+	for _, c := range f[org] {
+		if c.ID == id {
+			return &c, nil
+		}
+	}
+	return nil, accountclient.ErrCompanyNotFound
+}
+
+type outbox struct {
+	mu       sync.Mutex
+	received []string
+	decided  []email.ApplicationDecided
+}
+
+func (o *outbox) SendApplicationReceived(_ context.Context, to string, _ email.ApplicationReceived) error {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.received = append(o.received, to)
+	return nil
+}
+
+func (o *outbox) SendApplicationDecided(_ context.Context, _ string, n email.ApplicationDecided) error {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.decided = append(o.decided, n)
+	return nil
+}
+
+type applicationsFixture struct {
+	tz, acct string
+	svc      *services.Applications
+	subs     *repositories.SubscriptionRepository
+	mail     *outbox
+}
+
+func newApplicationsFixture(t *testing.T) applicationsFixture {
+	t.Helper()
+	tz, _ := seedTenantZero(t)
+	acct := newSpaceOrgID()
+	subs := hookedSubs(tz)
+	cat := repositories.NewCatalogRepository(testDB, testCfg)
+	inv := services.NewInvoicer(subs, repositories.NewInvoiceRepository(testDB, testCfg), cat, repositories.NewUsageRepository(testDB, testCfg))
+	box := &outbox{}
+	svc := services.NewApplications(appRepo(t, tz), orgRepo(), repositories.NewCustomerRepository(testDB, testCfg), subs,
+		services.NewSubscriber(subs, cat, inv),
+		fakeCompanies{acct: {{ID: "cmp_1", LegalName: "Padaria Bom Dia LTDA", TaxID: "12345678000190", TaxIDKind: "cnpj"}}}, tz).
+		WithMail(box, "time@ctech.example")
+	return applicationsFixture{tz: tz, acct: acct, svc: svc, subs: subs, mail: box}
+}
+
+func (f applicationsFixture) apply(t *testing.T) *billing.Application {
+	t.Helper()
+	app, _, err := f.svc.Apply(ctxT(t), services.ApplyInput{
+		AccountOrganizationID: f.acct, OrganizationName: "Padaria Bom Dia", UserID: "usr_a", CompanyID: "cmp_1",
+		Description: "Assinaturas de pão para empresas", ContactEmail: "c@padaria.example", RequestID: "req_1",
+	}, now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return app
+}
+
+func TestApplyNeedsOneOfTheOrganizationsCompanies(t *testing.T) {
+	f := newApplicationsFixture(t)
+	_, _, err := f.svc.Apply(ctxT(t), services.ApplyInput{AccountOrganizationID: f.acct, OrganizationName: "P",
+		UserID: "u", CompanyID: "cmp_someone_elses", Description: "x", ContactEmail: "c@x.example"}, now())
+	if !errors.Is(err, services.ErrCompanyNotInOrganization) {
+		t.Fatalf("err = %v", err)
+	}
+	if _, err := orgRepo().GetByAccountOrganization(ctxT(t), f.acct, false); !errors.Is(err, repositories.ErrNotFound) {
+		t.Fatal("a refused application created a tenant")
+	}
+}
+
+func TestApplyNotifiesCTechOnceAndCreatesTheCustomerOnce(t *testing.T) {
+	f := newApplicationsFixture(t)
+	first := f.apply(t)
+	again := f.apply(t)
+	if again.ID != first.ID || len(f.mail.received) != 1 || f.mail.received[0] != "time@ctech.example" {
+		t.Fatalf("again=%s first=%s notices=%v", again.ID, first.ID, f.mail.received)
+	}
+}
+
+// Spec § 10.2: after approval the live tenant exists once; the subscription is
+// prod_billing at R$ 0 in tenant zero, live.
+func TestApprovingSubscribesTheOrganizationAndCreatesTheLiveTenantOnce(t *testing.T) {
+	ctx := ctxT(t)
+	f := newApplicationsFixture(t)
+	app := f.apply(t)
+	got, err := f.svc.Approve(ctx, app.ID, "user:rev", "req_2", now())
+	if err != nil || got.Status != billing.ApplicationApproved || got.SubscriptionID == "" {
+		t.Fatalf("approve = %+v, %v", got, err)
+	}
+	again, err := f.svc.Approve(ctx, app.ID, "user:rev", "req_3", now())
+	if err != nil || again.SubscriptionID != got.SubscriptionID || again.DecidedAt != got.DecidedAt {
+		t.Fatalf("second approval changed something: %+v, %v", again, err)
+	}
+	live, err := orgRepo().GetByAccountOrganization(ctx, f.acct, true)
+	if err != nil || live.ID != app.TenantID || live.PayoutStatus != billing.PayoutNotConfigured || live.LegalName != "Padaria Bom Dia LTDA" {
+		t.Fatalf("live = %+v, %v", live, err)
+	}
+	sub, err := f.subs.Get(ctx, f.tz, true, got.SubscriptionID)
+	if err != nil || sub.OwnerKey != billing.MerchantOwnerKey || sub.Status != billing.SubscriptionActive {
+		t.Fatalf("subscription = %+v, %v", sub, err)
+	}
+	if len(f.mail.decided) != 1 || !f.mail.decided[0].Approved {
+		t.Fatalf("decision mail = %+v", f.mail.decided)
+	}
+}
+
+// Review Focus 3.
+func TestConcurrentApprovalsMakeOneSubscriptionAndOneLiveTenant(t *testing.T) {
+	ctx := ctxT(t)
+	f := newApplicationsFixture(t)
+	app := f.apply(t)
+	var wg sync.WaitGroup
+	for i := 0; i < 4; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if _, err := f.svc.Approve(ctx, app.ID, "user:rev", "req", now()); err != nil && !errors.Is(err, repositories.ErrApplicationBusy) {
+				t.Errorf("approve: %v", err)
+			}
+		}()
+	}
+	wg.Wait()
+	if _, err := f.svc.Approve(ctx, app.ID, "user:rev", "req", now()); err != nil {
+		t.Fatal(err)
+	}
+	customer, _ := repositories.NewCustomerRepository(testDB, testCfg).GetByOrganization(ctx, f.tz, true, f.acct)
+	subs, _ := f.subs.ListByCustomer(ctx, f.tz, true, customer.ID, 100)
+	n := 0
+	for _, s := range subs {
+		if s.OwnerKey == billing.MerchantOwnerKey {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Fatalf("%d prod_billing subscriptions, want 1", n)
+	}
+	if _, err := orgRepo().GetByAccountOrganization(ctx, f.acct, true); err != nil {
+		t.Fatalf("one live tenant, readable without ambiguity: %v", err)
+	}
+}
+
+func TestRejectingKeepsTheTestTenantAndAllowsANewApplication(t *testing.T) {
+	ctx := ctxT(t)
+	f := newApplicationsFixture(t)
+	app := f.apply(t)
+	got, err := f.svc.Reject(ctx, app.ID, "Site fora do ar", "user:rev", "req", now())
+	if err != nil || got.Status != billing.ApplicationRejected {
+		t.Fatalf("reject = %+v, %v", got, err)
+	}
+	if _, err := f.svc.Approve(ctx, app.ID, "user:rev", "req", now()); !errors.Is(err, billing.ErrApplicationNotPending) {
+		t.Fatalf("approving a rejected application: %v", err)
+	}
+	if _, err := orgRepo().GetByAccountOrganization(ctx, f.acct, false); err != nil {
+		t.Fatalf("test tenant after rejection: %v", err)
+	}
+	if again := f.apply(t); again.ID == app.ID || again.Status != billing.ApplicationPending {
+		t.Fatalf("re-application = %+v", again)
+	}
+	if len(f.mail.decided) != 1 || f.mail.decided[0].Approved || f.mail.decided[0].Reason != "Site fora do ar" {
+		t.Fatalf("decision mail = %+v", f.mail.decided)
+	}
+}
+
+// Review Focus 1.
+func TestAProvisionedTestTenantIsReusedNotDuplicated(t *testing.T) {
+	f := newApplicationsFixture(t)
+	existing := newLinkedOrg(t, false, f.acct)
+	if app := f.apply(t); app.TenantID != existing.ID {
+		t.Fatalf("tenant = %s, want the provisioned %s", app.TenantID, existing.ID)
+	}
+}
+
+func TestAnOrganizationAlreadyLiveCannotApply(t *testing.T) {
+	f := newApplicationsFixture(t)
+	newLinkedOrg(t, true, f.acct)
+	_, _, err := f.svc.Apply(ctxT(t), services.ApplyInput{AccountOrganizationID: f.acct, OrganizationName: "P",
+		UserID: "u", CompanyID: "cmp_1", Description: "x", ContactEmail: "c@x.example"}, now())
+	if !errors.Is(err, billing.ErrAlreadyMerchant) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+// ctech-account not knowing the organization is an answer, not an outage: it
+// must not read as companies_unavailable.
+func TestCompaniesOfAnUnknownOrganizationIsNotAnOutage(t *testing.T) {
+	f := newApplicationsFixture(t)
+	if _, err := f.svc.Companies(ctxT(t), newSpaceOrgID()); !errors.Is(err, accountclient.ErrOrganizationNotFound) ||
+		errors.Is(err, services.ErrCompaniesUnavailable) {
+		t.Fatalf("err = %v", err)
+	}
+	list, err := f.svc.Companies(ctxT(t), f.acct)
+	if err != nil || len(list.Companies) != 1 {
+		t.Fatalf("list = %+v, %v", list, err)
+	}
+}
+
+// A reviewer rejecting while another approves: one decision wins and the
+// other is refused or answers the same outcome; never both.
+func TestRejectWaitsForAnApprovalInProgress(t *testing.T) {
+	ctx := ctxT(t)
+	f := newApplicationsFixture(t)
+	app := f.apply(t)
+	release, err := appRepo(t, f.tz).Lock(ctx, app.ID, "someone", now(), 30*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	if _, err := f.svc.Reject(ctx, app.ID, "Site fora do ar", "user:rev", "req", now()); !errors.Is(err, repositories.ErrApplicationBusy) {
+		t.Fatalf("reject during a decision: %v", err)
 	}
 }
