@@ -129,7 +129,7 @@ rather than silently degrading:
 | The OAuth client `ctech-charge` holding `internal:wallet:charge-amount`, and `wallet-client-id` in SSM set to the same string | ctech-account (exists) + this repo's SSM             | opening any charge at all                    |
 | `/ctech-billing/{env}/billing/applications-notify-email` (String) | set out of band | the notice of a new merchant application |
 | billing's account client granted `internal:account:company-actor`; ctech-account route `GET /v1.0/internal/organizations/{id}/companies` | ctech-account (granted in prod to `billing-account-membership`; route shipped in ctech-account #56) | the application form's company picker and check |
-| OAuth client `billing` granted `billing:organization:write` | ctech-account | **sign-in itself** once the UI asks for it |
+| OAuth client `billing` granted `billing:organization:write` | ctech-account (appended by the scopes job's publish) | **sign-in itself** once the UI asks for it |
 
 ## The pipeline does not seed
 
@@ -272,12 +272,20 @@ organization `01a04ed6-1af9-745e-bcf7-d3b66fe52321`) still carry the owner key, 
 
 1. ctech-account: the companies list route, and `internal:account:company-actor`
    granted to billing's account client (`createclient -grant`), in this env.
-2. Terraform (the `applications-notify-email` parameter and the bootstrap
-   variable), then set the parameter, then an instance refresh so the units
-   read it.
-3. Scopes job: publishes `billing:organization:write`. Then grant it to the
-   OAuth client `billing` at ctech-account. **Before step 6**: the UI asks for
-   it, and ctech-account fails the whole sign-in on an ungranted scope.
+2. Terraform creates the `applications-notify-email` parameter (value
+   `SET-OUT-OF-BAND`) and the bootstrap variable; the launch template change
+   rolls the ASG (instance refresh). Set the parameter as soon as it exists:
+   `load-ssm-env.sh` holds the `aws ssm` calls, not their results, so the API
+   reads it at its next start (the API deploy below, or any restart). Until
+   then a new application's notice goes nowhere (logged, never a failed
+   application).
+3. Scopes job: publishes `billing:organization:write`. Publishing appends every
+   new public active scope to the first-party public client with the resource
+   server's id (ctech-account `EnsureFirstPartyPublicClientScopes`), so the
+   OAuth client `billing` holds it before the UI deploys (deploy.yml orders
+   scopes → API → frontend). Confirm in ctech-account's
+   `{env}_account_oauth_clients` (`CLIENT_billing`, `allowed_scopes`): the UI
+   asks for it, and ctech-account fails the whole sign-in on an ungranted scope.
 4. API.
 5. `api/cmd/seed/run.sh prod` (adds `prod_billing` and the early access price).
 6. UI.
