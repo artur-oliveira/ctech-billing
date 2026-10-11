@@ -99,19 +99,40 @@ func TestTheLatestLevelOutlivesItsReports(t *testing.T) {
 	}
 }
 
+// Five reports race for the latest item. A report that loses the race on every
+// re-plan is answered ErrTransactionConflict (409 concurrent_update) with
+// nothing written, and its caller (ctech-account's queue) repeats it with the
+// same key, so each goroutine does the same here. Every report must end up
+// recorded, none may be refused for any other reason, and the latest must be
+// the newest report, never one a slower writer put over it.
 func TestConcurrentReportsLeaveTheNewestAsLatest(t *testing.T) {
 	ctx, r, org := ctxT(t), repositories.NewLevelRepository(testDB, testCfg), "org_"+id.New()
 	at := time.Date(2026, time.March, 5, 14, 0, 0, 0, time.UTC)
 	var wg sync.WaitGroup
+	errs := make([]error, 6)
 	for i := 1; i <= 5; i++ {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			_ = r.Append(ctx, level(org, int64(i), at.Add(time.Duration(i)*time.Minute), "k"+strconv.Itoa(i)), now())
+			rec := level(org, int64(i), at.Add(time.Duration(i)*time.Minute), "k"+strconv.Itoa(i))
+			for attempt := 0; attempt < 20; attempt++ {
+				if errs[i] = r.Append(ctx, rec, now()); !errors.Is(errs[i], repositories.ErrTransactionConflict) {
+					return
+				}
+			}
 		}(i)
 	}
 	wg.Wait()
-	if latest, _ := r.Latest(ctx, org, true, "USER_"+org, "finance_spaces"); latest == nil || latest.Value != 5 {
-		t.Fatalf("latest = %+v", latest)
+	for i := 1; i <= 5; i++ {
+		if errs[i] != nil {
+			t.Fatalf("report %d: %v", i, errs[i])
+		}
+	}
+	got, err := r.InPeriod(ctx, org, true, "USER_"+org, "finance_spaces", at, at.Add(time.Hour))
+	if err != nil || len(got) != 5 {
+		t.Fatalf("records = %+v, %v", got, err)
+	}
+	if latest, err := r.Latest(ctx, org, true, "USER_"+org, "finance_spaces"); err != nil || latest == nil || latest.Value != 5 {
+		t.Fatalf("latest = %+v, %v", latest, err)
 	}
 }
