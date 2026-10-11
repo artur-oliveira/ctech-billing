@@ -4,7 +4,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"io/fs"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -15,15 +15,25 @@ import (
 // package except ping. Read from the source, so a new event cannot be added
 // without either appearing in the console or failing here.
 func TestTheWebhookEventListIsEveryEventConstant(t *testing.T) {
-	pkgs, err := parser.ParseDir(token.NewFileSet(), ".", func(fi fs.FileInfo) bool {
-		return !strings.HasSuffix(fi.Name(), "_test.go")
-	}, 0)
+	names, err := filepath.Glob("*.go")
 	if err != nil {
 		t.Fatal(err)
 	}
+	fset := token.NewFileSet()
+	var files []*ast.File
+	for _, name := range names {
+		if strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		f, err := parser.ParseFile(fset, name, nil, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		files = append(files, f)
+	}
 	var declared []EventType
-	for _, pkg := range pkgs {
-		for _, f := range pkg.Files {
+	{
+		for _, f := range files {
 			ast.Inspect(f, func(n ast.Node) bool {
 				spec, ok := n.(*ast.ValueSpec)
 				if !ok {
