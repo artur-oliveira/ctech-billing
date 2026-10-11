@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"gopkg.aoctech.app/billing/api/internal/accountclient"
 )
 
 // fakeAccount is the ctech-account every apiEnv talks to: membership and the
@@ -20,6 +22,37 @@ type fakeAccount struct {
 	names   map[string]string    // ws -> display name
 	listed  []string             // user ids the list route was asked about
 	counts  map[string][2]int    // ws -> {people, pending}, as on owned personal spaces
+
+	companies          map[string][]accountclient.Company // org -> companies
+	companiesDown      bool                               // both company routes answer 503
+	companiesTruncated bool                               // the list route says it cut the list
+}
+
+// company registers one of an organization's companies.
+func (a *fakeAccount) company(org string, c accountclient.Company) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.companies == nil {
+		a.companies = map[string][]accountclient.Company{}
+	}
+	a.companies[org] = append(a.companies[org], c)
+}
+
+// knows reports an organization ctech-account would know: one with a member,
+// a name or a company. The list route answers 404 for any other.
+func (a *fakeAccount) knows(org string) bool {
+	if _, ok := a.names[org]; ok {
+		return true
+	}
+	if _, ok := a.companies[org]; ok {
+		return true
+	}
+	for k := range a.members {
+		if ws, _, _ := strings.Cut(k, "|"); ws == org {
+			return true
+		}
+	}
+	return false
 }
 
 func (a *fakeAccount) count(ws string, people, pending int) {
@@ -47,18 +80,44 @@ func (a *fakeAccount) serve(t *testing.T) *httptest.Server {
 		case r.URL.Path == "/token":
 			_, _ = w.Write([]byte(`{"access_token":"tok","token_type":"Bearer","expires_in":3600}`))
 		case strings.HasPrefix(r.URL.Path, "/v1.0/internal/organizations/"):
-			// {ws}/members/{user}
 			parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/v1.0/internal/organizations/"), "/")
-			if len(parts) != 3 {
+			switch {
+			case len(parts) == 3 && parts[1] == "members":
+				m, ok := a.members[parts[0]+"|"+parts[2]]
+				if !ok {
+					_, _ = w.Write([]byte(`{"member":false}`))
+					return
+				}
+				_ = json.NewEncoder(w).Encode(map[string]any{"member": true, "kind": m[0], "role": m[1]})
+			case len(parts) >= 2 && parts[1] == "companies" && a.companiesDown:
+				http.Error(w, "down", http.StatusServiceUnavailable)
+			case len(parts) == 2 && parts[1] == "companies":
+				if !a.knows(parts[0]) {
+					http.NotFound(w, r)
+					return
+				}
+				list := a.companies[parts[0]]
+				if list == nil {
+					list = []accountclient.Company{}
+				}
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"organization_id": parts[0], "organization_kind": "organization",
+					"companies": list, "truncated": a.companiesTruncated,
+				})
+			case len(parts) == 3 && parts[1] == "companies":
+				for _, c := range a.companies[parts[0]] {
+					if c.ID == parts[2] {
+						_ = json.NewEncoder(w).Encode(map[string]any{
+							"organization_id": parts[0], "organization_kind": "organization",
+							"tax_id": c.TaxID, "tax_id_kind": c.TaxIDKind, "legal_name": c.LegalName, "trade_name": c.TradeName,
+						})
+						return
+					}
+				}
 				http.NotFound(w, r)
-				return
+			default:
+				http.NotFound(w, r)
 			}
-			m, ok := a.members[parts[0]+"|"+parts[2]]
-			if !ok {
-				_, _ = w.Write([]byte(`{"member":false}`))
-				return
-			}
-			_ = json.NewEncoder(w).Encode(map[string]any{"member": true, "kind": m[0], "role": m[1]})
 		case strings.HasPrefix(r.URL.Path, "/v1.0/internal/users/"):
 			user := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/v1.0/internal/users/"), "/organizations")
 			a.listed = append(a.listed, user)
