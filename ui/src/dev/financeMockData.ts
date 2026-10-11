@@ -710,7 +710,7 @@ function route(method: string, path: string, r: Req, s: SpaceState, can: (v: Ver
     return {card_id: c.id, month, status, closing_date: closingDate, due_date: due, total, bill_id: frozen?.bill_id, items}
   }
   const cardMatch = path.match(/^\/cards\/([^/]+)(?:\/(statements|purchases|close)(?:\/([^/]+)(?:\/(refund|advance))?)?)?$/)
-  if (path === "/cards" && method === "get") return ok({data: s.cards.map(({first_month: _, ...c}) => c), has_more: false})
+  if (path === "/cards" && method === "get") return ok({data: s.cards.map(c => { const out: Card & {first_month?: string} = {...c}; delete out.first_month; return out }), has_more: false})
   if (path === "/cards" && method === "post") {
     if (!can("finance.configure")) return forbidden()
     const p = body<{name: string; closing_day: number; due_day: number; paying_account_id: string; brand?: Card["brand"]; last4?: string}>(r)
