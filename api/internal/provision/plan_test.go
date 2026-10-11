@@ -128,6 +128,23 @@ func TestTenantZeroPlanLinksCTechsAccountOrganization(t *testing.T) {
 	if prices["price_dfe_pro_monthly"].Metadata["quota_companies"] != "10" || prices["price_dfe_free_monthly"].Metadata["quota_companies"] != "1" {
 		t.Error("fixed DF-e company quotas changed")
 	}
+	var bill *Product
+	for i := range p.Products {
+		if p.Products[i].ID == "prod_billing" {
+			bill = &p.Products[i]
+		}
+	}
+	// No default price: a default would make every customer of tenant zero
+	// "entitled" to billing, which is exactly what approval decides.
+	if bill == nil || bill.OwnerKey != billing.MerchantOwnerKey || bill.DefaultPriceID != "" {
+		t.Fatalf("prod_billing = %+v", bill)
+	}
+	ea := prices["price_billing_early_access"]
+	if ea.ProductID != "prod_billing" || ea.Type != billing.PriceFixed || ea.UnitAmount != 0 ||
+		ea.Timing != billing.BillAdvance || ea.Recurrence.Interval != billing.IntervalMonth || ea.Recurrence.Count != 1 ||
+		ea.Metadata["plan"] != "early_access" || ea.Archived {
+		t.Fatalf("price_billing_early_access = %+v", ea)
+	}
 	want := map[string]struct {
 		amount   billing.Cents
 		typ      billing.PriceType

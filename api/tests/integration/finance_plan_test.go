@@ -20,23 +20,23 @@ import (
 	"gopkg.aoctech.app/billing/api/internal/services"
 )
 
-// seedCTechCatalogue applies tenants/ctech.json under a fresh organization id.
-func seedCTechCatalogue(t *testing.T) string {
+// seedTenantZero applies tenants/ctech.json in live mode under a fresh tenant
+// id AND a fresh account organization: since part 1, two tenants may not share
+// an ACCOUNT_ORG key, and every test seeds its own tenant zero.
+func seedTenantZero(t *testing.T) (tenant, accountOrg string) {
 	t.Helper()
 	raw, err := os.ReadFile("../../tenants/ctech.json")
 	if err != nil {
 		t.Fatal(err)
 	}
-	orgID := "org_" + id.New()
-	doc := strings.Replace(string(raw), `"id": "ctech"`, `"id": "`+orgID+`"`, 1)
-	// One tenant per account organization per mode (ADR 0028): every seeded
-	// copy is linked to an organization of its own, not to tenant zero's.
-	doc = strings.Replace(doc, `"01a04ed6-1af9-745e-bcf7-d3b66fe52321"`, `"`+newSpaceOrgID()+`"`, 1)
-	// Credentials are global by client id: drop them, a test needs none.
+	tenant, accountOrg = "org_"+id.New(), newSpaceOrgID()
+	doc := strings.Replace(string(raw), `"id": "ctech"`, `"id": "`+tenant+`"`, 1)
+	doc = strings.Replace(doc, `"01a04ed6-1af9-745e-bcf7-d3b66fe52321"`, `"`+accountOrg+`"`, 1)
 	plan, err := provision.Parse(strings.NewReader(doc))
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Credentials are global by client id: drop them, a test needs none.
 	plan.Credentials = nil
 	plan.Endpoints = nil
 	repos := provision.Repos{
@@ -48,7 +48,13 @@ func seedCTechCatalogue(t *testing.T) string {
 	if _, err := provision.Apply(ctxT(t), repos, plan, true, now()); err != nil {
 		t.Fatal(err)
 	}
-	return orgID
+	return tenant, accountOrg
+}
+
+func seedCTechCatalogue(t *testing.T) string {
+	t.Helper()
+	tenant, _ := seedTenantZero(t)
+	return tenant
 }
 
 func newFinancePlan(t *testing.T, tenant string) (*services.FinancePlan, *repositories.LevelRepository) {

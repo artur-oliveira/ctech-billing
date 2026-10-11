@@ -49,6 +49,11 @@
       "name": "CTech Finanças",
       "owner_key": "finance",
       "default_price_id": "price_finance_free"
+    },
+    {
+      "id": "prod_billing",
+      "name": "CTech Billing",
+      "owner_key": "billing"
     }
   ],
   "webhook_endpoints": [
@@ -357,6 +362,20 @@
       "metadata": {
         "plan": "ondemand",
         "quota_companies": "-1"
+      }
+    },
+    {
+      "id": "price_billing_early_access",
+      "product_id": "prod_billing",
+      "type": "fixed",
+      "unit_amount": 0,
+      "recurrence": {
+        "interval": "month",
+        "count": 1
+      },
+      "billing_timing": "advance",
+      "metadata": {
+        "plan": "early_access"
       }
     }
   ]
