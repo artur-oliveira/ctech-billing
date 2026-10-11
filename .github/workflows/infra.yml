@@ -64,6 +64,9 @@ jobs:
             terraform -chdir="$root" validate
           done
 
+      - name: Terraform tests (mock providers, no credentials)
+        run: terraform -chdir=terraform/billing test
+
   apply:
     name: Apply
     runs-on: ubuntu-26.04-arm

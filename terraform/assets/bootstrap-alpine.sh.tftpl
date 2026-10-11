@@ -43,6 +43,7 @@ PORTAL_ORGANIZATION_ID=${portal_organization_id}
 CORS_ALLOWED_ORIGINS=${cors_allowed_origins}
 ALERTS_TOPIC_ARN=${alerts_topic_arn}
 INVOICE_DOCUMENTS_BUCKET=${invoice_documents_bucket}
+BYOK_OUTBOUND_FUNCTION=${byok_outbound_function}
 STATICENV
 
 # ── Secrets, read from SSM at every start ────────────────────────────────────
@@ -62,7 +63,9 @@ ctech_run setup-ssm-env.sh \
   CHECKOUT_LINK_SECRET=${ssm_checkout_link_secret} \
   FIELD_ENCRYPTION_KEY=${ssm_field_encryption_key} \
   EMAIL_FROM=${ssm_email_from} \
-  APPLICATIONS_NOTIFY_EMAIL=${ssm_applications_notify_email}
+  APPLICATIONS_NOTIFY_EMAIL=${ssm_applications_notify_email} \
+  BYOK_LIVE_COLLECTION=${ssm_byok_live_collection} \
+  BYOK_LIVE_PROVIDERS=${ssm_byok_live_providers}
 
 cat > /opt/app/service-env.sh << 'SERVICEENV'
 if [ -n "$VALKEY_BASE" ]; then VALKEY_URL="$${VALKEY_BASE%/}/${valkey_db}"; else VALKEY_URL=""; fi

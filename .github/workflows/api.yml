@@ -121,6 +121,20 @@ jobs:
           echo "DEPLOYMENTS_BUCKET=$BUCKET" >> "$GITHUB_ENV"
           echo "ASG_NAME=${ENVIRONMENT}-ctech-billing" >> "$GITHUB_ENV"
 
+      # The Lambdas ship before the instances: an api that calls an op the
+      # deployed Lambda does not know would fail every BYOK action meanwhile.
+      - name: Deploy BYOK Lambdas
+        working-directory: api
+        env:
+          ENVIRONMENT: ${{ steps.env.outputs.name }}
+        run: |
+          make build-lambdas
+          for fn in dist/lambda/*.zip; do
+            name="${ENVIRONMENT}-ctech-billing-$(basename "$fn" .zip)"
+            aws lambda update-function-code --function-name "$name" --zip-file "fileb://$fn" --publish >/dev/null
+            aws lambda wait function-updated-v2 --function-name "$name"
+          done
+
       # current.zip is overwritten last. A new instance bootstrapping between the
       # two copies gets the previous release rather than a half-written object.
       - name: Upload

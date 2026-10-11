@@ -1,0 +1,3 @@
+#!/bin/sh
+# Placeholder until CI ships the real binary (api.yml). Every invocation fails.
+exit 1
