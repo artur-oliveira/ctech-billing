@@ -192,7 +192,7 @@ func Register(app *fiber.App, d Deps) {
 
 	// Finance is registered BEFORE the console group, and the order matters:
 	// Fiber mounts a group's handlers as prefix middleware, so the "/console"
-	// group's ResolveConsoleTenant (one organization per owner, mode required)
+	// group's merchant chain (space, role, tenant; mode required)
 	// would otherwise also run in front of /console/finance and refuse a person
 	// with no organization, and /spaces without a mode. Finance resolves its own
 	// space; its handlers end the chain, so the console middleware never runs for
@@ -247,8 +247,8 @@ func checkoutMounted(d Deps) bool {
 // registerConsole mounts the browser surface (ADR 0011).
 //
 // It is a separate group with its own tenant resolver, and that separation is
-// the security model again: these routes resolve the organization from the
-// signed-in owner, and RequireUserScope rejects a service token on every one of
+// the security model again: these routes resolve the tenant from the selected
+// organization and the person's role in it (ADR 0028), and RequireUserScope rejects a service token on every one of
 // them. An M2M credential cannot reach a route that takes the mode from a
 // header, which is what keeps the header from becoming a way to cross modes.
 func registerConsole(v1 fiber.Router, d Deps, h *handlers, auth fiber.Handler) {
@@ -271,7 +271,20 @@ func registerConsole(v1 fiber.Router, d Deps, h *handlers, auth fiber.Handler) {
 	// and it publishes only identity, so it is behind no scope.
 	v1.Get("/me", auth, ch.me)
 
-	console := v1.Group("/console", auth, middleware.ResolveConsoleTenant(d.Organizations))
+	// The billing (merchant) half resolves its tenant from the selected
+	// organization (ADR 0028): a person's session, the space and its
+	// membership (checked before any table read, the same resolver finance
+	// uses), then the owner/admin role and the tenant linked to that
+	// organization in the requested mode.
+	spaces := d.Spaces
+	if spaces == nil {
+		// No resolver configured: every organization selector fails closed (503).
+		spaces = space.NewResolver(nil, nil)
+	}
+	console := v1.Group("/console", auth,
+		middleware.RequireUserSession(),
+		middleware.ResolveSpace(spaces),
+		middleware.ResolveMerchantTenant(d.Organizations))
 
 	console.Get("/session",
 		middleware.RequireUserScope(middleware.ScopeOrganizationRead), ch.session)

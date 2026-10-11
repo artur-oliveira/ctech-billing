@@ -449,7 +449,9 @@ func newFinancePayEnv(t *testing.T, payerHasSpace bool) *financePayEnv {
 	t.Helper()
 	e := newPayEnv(t)
 	orgs := repositories.NewOrganizationRepository(testDB, testCfg)
-	link := newSpaceOrgID()
+	// e.org is already linked to e.accountOrg (newAPI): the console reaches it
+	// through that organization, so the issuer's space is the same one.
+	link := e.accountOrg
 	if err := orgs.LinkAccountOrganization(ctxT(t), e.org, link, "test", "req_setup", now()); err != nil {
 		t.Fatal(err)
 	}

@@ -61,6 +61,7 @@ func (e *portalEnv) withPortal(t *testing.T) {
 	cfg.CtechJWKSURL = e.jwksURL
 	cfg.ServiceAudience = testAudience
 	cfg.PortalOrganizationID = e.org.ID
+	e.useAccount(&cfg)
 
 	server, err := app.Build(ctxT(t), &cfg, func() time.Time { return now() })
 	if err != nil {

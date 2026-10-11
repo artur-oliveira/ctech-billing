@@ -1,13 +1,10 @@
 package middleware
 
 import (
-	"errors"
-
 	"github.com/gofiber/fiber/v3"
 
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
 	"gopkg.aoctech.app/billing/api/internal/problem"
-	"gopkg.aoctech.app/billing/api/internal/repositories"
 )
 
 // ModeHeader carries test-vs-live for a console session.
@@ -34,49 +31,6 @@ func RequireUserScope(scope string) fiber.Handler {
 		if !cl.HasScope(scope) {
 			return problem.Forbidden("escopo insuficiente: " + scope).Send(c)
 		}
-		return c.Next()
-	}
-}
-
-// ResolveConsoleTenant turns a signed-in person into the organization and mode
-// their request acts for (ADR 0011).
-//
-// The organization comes from **who the token says they are**, never from the
-// request: there is still no organization_id parameter, exactly as on the M2M
-// surface. What does come from the request is the mode, and only here — a person
-// legitimately works in both test and live within one session, which an
-// integration never does. It is required rather than defaulted: a console that
-// forgets the header should fail loudly, not quietly show the wrong world.
-func ResolveConsoleTenant(orgs *repositories.OrganizationRepository) fiber.Handler {
-	return func(c fiber.Ctx) error {
-		cl := GetClaims(c)
-		if cl == nil {
-			return problem.Unauthorized("credenciais ausentes").Send(c)
-		}
-
-		var livemode bool
-		switch c.Get(ModeHeader) {
-		case "live":
-			livemode = true
-		case "test":
-			livemode = false
-		default:
-			return problem.BadRequest("informe " + ModeHeader + ": live ou test").Send(c)
-		}
-
-		org, err := orgs.GetByOwner(c.Context(), cl.Sub, livemode)
-		if err != nil {
-			if errors.Is(err, repositories.ErrNotFound) {
-				// The same answer whether the person owns no organization or owns
-				// one only in the other mode. Distinguishing the two would let a
-				// signed-in stranger probe which organizations exist.
-				return problem.Forbidden("no organization for this user").WithCode("no_organization").Send(c)
-			}
-			return problem.Internal("could not resolve organization").WithCode("organization_resolve_failed").Send(c)
-		}
-
-		c.Locals(OrganizationKey, org)
-		c.Locals(TenantKey, Tenant{OrganizationID: org.ID, Livemode: org.Livemode})
 		return c.Next()
 	}
 }
