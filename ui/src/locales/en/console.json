@@ -11,6 +11,8 @@
   "subscriptions": "Subscriptions",
   "customers": "Customers",
   "catalog": "Catalog",
+  "credentials": "Credentials",
+  "webhooks": "Webhooks",
   "settings": "Settings",
   "applications": "Applications"
  },
@@ -421,5 +423,28 @@
    "approved": "Approved",
    "rejected": "Rejected"
   }
+ },
+ "credentials": {
+  "title": "Credentials",
+  "intro": "Your integration calls the CTech Billing API with your own OAuth client, created in CTech Account. Its secret stays with you.",
+  "connectTitle": "Connect a client",
+  "step1": "Create a confidential client in CTech Account with only the integration scopes.",
+  "createClient": "Create a client in CTech Account",
+  "scopesSummary": "Scopes the client must have",
+  "step2": "Paste the client ID here.",
+  "clientId": "Client ID",
+  "connect": "Connect",
+  "connected": "Client connected.",
+  "listTitle": "Connected clients",
+  "empty": "No credential connected in this mode.",
+  "byMe": "Connected by you on {{date}}",
+  "byOther": "Connected by someone else in the organization on {{date}}",
+  "provisioned": "Managed by CTech",
+  "inactive": "Disabled",
+  "disconnect": "Disconnect",
+  "disconnectTitle": "Disconnect this client?",
+  "disconnectBody": "Calls from {{id}} to CTech Billing stop at once. The client still exists in CTech Account.",
+  "back": "Back",
+  "disconnected": "Client disconnected."
  }
 }

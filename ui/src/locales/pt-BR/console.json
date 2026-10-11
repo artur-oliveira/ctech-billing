@@ -11,6 +11,8 @@
   "subscriptions": "Assinaturas",
   "customers": "Clientes",
   "catalog": "Catálogo",
+  "credentials": "Credenciais",
+  "webhooks": "Webhooks",
   "settings": "Configurações",
   "applications": "Solicitações"
  },
@@ -421,5 +423,28 @@
    "approved": "Aprovadas",
    "rejected": "Recusadas"
   }
+ },
+ "credentials": {
+  "title": "Credenciais",
+  "intro": "Sua integração chama a API do CTech Billing com um cliente OAuth seu, criado na CTech Account. O segredo do cliente fica só com você.",
+  "connectTitle": "Conectar um cliente",
+  "step1": "Crie um cliente confidencial na CTech Account só com os escopos de integração.",
+  "createClient": "Criar cliente na CTech Account",
+  "scopesSummary": "Escopos que o cliente deve ter",
+  "step2": "Cole aqui o ID do cliente.",
+  "clientId": "ID do cliente",
+  "connect": "Conectar",
+  "connected": "Cliente conectado.",
+  "listTitle": "Clientes conectados",
+  "empty": "Nenhuma credencial conectada neste modo.",
+  "byMe": "Conectado por você em {{date}}",
+  "byOther": "Conectado por outra pessoa da organização em {{date}}",
+  "provisioned": "Gerenciado pela CTech",
+  "inactive": "Desativado",
+  "disconnect": "Desconectar",
+  "disconnectTitle": "Desconectar este cliente?",
+  "disconnectBody": "As chamadas de {{id}} ao CTech Billing param na hora. O cliente continua existindo na CTech Account.",
+  "back": "Voltar",
+  "disconnected": "Cliente desconectado."
  }
 }
