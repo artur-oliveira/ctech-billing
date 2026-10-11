@@ -110,6 +110,7 @@ func financeRoutes() []financeRoute {
 		{"GET", "/cards", space.Read, false, func(h *financeHandlers) fiber.Handler { return h.listCards }},
 		{"POST", "/cards", space.Configure, true, func(h *financeHandlers) fiber.Handler { return h.createCard }},
 		{"PATCH", "/cards/:id", space.Configure, true, func(h *financeHandlers) fiber.Handler { return h.patchCard }},
+		{"GET", "/cards/:id/statements", space.Read, false, func(h *financeHandlers) fiber.Handler { return h.cardStatements }},
 		{"GET", "/cards/:id/statements/:month", space.Read, false, func(h *financeHandlers) fiber.Handler { return h.cardStatement }},
 		{"GET", "/cards/:id/purchases", space.Read, false, func(h *financeHandlers) fiber.Handler { return h.listPurchases }},
 		{"POST", "/cards/:id/purchases", space.Write, true, func(h *financeHandlers) fiber.Handler { return h.createPurchase }},

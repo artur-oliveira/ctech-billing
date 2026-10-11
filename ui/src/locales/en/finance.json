@@ -132,7 +132,9 @@
       "hint": "Upload the bank's OFX or CSV and the transactions of {{name}} show up to reconcile.",
       "import": "Import statement",
       "later": "Not now"
-    }
+    },
+    "archiveCardWarning_one": "{{count}} recurrence is paid with this card and will stop until you choose another card or account.",
+    "archiveCardWarning_other": "{{count}} recurrences are paid with this card and will stop until you choose another card or account."
   },
   "cards": {
     "new": "New card",
@@ -143,8 +145,6 @@
     "edit": "Edit card",
     "editNamed": "Edit {{name}}",
     "statement": "Statement",
-    "prev": "Previous statement",
-    "next": "Next statement",
     "closeNow": "Close statement",
     "pay": "Pay statement",
     "closeConfirm": "Close the {{month}} statement? New purchases go to the next one.",
@@ -188,7 +188,19 @@
     "last4": "Last 4 digits",
     "last4Hint": "Optional; only to recognise the card.",
     "last4Invalid": "Enter the last 4 digits, or leave it blank.",
-    "cycle": "Closes on day {{closing}} • due on day {{due}}"
+    "cycle": "Closes on day {{closing}} • due on day {{due}}",
+    "timeline": "Card statements",
+    "earlier": "Earlier statements",
+    "later": "Later statements",
+    "itemsCount_zero": "No purchases",
+    "itemsCount_one": "{{count}} purchase",
+    "itemsCount_other": "{{count}} purchases",
+    "summaryLabel": "Statement of {{month}} • {{state}} • {{total}}",
+    "recurring": "recurring",
+    "openRecurrence": "Open the recurrence of {{name}}",
+    "closedShort": "Closed {{date}}",
+    "closesShort": "Closes {{date}}",
+    "dueShort": "Due {{date}}"
   },
   "overview": {
     "title": "Overview",

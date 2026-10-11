@@ -187,3 +187,7 @@ func (s *FinanceBills) CancelOccurrences(ctx context.Context, sp space.ResolvedS
 	}
 	return canceled, nil
 }
+
+func (s *FinanceBills) PaidAmong(ctx context.Context, sp space.ResolvedSpace, ids []string) (map[string]bool, error) {
+	return s.repo.PaidAmong(ctx, sp, ids)
+}

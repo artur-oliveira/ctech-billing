@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -92,10 +93,11 @@ type fakeRecs struct {
 	cursors map[string]brcal.Date
 	markErr error
 	marks   int
+	flags   map[string]string
 }
 
 func newFakeRecs(rs ...finance.Recurrence) *fakeRecs {
-	f := &fakeRecs{recs: map[string]finance.Recurrence{}, cursors: map[string]brcal.Date{}}
+	f := &fakeRecs{recs: map[string]finance.Recurrence{}, cursors: map[string]brcal.Date{}, flags: map[string]string{}}
 	for _, r := range rs {
 		f.recs[r.ID] = r
 	}
@@ -122,7 +124,13 @@ func (f *fakeRecs) MarkMaterialised(_ context.Context, _ space.ResolvedSpace, id
 	f.marks++
 	if cursor.After(f.cursors[id]) {
 		f.cursors[id] = cursor
+		delete(f.flags, id)
 	}
+	return nil
+}
+
+func (f *fakeRecs) FlagAttention(_ context.Context, _ space.ResolvedSpace, id, reason string, _ time.Time) error {
+	f.flags[id] = reason
 	return nil
 }
 
@@ -412,6 +420,14 @@ func (f *fakeCards) CloseDue(_ context.Context, _ space.ResolvedSpace, cardID st
 	return 1, nil
 }
 
+func (f *fakeCards) GetCard(context.Context, space.ResolvedSpace, string) (*repositories.CardRow, error) {
+	return nil, repositories.ErrNotFound
+}
+
+func (f *fakeCards) PostOccurrence(context.Context, space.ResolvedSpace, finance.CardCharge, repositories.PostMeta, time.Time) (bool, repositories.Purchase, error) {
+	return false, repositories.Purchase{}, errors.New("not used")
+}
+
 func TestCloseStatementsClosesEveryDueCardAndSurvivesOneFailure(t *testing.T) {
 	sp := testSpace(t)
 	cards := &fakeCards{due: []repositories.DueCard{{Space: sp, CardID: "a"}, {Space: sp, CardID: "b"}, {Space: sp, CardID: "c"}}, fail: "b"}
@@ -444,6 +460,230 @@ func TestProjectCountsCardStatementsOnTheirDueMonth(t *testing.T) {
 	for i, want := range []int64{10000, 10000, 0} {
 		if got := int64(p.Months[i].Payable); got != want {
 			t.Errorf("%s payable = %d, want %d", p.Months[i].Month, got, want)
+		}
+	}
+}
+
+// ---- card recurrences ------------------------------------------------------------
+
+// recCards is a card store for the card branch: one or more cards, purchases
+// keyed by occurrence ref (the lock), and switchable failures.
+type recCards struct {
+	fakeCards
+	rows    map[string]repositories.CardRow
+	posted  map[string]finance.CardCharge
+	postErr error                    // returned by every PostOccurrence while set
+	moved   int                      // the next `moved` calls answer ErrCardMoved
+	totals  map[string]billing.Cents // "{card}|{month}" -> open/future statement total
+}
+
+func newRecCards(rows ...repositories.CardRow) *recCards {
+	c := &recCards{rows: map[string]repositories.CardRow{}, posted: map[string]finance.CardCharge{}, totals: map[string]billing.Cents{}}
+	for _, r := range rows {
+		c.rows[r.ID] = r
+	}
+	return c
+}
+
+func (c *recCards) GetCard(_ context.Context, _ space.ResolvedSpace, id string) (*repositories.CardRow, error) {
+	r, ok := c.rows[id]
+	if !ok {
+		return nil, repositories.ErrNotFound
+	}
+	return &r, nil
+}
+
+func (c *recCards) ListCards(context.Context, space.ResolvedSpace) ([]repositories.CardRow, error) {
+	out := make([]repositories.CardRow, 0, len(c.rows))
+	for _, r := range c.rows {
+		out = append(out, r)
+	}
+	return out, nil
+}
+
+func (c *recCards) GetStatement(_ context.Context, _ space.ResolvedSpace, id string, m finance.Month) (repositories.Statement, error) {
+	return repositories.Statement{Month: m, Total: c.totals[id+"|"+m.String()]}, nil
+}
+
+func (c *recCards) PostOccurrence(_ context.Context, _ space.ResolvedSpace, ch finance.CardCharge, _ repositories.PostMeta, _ time.Time) (bool, repositories.Purchase, error) {
+	if c.moved > 0 {
+		c.moved--
+		return false, repositories.Purchase{}, repositories.ErrCardMoved
+	}
+	if c.postErr != nil {
+		return false, repositories.Purchase{}, c.postErr
+	}
+	ref := finance.OccurrenceRef(ch.RecurrenceID, ch.Nominal)
+	if _, ok := c.posted[ref]; ok {
+		return false, repositories.Purchase{}, nil
+	}
+	c.posted[ref] = ch
+	return true, repositories.Purchase{ID: "p-" + ref}, nil
+}
+
+// visa25 closes on the 25th and is due on the 5th; added and open in March 2026.
+func visa25() repositories.CardRow {
+	return repositories.CardRow{Card: finance.Card{ID: "visa", ClosingDay: 25, DueDay: 5, PayingAccountID: "bank",
+		OpenMonth: finance.Month{Year: 2026, Month: time.March}}, Name: "Visa", FirstMonth: finance.Month{Year: 2026, Month: time.March}}
+}
+
+func onCard(id string, day int, n int) finance.Recurrence {
+	return finance.Recurrence{ID: id, Direction: finance.Payable, Amount: 30000, CategoryID: "subs", CardID: "visa", Installments: n,
+		Description: "Streaming", Schedule: finance.Schedule{Expression: finance.DayOfMonth{Day: day}, Start: day0(), Adjust: finance.AdjustNone}}
+}
+
+func day0() brcal.Date { return day(2026, time.March, 1) }
+
+// Spec § 6.1 (job half; the real tables are Task 6).
+func TestTheJobPostsEachCardOccurrenceOnceOnItsDay(t *testing.T) {
+	bills, cards, recs := newFakeBills(), newRecCards(visa25()), newFakeRecs(onCard("s", 28, 1))
+	jobs := NewFinanceJobs(bills, recs).WithCards(cards)
+
+	before := jobs.Materialise(context.Background(), true, day(2026, time.March, 27), time.Now())
+	if before.Examined != 0 || len(cards.posted) != 0 {
+		t.Fatalf("on the 27th = %+v, posted %d: nothing is posted before its day", before, len(cards.posted))
+	}
+	for run := 0; run < 2; run++ {
+		jobs.Materialise(context.Background(), true, day(2026, time.March, 28), time.Now())
+	}
+	if len(cards.posted) != 1 {
+		t.Fatalf("posted %d, want exactly the 28th once", len(cards.posted))
+	}
+	if recs.cursors["s"] != day(2026, time.March, 28) {
+		t.Fatalf("cursor = %s, want today", recs.cursors["s"])
+	}
+	if bills.created != 0 {
+		t.Fatal("a card recurrence makes no bills")
+	}
+}
+
+func TestTheJobRetriesALostCloseRaceOnce(t *testing.T) {
+	cards, recs := newRecCards(visa25()), newFakeRecs(onCard("s", 28, 1))
+	cards.moved = 1
+	res := NewFinanceJobs(newFakeBills(), recs).WithCards(cards).Materialise(context.Background(), true, day(2026, time.March, 28), time.Now())
+	if res.Failed != 0 || len(cards.posted) != 1 {
+		t.Fatalf("res = %+v, posted %d: one ErrCardMoved is retried in the run", res, len(cards.posted))
+	}
+	cards.moved = 2
+	recs2 := newFakeRecs(onCard("t", 28, 1))
+	res = NewFinanceJobs(newFakeBills(), recs2).WithCards(cards).Materialise(context.Background(), true, day(2026, time.March, 28), time.Now())
+	if res.Failed != 0 || !recs2.cursors["t"].IsZero() {
+		t.Fatalf("res = %+v, cursor %s: a second loss waits for the next run, cursor kept", res, recs2.cursors["t"])
+	}
+}
+
+// Spec § 6.4 (job half).
+func TestABrokenTargetIsFlaggedNotPostedAndTheCursorStays(t *testing.T) {
+	archived := visa25()
+	archived.Archived = true
+	cards, recs := newRecCards(archived), newFakeRecs(onCard("s", 28, 1))
+	jobs := NewFinanceJobs(newFakeBills(), recs).WithCards(cards)
+	today := day(2026, time.March, 28)
+
+	res := jobs.Materialise(context.Background(), true, today, time.Now())
+	if res.Failed != 0 || len(cards.posted) != 0 || recs.flags["s"] != finance.AttentionCardArchived || !recs.cursors["s"].IsZero() {
+		t.Fatalf("archived card: res %+v posted %d flag %q cursor %s", res, len(cards.posted), recs.flags["s"], recs.cursors["s"])
+	}
+
+	cards.rows["visa"] = visa25() // the person picked a working card
+	cards.postErr = fmt.Errorf("wrapped: %w", repositories.ErrCategoryUnusable)
+	jobs.Materialise(context.Background(), true, today, time.Now())
+	if recs.flags["s"] != finance.AttentionCategoryArchived || len(cards.posted) != 0 {
+		t.Fatalf("archived category: flag %q posted %d", recs.flags["s"], len(cards.posted))
+	}
+
+	cards.postErr = nil
+	later := day(2026, time.April, 28)
+	jobs.Materialise(context.Background(), true, later, time.Now())
+	if len(cards.posted) != 2 || recs.flags["s"] != "" || recs.cursors["s"] != later {
+		t.Fatalf("after the fix: posted %d (want Mar 28 and Apr 28), flag %q, cursor %s", len(cards.posted), recs.flags["s"], recs.cursors["s"])
+	}
+}
+
+func TestAnUnknownCardIsFlaggedAsArchived(t *testing.T) {
+	recs := newFakeRecs(onCard("s", 28, 1))
+	NewFinanceJobs(newFakeBills(), recs).WithCards(newRecCards()).Materialise(context.Background(), true, day(2026, time.March, 28), time.Now())
+	if recs.flags["s"] != finance.AttentionCardArchived {
+		t.Fatalf("flag = %q", recs.flags["s"])
+	}
+}
+
+func TestAccountAndCardRecurrencesRunSideBySide(t *testing.T) {
+	bills, cards := newFakeBills(), newRecCards(visa25())
+	recs := newFakeRecs(monthly("rent", 10), onCard("s", 15, 1))
+	jobs := NewFinanceJobs(bills, recs).WithCards(cards)
+	jobs.Materialise(context.Background(), true, day(2026, time.March, 20), time.Now())
+	if bills.created != 4 || len(cards.posted) != 1 {
+		t.Fatalf("bills %d (want Jan..Apr), purchases %d (want Mar 15)", bills.created, len(cards.posted))
+	}
+}
+func monthOf(p Projection, m time.Month) ProjectionMonth {
+	for _, x := range p.Months {
+		if x.Month.Month == m {
+			return x
+		}
+	}
+	return ProjectionMonth{}
+}
+
+// Spec § 6.2: charged on the 28th, closing on the 25th: next month's
+// statement, due on the 5th of the month after. Virtual there while not posted;
+// once posted, only Payable (through the statement), never both.
+func TestACardOccurrenceIsVirtualInItsStatementsDueMonthThenOnlyPayable(t *testing.T) {
+	cards, recs := newRecCards(visa25()), newFakeRecs(onCard("s", 28, 1))
+	jobs := NewFinanceJobs(newFakeBills(), recs).WithCards(cards)
+
+	p, err := jobs.Project(context.Background(), testSpace(t), day(2026, time.March, 20), 4) // Mar..Jun
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Mar 28 -> April statement -> due May 5; Apr 28 -> May -> June 5.
+	if got := monthOf(p, time.May); got.VirtualPayable != 30000 || got.Virtual != -30000 || got.Payable != 0 {
+		t.Fatalf("May before posting = %+v", got)
+	}
+	if got := monthOf(p, time.April); got.VirtualPayable != 0 {
+		t.Fatalf("April = %+v: nothing is due in the month it is charged", got)
+	}
+
+	// The job posts Mar 28 (cursor = Mar 28); the April statement now holds it.
+	recs.cursors["s"] = day(2026, time.March, 28)
+	cards.totals["visa|2026-04"] = 30000
+	p, _ = jobs.Project(context.Background(), testSpace(t), day(2026, time.March, 28), 4)
+	if got := monthOf(p, time.May); got.Payable != 30000 || got.VirtualPayable != 0 {
+		t.Fatalf("May after posting = %+v: Payable once, no virtual", got)
+	}
+	if got := monthOf(p, time.June); got.VirtualPayable != 30000 {
+		t.Fatalf("June = %+v: the April 28 occurrence is still virtual", got)
+	}
+}
+
+// Spec § 6.3 (virtual half): 3x spreads over three statements' due months.
+func TestAnInstallmentCardOccurrenceSpreadsOverThreeDueMonths(t *testing.T) {
+	r := onCard("s", 28, 3)
+	r.Schedule.End = day(2026, time.March, 31) // one occurrence only
+	jobs := NewFinanceJobs(newFakeBills(), newFakeRecs(r)).WithCards(newRecCards(visa25()))
+	p, err := jobs.Project(context.Background(), testSpace(t), day(2026, time.March, 20), 6) // Mar..Aug
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range []time.Month{time.May, time.June, time.July} {
+		if got := monthOf(p, m); got.VirtualPayable != 10000 {
+			t.Errorf("%s = %+v, want one installment (100,00)", m, got)
+		}
+	}
+	if got := monthOf(p, time.August); got.VirtualPayable != 0 {
+		t.Errorf("August = %+v", got)
+	}
+}
+
+func TestACardRecurrenceOnAnArchivedCardProjectsNothing(t *testing.T) {
+	archived := visa25()
+	archived.Archived = true
+	jobs := NewFinanceJobs(newFakeBills(), newFakeRecs(onCard("s", 28, 1))).WithCards(newRecCards(archived))
+	p, _ := jobs.Project(context.Background(), testSpace(t), day(2026, time.March, 20), 4)
+	for _, m := range p.Months {
+		if m.VirtualPayable != 0 {
+			t.Fatalf("%s = %+v: an archived card is charged nothing until the recurrence is retargeted", m.Month, m)
 		}
 	}
 }

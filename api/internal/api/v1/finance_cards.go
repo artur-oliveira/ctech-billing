@@ -33,14 +33,15 @@ func newCardDTO(c repositories.CardRow) cardDTO {
 }
 
 type statementItemDTO struct {
-	PurchaseID  string        `json:"purchase_id"`
-	Description string        `json:"description"`
-	CategoryID  string        `json:"category_id,omitempty"`
-	Date        string        `json:"date"`
-	Number      int           `json:"number,omitempty"`
-	Of          int           `json:"of,omitempty"`
-	Kind        string        `json:"kind"`
-	Amount      billing.Cents `json:"amount"`
+	PurchaseID   string        `json:"purchase_id"`
+	Description  string        `json:"description"`
+	CategoryID   string        `json:"category_id,omitempty"`
+	Date         string        `json:"date"`
+	Number       int           `json:"number,omitempty"`
+	Of           int           `json:"of,omitempty"`
+	Kind         string        `json:"kind"`
+	Amount       billing.Cents `json:"amount"`
+	RecurrenceID string        `json:"recurrence_id,omitempty"`
 }
 
 type cardStatementDTO struct {
@@ -68,11 +69,17 @@ type purchaseDTO struct {
 	Total        billing.Cents    `json:"total"`
 	Installments []installmentDTO `json:"installments"`
 	Refunded     bool             `json:"refunded"`
+	// Origin is "recurrence" on a purchase the daily job posted for RecurrenceID.
+	Origin       string `json:"origin,omitempty"`
+	RecurrenceID string `json:"recurrence_id,omitempty"`
 }
 
 func newPurchaseDTO(p repositories.Purchase) purchaseDTO {
 	out := purchaseDTO{ID: p.ID, Description: p.Description, CategoryID: p.CategoryID, Date: p.Date.String(),
-		Total: p.Total, Refunded: p.Refunded, Installments: make([]installmentDTO, len(p.Installments))}
+		Total: p.Total, Refunded: p.Refunded, Installments: make([]installmentDTO, len(p.Installments)), RecurrenceID: p.RecurrenceID}
+	if p.RecurrenceID != "" {
+		out.Origin = "recurrence"
+	}
 	for i, inst := range p.Installments {
 		out.Installments[i] = installmentDTO{Number: inst.Number, Amount: inst.Amount, Month: inst.Statement.String()}
 	}
@@ -86,7 +93,8 @@ func (h *financeHandlers) statementDTO(c fiber.Ctx, s repositories.Statement) (c
 		DueDate: s.DueDate.String(), Total: s.Total, BillID: s.BillID, Items: make([]statementItemDTO, len(s.Items))}
 	for i, it := range s.Items {
 		out.Items[i] = statementItemDTO{PurchaseID: it.PurchaseID, Description: it.Description, CategoryID: it.CategoryID,
-			Date: it.Date.String(), Number: it.Number, Of: it.Of, Kind: it.Kind, Amount: it.Amount}
+			Date: it.Date.String(), Number: it.Number, Of: it.Of, Kind: it.Kind, Amount: it.Amount,
+			RecurrenceID: it.RecurrenceID}
 	}
 	if s.BillID != "" {
 		b, err := h.bills.Get(c.Context(), middleware.GetSpace(c), s.BillID)
@@ -272,12 +280,7 @@ func (r purchaseRequest) validate(today brcal.Date) []problem.FieldError {
 	c.text("description", r.Description, true, limits.Description)
 	c.id("category_id", r.CategoryID, true)
 	c.amount("total", r.Total)
-	switch {
-	case r.Installments < 1 || r.Installments > limits.MaxInstallments:
-		c.fail("installments", "out_of_range", "between 1 and 48 installments", "min", 1, "max", limits.MaxInstallments)
-	case r.Total > 0 && r.Total < billing.Cents(r.Installments):
-		c.fail("installments", "installment_too_small", "each installment needs at least 0.01")
-	}
+	installmentChecks(c, r.Total, r.Installments)
 	return c.errs
 }
 
@@ -336,6 +339,63 @@ func (h *financeHandlers) closeStatement(c fiber.Ctx) error {
 	out, err := h.statementDTO(c, s)
 	if err != nil {
 		return fail(c, err)
+	}
+	return c.JSON(out)
+}
+
+type statementSummaryDTO struct {
+	CardID      string        `json:"card_id"`
+	Month       string        `json:"month"`
+	Status      string        `json:"status"` // open | future | closed | paid
+	ClosingDate string        `json:"closing_date"`
+	DueDate     string        `json:"due_date"`
+	Total       billing.Cents `json:"total"`
+	BillID      string        `json:"bill_id,omitempty"`
+	ItemsCount  int           `json:"items_count"`
+}
+
+// cardStatements is the timeline's read (spec § 4.1): summaries only; the
+// selected month's items come from GET /cards/:id/statements/:month.
+func (h *financeHandlers) cardStatements(c fiber.Ctx) error {
+	ch := &checks{}
+	from, err := finance.ParseMonth(c.Query("from"))
+	if err != nil {
+		ch.fail("from", "invalid_format", "use YYYY-MM", "format", "YYYY-MM")
+	}
+	count := fiber.Query(c, "count", 3)
+	if count < 1 || count > repositories.MaxStatementPage {
+		ch.fail("count", "out_of_range", "between 1 and 12", "min", 1, "max", repositories.MaxStatementPage)
+	}
+	direction := c.Query("direction", "forward")
+	if direction != "forward" && direction != "backward" {
+		ch.fail("direction", "unsupported_value", "use forward or backward", "allowed", []string{"forward", "backward"})
+	}
+	if len(ch.errs) > 0 {
+		return problem.Validation(ch.errs).Send(c)
+	}
+	sp := middleware.GetSpace(c)
+	page, err := h.cards.StatementRange(c.Context(), sp, c.Params("id"), from, count, direction == "backward")
+	if err != nil {
+		return fail(c, err)
+	}
+	var billIDs []string
+	for _, s := range page.Statements {
+		if s.BillID != "" {
+			billIDs = append(billIDs, s.BillID)
+		}
+	}
+	paid, err := h.bills.PaidAmong(c.Context(), sp, billIDs)
+	if err != nil {
+		return fail(c, err)
+	}
+	out := listResponse[statementSummaryDTO]{Data: make([]statementSummaryDTO, 0, len(page.Statements)), HasMore: page.HasMore}
+	for _, s := range page.Statements {
+		status := s.Status
+		if s.BillID != "" && paid[s.BillID] {
+			status = "paid"
+		}
+		out.Data = append(out.Data, statementSummaryDTO{CardID: s.CardID, Month: s.Month.String(), Status: status,
+			ClosingDate: s.ClosingDate.String(), DueDate: s.DueDate.String(), Total: s.Total, BillID: s.BillID, ItemsCount: len(s.Items)})
 	}
 	return c.JSON(out)
 }

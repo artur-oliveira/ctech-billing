@@ -135,31 +135,10 @@ func newBillItem(sp space.ResolvedSpace, b finance.Bill, now time.Time) billItem
 // an active asset. The ledger's own balance conditions only prove an account
 // exists in the space. invalid is the sentinel the caller's refusals wrap.
 func checkDirectionAccounts(ctx context.Context, ledger *LedgerRepository, sp space.ResolvedSpace, dir finance.Direction, categoryID, accountID string, invalid error) error {
-	cat, err := ledger.getAccount(ctx, sp, categoryID)
-	if errors.Is(err, ErrNotFound) {
-		return fmt.Errorf("%w: category %s", ErrUnknownAccount, categoryID)
-	}
-	if err != nil {
+	if err := checkCategory(ctx, ledger, sp, dir, categoryID, invalid); err != nil {
 		return err
 	}
-	want := finance.ClassExpense
-	if dir == finance.Receivable {
-		want = finance.ClassIncome
-	}
-	if cat.Class != want || cat.System || cat.Archived {
-		return fmt.Errorf("%w: a %s needs an active %s category", invalid, dir, want)
-	}
-	acct, err := ledger.getAccount(ctx, sp, accountID)
-	if errors.Is(err, ErrNotFound) {
-		return fmt.Errorf("%w: account %s", ErrUnknownAccount, accountID)
-	}
-	if err != nil {
-		return err
-	}
-	if acct.Class != finance.ClassAsset || acct.System || acct.Archived {
-		return fmt.Errorf("%w: the account must be an active asset account", invalid)
-	}
-	return nil
+	return checkAssetAccount(ctx, ledger, sp, accountID, invalid)
 }
 
 func (r *BillRepository) checkBillAccounts(ctx context.Context, sp space.ResolvedSpace, b finance.Bill) error {
@@ -300,10 +279,7 @@ func (r *BillRepository) CreateFromOccurrence(ctx context.Context, sp space.Reso
 	if err := b.Validate(); err != nil {
 		return false, finance.Bill{}, err
 	}
-	lockRow, err := Encode(struct {
-		keys
-		BillID string `dynamodbav:"bill_id"`
-	}{newKeys(sp.PK(), OccurrenceSK(recurrenceID, d.Nominal), RetentionPermanent, now), b.ID})
+	lockRow, err := Encode(occurrenceLockRow{keys: newKeys(sp.PK(), OccurrenceSK(recurrenceID, d.Nominal), RetentionPermanent, now), BillID: b.ID})
 	if err != nil {
 		return false, finance.Bill{}, err
 	}
@@ -805,8 +781,27 @@ func (r *BillRepository) statementBillItem(sp space.ResolvedSpace, b finance.Bil
 // OccurrenceBill is a bill a recurrence made, with the nominal day it was made
 // for (the occurrence's identity).
 type OccurrenceBill struct {
-	Nominal brcal.Date
-	Bill    finance.Bill
+	Nominal  brcal.Date
+	Bill     finance.Bill
+	Purchase *OccurrencePurchase // set instead of Bill for a card occurrence
+}
+
+// occurrenceLockRow is OCCURRENCE#{recurrence}#{nominal}: written once per
+// occurrence, with the bill it made or, for a card recurrence, the purchase.
+type occurrenceLockRow struct {
+	keys
+	BillID     string `dynamodbav:"bill_id,omitempty"`
+	PurchaseID string `dynamodbav:"purchase_id,omitempty"`
+	CardID     string `dynamodbav:"card_id,omitempty"`
+	Statement  string `dynamodbav:"statement,omitempty"` // the first installment's month
+	Amount     int64  `dynamodbav:"amount,omitempty"`
+}
+
+// OccurrencePurchase is a card occurrence the job posted.
+type OccurrencePurchase struct {
+	ID, CardID string
+	Statement  finance.Month
+	Amount     billing.Cents
 }
 
 // ForRecurrence returns the latest `limit` bills a recurrence made, oldest
@@ -826,10 +821,7 @@ func (r *BillRepository) ForRecurrence(ctx context.Context, sp space.ResolvedSpa
 	if err != nil {
 		return nil, err
 	}
-	locks, err := DecodeItems[struct {
-		SK     string `dynamodbav:"sk"`
-		BillID string `dynamodbav:"bill_id"`
-	}](res.Items)
+	locks, err := DecodeItems[occurrenceLockRow](res.Items)
 	if err != nil {
 		return nil, err
 	}
@@ -839,6 +831,14 @@ func (r *BillRepository) ForRecurrence(ctx context.Context, sp space.ResolvedSpa
 		nominal, err := brcal.Parse(l.SK[strings.LastIndexByte(l.SK, '#')+1:])
 		if err != nil {
 			return nil, fmt.Errorf("malformed occurrence lock %q: %w", l.SK, err)
+		}
+		if l.PurchaseID != "" {
+			m, err := finance.ParseMonth(l.Statement)
+			if err != nil {
+				return nil, fmt.Errorf("malformed occurrence lock %q: %w", l.SK, err)
+			}
+			out = append(out, OccurrenceBill{Nominal: nominal, Purchase: &OccurrencePurchase{ID: l.PurchaseID, CardID: l.CardID, Statement: m, Amount: billing.Cents(l.Amount)}})
+			continue
 		}
 		b, err := r.get(ctx, sp, l.BillID)
 		if errors.Is(err, ErrNotFound) {
@@ -866,10 +866,7 @@ func (r *BillRepository) MadeAfter(ctx context.Context, sp space.ResolvedSpace, 
 	if err != nil {
 		return nil, err
 	}
-	locks, err := DecodeItems[struct {
-		SK     string `dynamodbav:"sk"`
-		BillID string `dynamodbav:"bill_id"`
-	}](items)
+	locks, err := DecodeItems[occurrenceLockRow](items)
 	if err != nil {
 		return nil, err
 	}
@@ -879,6 +876,9 @@ func (r *BillRepository) MadeAfter(ctx context.Context, sp space.ResolvedSpace, 
 		if err != nil {
 			return nil, fmt.Errorf("malformed occurrence lock %q: %w", l.SK, err)
 		}
+		if l.BillID == "" {
+			continue // a card occurrence: a purchase, never cancelled by an end
+		}
 		b, err := r.get(ctx, sp, l.BillID)
 		if errors.Is(err, ErrNotFound) {
 			continue
@@ -887,6 +887,48 @@ func (r *BillRepository) MadeAfter(ctx context.Context, sp space.ResolvedSpace, 
 			return nil, err
 		}
 		out = append(out, OccurrenceBill{Nominal: nominal, Bill: *b})
+	}
+	return out, nil
+}
+
+// PaidAmong answers which of the given bills are paid: one BatchGetItem (the
+// range endpoint's "paid" for up to 12 closed statements), retrying unprocessed
+// keys. Unknown ids are simply absent.
+func (r *BillRepository) PaidAmong(ctx context.Context, sp space.ResolvedSpace, ids []string) (map[string]bool, error) {
+	out := map[string]bool{}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	if err := sp.Require(space.Read); err != nil {
+		return nil, err
+	}
+	keys := make([]map[string]types.AttributeValue, len(ids))
+	for i, id := range ids {
+		keys[i] = map[string]types.AttributeValue{"pk": str(sp.PK()), "sk": str(BillSK(id))}
+	}
+	req := map[string]types.KeysAndAttributes{r.bills.TableName: {
+		Keys: keys, ConsistentRead: aws.Bool(true), ProjectionExpression: aws.String("#id, #st"),
+		ExpressionAttributeNames: map[string]string{"#id": "id", "#st": "status"},
+	}}
+	for attempt := 0; len(req) > 0; attempt++ {
+		if attempt == 5 {
+			return nil, fmt.Errorf("bills: %d keys still unprocessed after retries", len(req[r.bills.TableName].Keys))
+		}
+		res, err := r.bills.BatchGetItemRaw(ctx, &dynamodb.BatchGetItemInput{RequestItems: req})
+		if err != nil {
+			return nil, err
+		}
+		rows, err := DecodeItems[struct {
+			ID     string `dynamodbav:"id"`
+			Status string `dynamodbav:"status"`
+		}](res.Responses[r.bills.TableName])
+		if err != nil {
+			return nil, err
+		}
+		for _, row := range rows {
+			out[row.ID] = row.Status == string(finance.BillPaid)
+		}
+		req = res.UnprocessedKeys
 	}
 	return out, nil
 }

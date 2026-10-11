@@ -58,20 +58,27 @@ const catchUpSlackDays = 31
 type RecurrenceRepository struct {
 	recs   Base
 	ledger *LedgerRepository
+	// cards is read only to check a card target exists in the space.
+	cards Base
 }
 
 func NewRecurrenceRepository(db *dynamodb.Client, cfg *config.Config) *RecurrenceRepository {
-	return &RecurrenceRepository{recs: NewBase(db, cfg, TableRecurrences), ledger: NewLedgerRepository(db, cfg)}
+	return &RecurrenceRepository{recs: NewBase(db, cfg, TableRecurrences), ledger: NewLedgerRepository(db, cfg), cards: NewBase(db, cfg, TableCards)}
 }
 
 type recurrenceItem struct {
 	keys
-	ID          string `dynamodbav:"id"`
-	Direction   string `dynamodbav:"direction"`
-	Amount      int64  `dynamodbav:"amount"`
-	CategoryID  string `dynamodbav:"category_id"`
-	AccountID   string `dynamodbav:"account_id"`
-	Description string `dynamodbav:"description,omitempty"`
+	ID         string `dynamodbav:"id"`
+	Direction  string `dynamodbav:"direction"`
+	Amount     int64  `dynamodbav:"amount"`
+	CategoryID string `dynamodbav:"category_id"`
+	AccountID  string `dynamodbav:"account_id,omitempty"`
+	CardID     string `dynamodbav:"card_id,omitempty"`
+	// Installments is written on every card recurrence (>= 1), never omitted there,
+	// so the job's ConditionCheck can compare it.
+	Installments   int    `dynamodbav:"installments,omitempty"`
+	NeedsAttention string `dynamodbav:"needs_attention,omitempty"`
+	Description    string `dynamodbav:"description,omitempty"`
 	// Expression is the 6.1 tagged JSON, parsed back through ParseSchedule so a
 	// stored row is held to the same rules as a request.
 	Expression string `dynamodbav:"expression"`
@@ -108,6 +115,7 @@ func (i recurrenceItem) recurrence() (finance.Recurrence, error) {
 		CategoryID: i.CategoryID, AccountID: i.AccountID, Description: i.Description,
 		Schedule:   finance.Schedule{Expression: expr, Start: start, End: end, Adjust: finance.BusinessDayAdjust(i.Adjust)},
 		AutoSettle: i.AutoSettle, Archived: i.Archived,
+		CardID: i.CardID, Installments: i.Installments, NeedsAttention: i.NeedsAttention,
 	}, nil
 }
 
@@ -147,6 +155,7 @@ func newRecurrenceItem(sp space.ResolvedSpace, rec finance.Recurrence, cursor br
 		CategoryID: rec.CategoryID, AccountID: rec.AccountID, Description: rec.Description,
 		Expression: string(expr), Start: rec.Schedule.Start.String(), End: end, Adjust: string(rec.Schedule.Adjust),
 		AutoSettle: rec.AutoSettle, Archived: rec.Archived, LastNominal: last, SchedulePK: pk, ScheduleSK: sk,
+		CardID: rec.CardID, Installments: rec.Installments,
 	}, nil
 }
 
@@ -161,14 +170,14 @@ func (r *RecurrenceRepository) Create(ctx context.Context, sp space.ResolvedSpac
 	if err := sp.Require(need); err != nil {
 		return finance.Recurrence{}, err
 	}
-	rec.ID, rec.Archived = id.New(), false
+	rec.ID, rec.Archived, rec.NeedsAttention = id.New(), false, ""
 	if meta.IdempotencyKey != "" {
 		rec.ID = idempotentID(sp, "recurrence", meta.IdempotencyKey)
 	}
 	if err := rec.ValidateAt(brcal.FromTime(now)); err != nil {
 		return finance.Recurrence{}, err
 	}
-	if err := checkDirectionAccounts(ctx, r.ledger, sp, rec.Direction, rec.CategoryID, rec.AccountID, finance.ErrInvalidRecurrence); err != nil {
+	if err := r.checkTarget(ctx, sp, rec); err != nil {
 		return finance.Recurrence{}, err
 	}
 	row, err := newRecurrenceItem(sp, rec, brcal.Date{}, now)
@@ -296,6 +305,12 @@ type RecurrencePatch struct {
 	AccountID   *string
 	Description *string
 	AutoSettle  *bool
+	// CardID / AccountID switch the target (spec § 3.1): a non-empty CardID moves
+	// the recurrence to that card (account and auto_settle cleared, installments 1
+	// unless sent); a non-empty AccountID moves it back. The switch applies to
+	// occurrences after the cursor; what was made or posted stays.
+	CardID       *string
+	Installments *int
 	// End: absent keeps it, null removes it (the rule has no end again and the
 	// job picks it up from its cursor), a date replaces it.
 	End patch.Optional[brcal.Date]
@@ -332,8 +347,20 @@ func (r *RecurrenceRepository) Update(ctx context.Context, sp space.ResolvedSpac
 	if p.CategoryID != nil {
 		rec.CategoryID = *p.CategoryID
 	}
-	if p.AccountID != nil {
-		rec.AccountID = *p.AccountID
+	if p.CardID != nil && p.AccountID != nil && *p.CardID != "" && *p.AccountID != "" {
+		return fmt.Errorf("%w: pay with an account or a card, not both", finance.ErrInvalidRecurrence)
+	}
+	if p.CardID != nil && *p.CardID != "" {
+		rec.CardID, rec.AccountID, rec.AutoSettle = *p.CardID, "", false
+		if rec.Installments == 0 {
+			rec.Installments = 1
+		}
+	}
+	if p.AccountID != nil && *p.AccountID != "" {
+		rec.AccountID, rec.CardID, rec.Installments = *p.AccountID, "", 0
+	}
+	if p.Installments != nil {
+		rec.Installments = *p.Installments
 	}
 	if p.Description != nil {
 		rec.Description = *p.Description
@@ -373,7 +400,7 @@ func (r *RecurrenceRepository) Update(ctx context.Context, sp space.ResolvedSpac
 	if p.Archive {
 		rec.Archived = true
 	}
-	if err := checkDirectionAccounts(ctx, r.ledger, sp, rec.Direction, rec.CategoryID, rec.AccountID, finance.ErrInvalidRecurrence); err != nil {
+	if err := r.checkTarget(ctx, sp, rec); err != nil {
 		return err
 	}
 	// Re-opening (an end cleared or moved later) resumes the rule from the
@@ -400,10 +427,23 @@ func (r *RecurrenceRepository) Update(ctx context.Context, sp space.ResolvedSpac
 	}
 	set("amount", numberValue(int64(rec.Amount)))
 	set("category_id", str(rec.CategoryID))
-	set("account_id", str(rec.AccountID))
 	set("description", str(rec.Description))
 	set("auto_settle", &types.AttributeValueMemberBOOL{Value: rec.AutoSettle})
 	var remove []string
+	// The target: one of the two is set, the other removed, never stored as "".
+	if rec.IsCard() {
+		set("card_id", str(rec.CardID))
+		set("installments", numberValue(int64(rec.Installments)))
+		names["#account_id"] = "account_id"
+		remove = append(remove, "#account_id")
+	} else {
+		set("account_id", str(rec.AccountID))
+		names["#card_id"], names["#installments"] = "card_id", "installments"
+		remove = append(remove, "#card_id", "#installments")
+	}
+	// An edit is the person's answer to needs_attention: the next run re-checks.
+	names["#needs_attention"] = "needs_attention"
+	remove = append(remove, "#needs_attention")
 	switch {
 	case p.End.IsNull():
 		// Removed, never stored as "": the row reads like one that never had an end.
@@ -455,6 +495,23 @@ func (r *RecurrenceRepository) Archive(ctx context.Context, sp space.ResolvedSpa
 		map[string]types.AttributeValue{
 			":t": &types.AttributeValueMemberBOOL{Value: true}, ":now": str(now.UTC().Format(time.RFC3339Nano)),
 		})))
+	if err != nil && onlyConditionFailed(err) {
+		return fmt.Errorf("%w: recurrence %s", ErrNotFound, recID)
+	}
+	return err
+}
+
+// FlagAttention records why the job stopped on a recurrence (card_archived,
+// category_archived). The cursor and the schedule keys are untouched, so the job
+// finds it again every day and posts the pending occurrences once it is fixed.
+func (r *RecurrenceRepository) FlagAttention(ctx context.Context, sp space.ResolvedSpace, recID, reason string, now time.Time) error {
+	if err := sp.Require(space.Write); err != nil {
+		return err
+	}
+	sk := RecurrenceSK(recID)
+	err := r.recs.TransactWrite(ctx, txItems(r.recs.BuildRawUpdateTxItem(sp.PK(), &sk,
+		"SET needs_attention = :r, updated_at = :now", "attribute_exists(pk)", nil,
+		map[string]types.AttributeValue{":r": str(reason), ":now": str(now.UTC().Format(time.RFC3339Nano))})))
 	if err != nil && onlyConditionFailed(err) {
 		return fmt.Errorf("%w: recurrence %s", ErrNotFound, recID)
 	}
@@ -515,13 +572,13 @@ func (r *RecurrenceRepository) MarkMaterialised(ctx context.Context, sp space.Re
 		return err
 	}
 	set := "SET last_nominal = :c, updated_at = :now"
-	remove := ""
+	remove := " REMOVE needs_attention"
 	values := map[string]types.AttributeValue{":c": str(cursor.String()), ":now": str(now.UTC().Format(time.RFC3339Nano))}
 	if pk, sk := scheduleKeysFor(sp, rec, cursor); pk != "" {
 		set += ", schedule_pk = :spk, schedule_sk = :ssk"
 		values[":spk"], values[":ssk"] = str(pk), str(sk)
 	} else {
-		remove = " REMOVE schedule_pk, schedule_sk"
+		remove = " REMOVE needs_attention, schedule_pk, schedule_sk"
 	}
 	sk := RecurrenceSK(recID)
 	err = r.recs.TransactWrite(ctx, txItems(r.recs.BuildRawUpdateTxItem(sp.PK(), &sk, set+remove,

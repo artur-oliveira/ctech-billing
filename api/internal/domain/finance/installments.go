@@ -76,6 +76,24 @@ func AllocateInstallments(total billing.Cents, n int, purchase brcal.Date, closi
 	return out, nil
 }
 
+// PlaceInstallments is AllocateInstallments floored at the card's open month:
+// a purchase dated in a month already closed lands on the open statement and
+// its later installments follow it, one month apart (spec § 3.6). The purchase
+// write, the projection and the occurrence history all place with it.
+func PlaceInstallments(total billing.Cents, n int, purchase brcal.Date, closingDay int, open Month) ([]Installment, error) {
+	plan, err := AllocateInstallments(total, n, purchase, closingDay)
+	if err != nil {
+		return nil, err
+	}
+	if plan[0].Statement.Compare(open) < 0 {
+		shift := open.MonthsSince(plan[0].Statement)
+		for i := range plan {
+			plan[i].Statement = plan[i].Statement.Add(shift)
+		}
+	}
+	return plan, nil
+}
+
 // Advance moves every installment billed after `open` onto `open` — antecipação.
 // Installments on or before it stay where they are. It changes allocation only:
 // the DRE already holds the full purchase (CardPurchase).

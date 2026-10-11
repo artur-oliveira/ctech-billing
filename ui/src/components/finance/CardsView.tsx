@@ -2,15 +2,18 @@
 
 import {Badge, Button, Drawer, EmptyState, Field, Select, Skeleton} from "@aoctech/ui"
 import {useQuery} from "@tanstack/react-query"
-import {AlertCircle, ChevronLeft, ChevronRight, CircleCheck, CircleDot, Clock, CreditCard, Lock} from "lucide-react"
+import {CreditCard, Repeat} from "lucide-react"
+import Link from "next/link"
 import {useState} from "react"
 import {useTranslation} from "react-i18next"
 
 import {SettleForm} from "@/components/finance/BillsView"
-import {CardBrandMark, maskedLast4} from "@/components/finance/CardBrandMark"
+import {CardBrandMark, cardLabel, maskedLast4} from "@/components/finance/CardBrandMark"
 import {CardForm} from "@/components/finance/CardForm"
 import {LedgerRow} from "@/components/finance/LedgerRow"
 import {PurchasePanel} from "@/components/finance/PurchasePanel"
+import {StatementTimeline} from "@/components/finance/StatementTimeline"
+import {STATUS, statementState} from "@/components/finance/statementStatus"
 import {wholeSpace} from "@/components/finance/TransferPanel"
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
 import {messageFor} from "@/lib/api/client"
@@ -18,7 +21,7 @@ import {
   advancePurchase, closeStatement, type FinanceCtx, financeKeys, getBill, getCardStatement, listAccounts, listCards, listPurchases,
   refundPurchase,
 } from "@/lib/api/finance"
-import type {Account, Card, CardStatement, CardStatementStatus, Purchase, StatementItem} from "@/lib/api/financeTypes"
+import type {Account, Card, CardStatement, Purchase, StatementItem} from "@/lib/api/financeTypes"
 import {currentLocale} from "@/lib/i18n"
 import {monthShort, todayIso} from "@/lib/finance/today"
 import {selectCopy} from "@/lib/selectCopy"
@@ -28,37 +31,7 @@ import {useFinanceCtx, useFinanceSpaces} from "@/lib/finance/useFinanceSpaces"
 import {shortDate, signedMoney} from "@/lib/format"
 import {accountName} from "@/lib/finance/accountName"
 
-type StatementState = CardStatementStatus | "overdue"
-
-/**
- * A statement's badge. Open is the normal state of a card, so it is calm green
- * (positive), not a warning; closed and waiting for its due date, and paid, are
- * neutral; red (urgent) is kept for the one state that needs action: closed,
- * past its due date, unpaid. Each carries a glyph, never colour alone.
- */
-const STATUS: Record<StatementState, {tone: "neutral" | "positive" | "urgent"; icon: typeof CircleDot}> = {
-  open: {tone: "positive", icon: CircleDot},
-  future: {tone: "neutral", icon: Clock},
-  closed: {tone: "neutral", icon: Lock},
-  paid: {tone: "neutral", icon: CircleCheck},
-  overdue: {tone: "urgent", icon: AlertCircle},
-}
-
-/**
- * "Vencida" is not a server status: a closed statement past its due date that
- * still owes something. A zero or credit statement makes no bill, and every
- * month before a card's first reads "closed": none of them owes, so none is red.
- * A paid statement's bill makes the server say "paid".
- */
-export function statementState(s: Pick<CardStatement, "status" | "due_date" | "bill_id" | "total">, today: string): StatementState {
-  return s.status === "closed" && !!s.bill_id && s.total > 0 && s.due_date < today ? "overdue" : s.status
-}
-
-function shiftMonth(ym: string, n: number): string {
-  const [y, m] = ym.split("-").map(Number)
-  const i = y * 12 + (m - 1) + n
-  return `${Math.floor(i / 12)}-${String((i % 12) + 1).padStart(2, "0")}`
-}
+export {statementState} from "@/components/finance/statementStatus"
 
 type Panel = "new-card" | "edit-card" | "purchase" | null
 
@@ -148,13 +121,13 @@ export function CardsView({card: initial = ""}: {card?: string}) {
 
       <CardHeader card={card}/>
 
-      <StatementBlock key={`${card.id}-${shown}`} card={card} month={shown} accounts={all} onMonth={setMonth}/>
+      <StatementTimeline key={card.id} card={card} selected={shown} onSelect={setMonth}/>
+
+      <StatementBlock key={`${card.id}-${shown}`} card={card} month={shown} accounts={all}/>
     </div>
   )
 }
 
-/** "Nubank •••• 4242" in a picker; the name alone when there are no digits. */
-const cardLabel = (c: Card) => (c.last4 ? `${c.name} ${maskedLast4(c.last4)}` : c.name)
 
 /** The card on screen: its mark, name and last digits, and when it closes and is due. */
 function CardHeader({card}: {card: Card}) {
@@ -173,7 +146,7 @@ function CardHeader({card}: {card: Card}) {
   )
 }
 
-function StatementBlock({card, month, accounts, onMonth}: {card: Card; month: string; accounts: Account[]; onMonth: (m: string) => void}) {
+function StatementBlock({card, month, accounts}: {card: Card; month: string; accounts: Account[]}) {
   const {t} = useTranslation()
   const ctx = useFinanceCtx()
   const {can} = useFinanceSpaces()
@@ -185,12 +158,7 @@ function StatementBlock({card, month, accounts, onMonth}: {card: Card; month: st
   const s = q.data
 
   return (
-    <section aria-label={t("finance.cards.statement")} className="space-y-3">
-      <div className="flex items-center gap-2">
-        <Button variant="ghost" size="sm" aria-label={t("finance.cards.prev")} onClick={() => onMonth(shiftMonth(month, -1))}><ChevronLeft aria-hidden className="size-4"/></Button>
-        <span className="min-w-16 text-center text-sm font-medium tabular-nums">{monthShort(month)}</span>
-        <Button variant="ghost" size="sm" aria-label={t("finance.cards.next")} onClick={() => onMonth(shiftMonth(month, 1))}><ChevronRight aria-hidden className="size-4"/></Button>
-      </div>
+    <section aria-label={`${t("finance.cards.statement")} ${monthShort(month)}`} className="space-y-3">
       {q.isLoading ? <div className="space-y-2" aria-busy><Skeleton className="h-5 w-48"/><Skeleton className="h-4 w-full"/></div> : q.error || !s ? (
         <ErrorBlock error={q.error} onRetry={() => void q.refetch()}/>
       ) : (
@@ -232,7 +200,8 @@ function Summary({statement: s}: {statement: CardStatement}) {
   const state = statementState(s, todayIso())
   const {tone, icon: Icon} = STATUS[state]
   return (
-    <div className="flex flex-wrap items-baseline justify-between gap-3 text-sm">
+    // On a phone the summary card above says all of this, one per screen.
+    <div className="flex flex-wrap items-baseline justify-between gap-3 text-sm max-sm:hidden">
       <div className="flex flex-wrap items-center gap-3">
         <Badge tone={tone}><Icon aria-hidden/>{t(`finance.cards.status.${state}`)}</Badge>
         <span className="text-muted-foreground">{t(closed ? "finance.cards.closedOn" : "finance.cards.closesOn", {date: shortDate(s.closing_date)})}</span>
@@ -261,7 +230,19 @@ function ItemRow({item, card, purchase, category}: {item: StatementItem; card: C
     // UX batch 4: a purchase's actions are a left swipe or "⋯" on a phone, each asking first.
     <LedgerRow
       title={item.description}
-      meta={<>{shortDate(item.date)}{item.number && item.of ? ` • ${item.number}/${item.of}` : ""}{category ? ` • ${category}` : ""}</>}
+      meta={<>
+        {shortDate(item.date)}{item.number && item.of ? ` • ${item.number}/${item.of}` : ""}{category ? ` • ${category}` : ""}
+        {item.recurrence_id && (
+          <>
+            {" • "}
+            <Link href={`/finance/recurrences?recurrence=${encodeURIComponent(item.recurrence_id)}`}
+              aria-label={t("finance.cards.openRecurrence", {name: item.description})}
+              className="inline-flex items-center gap-1 text-foreground underline-offset-4 hover:underline touch-target">
+              <Repeat aria-hidden className="size-3"/>{t("finance.cards.recurring")}
+            </Link>
+          </>
+        )}
+      </>}
       amount={<span data-numeric>{signedMoney(item.amount)}</span>}
       more={actionable ? [
         ...(canAdvance ? [{key: "advance", label: t("finance.cards.advance"), expanded: action === "advance", onSelect: () => setAction("advance")}] : []),

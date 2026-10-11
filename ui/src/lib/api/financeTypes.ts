@@ -40,12 +40,21 @@ export type ExpressionJSON =
   | {kind: "dates"; dates: IsoDate[]}
   | {kind: "difference"; include: ExpressionJSON; exclude: ExpressionJSON}
 
+/** Why the daily job stopped on a recurrence until the person fixes it. */
+export type NeedsAttention = "card_archived" | "category_archived"
+
 export interface Recurrence {
   id: string
   direction: Direction
   amount: Cents
   category_id: string
+  /** "" on a recurrence paid by card. */
   account_id: string
+  /** Set instead of account_id: each occurrence is a purchase on this card. */
+  card_id?: string
+  /** Card only: each occurrence split in this many installments (1..48). */
+  installments?: number
+  needs_attention?: NeedsAttention
   description?: string
   expression: ExpressionJSON
   start: IsoDate
@@ -58,14 +67,20 @@ export interface Recurrence {
 export interface Occurrence {
   nominal: IsoDate
   due: IsoDate
+  /** Card recurrences: the statement (`YYYY-MM`) the occurrence lands on. */
+  statement_month?: string
 }
 
-/** paid; forecast (made, not yet due); overdue (made, past due, unpaid); skipped (its bill was cancelled). */
-export type OccurrenceState = "paid" | "forecast" | "overdue" | "skipped"
+/** paid; forecast (made, not yet due); overdue (made, past due, unpaid); skipped (its bill was cancelled);
+ *  posted (a card purchase the job made, on the statement of statement_month). */
+export type OccurrenceState = "paid" | "forecast" | "overdue" | "skipped" | "posted"
 
-/** A bill a recurrence made, for F4's detail (UX batch 3). */
+/** A bill a recurrence made, or a card purchase it posted, for F4's detail (UX batch 3). */
 export interface OccurrenceBill extends Occurrence {
-  bill_id: string
+  /** Absent on a posted card occurrence (see purchase_id). */
+  bill_id?: string
+  purchase_id?: string
+  card_id?: string
   amount: Cents
   state: OccurrenceState
   paid_date?: IsoDate
@@ -177,7 +192,11 @@ export interface NewRecurrence extends ScheduleInput {
   direction: Direction
   amount: Cents
   category_id: string
-  account_id: string
+  /** Exactly one of account_id and card_id. */
+  account_id?: string
+  card_id?: string
+  /** Card only, default 1. */
+  installments?: number
   description?: string
   auto_settle?: boolean
 }
@@ -185,7 +204,10 @@ export interface NewRecurrence extends ScheduleInput {
 export interface RecurrencePatch {
   amount?: Cents
   category_id?: string
+  /** A non-empty account_id moves a card recurrence to the account, and card_id the other way. */
   account_id?: string
+  card_id?: string
+  installments?: number
   description?: string
   auto_settle?: boolean
   /** "" removes the end (sent as null): the recurrence has no end again. So does "" on description. */
@@ -346,6 +368,8 @@ export interface StatementItem {
   kind: StatementItemKind
   /** Positive charges, negative credits. */
   amount: Cents
+  /** The recurrence that posted it, if any. */
+  recurrence_id?: string
 }
 
 export type CardStatementStatus = "open" | "future" | "closed" | "paid"
@@ -361,6 +385,25 @@ export interface CardStatement {
   items: StatementItem[]
 }
 
+/** A statement without its items, for the timeline (GET /cards/:id/statements). */
+export interface StatementSummary {
+  card_id: string
+  month: string
+  status: CardStatementStatus
+  closing_date: IsoDate
+  due_date: IsoDate
+  total: Cents
+  bill_id?: string
+  items_count: number
+}
+
+export interface StatementPage {
+  data: StatementSummary[]
+  has_more: boolean
+}
+
+export type StatementDirection = "forward" | "backward"
+
 export interface Purchase {
   id: string
   description: string
@@ -369,6 +412,8 @@ export interface Purchase {
   total: Cents
   installments: {number: number; amount: Cents; month: string}[]
   refunded: boolean
+  origin?: "recurrence"
+  recurrence_id?: string
 }
 
 export interface NewPurchase {

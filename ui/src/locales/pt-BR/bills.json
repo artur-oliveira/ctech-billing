@@ -151,7 +151,8 @@
       "forecast": "Prevista",
       "overdue": "Vencida",
       "skipped": "Pulada",
-      "upcoming": "A gerar"
+      "upcoming": "A gerar",
+      "posted": "Na fatura de {{month}}"
     },
     "openBill": {
       "payable": "Ver em A pagar",
@@ -172,7 +173,17 @@
     },
     "retry": "Tentar de novo",
     "endKeepsPaid_one": "O já pago ({{dates}}) continua: o pagamento está no extrato.",
-    "endKeepsPaid_other": "Os {{count}} já pagos ({{dates}}) continuam: os pagamentos estão no extrato."
+    "endKeepsPaid_other": "Os {{count}} já pagos ({{dates}}) continuam: os pagamentos estão no extrato.",
+    "payWithCard": "Cartão",
+    "payWithAccount": "Conta",
+    "installments": "Parcelas",
+    "cardNote": "Cada ocorrência entra como compra no cartão, no próprio dia.",
+    "attention": {
+      "card_archived": "Cartão arquivado; escolha outro cartão ou uma conta",
+      "category_archived": "Categoria arquivada; escolha outra categoria",
+      "fix": "Corrigir"
+    },
+    "onStatement": "fatura de {{month}}"
   },
   "editor": {
     "repeat": "Repetição",

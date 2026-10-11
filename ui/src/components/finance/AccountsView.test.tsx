@@ -461,3 +461,19 @@ describe("F8 — an account row on a phone", () => {
     expect(within(li).getByLabelText("Novo nome")).toHaveValue("Conta corrente")
   })
 })
+
+describe("archiving a card", () => {
+it("warns, before archiving a card, how many recurrences it pays", async () => {
+  serve(ALL, [...ACCOUNTS, {id: "visa", name: "Visa", class: "liability", system: false, archived: false, balance: 0}])
+  vi.mocked(finance.listCards).mockResolvedValue({data: [{id: "visa", name: "Visa", closing_day: 3, due_day: 10, paying_account_id: "cc", open_month: "2026-03", balance: 0, archived: false}], has_more: false})
+  vi.spyOn(finance, "listRecurrences").mockResolvedValue({data: [
+    {id: "a", direction: "payable", amount: 1, category_id: "food", account_id: "", card_id: "visa", installments: 1, expression: {kind: "day_of_month", day: 1}, start: "2026-01-01", business_day_adjust: "none", auto_settle: false, archived: false},
+    {id: "b", direction: "payable", amount: 1, category_id: "food", account_id: "", card_id: "visa", installments: 1, expression: {kind: "day_of_month", day: 2}, start: "2026-01-01", business_day_adjust: "none", auto_settle: false, archived: true},
+  ], has_more: false})
+  renderWithQuery(<AccountsView/>)
+  // The card's mark names its brand too: the row is the one whose title is "Visa".
+  const row = (await screen.findAllByText("Visa")).map(e => e.closest("li")).find(Boolean) as HTMLElement
+  await userEvent.click(within(row).getByRole("button", {name: "Arquivar"}))
+  expect(await within(row).findByText(/1 recorrência é paga com este cartão/)).toBeInTheDocument()
+})
+})
