@@ -18,7 +18,8 @@ import {
   consoleProducts,
   consoleSubscriptionDetail,
   consoleSubscriptions,
-  MOCK_CONSOLE_SESSION,
+  consoleSession,
+  MOCK_MERCHANT_ORG,
   setConsoleDunning,
   setConsoleIssuer,
 } from "./consoleMockData"
@@ -235,19 +236,22 @@ export const mockAdapter: AxiosAdapter = async config => {
   // would make the mode switch look broken in exactly the mode where being
   // wrong is expensive.
   if (url.includes("/v1.0/console/")) {
-    // `sem_conta` is a person with no billing account at all, so they have no
-    // organization either — every console route answers 403, which is what the
-    // shell renders as an explanation and what keeps the portal's Console link
-    // from appearing for somebody it would only frustrate.
-    if (scenario === "sem_conta") {
-      fail(config, 403, "Forbidden", "nenhuma organização para este usuário", "about:blank", "no_organization")
+    if (url.endsWith("/v1.0/console/session")) {
+      if (scenario === "sem_conta") return ok(config, {organizations: [], organizations_unavailable: false})
+      return ok(config, consoleSession(scenario))
+    }
+    // The billing half, like the server: mode and organization required, and
+    // only the merchant organization has a tenant.
+    const selector = String(config.headers?.["X-Billing-Space"] ?? "")
+    if (!selector.startsWith("org:") || !config.headers?.["X-Billing-Mode"]) {
+      fail(config, 400, "Bad Request", "informe X-Billing-Mode e X-Billing-Space", "about:blank", "bad_request")
+    }
+    if (selector !== `org:${MOCK_MERCHANT_ORG}`) {
+      fail(config, 404, "No merchant", "this organization does not bill through CTech Billing in this mode", "/problems/no-merchant", "no_merchant")
     }
     const mode = (config.headers?.["X-Billing-Mode"] as string) === "test" ? "test" : "live"
     const invoices = consoleInvoices(mode)
 
-    if (url.endsWith("/v1.0/console/session")) {
-      return ok(config, MOCK_CONSOLE_SESSION[mode])
-    }
     if (url.includes("/v1.0/console/overview")) {
       const params = new URLSearchParams(url.split("?")[1] ?? "")
       const today = new Date()

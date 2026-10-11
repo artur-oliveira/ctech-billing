@@ -23,17 +23,18 @@ const (
 type members struct {
 	calls int
 	m     map[string]string // "org|user" -> role
+	kinds map[string]string // "org|user" -> kind; absent = "" (organization)
 	err   error
 }
 
-// Membership answers organizations ("" kind, read as organization).
+// Membership answers organizations unless kinds says otherwise.
 func (f *members) Membership(_ context.Context, org, user string) (accountorgs.Membership, error) {
 	f.calls++
 	if f.err != nil {
 		return accountorgs.Membership{}, f.err
 	}
 	role, ok := f.m[org+"|"+user]
-	return accountorgs.Membership{Member: ok, Role: role}, nil
+	return accountorgs.Membership{Member: ok, Role: role, Kind: f.kinds[org+"|"+user]}, nil
 }
 
 // spaceApp mounts the real chain: claims -> user scope -> ResolveSpace ->

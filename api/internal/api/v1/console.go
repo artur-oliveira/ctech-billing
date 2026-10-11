@@ -2,6 +2,10 @@ package v1
 
 import (
 	"context"
+	"errors"
+	"log/slog"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
@@ -13,6 +17,7 @@ import (
 	"gopkg.aoctech.app/billing/api/internal/problem"
 	"gopkg.aoctech.app/billing/api/internal/repositories"
 	"gopkg.aoctech.app/billing/api/internal/services"
+	"gopkg.aoctech.app/billing/api/internal/space"
 )
 
 // The console surface (assessment § 15, screens C1–C9 and C17).
@@ -39,6 +44,10 @@ type consoleHandlers struct {
 	// finance records a credit note against a paid invoice in Finanças (spec
 	// § 3.8). Nil when the deployment has no posting rule.
 	finance creditPoster
+	// spaces lists the person's ctech-account organizations (session, /me).
+	spaces spaceLister
+	// merchants reads a tenant by its account organization (session, /me).
+	merchants middleware.MerchantTenants
 }
 
 // creditPoster is the slice of services.FinanceInvoices the credit-note route
@@ -93,20 +102,62 @@ func (h *consoleHandlers) changeSubscription(c fiber.Ctx) error {
 	return h.changePlan(c, actorOfUser(c))
 }
 
-// session answers "who am I, where am I, and what can I do here" in one call, so
-// the console's shell renders without three round trips (C17).
+// session answers "which organizations can I run billing for, and where does
+// each stand" (spec § 3). It runs before any organization is chosen, so it is
+// mounted outside the merchant chain; the person asked about is always the
+// token's subject.
 func (h *consoleHandlers) session(c fiber.Ctx) error {
-	org := middleware.GetOrganization(c)
-	return c.JSON(sessionResponse{
-		OrganizationID: org.ID,
-		DisplayName:    org.DisplayName,
-		Livemode:       org.Livemode,
-		PayoutStatus:   org.PayoutStatus,
-		// CanCharge is the server's answer, published so the console can explain
-		// the state — never so it can decide it. The gate itself is
-		// Organization.AuthorizeCharge, on the write path (ADR 0005).
-		CanCharge: org.AuthorizeCharge() == nil,
+	sub := middleware.GetClaims(c).Sub
+	out := consoleSessionResponse{Organizations: []merchantOrganizationDTO{}}
+	if h.spaces == nil {
+		out.OrganizationsUnavailable = true
+		return c.JSON(out)
+	}
+	workspaces, err := h.spaces.Organizations(c.Context(), sub)
+	if err != nil {
+		slog.Warn("console: listing organizations failed", "error", err)
+		out.OrganizationsUnavailable = true
+		return c.JSON(out)
+	}
+	for _, w := range workspaces {
+		if !space.IsOrganizationID(w.ID) || !space.IsMerchantRole(space.WorkspaceKind(w.Kind), w.Role) {
+			continue
+		}
+		status, err := h.merchantStatus(c.Context(), sub, w.ID)
+		if err != nil {
+			// One organization whose tenant cannot be read (two tenants on one
+			// key, a throttled read) is left out rather than taking the others
+			// away; a request about that organization answers 500 by itself.
+			slog.Error("console: merchant status failed", "account_organization", w.ID, "error", err)
+			continue
+		}
+		out.Organizations = append(out.Organizations, merchantOrganizationDTO{
+			OrganizationID: w.ID, Selector: "org:" + w.ID, DisplayName: w.DisplayName, Role: w.Role, MerchantStatus: status,
+		})
+	}
+	slices.SortStableFunc(out.Organizations, func(a, b merchantOrganizationDTO) int {
+		if c := strings.Compare(strings.ToLower(a.DisplayName), strings.ToLower(b.DisplayName)); c != 0 {
+			return c
+		}
+		return strings.Compare(a.Selector, b.Selector)
 	})
+	return c.JSON(out)
+}
+
+// merchantStatus is where an account organization stands as a merchant, from
+// its tenant rows in both modes. Part 2 adds the application and suspension.
+func (h *consoleHandlers) merchantStatus(ctx context.Context, sub, accountOrgID string) (billing.MerchantStatus, error) {
+	var rows [2]*billing.Organization // test, live
+	for i, live := range []bool{false, true} {
+		org, err := middleware.LookupMerchantTenant(ctx, h.merchants, sub, accountOrgID, live)
+		switch {
+		case err == nil:
+			rows[i] = org
+		case !errors.Is(err, repositories.ErrNotFound):
+			return "", err
+		}
+	}
+	return billing.MerchantStatusOf(rows[0], rows[1]), nil
 }
 
 // listInvoicesConsole is C2. It defaults to the current month because that is

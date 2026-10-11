@@ -77,7 +77,7 @@ func (r *Resolver) Resolve(ctx context.Context, sub string, sel Selector, livemo
 	if !m.Member || verbs == 0 {
 		return ResolvedSpace{}, ErrSpaceNotFound
 	}
-	return orgSpace(sel.OrganizationID, kind, livemode, verbs), nil
+	return orgSpace(sel.OrganizationID, kind, livemode, verbs).withRole(m.Role), nil
 }
 
 func (r *Resolver) membership(ctx context.Context, orgID, userID string) (cachedMembership, error) {

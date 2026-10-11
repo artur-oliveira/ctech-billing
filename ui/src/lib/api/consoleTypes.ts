@@ -14,7 +14,7 @@ export type {DocumentLink}
 
 export type InvoiceStatus = "DRAFT" | "OPEN" | "PAID" | "VOID" | "UNCOLLECTIBLE"
 
-export interface ConsoleSession {
+export interface ConsoleTenant {
   organization_id: string
   display_name: string
   livemode: boolean
@@ -23,6 +23,28 @@ export interface ConsoleSession {
    *  (ADR 0005). Published so the console can explain the gate, never so it can
    *  decide it. */
   can_charge: boolean
+}
+
+/** Where an organization stands as a merchant (spec § 3). Display data; every
+ *  billing-half request is re-authorized by the server. `rejected` and
+ *  `suspended` arrive with part 2. */
+export type MerchantStatus = "none" | "test" | "live" | "rejected" | "suspended"
+
+/** One organization the person may run billing for (owner or admin). */
+export interface MerchantOrganization {
+  organization_id: string
+  /** The X-Billing-Space value; never built from anything else. */
+  selector: string
+  display_name: string
+  role: "owner" | "admin"
+  merchant_status: MerchantStatus
+}
+
+/** GET /v1.0/console/session (ADR 0028). */
+export interface ConsoleSession {
+  organizations: MerchantOrganization[]
+  /** ctech-account did not answer: the list is empty because it is unknown. */
+  organizations_unavailable: boolean
 }
 
 export interface AuditEntry {
@@ -196,7 +218,7 @@ export interface Issuer {
 }
 
 export interface ConsoleSettings {
-  organization: ConsoleSession
+  organization: ConsoleTenant
   dunning: DunningPolicy
   /** What the invoice PDF is headed by. Empty is a real state the screen has to
    *  point out: documents are going out with no legal name on them. */

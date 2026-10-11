@@ -37,6 +37,9 @@ type ResolvedSpace struct {
 	kind     Kind
 	livemode bool
 	verbs    Verbs
+	// role is the caller's role in the workspace as ctech-account sent it; ""
+	// for the default personal space and for job spaces.
+	role string
 }
 
 const userPrefix = "USER#"
@@ -80,6 +83,19 @@ func (s ResolvedSpace) Mode() string {
 }
 
 func (s ResolvedSpace) Verbs() Verbs { return s.verbs }
+
+// Role is the caller's role in the workspace as ctech-account sent it
+// ("owner", "admin", "member", "viewer"), and "" for the default personal space
+// and for job spaces. Billing decides what a role may do (ADR 0023): read it
+// through VerbsFor or IsMerchantRole, never compare it ad hoc in a handler.
+func (s ResolvedSpace) Role() string { return s.role }
+
+// withRole is set by the resolver only: a role, like verbs, is never built
+// from a header.
+func (s ResolvedSpace) withRole(role string) ResolvedSpace {
+	s.role = role
+	return s
+}
 
 // Can reports whether every verb in v is held.
 func (s ResolvedSpace) Can(v Verbs) bool { return !s.IsZero() && s.verbs.Has(v) }

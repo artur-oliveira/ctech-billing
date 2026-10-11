@@ -12,6 +12,7 @@ import {invoiceTitle} from "@/lib/invoice"
 const problem = (status: number, data: object) => ({response: {status, data: {type: "about:blank", title: "T", status, ...data}}})
 
 const BACKEND_CODES = [
+  "no_merchant", "merchant_role_required",
   "invalid_body", "invalid_cursor", "invalid_link", "invalid_signature", "resource_not_found", "invoice_not_found",
   "subscription_not_found", "customer_tax_id_missing", "invoice_not_payable", "payment_unavailable",
   "charge_amount_rejected", "amount_exceeds_charge_ceiling", "subscription_no_billable_item", "invalid_credentials",
@@ -105,7 +106,7 @@ describe("invoice PDF language", () => {
     }))
     request.mockRestore()
     const get = vi.spyOn(apiClient, "get").mockResolvedValue({data: {url: "u", expires_in: 1}})
-    await getConsoleInvoicePDF("i1", "live", "pt-BR")
+    await getConsoleInvoicePDF({mode: "live", org: "0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b"}, "i1", "pt-BR")
     expect(get).toHaveBeenLastCalledWith("/v1.0/console/invoices/i1/pdf", expect.objectContaining({params: {lang: "pt-BR"}}))
     get.mockRestore()
   })

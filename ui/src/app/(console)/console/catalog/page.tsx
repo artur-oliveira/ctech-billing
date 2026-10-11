@@ -13,7 +13,7 @@ import {ErrorBlock} from "@/components/portal/ErrorBlock"
 import {messageFor} from "@/lib/api/client"
 import {useFieldErrors} from "@/lib/useFieldErrors"
 import {consoleKeys, createProduct, listConsoleProducts} from "@/lib/api/console"
-import {useMode} from "@/lib/console/useMode"
+import {useConsoleScope} from "@/lib/console/scope"
 import {money} from "@/lib/format"
 
 /**
@@ -25,13 +25,13 @@ import {money} from "@/lib/format"
  */
 export default function ConsoleCatalogPage() {
   const {t} = useTranslation()
-  const mode = useMode()
+  const scope = useConsoleScope()
   const queryClient = useQueryClient()
   const [creating, setCreating] = useState(false)
 
   const query = useQuery({
-    queryKey: consoleKeys.products(mode),
-    queryFn: () => listConsoleProducts(mode),
+    queryKey: consoleKeys.products(scope),
+    queryFn: () => listConsoleProducts(scope),
   })
 
   const products = query.data?.data ?? []
@@ -109,7 +109,7 @@ export default function ConsoleCatalogPage() {
         open={creating}
         onClose={() => setCreating(false)}
         onCreated={() => {
-          void queryClient.invalidateQueries({queryKey: consoleKeys.products(mode)})
+          void queryClient.invalidateQueries({queryKey: consoleKeys.products(scope)})
           setCreating(false)
         }}
       />
@@ -123,13 +123,13 @@ function NewProductDialog({
   onCreated,
 }: { open: boolean; onClose: () => void; onCreated: () => void }) {
   const {t} = useTranslation()
-  const mode = useMode()
+  const scope = useConsoleScope()
   const [name, setName] = useState("")
   const [ownerKey, setOwnerKey] = useState("")
 
   const fe = useFieldErrors(["name", "owner_key"], {keepOthers: false})
   const create = useMutation({
-    mutationFn: () => createProduct({name: name.trim(), owner_key: ownerKey.trim()}, mode),
+    mutationFn: () => createProduct(scope, {name: name.trim(), owner_key: ownerKey.trim()}),
     onSuccess: () => {
       toast.success(t("console.catalog.created"))
       setName("")

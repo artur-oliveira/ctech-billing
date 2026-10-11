@@ -45,11 +45,25 @@ type apiEnv struct {
 	org     *billing.Organization
 	client  string
 	priceID string
+	// account is the fake ctech-account this env's server asks, unless the
+	// configure func pointed AccountBaseURL elsewhere. accountOrg is the
+	// account organization e.org is linked to, with e.org.OwnerUserID as its
+	// owner: the console reaches e.org through it (ADR 0028).
+	account    *fakeAccount
+	accountOrg string
+	accountURL string
 }
 
 func newAPI(t *testing.T) *apiEnv {
 	t.Helper()
 	return newAPIWith(t, nil)
+}
+
+// useAccount points an app rebuilt from this env (the portal's, the payment
+// env's) at the same fake ctech-account, so the console still resolves e.org.
+func (e *apiEnv) useAccount(cfg *config.Config) {
+	cfg.AccountBaseURL, cfg.AccountTokenURL = e.accountURL, e.accountURL+"/token"
+	cfg.AccountClientID, cfg.AccountClientSecret = "billing-test", "secret"
 }
 
 // newAPIWith is newAPI with a change to its configuration before the server is
@@ -64,6 +78,10 @@ func newAPIWith(t *testing.T, configure func(*config.Config)) *apiEnv {
 	cfg.CtechIssuerURL = testIssuer
 	cfg.CtechJWKSURL = jwks
 	cfg.ServiceAudience = testAudience
+	acct := &fakeAccount{members: map[string][2]string{}, names: map[string]string{}}
+	srv := acct.serve(t)
+	cfg.AccountBaseURL, cfg.AccountTokenURL = srv.URL, srv.URL+"/token"
+	cfg.AccountClientID, cfg.AccountClientSecret = "billing-test", "secret"
 	if configure != nil {
 		configure(&cfg)
 	}
@@ -77,7 +95,10 @@ func newAPIWith(t *testing.T, configure func(*config.Config)) *apiEnv {
 		t.Fatal(err)
 	}
 
-	org := newOrg(t, true)
+	accountOrg := newSpaceOrgID()
+	org := newLinkedOrg(t, true, accountOrg)
+	acct.set(accountOrg, org.OwnerUserID, "organization", "owner")
+	acct.name(accountOrg, org.DisplayName)
 	clientID := "cli_" + id.New()
 	creds := repositories.NewCredentialRepository(testDB, testCfg)
 	if err := creds.Create(ctx, &billing.APICredential{
@@ -106,7 +127,7 @@ func newAPIWith(t *testing.T, configure func(*config.Config)) *apiEnv {
 		t.Fatal(err)
 	}
 
-	return &apiEnv{app: server, key: key, jwksURL: jwks, org: org, client: clientID, priceID: price.ID}
+	return &apiEnv{app: server, key: key, jwksURL: jwks, org: org, client: clientID, priceID: price.ID, account: acct, accountOrg: accountOrg, accountURL: srv.URL}
 }
 
 // token mints an access token. sid empty means an M2M client_credentials token.

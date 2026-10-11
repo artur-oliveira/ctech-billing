@@ -22,7 +22,7 @@ const renderLink: RenderLink = props => <Link {...props}/>
  *
  * Portal and Finanças are everyone's (everybody is a customer and has a
  * personal space, ADR 0025). Console is invoicing, so it is offered only when
- * the operator probe (the console session, live) answers; a failed probe is
+ * the console session lists an organization that bills; a failed probe is
  * not an error, it means no console.
  *
  * The name comes from the portal session, which has the full name and the
@@ -45,13 +45,15 @@ export function AccountMenu({view}: {view: "portal" | "console" | "finance"}) {
     refetchOnWindowFocus: query => !isNoBillingAccount(query.state.error),
   })
   const {data: operator} = useQuery({
-    // Live: the portal has no mode switch, and the console opens on live too.
-    queryKey: consoleKeys.session("live"),
-    queryFn: () => getConsoleSession("live"),
+    queryKey: consoleKeys.session(),
+    queryFn: getConsoleSession,
     enabled: authenticated,
     retry: false,
-    // An operator does not gain or lose an organization mid-session.
-    staleTime: Infinity,
+    staleTime: 60_000,
+    // An organization with a tenant in either mode: the console is invoicing,
+    // and an organization that does not bill yet has nothing there (part 2
+    // brings the invitation and widens this).
+    select: s => s.organizations.some(o => o.merchant_status !== "none"),
   })
 
   if (!authenticated) return null

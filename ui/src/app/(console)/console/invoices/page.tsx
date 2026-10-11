@@ -10,7 +10,7 @@ import {useTranslation} from "react-i18next"
 import {InvoiceStatusBadge} from "@/components/console/InvoiceStatusBadge"
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
 import {consoleKeys, listConsoleInvoices} from "@/lib/api/console"
-import {useMode} from "@/lib/console/useMode"
+import {useConsoleScope} from "@/lib/console/scope"
 import {money, shortDate} from "@/lib/format"
 import {currentLocale} from "@/lib/i18n"
 
@@ -28,14 +28,14 @@ import {currentLocale} from "@/lib/i18n"
  */
 export default function ConsoleInvoicesPage() {
   const {t} = useTranslation()
-  const mode = useMode()
+  const scope = useConsoleScope()
   const today = new Date()
   const [year, setYear] = useState(today.getFullYear())
   const [month, setMonth] = useState(today.getMonth() + 1)
 
   const query = useQuery({
-    queryKey: consoleKeys.invoiceMonth(mode, year, month),
-    queryFn: () => listConsoleInvoices(year, month, undefined, mode),
+    queryKey: consoleKeys.invoiceMonth(scope, year, month),
+    queryFn: () => listConsoleInvoices(scope, year, month),
   })
 
   const invoices = query.data?.data ?? []

@@ -1,4 +1,13 @@
 {
+ "organization": {
+  "label": "Organization",
+  "unavailable": "We could not check your organizations right now.",
+  "retry": "Try again"
+ },
+ "noMerchant": {
+  "title": "Billing is not on",
+  "body": "{{name}} does not bill its own customers through CTech Billing in this mode yet."
+ },
  "nav": {
   "label": "Sections",
   "overview": "Overview",

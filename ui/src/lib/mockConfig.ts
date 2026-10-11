@@ -34,6 +34,7 @@ export type MockScenario =
   | "sem_assinatura"
   | "sem_conta"
   | "org_sem_conta"
+  | "sem_cobranca"
   | "em_dia"
   | "vence_em_3_dias"
   | "vencida"
@@ -60,6 +61,7 @@ export const MOCK_SCENARIOS: { id: MockScenario; label: string }[] = [
   {id: "sem_assinatura", label: "Cliente sem assinatura"},
   {id: "sem_conta", label: "Sem conta de cobrança (403)"},
   {id: "org_sem_conta", label: "Organização sem conta de cobrança (403)"},
+  {id: "sem_cobranca", label: "Console: organização sem cobrança (no_merchant)"},
   {id: "termos_pendentes", label: "Termos pendentes"},
   {id: "erro_de_rede", label: "Erro de rede"},
   {id: "manutencao", label: "Manutenção (503)"},

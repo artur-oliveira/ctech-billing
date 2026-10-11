@@ -8,12 +8,15 @@ import {afterEach, describe, expect, it, vi} from "vitest"
 import ConsoleInvoicesPage from "@/app/(console)/console/invoices/page"
 import ConsoleSubscriptionsPage from "@/app/(console)/console/subscriptions/page"
 import * as consoleApi from "@/lib/api/console"
+import {ConsoleScopeProvider} from "@/lib/console/scope"
+
+const SCOPE = {mode: "live", org: "0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b"} as const
 
 afterEach(() => vi.restoreAllMocks())
 
 function wrap(ui: ReactNode) {
   const client = new QueryClient({defaultOptions: {queries: {retry: false}}})
-  return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>)
+  return render(<QueryClientProvider client={client}><ConsoleScopeProvider value={SCOPE}>{ui}</ConsoleScopeProvider></QueryClientProvider>)
 }
 
 // The console's periods are the domain's (period_start/period_end), exactly as

@@ -259,6 +259,16 @@ func BuildInvoices(ctx context.Context, cfg *config.Config) (*repositories.Invoi
 	return repositories.NewInvoiceRepository(db, cfg), nil
 }
 
+// BuildOrganizations wires only the organizations repository, for the
+// account-organization lookup backfill.
+func BuildOrganizations(ctx context.Context, cfg *config.Config) (*repositories.OrganizationRepository, error) {
+	db, err := newDynamoDB(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+	return repositories.NewOrganizationRepository(db, cfg), nil
+}
+
 // BuildDeliverer wires only what the outbound webhook job needs.
 //
 // One repository: the delivery job reads endpoints, events and deliveries, and

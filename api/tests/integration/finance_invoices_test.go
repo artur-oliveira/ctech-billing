@@ -56,9 +56,9 @@ func TestProvisioningGivesAnOwnerlessTenantItsOwnerOnce(t *testing.T) {
 	if !contains(res.Created, "organization owner "+plan.Organization.ID) {
 		t.Fatalf("created = %v", res.Created)
 	}
-	found, err := repos.Organizations.GetByOwner(ctx, owner, true)
-	if err != nil || found.ID != plan.Organization.ID {
-		t.Fatalf("GetByOwner = %v, %v; want %s", found, err, plan.Organization.ID)
+	found, err := repos.Organizations.Get(ctx, plan.Organization.ID, true)
+	if err != nil || found.OwnerUserID != owner {
+		t.Fatalf("stored owner = %+v, %v; want %s", found, err, owner)
 	}
 	res, err = provision.Apply(ctx, repos, plan, true, now())
 	if err != nil || !contains(res.Skipped, "organization owner "+plan.Organization.ID) {
@@ -449,7 +449,9 @@ func newFinancePayEnv(t *testing.T, payerHasSpace bool) *financePayEnv {
 	t.Helper()
 	e := newPayEnv(t)
 	orgs := repositories.NewOrganizationRepository(testDB, testCfg)
-	link := newSpaceOrgID()
+	// e.org is already linked to e.accountOrg (newAPI): the console reaches it
+	// through that organization, so the issuer's space is the same one.
+	link := e.accountOrg
 	if err := orgs.LinkAccountOrganization(ctxT(t), e.org, link, "test", "req_setup", now()); err != nil {
 		t.Fatal(err)
 	}

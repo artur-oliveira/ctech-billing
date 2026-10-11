@@ -71,3 +71,12 @@ func VerbsFor(kind Kind, role string) Verbs {
 	}
 	return 0
 }
+
+// IsMerchantRole reports whether a workspace kind and role reach the billing
+// (merchant) half of the console (ADR 0028): owner or admin of an
+// organization. Personal workspaces are never merchants, and member and viewer
+// never reach it — it holds the merchant's customers' personal data. Any other
+// role or kind is refused, so a ladder that grows upstream inherits nothing.
+func IsMerchantRole(kind Kind, role string) bool {
+	return kind == KindOrganization && (role == "owner" || role == "admin")
+}

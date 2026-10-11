@@ -21,157 +21,160 @@ import type {
   DunningPolicy,
   DunningStep,
 } from "@/lib/api/consoleTypes"
-import {getMode, type Mode} from "@/lib/console/mode"
+
+import type {ConsoleScope} from "@/lib/console/merchant"
 
 /**
- * The console's calls. Every one of them carries the mode header, and it is
- * added here rather than by each caller: the server reads the tenant from the
- * session and the mode from this header (ADR 0011), so a request that forgets
- * it is a request answered about live data from a screen showing test.
+ * The billing half's calls. Every one carries the mode AND the organization,
+ * added here rather than by each caller: the server resolves the tenant from
+ * the selected organization and the person's role (ADR 0028) and the mode from
+ * the header (ADR 0011). A scope is required, never read from storage here.
  */
-function modeHeaders(mode: Mode = getMode()) {
-  return {headers: {"X-Billing-Mode": mode}}
+function scopeHeaders(s: ConsoleScope) {
+  return {headers: {"X-Billing-Mode": s.mode, "X-Billing-Space": `org:${s.org}`}}
 }
 
 /**
- * Query keys. The mode is **part of every key**, which is the whole reason this
- * object exists: without it, switching to test would render live rows out of
- * the cache until each query refetched, and the one mistake this shell is built
- * to prevent is acting on the wrong mode.
+ * Query keys. Organization and mode are part of every key: two organizations
+ * or two modes are two caches, so a switch can never show one's rows under the
+ * other's name.
  */
 export const consoleKeys = {
-  session: (mode: Mode) => ["console", mode, "session"] as const,
-  overview: (mode: Mode, year: number, month: number) =>
-    ["console", mode, "overview", year, month] as const,
-  settings: (mode: Mode) => ["console", mode, "settings"] as const,
-  invoices: (mode: Mode) => ["console", mode, "invoices"] as const,
-  invoiceMonth: (mode: Mode, year: number, month: number) =>
-    ["console", mode, "invoices", "month", year, month] as const,
-  invoice: (mode: Mode, id: string) => ["console", mode, "invoices", "detail", id] as const,
-  customers: (mode: Mode) => ["console", mode, "customers"] as const,
-  customer: (mode: Mode, id: string) => ["console", mode, "customers", "detail", id] as const,
-  subscriptions: (mode: Mode) => ["console", mode, "subscriptions"] as const,
-  subscription: (mode: Mode, id: string) =>
-    ["console", mode, "subscriptions", "detail", id] as const,
-  products: (mode: Mode) => ["console", mode, "products"] as const,
-  product: (mode: Mode, id: string) => ["console", mode, "products", "detail", id] as const,
+  session: () => ["console", "session"] as const,
+  overview: (s: ConsoleScope, year: number, month: number) =>
+    ["console", s.org, s.mode, "overview", year, month] as const,
+  settings: (s: ConsoleScope) => ["console", s.org, s.mode, "settings"] as const,
+  invoices: (s: ConsoleScope) => ["console", s.org, s.mode, "invoices"] as const,
+  invoiceMonth: (s: ConsoleScope, year: number, month: number) =>
+    ["console", s.org, s.mode, "invoices", "month", year, month] as const,
+  invoice: (s: ConsoleScope, id: string) => ["console", s.org, s.mode, "invoices", "detail", id] as const,
+  customers: (s: ConsoleScope) => ["console", s.org, s.mode, "customers"] as const,
+  customer: (s: ConsoleScope, id: string) => ["console", s.org, s.mode, "customers", "detail", id] as const,
+  subscriptions: (s: ConsoleScope) => ["console", s.org, s.mode, "subscriptions"] as const,
+  subscription: (s: ConsoleScope, id: string) =>
+    ["console", s.org, s.mode, "subscriptions", "detail", id] as const,
+  products: (s: ConsoleScope) => ["console", s.org, s.mode, "products"] as const,
+  product: (s: ConsoleScope, id: string) => ["console", s.org, s.mode, "products", "detail", id] as const,
 }
 
-export async function getConsoleSession(mode?: Mode): Promise<ConsoleSession> {
-  const {data} = await apiClient.get<ConsoleSession>("/v1.0/console/session", modeHeaders(mode))
+/** The organizations this person may run billing for. No mode, no space: it is
+ *  what an organization is chosen from. */
+export async function getConsoleSession(): Promise<ConsoleSession> {
+  const {data} = await apiClient.get<ConsoleSession>("/v1.0/console/session")
   return data
 }
 
 export async function getConsoleOverview(
+  scope: ConsoleScope,
   year: number,
   month: number,
-  mode?: Mode,
 ): Promise<ConsoleOverview> {
   const {data} = await apiClient.get<ConsoleOverview>("/v1.0/console/overview", {
-    ...modeHeaders(mode),
+    ...scopeHeaders(scope),
     params: {year, month},
   })
   return data
 }
 
-export async function getConsoleSettings(mode?: Mode): Promise<ConsoleSettings> {
-  const {data} = await apiClient.get<ConsoleSettings>("/v1.0/console/settings", modeHeaders(mode))
+export async function getConsoleSettings(scope: ConsoleScope): Promise<ConsoleSettings> {
+  const {data} = await apiClient.get<ConsoleSettings>("/v1.0/console/settings", scopeHeaders(scope))
   return data
 }
 
 /** Replaces the organization's default schedule. An empty list restores the
  *  built-in one — there is no "never chase this". */
 export async function setDunningPolicy(
+  scope: ConsoleScope,
   steps: DunningStep[],
-  mode?: Mode,
 ): Promise<DunningPolicy> {
   const {data} = await apiClient.put<DunningPolicy>(
     "/v1.0/console/settings/dunning",
     {steps},
-    modeHeaders(mode),
+    scopeHeaders(scope),
   )
   return data
 }
 
 /** Overrides (or clears) one product's schedule. */
 export async function setProductDunningPolicy(
+  scope: ConsoleScope,
   productId: string,
   steps: DunningStep[],
-  mode?: Mode,
 ): Promise<DunningPolicy> {
   const {data} = await apiClient.put<DunningPolicy>(
     `/v1.0/console/products/${productId}/dunning`,
     {steps},
-    modeHeaders(mode),
+    scopeHeaders(scope),
   )
   return data
 }
 
 /** Reveals a customer's full tax id, and records who looked. A POST because it
  *  has an effect — the audit row — not because it sends anything. */
-export async function revealTaxID(customerId: string, mode?: Mode): Promise<string> {
+export async function revealTaxID(scope: ConsoleScope, customerId: string): Promise<string> {
   const {data} = await apiClient.post<{tax_id: string}>(
     `/v1.0/console/customers/${customerId}/tax-id`,
     undefined,
-    modeHeaders(mode),
+    scopeHeaders(scope),
   )
   return data.tax_id
 }
 
 export async function listConsoleInvoices(
+  scope: ConsoleScope,
   year: number,
   month: number,
   cursor?: string,
-  mode?: Mode,
 ): Promise<ConsolePage<ConsoleInvoiceRow>> {
   const {data} = await apiClient.get<ConsolePage<ConsoleInvoiceRow>>("/v1.0/console/invoices", {
-    ...modeHeaders(mode),
+    ...scopeHeaders(scope),
     params: {year, month, ...(cursor ? {cursor} : {})},
   })
   return data
 }
 
-export async function getConsoleInvoice(id: string, mode?: Mode): Promise<ConsoleInvoiceDetail> {
+export async function getConsoleInvoice(scope: ConsoleScope, id: string): Promise<ConsoleInvoiceDetail> {
   const {data} = await apiClient.get<ConsoleInvoiceDetail>(
     `/v1.0/console/invoices/${id}`,
-    modeHeaders(mode),
+    scopeHeaders(scope),
   )
   return data
 }
 
-export async function listConsoleCustomers(mode?: Mode): Promise<ConsolePage<ConsoleCustomer>> {
+export async function listConsoleCustomers(scope: ConsoleScope): Promise<ConsolePage<ConsoleCustomer>> {
   const {data} = await apiClient.get<ConsolePage<ConsoleCustomer>>(
     "/v1.0/console/customers",
-    modeHeaders(mode),
+    scopeHeaders(scope),
   )
   return data
 }
 
-export async function getConsoleCustomer(id: string, mode?: Mode): Promise<ConsoleCustomerDetail> {
+export async function getConsoleCustomer(scope: ConsoleScope, id: string): Promise<ConsoleCustomerDetail> {
   const {data} = await apiClient.get<ConsoleCustomerDetail>(
     `/v1.0/console/customers/${id}`,
-    modeHeaders(mode),
+    scopeHeaders(scope),
   )
   return data
 }
 
 export async function listConsoleSubscriptions(
-  mode?: Mode,
+  scope: ConsoleScope,
+
 ): Promise<ConsolePage<ConsoleSubscriptionRow>> {
   const {data} = await apiClient.get<ConsolePage<ConsoleSubscriptionRow>>(
     "/v1.0/console/subscriptions",
-    modeHeaders(mode),
+    scopeHeaders(scope),
   )
   return data
 }
 
 export async function getConsoleSubscription(
+  scope: ConsoleScope,
   id: string,
-  mode?: Mode,
 ): Promise<ConsoleSubscriptionDetail> {
   const {data} = await apiClient.get<ConsoleSubscriptionDetail>(
     `/v1.0/console/subscriptions/${id}`,
-    modeHeaders(mode),
+    scopeHeaders(scope),
   )
   return data
 }
@@ -180,30 +183,30 @@ export async function getConsoleSubscription(
  *  stops entitlement now, the other keeps it until the period the customer has
  *  already paid for runs out. */
 export async function cancelConsoleSubscription(
+  scope: ConsoleScope,
   id: string,
   atPeriodEnd: boolean,
-  mode?: Mode,
 ): Promise<ConsoleSubscription> {
   const {data} = await apiClient.post<ConsoleSubscription>(
     `/v1.0/console/subscriptions/${id}/cancel`,
     {at_period_end: atPeriodEnd},
-    modeHeaders(mode),
+    scopeHeaders(scope),
   )
   return data
 }
 
-export async function listConsoleProducts(mode?: Mode): Promise<ConsolePage<ConsoleProduct>> {
+export async function listConsoleProducts(scope: ConsoleScope): Promise<ConsolePage<ConsoleProduct>> {
   const {data} = await apiClient.get<ConsolePage<ConsoleProduct>>(
     "/v1.0/console/products",
-    modeHeaders(mode),
+    scopeHeaders(scope),
   )
   return data
 }
 
-export async function getConsoleProduct(id: string, mode?: Mode): Promise<ConsoleProduct> {
+export async function getConsoleProduct(scope: ConsoleScope, id: string): Promise<ConsoleProduct> {
   const {data} = await apiClient.get<ConsoleProduct>(
     `/v1.0/console/products/${id}`,
-    modeHeaders(mode),
+    scopeHeaders(scope),
   )
   return data
 }
@@ -213,11 +216,11 @@ export interface NewProductInput {
   owner_key?: string
 }
 
-export async function createProduct(input: NewProductInput, mode?: Mode): Promise<ConsoleProduct> {
+export async function createProduct(scope: ConsoleScope, input: NewProductInput): Promise<ConsoleProduct> {
   const {data} = await apiClient.post<ConsoleProduct>(
     "/v1.0/console/products",
     input,
-    modeHeaders(mode),
+    scopeHeaders(scope),
   )
   return data
 }
@@ -231,33 +234,33 @@ export interface NewPriceInput {
 }
 
 /** A new price, never an edit: a price is immutable, and the screen says so. */
-export async function createPrice(input: NewPriceInput, mode?: Mode): Promise<ConsolePrice> {
+export async function createPrice(scope: ConsoleScope, input: NewPriceInput): Promise<ConsolePrice> {
   const {data} = await apiClient.post<ConsolePrice>(
     "/v1.0/console/prices",
     input,
-    modeHeaders(mode),
+    scopeHeaders(scope),
   )
   return data
 }
 
 /** Withdraws a price from sale. It does not touch the subscriptions on it. */
-export async function archivePrice(id: string, mode?: Mode): Promise<ConsolePrice> {
+export async function archivePrice(scope: ConsoleScope, id: string): Promise<ConsolePrice> {
   const {data} = await apiClient.post<ConsolePrice>(
     `/v1.0/console/prices/${id}/archive`,
     undefined,
-    modeHeaders(mode),
+    scopeHeaders(scope),
   )
   return data
 }
 
 export async function getConsoleInvoicePDF(
+  scope: ConsoleScope,
   id: string,
-  mode?: Mode,
   lang: SupportedLocale = currentLocale(),
 ): Promise<DocumentLink> {
   const {data} = await apiClient.get<DocumentLink>(
     `/v1.0/console/invoices/${id}/pdf`,
-    {...modeHeaders(mode), params: {lang}},
+    {...scopeHeaders(scope), params: {lang}},
   )
   return data
 }
@@ -272,30 +275,30 @@ export interface IssuerInput {
 /** Who the invoice PDF says is charging. Written as one block: the four fields
  *  are printed together, and a partial update is how a document ends up headed
  *  by one company's name over another's CNPJ. */
-export async function setIssuer(input: IssuerInput, mode?: Mode): Promise<IssuerInput> {
+export async function setIssuer(scope: ConsoleScope, input: IssuerInput): Promise<IssuerInput> {
   const {data} = await apiClient.put<IssuerInput>(
     "/v1.0/console/settings/issuer",
     input,
-    modeHeaders(mode),
+    scopeHeaders(scope),
   )
   return data
 }
 
 /** Issues a draft invoice — the sweep's own path, with the operator as actor. */
-export async function finalizeInvoice(id: string, mode?: Mode): Promise<ConsoleInvoiceDetail> {
+export async function finalizeInvoice(scope: ConsoleScope, id: string): Promise<ConsoleInvoiceDetail> {
   const {data} = await apiClient.post<ConsoleInvoiceDetail>(
     `/v1.0/console/invoices/${id}/finalize`,
     undefined,
-    modeHeaders(mode),
+    scopeHeaders(scope),
   )
   return data
 }
 
-export async function voidInvoice(id: string, mode?: Mode): Promise<ConsoleInvoiceDetail> {
+export async function voidInvoice(scope: ConsoleScope, id: string): Promise<ConsoleInvoiceDetail> {
   const {data} = await apiClient.post<ConsoleInvoiceDetail>(
     `/v1.0/console/invoices/${id}/void`,
     undefined,
-    modeHeaders(mode),
+    scopeHeaders(scope),
   )
   return data
 }
@@ -308,9 +311,9 @@ export interface CreditNoteInput {
 }
 
 export async function creditInvoice(
+  scope: ConsoleScope,
   id: string,
   input: CreditNoteInput,
-  mode?: Mode,
 ): Promise<void> {
-  await apiClient.post(`/v1.0/console/invoices/${id}/credit-notes`, input, modeHeaders(mode))
+  await apiClient.post(`/v1.0/console/invoices/${id}/credit-notes`, input, scopeHeaders(scope))
 }

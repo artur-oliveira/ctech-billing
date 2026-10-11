@@ -35,9 +35,11 @@ func newKeys(pk, sk string, r Retention, now time.Time) keys {
 type organizationRow struct {
 	keys
 	billing.Organization
-	// LookupPK resolves the organization from its owner's user id, for the
-	// console session (ADR 0011). Sparse: an organization provisioned without an
-	// owner is not reachable from a browser, which is the safe direction.
+	// LookupPK resolves the tenant for the console session: the account
+	// organization it is linked to (LookupOrganizationAccountPK, ADR 0028), or,
+	// on rows written before that and not yet backfilled, its owner
+	// (LookupOrganizationOwnerPK, ADR 0011). Sparse: a tenant with neither is
+	// reachable only through M2M credentials, which is the safe direction.
 	LookupPK string `dynamodbav:"lookup_pk,omitempty"`
 }
 

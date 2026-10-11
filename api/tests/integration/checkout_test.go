@@ -208,6 +208,7 @@ func newPayEnv(t *testing.T) *payEnv {
 	cfg.WalletWebhookSecret = testWalletSecret
 	cfg.CheckoutLinkSecret = testLinkSecret
 	cfg.CheckoutBaseURL = "https://pay.test/c"
+	base.useAccount(&cfg)
 
 	server, err := app.Build(ctxT(t), &cfg, func() time.Time { return now() })
 	if err != nil {
@@ -727,6 +728,7 @@ func TestConsoleCancellationIsAttributedToTheOperator(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+operator)
 	req.Header.Set(middleware.ModeHeader, "live")
+	req.Header.Set(middleware.SpaceHeader, "org:"+e.accountOrg)
 	resp, err := e.app.Test(req, fiber.TestConfig{Timeout: 15 * time.Second})
 	if err != nil {
 		t.Fatal(err)

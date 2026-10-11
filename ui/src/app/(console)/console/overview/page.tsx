@@ -7,7 +7,7 @@ import {useTranslation} from "react-i18next"
 
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
 import {consoleKeys, getConsoleOverview} from "@/lib/api/console"
-import {useMode} from "@/lib/console/useMode"
+import {useConsoleScope} from "@/lib/console/scope"
 import {money} from "@/lib/format"
 import {currentLocale} from "@/lib/i18n"
 
@@ -27,14 +27,14 @@ import {currentLocale} from "@/lib/i18n"
  */
 export default function ConsoleOverviewPage() {
   const {t} = useTranslation()
-  const mode = useMode()
+  const scope = useConsoleScope()
   const today = new Date()
   const year = today.getFullYear()
   const month = today.getMonth() + 1
 
   const query = useQuery({
-    queryKey: consoleKeys.overview(mode, year, month),
-    queryFn: () => getConsoleOverview(year, month, mode),
+    queryKey: consoleKeys.overview(scope, year, month),
+    queryFn: () => getConsoleOverview(scope, year, month),
   })
 
   const label = new Intl.DateTimeFormat(currentLocale(), {month: "long", year: "numeric"})

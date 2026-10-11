@@ -20,7 +20,7 @@ import (
 
 // settingsResponse is C17.
 type settingsResponse struct {
-	Organization sessionResponse `json:"organization"`
+	Organization tenantResponse `json:"organization"`
 	// Dunning is the schedule in force, always populated: an organization on the
 	// built-in default gets the built-in default here rather than an empty list,
 	// because the screen's question is "what happens to an unpaid invoice" and
@@ -101,7 +101,7 @@ func (h *consoleHandlers) settings(c fiber.Ctx) error {
 		return fail(c, err)
 	}
 	return c.JSON(settingsResponse{
-		Organization: sessionResponse{
+		Organization: tenantResponse{
 			OrganizationID: org.ID,
 			DisplayName:    org.DisplayName,
 			Livemode:       org.Livemode,

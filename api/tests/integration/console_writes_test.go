@@ -3,15 +3,10 @@
 package integration
 
 import (
-	"bytes"
 	"fmt"
-	"io"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 	"time"
-
-	"github.com/gofiber/fiber/v3"
 
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
 	"gopkg.aoctech.app/billing/api/internal/domain/brcal"
@@ -37,27 +32,7 @@ func (e *apiEnv) consolePut(t *testing.T, path, token, mode, body string) apiRes
 
 func (e *apiEnv) consoleWrite(t *testing.T, method, path, token, mode, body string) apiResponse {
 	t.Helper()
-	var reader io.Reader
-	if body != "" {
-		reader = bytes.NewBufferString(body)
-	}
-	req := httptest.NewRequest(method, path, reader)
-	if body != "" {
-		req.Header.Set("Content-Type", "application/json")
-	}
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set(middleware.ModeHeader, mode)
-
-	resp, err := e.app.Test(req, fiber.TestConfig{Timeout: 15 * time.Second})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer resp.Body.Close()
-	payload, err := io.ReadAll(resp.Body)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return apiResponse{status: resp.StatusCode, header: resp.Header, body: payload}
+	return e.consoleAs(t, method, path, token, mode, "org:"+e.accountOrg, body)
 }
 
 type consoleInvoiceDetail struct {

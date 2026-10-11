@@ -45,6 +45,12 @@ const (
 	// TypeSpaceUnavailable is ctech-account being unreachable: access fails
 	// closed, and the body says nothing about any organization.
 	TypeSpaceUnavailable = "/problems/space-unavailable"
+	// TypeNoMerchant is an organization the person may administer that has no
+	// billing tenant in the requested mode. The console renders it as the
+	// invitation to bill through CTech Billing (spec § 7.1), so a client
+	// branches on it; it says nothing a member of the organization does not
+	// already know, and only members get this far.
+	TypeNoMerchant = "/problems/no-merchant"
 )
 
 // FieldError is a single field-level validation failure.

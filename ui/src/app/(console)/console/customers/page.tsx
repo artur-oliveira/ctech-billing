@@ -8,7 +8,7 @@ import {useTranslation} from "react-i18next"
 
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
 import {consoleKeys, listConsoleCustomers} from "@/lib/api/console"
-import {useMode} from "@/lib/console/useMode"
+import {useConsoleScope} from "@/lib/console/scope"
 
 /**
  * C6 — the customers.
@@ -20,10 +20,10 @@ import {useMode} from "@/lib/console/useMode"
  */
 export default function ConsoleCustomersPage() {
   const {t} = useTranslation()
-  const mode = useMode()
+  const scope = useConsoleScope()
   const query = useQuery({
-    queryKey: consoleKeys.customers(mode),
-    queryFn: () => listConsoleCustomers(mode),
+    queryKey: consoleKeys.customers(scope),
+    queryFn: () => listConsoleCustomers(scope),
   })
 
   const customers = query.data?.data ?? []

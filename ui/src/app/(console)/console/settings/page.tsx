@@ -19,7 +19,7 @@ import {
   type IssuerInput,
 } from "@/lib/api/console"
 import type {DunningStep, Issuer} from "@/lib/api/consoleTypes"
-import {useMode} from "@/lib/console/useMode"
+import {useConsoleScope} from "@/lib/console/scope"
 
 /**
  * C17 — configurações.
@@ -31,17 +31,17 @@ import {useMode} from "@/lib/console/useMode"
  */
 export default function ConsoleSettingsPage() {
   const {t} = useTranslation()
-  const mode = useMode()
+  const scope = useConsoleScope()
   const queryClient = useQueryClient()
 
   const query = useQuery({
-    queryKey: consoleKeys.settings(mode),
-    queryFn: () => getConsoleSettings(mode),
+    queryKey: consoleKeys.settings(scope),
+    queryFn: () => getConsoleSettings(scope),
   })
 
   const save = useMutation({
-    mutationFn: (steps: DunningStep[]) => setDunningPolicy(steps, mode),
-    onSuccess: () => queryClient.invalidateQueries({queryKey: consoleKeys.settings(mode)}),
+    mutationFn: (steps: DunningStep[]) => setDunningPolicy(scope, steps),
+    onSuccess: () => queryClient.invalidateQueries({queryKey: consoleKeys.settings(scope)}),
   })
 
   /** An enum code from the API, translated; an unknown one shows as itself. */
@@ -69,7 +69,7 @@ export default function ConsoleSettingsPage() {
       </dl>
 
       {settings.documents_enabled && (
-        <IssuerCard issuer={settings.issuer} mode={mode}/>
+        <IssuerCard issuer={settings.issuer}/>
       )}
 
       <DunningPolicyCard
@@ -95,8 +95,9 @@ export default function ConsoleSettingsPage() {
  * CNPJ or an address, and refusing a legitimate one because its own check was
  * wrong would be worse than printing what it was told.
  */
-function IssuerCard({issuer, mode}: { issuer: Issuer; mode: "live" | "test" }) {
+function IssuerCard({issuer}: { issuer: Issuer }) {
   const {t} = useTranslation()
+  const scope = useConsoleScope()
   const queryClient = useQueryClient()
   const [editing, setEditing] = useState(false)
 
@@ -128,10 +129,9 @@ function IssuerCard({issuer, mode}: { issuer: Issuer; mode: "live" | "test" }) {
       {editing && (
         <IssuerEditor
           issuer={issuer}
-          mode={mode}
           onClose={() => setEditing(false)}
           onSaved={() => {
-            void queryClient.invalidateQueries({queryKey: consoleKeys.settings(mode)})
+            void queryClient.invalidateQueries({queryKey: consoleKeys.settings(scope)})
             setEditing(false)
           }}
         />
@@ -142,16 +142,15 @@ function IssuerCard({issuer, mode}: { issuer: Issuer; mode: "live" | "test" }) {
 
 function IssuerEditor({
   issuer,
-  mode,
   onClose,
   onSaved,
 }: {
   issuer: Issuer
-  mode: "live" | "test"
   onClose: () => void
   onSaved: () => void
 }) {
   const {t} = useTranslation()
+  const scope = useConsoleScope()
   const [form, setForm] = useState<IssuerInput>({
     legal_name: issuer.legal_name ?? "",
     tax_id: issuer.tax_id ?? "",
@@ -161,7 +160,7 @@ function IssuerEditor({
 
   const fe = useFieldErrors(["legal_name", "tax_id", "address", "email"], {keepOthers: false})
   const save = useMutation({
-    mutationFn: () => setIssuer(form, mode),
+    mutationFn: () => setIssuer(scope, form),
     onSuccess: () => {
       toast.success(t("console.settings.saved"))
       onSaved()

@@ -23,15 +23,38 @@ import (
 // the payloads: the console reads the same repositories the M2M routes read, and
 // the only new thing it can get wrong is *whose* data it reads.
 
-// console performs a console request with a real signed session token.
+// console performs a GET on the console with a real signed session token, in
+// e's organization space.
 func (e *apiEnv) console(t *testing.T, path, token, mode string) apiResponse {
 	t.Helper()
-	req := httptest.NewRequest(http.MethodGet, path, nil)
+	selector := ""
+	if strings.HasPrefix(path, "/v1.0/console/") {
+		// The portal and /v1/me take no organization selector.
+		selector = "org:" + e.accountOrg
+	}
+	return e.consoleAs(t, http.MethodGet, path, token, mode, selector, "")
+}
+
+// consoleAs is the one console request builder: any method, mode, selector
+// ("" sends no X-Billing-Space) and JSON body.
+func (e *apiEnv) consoleAs(t *testing.T, method, path, token, mode, selector, body string) apiResponse {
+	t.Helper()
+	var reader io.Reader
+	if body != "" {
+		reader = strings.NewReader(body)
+	}
+	req := httptest.NewRequest(method, path, reader)
+	if body != "" {
+		req.Header.Set("Content-Type", "application/json")
+	}
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
 	if mode != "" {
 		req.Header.Set(middleware.ModeHeader, mode)
+	}
+	if selector != "" {
+		req.Header.Set(middleware.SpaceHeader, selector)
 	}
 	resp, err := e.app.Test(req, fiber.TestConfig{Timeout: 15 * time.Second})
 	if err != nil {
@@ -51,53 +74,60 @@ func (e *apiEnv) sessionToken(t *testing.T, scopes ...string) string {
 	return e.token(t, e.org.OwnerUserID, "sess_"+id.New(), scopes...)
 }
 
-func TestConsoleResolvesTheOrganizationFromTheOwner(t *testing.T) {
+// The tenant is the selected organization's (ADR 0028); /settings carries its
+// block, which is the console's "where am I".
+func TestConsoleResolvesTheTenantOfTheSelectedOrganization(t *testing.T) {
 	e := newAPI(t)
-	token := e.sessionToken(t, middleware.ScopeOrganizationRead)
-
-	res := e.console(t, "/v1.0/console/session", token, "live")
+	res := e.console(t, "/v1.0/console/settings", e.sessionToken(t, middleware.ScopeOrganizationRead), "live")
 	if res.status != http.StatusOK {
 		t.Fatalf("status = %d: %s", res.status, res.body)
 	}
 	var body struct {
-		OrganizationID string `json:"organization_id"`
-		Livemode       bool   `json:"livemode"`
-		CanCharge      bool   `json:"can_charge"`
+		Organization struct {
+			OrganizationID string `json:"organization_id"`
+			Livemode       bool   `json:"livemode"`
+			CanCharge      bool   `json:"can_charge"`
+		} `json:"organization"`
 	}
 	res.decode(t, &body)
-	if body.OrganizationID != e.org.ID {
-		t.Fatalf("organization = %q, want %q", body.OrganizationID, e.org.ID)
-	}
-	if !body.Livemode {
-		t.Fatal("live mode was requested and must be reported back")
-	}
-	if !body.CanCharge {
-		t.Fatal("the test organization is payout-enabled; can_charge must say so")
+	if body.Organization.OrganizationID != e.org.ID || !body.Organization.Livemode || !body.Organization.CanCharge {
+		t.Fatalf("organization = %+v, want %s live and chargeable", body.Organization, e.org.ID)
 	}
 }
 
-// The mode is required rather than defaulted: a console that forgets the header
-// must fail loudly instead of quietly showing the wrong world (ADR 0011).
+// The mode is required rather than defaulted (ADR 0011, unchanged).
 func TestConsoleRequiresTheModeHeader(t *testing.T) {
 	e := newAPI(t)
-	token := e.sessionToken(t, middleware.ScopeOrganizationRead)
-
-	res := e.console(t, "/v1.0/console/session", token, "")
+	res := e.console(t, "/v1.0/console/settings", e.sessionToken(t, middleware.ScopeOrganizationRead), "")
 	if res.status != http.StatusBadRequest {
 		t.Fatalf("status = %d: %s", res.status, res.body)
 	}
 }
 
-// Asking for a mode you own no organization in is a 403, and the same 403 as
-// owning nothing at all. The mode being caller-controlled is safe precisely
-// because it cannot widen access.
-func TestConsoleCannotReachAModeItDoesNotOwn(t *testing.T) {
-	e := newAPI(t) // e.org exists in live mode only
-	token := e.sessionToken(t, middleware.ScopeOrganizationRead)
-
-	res := e.console(t, "/v1.0/console/session", token, "test")
-	if res.status != http.StatusForbidden {
+// A mode the organization has no tenant in is no_merchant: the mode is
+// caller-controlled and still cannot widen access.
+func TestConsoleCannotReachAModeWithNoTenant(t *testing.T) {
+	e := newAPI(t) // live only
+	res := e.console(t, "/v1.0/console/settings", e.sessionToken(t, middleware.ScopeOrganizationRead), "test")
+	if res.status != http.StatusNotFound || !strings.Contains(string(res.body), `"no_merchant"`) {
 		t.Fatalf("status = %d: %s", res.status, res.body)
+	}
+}
+
+// The owner of another merchant reaches their own tenant and never this one.
+func TestConsoleCannotReachAnotherTenant(t *testing.T) {
+	e := newAPI(t)
+	otherAcct := newSpaceOrgID()
+	other := newLinkedOrg(t, true, otherAcct)
+	e.account.set(otherAcct, other.OwnerUserID, "organization", "owner")
+	stranger := e.token(t, other.OwnerUserID, "sess_"+id.New(), middleware.ScopeOrganizationRead)
+
+	if res := e.console(t, "/v1.0/console/settings", stranger, "live"); res.status != http.StatusNotFound {
+		t.Fatalf("someone else's organization: %d %s", res.status, res.body)
+	}
+	res := e.consoleAs(t, http.MethodGet, "/v1.0/console/settings", stranger, "live", "org:"+otherAcct, "")
+	if res.status != http.StatusOK || !strings.Contains(string(res.body), other.ID) || strings.Contains(string(res.body), e.org.ID) {
+		t.Fatalf("own organization: %d %s", res.status, res.body)
 	}
 }
 
@@ -122,29 +152,6 @@ func TestConsoleScopesAreEnforcedPerRoute(t *testing.T) {
 	res := e.console(t, "/v1.0/console/invoices", token, "live")
 	if res.status != http.StatusForbidden {
 		t.Fatalf("status = %d: %s", res.status, res.body)
-	}
-}
-
-// One owner's console must not see another owner's organization, which is the
-// whole reason the owner is a key rather than a filter.
-func TestConsoleCannotReachAnotherTenant(t *testing.T) {
-	e := newAPI(t)
-	other := newOrg(t, true)
-	stranger := e.token(t, other.OwnerUserID, "sess_"+id.New(), middleware.ScopeOrganizationRead)
-
-	res := e.console(t, "/v1.0/console/session", stranger, "live")
-	if res.status != http.StatusOK {
-		t.Fatalf("status = %d: %s", res.status, res.body)
-	}
-	var body struct {
-		OrganizationID string `json:"organization_id"`
-	}
-	res.decode(t, &body)
-	if body.OrganizationID == e.org.ID {
-		t.Fatal("the console resolved the wrong organization: owner lookup is not isolating tenants")
-	}
-	if body.OrganizationID != other.ID {
-		t.Fatalf("organization = %q, want %q", body.OrganizationID, other.ID)
 	}
 }
 

@@ -11,7 +11,7 @@ import {messageFor} from "@/lib/api/client"
 import {useFieldErrors} from "@/lib/useFieldErrors"
 import {creditInvoice} from "@/lib/api/console"
 import type {ConsoleInvoice} from "@/lib/api/consoleTypes"
-import {useMode} from "@/lib/console/useMode"
+import {useConsoleScope} from "@/lib/console/scope"
 import {money} from "@/lib/format"
 import {maskMoney, moneyPlaceholder, parseMoney} from "@/lib/money"
 
@@ -40,7 +40,7 @@ export function CreditNoteDialog({
   onIssued: () => void
 }) {
   const {t} = useTranslation()
-  const mode = useMode()
+  const scope = useConsoleScope()
   const remaining = Math.max(0, invoice.total - credited)
   const [amount, setAmount] = useState("")
   const [reason, setReason] = useState("")
@@ -52,11 +52,7 @@ export function CreditNoteDialog({
   const fe = useFieldErrors(["amount", "reason"], {keepOthers: false})
   const issue = useMutation({
     mutationFn: () =>
-      creditInvoice(
-        invoice.id,
-        {amount: cents, reason: reason.trim(), refunded_externally: refunded},
-        mode,
-      ),
+      creditInvoice(scope, invoice.id, {amount: cents, reason: reason.trim(), refunded_externally: refunded}),
     onSuccess: () => {
       toast.success(t("console.credit.done"))
       setAmount("")

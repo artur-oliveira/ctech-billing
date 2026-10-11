@@ -522,3 +522,37 @@ ilimitados". **One primary action**: the plan right after the current one is bra
 outline. The Basic suggestion, when Sob demanda is projected above it, sits inside the current card.
 **Candidate for `@aoctech/ui`**: the plan card (title, price block, facts, one action) — no pricing
 card exists in the shared package or in ctech-ui.
+
+## Console: whose billing (2026-10-10)
+
+The billing half of the console (invoices, subscriptions, customers, catalogue, settings) acts for
+the **selected organization**, not for a stored owner (ADR 0028). The server lists the organizations
+where the person is owner or admin (`GET /console/session`, with each one's `merchant_status`) and
+re-authorizes the selection on every call; member and viewer never see the billing half.
+
+**The selector reads with the mode as one phrase.** `OrganizationSwitch` (`@aoctech/ui`'s `Select`,
+`selectCopy()` first, the organization's name as its value, never its id) sits immediately left of
+the mode switch: "CTech Tecnologia · Produção". It replaces the old read-only tenant name beside the
+logo. On a desk it is 144 to 256px wide; on a phone the header keeps brand, language and avatar on
+row 1, and row 2 is the selector filling the remaining width next to the mode switch, so a long
+organization name still reads and nothing scrolls sideways (checked at 320, 375, 768, 1280).
+
+**Switching is a clean cut.** The previous organization's queries are removed (every billing-half key
+is `["console", org, mode, ...]`), so none of its rows can show for a frame under the new name. The
+choice is stored apart from Finanças' space (`ctech-billing-console-organization`): Finanças can be
+Pessoal, billing never is. A stored organization the person no longer administers is replaced by the
+first one with a tenant in the current mode.
+
+**`no_merchant` is a beginning, not a fault.** An organization with no tenant in the current mode
+renders `NoMerchant`, an `EmptyState` with the shop mark ("Cobrança não ativada", naming the
+organization), never an error colour and, in part 1, no action; it is left-aligned and stacked on a
+phone. The section tabs are not shown there: there is nothing in them. Part 2 turns it into the
+invitation to apply.
+
+**Unknown is not empty.** ctech-account not answering (or the session failing) is an `ErrorState`
+with one retry ("Tentar de novo"); the person is never sent to Finanças for an outage. An empty list
+(owner or admin of nothing) still sends them to Finanças, as before.
+
+**The Console entry needs an organization that bills.** The account menu offers Console only when the
+session lists an organization whose `merchant_status` is not `none`; part 2 widens it to everyone who
+can apply.

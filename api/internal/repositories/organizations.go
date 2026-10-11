@@ -53,8 +53,13 @@ func (r *OrganizationRepository) Create(ctx context.Context, org *billing.Organi
 		keys:         newKeys(TenantPK(org.ID, org.Livemode), OrganizationSK(), RetentionOrganization, now),
 		Organization: *org,
 	}
-	if org.OwnerUserID != "" {
-		row.LookupPK = LookupOrganizationOwnerPK(org.Livemode, org.OwnerUserID)
+	// Only a linked tenant is reachable from the console (ADR 0028). The owner
+	// is stored, never indexed: it no longer grants access.
+	if org.AccountOrganizationID != "" {
+		if err := r.ensureAccountOrganizationFree(ctx, org.ID, org.AccountOrganizationID, org.Livemode); err != nil {
+			return err
+		}
+		row.LookupPK = LookupOrganizationAccountPK(org.Livemode, org.AccountOrganizationID)
 	}
 	item, err := Encode(row)
 	if err != nil {
@@ -112,6 +117,70 @@ func (r *OrganizationRepository) GetByOwner(ctx context.Context, userID string, 
 		return nil, err
 	}
 	return &row.Organization, nil
+}
+
+// ErrAccountOrganizationAmbiguous is two tenant rows carrying one account
+// organization's key in one mode. Answering with whichever row the index
+// returned first would hand one merchant another's data, so nothing is chosen.
+var ErrAccountOrganizationAmbiguous = errors.New("more than one tenant is linked to the account organization")
+
+// ErrAccountOrganizationTaken is a create or link naming an account
+// organization another tenant already answers for in that mode.
+var ErrAccountOrganizationTaken = errors.New("account organization is already linked to another tenant")
+
+// GetByAccountOrganization resolves the selected ctech-account organization to
+// its tenant in one mode (ADR 0028). Like GetByOwner and
+// CredentialRepository.Resolve, the tenant is the answer, never part of the
+// question: the caller passes an organization the resolver has already
+// confirmed the person belongs to.
+func (r *OrganizationRepository) GetByAccountOrganization(ctx context.Context, accountOrgID string, livemode bool) (*billing.Organization, error) {
+	if accountOrgID == "" {
+		return nil, fmt.Errorf("%w: no account organization", ErrNotFound)
+	}
+	res, err := r.base.Query(ctx, QueryOpts{
+		IndexName: IndexLookup,
+		PKField:   "lookup_pk",
+		PK:        LookupOrganizationAccountPK(livemode, accountOrgID),
+		// Two, not one: a second row is a fault to refuse, not a row to skip.
+		Limit: 2,
+	})
+	if err != nil {
+		return nil, err
+	}
+	switch len(res.Items) {
+	case 0:
+		return nil, fmt.Errorf("%w: tenant of account organization %s in %s mode", ErrNotFound, accountOrgID, Mode(livemode))
+	case 1:
+	default:
+		return nil, fmt.Errorf("%w: %s in %s mode", ErrAccountOrganizationAmbiguous, accountOrgID, Mode(livemode))
+	}
+	row, err := Decode[organizationRow](res.Items[0])
+	if err != nil {
+		return nil, err
+	}
+	// The row must agree with the key it was found by; a hand-edited key on
+	// somebody else's row is not a tenant of this organization.
+	if row.AccountOrganizationID != accountOrgID || row.Livemode != livemode {
+		return nil, fmt.Errorf("%w: lookup row %s disagrees with its own link", ErrNotFound, row.ID)
+	}
+	return &row.Organization, nil
+}
+
+// ensureAccountOrganizationFree refuses a create or link onto a key another
+// tenant holds. A read before the write: both callers are the operator's seed,
+// and part 2's self-service creation adds a conditional guard of its own.
+func (r *OrganizationRepository) ensureAccountOrganizationFree(ctx context.Context, tenantID, accountOrgID string, livemode bool) error {
+	existing, err := r.GetByAccountOrganization(ctx, accountOrgID, livemode)
+	switch {
+	case errors.Is(err, ErrNotFound):
+		return nil
+	case err != nil:
+		return err
+	case existing.ID == tenantID:
+		return nil
+	default:
+		return fmt.Errorf("%w: %s answers for %s in %s mode", ErrAccountOrganizationTaken, existing.ID, accountOrgID, Mode(livemode))
+	}
 }
 
 // SetPayoutStatus moves the per-merchant charge gate, writing the audit entry in
@@ -326,6 +395,9 @@ func (r *OrganizationRepository) LinkAccountOrganization(
 	if actor == "" {
 		return fmt.Errorf("repositories: linking %s needs an actor", org.ID)
 	}
+	if err := r.ensureAccountOrganizationFree(ctx, org.ID, accountOrgID, org.Livemode); err != nil {
+		return err
+	}
 	auditItem, err := buildAuditItem(org.ID, org.Livemode, AuditEntry{
 		Entity:    EntityOrganization,
 		EntityID:  org.ID,
@@ -340,10 +412,11 @@ func (r *OrganizationRepository) LinkAccountOrganization(
 	}
 	update := r.base.BuildRawUpdateTxItem(
 		TenantPK(org.ID, org.Livemode), new(OrganizationSK()),
-		"SET account_organization_id = :a, updated_at = :now",
+		"SET account_organization_id = :a, lookup_pk = :l, updated_at = :now",
 		"attribute_exists(pk) AND attribute_not_exists(account_organization_id)", nil,
 		map[string]types.AttributeValue{
 			":a":   &types.AttributeValueMemberS{Value: accountOrgID},
+			":l":   &types.AttributeValueMemberS{Value: LookupOrganizationAccountPK(org.Livemode, accountOrgID)},
 			":now": &types.AttributeValueMemberS{Value: now.UTC().Format(time.RFC3339Nano)},
 		},
 	)
@@ -396,8 +469,8 @@ func (r *OrganizationRepository) tables() Tables {
 var ErrOrganizationOwned = errors.New("organization already has another owner")
 
 // SetOwner gives a tenant with no owner (one provisioned API-only) the person
-// who reaches its console, once, with its audit entry, and indexes it so the
-// console finds the tenant by that person.
+// who asked for it, once, with its audit entry. The owner is a record of who
+// asked for the tenant; it is not indexed and grants no access (ADR 0028).
 func (r *OrganizationRepository) SetOwner(
 	ctx context.Context,
 	org *billing.Organization,
@@ -425,17 +498,19 @@ func (r *OrganizationRepository) SetOwner(
 	if err != nil {
 		return err
 	}
+	// lookup_pk is never touched: a linked tenant is found by its account
+	// organization (ADR 0028), and the owner grants nothing.
+	expr := "SET owner_user_id = :o, updated_at = :now"
+	cond := "attribute_exists(pk) AND (attribute_not_exists(owner_user_id) OR owner_user_id = :empty)"
+	values := map[string]types.AttributeValue{
+		":o":     &types.AttributeValueMemberS{Value: ownerUserID},
+		":empty": &types.AttributeValueMemberS{Value: ""},
+		":now":   &types.AttributeValueMemberS{Value: now.UTC().Format(time.RFC3339Nano)},
+	}
 	// An API-only tenant stores the owner as an empty string, not as absent.
 	update := r.base.BuildRawUpdateTxItem(
 		TenantPK(org.ID, org.Livemode), new(OrganizationSK()),
-		"SET owner_user_id = :o, lookup_pk = :l, updated_at = :now",
-		"attribute_exists(pk) AND (attribute_not_exists(owner_user_id) OR owner_user_id = :empty)", nil,
-		map[string]types.AttributeValue{
-			":o":     &types.AttributeValueMemberS{Value: ownerUserID},
-			":l":     &types.AttributeValueMemberS{Value: LookupOrganizationOwnerPK(org.Livemode, ownerUserID)},
-			":empty": &types.AttributeValueMemberS{Value: ""},
-			":now":   &types.AttributeValueMemberS{Value: now.UTC().Format(time.RFC3339Nano)},
-		},
+		expr, cond, nil, values,
 	)
 	err = r.base.TransactWrite(ctx, txItems(update, r.audit.BuildPutTxItemIfAbsent(auditItem)))
 	if onlyConditionFailed(err) {
