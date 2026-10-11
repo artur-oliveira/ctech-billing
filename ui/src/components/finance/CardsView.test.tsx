@@ -1,6 +1,6 @@
 import "@testing-library/jest-dom/vitest"
 
-import {screen, waitFor, within} from "@testing-library/react"
+import {act, screen, waitFor, within} from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 
@@ -157,6 +157,50 @@ describe("F5 — a card's brand and last four digits (UX batch 3)", () => {
     await userEvent.click(within(form).getByRole("button", {name: "Salvar"}))
     await waitFor(() => expect(patch).toHaveBeenCalledWith(expect.anything(), "visa",
       expect.objectContaining({brand: "visa", last4: ""}), expect.any(String)))
+  })
+
+  it("leaves the name out of a patch that does not change it", async () => {
+    serve(ALL)
+    const patch = vi.spyOn(finance, "patchCard").mockResolvedValue({...CARD, due_day: 12})
+    renderWithQuery(<CardsView/>)
+    await userEvent.click(await screen.findByRole("button", {name: "Editar cartão"}))
+    const form = screen.getByRole("form", {name: "Editar cartão"})
+    await pickIn(form, "Vence no dia", "12")
+    await userEvent.click(within(form).getByRole("button", {name: "Salvar"}))
+    await waitFor(() => expect(patch).toHaveBeenCalled())
+    expect(patch.mock.calls[0][2]).not.toHaveProperty("name")
+    expect(patch.mock.calls[0][2]).toMatchObject({due_day: 12})
+  })
+
+  it("keeps a name renamed elsewhere while its edit form was open", async () => {
+    serve(ALL)
+    const patch = vi.spyOn(finance, "patchCard").mockResolvedValue(CARD)
+    const {client} = renderWithQuery(<CardsView/>)
+    await userEvent.click(await screen.findByRole("button", {name: "Editar cartão"}))
+    const form = screen.getByRole("form", {name: "Editar cartão"})
+    // Renamed on Contas (or another tab) while this form is open: the list refreshes.
+    vi.mocked(finance.listCards).mockResolvedValue({data: [{...CARD, name: "Visa Platinum"}], has_more: false})
+    await act(() => client.invalidateQueries())
+    await waitFor(() => expect(screen.getAllByText(/Visa Platinum/).length).toBeGreaterThan(0))
+    await userEvent.click(within(form).getByRole("button", {name: "Salvar"}))
+    await waitFor(() => expect(patch).toHaveBeenCalled())
+    expect(patch.mock.calls[0][2]).not.toHaveProperty("name")
+  })
+
+  it("renames the card from its edit form, trimmed", async () => {
+    serve(ALL)
+    const patch = vi.spyOn(finance, "patchCard").mockResolvedValue({...CARD, name: "Visa Infinite"})
+    renderWithQuery(<CardsView/>)
+    await userEvent.click(await screen.findByRole("button", {name: "Editar cartão"}))
+    const form = screen.getByRole("form", {name: "Editar cartão"})
+    const name = within(form).getByLabelText(/^Nome/)
+    expect(name).toHaveValue("Visa")
+    await userEvent.clear(name)
+    expect(within(form).getByRole("button", {name: "Salvar"})).toBeDisabled()
+    await userEvent.type(name, " Visa Infinite  ")
+    await userEvent.click(within(form).getByRole("button", {name: "Salvar"}))
+    await waitFor(() => expect(patch).toHaveBeenCalledWith(expect.anything(), "visa",
+      expect.objectContaining({name: "Visa Infinite", closing_day: 3, due_day: 10}), expect.any(String)))
   })
 })
 

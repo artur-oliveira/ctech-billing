@@ -19,11 +19,17 @@ const DAYS = Array.from({length: 31}, (_, i) => ({value: String(i + 1), label: S
 // Built at render, never at import: the language can change.
 const brandOptions = () => CARD_BRANDS.map(b => ({value: b, label: brandName(b), icon: <CardBrandMark brand={b}/>}))
 
-/** Creates a card, or edits the selected one's brand, last digits, days and paying account. */
+/** Creates a card, or edits the selected one's name, brand, last digits, days and paying account. */
 export function CardForm({card, accounts, onDone}: {card?: Card; accounts: Account[]; onDone: (id?: string) => void}) {
   const {t} = useTranslation()
   const assets = accounts.filter(a => a.class === "asset" && !a.system && !a.archived)
-  const [name, setName] = useState("")
+  const [name, setName] = useState(card?.name ?? "")
+  // The name the form opened with: a rename made elsewhere while it is open
+  // refreshes `card`, and comparing with that would write the old name back.
+  const [openedName] = useState(card?.name ?? "")
+  // Sent only when it changed: the name is the card account's, and a PATCH of
+  // the days alone must not rewrite it.
+  const renamed = card && name.trim() !== openedName ? {name: name.trim()} : {}
   const [closing, setClosing] = useState(String(card?.closing_day ?? ""))
   const [due, setDue] = useState(String(card?.due_day ?? ""))
   const [payer, setPayer] = useState(card?.paying_account_id ?? "")
@@ -33,7 +39,7 @@ export function CardForm({card, accounts, onDone}: {card?: Card; accounts: Accou
   const fe = useFieldErrors(["name", "brand", "last4", "closing_day", "due_day", "paying_account_id"])
   const save = useFinanceMutation(
     (c, _: void, key) => card
-      ? patchCard(c, card.id, {closing_day: Number(closing), due_day: Number(due), paying_account_id: payer, brand, last4}, key)
+      ? patchCard(c, card.id, {...renamed, closing_day: Number(closing), due_day: Number(due), paying_account_id: payer, brand, last4}, key)
       : createCard(c, {
         name: name.trim(), closing_day: Number(closing), due_day: Number(due), paying_account_id: payer,
         ...(brand ? {brand} : {}), ...(last4 ? {last4} : {}),
@@ -42,7 +48,7 @@ export function CardForm({card, accounts, onDone}: {card?: Card; accounts: Accou
     saved => onDone(saved.id),
     fe.set,
   )
-  const ready = (card || name.trim() !== "") && closing !== "" && due !== "" && payer !== "" && !save.isPending
+  const ready = name.trim() !== "" && closing !== "" && due !== "" && payer !== "" && !save.isPending
   return (
     <form
       aria-label={card ? t("finance.cards.edit") : t("finance.cards.new")}
@@ -58,11 +64,9 @@ export function CardForm({card, accounts, onDone}: {card?: Card; accounts: Accou
         save.mutate()
       }}
     >
-      {!card && (
-        <Field label={t("finance.cards.name")} htmlFor="cd-name" required error={fe.of("name")}>
-          <Input id="cd-name" maxLength={limits.text.accountName} placeholder={t("finance.cards.namePlaceholder")} value={name} {...fe.props("name", "cd-name")} onChange={e => { setName(e.target.value); fe.clear("name") }} autoFocus/>
-        </Field>
-      )}
+      <Field label={t("finance.cards.name")} htmlFor="cd-name" required error={fe.of("name")}>
+        <Input id="cd-name" maxLength={limits.text.accountName} placeholder={t("finance.cards.namePlaceholder")} value={name} {...fe.props("name", "cd-name")} onChange={e => { setName(e.target.value); fe.clear("name") }} autoFocus={!card}/>
+      </Field>
       <Field label={t("finance.cards.brand")} htmlFor="cd-brand" error={fe.of("brand")}>
         <Select {...selectCopy()} id="cd-brand" aria-label={t("finance.cards.brand")} value={brand} {...fe.props("brand", "cd-brand")} onValueChange={v => { setBrand(v as CardBrand | ""); fe.clear("brand") }} none={t("finance.cards.noBrand")} options={brandOptions()}/>
       </Field>

@@ -132,6 +132,9 @@ func TestIDsFromAnotherSpaceAreNotFoundEvenBetweenTwoSpacesOfOneUser(t *testing.
 			{"POST", "/accounts/" + bank.ID + "/archive", `{}`},
 			{"GET", "/cards/" + card.ID + "/purchases", ""},
 			{"PATCH", "/cards/" + card.ID, `{"due_day":12}`},
+			{"PATCH", "/cards/" + card.ID, `{"name":"Roubado"}`},
+			{"PATCH", "/accounts/" + bank.ID, `{"name":"Roubado"}`},
+			{"PATCH", "/accounts/" + card.ID, `{"name":"Roubado"}`},
 		} {
 			if res := s.in(t, tok, other, c.method, c.path, c.body); res.status != 404 {
 				t.Errorf("%s %s from %s = %d %s, want 404", c.method, c.path, other, res.status, res.body)
@@ -142,6 +145,13 @@ func TestIDsFromAnotherSpaceAreNotFoundEvenBetweenTwoSpacesOfOneUser(t *testing.
 	s.must(t, 200, tok, home, "GET", "/bills/"+bill.ID, "", &got)
 	if got.Status == "cancelled" {
 		t.Fatal("a cancel sent from another space cancelled the bill")
+	}
+	var accounts struct{ Data []struct{ ID, Name string } }
+	s.must(t, 200, tok, home, "GET", "/accounts", "", &accounts)
+	for _, a := range accounts.Data {
+		if a.Name == "Roubado" {
+			t.Fatalf("a rename sent from another space renamed %s", a.ID)
+		}
 	}
 }
 

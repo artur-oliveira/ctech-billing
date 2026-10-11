@@ -278,12 +278,70 @@ describe("F8 — accounts", () => {
     await waitFor(() => expect(archive).toHaveBeenCalledWith(expect.anything(), "pp", expect.any(String)))
   })
 
+  it("renames an account in place with the trimmed name, then closes", async () => {
+    serve(ALL)
+    const rename = vi.spyOn(finance, "renameAccount").mockResolvedValue({...ACCOUNTS[2], name: "Reserva"})
+    renderWithQuery(<AccountsView/>)
+    const li = await row("Poupança")
+    await userEvent.click(within(li).getByRole("button", {name: "Renomear"}))
+    const input = within(li).getByLabelText("Novo nome")
+    expect(input).toHaveValue("Poupança")
+    await userEvent.clear(input)
+    await userEvent.type(input, "  Reserva ")
+    await userEvent.click(within(li).getByRole("button", {name: "Salvar"}))
+    await waitFor(() => expect(rename).toHaveBeenCalledWith(expect.anything(), "pp", {name: "Reserva"}, expect.any(String)))
+    await waitFor(() => expect(within(li).queryByLabelText("Novo nome")).not.toBeInTheDocument())
+  })
+
+  it("renames a category and a card from the same list", async () => {
+    serve(ALL)
+    const rename = vi.spyOn(finance, "renameAccount").mockResolvedValue(ACCOUNTS[4])
+    renderWithQuery(<AccountsView/>)
+    const visa = await row("Visa")
+    await userEvent.click(within(visa).getByRole("button", {name: "Renomear"}))
+    await userEvent.type(within(visa).getByLabelText("Novo nome"), " Infinite")
+    await userEvent.click(within(visa).getByRole("button", {name: "Salvar"}))
+    await waitFor(() => expect(rename).toHaveBeenCalledWith(expect.anything(), "visa", {name: "Visa Infinite"}, expect.any(String)))
+    expect(within(await row("Aluguel")).getByRole("button", {name: "Renomear"})).toBeInTheDocument()
+  })
+
+  it("will not save a blank or unchanged name, and shows the server's refusal on the field", async () => {
+    serve(ALL)
+    const rename = vi.spyOn(finance, "renameAccount").mockRejectedValue({
+      response: {status: 422, data: {code: "validation_failed", errors: [{field: "name", code: "too_long", message: "at most 80 characters"}]}},
+    })
+    renderWithQuery(<AccountsView/>)
+    const li = await row("Conta corrente")
+    await userEvent.click(within(li).getByRole("button", {name: "Renomear"}))
+    const input = within(li).getByLabelText("Novo nome")
+    expect(input).toHaveAttribute("maxLength", "80")
+    expect(within(li).getByRole("button", {name: "Salvar"})).toBeDisabled()
+    await userEvent.clear(input)
+    await userEvent.type(input, "   ")
+    expect(within(li).getByRole("button", {name: "Salvar"})).toBeDisabled()
+    await userEvent.type(input, "Conta PJ")
+    await userEvent.click(within(li).getByRole("button", {name: "Salvar"}))
+    await waitFor(() => expect(rename).toHaveBeenCalled())
+    expect(await within(li).findByLabelText("Novo nome")).toHaveAttribute("aria-invalid", "true")
+    await userEvent.click(within(li).getByRole("button", {name: "Cancelar"}))
+    expect(within(li).queryByLabelText("Novo nome")).not.toBeInTheDocument()
+  })
+
+  it("offers no rename on an archived account", async () => {
+    serve(ALL)
+    renderWithQuery(<AccountsView/>)
+    await row("Conta corrente")
+    await userEvent.click(screen.getByRole("button", {name: "Mostrar arquivadas"}))
+    expect(within(await row("Assinaturas antigas")).queryByRole("button", {name: "Renomear"})).toBeNull()
+  })
+
   it("shows a member no configuration controls", async () => {
     serve(["finance.read", "finance.write", "finance.settle", "finance.import"])
     renderWithQuery(<AccountsView/>)
     await row("Conta corrente")
     expect(screen.queryByRole("button", {name: "Nova conta"})).toBeNull()
     expect(screen.queryByRole("button", {name: "Arquivar"})).toBeNull()
+    expect(screen.queryByRole("button", {name: "Renomear"})).toBeNull()
     expect(screen.queryByRole("combobox", {name: "Conta padrão de recebimento"})).toBeNull()
   })
 
@@ -390,6 +448,16 @@ describe("F8 — an account row on a phone", () => {
     expect(name).toHaveClass("line-clamp-2")
     expect(name).toHaveAttribute("title", "Conta corrente")
     await userEvent.click(within(li).getByRole("button", {name: "Mais ações: Conta corrente"}))
-    expect((await screen.findAllByRole("menuitem")).map(i => i.textContent)).toEqual(["Saldo inicial", "Arquivar"])
+    expect((await screen.findAllByRole("menuitem")).map(i => i.textContent)).toEqual(["Renomear", "Saldo inicial", "Arquivar"])
+  })
+
+  it("renames from ⋯, in place under the row", async () => {
+    serve(ALL)
+    renderWithQuery(<AccountsView/>)
+    const li = await row("Conta corrente")
+    await userEvent.click(within(li).getByRole("button", {name: "Mais ações: Conta corrente"}))
+    await userEvent.click(await screen.findByRole("menuitem", {name: "Renomear"}))
+    expect(await within(li).findByRole("form", {name: "Renomear Conta corrente"})).toBeInTheDocument()
+    expect(within(li).getByLabelText("Novo nome")).toHaveValue("Conta corrente")
   })
 })

@@ -213,6 +213,11 @@ export interface NewAccount {
   dre_group?: DREGroup
 }
 
+/** PATCH /accounts/:id: names only. The class, group and entries never move. */
+export interface AccountPatch {
+  name: string
+}
+
 // --- 6.4: statement and reports -----------------------------------------------------
 
 /** What produced a ledger fact; "" on entries posted before 6.4. */
@@ -317,6 +322,8 @@ export interface NewCard {
 }
 
 export interface CardPatch {
+  /** Renames the card (its account). Required when sent: never "". */
+  name?: string
   closing_day?: number
   due_day?: number
   paying_account_id?: string

@@ -2,6 +2,7 @@ package finance
 
 import (
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -10,6 +11,9 @@ func TestLedgerAccountValidate(t *testing.T) {
 		{ID: "bank", Name: "Conta corrente", Class: ClassAsset},
 		{ID: "food", Name: "Alimentação", Class: ClassExpense, Group: GroupOperatingExpenses},
 		{ID: "sales", Name: "Vendas", Class: ClassIncome, Group: GroupGrossRevenue},
+		// The limit is characters, as the API and the UI count it, not bytes:
+		// 80 accented letters are 160 bytes and still a valid name.
+		{ID: "accents", Name: strings.Repeat("é", 80), Class: ClassAsset},
 	}
 	for _, a := range ok {
 		if err := a.Validate(); err != nil {
@@ -23,7 +27,8 @@ func TestLedgerAccountValidate(t *testing.T) {
 		"unknown class":           {ID: "a", Name: "x", Class: "banana"},
 		"group on an asset":       {ID: "a", Name: "x", Class: ClassAsset, Group: GroupCosts},
 		"income in a cost group":  {ID: "a", Name: "x", Class: ClassIncome, Group: GroupCosts},
-		"name past 80 characters": {ID: "a", Name: string(make([]byte, 81)), Class: ClassAsset},
+		"name past 80 characters": {ID: "a", Name: strings.Repeat("a", 81), Class: ClassAsset},
+		"81 accented characters":  {ID: "a", Name: strings.Repeat("é", 81), Class: ClassAsset},
 	}
 	for name, a := range bad {
 		if err := a.Validate(); !errors.Is(err, ErrInvalidAccount) {

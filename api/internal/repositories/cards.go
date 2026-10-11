@@ -187,15 +187,18 @@ func (r *CardRepository) ListCards(ctx context.Context, sp space.ResolvedSpace) 
 
 // CardPatch is a partial change to a card's settings.
 type CardPatch struct {
+	// Name renames the card's liability account; nil keeps it.
+	Name               *string
 	ClosingDay, DueDay *int
 	PayingAccountID    *string
 	// Brand and Last4: nil keeps, "" clears.
 	Brand, Last4 *string
 }
 
-// UpdateCard changes when the card closes and is due and which account pays
-// it. Statements already closed keep their dates; the open one closes on the
-// new day.
+// UpdateCard changes the card's name, when it closes and is due and which
+// account pays it. Statements already closed keep their dates; the open one
+// closes on the new day. A new name is written on the card's account in the same
+// transaction, under the same rule as RenameAccount (not archived).
 func (r *CardRepository) UpdateCard(ctx context.Context, sp space.ResolvedSpace, cardID string, p CardPatch, now time.Time) (CardRow, error) {
 	if err := sp.Require(space.Configure); err != nil {
 		return CardRow{}, err
@@ -225,6 +228,21 @@ func (r *CardRepository) UpdateCard(ctx context.Context, sp space.ResolvedSpace,
 	if err := row.Card.Validate(); err != nil {
 		return CardRow{}, err
 	}
+	var rename []types.TransactWriteItem
+	if p.Name != nil {
+		name := strings.TrimSpace(*p.Name)
+		// loadCard tolerates a card whose account row is missing (its name reads
+		// ""; a stored account always has one): there is nothing to rename.
+		if row.Name == "" {
+			return CardRow{}, fmt.Errorf("%w: card %s has no account", ErrNotFound, cardID)
+		}
+		acct := AccountRow{LedgerAccount: finance.LedgerAccount{ID: cardID, Name: row.Name, Class: finance.ClassLiability}, Archived: row.Archived}
+		if err := checkRenamable(acct, name); err != nil {
+			return CardRow{}, err
+		}
+		rename = append(rename, r.ledger.renameTxItem(sp, cardID, name, now))
+		row.Name = name
+	}
 	values := map[string]types.AttributeValue{
 		":c": numberValue(int64(row.ClosingDay)), ":d": numberValue(int64(row.DueDay)), ":p": str(row.PayingAccountID),
 		":ssk": str(closeScheduleSK(sp, row.Card)), ":now": str(now.UTC().Format(time.RFC3339Nano)),
@@ -246,7 +264,10 @@ func (r *CardRepository) UpdateCard(ctx context.Context, sp space.ResolvedSpace,
 		set += " REMOVE " + strings.Join(remove, ", ")
 	}
 	sk := CardSK(cardID)
-	err = r.cards.TransactWrite(ctx, txItems(r.cards.BuildRawUpdateTxItem(sp.PK(), &sk, set, "attribute_exists(pk)", nil, values)))
+	err = r.cards.TransactWrite(ctx, append(txItems(r.cards.BuildRawUpdateTxItem(sp.PK(), &sk, set, "attribute_exists(pk)", nil, values)), rename...))
+	if len(rename) > 0 {
+		err = renameWriteErr(err)
+	}
 	if err != nil {
 		return CardRow{}, err
 	}

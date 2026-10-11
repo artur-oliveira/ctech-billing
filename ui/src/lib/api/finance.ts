@@ -6,7 +6,7 @@ import {t} from "@/lib/i18n"
 
 import {apiClient, isSpaceNotFound} from "@/lib/api/client"
 import type {
-  Account, Bill, BillPatch, Card, CardPatch, CardStatement, CashFlow, CurrentSpace, Direction, DRE, FinanceSpaces, ListResponse, NewAccount, NewBill,
+  Account, AccountPatch, Bill, BillPatch, Card, CardPatch, CardStatement, CashFlow, CurrentSpace, Direction, DRE, FinanceSpaces, ListResponse, NewAccount, NewBill,
   NewCard, NewPurchase, NewRecurrence, NewTransfer, Purchase, Occurrence, OpeningBalance, PreviewInput, ProjectionMonth, Recurrence, RecurrenceOccurrences, RecurrencePatch,
   ChoosePlan, PlanState, Settings, Settlement, Statement, CsvMapping, ImportDetail, ImportSummary, LineResult, NewImport,
 } from "@/lib/api/financeTypes"
@@ -167,6 +167,8 @@ export const getProjection = (c: FinanceCtx, months: number) =>
 export const listAccounts = (c: FinanceCtx) => read<ListResponse<Account>>(c, "/accounts")
 export const createAccount = (c: FinanceCtx, body: NewAccount, idempotencyKey: string) =>
   write<Account>(c, "POST", "/accounts", body, idempotencyKey)
+export const renameAccount = (c: FinanceCtx, id: string, body: AccountPatch, idempotencyKey: string) =>
+  write<Account>(c, "PATCH", `/accounts/${encodeURIComponent(id)}`, body, idempotencyKey)
 export const archiveAccount = (c: FinanceCtx, id: string, idempotencyKey: string) =>
   write<void>(c, "POST", `/accounts/${encodeURIComponent(id)}/archive`, {}, idempotencyKey)
 export const getSettings = (c: FinanceCtx) => read<Settings>(c, "/settings")

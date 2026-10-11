@@ -137,6 +137,23 @@ describe("the finance mock's cards", () => {
     expect(edited.last4).toBeUndefined()
   })
 
+  it("renames an account, and a card through either route, refusing blank and archived", () => {
+    const rename = (id: string, data: unknown, key: string) => call({method: "patch", url: `/accounts/${id}`, headers: {...personal, "Idempotency-Key": key}, data})
+    const accounts = () => (call({url: "/accounts", headers: personal}).data as {data: {id: string; name: string}[]}).data
+    const cards = () => (call({url: "/cards", headers: personal}).data as {data: {id: string; name: string}[]}).data
+    expect(rename("poupanca", {name: "  Reserva "}, "r1").status).toBe(200)
+    expect(accounts().find(a => a.id === "poupanca")?.name).toBe("Reserva")
+    expect(rename("poupanca", {name: " "}, "r2").status).toBe(422)
+    expect(rename("poupanca", {name: "X", class: "income"}, "r2b").status).toBe(400)
+    expect(rename("nope", {name: "X"}, "r4").status).toBe(404)
+    expect(rename("card-nubank", {name: "Roxinho"}, "r5").status).toBe(200)
+    expect(cards().find(c => c.id === "card-nubank")?.name).toBe("Roxinho")
+    expect(call({method: "patch", url: "/cards/card-nubank", headers: {...personal, "Idempotency-Key": "r6"}, data: {name: "Nubank "}}).status).toBe(200)
+    expect(accounts().find(a => a.id === "card-nubank")?.name).toBe("Nubank")
+    expect(call({method: "post", url: "/accounts/poupanca/archive", headers: {...personal, "Idempotency-Key": "r7"}, data: {}}).status).toBe(204)
+    expect(rename("poupanca", {name: "Outra"}, "r8").status).toBe(422)
+  })
+
   it("refund credits what was billed, advance moves the rest to the open statement", () => {
     const id = card()
     const p = (w(`/cards/${id}/purchases`, {date: `${ym(0)}-01`, description: "Sofá", category_id: "mercado", total: 30000, installments: 3}, "p").data as {id: string}).id
