@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
+	"gopkg.aoctech.app/billing/api/internal/domain/brcal"
 )
 
 func TestSplitInstallmentsPrintsLikeAnIssuer(t *testing.T) {
@@ -124,5 +125,22 @@ func TestRefundPlanCreditsWhatWasBilledAndRemovesTheRest(t *testing.T) {
 	}
 	if len(removed) != 2 || removed[0].Number != 2 || removed[1].Number != 3 {
 		t.Fatalf("removed = %+v", removed)
+	}
+}
+func TestPlaceInstallmentsFloorsAtTheOpenMonthAndKeepsTheSpacing(t *testing.T) {
+	open := Month{Year: 2026, Month: time.April}
+	plan, err := PlaceInstallments(30000, 3, brcal.New(2026, time.February, 20), 25, open) // would be Feb, Mar, Apr
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []Month{open, open.Add(1), open.Add(2)}
+	for i, inst := range plan {
+		if inst.Statement != want[i] {
+			t.Fatalf("installment %d on %s, want %s", inst.Number, inst.Statement, want[i])
+		}
+	}
+	late, _ := PlaceInstallments(1000, 1, brcal.New(2026, time.April, 28), 25, open)
+	if late[0].Statement != open.Add(1) {
+		t.Fatalf("after the closing day: %s, want May", late[0].Statement)
 	}
 }

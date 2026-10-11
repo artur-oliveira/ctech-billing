@@ -10,19 +10,47 @@ import (
 // Recurrence is a rule that produces bills (spec § 3.5). It holds a temporal
 // expression through its Schedule, never a list of dates.
 type Recurrence struct {
-	ID          string
-	Direction   Direction
-	Amount      billing.Cents
-	CategoryID  string
-	AccountID   string
-	Description string
-	Schedule    Schedule
+	ID         string
+	Direction  Direction
+	Amount     billing.Cents
+	CategoryID string
+	// AccountID or CardID, exactly one (spec D1). A card recurrence posts each
+	// occurrence as a purchase on that card, on its own date (D2).
+	AccountID string
+	CardID    string
+	// Installments splits each card occurrence (D3); 0 on an account recurrence.
+	Installments int
+	Description  string
+	Schedule     Schedule
 	// AutoSettle makes the daily job settle each materialised bill on its due
 	// date, at the bill's own amount.
 	AutoSettle bool
 	// Archived stops materialisation. Recurrences are ended or archived, never
 	// deleted: the bills they made keep pointing at them.
 	Archived bool
+	// NeedsAttention is why the job stopped on this recurrence (card_archived,
+	// category_archived), or empty. Written by the job, cleared by an edit or a
+	// successful run; never part of a request.
+	NeedsAttention string
+}
+
+const (
+	AttentionCardArchived     = "card_archived"
+	AttentionCategoryArchived = "category_archived"
+)
+
+// IsCard reports whether the recurrence is charged to a card.
+func (r Recurrence) IsCard() bool { return r.CardID != "" }
+
+// CardCharge is one card occurrence ready to post as a purchase.
+type CardCharge struct {
+	RecurrenceID string
+	Nominal      brcal.Date
+	CardID       string
+	CategoryID   string
+	Description  string
+	Amount       billing.Cents
+	Installments int
 }
 
 // Validate refuses a recurrence the job could not materialise.
@@ -37,10 +65,25 @@ func (r Recurrence) Validate() error {
 		return fail("amount must be between 1 and %d centavos", MaxLegAmount)
 	case r.CategoryID == "":
 		return fail("category is required")
-	case r.AccountID == "":
-		return fail("account is required")
+	case r.AccountID == "" && r.CardID == "":
+		return fail("an account or a card is required")
+	case r.AccountID != "" && r.CardID != "":
+		return fail("pay with an account or a card, not both")
 	case len(r.Description) > maxBillDescription:
 		return fail("description is at most %d characters", maxBillDescription)
+	}
+	if r.IsCard() {
+		switch {
+		case r.Direction != Payable:
+			return fail("a card pays expenses only")
+		case r.AutoSettle:
+			return fail("auto_settle does not apply to a card: the statement is what gets paid")
+		}
+		if _, err := SplitInstallments(r.Amount, r.Installments); err != nil {
+			return fail("%v", err)
+		}
+	} else if r.Installments != 0 {
+		return fail("installments are for a card recurrence only")
 	}
 	return r.Schedule.Validate()
 }
@@ -89,6 +132,9 @@ type Draft struct {
 // materialised yet, so the recurrence is caught up from its Start: someone who
 // enters "rent, since January" gets every month.
 func (r Recurrence) Materialise(cursor, today brcal.Date) ([]Draft, error) {
+	if r.IsCard() {
+		return nil, fmt.Errorf("%w: a card recurrence posts purchases (CardDue), not bills", ErrInvalidRecurrence)
+	}
 	if cursor.IsZero() {
 		// First materialisation: a catch-up from Start, which must be bounded.
 		// A month of slack on the creation-time bound: a recurrence validly created
@@ -136,6 +182,50 @@ func (r Recurrence) Materialise(cursor, today brcal.Date) ([]Draft, error) {
 	return out, nil
 }
 
+// CardDue returns the card charges owed for occurrences whose nominal day is in
+// (cursor, today] and on or after floor (the card's first month: what came
+// before was never on this card in Finanças). A zero cursor catches up from
+// Start under the same bound as Materialise.
+func (r Recurrence) CardDue(cursor, today, floor brcal.Date) ([]CardCharge, error) {
+	if !r.IsCard() {
+		return nil, fmt.Errorf("%w: not a card recurrence", ErrInvalidRecurrence)
+	}
+	if cursor.IsZero() {
+		if err := r.ValidateAt(today.AddDays(-catchUpSlackDays)); err != nil {
+			return nil, err
+		}
+	} else if err := r.Validate(); err != nil {
+		return nil, err
+	}
+	if r.Archived {
+		return nil, nil
+	}
+	from := r.Schedule.Start
+	if !cursor.IsZero() {
+		from = cursor.AddDays(1)
+	}
+	if from.Before(floor) {
+		from = floor
+	}
+	var out []CardCharge
+	for lo := from; !lo.After(today); {
+		hi := lo.AddDays(MaxSpanDays)
+		if hi.After(today.AddDays(1)) {
+			hi = today.AddDays(1)
+		}
+		occ, err := r.Schedule.Occurrences(lo, hi)
+		if err != nil {
+			return nil, err
+		}
+		for _, o := range occ {
+			out = append(out, CardCharge{RecurrenceID: r.ID, Nominal: o.Nominal, CardID: r.CardID, CategoryID: r.CategoryID,
+				Description: r.Description, Amount: r.Amount, Installments: r.Installments})
+		}
+		lo = hi
+	}
+	return out, nil
+}
+
 // NextMaterialiseDate is the first day the occurrence following `after` enters
 // the horizon: the first day of the month before its month. ok is false when
 // the schedule has no further occurrence.
@@ -151,6 +241,10 @@ func (r Recurrence) NextMaterialiseDate(after brcal.Date) (brcal.Date, bool) {
 	occ, err := r.Schedule.Occurrences(from, end)
 	if err != nil || len(occ) == 0 {
 		return brcal.Date{}, false
+	}
+	if r.IsCard() {
+		// A card occurrence is posted on its own day, never ahead (D2).
+		return occ[0].Nominal, true
 	}
 	return MonthOf(occ[0].Nominal).Add(-1).First(), true
 }

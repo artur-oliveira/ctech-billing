@@ -217,3 +217,84 @@ func TestEndedIsTrueOnlyWhenNothingIsLeftToCome(t *testing.T) {
 		}
 	}
 }
+func streaming() Recurrence {
+	return Recurrence{
+		ID: "r9", Direction: Payable, Amount: 3990, CategoryID: "subs", CardID: "visa", Installments: 1, Description: "Streaming",
+		Schedule: Schedule{Expression: DayOfMonth{Day: 28}, Start: d(2026, time.January, 1), Adjust: AdjustNone},
+	}
+}
+
+func TestACardRecurrenceHasExactlyOneTargetAndIsPayableOnly(t *testing.T) {
+	if err := streaming().Validate(); err != nil {
+		t.Fatal(err)
+	}
+	for name, mutate := range map[string]func(*Recurrence){
+		"both targets":        func(r *Recurrence) { r.AccountID = "bank" },
+		"no target":           func(r *Recurrence) { r.CardID = "" },
+		"receivable on card":  func(r *Recurrence) { r.Direction = Receivable },
+		"auto settle on card": func(r *Recurrence) { r.AutoSettle = true },
+		"zero installments":   func(r *Recurrence) { r.Installments = 0 },
+		"49 installments":     func(r *Recurrence) { r.Installments = 49 },
+		"installment < 0,01":  func(r *Recurrence) { r.Amount = 2; r.Installments = 3 },
+	} {
+		r := streaming()
+		mutate(&r)
+		if err := r.Validate(); !errors.Is(err, ErrInvalidRecurrence) {
+			t.Errorf("%s: err = %v, want ErrInvalidRecurrence", name, err)
+		}
+	}
+	acct := rent()
+	acct.Installments = 2
+	if err := acct.Validate(); !errors.Is(err, ErrInvalidRecurrence) {
+		t.Errorf("installments on an account recurrence: %v", err)
+	}
+}
+
+func TestACardRecurrenceIsDueOnItsOccurrenceDayNotAMonthAhead(t *testing.T) {
+	r := streaming()
+	next, ok := r.NextMaterialiseDate(d(2026, time.February, 28))
+	if !ok || next != d(2026, time.March, 28) {
+		t.Fatalf("next = %s %v, want the occurrence day itself (2026-03-28)", next, ok)
+	}
+	if _, err := r.Materialise(brcal.Date{}, d(2026, time.March, 20)); !errors.Is(err, ErrInvalidRecurrence) {
+		t.Fatalf("Materialise on a card recurrence = %v, want a refusal: it posts purchases, not bills", err)
+	}
+}
+
+func TestCardDuePostsOnlyWhatHasHappened(t *testing.T) {
+	r := streaming()
+	got, err := r.CardDue(d(2026, time.January, 28), d(2026, time.March, 28), d(2026, time.January, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0].Nominal != d(2026, time.February, 28) || got[1].Nominal != d(2026, time.March, 28) {
+		t.Fatalf("charges = %+v, want Feb 28 and Mar 28 (today included, nothing after)", got)
+	}
+	c := got[0]
+	if c.RecurrenceID != "r9" || c.CardID != "visa" || c.CategoryID != "subs" || c.Amount != 3990 || c.Installments != 1 || c.Description != "Streaming" {
+		t.Fatalf("charge = %+v", c)
+	}
+	if none, _ := r.CardDue(d(2026, time.March, 28), d(2026, time.April, 27), d(2026, time.January, 1)); len(none) != 0 {
+		t.Fatalf("before the 28th nothing is due, got %+v", none)
+	}
+}
+
+// Review Focus 3.
+func TestCardDueSkipsOccurrencesBeforeTheCardExisted(t *testing.T) {
+	r := streaming()                                                                     // since January
+	got, err := r.CardDue(brcal.Date{}, d(2026, time.March, 28), d(2026, time.March, 1)) // card added in March
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Nominal != d(2026, time.March, 28) {
+		t.Fatalf("charges = %+v, want only March: January and February were never on this card here", got)
+	}
+}
+
+func TestCardDueOfAnArchivedRecurrenceIsNothing(t *testing.T) {
+	r := streaming()
+	r.Archived = true
+	if got, err := r.CardDue(brcal.Date{}, d(2026, time.March, 28), d(2026, time.January, 1)); err != nil || len(got) != 0 {
+		t.Fatalf("got %+v %v", got, err)
+	}
+}
