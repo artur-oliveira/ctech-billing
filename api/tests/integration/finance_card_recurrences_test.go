@@ -13,6 +13,7 @@ import (
 	"gopkg.aoctech.app/billing/api/internal/domain/brcal"
 	"gopkg.aoctech.app/billing/api/internal/domain/finance"
 	"gopkg.aoctech.app/billing/api/internal/repositories"
+	"gopkg.aoctech.app/billing/api/internal/services"
 	"gopkg.aoctech.app/billing/api/internal/space"
 )
 
@@ -325,5 +326,185 @@ func TestACardKnowsItsFirstMonth(t *testing.T) {
 	got, err := f.cards.GetCard(context.Background(), f.sp, f.card.ID)
 	if err != nil || got.FirstMonth != (finance.Month{Year: 2026, Month: time.March}) {
 		t.Fatalf("first month = %v, %v", got.FirstMonth, err)
+	}
+}
+func (f cardRecFixture) jobs() *services.FinanceJobs {
+	return services.NewFinanceJobs(f.bills, f.recs).WithCards(f.cards)
+}
+
+func at(y int, m time.Month, d int) (brcal.Date, time.Time) {
+	return brcal.New(y, m, d), time.Date(y, m, d, 12, 0, 0, 0, time.UTC)
+}
+
+func (f cardRecFixture) items(t *testing.T, m time.Month) []repositories.StatementItem {
+	t.Helper()
+	s, err := f.cards.GetStatement(context.Background(), f.sp, f.card.ID, finance.Month{Year: 2026, Month: m})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return s.Items
+}
+
+// Spec § 6.1. The work lists are shared with every test in the run: assert on
+// this space's rows only, never on the job's counters.
+func TestACardRecurrencePostsOnePurchasePerOccurrenceAcrossRunsAndARace(t *testing.T) {
+	f := newCardRecFixture(t)
+	f.cardRecurrence(t, 28, 3990, 1)
+	job := f.jobs()
+	today, now := at(2026, time.March, 28)
+	job.Materialise(context.Background(), true, today, now)
+	job.Materialise(context.Background(), true, today, now)
+	var wg sync.WaitGroup
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func() { defer wg.Done(); job.Materialise(context.Background(), true, today, now) }()
+	}
+	wg.Wait()
+	job.Materialise(context.Background(), true, today, now) // heals a run that lost a transaction conflict
+	if got := len(f.items(t, time.April)); got != 1 {
+		t.Fatalf("April holds %d items, want exactly one purchase", got)
+	}
+	if got := balance(t, f.ledger, f.sp, "subs"); got != 3990 {
+		t.Fatalf("subs = %d, want one expense", got)
+	}
+}
+
+// Spec § 6.2.
+func TestAnOccurrenceAfterTheClosingDayLandsOnNextMonthAndTheProjectionFollows(t *testing.T) {
+	f := newCardRecFixture(t)
+	f.cardRecurrence(t, 28, 3990, 1)
+	job := f.jobs()
+	before, _ := at(2026, time.March, 20)
+	p, err := job.Project(context.Background(), f.sp, before, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Months[2].Month.Month != time.May || p.Months[2].VirtualPayable != 3990 || p.Months[2].Payable != 0 {
+		t.Fatalf("May while virtual = %+v", p.Months[2])
+	}
+	today, now := at(2026, time.March, 28)
+	job.Materialise(context.Background(), true, today, now)
+	if got := f.items(t, time.April); len(got) != 1 || got[0].Date != today {
+		t.Fatalf("April = %+v: the 28th is after the 25th", got)
+	}
+	p, _ = job.Project(context.Background(), f.sp, today, 4)
+	if p.Months[2].Payable != 3990 || p.Months[2].VirtualPayable != 0 {
+		t.Fatalf("May once posted = %+v: Payable only", p.Months[2])
+	}
+}
+
+// Spec § 6.3.
+func TestAThreeInstallmentRecurrenceSpreadsOverThreeStatements(t *testing.T) {
+	f := newCardRecFixture(t)
+	f.cardRecurrence(t, 20, 30000, 3)
+	today, now := at(2026, time.March, 20)
+	f.jobs().Materialise(context.Background(), true, today, now)
+	for _, m := range []time.Month{time.March, time.April, time.May} {
+		if got := f.items(t, m); len(got) != 1 || got[0].Amount != 10000 || got[0].Of != 3 {
+			t.Fatalf("%s = %+v, want one installment of 100,00", m, got)
+		}
+	}
+}
+
+// Spec § 6.4.
+func TestABrokenTargetPostsNothingUntilFixedThenCatchesUp(t *testing.T) {
+	f := newCardRecFixture(t)
+	ctx := context.Background()
+	rec := f.cardRecurrence(t, 10, 3990, 1)
+	if err := f.ledger.ArchiveAccount(ctx, f.sp, f.card.ID, cardRecNow); err != nil {
+		t.Fatal(err)
+	}
+	job := f.jobs()
+	d1, n1 := at(2026, time.April, 12)
+	job.Materialise(ctx, true, d1, n1)
+	got, cursor, _ := f.recs.GetWithCursor(ctx, f.sp, rec.ID)
+	if got.NeedsAttention != finance.AttentionCardArchived || !cursor.IsZero() || balance(t, f.ledger, f.sp, "subs") != 0 {
+		t.Fatalf("archived card: %+v cursor %s", got, cursor)
+	}
+	other, err := f.cards.CreateCard(ctx, f.sp, "Master", finance.Card{ClosingDay: 25, DueDay: 5, PayingAccountID: "bank"}, cardRecNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.recs.Update(ctx, f.sp, rec.ID, repositories.RecurrencePatch{CardID: &other.ID}, n1); err != nil {
+		t.Fatal(err)
+	}
+	job.Materialise(ctx, true, d1, n1)
+	if got := balance(t, f.ledger, f.sp, "subs"); got != 2*3990 {
+		t.Fatalf("subs = %d, want March 10 and April 10 posted on the new card", got)
+	}
+	got, cursor, _ = f.recs.GetWithCursor(ctx, f.sp, rec.ID)
+	if got.NeedsAttention != "" || cursor != d1 {
+		t.Fatalf("after the fix: %+v cursor %s", got, cursor)
+	}
+
+	// f.card is archived now: this one is on the working card.
+	cat, err := f.recs.Create(ctx, f.sp, finance.Recurrence{Direction: finance.Payable, Amount: 1000, CategoryID: "subs", CardID: other.ID, Installments: 1,
+		Schedule: finance.Schedule{Expression: finance.DayOfMonth{Day: 15}, Start: brcal.New(2026, time.March, 1), Adjust: finance.AdjustNone}},
+		repositories.PostMeta{}, n1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.ledger.ArchiveAccount(ctx, f.sp, "subs", n1); err != nil {
+		t.Fatal(err)
+	}
+	d2, n2 := at(2026, time.April, 16)
+	job.Materialise(ctx, true, d2, n2)
+	if got, _ := f.recs.Get(ctx, f.sp, cat.ID); got.NeedsAttention != finance.AttentionCategoryArchived {
+		t.Fatalf("archived category: needs_attention = %q", got.NeedsAttention)
+	}
+	food := "food"
+	if err := f.recs.Update(ctx, f.sp, cat.ID, repositories.RecurrencePatch{CategoryID: &food}, n2); err != nil {
+		t.Fatal(err)
+	}
+	job.Materialise(ctx, true, d2, n2)
+	if got := balance(t, f.ledger, f.sp, "food"); got != 2*1000 {
+		t.Fatalf("food = %d, want March 15 and April 15 once the category is fixed", got)
+	}
+}
+
+// Review Focus 2.
+func TestSwitchingTargetNeverPostsAnOccurrenceTwice(t *testing.T) {
+	f := newCardRecFixture(t)
+	ctx := context.Background()
+	rec, err := f.recs.Create(ctx, f.sp, finance.Recurrence{Direction: finance.Payable, Amount: 5000, CategoryID: "subs", AccountID: "bank",
+		Schedule: finance.Schedule{Expression: finance.DayOfMonth{Day: 10}, Start: brcal.New(2026, time.March, 1), Adjust: finance.AdjustNone}},
+		repositories.PostMeta{}, cardRecNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	job := f.jobs()
+	d1, n1 := at(2026, time.March, 20)
+	job.Materialise(ctx, true, d1, n1) // bills for Mar 10 and Apr 10 (horizon: end of April)
+	if err := f.recs.Update(ctx, f.sp, rec.ID, repositories.RecurrencePatch{CardID: &f.card.ID}, n1); err != nil {
+		t.Fatal(err)
+	}
+	d2, n2 := at(2026, time.May, 10)
+	job.Materialise(ctx, true, d2, n2)
+	if got := balance(t, f.ledger, f.sp, "subs"); got != 3*5000 {
+		t.Fatalf("subs = %d, want Mar and Apr as bills and May as a purchase, each once", got)
+	}
+	bank := "bank"
+	if err := f.recs.Update(ctx, f.sp, rec.ID, repositories.RecurrencePatch{AccountID: &bank}, n2); err != nil {
+		t.Fatal(err)
+	}
+	job.Materialise(ctx, true, d2, n2) // bills from May 11 on: June 10
+	if got := balance(t, f.ledger, f.sp, "subs"); got != 4*5000 {
+		t.Fatalf("subs = %d, want June added as a bill and May not again", got)
+	}
+}
+
+// Review Focus 3, against the tables.
+func TestARecurrenceOlderThanTheCardSkipsWhatCameBefore(t *testing.T) {
+	f := newCardRecFixture(t)
+	ctx := context.Background()
+	if _, err := f.recs.Create(ctx, f.sp, finance.Recurrence{Direction: finance.Payable, Amount: 1000, CategoryID: "subs", CardID: f.card.ID, Installments: 1,
+		Schedule: finance.Schedule{Expression: finance.DayOfMonth{Day: 5}, Start: brcal.New(2026, time.January, 1), Adjust: finance.AdjustNone}},
+		repositories.PostMeta{}, cardRecNow); err != nil {
+		t.Fatal(err)
+	}
+	d, n := at(2026, time.March, 6)
+	f.jobs().Materialise(ctx, true, d, n)
+	if got := balance(t, f.ledger, f.sp, "subs"); got != 1000 {
+		t.Fatalf("subs = %d, want only March 5 (the card was added in March)", got)
 	}
 }
