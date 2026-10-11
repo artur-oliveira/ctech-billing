@@ -64,5 +64,3 @@ require (
 	golang.org/x/sys v0.48.0 // indirect
 	golang.org/x/text v0.42.0 // indirect
 )
-
-replace gopkg.aoctech.app/api-commons => /home/artur-revgas/Documents/Projects/Ctech/ctech-go-common/.claude/worktrees/byok-a
