@@ -617,3 +617,73 @@ func TestAccountAndCardRecurrencesRunSideBySide(t *testing.T) {
 		t.Fatalf("bills %d (want Jan..Apr), purchases %d (want Mar 15)", bills.created, len(cards.posted))
 	}
 }
+func monthOf(p Projection, m time.Month) ProjectionMonth {
+	for _, x := range p.Months {
+		if x.Month.Month == m {
+			return x
+		}
+	}
+	return ProjectionMonth{}
+}
+
+// Spec § 6.2: charged on the 28th, closing on the 25th: next month's
+// statement, due on the 5th of the month after. Virtual there while not posted;
+// once posted, only Payable (through the statement), never both.
+func TestACardOccurrenceIsVirtualInItsStatementsDueMonthThenOnlyPayable(t *testing.T) {
+	cards, recs := newRecCards(visa25()), newFakeRecs(onCard("s", 28, 1))
+	jobs := NewFinanceJobs(newFakeBills(), recs).WithCards(cards)
+
+	p, err := jobs.Project(context.Background(), testSpace(t), day(2026, time.March, 20), 4) // Mar..Jun
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Mar 28 -> April statement -> due May 5; Apr 28 -> May -> June 5.
+	if got := monthOf(p, time.May); got.VirtualPayable != 30000 || got.Virtual != -30000 || got.Payable != 0 {
+		t.Fatalf("May before posting = %+v", got)
+	}
+	if got := monthOf(p, time.April); got.VirtualPayable != 0 {
+		t.Fatalf("April = %+v: nothing is due in the month it is charged", got)
+	}
+
+	// The job posts Mar 28 (cursor = Mar 28); the April statement now holds it.
+	recs.cursors["s"] = day(2026, time.March, 28)
+	cards.totals["visa|2026-04"] = 30000
+	p, _ = jobs.Project(context.Background(), testSpace(t), day(2026, time.March, 28), 4)
+	if got := monthOf(p, time.May); got.Payable != 30000 || got.VirtualPayable != 0 {
+		t.Fatalf("May after posting = %+v: Payable once, no virtual", got)
+	}
+	if got := monthOf(p, time.June); got.VirtualPayable != 30000 {
+		t.Fatalf("June = %+v: the April 28 occurrence is still virtual", got)
+	}
+}
+
+// Spec § 6.3 (virtual half): 3x spreads over three statements' due months.
+func TestAnInstallmentCardOccurrenceSpreadsOverThreeDueMonths(t *testing.T) {
+	r := onCard("s", 28, 3)
+	r.Schedule.End = day(2026, time.March, 31) // one occurrence only
+	jobs := NewFinanceJobs(newFakeBills(), newFakeRecs(r)).WithCards(newRecCards(visa25()))
+	p, err := jobs.Project(context.Background(), testSpace(t), day(2026, time.March, 20), 6) // Mar..Aug
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range []time.Month{time.May, time.June, time.July} {
+		if got := monthOf(p, m); got.VirtualPayable != 10000 {
+			t.Errorf("%s = %+v, want one installment (100,00)", m, got)
+		}
+	}
+	if got := monthOf(p, time.August); got.VirtualPayable != 0 {
+		t.Errorf("August = %+v", got)
+	}
+}
+
+func TestACardRecurrenceOnAnArchivedCardProjectsNothing(t *testing.T) {
+	archived := visa25()
+	archived.Archived = true
+	jobs := NewFinanceJobs(newFakeBills(), newFakeRecs(onCard("s", 28, 1))).WithCards(newRecCards(archived))
+	p, _ := jobs.Project(context.Background(), testSpace(t), day(2026, time.March, 20), 4)
+	for _, m := range p.Months {
+		if m.VirtualPayable != 0 {
+			t.Fatalf("%s = %+v: an archived card is charged nothing until the recurrence is retargeted", m.Month, m)
+		}
+	}
+}

@@ -318,8 +318,12 @@ func (j *FinanceJobs) Project(ctx context.Context, sp space.ResolvedSpace, today
 		}
 	}
 
+	cards, err := j.activeCards(ctx, sp)
+	if err != nil {
+		return Projection{}, err
+	}
 	cardsEnd := first.Add(months - 1).Last()
-	if err := j.projectCards(ctx, sp, cardsEnd, func(due brcal.Date, amount billing.Cents) {
+	if err := j.projectCards(ctx, sp, cards, cardsEnd, func(due brcal.Date, amount billing.Cents) {
 		if i, ok := slot(due); ok {
 			window[i].Payable += amount
 		}
@@ -348,6 +352,29 @@ func (j *FinanceJobs) Project(ctx context.Context, sp space.ResolvedSpace, today
 		occ, err := r.Schedule.Occurrences(from, windowEnd.AddDays(1))
 		if err != nil {
 			return Projection{}, fmt.Errorf("projecting recurrence %s: %w", r.ID, err)
+		}
+		if r.IsCard() {
+			card, ok := cards[r.CardID]
+			if !ok {
+				continue // archived or unknown: nothing is charged until it is retargeted
+			}
+			for _, o := range occ {
+				if o.Nominal.Before(card.FirstMonth.First()) {
+					continue // the job never posts these (Task 1)
+				}
+				plan, err := finance.PlaceInstallments(r.Amount, r.Installments, o.Nominal, card.ClosingDay, card.OpenMonth)
+				if err != nil {
+					return Projection{}, fmt.Errorf("projecting recurrence %s: %w", r.ID, err)
+				}
+				for _, inst := range plan {
+					// D4: virtual in the month the statement is due, never the month charged.
+					if i, ok := slot(finance.DueDate(inst.Statement, card.ClosingDay, card.DueDay)); ok {
+						window[i].Virtual -= inst.Amount
+						window[i].VirtualPayable += inst.Amount
+					}
+				}
+			}
+			continue
 		}
 		for _, o := range occ {
 			i, ok := slot(o.Due)
