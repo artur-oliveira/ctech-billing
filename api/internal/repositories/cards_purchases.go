@@ -24,6 +24,15 @@ var ErrCardMoved = errors.New("cards: the card changed while this was written; t
 // ErrPurchaseRefunded is a refund or an advance of a purchase already refunded.
 var ErrPurchaseRefunded = errors.New("cards: the purchase was refunded")
 
+// ErrCardArchived and ErrCategoryUnusable tell the daily job why a card
+// occurrence could not post (needs_attention). They are wrapped together with
+// ErrUnknownAccount / finance.ErrInvalidTransaction, so the HTTP answers of the
+// purchase route do not change.
+var (
+	ErrCardArchived     = errors.New("cards: the card is archived")
+	ErrCategoryUnusable = errors.New("cards: the category cannot take a purchase")
+)
+
 // Purchase is one card purchase and where each installment is billed.
 type Purchase struct {
 	ID, CardID, Description, CategoryID string
@@ -34,6 +43,9 @@ type Purchase struct {
 	Installments []finance.Installment
 	TxID         string
 	Refunded     bool
+	// RecurrenceID and OriginRef are set on a purchase the daily job posted for
+	// a card recurrence's occurrence.
+	RecurrenceID, OriginRef string
 }
 
 // StatementItem is one line of a statement.
@@ -43,6 +55,7 @@ type StatementItem struct {
 	Number, Of                          int    // 3 of 12; 0 for a credit, an advance or a carry
 	Kind                                string // "installment" | "credit" | "advance" | "carry"
 	Amount                              billing.Cents
+	RecurrenceID                        string // the recurrence that posted it, if any
 }
 
 // Statement is one card's statement for one month.
@@ -78,6 +91,11 @@ type purchaseItem struct {
 	// Rev moves on every change to Installments (an advance), so a refund or
 	// an advance acting on a stale read fails instead of deleting the wrong items.
 	Rev int64 `dynamodbav:"rev,omitempty"`
+	// Origin and OriginRef link a purchase the daily job posted to its
+	// recurrence occurrence ("recurrence", "{recurrence}@{nominal}").
+	Origin       string `dynamodbav:"origin,omitempty"`
+	OriginRef    string `dynamodbav:"origin_ref,omitempty"`
+	RecurrenceID string `dynamodbav:"recurrence_id,omitempty"`
 }
 
 // purchaseGuard is the condition a write acting on a purchase as read carries:
@@ -91,14 +109,15 @@ func purchaseGuard(read purchaseItem) (string, map[string]types.AttributeValue) 
 
 type itemRow struct {
 	keys
-	PurchaseID  string `dynamodbav:"purchase_id"`
-	Description string `dynamodbav:"description"`
-	CategoryID  string `dynamodbav:"category_id,omitempty"`
-	Date        string `dynamodbav:"date"`
-	Number      int    `dynamodbav:"n,omitempty"`
-	Of          int    `dynamodbav:"of,omitempty"`
-	Kind        string `dynamodbav:"kind"`
-	Amount      int64  `dynamodbav:"amount"`
+	PurchaseID   string `dynamodbav:"purchase_id"`
+	Description  string `dynamodbav:"description"`
+	CategoryID   string `dynamodbav:"category_id,omitempty"`
+	Date         string `dynamodbav:"date"`
+	Number       int    `dynamodbav:"n,omitempty"`
+	Of           int    `dynamodbav:"of,omitempty"`
+	Kind         string `dynamodbav:"kind"`
+	Amount       int64  `dynamodbav:"amount"`
+	RecurrenceID string `dynamodbav:"recurrence_id,omitempty"`
 }
 
 type statementRow struct {
@@ -114,7 +133,7 @@ func (p purchaseItem) purchase(cardID string) (Purchase, error) {
 		return Purchase{}, fmt.Errorf("purchase %s has a malformed date: %w", p.ID, err)
 	}
 	out := Purchase{ID: p.ID, CardID: cardID, Description: p.Description, CategoryID: p.CategoryID, Date: date,
-		Total: billing.Cents(p.Total), TxID: p.TxID, Refunded: p.Refunded}
+		Total: billing.Cents(p.Total), TxID: p.TxID, Refunded: p.Refunded, RecurrenceID: p.RecurrenceID, OriginRef: p.OriginRef}
 	for _, i := range p.Installments {
 		m, err := finance.ParseMonth(i.Statement)
 		if err != nil {
@@ -155,7 +174,7 @@ func (r *CardRepository) activeCard(ctx context.Context, sp space.ResolvedSpace,
 		return CardRow{}, err
 	}
 	if card.Archived {
-		return CardRow{}, fmt.Errorf("%w: card %s is archived", ErrUnknownAccount, cardID)
+		return CardRow{}, fmt.Errorf("%w: %w: card %s", ErrUnknownAccount, ErrCardArchived, cardID)
 	}
 	return card, nil
 }
@@ -165,6 +184,28 @@ func (r *CardRepository) activeCard(ctx context.Context, sp space.ResolvedSpace,
 // billed on, never before the card's open month — a purchase dated in a month
 // already closed lands on the open statement (spec § 3.6).
 func (r *CardRepository) AddPurchase(ctx context.Context, sp space.ResolvedSpace, cardID string, p Purchase, meta PostMeta, now time.Time) (Purchase, error) {
+	return r.addPurchase(ctx, sp, cardID, p, meta, now, nil)
+}
+
+// purchaseExtras builds writes a caller adds to a purchase's transaction once
+// the purchase's id and plan are known. A cancellation caused by one of them is
+// errExtraFailed{index}.
+type purchaseExtras func(p Purchase) ([]types.TransactWriteItem, error)
+
+type errExtraFailed struct{ index int }
+
+func (e errExtraFailed) Error() string {
+	return fmt.Sprintf("cards: the caller's condition %d failed", e.index)
+}
+
+func originOf(p Purchase) string {
+	if p.RecurrenceID != "" {
+		return "recurrence"
+	}
+	return ""
+}
+
+func (r *CardRepository) addPurchase(ctx context.Context, sp space.ResolvedSpace, cardID string, p Purchase, meta PostMeta, now time.Time, extras purchaseExtras) (Purchase, error) {
 	if err := sp.Require(space.Write); err != nil {
 		return Purchase{}, err
 	}
@@ -174,23 +215,20 @@ func (r *CardRepository) AddPurchase(ctx context.Context, sp space.ResolvedSpace
 	}
 	cat, err := r.ledger.getAccount(ctx, sp, p.CategoryID)
 	if errors.Is(err, ErrNotFound) {
-		return Purchase{}, fmt.Errorf("%w: category %s", ErrUnknownAccount, p.CategoryID)
+		return Purchase{}, fmt.Errorf("%w: %w: category %s", ErrUnknownAccount, ErrCategoryUnusable, p.CategoryID)
 	}
 	if err != nil {
 		return Purchase{}, err
 	}
 	if cat.Class != finance.ClassExpense || cat.System || cat.Archived {
-		return Purchase{}, fmt.Errorf("%w: the purchase needs an active expense category", finance.ErrInvalidTransaction)
+		return Purchase{}, fmt.Errorf("%w: %w: the purchase needs an active expense category", finance.ErrInvalidTransaction, ErrCategoryUnusable)
 	}
-	plan, err := finance.AllocateInstallments(p.Total, len(p.Installments), p.Date, card.ClosingDay)
+	if p.Description == "" {
+		p.Description = cat.Name // a recurrence may have none
+	}
+	plan, err := finance.PlaceInstallments(p.Total, len(p.Installments), p.Date, card.ClosingDay, card.OpenMonth)
 	if err != nil {
 		return Purchase{}, err
-	}
-	if plan[0].Statement.Compare(card.OpenMonth) < 0 {
-		shift := card.OpenMonth.MonthsSince(plan[0].Statement)
-		for i := range plan {
-			plan[i].Statement = plan[i].Statement.Add(shift)
-		}
 	}
 	tx, err := finance.CardPurchase(card.ID, p.CategoryID, p.Total, p.Date)
 	if err != nil {
@@ -211,6 +249,7 @@ func (r *CardRepository) AddPurchase(ctx context.Context, sp space.ResolvedSpace
 		keys: newKeys(pk, PurchaseSK(p.ID), RetentionPermanent, now),
 		ID:   p.ID, Description: p.Description, CategoryID: p.CategoryID, Date: p.Date.String(), Total: int64(p.Total),
 		Installments: installmentItems(plan, nil), TxID: p.TxID,
+		Origin: originOf(p), OriginRef: p.OriginRef, RecurrenceID: p.RecurrenceID,
 	})
 	if err != nil {
 		return Purchase{}, err
@@ -222,7 +261,7 @@ func (r *CardRepository) AddPurchase(ctx context.Context, sp space.ResolvedSpace
 		it, err := Encode(itemRow{
 			keys:       newKeys(pk, ItemSK(inst.Statement, p.ID, installmentTag(inst.Number)), RetentionPermanent, now),
 			PurchaseID: p.ID, Description: p.Description, CategoryID: p.CategoryID, Date: p.Date.String(),
-			Number: inst.Number, Of: len(plan), Kind: "installment", Amount: int64(inst.Amount),
+			Number: inst.Number, Of: len(plan), Kind: "installment", Amount: int64(inst.Amount), RecurrenceID: p.RecurrenceID,
 		})
 		if err != nil {
 			return Purchase{}, err
@@ -231,8 +270,23 @@ func (r *CardRepository) AddPurchase(ctx context.Context, sp space.ResolvedSpace
 	}
 	cardIdx := len(items)
 	items = append(items, r.cardBump(sp, card.ID, card.OpenMonth, now))
+	extraIdx := len(items)
+	if extras != nil {
+		more, err := extras(p)
+		if err != nil {
+			return Purchase{}, err
+		}
+		items = append(items, more...)
+	}
 	if err := r.cards.TransactWrite(ctx, items); err != nil {
 		codes := cancellationCodes(err)
+		if onlyConditionFailed(err) {
+			for i := extraIdx; i < len(items) && i < len(codes); i++ {
+				if codes[i] == codeConditionFailed {
+					return Purchase{}, errExtraFailed{index: i - extraIdx}
+				}
+			}
+		}
 		switch {
 		case !onlyConditionFailed(err):
 			return Purchase{}, err
@@ -330,6 +384,13 @@ func (r *CardRepository) statement(ctx context.Context, sp space.ResolvedSpace, 
 	if err != nil {
 		return Statement{}, err
 	}
+	return buildStatement(card, m, raw)
+}
+
+// buildStatement is one month of a card from its rows (the statement row, if
+// closed, and the items): the frozen total when closed, the items' sum
+// otherwise. Rows of other months are ignored.
+func buildStatement(card CardRow, m finance.Month, raw []map[string]types.AttributeValue) (Statement, error) {
 	s := Statement{
 		CardID: card.ID, Month: m,
 		ClosingDate: finance.ClosingDate(m, card.ClosingDay), DueDate: finance.DueDate(m, card.ClosingDay, card.DueDay),
@@ -358,7 +419,7 @@ func (r *CardRepository) statement(ctx context.Context, sp space.ResolvedSpace, 
 		}
 		s.Items = append(s.Items, StatementItem{
 			PurchaseID: row.PurchaseID, Description: row.Description, CategoryID: row.CategoryID, Date: d,
-			Number: row.Number, Of: row.Of, Kind: row.Kind, Amount: billing.Cents(row.Amount),
+			Number: row.Number, Of: row.Of, Kind: row.Kind, Amount: billing.Cents(row.Amount), RecurrenceID: row.RecurrenceID,
 		})
 	}
 	slices.SortStableFunc(s.Items, func(a, b StatementItem) int {

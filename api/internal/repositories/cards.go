@@ -42,6 +42,19 @@ type CardRow struct {
 	// close that summed the items before such a write fails instead of freezing
 	// a total without it.
 	Version int64
+	// FirstMonth is the card's first statement: the month it was added in, which
+	// was its open month then (CreateCard). Nothing is ever billed before it.
+	FirstMonth finance.Month
+}
+
+// firstMonth reads the card's creation month from its row's created_at, in the
+// civil calendar CreateCard used for its first open month.
+func (i cardItem) firstMonth() (finance.Month, error) {
+	at, err := time.Parse(time.RFC3339Nano, i.CreatedAt)
+	if err != nil {
+		return finance.Month{}, fmt.Errorf("card %s has a malformed created_at: %w", i.ID, err)
+	}
+	return finance.MonthOf(brcal.FromTime(at)), nil
 }
 
 type cardItem struct {
@@ -109,7 +122,7 @@ func (r *CardRepository) CreateCard(ctx context.Context, sp space.ResolvedSpace,
 	}); err != nil {
 		return CardRow{}, err
 	}
-	return CardRow{Card: c, Name: name}, nil
+	return CardRow{Card: c, Name: name, FirstMonth: c.OpenMonth}, nil
 }
 
 func (r *CardRepository) loadCard(ctx context.Context, sp space.ResolvedSpace, cardID string) (CardRow, error) {
@@ -128,7 +141,11 @@ func (r *CardRepository) loadCard(ctx context.Context, sp space.ResolvedSpace, c
 	if err != nil {
 		return CardRow{}, err
 	}
-	row := CardRow{Card: c, Version: it.Version}
+	first, err := it.firstMonth()
+	if err != nil {
+		return CardRow{}, err
+	}
+	row := CardRow{Card: c, Version: it.Version, FirstMonth: first}
 	acct, err := r.ledger.getAccount(ctx, sp, cardID)
 	if err != nil && !errors.Is(err, ErrNotFound) {
 		return CardRow{}, err
@@ -179,8 +196,12 @@ func (r *CardRepository) ListCards(ctx context.Context, sp space.ResolvedSpace) 
 		if err != nil {
 			return nil, err
 		}
+		first, err := it.firstMonth()
+		if err != nil {
+			return nil, err
+		}
 		a := byID[c.ID]
-		out = append(out, CardRow{Card: c, Name: a.Name, Archived: a.Archived, Balance: int64(a.Balance), Version: it.Version})
+		out = append(out, CardRow{Card: c, Name: a.Name, Archived: a.Archived, Balance: int64(a.Balance), Version: it.Version, FirstMonth: first})
 	}
 	return out, nil
 }

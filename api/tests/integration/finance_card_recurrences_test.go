@@ -5,6 +5,7 @@ package integration
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -170,5 +171,159 @@ func TestNeedsAttentionIsSetByTheJobAndClearedByAnEditOrARun(t *testing.T) {
 	}
 	if got, _ = f.recs.Get(ctx, f.sp, rec.ID); got.NeedsAttention != "" {
 		t.Fatalf("a run that moved the cursor must clear it, got %q", got.NeedsAttention)
+	}
+}
+func (f cardRecFixture) charge(rec finance.Recurrence, nominal brcal.Date) finance.CardCharge {
+	return finance.CardCharge{RecurrenceID: rec.ID, Nominal: nominal, CardID: rec.CardID, CategoryID: rec.CategoryID,
+		Description: rec.Description, Amount: rec.Amount, Installments: rec.Installments}
+}
+
+func TestAnOccurrenceIsPostedOnceHoweverOftenAndConcurrentlyItIsAsked(t *testing.T) {
+	f := newCardRecFixture(t)
+	ctx := context.Background()
+	rec := f.cardRecurrence(t, 28, 3990, 1)
+	ch := f.charge(rec, brcal.New(2026, time.March, 28))
+	meta := repositories.PostMeta{Origin: "recurrence", Actor: "scheduler"}
+
+	var wg sync.WaitGroup
+	created := make([]bool, 4)
+	for i := range created {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			created[i], _, _ = f.cards.PostOccurrence(ctx, f.sp, ch, meta, time.Now())
+		}(i)
+	}
+	wg.Wait()
+	// A concurrent loser may answer a transaction conflict instead of a skip; the
+	// repeat after them must then post it. Across all calls: exactly one created.
+	again, _, err := f.cards.PostOccurrence(ctx, f.sp, ch, meta, time.Now())
+	if err != nil {
+		t.Fatalf("a later repeat: %v", err)
+	}
+	n := 0
+	for _, c := range append(created, again) {
+		if c {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Fatalf("%d calls reported created, want exactly 1", n)
+	}
+	if third, _, err := f.cards.PostOccurrence(ctx, f.sp, ch, meta, time.Now()); err != nil || third {
+		t.Fatalf("one more repeat = %v, %v; want (false, nil)", third, err)
+	}
+	if got := balance(t, f.ledger, f.sp, "subs"); got != 3990 {
+		t.Fatalf("subs = %d, want the expense once", got)
+	}
+	apr, _ := f.cards.GetStatement(ctx, f.sp, f.card.ID, finance.Month{Year: 2026, Month: time.April})
+	if len(apr.Items) != 1 || apr.Items[0].RecurrenceID != rec.ID || apr.Total != 3990 {
+		t.Fatalf("April = %+v: the 28th is after the closing day (25), one item carrying its recurrence", apr)
+	}
+}
+
+func TestAnOccurrenceIsNeverPostedOnTwoCardsOrAsBothABillAndAPurchase(t *testing.T) {
+	f := newCardRecFixture(t)
+	ctx := context.Background()
+	rec := f.cardRecurrence(t, 28, 3990, 1)
+	ch := f.charge(rec, brcal.New(2026, time.March, 28))
+	if ok, _, err := f.cards.PostOccurrence(ctx, f.sp, ch, repositories.PostMeta{}, time.Now()); err != nil || !ok {
+		t.Fatalf("first post = %v, %v", ok, err)
+	}
+	second, err := f.cards.CreateCard(ctx, f.sp, "Master", finance.Card{ClosingDay: 10, DueDay: 20, PayingAccountID: "bank"}, cardRecNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.recs.Update(ctx, f.sp, rec.ID, repositories.RecurrencePatch{CardID: &second.ID}, cardRecNow); err != nil {
+		t.Fatal(err)
+	}
+	moved := ch
+	moved.CardID = second.ID
+	if ok, _, err := f.cards.PostOccurrence(ctx, f.sp, moved, repositories.PostMeta{}, time.Now()); err != nil || ok {
+		t.Fatalf("the same occurrence on the new card = %v, %v; want (false, nil): the lock is per occurrence, not per card", ok, err)
+	}
+}
+
+func TestAStaleChargeIsRefusedAsARecurrenceChange(t *testing.T) {
+	f := newCardRecFixture(t)
+	ctx := context.Background()
+	rec := f.cardRecurrence(t, 28, 3990, 1)
+	amount := billing.Cents(4990)
+	if err := f.recs.Update(ctx, f.sp, rec.ID, repositories.RecurrencePatch{Amount: &amount}, cardRecNow); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := f.cards.PostOccurrence(ctx, f.sp, f.charge(rec, brcal.New(2026, time.March, 28)), repositories.PostMeta{}, time.Now()); !errors.Is(err, repositories.ErrRecurrenceChanged) {
+		t.Fatalf("a charge read before the amount changed: %v, want ErrRecurrenceChanged", err)
+	}
+	if got := balance(t, f.ledger, f.sp, "subs"); got != 0 {
+		t.Fatalf("subs = %d, nothing may post", got)
+	}
+}
+
+func TestAnArchivedCardOrCategoryIsToldApart(t *testing.T) {
+	f := newCardRecFixture(t)
+	ctx := context.Background()
+	rec := f.cardRecurrence(t, 28, 3990, 1)
+	ch := f.charge(rec, brcal.New(2026, time.March, 28))
+	if err := f.ledger.ArchiveAccount(ctx, f.sp, "subs", cardRecNow); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := f.cards.PostOccurrence(ctx, f.sp, ch, repositories.PostMeta{}, time.Now()); !errors.Is(err, repositories.ErrCategoryUnusable) {
+		t.Fatalf("archived category: %v", err)
+	}
+	if err := f.ledger.ArchiveAccount(ctx, f.sp, f.card.ID, cardRecNow); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := f.cards.PostOccurrence(ctx, f.sp, ch, repositories.PostMeta{}, time.Now()); !errors.Is(err, repositories.ErrCardArchived) {
+		t.Fatalf("archived card: %v", err)
+	}
+	// The HTTP purchase route keeps its codes: still ErrUnknownAccount underneath.
+	if _, err := f.cards.AddPurchase(ctx, f.sp, f.card.ID, repositories.Purchase{Description: "x", CategoryID: "food", Date: brcal.New(2026, time.March, 2),
+		Total: 100, Installments: make([]finance.Installment, 1)}, repositories.PostMeta{}, time.Now()); !errors.Is(err, repositories.ErrUnknownAccount) {
+		t.Fatalf("AddPurchase on an archived card: %v", err)
+	}
+}
+
+// Review Focus 4.
+func TestAnOccurrenceWithoutDescriptionIsTitledByItsCategory(t *testing.T) {
+	f := newCardRecFixture(t)
+	ctx := context.Background()
+	rec, err := f.recs.Create(ctx, f.sp, finance.Recurrence{Direction: finance.Payable, Amount: 1000, CategoryID: "subs", CardID: f.card.ID, Installments: 1,
+		Schedule: finance.Schedule{Expression: finance.DayOfMonth{Day: 5}, Start: brcal.New(2026, time.March, 1), Adjust: finance.AdjustNone}},
+		repositories.PostMeta{}, cardRecNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, p, err := f.cards.PostOccurrence(ctx, f.sp, f.charge(rec, brcal.New(2026, time.March, 5)), repositories.PostMeta{}, time.Now())
+	if err != nil || p.Description != "Assinaturas" {
+		t.Fatalf("purchase = %+v, %v; want it titled by its category", p, err)
+	}
+}
+
+func TestTheHistoryListsPostedOccurrencesAndEndingSkipsThem(t *testing.T) {
+	f := newCardRecFixture(t)
+	ctx := context.Background()
+	rec := f.cardRecurrence(t, 28, 30000, 3)
+	if _, _, err := f.cards.PostOccurrence(ctx, f.sp, f.charge(rec, brcal.New(2026, time.March, 28)), repositories.PostMeta{}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	hist, err := f.bills.ForRecurrence(ctx, f.sp, rec.ID, 12)
+	if err != nil || len(hist) != 1 || hist[0].Purchase == nil {
+		t.Fatalf("history = %+v, %v", hist, err)
+	}
+	if p := hist[0].Purchase; p.CardID != f.card.ID || p.Statement != (finance.Month{Year: 2026, Month: time.April}) || p.Amount != 30000 || p.ID == "" {
+		t.Fatalf("posted occurrence = %+v", p)
+	}
+	made, err := f.bills.MadeAfter(ctx, f.sp, rec.ID, brcal.New(2026, time.March, 1))
+	if err != nil || len(made) != 0 {
+		t.Fatalf("MadeAfter = %+v, %v: a purchase is not a bill an end could cancel", made, err)
+	}
+}
+
+func TestACardKnowsItsFirstMonth(t *testing.T) {
+	f := newCardRecFixture(t)
+	got, err := f.cards.GetCard(context.Background(), f.sp, f.card.ID)
+	if err != nil || got.FirstMonth != (finance.Month{Year: 2026, Month: time.March}) {
+		t.Fatalf("first month = %v, %v", got.FirstMonth, err)
 	}
 }

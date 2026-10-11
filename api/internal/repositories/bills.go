@@ -279,10 +279,7 @@ func (r *BillRepository) CreateFromOccurrence(ctx context.Context, sp space.Reso
 	if err := b.Validate(); err != nil {
 		return false, finance.Bill{}, err
 	}
-	lockRow, err := Encode(struct {
-		keys
-		BillID string `dynamodbav:"bill_id"`
-	}{newKeys(sp.PK(), OccurrenceSK(recurrenceID, d.Nominal), RetentionPermanent, now), b.ID})
+	lockRow, err := Encode(occurrenceLockRow{keys: newKeys(sp.PK(), OccurrenceSK(recurrenceID, d.Nominal), RetentionPermanent, now), BillID: b.ID})
 	if err != nil {
 		return false, finance.Bill{}, err
 	}
@@ -784,8 +781,27 @@ func (r *BillRepository) statementBillItem(sp space.ResolvedSpace, b finance.Bil
 // OccurrenceBill is a bill a recurrence made, with the nominal day it was made
 // for (the occurrence's identity).
 type OccurrenceBill struct {
-	Nominal brcal.Date
-	Bill    finance.Bill
+	Nominal  brcal.Date
+	Bill     finance.Bill
+	Purchase *OccurrencePurchase // set instead of Bill for a card occurrence
+}
+
+// occurrenceLockRow is OCCURRENCE#{recurrence}#{nominal}: written once per
+// occurrence, with the bill it made or, for a card recurrence, the purchase.
+type occurrenceLockRow struct {
+	keys
+	BillID     string `dynamodbav:"bill_id,omitempty"`
+	PurchaseID string `dynamodbav:"purchase_id,omitempty"`
+	CardID     string `dynamodbav:"card_id,omitempty"`
+	Statement  string `dynamodbav:"statement,omitempty"` // the first installment's month
+	Amount     int64  `dynamodbav:"amount,omitempty"`
+}
+
+// OccurrencePurchase is a card occurrence the job posted.
+type OccurrencePurchase struct {
+	ID, CardID string
+	Statement  finance.Month
+	Amount     billing.Cents
 }
 
 // ForRecurrence returns the latest `limit` bills a recurrence made, oldest
@@ -805,10 +821,7 @@ func (r *BillRepository) ForRecurrence(ctx context.Context, sp space.ResolvedSpa
 	if err != nil {
 		return nil, err
 	}
-	locks, err := DecodeItems[struct {
-		SK     string `dynamodbav:"sk"`
-		BillID string `dynamodbav:"bill_id"`
-	}](res.Items)
+	locks, err := DecodeItems[occurrenceLockRow](res.Items)
 	if err != nil {
 		return nil, err
 	}
@@ -818,6 +831,14 @@ func (r *BillRepository) ForRecurrence(ctx context.Context, sp space.ResolvedSpa
 		nominal, err := brcal.Parse(l.SK[strings.LastIndexByte(l.SK, '#')+1:])
 		if err != nil {
 			return nil, fmt.Errorf("malformed occurrence lock %q: %w", l.SK, err)
+		}
+		if l.PurchaseID != "" {
+			m, err := finance.ParseMonth(l.Statement)
+			if err != nil {
+				return nil, fmt.Errorf("malformed occurrence lock %q: %w", l.SK, err)
+			}
+			out = append(out, OccurrenceBill{Nominal: nominal, Purchase: &OccurrencePurchase{ID: l.PurchaseID, CardID: l.CardID, Statement: m, Amount: billing.Cents(l.Amount)}})
+			continue
 		}
 		b, err := r.get(ctx, sp, l.BillID)
 		if errors.Is(err, ErrNotFound) {
@@ -845,10 +866,7 @@ func (r *BillRepository) MadeAfter(ctx context.Context, sp space.ResolvedSpace, 
 	if err != nil {
 		return nil, err
 	}
-	locks, err := DecodeItems[struct {
-		SK     string `dynamodbav:"sk"`
-		BillID string `dynamodbav:"bill_id"`
-	}](items)
+	locks, err := DecodeItems[occurrenceLockRow](items)
 	if err != nil {
 		return nil, err
 	}
@@ -857,6 +875,9 @@ func (r *BillRepository) MadeAfter(ctx context.Context, sp space.ResolvedSpace, 
 		nominal, err := brcal.Parse(strings.TrimPrefix(l.SK, prefix))
 		if err != nil {
 			return nil, fmt.Errorf("malformed occurrence lock %q: %w", l.SK, err)
+		}
+		if l.BillID == "" {
+			continue // a card occurrence: a purchase, never cancelled by an end
 		}
 		b, err := r.get(ctx, sp, l.BillID)
 		if errors.Is(err, ErrNotFound) {
