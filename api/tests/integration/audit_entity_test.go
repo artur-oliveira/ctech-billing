@@ -16,8 +16,10 @@ import (
 // ListForEntity filters the tenant's whole audit range by entity_id. DynamoDB
 // applies Limit to the rows it evaluates, before that filter, so an entity
 // whose entries came after the first Limit rows of other entities' activity
-// got an empty trail. Here 300 other entries precede the entity's 3 — more
-// than one filtered Query reads in its page budget (Limit 20 x 10 calls).
+// got an empty trail. The trail is read newest first, so here the entity's 3
+// entries are the oldest, behind 2,300 newer ones: more than one filtered
+// Base.Query reads (10 calls x 200 rows), so both the paging inside it and the
+// outer cursor loop run.
 func TestTheAuditTrailOfAnEntityPastTheFirstPageIsFound(t *testing.T) {
 	ctx := ctxT(t)
 	org := newOrg(t, true)
@@ -39,15 +41,23 @@ func TestTheAuditTrailOfAnEntityPastTheFirstPageIsFound(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	for i := range 300 {
-		put(fmt.Sprintf("AUDIT#a%04d", i), fmt.Sprintf("in_other_%d", i))
-	}
 	var want []string
 	for i := range 3 {
-		sk := fmt.Sprintf("AUDIT#z%04d", i)
+		sk := fmt.Sprintf("AUDIT#0%04d", i)
 		want = append(want, sk[len("AUDIT#"):])
 		put(sk, "in_target")
 	}
+	others := make([]map[string]types.AttributeValue, 0, 2300)
+	for i := range 2300 {
+		sk := fmt.Sprintf("AUDIT#a%04d", i)
+		others = append(others, map[string]types.AttributeValue{
+			"pk":        &types.AttributeValueMemberS{Value: pk},
+			"sk":        &types.AttributeValueMemberS{Value: sk},
+			"id":        &types.AttributeValueMemberS{Value: sk[len("AUDIT#"):]},
+			"entity_id": &types.AttributeValueMemberS{Value: fmt.Sprintf("in_other_%d", i)},
+		})
+	}
+	auditBatchPut(t, *table, others)
 
 	trail, err := repositories.NewAuditRepository(testDB, testCfg).ListForEntity(ctx, org.ID, true, "in_target", 20)
 	if err != nil {
@@ -108,6 +118,25 @@ func TestTheAuditTrailKeepsTheNewestEntriesWhenScattered(t *testing.T) {
 	for i, e := range trail {
 		if e.ID != want[i] {
 			t.Fatalf("entry %d = %s, want %s (all: %v)", i, e.ID, want[i], want)
+		}
+	}
+}
+
+// auditBatchPut writes rows 25 at a time, retrying unprocessed ones.
+func auditBatchPut(t *testing.T, table string, items []map[string]types.AttributeValue) {
+	t.Helper()
+	for i := 0; i < len(items); i += 25 {
+		var reqs []types.WriteRequest
+		for _, it := range items[i:min(i+25, len(items))] {
+			reqs = append(reqs, types.WriteRequest{PutRequest: &types.PutRequest{Item: it}})
+		}
+		pending := map[string][]types.WriteRequest{table: reqs}
+		for len(pending) > 0 {
+			out, err := testDB.BatchWriteItem(ctxT(t), &dynamodb.BatchWriteItemInput{RequestItems: pending})
+			if err != nil {
+				t.Fatal(err)
+			}
+			pending = out.UnprocessedItems
 		}
 	}
 }
