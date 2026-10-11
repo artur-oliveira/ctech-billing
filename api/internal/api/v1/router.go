@@ -23,9 +23,13 @@ type Deps struct {
 	Usage     *repositories.UsageRepository
 	Levels    *repositories.LevelRepository
 	// FinancePlan is Finanças → Plano; disabled without a portal organization.
-	FinancePlan   *services.FinancePlan
-	Catalog       *repositories.CatalogRepository
-	Credentials   *repositories.CredentialRepository
+	FinancePlan *services.FinancePlan
+	Catalog     *repositories.CatalogRepository
+	Credentials *repositories.CredentialRepository
+	// Connector admits a merchant's own OAuth client from the console (spec
+	// § 5.1). Webhooks is the endpoint store the console manages (§ 5.2).
+	Connector     *services.CredentialConnector
+	Webhooks      *repositories.WebhookRepository
 	Idempotency   *repositories.IdempotencyRepository
 	Organizations *repositories.OrganizationRepository
 	// Applications is the merchant application lifecycle (spec § 4). Disabled
@@ -267,6 +271,9 @@ func registerConsole(v1 fiber.Router, d Deps, h *handlers, auth fiber.Handler) {
 		portalOrganizationID: d.PortalOrganizationID,
 		merchants:            d.Organizations,
 		applications:         d.Applications,
+		creds:                d.Credentials,
+		connector:            d.Connector,
+		hooks:                d.Webhooks,
 	}
 	// Assigned only when set: a nil interface value in the field must stay nil.
 	if d.SpaceLister != nil {
@@ -409,6 +416,9 @@ func registerConsole(v1 fiber.Router, d Deps, h *handlers, auth fiber.Handler) {
 		middleware.RequireUserScope(middleware.ScopeProductsRead), ch.listProducts)
 	console.Get("/products/:id",
 		middleware.RequireUserScope(middleware.ScopeProductsRead), ch.getProduct)
+
+	// The integration tools (spec § 5): credentials and webhooks.
+	registerIntegrations(console, ch)
 
 	// Tenant zero's review (spec § 4.2). Any other tenant: 404.
 	if ch.applications.Enabled() {

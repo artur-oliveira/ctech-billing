@@ -1,4 +1,6 @@
 import type {
+  ConsoleCredential,
+  ConsoleWebhookEndpoint,
   ApplicationStatus,
   AuditEntry,
   ConsoleCustomer,
@@ -584,3 +586,24 @@ export function consoleOverview(mode: "live" | "test", year: number, month: numb
     complete: true,
   }
 }
+
+export const MOCK_MACHINE_SCOPES = [
+  "billing:customers:read", "billing:customers:write", "billing:entitlements:read", "billing:invoices:read",
+  "billing:invoices:write", "billing:organization:read", "billing:products:read", "billing:products:write",
+  "billing:subscriptions:read", "billing:subscriptions:write", "billing:usage:write",
+]
+export const MOCK_EVENT_TYPES = [
+  "checkout.session.canceled", "checkout.session.completed", "checkout.session.created", "checkout.session.expired",
+  "credit_note.created", "invoice.created", "invoice.finalized", "invoice.paid", "invoice.payment_failed",
+  "invoice.uncollectible", "invoice.voided", "payment.abandoned", "payment.attempted", "payment.failed",
+  "payment.succeeded", "subscription.activated", "subscription.canceled", "subscription.created",
+  "subscription.past_due", "subscription.paused", "subscription.recovered", "subscription.renewed",
+  "subscription.resumed", "subscription.updated",
+]
+/** Mutable per page load: the mock is a demo, not a store. */
+export const mockCredentials: ConsoleCredential[] = [
+  {client_id: "dfe-billing", livemode: true, active: true, provisioned: true, connected_by_me: false, description: "CTech DF-e"},
+]
+export const mockWebhooks: ConsoleWebhookEndpoint[] = [
+  {id: "whe_dfe", url: "https://dfe.internal.aoctech.app/v1/internal/webhooks/billing", events: [], status: "active", failure_run: 0, provisioned: true, owner_key: "dfe"},
+]

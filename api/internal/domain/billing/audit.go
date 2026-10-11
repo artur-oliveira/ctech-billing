@@ -33,6 +33,16 @@ const (
 	// § 4.3), audited in the tenant's own live partition.
 	AuditOrganizationSuspended  = "organization.suspended"
 	AuditOrganizationReinstated = "organization.reinstated"
+	// AuditCredentialConnected and AuditCredentialDisconnected record a
+	// merchant's own OAuth client being admitted to, or removed from, a tenant
+	// from the console (spec § 5.1).
+	AuditCredentialConnected    = "credential.connected"
+	AuditCredentialDisconnected = "credential.disconnected"
+	// The console's webhook endpoint writes (spec § 5.2). The secret is never
+	// in the audit row; only that it changed.
+	AuditWebhookEndpointCreated       = "webhook_endpoint.created"
+	AuditWebhookEndpointDeleted       = "webhook_endpoint.deleted"
+	AuditWebhookEndpointSecretRotated = "webhook_endpoint.secret_rotated"
 )
 
 // AuditLog is an append-only record of who did what.

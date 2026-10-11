@@ -29,6 +29,8 @@ const (
 	TypeInvalidTransition   = "/problems/invalid-transition"
 	TypeConcurrentUpdate    = "/problems/concurrent-update"
 	TypeAlreadyGenerated    = "/problems/already-generated"
+	// TypeTooManyRequests: the same request again too soon (a webhook test).
+	TypeTooManyRequests = commonproblem.TypeTooManyRequests
 	// TypeNoBillingAccount is a signed-in person who has no customer record in
 	// tenant zero. It stays a 403 — the refusal is real and the portal has
 	// nothing to show them — but it is the one 403 the portal renders as an
@@ -45,6 +47,9 @@ const (
 	// TypeSpaceUnavailable is ctech-account being unreachable: access fails
 	// closed, and the body says nothing about any organization.
 	TypeSpaceUnavailable = "/problems/space-unavailable"
+	// TypeAccountUnavailable: ctech-account did not answer a question billing
+	// must ask before acting (the owner of an OAuth client). Retryable.
+	TypeAccountUnavailable = "/problems/account-unavailable"
 	// TypeNoMerchant is an organization the person may administer that has no
 	// billing tenant in the requested mode. The console renders it as the
 	// invitation to bill through CTech Billing (spec § 7.1), so a client

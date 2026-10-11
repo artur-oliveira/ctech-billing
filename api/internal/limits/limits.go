@@ -30,7 +30,9 @@ const (
 	Email        = 254
 	Reason       = 500
 	ExternalRef  = 128
-	TaxID        = 18 // "00.000.000/0000-00", the longest formatted document
+	TaxID        = 18   // "00.000.000/0000-00", the longest formatted document
+	ClientID     = 128  // ctech-account's longest client id (operator ids 3–128, UUIDs)
+	WebhookURL   = 2048 // a URL longer than this is not an endpoint somebody typed
 
 	// The merchant application (spec § 4.1–4.2).
 	ApplicationDescriptionMin = 20
@@ -42,6 +44,8 @@ const (
 	MaxNetDays           = 90
 	MaxSubscriptionItems = 20
 	MaxUsageQuantity     = 1_000_000_000
+	// MaxWebhookEndpoints is per tenant and mode (spec § 5.2).
+	MaxWebhookEndpoints = 5
 )
 
 // MinDate is the earliest civil date accepted anywhere: older is a typo.

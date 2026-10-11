@@ -26,6 +26,10 @@ type Scope struct {
 	Descriptions map[string]string `json:"descriptions"`
 	Visibility   string            `json:"visibility"`
 	Status       string            `json:"status"`
+	// M2M marks a scope ctech-account may grant to a merchant's own machine
+	// client through client_credentials (console self-service spec § 6.3). A
+	// developer-page client gets a token only when every scope it holds is one.
+	M2M bool `json:"m2m,omitempty"`
 }
 
 type Manifest struct {
@@ -61,6 +65,23 @@ func PublicActiveScopes() ([]string, error) {
 	}
 	sort.Strings(scopes)
 	return scopes, nil
+}
+
+// MachineScopes returns the public, active scopes marked m2m, sorted. The
+// console admits a client as a credential only if it holds nothing else.
+func MachineScopes() ([]string, error) {
+	m, err := ManifestDocument()
+	if err != nil {
+		return nil, err
+	}
+	out := []string{}
+	for _, s := range m.Scopes {
+		if s.M2M && s.Visibility == "public" && s.Status == "active" {
+			out = append(out, s.Name)
+		}
+	}
+	sort.Strings(out)
+	return out, nil
 }
 
 // Register mounts RFC 9728 OAuth Protected Resource Metadata.

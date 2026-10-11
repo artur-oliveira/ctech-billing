@@ -30,6 +30,7 @@ func TestTheUIReadsTheseLimits(t *testing.T) {
 			"legalName": float64(LegalName), "address": float64(Address), "email": float64(Email),
 			"reason": float64(Reason), "externalRef": float64(ExternalRef), "taxID": float64(TaxID),
 			"applicationDescription": float64(ApplicationDescription), "website": float64(Website),
+			"clientID": float64(ClientID), "webhookURL": float64(WebhookURL),
 		},
 		"minText": map[string]any{
 			"applicationDescription": float64(ApplicationDescriptionMin),
@@ -39,6 +40,7 @@ func TestTheUIReadsTheseLimits(t *testing.T) {
 		"maxNetDays":           float64(MaxNetDays),
 		"maxSubscriptionItems": float64(MaxSubscriptionItems),
 		"maxUsageQuantity":     float64(MaxUsageQuantity),
+		"maxWebhookEndpoints":  float64(MaxWebhookEndpoints),
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("ui/src/lib/limits.json = %v\nwant %v", got, want)

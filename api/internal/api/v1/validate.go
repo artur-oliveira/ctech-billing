@@ -1,8 +1,11 @@
 package v1
 
 import (
+	"errors"
 	"fmt"
 	"net/mail"
+	"regexp"
+	"slices"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -136,4 +139,49 @@ func (c *checks) taxID(field, v string, required, checkDigits bool) {
 	if n != 11 && n != 14 {
 		c.fail(field, "invalid_tax_id", "invalid CPF or CNPJ")
 	}
+}
+
+var clientIDChars = regexp.MustCompile(`^[A-Za-z0-9._:-]+$`)
+
+// clientID: a ctech-account client id as either creation path makes it.
+// Checked before the id reaches a URL path at ctech-account.
+func (c *checks) clientID(field, v string) {
+	switch {
+	case strings.TrimSpace(v) == "":
+		c.fail(field, "required", "required")
+	case len(v) > limits.ClientID:
+		c.fail(field, "too_long", fmt.Sprintf("at most %d characters", limits.ClientID), "max", limits.ClientID)
+	case !clientIDChars.MatchString(v):
+		c.fail(field, "invalid_chars", "contains invalid characters")
+	}
+}
+
+// webhookURL: a merchant endpoint URL (spec § 5.2, scope decision 9).
+func (c *checks) webhookURL(field, v string) {
+	c.text(field, v, true, limits.WebhookURL)
+	if len(c.errs) > 0 && c.errs[len(c.errs)-1].Field == field {
+		return
+	}
+	switch err := billing.CheckWebhookURL(v); {
+	case errors.Is(err, billing.ErrWebhookHostNotAllowed):
+		c.fail(field, "webhook_host_not_public", "the host must be on the public internet")
+	case err != nil:
+		c.fail(field, "webhook_url_not_https", "an https URL is required")
+	}
+}
+
+// webhookEvents: each from the event list, duplicates dropped, [] for all.
+func (c *checks) webhookEvents(field string, in []string) []billing.EventType {
+	out := make([]billing.EventType, 0, len(in))
+	for _, raw := range in {
+		t := billing.EventType(raw)
+		if !billing.IsWebhookEventType(t) {
+			c.fail(field, "unsupported_value", "not a webhook event type")
+			return nil
+		}
+		if !slices.Contains(out, t) {
+			out = append(out, t)
+		}
+	}
+	return out
 }

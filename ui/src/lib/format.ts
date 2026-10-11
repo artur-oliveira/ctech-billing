@@ -34,6 +34,12 @@ export const longDate = (iso: IsoDate) =>
 export const instantDate = (instant: string) =>
   intl("instant-long", l => new Intl.DateTimeFormat(l, {day: "numeric", month: "long", year: "numeric"})).format(new Date(instant))
 
+/** "10/10/2026" for an RFC 3339 instant, on São Paulo's calendar (a connect at
+ *  22:00 local is that day, not the next UTC one). For dates in a list. */
+export const instantShortDate = (instant: string) =>
+  intl("instant-short", l => new Intl.DateTimeFormat(l, {day: "2-digit", month: "2-digit", year: "numeric", timeZone: "America/Sao_Paulo"}))
+    .format(new Date(instant))
+
 /** "03/03/2026" — for dates in a column. */
 export const shortDate = (iso: IsoDate) =>
   intl("short", l => new Intl.DateTimeFormat(l, {day: "2-digit", month: "2-digit", year: "numeric"})).format(civil(iso))

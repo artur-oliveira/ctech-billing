@@ -79,11 +79,21 @@
     "csv_mapping_required": "Diga primeiro quais colunas do CSV são a data, a descrição e o valor.",
     "invalid_csv_mapping": "As colunas do CSV não estão certas.",
     "tenant_suspended": "A cobrança desta organização está suspensa. As integrações só podem ler dados.",
+    "client_not_yours": "Esse cliente não existe ou não é seu. Confira o ID na CTech Account; só quem criou o cliente pode conectá-lo.",
+    "client_has_no_billing_scope": "Esse cliente não tem nenhum escopo do CTech Billing. Adicione os escopos de integração na CTech Account.",
+    "client_not_machine_only": "Esse cliente não serve para acesso de máquina: ele tem escopos que não são de integração do CTech Billing, ou não é confidencial. Crie um cliente só com os escopos indicados.",
+    "client_already_connected": "Esse cliente já está conectado. Desconecte-o de onde estiver ou crie outro cliente.",
+    "credential_provisioned": "Essa credencial é gerenciada pela CTech e não pode ser removida aqui.",
+    "account_unavailable": "Não foi possível confirmar o cliente com a CTech Account agora. Tente de novo em instantes.",
+    "webhook_endpoint_limit": "Este modo já tem o máximo de 5 endpoints. Exclua um para adicionar outro.",
+    "webhook_endpoint_provisioned": "Esse endpoint é gerenciado pela CTech e não pode ser alterado aqui.",
+    "webhook_endpoint_disabled": "Esse endpoint foi desativado depois de falhas seguidas. Exclua e cadastre de novo para voltar a receber.",
     "application_not_pending": "Este pedido já foi decidido.",
     "already_merchant": "Esta organização já cobra pelo CTech Billing no modo produção.",
     "application_busy": "Outra pessoa está decidindo este pedido agora. Atualize a página.",
     "no_application": "Esta organização ainda não pediu acesso à cobrança.",
-    "companies_unavailable": "Não foi possível carregar as empresas da organização agora. Tente de novo."
+    "companies_unavailable": "Não foi possível carregar as empresas da organização agora. Tente de novo.",
+    "webhook_test_too_soon": "Esse endpoint acabou de ser testado. Espere meio minuto para testar de novo."
   },
   "field": {
     "required": "Obrigatório.",
@@ -108,6 +118,8 @@
     "out_of_range": "Use um valor entre {{min}} e {{max}}.",
     "invalid": "Valor inválido.",
     "too_short": "Use pelo menos {{min}} caracteres.",
-    "invalid_url": "Informe um endereço que comece com https://."
+    "invalid_url": "Informe um endereço que comece com https://.",
+    "webhook_url_not_https": "Use uma URL https completa, como https://sua-api.com.br/webhooks.",
+    "webhook_host_not_public": "Esse endereço não é público. Use um domínio da sua API na internet (não localhost, IP interno ou .local)."
   }
 }

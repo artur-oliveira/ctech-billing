@@ -27,6 +27,25 @@ type fakeAccount struct {
 	companiesDown      bool                               // both company routes answer 503
 	companiesTruncated bool                               // the list route says it cut the list
 	companiesUnknown   bool                               // the list route answers 404 (unknown organization)
+
+	clients     map[string]fakeOAuthClient // client id -> the internal route's answer
+	clientsDown bool                       // the client route answers 503
+}
+
+type fakeOAuthClient struct {
+	owner  string
+	active bool
+	scopes []string
+}
+
+// client registers an OAuth client as ctech-account's internal route reports it.
+func (a *fakeAccount) client(id, owner string, active bool, scopes ...string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.clients == nil {
+		a.clients = map[string]fakeOAuthClient{}
+	}
+	a.clients[id] = fakeOAuthClient{owner: owner, active: active, scopes: scopes}
 }
 
 // company registers one of an organization's companies.
@@ -119,6 +138,26 @@ func (a *fakeAccount) serve(t *testing.T) *httptest.Server {
 			default:
 				http.NotFound(w, r)
 			}
+		case strings.HasPrefix(r.URL.Path, "/v1.0/internal/oauth-clients/"):
+			if a.clientsDown {
+				w.WriteHeader(http.StatusServiceUnavailable)
+				return
+			}
+			id := strings.TrimPrefix(r.URL.Path, "/v1.0/internal/oauth-clients/")
+			c, ok := a.clients[id]
+			if !ok {
+				w.Header().Set("Content-Type", "application/problem+json")
+				w.WriteHeader(http.StatusNotFound)
+				_, _ = w.Write([]byte(`{"type":"https://accounts.aoctech.app/problems/not-found","title":"Not Found","status":404}`))
+				return
+			}
+			scopes := c.scopes
+			if scopes == nil {
+				scopes = []string{}
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"client_id": id, "owner_user_id": c.owner, "allowed_scopes": scopes, "active": c.active,
+			})
 		case strings.HasPrefix(r.URL.Path, "/v1.0/internal/users/"):
 			user := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/v1.0/internal/users/"), "/organizations")
 			a.listed = append(a.listed, user)

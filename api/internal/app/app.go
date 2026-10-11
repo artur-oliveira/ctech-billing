@@ -17,6 +17,7 @@ import (
 	"github.com/gofiber/fiber/v3/middleware/recover"
 	"gopkg.aoctech.app/api-commons/accountorgs"
 	"gopkg.aoctech.app/api-commons/cache"
+	"gopkg.aoctech.app/api-commons/oauthclients"
 
 	"gopkg.aoctech.app/billing/api/internal/accountclient"
 	v1 "gopkg.aoctech.app/billing/api/internal/api/v1"
@@ -128,6 +129,17 @@ func Build(ctx context.Context, cfg *config.Config, clock func() time.Time) (*fi
 		BaseURL: cfg.AccountBaseURL, TokenURL: cfg.AccountTokenURL,
 		ClientID: cfg.AccountClientID, ClientSecret: cfg.AccountClientSecret, Cache: cacheBackend,
 	})
+	machineScopes, err := oauthresource.MachineScopes()
+	if err != nil {
+		return nil, err
+	}
+	// Same ctech-account credential as the membership client; its own token,
+	// minted for internal:account:oauth-client-read only. A nil reader (no
+	// credential configured) answers every connect with ErrAccountUnavailable.
+	clientReader := oauthclients.New(oauthclients.Config{
+		BaseURL: cfg.AccountBaseURL, TokenURL: cfg.AccountTokenURL,
+		ClientID: cfg.AccountClientID, ClientSecret: cfg.AccountClientSecret, Cache: cacheBackend,
+	})
 	// ctech-account companies (the application form): the same credential as
 	// membership, its own scope. Typed nil when unconfigured: every call errors,
 	// read as companies_unavailable.
@@ -158,6 +170,8 @@ func Build(ctx context.Context, cfg *config.Config, clock func() time.Time) (*fi
 		Catalog:      catalog,
 		Credentials:  creds,
 		Idempotency:  idem,
+		Connector:    services.NewCredentialConnector(clientReader, creds, machineScopes),
+		Webhooks:     repositories.NewWebhookRepository(db, cfg),
 
 		Organizations: orgs,
 		Audit:         audit,

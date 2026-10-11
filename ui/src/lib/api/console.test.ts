@@ -2,7 +2,8 @@ import {afterEach, describe, expect, it, vi} from "vitest"
 
 import {apiClient} from "@/lib/api/client"
 import {
-  applyForMerchant, approveApplication, consoleKeys, getConsoleInvoicePDF, getConsoleSession, getConsoleSettings,
+  applyForMerchant, approveApplication, connectCredential, consoleKeys, createWebhook, deleteWebhook, disconnectCredential,
+  listConsoleCredentials, listConsoleWebhooks, rotateWebhookSecret, testWebhook, getConsoleInvoicePDF, getConsoleSession, getConsoleSettings,
   getMerchantApplication, listConsoleInvoices, listMerchantCompanies, rejectApplication, revealTaxID, voidInvoice,
 } from "@/lib/api/console"
 import type {ConsoleScope} from "@/lib/console/merchant"
@@ -66,5 +67,34 @@ describe("merchant applications", () => {
   it("passes on that ctech-account cut the company list", async () => {
     vi.spyOn(apiClient, "get").mockResolvedValue({data: {data: [{company_id: "cmp_1", legal_name: "A", tax_id: "1"}], truncated: true}})
     await expect(listMerchantCompanies(SCOPE)).resolves.toEqual({companies: [{company_id: "cmp_1", legal_name: "A", tax_id: "1"}], truncated: true})
+  })
+
+  it("sends the scope on every integration call, to English routes", async () => {
+    const get = vi.spyOn(apiClient, "get").mockResolvedValue({data: {}})
+    const post = vi.spyOn(apiClient, "post").mockResolvedValue({data: {}})
+    const del = vi.spyOn(apiClient, "delete").mockResolvedValue({data: undefined})
+    await listConsoleCredentials(SCOPE)
+    await connectCredential(SCOPE, "cli_1")
+    await disconnectCredential(SCOPE, "a/b")
+    await listConsoleWebhooks(SCOPE)
+    await createWebhook(SCOPE, {url: "https://example.com", events: []})
+    await rotateWebhookSecret(SCOPE, "whe_1")
+    await testWebhook(SCOPE, "whe_1")
+    await deleteWebhook(SCOPE, "whe_1")
+    const urls = [...get.mock.calls, ...post.mock.calls, ...del.mock.calls].map(c => c[0])
+    expect(urls).toEqual(expect.arrayContaining([
+      "/v1.0/console/credentials", "/v1.0/console/credentials/a%2Fb", "/v1.0/console/webhooks",
+      "/v1.0/console/webhooks/whe_1/rotate-secret", "/v1.0/console/webhooks/whe_1/test", "/v1.0/console/webhooks/whe_1",
+    ]))
+    for (const call of [...get.mock.calls, ...post.mock.calls, ...del.mock.calls]) {
+      const config = call[call.length - 1] as {headers: Record<string, string>}
+      expect(config.headers).toEqual(expect.objectContaining({"X-Billing-Mode": "test", "X-Billing-Space": `org:${SCOPE.org}`}))
+    }
+    expect(post).toHaveBeenCalledWith("/v1.0/console/credentials", {client_id: "cli_1"}, expect.anything())
+  })
+
+  it("keys the integration lists by organization and mode", () => {
+    expect(consoleKeys.credentials(SCOPE)).toEqual(["console", SCOPE.org, "test", "credentials"])
+    expect(consoleKeys.webhooks(SCOPE)).toEqual(["console", SCOPE.org, "test", "webhooks"])
   })
 })

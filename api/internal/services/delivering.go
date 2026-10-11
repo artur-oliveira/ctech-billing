@@ -7,11 +7,15 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
+	"net/netip"
 	"strconv"
+	"syscall"
 	"time"
 
 	"gopkg.aoctech.app/api-commons/observability"
@@ -34,6 +38,40 @@ import (
 type Deliverer struct {
 	hooks  *repositories.WebhookRepository
 	client *http.Client
+	// merchant delivers to endpoints a merchant registered in the console. Its
+	// dialer refuses any non-public address after DNS resolution, so neither a
+	// hostname pointed at 10.x nor a DNS answer that changes after the create
+	// check reaches CTech's network; it follows no redirect (a 3xx is a failed
+	// attempt) and uses no proxy.
+	merchant *http.Client
+}
+
+var errPrivateAddress = errors.New("webhook host resolves to a non-public address")
+
+func newMerchantClient() *http.Client {
+	dialer := &net.Dialer{Timeout: 5 * time.Second, Control: refusePrivate}
+	tr := http.DefaultTransport.(*http.Transport).Clone()
+	tr.Proxy = nil
+	tr.DialContext = dialer.DialContext
+	return &http.Client{
+		Timeout:   deliveryTimeout,
+		Transport: tr,
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+}
+
+// refusePrivate runs after resolution, on the address actually dialled.
+func refusePrivate(_, address string, _ syscall.RawConn) error {
+	ap, err := netip.ParseAddrPort(address)
+	if err != nil {
+		return fmt.Errorf("webhook dial %q: %w", address, err)
+	}
+	if !billing.PublicAddr(ap.Addr()) {
+		return errPrivateAddress
+	}
+	return nil
 }
 
 // deliveryTimeout is per attempt. Generous enough for a consumer that writes to
@@ -41,19 +79,29 @@ type Deliverer struct {
 // hold the pass open behind everything else waiting.
 const deliveryTimeout = 10 * time.Second
 
+// disabledRecheck is how far down the queue a disabled provisioned endpoint's
+// delivery moves: re-enabling it sends what it missed within the hour.
+const disabledRecheck = time.Hour
+
 func NewDeliverer(hooks *repositories.WebhookRepository) *Deliverer {
 	return &Deliverer{
-		hooks:  hooks,
-		client: &http.Client{Timeout: deliveryTimeout},
+		hooks:    hooks,
+		client:   &http.Client{Timeout: deliveryTimeout},
+		merchant: newMerchantClient(),
 	}
 }
 
-// SetHTTPClient replaces the client used for delivery.
-//
-// It exists for tests, which have to trust an httptest server's self-signed
-// certificate — and they have to be https, because WebhookEndpoint refuses a
-// plain-HTTP URL and that rule is worth keeping rather than relaxing for a test.
-func (d *Deliverer) SetHTTPClient(c *http.Client) { d.client = c }
+// SetHTTPClient replaces both clients. Tests only: they deliver to httptest
+// servers on 127.0.0.1, which the merchant client would refuse by design.
+func (d *Deliverer) SetHTTPClient(c *http.Client) { d.client, d.merchant = c, c }
+
+// clientFor picks the guarded client for anything a merchant registered.
+func (d *Deliverer) clientFor(e *billing.WebhookEndpoint) *http.Client {
+	if e.Provisioned() {
+		return d.client
+	}
+	return d.merchant
+}
 
 // PassResult is what one run of either pass did.
 type PassResult struct {
@@ -156,9 +204,21 @@ func (d *Deliverer) Deliver(ctx context.Context, livemode bool, limit int, now t
 			}
 			continue
 		}
-		// Disabled endpoints keep their queued deliveries rather than losing them:
-		// re-enabling one should send what it missed, not start from silence.
+		// A disabled endpoint's rows must leave the head of the queue: the queue
+		// is shared by every tenant, and rows left in place would be the whole
+		// of every later batch. A provisioned endpoint (an operator may
+		// re-enable it) keeps what it missed, an hour further down; a console
+		// endpoint cannot be re-enabled (delete and add again), so its rows close.
 		if endpoint.Status != billing.EndpointActive {
+			var markErr error
+			if endpoint.Provisioned() {
+				markErr = d.hooks.DeferDelivery(ctx, &item.Delivery, now.Add(disabledRecheck), now)
+			} else {
+				markErr = d.hooks.CloseDelivery(ctx, &item.Delivery, "endpoint disabled", now)
+			}
+			if markErr != nil {
+				res.fail("moving delivery %s of a disabled endpoint: %v", item.Delivery.EventID, markErr)
+			}
 			res.Deferred++
 			continue
 		}
@@ -217,7 +277,7 @@ func (d *Deliverer) post(ctx context.Context, e *billing.WebhookEndpoint, ev *bi
 	req.Header.Set("X-Billing-Timestamp", timestamp)
 	req.Header.Set("X-Billing-Signature", "v1="+Sign(e.Secret, timestamp, body))
 
-	resp, err := d.client.Do(req)
+	resp, err := d.clientFor(e).Do(req)
 	if err != nil {
 		return 0, err
 	}

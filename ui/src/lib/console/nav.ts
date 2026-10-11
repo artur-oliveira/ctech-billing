@@ -6,6 +6,8 @@ const INVOICING_NAV = [
   {href: "/console/subscriptions", label: "console.nav.subscriptions"},
   {href: "/console/customers", label: "console.nav.customers"},
   {href: "/console/catalog", label: "console.nav.catalog"},
+  {href: "/console/credentials", label: "console.nav.credentials"},
+  {href: "/console/webhooks", label: "console.nav.webhooks"},
   {href: "/console/settings", label: "console.nav.settings"},
 ] as const
 

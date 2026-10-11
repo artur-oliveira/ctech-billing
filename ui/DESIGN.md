@@ -597,3 +597,24 @@ two actions share a full-width row at the bottom (Recusar outline, Aprovar brand
 grid lifts them beside the name. The filter is `Segmented` (Pendentes, Aprovadas, Recusadas),
 full width on a phone; pending opens first, oldest first. Approving confirms what it does (live
 mode and the R$ 0 early access subscription); rejecting needs a reason of 10 to 500 characters.
+
+## Console: integration tools (2026-10-10)
+
+**A credential is connected, never created here.** `/console/credentials` sends the merchant to CTech
+Account's developer page in a new tab, with billing's machine scopes already ticked (the list comes from
+the API), and takes back only the client id. The page never asks for or shows a client secret. Rows
+from the tenant plan say **Gerenciado pela CTech** and have no action.
+
+**A secret is shown once, in its own dialog.** Creating an endpoint or rotating its secret opens
+`SecretReveal`: the secret in a read-only mono field with **Copiar**, and **Já copiei** as the only
+labelled way out (the close button and Escape do the same). The secret lives in component state while the dialog is open and nowhere else.
+
+**Testing changes nothing, so it does not ask.** **Testar** sends a ping at once and says when it
+arrives. Rotating and deleting each confirm, naming the URL and saying what stops.
+
+**On a phone** a webhook row keeps **Testar** on its line; **Trocar segredo** and **Excluir** are the
+swipe and the "⋯", like finance rows. The connect step's field and button are full width, the button
+under the field.
+
+**Suspended live mode removes the add buttons, not the remove ones.** Connect, **Novo endpoint** and
+**Testar** are not offered; one muted line says why. Disconnect, rotate and delete stay.

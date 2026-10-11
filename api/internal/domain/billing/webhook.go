@@ -35,6 +35,11 @@ const (
 	EndpointDisabled EndpointStatus = "disabled"
 )
 
+// EventPing is the console's test call (spec § 5.2): sent through the normal
+// delivery path to one endpoint, whatever that endpoint's event filter says.
+// It is not in WebhookEventTypes: nobody subscribes to it.
+const EventPing EventType = "ping"
+
 // MaxFailureRun is how many consecutive failures disable an endpoint.
 //
 // It exists because an endpoint that has been answering 404 for a week is not a
@@ -79,6 +84,11 @@ type WebhookEndpoint struct {
 	// which is a working endpoint.
 	FailureRun int    `dynamodbav:"failure_run" json:"failure_run"`
 	DisabledAt string `dynamodbav:"disabled_at,omitempty" json:"disabled_at,omitempty"`
+	// AddedBy is the ctech-account user who created the endpoint in the console,
+	// AddedAt when (RFC 3339). Empty on an endpoint the tenant plan provisioned,
+	// which the console lists and never changes.
+	AddedBy string `dynamodbav:"added_by,omitempty" json:"added_by,omitempty"`
+	AddedAt string `dynamodbav:"added_at,omitempty" json:"added_at,omitempty"`
 }
 
 // Validate reports whether the endpoint can be delivered to.
@@ -111,6 +121,9 @@ func (e *WebhookEndpoint) Validate() error {
 	return nil
 }
 
+// Provisioned reports an endpoint from the tenant plan (scope decision 7).
+func (e *WebhookEndpoint) Provisioned() bool { return e.AddedBy == "" }
+
 // Wants reports whether this endpoint should receive an event.
 //
 // Both filters are "empty means everything", and the asymmetry is the point:
@@ -120,6 +133,12 @@ func (e *WebhookEndpoint) Validate() error {
 func (e *WebhookEndpoint) Wants(ev *Event) bool {
 	if e.Status != EndpointActive {
 		return false
+	}
+	// A ping names its endpoint. It is the one event routed by id: a test
+	// must reach exactly the endpoint the person pressed it on, including one
+	// whose filter would never take a "ping".
+	if ev.Type == EventPing {
+		return ev.EndpointID == e.ID
 	}
 	if e.OwnerKey != "" && e.OwnerKey != ev.OwnerKey {
 		return false
@@ -161,6 +180,8 @@ type Event struct {
 	// question whose answer cannot change: a subscription does not move between
 	// services.
 	OwnerKey string `dynamodbav:"owner_key,omitempty" json:"-"`
+	// EndpointID is set on a ping only: the one endpoint it is for.
+	EndpointID string `dynamodbav:"endpoint_id,omitempty" json:"-"`
 
 	OccurredAt string `dynamodbav:"occurred_at" json:"occurred_at"`
 }
