@@ -5,10 +5,10 @@ import userEvent from "@testing-library/user-event"
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 
 import {RecurrencesView} from "@/components/finance/RecurrencesView"
-import {optionsOf, pick, renderWithQuery} from "@/components/finance/finance.test-utils"
+import {optionsOf, pick, renderWithQuery, selectByLabel} from "@/components/finance/finance.test-utils"
 import * as finance from "@/lib/api/finance"
 import * as createRequest from "@/lib/finance/createRequest"
-import type {Account, Recurrence, RecurrenceOccurrences, Verb} from "@/lib/api/financeTypes"
+import type {Account, Card, Recurrence, RecurrenceOccurrences, Verb} from "@/lib/api/financeTypes"
 
 const ALL: Verb[] = ["finance.read", "finance.write", "finance.settle", "finance.import", "finance.configure"]
 const ACCOUNTS: Account[] = [
@@ -26,6 +26,7 @@ function serve(verbs: Verb[], recs: Recurrence[] = [REC]) {
   vi.spyOn(finance, "getFinanceSpaces").mockResolvedValue({spaces: [{selector: "personal", kind: "personal_default", display_name: "Pessoal", verbs, manage_people: false}], organizations_unavailable: false})
   vi.spyOn(finance, "listAccounts").mockResolvedValue({data: ACCOUNTS, has_more: false})
   vi.spyOn(finance, "listRecurrences").mockResolvedValue({data: recs, has_more: false})
+  vi.spyOn(finance, "listCards").mockResolvedValue({data: [], has_more: false})
   return vi.spyOn(finance, "previewRecurrence").mockResolvedValue({
     data: [{nominal: "2026-10-31", due: "2026-11-03"}, {nominal: "2026-11-30", due: "2026-11-30"}], has_more: false,
   })
@@ -423,5 +424,90 @@ describe("F4 — an end that cancels bills, and one that did not finish", () => 
     expect(patch.mock.calls[2][2]).toEqual(patch.mock.calls[1][2])
     expect(patch.mock.calls[2][2]).toEqual({end: "2026-10-09", archive: true, cancel_after_end: true})
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
+  })
+})
+
+const CARD: Card = {id: "visa", name: "Visa", closing_day: 25, due_day: 5, paying_account_id: "cc", open_month: "2026-03", balance: 0, archived: false, brand: "visa", last4: "4242"}
+const CARD_REC: Recurrence = {id: "r-stream", direction: "payable", amount: 3990, category_id: "food", account_id: "", card_id: "visa", installments: 1, description: "Streaming", expression: {kind: "day_of_month", day: 28}, start: "2026-01-01", business_day_adjust: "none", auto_settle: false, archived: false}
+const FOOD: Account = {id: "food", name: "Mercado", class: "expense", dre_group: "operating_expenses", system: false, archived: false, balance: 0}
+
+/** serve() with a "Mercado" expense and the given cards and recurrences. */
+function serveWith({cards = [], recurrences = []}: {cards?: Card[]; recurrences?: Recurrence[]}) {
+  const preview = serve(ALL, recurrences)
+  vi.mocked(finance.listAccounts).mockResolvedValue({data: [...ACCOUNTS, FOOD], has_more: false})
+  vi.mocked(finance.listCards).mockResolvedValue({data: cards, has_more: false})
+  return preview
+}
+
+describe("paid by card", () => {
+  it("offers active cards beside the accounts for an expense, and installments once a card is chosen", async () => {
+    serveWith({cards: [CARD]})
+    const create = vi.spyOn(finance, "createRecurrence").mockResolvedValue({} as Recurrence)
+    renderWithQuery(<RecurrencesView/>)
+    await userEvent.click(await screen.findByRole("button", {name: "Nova recorrência"}))
+    const drawer = await screen.findByRole("dialog")
+    await userEvent.type(within(drawer).getByLabelText(/^Valor/), "39,90")
+    await pick("Categoria", "Mercado", drawer)
+    // By accessible name: the card's mark is aria-hidden decoration beside its name.
+    await userEvent.click(selectByLabel("Pagar com", drawer))
+    const options = await screen.findAllByRole("option")
+    expect(options).toHaveLength(2)
+    ;["Conta corrente", "Visa •••• 4242"].forEach((name, i) => expect(options[i]).toBe(screen.getByRole("option", {name})))
+    await userEvent.keyboard("{Escape}")
+    await pick("Pagar com", "Visa •••• 4242", drawer)
+    expect(within(drawer).queryByRole("switch")).not.toBeInTheDocument() // no auto-settle on a card
+    expect(within(drawer).getByText("Cada ocorrência entra como compra no cartão, no próprio dia.")).toBeInTheDocument()
+    await pick("Parcelas", "3×", drawer)
+    await userEvent.click(within(drawer).getByRole("button", {name: "Criar"}))
+    await waitFor(() => expect(create).toHaveBeenCalledWith(expect.anything(),
+      expect.objectContaining({card_id: "visa", installments: 3}), expect.any(String)))
+    const sentBody = create.mock.calls[0][1] as unknown as Record<string, unknown>
+    expect(sentBody.account_id).toBeUndefined()
+    expect(sentBody.auto_settle).toBeUndefined()
+  })
+
+  it("offers no card for an income", async () => {
+    serveWith({cards: [CARD]})
+    renderWithQuery(<RecurrencesView/>)
+    await userEvent.click(await screen.findByRole("button", {name: "Nova recorrência"}))
+    const drawer = await screen.findByRole("dialog")
+    await userEvent.click(within(drawer).getByRole("button", {name: "A receber"}))
+    expect(await optionsOf("Receber em", drawer)).toEqual(["Conta corrente"])
+  })
+
+  it("says when a recurrence needs attention and opens its edit from there", async () => {
+    serveWith({cards: [CARD], recurrences: [{...CARD_REC, needs_attention: "card_archived"}]})
+    renderWithQuery(<RecurrencesView/>)
+    const row = (await screen.findByText("Streaming")).closest("li") as HTMLElement
+    expect(within(row).getByText("Cartão arquivado; escolha outro cartão ou uma conta")).toBeInTheDocument()
+    await userEvent.click(within(row).getByRole("button", {name: "Corrigir"}))
+    expect(await screen.findByRole("dialog", {name: "Editar recorrência"})).toBeInTheDocument()
+  })
+
+  it("shows posted occurrences with their statement month, and where upcoming ones will land", async () => {
+    serveWith({cards: [CARD], recurrences: [CARD_REC]})
+    vi.spyOn(finance, "getRecurrenceOccurrences").mockResolvedValue({
+      history: [{nominal: "2026-02-28", due: "2026-02-28", purchase_id: "p1", card_id: "visa", statement_month: "2026-03", amount: 3990, state: "posted"}],
+      upcoming: [{nominal: "2026-03-28", due: "2026-03-28", statement_month: "2026-04"}],
+    })
+    renderWithQuery(<RecurrencesView/>)
+    const row = (await screen.findByText("Streaming")).closest("li") as HTMLElement
+    await userEvent.click(within(row).getByRole("button", {name: /Ver/}))
+    expect(await within(row).findByText(/Na fatura de Mar\/26/)).toBeInTheDocument()
+    expect(within(row).getByText(/fatura de Abr\/26/)).toBeInTheDocument()
+  })
+
+  it("opens the recurrence named in the address", async () => {
+    serveWith({cards: [CARD], recurrences: [CARD_REC]})
+    vi.spyOn(finance, "getRecurrenceOccurrences").mockResolvedValue({history: [], upcoming: []})
+    renderWithQuery(<RecurrencesView focus="r-stream"/>)
+    expect(await screen.findByRole("region", {name: /Streaming/})).toBeInTheDocument()
+  })
+
+  it("has no em dash in what it shows", async () => {
+    serveWith({cards: [CARD], recurrences: [{...CARD_REC, needs_attention: "category_archived"}]})
+    renderWithQuery(<RecurrencesView/>)
+    await screen.findByText("Streaming")
+    expect(document.body.textContent).not.toContain("—")
   })
 })

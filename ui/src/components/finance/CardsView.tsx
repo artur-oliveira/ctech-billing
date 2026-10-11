@@ -7,7 +7,7 @@ import {useState} from "react"
 import {useTranslation} from "react-i18next"
 
 import {SettleForm} from "@/components/finance/BillsView"
-import {CardBrandMark, maskedLast4} from "@/components/finance/CardBrandMark"
+import {CardBrandMark, cardLabel, maskedLast4} from "@/components/finance/CardBrandMark"
 import {CardForm} from "@/components/finance/CardForm"
 import {LedgerRow} from "@/components/finance/LedgerRow"
 import {PurchasePanel} from "@/components/finance/PurchasePanel"
@@ -148,8 +148,6 @@ export function CardsView({card: initial = ""}: {card?: string}) {
   )
 }
 
-/** "Nubank •••• 4242" in a picker; the name alone when there are no digits. */
-const cardLabel = (c: Card) => (c.last4 ? `${c.name} ${maskedLast4(c.last4)}` : c.name)
 
 /** The card on screen: its mark, name and last digits, and when it closes and is due. */
 function CardHeader({card}: {card: Card}) {

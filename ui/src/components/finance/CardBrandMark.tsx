@@ -1,4 +1,4 @@
-import type {CardBrand} from "@/lib/api/financeTypes"
+import type {Card, CardBrand} from "@/lib/api/financeTypes"
 import {t} from "@/lib/i18n"
 
 /**
@@ -91,3 +91,6 @@ function Mark({brand}: {brand: CardBrand}) {
 
 /** "•••• 1234": the only part of a number billing ever shows. */
 export const maskedLast4 = (last4: string) => `•••• ${last4}`
+
+/** "Nubank •••• 4242" in a picker or a row; the name alone when there are no digits. */
+export const cardLabel = (c: Pick<Card, "name" | "last4">) => (c.last4 ? `${c.name} ${maskedLast4(c.last4)}` : c.name)

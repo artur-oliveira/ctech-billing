@@ -18,7 +18,7 @@ import limits from "@/lib/limits.json"
 import {maskMoney, moneyPlaceholder, parseMoney} from "@/lib/money"
 import {accountName} from "@/lib/finance/accountName"
 
-const countOptions = () => Array.from({length: limits.maxInstallments}, (_, i) => ({
+export const installmentOptions = () => Array.from({length: limits.maxInstallments}, (_, i) => ({
   value: String(i + 1), label: i === 0 ? `1× (${t("bills.purchase.cash")})` : `${i + 1}×`,
 }))
 
@@ -68,7 +68,7 @@ export function PurchasePanel({cardId, accounts, onDone}: {cardId: string; accou
         <Input id="pu-amount" inputMode="decimal" placeholder={moneyPlaceholder()} value={amountText} {...fe.props("total", "pu-amount")} onChange={e => { setAmountText(maskMoney(e.target.value)); fe.clear("total") }}/>
       </Field>
       <Field label={t("bills.purchase.installments")} htmlFor="pu-count" error={fe.of("installments")}>
-        <Select {...selectCopy()} id="pu-count" aria-label={t("bills.purchase.installments")} value={count} {...fe.props("installments", "pu-count")} onValueChange={v => { setCount(v); fe.clear("installments") }} options={countOptions()}/>
+        <Select {...selectCopy()} id="pu-count" aria-label={t("bills.purchase.installments")} value={count} {...fe.props("installments", "pu-count")} onValueChange={v => { setCount(v); fe.clear("installments") }} options={installmentOptions()}/>
       </Field>
       <Field label={t("bills.common.date")} htmlFor="pu-date" error={fe.of("date")}>
         <DateField id="pu-date" value={date} invalid={!!fe.of("date")} onValueChange={v => { setDate(v); fe.clear("date") }} min={limits.minDate} max={todayIso()}/>

@@ -132,7 +132,9 @@
       "hint": "Upload the bank's OFX or CSV and the transactions of {{name}} show up to reconcile.",
       "import": "Import statement",
       "later": "Not now"
-    }
+    },
+    "archiveCardWarning_one": "{{count}} recurrence is paid with this card and will stop until you choose another card or account.",
+    "archiveCardWarning_other": "{{count}} recurrences are paid with this card and will stop until you choose another card or account."
   },
   "cards": {
     "new": "New card",

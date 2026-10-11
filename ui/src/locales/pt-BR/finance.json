@@ -132,7 +132,9 @@
       "hint": "Envie o OFX ou CSV do banco e os lançamentos de {{name}} aparecem para conciliar.",
       "import": "Importar extrato",
       "later": "Agora não"
-    }
+    },
+    "archiveCardWarning_one": "{{count}} recorrência é paga com este cartão e vai parar até você escolher outro cartão ou conta.",
+    "archiveCardWarning_other": "{{count}} recorrências são pagas com este cartão e vão parar até você escolher outro cartão ou conta."
   },
   "cards": {
     "new": "Novo cartão",

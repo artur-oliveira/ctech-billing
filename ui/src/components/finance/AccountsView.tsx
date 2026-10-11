@@ -13,7 +13,7 @@ import {LedgerRow} from "@/components/finance/LedgerRow"
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
 import {DateField} from "@/components/ui/DateField"
 import {messageFor} from "@/lib/api/client"
-import {archiveAccount, createAccount, financeKeys, getSettings, listAccounts, listCards, postOpeningBalance, renameAccount, setDefaultReceivingAccount, setPostCTechInvoices} from "@/lib/api/finance"
+import {archiveAccount, createAccount, financeKeys, getSettings, listAccounts, listCards, listRecurrences, postOpeningBalance, renameAccount, setDefaultReceivingAccount, setPostCTechInvoices} from "@/lib/api/finance"
 import type {Account, AccountClass, AccountPatch, Card, DREGroup, OpeningBalance} from "@/lib/api/financeTypes"
 import {classLabel, dreGroupLabel, groupsForClass} from "@/lib/finance/labels"
 import {selectCopy} from "@/lib/selectCopy"
@@ -123,6 +123,10 @@ function AccountRow({account, card, configure}: {account: Account; card?: Card; 
     () => setConfirming(false),
   )
   const isCard = account.class === "liability"
+  // Archiving a card stops the recurrences it pays (the job flags them): say how many first.
+  const ctx = useFinanceCtx()
+  const recs = useQuery({queryKey: financeKeys.recurrences(ctx.mode, ctx.space), queryFn: () => listRecurrences(ctx), enabled: confirming && isCard})
+  const paidByCard = (recs.data?.data ?? []).filter(r => r.card_id === account.id && !r.archived).length
   const meta = [
     account.dre_group ? dreGroupLabel(account.dre_group) : "",
     card?.last4 ? maskedLast4(card.last4) : "",
@@ -153,6 +157,7 @@ function AccountRow({account, card, configure}: {account: Account; card?: Card; 
       {renaming && <RenameForm account={account} onDone={() => setRenaming(false)}/>}
       {confirming && (
         <div className="mt-2 flex flex-wrap items-center gap-2 text-sm motion-safe:animate-in motion-safe:fade-in">
+          {paidByCard > 0 && <p className="w-full text-foreground">{t("finance.accounts.archiveCardWarning", {count: paidByCard})}</p>}
           <p className="text-muted-foreground">{t("finance.accounts.archiveConfirm", {name: accountName(account)})}</p>
           <Button size="sm" variant="outline" onClick={() => setConfirming(false)}>{t("finance.accounts.cancel")}</Button>
           <Button size="sm" variant="brand" disabled={archive.isPending} onClick={() => archive.mutate(account.id)}>{t("finance.accounts.archive")}</Button>

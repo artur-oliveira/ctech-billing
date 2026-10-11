@@ -151,7 +151,8 @@
       "forecast": "Forecast",
       "overdue": "Overdue",
       "skipped": "Skipped",
-      "upcoming": "To be made"
+      "upcoming": "To be made",
+      "posted": "On the {{month}} statement"
     },
     "openBill": {
       "payable": "See in Payables",
@@ -172,7 +173,17 @@
     },
     "retry": "Try again",
     "endKeepsPaid_one": "The one already paid ({{dates}}) stays: the payment is in the statement.",
-    "endKeepsPaid_other": "The {{count}} already paid ({{dates}}) stay: the payments are in the statement."
+    "endKeepsPaid_other": "The {{count}} already paid ({{dates}}) stay: the payments are in the statement.",
+    "payWithCard": "Card",
+    "payWithAccount": "Account",
+    "installments": "Installments",
+    "cardNote": "Each occurrence is posted as a card purchase on its own day.",
+    "attention": {
+      "card_archived": "Card archived; choose another card or an account",
+      "category_archived": "Category archived; choose another category",
+      "fix": "Fix"
+    },
+    "onStatement": "statement of {{month}}"
   },
   "editor": {
     "repeat": "Repeat",
