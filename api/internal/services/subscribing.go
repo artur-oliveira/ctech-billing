@@ -236,6 +236,9 @@ func (s *Subscriber) ChangePlan(
 	if err != nil {
 		return nil, err
 	}
+	if err := sameMerchantEntitlement(sub, ownerKey); err != nil {
+		return nil, err
+	}
 	cycle := prices[0]
 	if cycle.Recurrence != sub.Recurrence {
 		return nil, fmt.Errorf(
@@ -538,11 +541,28 @@ func (s *Subscriber) requireLevelReference(ctx context.Context, in SubscribeInpu
 	return nil
 }
 
+// sameMerchantEntitlement refuses a plan change that moves a subscription onto
+// or off CTech Billing's own product (owner key "billing"). A change keeps the
+// status, so it never passes the entitlement hook that suspends and reinstates
+// a merchant's live tenant (spec § 4.3): ending a merchant's entitlement by a
+// change would leave it live, starting one would leave it suspended. Like a
+// change of cycle, it is a new subscription.
+func sameMerchantEntitlement(sub *billing.Subscription, ownerKey string) error {
+	if (sub.OwnerKey == billing.MerchantOwnerKey) != (ownerKey == billing.MerchantOwnerKey) {
+		return fmt.Errorf("%w: moving a subscription onto or off CTech Billing means a new subscription",
+			billing.ErrInvalidSubscriptionItem)
+	}
+	return nil
+}
+
 // SchedulePlanChange records a change for the end of the current period (plans
 // spec, amendment: advance → arrears never bills a paid period twice).
 func (s *Subscriber) SchedulePlanChange(ctx context.Context, sub *billing.Subscription, in ChangeInput, now time.Time) error {
-	prices, _, err := s.resolveItemPrices(ctx, SubscribeInput{OrganizationID: sub.OrganizationID, Livemode: sub.Livemode, Items: in.Items})
+	prices, ownerKey, err := s.resolveItemPrices(ctx, SubscribeInput{OrganizationID: sub.OrganizationID, Livemode: sub.Livemode, Items: in.Items})
 	if err != nil {
+		return err
+	}
+	if err := sameMerchantEntitlement(sub, ownerKey); err != nil {
 		return err
 	}
 	if prices[0].Recurrence != sub.Recurrence {

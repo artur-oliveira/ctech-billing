@@ -126,7 +126,7 @@ func (h *consoleHandlers) session(c fiber.Ctx) error {
 		if !space.IsOrganizationID(w.ID) || !space.IsMerchantRole(space.WorkspaceKind(w.Kind), w.Role) {
 			continue
 		}
-		status, reviewer, err := h.merchantStatus(c.Context(), sub, w.ID)
+		status, latest, reviewer, err := h.merchantStatus(c.Context(), sub, w.ID)
 		if err != nil {
 			// One organization whose tenant cannot be read (two tenants on one
 			// key, a throttled read) is left out rather than taking the others
@@ -136,7 +136,7 @@ func (h *consoleHandlers) session(c fiber.Ctx) error {
 		}
 		out.Organizations = append(out.Organizations, merchantOrganizationDTO{
 			OrganizationID: w.ID, Selector: "org:" + w.ID, DisplayName: w.DisplayName, Role: w.Role, MerchantStatus: status,
-			CanReviewApplications: reviewer,
+			ApplicationStatus: latest, CanReviewApplications: reviewer,
 		})
 	}
 	slices.SortStableFunc(out.Organizations, func(a, b merchantOrganizationDTO) int {
@@ -149,9 +149,10 @@ func (h *consoleHandlers) session(c fiber.Ctx) error {
 }
 
 // merchantStatus is where an account organization stands as a merchant, from
-// its tenant rows in both modes and its latest application; the bool reports
-// that its tenant is tenant zero (it reviews applications).
-func (h *consoleHandlers) merchantStatus(ctx context.Context, sub, accountOrgID string) (billing.MerchantStatus, bool, error) {
+// its tenant rows in both modes and its latest application (returned too, ""
+// when it never applied); the bool reports that its tenant is tenant zero (it
+// reviews applications).
+func (h *consoleHandlers) merchantStatus(ctx context.Context, sub, accountOrgID string) (billing.MerchantStatus, billing.ApplicationStatus, bool, error) {
 	var rows [2]*billing.Organization // test, live
 	for i, live := range []bool{false, true} {
 		org, err := middleware.LookupMerchantTenant(ctx, h.merchants, sub, accountOrgID, live)
@@ -159,14 +160,14 @@ func (h *consoleHandlers) merchantStatus(ctx context.Context, sub, accountOrgID 
 		case err == nil:
 			rows[i] = org
 		case !errors.Is(err, repositories.ErrNotFound):
-			return "", false, err
+			return "", "", false, err
 		}
 	}
 	var latest billing.ApplicationStatus
 	if h.applications.Enabled() {
 		st, err := h.applications.LatestStatus(ctx, accountOrgID)
 		if err != nil {
-			return "", false, err
+			return "", "", false, err
 		}
 		latest = st
 	}
@@ -174,7 +175,7 @@ func (h *consoleHandlers) merchantStatus(ctx context.Context, sub, accountOrgID 
 	for _, r := range rows {
 		zero = zero || (r != nil && h.portalOrganizationID != "" && r.ID == h.portalOrganizationID)
 	}
-	return billing.MerchantStatusOf(rows[0], rows[1], latest), zero, nil
+	return billing.MerchantStatusOf(rows[0], rows[1], latest), latest, zero, nil
 }
 
 // listInvoicesConsole is C2. It defaults to the current month because that is

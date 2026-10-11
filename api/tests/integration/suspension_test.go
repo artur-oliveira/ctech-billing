@@ -4,6 +4,7 @@ package integration
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 	"testing"
@@ -250,5 +251,32 @@ func TestDunningSkipsASuspendedTenant(t *testing.T) {
 	fresh, _ := repositories.NewInvoiceRepository(testDB, testCfg).Get(ctxT(t), org.ID, true, inv.ID)
 	if fresh.DunningStep != inv.DunningStep {
 		t.Fatal("a skipped invoice advanced its dunning step")
+	}
+}
+
+// A plan change keeps the status, so it never passes the entitlement hook:
+// moving a prod_billing subscription onto another product (or back) would end
+// or start a merchant's entitlement without suspending or lifting anything.
+// It is refused, like a change of cycle: that is a new subscription.
+func TestAPlanChangeCannotMoveASubscriptionOffOrOntoBilling(t *testing.T) {
+	f := newMerchantFixture(t)
+	sub := f.entitle(t)
+	change := services.ChangeInput{Items: []services.SubscribeItem{{PriceID: "price_finance_free"}}, Cause: billing.CauseManual, Actor: "user:x"}
+	if _, err := f.subscriber.ChangePlan(ctxT(t), sub, change, now()); !errors.Is(err, billing.ErrInvalidSubscriptionItem) {
+		t.Fatalf("immediate change off billing: %v", err)
+	}
+	if err := f.subscriber.SchedulePlanChange(ctxT(t), sub, change, now()); !errors.Is(err, billing.ErrInvalidSubscriptionItem) {
+		t.Fatalf("scheduled change off billing: %v", err)
+	}
+	fin, _, err := f.subscriber.Subscribe(ctxT(t), services.SubscribeInput{
+		OrganizationID: f.tz, Livemode: true, CustomerID: f.customer.ID,
+		Items: []services.SubscribeItem{{PriceID: "price_finance_free"}}, Actor: "user:x",
+	}, now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	onto := services.ChangeInput{Items: []services.SubscribeItem{{PriceID: "price_billing_early_access"}}, Cause: billing.CauseManual, Actor: "user:x"}
+	if _, err := f.subscriber.ChangePlan(ctxT(t), fin, onto, now()); !errors.Is(err, billing.ErrInvalidSubscriptionItem) {
+		t.Fatalf("immediate change onto billing: %v", err)
 	}
 }

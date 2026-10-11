@@ -59,6 +59,11 @@ type merchantOrganizationDTO struct {
 	// CanReviewApplications marks the organization whose tenant is tenant zero:
 	// the console shows it Solicitações. Display data; RequireTenantZero decides.
 	CanReviewApplications bool `json:"can_review_applications"`
+	// ApplicationStatus is the latest application's status, absent when the
+	// organization never applied: a test tenant CTech provisioned by hand is
+	// merchant_status "test" with no application, and is offered to apply
+	// rather than told it is under review. Display data.
+	ApplicationStatus billing.ApplicationStatus `json:"application_status,omitempty"`
 }
 
 // auditResponse is one entry of a detail screen's timeline. It publishes who,

@@ -234,8 +234,10 @@ func (s *Applications) entitlement(ctx context.Context, customerID string) (*bil
 	return nil, nil
 }
 
-// ensureLiveTenant creates the live tenant with the test tenant's id, name and
-// issuer block, unless it exists.
+// ensureLiveTenant creates the live tenant with the test tenant's id and name,
+// unless it exists. Its issuer block is the APPLICATION's company, the one the
+// reviewer approved (spec § 4.1): the test tenant may carry an earlier
+// application's company, or none when it was provisioned by hand.
 func (s *Applications) ensureLiveTenant(ctx context.Context, app *billing.Application, now time.Time) error {
 	if _, err := s.orgs.Get(ctx, app.TenantID, true); err == nil || !errors.Is(err, repositories.ErrNotFound) {
 		return err
@@ -247,7 +249,7 @@ func (s *Applications) ensureLiveTenant(ctx context.Context, app *billing.Applic
 	return s.orgs.Create(ctx, &billing.Organization{
 		ID: app.TenantID, DisplayName: test.DisplayName, Livemode: true,
 		PayoutStatus: billing.PayoutNotConfigured, OwnerUserID: test.OwnerUserID,
-		AccountOrganizationID: app.AccountOrganizationID, LegalName: test.LegalName, IssuerTaxID: test.IssuerTaxID,
+		AccountOrganizationID: app.AccountOrganizationID, LegalName: app.CompanyLegalName, IssuerTaxID: app.CompanyTaxID,
 	}, now)
 }
 

@@ -19,7 +19,10 @@ export function MerchantInvitation() {
   const name = organization.display_name
   const status = organization.merchant_status
 
-  if (status === "test" || status === "rejected") {
+  // "test" means under review only with a pending application: a test tenant
+  // CTech provisioned by hand gets the invitation to apply like anyone else.
+  const pending = status === "test" && organization.application_status === "pending"
+  if (pending || status === "rejected") {
     const key = status === "test" ? "pending" : "rejected"
     return (
       <section className="max-w-xl space-y-3">

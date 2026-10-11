@@ -292,7 +292,10 @@ func newApplicationsFixture(t *testing.T) applicationsFixture {
 	box := &outbox{}
 	svc := services.NewApplications(appRepo(t, tz), orgRepo(), repositories.NewCustomerRepository(testDB, testCfg), subs,
 		services.NewSubscriber(subs, cat, inv),
-		fakeCompanies{acct: {{ID: "cmp_1", LegalName: "Padaria Bom Dia LTDA", TaxID: "12345678000190", TaxIDKind: "cnpj"}}}, tz).
+		fakeCompanies{acct: {
+			{ID: "cmp_1", LegalName: "Padaria Bom Dia LTDA", TaxID: "12345678000190", TaxIDKind: "cnpj"},
+			{ID: "cmp_2", LegalName: "Bom Dia Cafés LTDA", TaxID: "98765432000110", TaxIDKind: "cnpj"},
+		}}, tz).
 		WithMail(box, "time@ctech.example")
 	return applicationsFixture{tz: tz, acct: acct, svc: svc, subs: subs, mail: box}
 }
@@ -442,7 +445,7 @@ func TestCompaniesOfAnUnknownOrganizationIsNotAnOutage(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 	list, err := f.svc.Companies(ctxT(t), f.acct)
-	if err != nil || len(list.Companies) != 1 {
+	if err != nil || len(list.Companies) != 2 {
 		t.Fatalf("list = %+v, %v", list, err)
 	}
 }
@@ -460,5 +463,31 @@ func TestRejectWaitsForAnApprovalInProgress(t *testing.T) {
 	defer release()
 	if _, err := f.svc.Reject(ctx, app.ID, "Site fora do ar", "user:rev", "req", now()); !errors.Is(err, repositories.ErrApplicationBusy) {
 		t.Fatalf("reject during a decision: %v", err)
+	}
+}
+
+// The company a reviewer approves is the one the live tenant invoices as
+// (spec § 4.1), even when the test tenant was made by an earlier application
+// for another company, or provisioned by hand.
+func TestTheApprovedCompanyIsTheLiveTenantsIssuer(t *testing.T) {
+	ctx := ctxT(t)
+	f := newApplicationsFixture(t)
+	first := f.apply(t)
+	if _, err := f.svc.Reject(ctx, first.ID, "Empresa errada, use a outra", "user:rev", "req", now()); err != nil {
+		t.Fatal(err)
+	}
+	second, _, err := f.svc.Apply(ctx, services.ApplyInput{
+		AccountOrganizationID: f.acct, OrganizationName: "Padaria Bom Dia", UserID: "usr_a", CompanyID: "cmp_2",
+		Description: "Assinaturas de pão para empresas", ContactEmail: "c@padaria.example", RequestID: "req_2",
+	}, now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.svc.Approve(ctx, second.ID, "user:rev", "req_3", now()); err != nil {
+		t.Fatal(err)
+	}
+	live, err := orgRepo().GetByAccountOrganization(ctx, f.acct, true)
+	if err != nil || live.LegalName != "Bom Dia Cafés LTDA" || live.IssuerTaxID != "98765432000110" {
+		t.Fatalf("live issuer = %q %q, %v; want the approved company", live.LegalName, live.IssuerTaxID, err)
 	}
 }

@@ -268,3 +268,35 @@ func TestCompaniesOfAnOrganizationCtechAccountDoesNotKnowIsNotFound(t *testing.T
 		t.Fatalf("%d %s", r.status, r.body)
 	}
 }
+
+// An organization CTech provisioned by hand (a test tenant, no application) is
+// not "under review": the session says it never applied, so the console offers
+// the application instead of a review nobody is doing.
+func TestTheSessionTellsAProvisionedTestTenantFromAPendingApplication(t *testing.T) {
+	m := newMerchantEnv(t)
+	newLinkedOrg(t, false, m.acct)
+	appStatus := func() (string, string) {
+		r := m.consoleAs(t, http.MethodGet, "/v1.0/console/session", m.token(t, m.applicant, "sess_"+id.New(), merchantScopes...), "", "", "")
+		var b struct {
+			Organizations []struct {
+				ID          string `json:"organization_id"`
+				Status      string `json:"merchant_status"`
+				Application string `json:"application_status"`
+			} `json:"organizations"`
+		}
+		r.decode(t, &b)
+		for _, o := range b.Organizations {
+			if o.ID == m.acct {
+				return o.Status, o.Application
+			}
+		}
+		return "absent", ""
+	}
+	if s, a := appStatus(); s != "test" || a != "" {
+		t.Fatalf("provisioned, never applied: %s / %q", s, a)
+	}
+	m.apply(t)
+	if s, a := appStatus(); s != "test" || a != "pending" {
+		t.Fatalf("after applying: %s / %q", s, a)
+	}
+}

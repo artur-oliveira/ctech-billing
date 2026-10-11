@@ -61,6 +61,8 @@ export function consoleSession(scenario: string | null): ConsoleSession {
   const none: MerchantOrganization = {
     organization_id: MOCK_NONE_ORG, selector: `org:${MOCK_NONE_ORG}`, display_name: "Padaria Bom Dia", role: "admin",
     merchant_status: padariaStatus,
+    ...(scenario === "pedido_em_analise" ? {application_status: "pending" as const} : {}),
+    ...(scenario === "pedido_recusado" ? {application_status: "rejected" as const} : {}),
   }
   if (scenario === "sem_cobranca") return {organizations: [none], organizations_unavailable: false}
   return {

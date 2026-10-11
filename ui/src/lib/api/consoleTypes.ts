@@ -39,6 +39,9 @@ export interface MerchantOrganization {
   merchant_status: MerchantStatus
   /** Tenant zero's organization: the console shows Solicitações. Display data; the server decides. */
   can_review_applications?: boolean
+  /** The latest application's status; absent when the organization never applied (a test
+   *  tenant CTech provisioned by hand is `merchant_status: "test"` with no application). */
+  application_status?: ApplicationStatus
 }
 
 /** Where a merchant application stands (spec § 4). */

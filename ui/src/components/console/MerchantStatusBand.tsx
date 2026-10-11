@@ -18,7 +18,10 @@ export function MerchantStatusBand() {
   const {t} = useTranslation()
   const {scope, organization} = useMerchantSelection()
   const status = organization.merchant_status
-  const visible = status === "suspended" || ((status === "test" || status === "rejected") && tenantInMode(status, scope.mode))
+  // Under review only with a pending application (a hand-provisioned test
+  // tenant has none, and nobody is reviewing it).
+  const pending = status === "test" && organization.application_status === "pending"
+  const visible = status === "suspended" || ((pending || status === "rejected") && tenantInMode(status, scope.mode))
   const {data: application} = useQuery({
     queryKey: consoleKeys.merchantApplication(scope),
     queryFn: () => getMerchantApplication(scope),
@@ -32,7 +35,7 @@ export function MerchantStatusBand() {
       <div className="mx-auto flex max-w-6xl flex-col gap-1 px-4 py-2 text-sm text-foreground sm:flex-row sm:items-center sm:justify-between sm:gap-4">
         <p>
           {status === "suspended" && t("console.band.suspended", {name: organization.display_name})}
-          {status === "test" && t("console.band.pending")}
+          {pending && t("console.band.pending")}
           {status === "rejected" && application?.rejection_reason && t("console.band.rejected", {reason: application.rejection_reason})}
         </p>
         {status === "rejected" && (

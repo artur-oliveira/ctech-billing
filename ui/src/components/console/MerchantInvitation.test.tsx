@@ -14,14 +14,15 @@ import type {MerchantOrganization} from "@/lib/api/consoleTypes"
 import {MerchantSelectionProvider} from "@/lib/console/selection"
 
 const ORG = "0190a1b2-c3d4-7e5f-8a9b-bbbbbbbbbbbb"
-const org = (merchant_status: MerchantOrganization["merchant_status"]): MerchantOrganization =>
-  ({organization_id: ORG, selector: `org:${ORG}`, display_name: "Padaria Bom Dia", role: "owner", merchant_status})
+const org = (merchant_status: MerchantOrganization["merchant_status"], application_status?: MerchantOrganization["application_status"]): MerchantOrganization =>
+  ({organization_id: ORG, selector: `org:${ORG}`, display_name: "Padaria Bom Dia", role: "owner", merchant_status, application_status})
 
-function wrap(ui: ReactNode, status: MerchantOrganization["merchant_status"], mode: "live" | "test" = "live") {
+function wrap(ui: ReactNode, status: MerchantOrganization["merchant_status"], mode: "live" | "test" = "live",
+  application?: MerchantOrganization["application_status"]) {
   const client = new QueryClient({defaultOptions: {queries: {retry: false}}})
   return (
     <QueryClientProvider client={client}>
-      <MerchantSelectionProvider value={{scope: {mode, org: ORG}, organization: org(status)}}>{ui}</MerchantSelectionProvider>
+      <MerchantSelectionProvider value={{scope: {mode, org: ORG}, organization: org(status, application)}}>{ui}</MerchantSelectionProvider>
     </QueryClientProvider>
   )
 }
@@ -36,15 +37,21 @@ describe("MerchantInvitation", () => {
   })
 
   it("sends an applicant waiting for live mode to test mode", async () => {
-    render(wrap(<MerchantInvitation/>, "test"))
+    render(wrap(<MerchantInvitation/>, "test", "live", "pending"))
     expect(screen.getByText("Modo produção em análise")).toBeInTheDocument()
     expect(screen.queryByRole("link", {name: "Quero cobrar meus clientes"})).toBeNull()
     await userEvent.click(screen.getByRole("button", {name: "Ir para o modo de teste"}))
     expect(getMode()).toBe("test")
   })
 
+  it("invites an organization CTech provisioned by hand (test tenant, never applied) to apply", () => {
+    render(wrap(<MerchantInvitation/>, "test"))
+    expect(screen.queryByText("Modo produção em análise")).toBeNull()
+    expect(screen.getByRole("link", {name: "Quero cobrar meus clientes"})).toHaveAttribute("href", "/console/apply")
+  })
+
   it("offers a rejected organization to apply again", () => {
-    render(wrap(<MerchantInvitation/>, "rejected"))
+    render(wrap(<MerchantInvitation/>, "rejected", "live", "rejected"))
     expect(screen.getByText("Modo produção não aprovado")).toBeInTheDocument()
     expect(screen.getByRole("link", {name: "Pedir de novo"})).toHaveAttribute("href", "/console/apply")
   })
