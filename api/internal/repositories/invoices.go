@@ -419,18 +419,25 @@ func (r *InvoiceRepository) Transition(
 	return events, nil
 }
 
-// ListByCustomer returns one customer's invoices, newest first.
+// ListByCustomer returns one customer's invoices, newest first, up to limit
+// (0 means all of them).
 //
-// It still filters the tenant partition. The index that replaces it,
-// customer-index on LookupCustomerInvoicesPK, is written by Create and
-// backfilled by cmd/backfill-invoice-lookup; this read moves onto it only once
-// the backfill has reported nothing missing in production, because an index
-// query cannot see a row without its key (.github/workflows/README.md,
-// "Adding an index to a live table").
+// A key condition on customer-index (LookupCustomerInvoicesPK, stored as
+// customer_pk), so the read costs what this customer has, not what the tenant
+// has. It used to be one Query over the tenant's whole INVOICE# range with a
+// customer_id filter and Limit set to the page size; DynamoDB applies Limit
+// before the filter, so a customer whose invoices were not among the first
+// rows evaluated got an empty or short list.
 //
-// The `#LINE#` and `#ATTEMPT#` rows share the INVOICE# prefix and carry no
-// customer, so the filter already excludes them; the status check below is the
+// The index is sparse: only invoice rows carry customer_pk, never their
+// `#LINE#`, `#ATTEMPT#`, checkout or credit-note rows, so the limit is applied
+// by DynamoDB to rows that count. It still follows the continuation key — a
+// customer can hold more than one page — and keeps the status check as the
 // belt to that braces.
+//
+// Rows written before the index existed were given customer_pk by
+// cmd/backfill-invoice-lookup; a row without it is invisible here
+// (.github/workflows/README.md, "Adding an index to a live table").
 func (r *InvoiceRepository) ListByCustomer(
 	ctx context.Context,
 	organizationID string,
@@ -438,28 +445,42 @@ func (r *InvoiceRepository) ListByCustomer(
 	customerID string,
 	limit int,
 ) ([]billing.Invoice, error) {
-	res, err := r.base.Query(ctx, QueryOpts{
-		PK:          TenantPK(organizationID, livemode),
-		SKPrefix:    skInvoice,
-		FilterField: "customer_id",
-		FilterValue: customerID,
-		Limit:       limit,
-	})
-	if err != nil {
-		return nil, err
-	}
-	rows, err := DecodeItems[invoiceRow](res.Items)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]billing.Invoice, 0, len(rows))
-	for _, row := range rows {
-		if row.Invoice.Status == "" {
-			continue
+	out := make([]billing.Invoice, 0)
+	var start map[string]types.AttributeValue
+	for {
+		page := 100
+		if limit > 0 && limit-len(out) < page {
+			page = limit - len(out)
 		}
-		out = append(out, row.Invoice)
+		res, err := r.base.Query(ctx, QueryOpts{
+			IndexName:         IndexCustomer,
+			PKField:           "customer_pk",
+			PK:                LookupCustomerInvoicesPK(organizationID, livemode, customerID),
+			SKPrefix:          skInvoice,
+			Limit:             page,
+			ExclusiveStartKey: start,
+		})
+		if err != nil {
+			return nil, err
+		}
+		rows, err := DecodeItems[invoiceRow](res.Items)
+		if err != nil {
+			return nil, err
+		}
+		for _, row := range rows {
+			if row.Invoice.Status == "" {
+				continue
+			}
+			out = append(out, row.Invoice)
+			if limit > 0 && len(out) == limit {
+				return out, nil
+			}
+		}
+		if len(res.LastEvaluatedKey) == 0 {
+			return out, nil
+		}
+		start = res.LastEvaluatedKey
 	}
-	return out, nil
 }
 
 // ListBySubscription returns a subscription's most recent invoices, newest

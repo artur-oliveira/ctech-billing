@@ -228,7 +228,9 @@ api/cmd/backfill-invoice-lookup/run.sh prod           # must report missing=0, e
 ```
 
 The read moves onto `customer-index` in the second pull request, merged only after the final
-production dry run reports `missing=0`.
+production dry run reports `missing=0`. Done: `ListByCustomer` reads only the index now, newest
+first, following the continuation key, so an invoice row without `customer_pk` is invisible to it.
+If one ever appears (a restore from a pre-index backup, say), re-run the backfill.
 
 ## Collection is configured in the other repository
 
