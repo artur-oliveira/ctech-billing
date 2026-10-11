@@ -339,3 +339,39 @@ suspension, re-run each suspended day, oldest first; both are idempotent:
 
 `reconcile` and `deliver` are never skipped: they record money that arrived and
 tell integrations about it.
+
+## Credentials, webhooks and m2m scopes (console self-service part 3)
+
+This change marks billing's integration scopes `"m2m": true` in
+`api/internal/oauthresource/scope-manifest.json`, which the **OAuth scopes**
+stage publishes to ctech-account on every branch it reaches. ctech-account
+must already understand the field in that environment: an older ctech-account
+stores the manifest without it, and a later identical publish does not resend
+it (same hash).
+
+Per environment that exists (today only `prod`; `dev` and `stage` are not deployed):
+
+1. ctech-account's console self-service deploy (its plan
+   `docs/plans/2026-10-10-oauth-client-internal-route.md`, "Deploy") is live:
+   the internal route answers, `createclient -grant` has given billing's client
+   (`/ctech-billing/{env}/billing/account-client-id`)
+   `internal:account:oauth-client-read`, and ctech-account's runbook step 6 said
+   billing may publish.
+2. Only then does this change reach the branch that deploys the environment
+   (`dev` / `staging` / `main`). The pipeline publishes the scopes before the
+   API.
+3. Check the publish:
+   `curl -s https://<accounts-api>/v1.0/scopes | jq '..|objects|select(.scope? == "billing:invoices:read")'`
+   shows `"m2m": true`. If it does not, ctech-account was older at publish
+   time: run **Deploy** by hand with only `scopes` ticked.
+4. Smoke test in **test mode** with a person who administers a merchant
+   organization: create a confidential client on the developer page with only
+   billing m2m scopes, connect it on `/console/credentials`, get a token with
+   `grant_type=client_credentials`, call `GET /v1.0/invoices` and expect `200`.
+   Add a webhook to a request bin over https, press **Testar**, and expect one
+   `ping` within two minutes.
+
+If the internal route is missing or billing's client lacks the scope, connect
+answers `503 account_unavailable`; nothing else is affected. Rollback is a
+revert: connected credentials keep working (they are ordinary credential rows)
+and the published marks stay until the next publish.

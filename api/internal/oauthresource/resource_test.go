@@ -3,7 +3,9 @@ package oauthresource
 import (
 	"encoding/json"
 	"net/http/httptest"
+	"slices"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
@@ -96,5 +98,43 @@ func TestProtectedResourceMetadata(t *testing.T) {
 	}
 	if len(body.Scopes) != len(middleware.AllScopes) {
 		t.Errorf("scopes_supported = %d, want %d", len(body.Scopes), len(middleware.AllScopes))
+	}
+}
+
+// Spec § 6.3: the scopes a merchant's machine client may hold. ctech-account
+// issues a client_credentials token to a developer-page client only when every
+// scope it holds is one of these.
+func TestMachineScopesAreExactlyTheIntegrationScopes(t *testing.T) {
+	want := []string{
+		"billing:customers:read", "billing:customers:write",
+		"billing:entitlements:read",
+		"billing:invoices:read", "billing:invoices:write",
+		"billing:organization:read",
+		"billing:products:read", "billing:products:write",
+		"billing:subscriptions:read", "billing:subscriptions:write",
+		"billing:usage:write",
+	}
+	got, err := MachineScopes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("MachineScopes() = %v\nwant %v", got, want)
+	}
+}
+
+// A user scope marked m2m would let a merchant's server act as a person, and
+// ctech-account refuses m2m on anything but a public scope.
+func TestNoUserScopeIsAMachineScope(t *testing.T) {
+	m, err := ManifestDocument()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range m.Scopes {
+		user := strings.HasPrefix(s.Name, "billing:my-") || strings.HasPrefix(s.Name, "billing:finance:") ||
+			s.Name == "billing:organization:write"
+		if s.M2M && (user || s.Visibility != "public") {
+			t.Errorf("%s is marked m2m", s.Name)
+		}
 	}
 }

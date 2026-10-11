@@ -10,7 +10,8 @@
         "en": "Read the organization's subscriptions."
       },
       "visibility": "public",
-      "status": "active"
+      "status": "active",
+      "m2m": true
     },
     {
       "name": "billing:subscriptions:write",
@@ -19,7 +20,8 @@
         "en": "Create, change, and cancel the organization's subscriptions."
       },
       "visibility": "public",
-      "status": "active"
+      "status": "active",
+      "m2m": true
     },
     {
       "name": "billing:invoices:read",
@@ -28,7 +30,8 @@
         "en": "Read the organization's invoices."
       },
       "visibility": "public",
-      "status": "active"
+      "status": "active",
+      "m2m": true
     },
     {
       "name": "billing:invoices:write",
@@ -37,7 +40,8 @@
         "en": "Issue, finalize, and void the organization's invoices."
       },
       "visibility": "public",
-      "status": "active"
+      "status": "active",
+      "m2m": true
     },
     {
       "name": "billing:usage:write",
@@ -46,7 +50,8 @@
         "en": "Report metered usage for consumption-based subscriptions."
       },
       "visibility": "public",
-      "status": "active"
+      "status": "active",
+      "m2m": true
     },
     {
       "name": "billing:customers:read",
@@ -55,7 +60,8 @@
         "en": "Read the organization's customers."
       },
       "visibility": "public",
-      "status": "active"
+      "status": "active",
+      "m2m": true
     },
     {
       "name": "billing:customers:write",
@@ -64,7 +70,8 @@
         "en": "Create and change the organization's customers."
       },
       "visibility": "public",
-      "status": "active"
+      "status": "active",
+      "m2m": true
     },
     {
       "name": "billing:entitlements:read",
@@ -73,7 +80,8 @@
         "en": "Read what a customer is entitled to use."
       },
       "visibility": "public",
-      "status": "active"
+      "status": "active",
+      "m2m": true
     },
     {
       "name": "billing:products:read",
@@ -82,7 +90,8 @@
         "en": "Read catalog products and prices."
       },
       "visibility": "public",
-      "status": "active"
+      "status": "active",
+      "m2m": true
     },
     {
       "name": "billing:products:write",
@@ -91,7 +100,8 @@
         "en": "Create products and prices, and archive a price. Prices are immutable: changing an amount means creating another."
       },
       "visibility": "public",
-      "status": "active"
+      "status": "active",
+      "m2m": true
     },
     {
       "name": "billing:organization:read",
@@ -100,7 +110,8 @@
         "en": "Read the organization's billing settings."
       },
       "visibility": "public",
-      "status": "active"
+      "status": "active",
+      "m2m": true
     },
     {
       "name": "billing:organization:write",
