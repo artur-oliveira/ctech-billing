@@ -27,6 +27,7 @@ import {useCreateRequest} from "@/lib/finance/createRequest"
 import {useFinanceCtx, useFinanceSpaces} from "@/lib/finance/useFinanceSpaces"
 import {shortDate, signedMoney} from "@/lib/format"
 import {accountName} from "@/lib/finance/accountName"
+import {shiftMonth} from "@/lib/finance/statementTimeline"
 
 type StatementState = CardStatementStatus | "overdue"
 
@@ -52,12 +53,6 @@ const STATUS: Record<StatementState, {tone: "neutral" | "positive" | "urgent"; i
  */
 export function statementState(s: Pick<CardStatement, "status" | "due_date" | "bill_id" | "total">, today: string): StatementState {
   return s.status === "closed" && !!s.bill_id && s.total > 0 && s.due_date < today ? "overdue" : s.status
-}
-
-function shiftMonth(ym: string, n: number): string {
-  const [y, m] = ym.split("-").map(Number)
-  const i = y * 12 + (m - 1) + n
-  return `${Math.floor(i / 12)}-${String((i % 12) + 1).padStart(2, "0")}`
 }
 
 type Panel = "new-card" | "edit-card" | "purchase" | null
