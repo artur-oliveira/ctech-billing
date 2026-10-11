@@ -1,13 +1,20 @@
 package v1
 
 import (
+	"context"
 	"errors"
+	"log/slog"
+	"slices"
+	"strings"
 
 	"github.com/gofiber/fiber/v3"
+	"gopkg.aoctech.app/api-commons/accountorgs"
 
+	"gopkg.aoctech.app/billing/api/internal/domain/billing"
 	"gopkg.aoctech.app/billing/api/internal/middleware"
 	"gopkg.aoctech.app/billing/api/internal/problem"
 	"gopkg.aoctech.app/billing/api/internal/repositories"
+	"gopkg.aoctech.app/billing/api/internal/space"
 )
 
 // meIdentity is one of the two things a person can be here: a customer with
@@ -62,16 +69,47 @@ func (h *consoleHandlers) me(c fiber.Ctx) error {
 		}
 	}
 
-	// The console identity is looked up in live mode. Mode is a console concern
-	// and this route has no mode: an operator provisioned only in test still owns
-	// an organization, but which one they see is decided by the shell they open.
-	org, err := h.orgs.GetByOwner(c.Context(), cl.Sub, true)
-	switch {
-	case err == nil:
-		out.Console = &meIdentity{ID: org.ID, Name: org.DisplayName}
-	case !errors.Is(err, repositories.ErrNotFound):
+	// The console identity is a live tenant of an organization the person
+	// administers; mode is a console concern and this route has none.
+	org, err := h.consoleIdentity(c.Context(), cl.Sub)
+	if err != nil {
 		return fail(c, err)
+	}
+	if org != nil {
+		out.Console = &meIdentity{ID: org.ID, Name: org.DisplayName}
 	}
 
 	return c.JSON(out)
+}
+
+// consoleIdentity is the tenant this person would open the console on: the
+// first organization, by name, where they are owner or admin and a live tenant
+// exists (ADR 0028). ctech-account not answering is "no console identity", not
+// an error: /me is a probe.
+func (h *consoleHandlers) consoleIdentity(ctx context.Context, sub string) (*billing.Organization, error) {
+	if h.spaces == nil {
+		return nil, nil
+	}
+	workspaces, err := h.spaces.Organizations(ctx, sub)
+	if err != nil {
+		slog.Warn("me: listing organizations failed", "error", err)
+		return nil, nil
+	}
+	ws := slices.Clone(workspaces)
+	slices.SortStableFunc(ws, func(a, b accountorgs.Organization) int {
+		return strings.Compare(strings.ToLower(a.DisplayName), strings.ToLower(b.DisplayName))
+	})
+	for _, w := range ws {
+		if !space.IsOrganizationID(w.ID) || !space.IsMerchantRole(space.WorkspaceKind(w.Kind), w.Role) {
+			continue
+		}
+		org, err := middleware.LookupMerchantTenant(ctx, h.merchants, sub, w.ID, true)
+		switch {
+		case err == nil:
+			return org, nil
+		case !errors.Is(err, repositories.ErrNotFound):
+			return nil, err
+		}
+	}
+	return nil, nil
 }

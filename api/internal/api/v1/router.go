@@ -259,6 +259,11 @@ func registerConsole(v1 fiber.Router, d Deps, h *handlers, auth fiber.Handler) {
 		credit:               d.CreditNotes,
 		invoicer:             d.Invoicer,
 		portalOrganizationID: d.PortalOrganizationID,
+		merchants:            d.Organizations,
+	}
+	// Assigned only when set: a nil interface value in the field must stay nil.
+	if d.SpaceLister != nil {
+		ch.spaces = d.SpaceLister
 	}
 	// Assigned only when set: a nil *FinanceInvoices in the interface field
 	// would not compare equal to nil.
@@ -270,6 +275,12 @@ func registerConsole(v1 fiber.Router, d Deps, h *handlers, auth fiber.Handler) {
 	// belongs to is what it answers, so it cannot be behind a tenant resolver,
 	// and it publishes only identity, so it is behind no scope.
 	v1.Get("/me", auth, ch.me)
+
+	// Before the group, for the reason finance is: the list is what a person
+	// picks an organization from, so no organization is resolved yet, and a
+	// group's handlers run as prefix middleware for every /console path.
+	v1.Get("/console/session", auth,
+		middleware.RequireUserScope(middleware.ScopeOrganizationRead), ch.session)
 
 	// The billing (merchant) half resolves its tenant from the selected
 	// organization (ADR 0028): a person's session, the space and its
@@ -286,8 +297,6 @@ func registerConsole(v1 fiber.Router, d Deps, h *handlers, auth fiber.Handler) {
 		middleware.ResolveSpace(spaces),
 		middleware.ResolveMerchantTenant(d.Organizations))
 
-	console.Get("/session",
-		middleware.RequireUserScope(middleware.ScopeOrganizationRead), ch.session)
 	// C1. Behind the invoices read scope rather than the organization one: every
 	// figure on it is an invoice figure, and a token that may not read invoices
 	// must not read their totals either.

@@ -26,12 +26,36 @@ func pageOf[T any](items []T, lastKey map[string]types.AttributeValue) listRespo
 	return listResponse[T]{Data: items, HasMore: cursor != "", Cursor: cursor}
 }
 
-type sessionResponse struct {
+// tenantResponse is the selected tenant's own block: id, name, mode and the
+// payout gate. It was the body of /console/session before ADR 0028 and is now
+// the `organization` of /console/settings.
+type tenantResponse struct {
 	OrganizationID string               `json:"organization_id"`
 	DisplayName    string               `json:"display_name"`
 	Livemode       bool                 `json:"livemode"`
 	PayoutStatus   billing.PayoutStatus `json:"payout_status"`
 	CanCharge      bool                 `json:"can_charge"`
+}
+
+// consoleSessionResponse is GET /v1.0/console/session (spec § 3, ADR 0028):
+// the organizations this person may run billing for, with what billing knows
+// about each. Display data: every billing-half request re-authorizes.
+type consoleSessionResponse struct {
+	// Never null: an empty list is "owner or admin of nothing".
+	Organizations []merchantOrganizationDTO `json:"organizations"`
+	// ctech-account did not answer; the list is empty because it is unknown.
+	OrganizationsUnavailable bool `json:"organizations_unavailable"`
+}
+
+// merchantOrganizationDTO is one entry of the console's organization selector.
+type merchantOrganizationDTO struct {
+	OrganizationID string `json:"organization_id"`
+	// Selector is what X-Billing-Space carries for it; the console never
+	// builds one from anything else.
+	Selector       string                 `json:"selector"`
+	DisplayName    string                 `json:"display_name"`
+	Role           string                 `json:"role"`
+	MerchantStatus billing.MerchantStatus `json:"merchant_status"`
 }
 
 // auditResponse is one entry of a detail screen's timeline. It publishes who,

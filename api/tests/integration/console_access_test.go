@@ -125,3 +125,47 @@ func TestAnAdminWhoIsNotTheStoredOwnerReachesTheTenant(t *testing.T) {
 		t.Fatalf("admin: %d %s", res.status, res.body)
 	}
 }
+
+func TestSessionNeedsNoModeAndNoSpaceAndListsTheEnvOrganization(t *testing.T) {
+	e := newAPI(t)
+	token := e.sessionToken(t, middleware.ScopeOrganizationRead)
+	res := e.consoleAs(t, http.MethodGet, "/v1.0/console/session", token, "", "", "")
+	if res.status != http.StatusOK {
+		t.Fatalf("status = %d: %s", res.status, res.body)
+	}
+	var body struct {
+		Organizations []struct {
+			OrganizationID string `json:"organization_id"`
+			Role           string `json:"role"`
+			MerchantStatus string `json:"merchant_status"`
+		} `json:"organizations"`
+	}
+	res.decode(t, &body)
+	if len(body.Organizations) != 1 || body.Organizations[0].OrganizationID != e.accountOrg ||
+		body.Organizations[0].Role != "owner" || body.Organizations[0].MerchantStatus != "live" {
+		t.Fatalf("organizations = %+v", body.Organizations)
+	}
+}
+
+func TestAMemberSeesNoOrganizationInTheSession(t *testing.T) {
+	e := newAPI(t)
+	member := "usr_" + id.New()
+	e.account.set(e.accountOrg, member, "organization", "member")
+	res := e.consoleAs(t, http.MethodGet, "/v1.0/console/session",
+		e.token(t, member, "sess_"+id.New(), middleware.ScopeOrganizationRead), "", "", "")
+	if res.status != http.StatusOK || !bytes.Contains(res.body, []byte(`"organizations":[]`)) {
+		t.Fatalf("%d %s", res.status, res.body)
+	}
+}
+
+func TestAnOrganizationWithATestTenantOnlyIsTest(t *testing.T) {
+	e := newAPI(t)
+	acct := newSpaceOrgID()
+	test := newLinkedOrg(t, false, acct)
+	e.account.set(acct, test.OwnerUserID, "organization", "owner")
+	res := e.consoleAs(t, http.MethodGet, "/v1.0/console/session",
+		e.token(t, test.OwnerUserID, "sess_"+id.New(), middleware.ScopeOrganizationRead), "", "", "")
+	if res.status != http.StatusOK || !bytes.Contains(res.body, []byte(`"merchant_status":"test"`)) {
+		t.Fatalf("%d %s", res.status, res.body)
+	}
+}
