@@ -47,6 +47,9 @@ func TestPublicAddr(t *testing.T) {
 		"127.0.0.1": false, "10.1.2.3": false, "172.16.0.1": false, "192.168.1.1": false,
 		"169.254.169.254": false, "100.64.0.1": false, "0.0.0.0": false, "::1": false,
 		"fe80::1": false, "fc00::1": false, "224.0.0.1": false, "::ffff:10.0.0.1": false,
+		// Final review: special-purpose ranges that are global unicast to Go.
+		"0.1.2.3": false, "192.0.0.8": false, "198.18.0.1": false, "240.0.0.1": false,
+		"64:ff9b::a00:1": false, "64:ff9b:1::1": false, "2002:a00:1::1": false, "2001::1": false,
 	} {
 		if got := PublicAddr(netip.MustParseAddr(addr)); got != want {
 			t.Errorf("PublicAddr(%s) = %v, want %v", addr, got, want)

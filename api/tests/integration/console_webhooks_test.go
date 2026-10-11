@@ -123,13 +123,15 @@ func TestTheSecretAppearsInExactlyOneResponsePerCreateOrRotate(t *testing.T) {
 func TestWebhookURLsMustBeHTTPSAndPublic(t *testing.T) {
 	e := newAPI(t)
 	tok := e.writeToken(t)
+	// Their own field codes (final review I3): the generic ones read
+	// "Use: {{allowed}}" with nothing to fill in.
 	for url, code := range map[string]string{
-		"http://example.com/hooks":     "invalid_format",
-		"not a url":                    "invalid_format",
-		"https://127.0.0.1/hooks":      "unsupported_value",
-		"https://localhost/hooks":      "unsupported_value",
-		"https://billing.internal/x":   "unsupported_value",
-		"https://169.254.169.254/meta": "unsupported_value",
+		"http://example.com/hooks":     "webhook_url_not_https",
+		"not a url":                    "webhook_url_not_https",
+		"https://127.0.0.1/hooks":      "webhook_host_not_public",
+		"https://localhost/hooks":      "webhook_host_not_public",
+		"https://billing.internal/x":   "webhook_host_not_public",
+		"https://169.254.169.254/meta": "webhook_host_not_public",
 	} {
 		res := e.addHook(t, tok, url)
 		var p struct {
@@ -316,5 +318,23 @@ func TestConcurrentConsoleCreatesStayWithinTheLimit(t *testing.T) {
 	e.console(t, hooksPath, tok, "live").decode(t, &list)
 	if len(list.Data) > 5 {
 		t.Fatalf("%d endpoints", len(list.Data))
+	}
+}
+
+// Final review I1: the test call queues an event in the queue every tenant
+// shares, so it is refused while the last one is recent.
+func TestTheTestCallIsRefusedWhileTheLastOneIsRecent(t *testing.T) {
+	e := newAPI(t)
+	tok := e.writeToken(t)
+	var ep endpointBody
+	e.addHook(t, tok, "https://hooks.invalid/one").decode(t, &ep)
+	if r := e.consoleWrite(t, http.MethodPost, hooksPath+"/"+ep.ID+"/test", tok, "live", ""); r.status != http.StatusAccepted {
+		t.Fatalf("first test: %d %s", r.status, r.body)
+	}
+	res := e.consoleWrite(t, http.MethodPost, hooksPath+"/"+ep.ID+"/test", tok, "live", "")
+	var p problemBody
+	res.decode(t, &p)
+	if res.status != http.StatusTooManyRequests || p.Code != "webhook_test_too_soon" {
+		t.Fatalf("second test: %d %+v", res.status, p)
 	}
 }

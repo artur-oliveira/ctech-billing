@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -389,6 +390,44 @@ func (r *WebhookRepository) MarkAttemptFailed(ctx context.Context, d *billing.De
 	return err
 }
 
+// DeferDelivery moves a delivery down the queue to `until` without counting an
+// attempt: nothing was sent. Used for an endpoint that is disabled but may be
+// re-enabled (a provisioned one), so its rows keep what it missed without
+// sitting at the head of the shared queue, where they would starve every
+// other tenant's deliveries.
+func (r *WebhookRepository) DeferDelivery(ctx context.Context, d *billing.Delivery, until time.Time, now time.Time) error {
+	_, err := r.base.UpdateItem(ctx,
+		TenantPK(d.OrganizationID, d.Livemode),
+		new(DeliverySK(d.EventID, d.EndpointID)),
+		map[string]any{
+			"next_attempt_at": until.UTC().Format(time.RFC3339Nano),
+			"schedule_pk":     WebhookQueuePK(d.Livemode, JobWebhookDelivery),
+			"schedule_sk":     WebhookQueueSK(until, d.EventID+"#"+d.EndpointID),
+			"updated_at":      now.UTC().Format(time.RFC3339Nano),
+		},
+	)
+	return err
+}
+
+// CloseDelivery ends a delivery as failed without an attempt, and takes it off
+// the queue: there is nowhere it can ever be sent (a console endpoint that was
+// disabled; the console has no re-enable, only delete and add again).
+func (r *WebhookRepository) CloseDelivery(ctx context.Context, d *billing.Delivery, cause string, now time.Time) error {
+	_, err := r.base.UpdateItem(ctx,
+		TenantPK(d.OrganizationID, d.Livemode),
+		new(DeliverySK(d.EventID, d.EndpointID)),
+		map[string]any{
+			"status":          string(billing.DeliveryFailed),
+			"last_error":      truncate(cause, 500),
+			"schedule_pk":     nil,
+			"schedule_sk":     nil,
+			"next_attempt_at": nil,
+			"updated_at":      now.UTC().Format(time.RFC3339Nano),
+		},
+	)
+	return err
+}
+
 // ListDeliveries returns every attempt made for one event, for the console and
 // for answering "did they get it?".
 func (r *WebhookRepository) ListDeliveries(ctx context.Context, organizationID string, livemode bool, eventID string) ([]billing.Delivery, error) {
@@ -426,11 +465,16 @@ func truncate(s string, n int) string {
 // Not "ENDPOINT#…": ListEndpoints reads that prefix.
 const skEndpointRev = "ENDPOINT_REV"
 
+// PingInterval is the least time between two console tests of one endpoint.
+const PingInterval = 30 * time.Second
+
 var (
 	// ErrEndpointLimit: the tenant already has the most endpoints a mode may.
 	ErrEndpointLimit = errors.New("webhook endpoint limit reached")
 	// ErrEndpointProvisioned: the endpoint came from the tenant plan.
 	ErrEndpointProvisioned = errors.New("webhook endpoint provisioned by the tenant plan")
+	// ErrPingTooSoon: the endpoint was tested less than PingInterval ago.
+	ErrPingTooSoon = errors.New("webhook endpoint tested too recently")
 	// ErrEndpointsChanged: other adds kept moving the count; the caller retries later.
 	ErrEndpointsChanged = errors.New("the tenant's webhook endpoints changed during the request")
 )
@@ -439,16 +483,43 @@ type endpointRevRow struct {
 	Rev int64 `dynamodbav:"rev"`
 }
 
-func (r *WebhookRepository) endpointRev(ctx context.Context, organizationID string, livemode bool) (int64, error) {
-	item, err := r.base.GetItem(ctx, TenantPK(organizationID, livemode), skEndpointRev)
-	if err != nil || item == nil {
-		return 0, err
+// endpointsAndRev reads the tenant's endpoints and the revision row in one
+// strongly consistent query (both sort keys start with "ENDPOINT"). Two
+// eventually consistent reads could pair a fresh revision with a stale list,
+// and the add would pass the limit with its condition still holding.
+func (r *WebhookRepository) endpointsAndRev(ctx context.Context, organizationID string, livemode bool) (int, int64, error) {
+	count, rev := 0, int64(0)
+	var start map[string]types.AttributeValue
+	for {
+		out, err := r.base.QueryRaw(ctx, &dynamodb.QueryInput{
+			KeyConditionExpression: aws.String("pk = :pk AND begins_with(sk, :sk)"),
+			ExpressionAttributeValues: map[string]types.AttributeValue{
+				":pk": str(TenantPK(organizationID, livemode)), ":sk": str("ENDPOINT"),
+			},
+			ConsistentRead:    aws.Bool(true),
+			ExclusiveStartKey: start,
+		})
+		if err != nil {
+			return 0, 0, err
+		}
+		for _, item := range out.Items {
+			sk, _ := item["sk"].(*types.AttributeValueMemberS)
+			switch {
+			case sk != nil && sk.Value == skEndpointRev:
+				row, err := Decode[endpointRevRow](item)
+				if err != nil {
+					return 0, 0, err
+				}
+				rev = row.Rev
+			case sk != nil && strings.HasPrefix(sk.Value, skEndpoint):
+				count++
+			}
+		}
+		if len(out.LastEvaluatedKey) == 0 {
+			return count, rev, nil
+		}
+		start = out.LastEvaluatedKey
 	}
-	row, err := Decode[endpointRevRow](item)
-	if err != nil {
-		return 0, err
-	}
-	return row.Rev, nil
 }
 
 // bumpRev moves the revision. seen < 0 means unconditional (a removal only
@@ -510,15 +581,11 @@ func (r *WebhookRepository) AddEndpoint(ctx context.Context, e *billing.WebhookE
 		return err
 	}
 	for attempt := 0; attempt < 3; attempt++ {
-		rev, err := r.endpointRev(ctx, e.OrganizationID, e.Livemode)
+		count, rev, err := r.endpointsAndRev(ctx, e.OrganizationID, e.Livemode)
 		if err != nil {
 			return err
 		}
-		existing, err := r.ListEndpoints(ctx, e.OrganizationID, e.Livemode)
-		if err != nil {
-			return err
-		}
-		if len(existing) >= max {
+		if count >= max {
 			return fmt.Errorf("%w: %d", ErrEndpointLimit, max)
 		}
 		err = r.base.TransactWrite(ctx, txItems(
@@ -602,8 +669,22 @@ func (r *WebhookRepository) EmitPing(ctx context.Context, e *billing.WebhookEndp
 	if err != nil {
 		return nil, err
 	}
-	if err := r.base.TransactWrite(ctx, txItems(item)); err != nil {
-		return nil, err
+	// The event goes into the queue every tenant shares; one ping per endpoint
+	// per PingInterval, stamped on the endpoint row in the same transaction.
+	sk := EndpointSK(e.ID)
+	stamp := r.base.BuildRawUpdateTxItem(TenantPK(e.OrganizationID, e.Livemode), &sk,
+		"SET last_ping_at = :now",
+		"attribute_exists(pk) AND (attribute_not_exists(last_ping_at) OR last_ping_at < :cutoff)", nil,
+		map[string]types.AttributeValue{
+			":now":    str(now.UTC().Format(time.RFC3339Nano)),
+			":cutoff": str(now.Add(-PingInterval).UTC().Format(time.RFC3339Nano)),
+		})
+	err = r.base.TransactWrite(ctx, txItems(stamp, item))
+	switch {
+	case IsConditionFailed(err):
+		return nil, fmt.Errorf("%w: %s", ErrPingTooSoon, e.ID)
+	case err != nil:
+		return nil, conflictErr(err)
 	}
 	return ev, nil
 }

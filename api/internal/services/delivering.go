@@ -79,6 +79,10 @@ func refusePrivate(_, address string, _ syscall.RawConn) error {
 // hold the pass open behind everything else waiting.
 const deliveryTimeout = 10 * time.Second
 
+// disabledRecheck is how far down the queue a disabled provisioned endpoint's
+// delivery moves: re-enabling it sends what it missed within the hour.
+const disabledRecheck = time.Hour
+
 func NewDeliverer(hooks *repositories.WebhookRepository) *Deliverer {
 	return &Deliverer{
 		hooks:    hooks,
@@ -200,9 +204,21 @@ func (d *Deliverer) Deliver(ctx context.Context, livemode bool, limit int, now t
 			}
 			continue
 		}
-		// Disabled endpoints keep their queued deliveries rather than losing them:
-		// re-enabling one should send what it missed, not start from silence.
+		// A disabled endpoint's rows must leave the head of the queue: the queue
+		// is shared by every tenant, and rows left in place would be the whole
+		// of every later batch. A provisioned endpoint (an operator may
+		// re-enable it) keeps what it missed, an hour further down; a console
+		// endpoint cannot be re-enabled (delete and add again), so its rows close.
 		if endpoint.Status != billing.EndpointActive {
+			var markErr error
+			if endpoint.Provisioned() {
+				markErr = d.hooks.DeferDelivery(ctx, &item.Delivery, now.Add(disabledRecheck), now)
+			} else {
+				markErr = d.hooks.CloseDelivery(ctx, &item.Delivery, "endpoint disabled", now)
+			}
+			if markErr != nil {
+				res.fail("moving delivery %s of a disabled endpoint: %v", item.Delivery.EventID, markErr)
+			}
 			res.Deferred++
 			continue
 		}

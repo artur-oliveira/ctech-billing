@@ -38,6 +38,7 @@ type OAuthClientReader interface {
 // CredentialStore is the slice of the credential repository the rules need.
 type CredentialStore interface {
 	Resolve(ctx context.Context, clientID string) (*billing.APICredential, error)
+	Get(ctx context.Context, organizationID string, livemode bool, clientID string) (*billing.APICredential, error)
 	Connect(ctx context.Context, cred *billing.APICredential, actor, requestID string, now time.Time) error
 }
 
@@ -136,6 +137,13 @@ func (s *CredentialConnector) Connect(ctx context.Context, r ConnectRequest) (*b
 	}
 	if err := s.creds.Connect(ctx, cred, "user:"+r.UserID, r.RequestID, r.Now); err != nil {
 		if errors.Is(err, repositories.ErrCredentialTaken) {
+			// The lookup index lags a fresh write, so the second request of a
+			// double click can miss the first one's row and lose on the guard.
+			// A read of this tenant's own row (strongly consistent) tells that
+			// apart from another tenant holding the client.
+			if here, getErr := s.creds.Get(ctx, r.OrganizationID, r.Livemode, r.ClientID); getErr == nil {
+				return here, false, nil
+			}
 			return refuse(RefusedAlreadyConnected)
 		}
 		return nil, false, err

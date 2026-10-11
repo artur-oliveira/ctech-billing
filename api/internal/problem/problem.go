@@ -29,6 +29,8 @@ const (
 	TypeInvalidTransition   = "/problems/invalid-transition"
 	TypeConcurrentUpdate    = "/problems/concurrent-update"
 	TypeAlreadyGenerated    = "/problems/already-generated"
+	// TypeTooManyRequests: the same request again too soon (a webhook test).
+	TypeTooManyRequests = commonproblem.TypeTooManyRequests
 	// TypeNoBillingAccount is a signed-in person who has no customer record in
 	// tenant zero. It stays a 403 — the refusal is real and the portal has
 	// nothing to show them — but it is the one 403 the portal renders as an

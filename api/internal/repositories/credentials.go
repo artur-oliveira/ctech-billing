@@ -196,16 +196,25 @@ func (r *CredentialRepository) SetOwnerKey(ctx context.Context, cred *billing.AP
 	return nil
 }
 
-// Get reads one credential of a tenant.
+// Get reads one credential of a tenant, strongly consistent.
 func (r *CredentialRepository) Get(ctx context.Context, organizationID string, livemode bool, clientID string) (*billing.APICredential, error) {
-	item, err := r.base.GetItem(ctx, TenantPK(organizationID, livemode), CredentialSK(clientID))
+	// Strongly consistent: the connector reads this right after a write it
+	// lost on the guard, to tell a double click from another tenant.
+	out, err := r.base.QueryRaw(ctx, &dynamodb.QueryInput{
+		KeyConditionExpression: aws.String("pk = :pk AND sk = :sk"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":pk": &types.AttributeValueMemberS{Value: TenantPK(organizationID, livemode)},
+			":sk": &types.AttributeValueMemberS{Value: CredentialSK(clientID)},
+		},
+		ConsistentRead: aws.Bool(true),
+	})
 	if err != nil {
 		return nil, err
 	}
-	if item == nil {
+	if len(out.Items) == 0 {
 		return nil, fmt.Errorf("%w: credential %s", ErrNotFound, clientID)
 	}
-	row, err := Decode[credentialRow](item)
+	row, err := Decode[credentialRow](out.Items[0])
 	if err != nil {
 		return nil, err
 	}

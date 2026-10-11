@@ -33,6 +33,7 @@ func (f *fakeClients) Get(_ context.Context, id string) (oauthclients.OAuthClien
 }
 
 type fakeStore struct {
+	here       *billing.APICredential // what Get finds in this tenant
 	existing   *billing.APICredential
 	resolveErr error
 	connectErr error
@@ -47,6 +48,13 @@ func (f *fakeStore) Resolve(context.Context, string) (*billing.APICredential, er
 		return nil, repositories.ErrNotFound
 	}
 	return f.existing, nil
+}
+
+func (f *fakeStore) Get(_ context.Context, org string, livemode bool, id string) (*billing.APICredential, error) {
+	if f.here != nil && f.here.OrganizationID == org && f.here.Livemode == livemode && f.here.ClientID == id {
+		return f.here, nil
+	}
+	return nil, repositories.ErrNotFound
 }
 
 func (f *fakeStore) Connect(_ context.Context, c *billing.APICredential, _, _ string, _ time.Time) error {
@@ -152,5 +160,18 @@ func TestAnAccountOutageIsNotARefusal(t *testing.T) {
 	_, _, err := NewCredentialConnector(clients, &fakeStore{}, machine).Connect(context.Background(), req("c"))
 	if !errors.Is(err, ErrAccountUnavailable) {
 		t.Fatalf("err = %v, want ErrAccountUnavailable", err)
+	}
+}
+
+// Final review: a double click whose second request misses the first one's row
+// in the (eventually consistent) lookup index loses on the guard; it is the same
+// tenant's admission, so the answer is the credential, not a refusal.
+func TestADoubleClickThatLosesOnTheGuardReturnsTheCredential(t *testing.T) {
+	existing := &billing.APICredential{ClientID: "c", OrganizationID: "org_a", Livemode: false, Active: true, ConnectedBy: "usr_me"}
+	clients := &fakeClients{got: map[string]oauthclients.OAuthClient{"c": mine("billing:invoices:read")}}
+	store := &fakeStore{connectErr: repositories.ErrCredentialTaken, here: existing}
+	cred, created, err := NewCredentialConnector(clients, store, machine).Connect(context.Background(), req("c"))
+	if err != nil || created || cred != existing {
+		t.Fatalf("cred=%v created=%v err=%v", cred, created, err)
 	}
 }

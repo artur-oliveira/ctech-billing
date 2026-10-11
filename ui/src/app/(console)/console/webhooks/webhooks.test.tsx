@@ -10,6 +10,7 @@ import ConsoleWebhooksPage from "@/app/(console)/console/webhooks/page"
 import * as consoleApi from "@/lib/api/console"
 import type {ConsoleWebhookEndpoint} from "@/lib/api/consoleTypes"
 import {ConsoleScopeProvider} from "@/lib/console/scope"
+import ptBR from "@/locales/pt-BR"
 
 const SCOPE = {mode: "live", org: "0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b"} as const
 const SECRET = `whsec_${"ab".repeat(32)}`
@@ -90,5 +91,20 @@ describe("/console/webhooks", () => {
     const row = (await screen.findByText("https://example.com/whe_dfe")).closest("li")!
     expect(within(row).getByText("Gerenciado pela CTech")).toBeInTheDocument()
     expect(within(row).queryByRole("button")).toBeNull()
+  })
+
+  it("says why a URL was refused, under the URL field", async () => {
+    list([])
+    vi.spyOn(consoleApi, "createWebhook").mockRejectedValue({response: {status: 422, data: {
+      type: "about:blank", status: 422, title: "T", code: "validation_error",
+      errors: [{field: "url", code: "webhook_host_not_public", message: "the host must be on the public internet"}],
+    }}})
+    wrap(<ConsoleWebhooksPage/>)
+    await userEvent.click(await screen.findByRole("button", {name: "Novo endpoint"}))
+    const form = await screen.findByRole("dialog")
+    await userEvent.type(within(form).getByLabelText("URL"), "https://localhost/hooks")
+    await userEvent.click(within(form).getByRole("button", {name: "Adicionar"}))
+    expect(await within(form).findByText(ptBR.errors.field.webhook_host_not_public)).toBeInTheDocument()
+    expect(within(form).queryByText(/\{\{/)).toBeNull()
   })
 })

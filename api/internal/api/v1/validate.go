@@ -164,9 +164,9 @@ func (c *checks) webhookURL(field, v string) {
 	}
 	switch err := billing.CheckWebhookURL(v); {
 	case errors.Is(err, billing.ErrWebhookHostNotAllowed):
-		c.fail(field, "unsupported_value", "the host must be on the public internet")
+		c.fail(field, "webhook_host_not_public", "the host must be on the public internet")
 	case err != nil:
-		c.fail(field, "invalid_format", "an https URL is required")
+		c.fail(field, "webhook_url_not_https", "an https URL is required")
 	}
 }
 

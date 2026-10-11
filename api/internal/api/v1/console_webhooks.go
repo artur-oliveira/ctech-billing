@@ -159,7 +159,11 @@ func (h *consoleHandlers) testWebhook(c fiber.Ctx) error {
 		return problem.Conflict("this endpoint is disabled").WithCode("webhook_endpoint_disabled").Send(c)
 	}
 	ev, err := h.hooks.EmitPing(c.Context(), e, h.now())
-	if err != nil {
+	switch {
+	case errors.Is(err, repositories.ErrPingTooSoon):
+		return problem.New(http.StatusTooManyRequests, problem.TypeTooManyRequests, "Too Many Requests",
+			"this endpoint was tested moments ago; wait before testing again").WithCode("webhook_test_too_soon").Send(c)
+	case err != nil:
 		return fail(c, err)
 	}
 	return c.Status(http.StatusAccepted).JSON(fiber.Map{"event_id": ev.ID})

@@ -92,7 +92,8 @@
     "already_merchant": "This organization already bills through CTech Billing in live mode.",
     "application_busy": "Someone else is deciding this application right now. Refresh the page.",
     "no_application": "This organization has not applied for billing yet.",
-    "companies_unavailable": "We could not load the organization's companies right now. Try again."
+    "companies_unavailable": "We could not load the organization's companies right now. Try again.",
+    "webhook_test_too_soon": "This endpoint was just tested. Wait half a minute to test it again."
   },
   "field": {
     "required": "Required.",
@@ -117,6 +118,8 @@
     "out_of_range": "Use a value between {{min}} and {{max}}.",
     "invalid": "Invalid value.",
     "too_short": "Use at least {{min}} characters.",
-    "invalid_url": "Enter an address that starts with https://."
+    "invalid_url": "Enter an address that starts with https://.",
+    "webhook_url_not_https": "Use a complete https URL, such as https://your-api.com/webhooks.",
+    "webhook_host_not_public": "This address is not public. Use your API's domain on the internet (not localhost, an internal IP or .local)."
   }
 }

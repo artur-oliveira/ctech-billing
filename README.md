@@ -112,7 +112,8 @@ cannot be removed from the console.
 Webhook endpoints from the console are `https` URLs on the public internet, at
 most five per tenant and mode. The signing secret is in the create and
 rotate-secret responses only. The test call queues a `ping` event for that
-endpoint through the ordinary delivery job (every minute). Merchant endpoints
+endpoint through the ordinary delivery job (every minute), at most once per 30
+seconds per endpoint (`429 webhook_test_too_soon`). Merchant endpoints
 are delivered by a client that never dials a non-public address and follows no
 redirect.
 

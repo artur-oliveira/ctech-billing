@@ -16,15 +16,37 @@ import (
 // merchant names, CTech's own private network included.
 var ErrWebhookHostNotAllowed = errors.New("webhook host is not a public address")
 
-var cgnat = netip.MustParsePrefix("100.64.0.0/10")
+// nonPublic are special-purpose ranges Go's IsGlobalUnicast still accepts:
+// shared address space (CGNAT), "this network", IETF protocol assignments,
+// benchmarking, reserved class E, and the IPv6 translation prefixes (NAT64,
+// local-use NAT64, 6to4, Teredo) through which an IPv6 address can carry a
+// private IPv4 one.
+var nonPublic = []netip.Prefix{
+	netip.MustParsePrefix("100.64.0.0/10"),
+	netip.MustParsePrefix("0.0.0.0/8"),
+	netip.MustParsePrefix("192.0.0.0/24"),
+	netip.MustParsePrefix("198.18.0.0/15"),
+	netip.MustParsePrefix("240.0.0.0/4"),
+	netip.MustParsePrefix("64:ff9b::/96"),
+	netip.MustParsePrefix("64:ff9b:1::/48"),
+	netip.MustParsePrefix("2002::/16"),
+	netip.MustParsePrefix("2001::/32"),
+}
 
 // PublicAddr reports an address a merchant's endpoint may resolve to: global
-// unicast, and none of private, loopback, link-local, shared (CGNAT) or an
-// IPv4-mapped form of those.
+// unicast, and none of private, loopback, link-local, the special-purpose
+// ranges in nonPublic, or an IPv4-mapped form of those.
 func PublicAddr(ip netip.Addr) bool {
 	ip = ip.Unmap()
-	return ip.IsValid() && ip.IsGlobalUnicast() && !ip.IsPrivate() && !ip.IsLoopback() &&
-		!ip.IsLinkLocalUnicast() && !cgnat.Contains(ip)
+	if !ip.IsValid() || !ip.IsGlobalUnicast() || ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() {
+		return false
+	}
+	for _, p := range nonPublic {
+		if p.Contains(ip) {
+			return false
+		}
+	}
+	return true
 }
 
 // CheckWebhookURL is the console's rule for a merchant endpoint, on top of
