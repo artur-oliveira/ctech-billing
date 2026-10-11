@@ -32,6 +32,7 @@ var allTables = []string{
 	TableRecurrences,
 	TableCards,
 	TableImports,
+	TableByok,
 }
 
 func TestEveryTableConstantHasASchema(t *testing.T) {
@@ -136,7 +137,9 @@ func TestTheSweepIndexIsOnlyWhereASweepReads(t *testing.T) {
 	// job holds no credential to scope it by.
 	// `cards` is read by cmd/finance's statement close (6.5), cross-tenant like
 	// the other finance steps.
-	want := []string{TableBills, TableCards, TableInvoices, TableRecurrences, TableSubscriptions, TableWebhooks}
+	// `byok` is read by cmd/byok (BYOK spec 2026-10-11 § 5): one sparse partition
+	// per mode holds every connection that is not disconnected.
+	want := []string{TableBills, TableByok, TableCards, TableInvoices, TableRecurrences, TableSubscriptions, TableWebhooks}
 	slices.Sort(want)
 	if !slices.Equal(withSweep, want) {
 		t.Errorf("tables with %s: got %v, want %v", IndexSchedule, withSweep, want)

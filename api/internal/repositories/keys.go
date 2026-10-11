@@ -76,6 +76,10 @@ const (
 	// once (kept as long as the space, ADR 0026) and each account's CSV column
 	// mapping (spec § 3.7, § 4).
 	TableImports = "imports"
+	// TableByok holds BYOK connections, their webhook hooks and the charge
+	// pointers (spec 2026-10-11 § 12.2). Partition of a connection = the
+	// organization's finance space key, so the space resolver guards it.
+	TableByok = "byok"
 )
 
 // Index names.
@@ -622,3 +626,13 @@ func TenantOf(pk string) (organizationID string, livemode bool, ok bool) {
 		return "", false, false
 	}
 }
+
+// JobByokConnections is the sparse partition cmd/byok walks: every connection
+// that is not disconnected, one per (organization, provider) in the mode.
+const JobByokConnections = "BYOK_CONNECTIONS"
+
+func ByokConnectionPK(accountOrgID string, livemode bool) string {
+	return accountOrgID + "#" + Mode(livemode)
+}
+func ByokConnectionSK(provider string) string { return "CONNECTION#" + provider }
+func byokJobPK(livemode bool) string          { return Mode(livemode) + "#" + JobByokConnections }

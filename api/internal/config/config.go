@@ -8,6 +8,7 @@ package config
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/caarlos0/env/v11"
 
@@ -148,6 +149,28 @@ type Config struct {
 	// Empty, or EMAIL_FROM empty, means no notice: the application is still
 	// recorded and shown in Solicitações, and a missing e-mail never fails it.
 	ApplicationsNotifyEmail string `env:"APPLICATIONS_NOTIFY_EMAIL"`
+
+	// BYOK (spec 2026-10-11). The outbound Lambda is the only code that talks
+	// to a merchant's bank. Empty disables every connection route (503
+	// byok_provider_unavailable) and cmd/byok refuses to start.
+	ByokOutboundFunction string `env:"BYOK_OUTBOUND_FUNCTION"`
+	// The legal gate (spec § 10). Live collection needs both, checked at call
+	// time; the outbound Lambda checks the same values from its own environment.
+	ByokLiveCollection bool     `env:"BYOK_LIVE_COLLECTION" envDefault:"false"`
+	ByokLiveProviders  []string `env:"BYOK_LIVE_PROVIDERS" envSeparator:","`
+}
+
+// ByokCleared reports whether live collection through provider is cleared.
+func (c *Config) ByokCleared(provider string) bool {
+	if !c.ByokLiveCollection {
+		return false
+	}
+	for _, p := range c.ByokLiveProviders {
+		if strings.TrimSpace(p) == provider {
+			return true
+		}
+	}
+	return false
 }
 
 // Load reads the configuration from the environment.
