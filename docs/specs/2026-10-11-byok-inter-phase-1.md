@@ -65,7 +65,7 @@ argued where it is specified.
 | D6 | Inter: annual certificate renewal flow with warnings at **D-90, D-30, D-7**. |
 | D7 | Disconnect deletes CTech's webhooks at the provider, then the credentials, and tells the merchant that **only they** can cancel the integration at the provider. |
 | D8 | Webhooks: **one CTech host** for every merchant; per-connection opaque secret **in the URL path**; account check (Inter: `x-conta-corrente`); **re-query the provider before marking anything paid**; DNS-only (not proxied by Cloudflare); mTLS truststore holding the providers' CA(s); product paths handled (§ 6). Recovery through the provider's callbacks/resend endpoints; a reconciliation sweep is the safety net. |
-| D9 | **Test mode** uses one CTech-owned sandbox integration per provider for all tenants (Inter sandbox certificates last 30 days). Live mode uses each merchant's integration. |
+| D9 | **Test mode** uses one CTech-owned integration per provider for all tenants, against the provider's sandbox host. For Inter this is **the integration CTech already has (the wallet's)**: Inter has no separate sandbox kind of integration, the same credentials are used and only the base URL changes (amended 2026-10-11, § 9). Live mode uses each merchant's integration. |
 | D10 | Shared code: a new **`ctech-go-common/inter`** package (credentials passed per call) implementing the provider seam declared in **`ctech-go-common/byok`** (R3). Billing and wallet keep separate Lambdas and secrets. |
 | D11 | **Legal gate:** live-mode BYOK collection cannot be enabled until the owner records the lawyer's clearance: `BYOK_LIVE_COLLECTION` defaults off in live, `BYOK_LIVE_PROVIDERS` lists the cleared providers, plus ADR 0030 (R3). Read-only statement sync may go live without it (§ 10 agrees, with conditions). |
 | D12 | `payout_status` (ADR 0005) stays the per-merchant gate; BYOK is a **new rail** `payout_rail: byok` with `payout_provider: inter`, enabled per connection rather than by CTech custody (R3). The existing gate and its single function are kept. |
@@ -632,10 +632,12 @@ The finance § 3.8 durable retry queue keeps covering a failed write.
 
 ## 9. Test mode (D9, D22)
 
-- One **CTech-owned sandbox integration per provider**. For Inter: client_id, secret, certificate, key, account and a
-  Pix key in SSM SecureStrings `/ctech-billing/{env}/byok/inter-sandbox/*`, read by the outbound Lambda at cold start
-  (no other role reads them). Its certificate lasts **30 days**; `cmd/byok` alerts the operator at D-7, D-3 and D-1;
-  renewal is an operator runbook step.
+- One **CTech-owned integration per provider**, used against the provider's sandbox host. For Inter it is the
+  integration CTech already holds for ctech-wallet (amendment below): the outbound Lambda's role is granted read on
+  `/ctech-wallet/{env}/inter/{client-id,client-secret,mtls-cert,mtls-key}` and reads them at cold start; nothing is
+  copied. The sandbox account number and Pix key are billing's own non-secret parameters
+  `/ctech-billing/{env}/byok/inter-sandbox/{account,pix-key}`. `cmd/byok` alerts the operator at D-30, D-7 and D-1 of
+  that integration's certificate (the wallet's annual renewal renews test mode too).
 - A tenant enables it in test mode with "Cobrança via Inter (teste)" — no credentials. Its test Finanças space gets a
   BYOK test account.
 - **One webhook** for the sandbox Pix key: `…/w/inter/sandbox/{secret}/pix`, tenant resolved through
@@ -777,7 +779,7 @@ the collection settings at finalization; `LedgerAccount` gains `source`, `provid
 | `BYOK_LIVE_PROVIDERS` | SSM `/ctech-billing/{env}/byok/live-providers`, Terraform variable, default empty |
 | `BYOK_OUTBOUND_FUNCTION` | `api` env; `lambda:InvokeFunction` on it |
 | Credentials key | SSM SecureString `/ctech-billing/{env}/byok/credentials-key` (32 random bytes, base64); **outbound Lambda only**, read at cold start |
-| Sandbox credentials | SSM SecureString `/ctech-billing/{env}/byok/inter-sandbox/{client-id,client-secret,cert,key,account,pix-key}`; outbound Lambda only |
+| Sandbox credentials | the wallet's `/ctech-wallet/{env}/inter/{client-id,client-secret,mtls-cert,mtls-key}` by IAM grant, plus `/ctech-billing/{env}/byok/inter-sandbox/{account,pix-key}` (String); outbound Lambda only (amended 2026-10-11) |
 | Webhook M2M client | SSM `/ctech-billing/{env}/byok-webhook/{client-id,client-secret}`; webhook Lambda only |
 
 ### 12.4 Shared packages (D10)
@@ -951,7 +953,7 @@ Decided, not open here: the price table (§ 12.5) and the pilot (§ 12.6). Defer
    by an operator script in the repo, Terraform only grants read on its ARN); the two Lambdas and their CI workflow (the
    wallet's `pix-gateway.yml` shape, deployed ahead of the `api`); HTTP API with the regional mTLS domain, the
    versioned truststore bucket seeded with CTech's `ca.crt` and the sandbox CA; the DNS-only CNAME (operator,
-   documented in `OPERATIONS.md`, as the wallet's); sandbox credentials in SSM; `BYOK_LIVE_COLLECTION=false`,
+   documented in `docs/runbooks/byok.md`); the Lambda's read grant on the wallet's Inter parameters (test mode); `BYOK_LIVE_COLLECTION=false`,
    `BYOK_LIVE_PROVIDERS` empty.
 4. **billing part A:** connections, tokens, Finanças account and statement sync (live allowed, pilot first, § 10),
    test-mode sandbox toggle, `cmd/byok` steps 2–4; catalogue gains `price_billing_unlimited_internal_monthly` and the
@@ -1001,3 +1003,23 @@ Part of done, not later hardening:
     outside the Lambda); a fake provider runs the whole connect → charge → confirm → statement flow.
 15. **Usage:** a charge cancelled within 24 hours is never reported; one surviving 24 hours is reported once whatever
     the number of job runs; test-mode charges are never reported.
+
+## Amendment 2026-10-11 — test mode uses CTech's existing Inter integration
+
+Owner correction after review. Inter integrations do **not** come in a separate sandbox kind: the same integration's
+credentials (client_id, client_secret, certificate and key) are used, and only the API base endpoint changes
+(`https://cdpj-sandbox.partners.uatinter.co` instead of `https://cdpj.partners.bancointer.com.br`). So test mode does
+not require creating a sandbox integration: it uses the integration CTech already has for ctech-wallet, against the
+sandbox host.
+
+- The outbound Lambda's IAM role is **granted read** on the wallet's four parameters
+  (`/ctech-wallet/{env}/inter/client-id`, `client-secret`, `mtls-cert`, `mtls-key`), read once per cold start. The
+  values are never copied, printed or read by a person or a script (an IAM grant was preferred over a copy: one source
+  of truth, nothing to keep in step on the wallet's renewal).
+- The 30-day sandbox-certificate assumption (parecer § 2.6) is dropped; operator warnings follow the real `notAfter`
+  of that integration's certificate.
+- Risk, recorded and not designed around: the parecer quotes Inter's portal describing a separate sandbox portal with
+  30-day certificates. If Inter's sandbox refuses the production integration's credentials, test-mode ops fail with
+  `byok_provider_unavailable`, and the fallback is a dedicated sandbox integration whose values go into billing's own
+  SecureStrings (only the Lambda's parameter names change; see `docs/runbooks/byok.md`).
+- D9, § 9 and § 12.3 above are edited accordingly. Plans: `docs/plans/2026-10-11-byok-phase-1-{a,b,c}-*.md`.
