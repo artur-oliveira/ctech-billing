@@ -202,3 +202,29 @@ func (r *ByokRepository) ConnectionsForJob(ctx context.Context, livemode bool, s
 	}
 	return &Page[byokconn.Connection]{Items: out, LastEvaluatedKey: res.LastEvaluatedKey}, nil
 }
+
+// ChargeRefPK is the pointer from a provider's charge reference to its tenant
+// (spec § 12.2): CHARGEREF#{provider}#{mode}#{ref}. Part B writes it with the
+// payment attempt; the statement sync reads it to filter the shared sandbox.
+func ChargeRefPK(provider string, livemode bool, ref string) string {
+	return "CHARGEREF#" + provider + "#" + Mode(livemode) + "#" + ref
+}
+
+// ChargeRefOwner answers which organization a charge reference belongs to. An
+// empty reference is not found, with no read.
+func (r *ByokRepository) ChargeRefOwner(ctx context.Context, provider string, livemode bool, ref string) (string, bool, error) {
+	if ref == "" {
+		return "", false, nil
+	}
+	item, err := r.base.GetItem(ctx, ChargeRefPK(provider, livemode, ref), "CHARGEREF")
+	if err != nil || item == nil {
+		return "", false, err
+	}
+	row, err := Decode[struct {
+		AccountOrganizationID string `dynamodbav:"account_organization_id"`
+	}](item)
+	if err != nil {
+		return "", false, err
+	}
+	return row.AccountOrganizationID, row.AccountOrganizationID != "", nil
+}

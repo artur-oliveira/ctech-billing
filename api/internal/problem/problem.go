@@ -209,6 +209,8 @@ func FromError(err error) *Problem {
 		return New(429, TypeTooManyRequests, "Too Many Requests", "the shared sandbox is busy; try again in a moment").WithCode("byok_sandbox_busy")
 	case errors.Is(err, byok.ErrUnavailable), errors.Is(err, byok.ErrRateLimited):
 		return New(503, TypeProviderUnavailable, "Provider Unavailable", "the bank could not be reached; try again later").WithCode("byok_provider_unavailable")
+	case errors.Is(err, services.ErrSyncTooSoon):
+		return New(429, TypeTooManyRequests, "Too Many Requests", "synced less than 10 minutes ago").WithCode("byok_sync_too_soon")
 	case errors.Is(err, byok.ErrInvalidRequest):
 		return Unprocessable("the bank connection request is invalid").WithCode("byok_invalid_request")
 
