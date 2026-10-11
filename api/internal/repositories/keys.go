@@ -403,6 +403,17 @@ func LookupOrganizationOwnerPK(livemode bool, userID string) string {
 	return Mode(livemode) + "#OWNER#" + userID
 }
 
+// LookupOrganizationAccountPK resolves a ctech-account organization to its
+// billing tenant in one mode (ADR 0028): the console's question is "which
+// tenant is the organization I selected", and the membership that authorizes
+// the question is checked before this key is ever read.
+//
+// The mode is in the key for the reason LookupOrganizationOwnerPK gives: the
+// live and test tenants are two rows linked to the same organization.
+func LookupOrganizationAccountPK(livemode bool, accountOrgID string) string {
+	return Mode(livemode) + "#ACCOUNT_ORG#" + accountOrgID
+}
+
 // CustomerUserSK addresses the pointer row that maps a signed-in person to their
 // customer record inside one organization (ADR 0012).
 //

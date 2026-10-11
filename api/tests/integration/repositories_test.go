@@ -51,6 +51,25 @@ func newOrg(t *testing.T, livemode bool) *billing.Organization {
 	return org
 }
 
+// newLinkedOrg is newOrg linked to a ctech-account organization, which is how
+// the console finds a tenant (ADR 0028).
+func newLinkedOrg(t *testing.T, livemode bool, accountOrgID string) *billing.Organization {
+	t.Helper()
+	repo := repositories.NewOrganizationRepository(testDB, testCfg)
+	org := &billing.Organization{
+		ID:                    id.NewWithPrefix(id.PrefixOrganization),
+		DisplayName:           "Test Org",
+		Livemode:              livemode,
+		PayoutStatus:          billing.PayoutEnabled,
+		OwnerUserID:           "usr_" + id.New(),
+		AccountOrganizationID: accountOrgID,
+	}
+	if err := repo.Create(ctxT(t), org, now()); err != nil {
+		t.Fatal(err)
+	}
+	return org
+}
+
 func newDraftInvoice(t *testing.T, org *billing.Organization, generationKey string) *billing.Invoice {
 	t.Helper()
 	repo := repositories.NewInvoiceRepository(testDB, testCfg)

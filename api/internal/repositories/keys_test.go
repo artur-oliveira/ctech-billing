@@ -168,3 +168,17 @@ func TestOrganizationOfRef(t *testing.T) {
 		}
 	}
 }
+
+func TestTheAccountOrganizationKeyIsModeScopedAndDistinctFromTheOwnerKey(t *testing.T) {
+	const acct = "01a04ed6-1af9-745e-bcf7-d3b66fe52321"
+	if got := LookupOrganizationAccountPK(true, acct); got != "live#ACCOUNT_ORG#"+acct {
+		t.Fatalf("live key = %q", got)
+	}
+	if got := LookupOrganizationAccountPK(false, acct); got != "test#ACCOUNT_ORG#"+acct {
+		t.Fatalf("test key = %q", got)
+	}
+	// A user id that happens to equal an organization id must not collide.
+	if LookupOrganizationAccountPK(true, acct) == LookupOrganizationOwnerPK(true, acct) {
+		t.Fatal("account and owner keys collide")
+	}
+}

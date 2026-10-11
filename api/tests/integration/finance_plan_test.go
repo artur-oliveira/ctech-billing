@@ -29,6 +29,9 @@ func seedCTechCatalogue(t *testing.T) string {
 	}
 	orgID := "org_" + id.New()
 	doc := strings.Replace(string(raw), `"id": "ctech"`, `"id": "`+orgID+`"`, 1)
+	// One tenant per account organization per mode (ADR 0028): every seeded
+	// copy is linked to an organization of its own, not to tenant zero's.
+	doc = strings.Replace(doc, `"01a04ed6-1af9-745e-bcf7-d3b66fe52321"`, `"`+newSpaceOrgID()+`"`, 1)
 	// Credentials are global by client id: drop them, a test needs none.
 	plan, err := provision.Parse(strings.NewReader(doc))
 	if err != nil {
