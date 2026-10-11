@@ -271,6 +271,9 @@ func registerConsole(v1 fiber.Router, d Deps, h *handlers, auth fiber.Handler) {
 		portalOrganizationID: d.PortalOrganizationID,
 		merchants:            d.Organizations,
 		applications:         d.Applications,
+		creds:                d.Credentials,
+		connector:            d.Connector,
+		hooks:                d.Webhooks,
 	}
 	// Assigned only when set: a nil interface value in the field must stay nil.
 	if d.SpaceLister != nil {
@@ -413,6 +416,9 @@ func registerConsole(v1 fiber.Router, d Deps, h *handlers, auth fiber.Handler) {
 		middleware.RequireUserScope(middleware.ScopeProductsRead), ch.listProducts)
 	console.Get("/products/:id",
 		middleware.RequireUserScope(middleware.ScopeProductsRead), ch.getProduct)
+
+	// The integration tools (spec § 5): credentials and webhooks.
+	registerIntegrations(console, ch)
 
 	// Tenant zero's review (spec § 4.2). Any other tenant: 404.
 	if ch.applications.Enabled() {

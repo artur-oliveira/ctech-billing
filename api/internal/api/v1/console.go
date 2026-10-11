@@ -51,6 +51,10 @@ type consoleHandlers struct {
 	// applications is the merchant application lifecycle (spec § 4); disabled
 	// without tenant zero.
 	applications *services.Applications
+	// creds, connector and hooks serve the integration tools (spec § 5).
+	creds     *repositories.CredentialRepository
+	connector *services.CredentialConnector
+	hooks     *repositories.WebhookRepository
 }
 
 // creditPoster is the slice of services.FinanceInvoices the credit-note route

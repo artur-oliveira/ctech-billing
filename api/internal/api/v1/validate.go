@@ -3,6 +3,7 @@ package v1
 import (
 	"fmt"
 	"net/mail"
+	"regexp"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -135,5 +136,20 @@ func (c *checks) taxID(field, v string, required, checkDigits bool) {
 	}
 	if n != 11 && n != 14 {
 		c.fail(field, "invalid_tax_id", "invalid CPF or CNPJ")
+	}
+}
+
+var clientIDChars = regexp.MustCompile(`^[A-Za-z0-9._:-]+$`)
+
+// clientID: a ctech-account client id as either creation path makes it.
+// Checked before the id reaches a URL path at ctech-account.
+func (c *checks) clientID(field, v string) {
+	switch {
+	case strings.TrimSpace(v) == "":
+		c.fail(field, "required", "required")
+	case len(v) > limits.ClientID:
+		c.fail(field, "too_long", fmt.Sprintf("at most %d characters", limits.ClientID), "max", limits.ClientID)
+	case !clientIDChars.MatchString(v):
+		c.fail(field, "invalid_chars", "contains invalid characters")
 	}
 }

@@ -17,12 +17,15 @@
     "externalRef": 128,
     "taxID": 18,
     "applicationDescription": 1000,
-    "website": 200
+    "website": 200,
+    "clientID": 128,
+    "webhookURL": 2048
   },
   "maxInstallments": 48,
   "maxNetDays": 90,
   "maxSubscriptionItems": 20,
   "maxUsageQuantity": 1000000000,
+  "maxWebhookEndpoints": 5,
   "minText": {
     "applicationDescription": 20,
     "rejectionReason": 10

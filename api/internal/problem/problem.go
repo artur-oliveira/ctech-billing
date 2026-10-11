@@ -45,6 +45,9 @@ const (
 	// TypeSpaceUnavailable is ctech-account being unreachable: access fails
 	// closed, and the body says nothing about any organization.
 	TypeSpaceUnavailable = "/problems/space-unavailable"
+	// TypeAccountUnavailable: ctech-account did not answer a question billing
+	// must ask before acting (the owner of an OAuth client). Retryable.
+	TypeAccountUnavailable = "/problems/account-unavailable"
 	// TypeNoMerchant is an organization the person may administer that has no
 	// billing tenant in the requested mode. The console renders it as the
 	// invitation to bill through CTech Billing (spec § 7.1), so a client
