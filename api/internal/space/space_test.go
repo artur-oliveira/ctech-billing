@@ -1,10 +1,13 @@
 package space
 
 import (
+	"context"
 	"errors"
 	"reflect"
 	"strings"
 	"testing"
+
+	"gopkg.aoctech.app/api-commons/cache"
 )
 
 const orgA = "0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b"
@@ -140,6 +143,66 @@ func TestResolvedSpaceHasNoExportedFields(t *testing.T) {
 	for i := 0; i < rt.NumField(); i++ {
 		if rt.Field(i).IsExported() {
 			t.Fatalf("ResolvedSpace.%s is exported", rt.Field(i).Name)
+		}
+	}
+}
+
+func TestAnOrganizationSpaceCarriesTheRoleCtechAccountSent(t *testing.T) {
+	src := &fakeSource{answers: map[string]answer{
+		orgB + "|alice": {member: true, role: "admin", kind: "organization"},
+	}}
+	r := NewResolver(src, cache.NewMemoryBackend(10))
+	sp, err := r.Resolve(context.Background(), "alice", Selector{OrganizationID: orgB}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sp.Role() != "admin" {
+		t.Fatalf("role = %q, want admin", sp.Role())
+	}
+	// From the cache too: the second answer must not lose the role.
+	sp, _ = r.Resolve(context.Background(), "alice", Selector{OrganizationID: orgB}, true)
+	if sp.Role() != "admin" || src.calls != 1 {
+		t.Fatalf("cached role = %q, calls = %d", sp.Role(), src.calls)
+	}
+}
+
+func TestThePersonalDefaultSpaceAndJobSpacesHaveNoRole(t *testing.T) {
+	r := NewResolver(nil, nil)
+	sp, err := r.Resolve(context.Background(), "alice", Selector{Personal: true}, false)
+	if err != nil || sp.Role() != "" {
+		t.Fatalf("personal role = %q, %v", sp.Role(), err)
+	}
+	job, err := ForJob(orgB, true)
+	if err != nil || job.Role() != "" {
+		t.Fatalf("job role = %q, %v", job.Role(), err)
+	}
+}
+
+func TestNarrowKeepsTheRole(t *testing.T) {
+	sp := orgSpace(orgB, KindOrganization, true, All).withRole("owner")
+	if Narrow(sp, Read).Role() != "owner" {
+		t.Fatal("Narrow dropped the role")
+	}
+}
+
+func TestOnlyOwnersAndAdminsOfOrganizationsAreMerchants(t *testing.T) {
+	for _, c := range []struct {
+		kind Kind
+		role string
+		want bool
+	}{
+		{KindOrganization, "owner", true},
+		{KindOrganization, "admin", true},
+		{KindOrganization, "member", false},
+		{KindOrganization, "viewer", false},
+		{KindOrganization, "", false},
+		{KindOrganization, "Owner", false}, // roles are lower-case on the wire; no folding
+		{KindPersonal, "owner", false},
+		{KindPersonalDefault, "owner", false},
+		{Kind("team"), "owner", false},
+	} {
+		if got := IsMerchantRole(c.kind, c.role); got != c.want {
+			t.Errorf("IsMerchantRole(%q, %q) = %v, want %v", c.kind, c.role, got, c.want)
 		}
 	}
 }
