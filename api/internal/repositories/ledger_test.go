@@ -18,7 +18,10 @@ import (
 // settingsWriters are the methods that write the space's own preferences on its
 // SPACE row. They never touch a transaction, an entry or a balance, which is
 // what "no edit path" protects; naming them here keeps the exception reviewable.
-var settingsWriters = map[string]bool{"SetDefaultReceivingAccount": true, "SetPostCTechInvoices": true}
+// SetProviderBalance writes the bank's own balance snapshot onto a BYOK
+// account row (spec § 8.1): a fact about the bank, never an entry or the
+// ledger's balance.
+var settingsWriters = map[string]bool{"SetDefaultReceivingAccount": true, "SetPostCTechInvoices": true, "SetProviderBalance": true}
 
 func TestLedgerRepositoryHasNoEditPath(t *testing.T) {
 	rt := reflect.TypeOf(&LedgerRepository{})

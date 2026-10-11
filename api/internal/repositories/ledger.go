@@ -51,6 +51,8 @@ type LedgerRepository struct {
 	accounts Base
 	txs      Base
 	audit    Base
+	// imports holds the FITID# locks a synced bank line claims (BYOK § 8.2).
+	imports Base
 }
 
 func NewLedgerRepository(db *dynamodb.Client, cfg *config.Config) *LedgerRepository {
@@ -58,6 +60,7 @@ func NewLedgerRepository(db *dynamodb.Client, cfg *config.Config) *LedgerReposit
 		accounts: NewBase(db, cfg, TableLedgerAccounts),
 		txs:      NewBase(db, cfg, TableLedgerTransactions),
 		audit:    NewBase(db, cfg, TableAudit),
+		imports:  NewBase(db, cfg, TableImports),
 	}
 }
 
@@ -70,6 +73,11 @@ type AccountRow struct {
 	// other account and for a BYOK account before its first sync.
 	Provider *ProviderBalance
 }
+
+// ErrAccountExists is CreateAccount refusing an id the chart already has. It
+// also wraps finance.ErrInvalidAccount, so the route keeps answering
+// invalid_account.
+var ErrAccountExists = errors.New("finance: account already exists")
 
 // ErrAccountIsSynced refuses a manual movement into a BYOK account: its
 // statement is the bank's (spec § 8.1). 409 account_is_synced.
@@ -355,7 +363,7 @@ func (r *LedgerRepository) CreateAccount(ctx context.Context, sp space.ResolvedS
 	}
 	err = r.accounts.TransactWrite(ctx, txItems(r.accounts.BuildPutTxItemIfAbsent(item)))
 	if err != nil && onlyConditionFailed(err) {
-		return fmt.Errorf("%w: account %s already exists", finance.ErrInvalidAccount, a.ID)
+		return fmt.Errorf("%w: %w: %s", ErrAccountExists, finance.ErrInvalidAccount, a.ID)
 	}
 	return err
 }
@@ -1189,6 +1197,13 @@ func (r *LedgerRepository) PostOpeningBalance(ctx context.Context, sp space.Reso
 	if err := r.activeManualCash(ctx, sp, accountID); err != nil {
 		return "", err
 	}
+	return r.postOpening(ctx, sp, accountID, amount, date, meta, now)
+}
+
+// postOpening writes the opening balance and its OPENING# marker, once per
+// account. The caller has checked the account: a person's opening goes through
+// activeManualCash, a synced account's comes from the bank (PostProviderOpening).
+func (r *LedgerRepository) postOpening(ctx context.Context, sp space.ResolvedSpace, accountID string, amount billing.Cents, date brcal.Date, meta PostMeta, now time.Time) (string, error) {
 	sys, _ := finance.DefaultSystemAccounts()
 	tx, err := finance.OpeningBalance(sys, accountID, amount, date)
 	if err != nil {

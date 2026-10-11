@@ -493,6 +493,30 @@ func (r *BillRepository) planSettle(ctx context.Context, sp space.ResolvedSpace,
 	if err != nil {
 		return settlePlan{}, err
 	}
+	return r.planSettleBill(ctx, sp, b, paid, differenceCategoryID, date, meta, now, "")
+}
+
+// planSettleInto settles a forecast bill with a bank line's cash (BYOK
+// classification, spec § 8.3): the bill's account becomes the bank account and
+// the paid amount is the line's. The cash leg's reversal is composed by the
+// caller. credit says which way the line moved money: only a receivable takes
+// money in and only a payable takes it out, so the bank account's balance can
+// never move on classification.
+func (r *BillRepository) planSettleInto(ctx context.Context, sp space.ResolvedSpace, billID string, paid billing.Cents, accountID string, credit bool, date brcal.Date, meta PostMeta, now time.Time) (settlePlan, error) {
+	b, err := r.get(ctx, sp, billID)
+	if err != nil {
+		return settlePlan{}, err
+	}
+	if want := map[bool]finance.Direction{true: finance.Receivable, false: finance.Payable}[credit]; b.Direction != want {
+		return settlePlan{}, fmt.Errorf("%w: a %s bill cannot be settled by this line", finance.ErrInvalidTransaction, b.Direction)
+	}
+	return r.planSettleBill(ctx, sp, b, paid, "", date, meta, now, accountID)
+}
+
+// planSettleBill is planSettle after the read. accountID, when set, replaces
+// the bill's expected account in the same update (one write per bill item).
+func (r *BillRepository) planSettleBill(ctx context.Context, sp space.ResolvedSpace, b *finance.Bill, paid billing.Cents, differenceCategoryID string, date brcal.Date, meta PostMeta, now time.Time, accountID string) (settlePlan, error) {
+	billID := b.ID
 	if err := b.CanSettle(); err != nil {
 		return settlePlan{}, err
 	}
@@ -510,8 +534,12 @@ func (r *BillRepository) planSettle(ctx context.Context, sp space.ResolvedSpace,
 			return settlePlan{}, fmt.Errorf("%w: the difference needs an active income or expense category", finance.ErrInvalidTransaction)
 		}
 	}
+	settled := *b
+	if accountID != "" {
+		settled.AccountID = accountID
+	}
 	sys, _ := finance.DefaultSystemAccounts()
-	tx, err := finance.SettleBill(sys, b.Facts(), paid, differenceCategoryID, date)
+	tx, err := finance.SettleBill(sys, settled.Facts(), paid, differenceCategoryID, date)
 	if err != nil {
 		return settlePlan{}, err
 	}
@@ -525,10 +553,13 @@ func (r *BillRepository) planSettle(ctx context.Context, sp space.ResolvedSpace,
 		":d":    str(date.String()), ":now": r.stamp(now),
 		":tx": &types.AttributeValueMemberL{Value: []types.AttributeValue{str(plan.TxID)}},
 	}
+	set := "SET #status = :paid, paid_date = :d, #n = list_append(#n, :tx), updated_at = :now"
+	if accountID != "" {
+		set += ", account_id = :acct"
+		values[":acct"] = str(accountID)
+	}
 	cond, names := mergeGuard(b, values)
-	update := r.bills.BuildRawUpdateTxItem(sp.PK(), &sk,
-		"SET #status = :paid, paid_date = :d, #n = list_append(#n, :tx), updated_at = :now"+removeSparse,
-		cond, names, values)
+	update := r.bills.BuildRawUpdateTxItem(sp.PK(), &sk, set+removeSparse, cond, names, values)
 	return settlePlan{bill: b, txID: plan.TxID, items: append(append([]types.TransactWriteItem(nil), plan.Items...), update)}, nil
 }
 
