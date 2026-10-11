@@ -23,9 +23,13 @@ type Deps struct {
 	Usage     *repositories.UsageRepository
 	Levels    *repositories.LevelRepository
 	// FinancePlan is Finanças → Plano; disabled without a portal organization.
-	FinancePlan   *services.FinancePlan
-	Catalog       *repositories.CatalogRepository
-	Credentials   *repositories.CredentialRepository
+	FinancePlan *services.FinancePlan
+	Catalog     *repositories.CatalogRepository
+	Credentials *repositories.CredentialRepository
+	// Connector admits a merchant's own OAuth client from the console (spec
+	// § 5.1). Webhooks is the endpoint store the console manages (§ 5.2).
+	Connector     *services.CredentialConnector
+	Webhooks      *repositories.WebhookRepository
 	Idempotency   *repositories.IdempotencyRepository
 	Organizations *repositories.OrganizationRepository
 	// Applications is the merchant application lifecycle (spec § 4). Disabled
