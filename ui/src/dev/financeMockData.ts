@@ -591,6 +591,21 @@ function route(method: string, path: string, r: Req, s: SpaceState, can: (v: Ver
     s.accounts.push(a)
     return ok(a, 201)
   }
+  // A rename (names only): a system or archived account is the API's 422, and a
+  // card's account renames the card, which reads its name from it.
+  const renameMatch = path.match(/^\/accounts\/([^/]+)$/)
+  if (renameMatch && method === "patch") {
+    if (!can("finance.configure")) return forbidden()
+    const a = s.accounts.find(x => x.id === renameMatch[1])
+    if (!a) return problem(404, "about:blank", "Not Found", "recurso não encontrado", "resource_not_found")
+    const name = (body<{name?: string | null}>(r).name ?? "").trim()
+    if (!name) return problem(422, "about:blank", "Unprocessable Entity", "validation failed", "validation_failed", [{field: "name", code: "required", message: "required"}])
+    if (a.system || a.archived) return problem(422, "about:blank", "Unprocessable Entity", "archived or system accounts cannot be renamed", "invalid_account")
+    a.name = name
+    const c = s.cards.find(x => x.id === a.id)
+    if (c) c.name = name
+    return ok(a)
+  }
   const archive = path.match(/^\/accounts\/([^/]+)\/archive$/)
   if (archive) {
     if (!can("finance.configure")) return forbidden()
@@ -651,6 +666,15 @@ function route(method: string, path: string, r: Req, s: SpaceState, can: (v: Ver
       const patch = body<Record<string, unknown>>(r)
       // An empty brand or last4 clears it too, as the API still accepts.
       for (const k of ["brand", "last4"] as const) if (patch[k] === "") patch[k] = null
+      // The name is the card account's: written on both, refused blank or archived.
+      if ("name" in patch) {
+        const name = typeof patch.name === "string" ? patch.name.trim() : ""
+        if (!name) return problem(422, "about:blank", "Unprocessable Entity", "validation failed", "validation_failed", [{field: "name", code: "required", message: "required"}])
+        const acct = s.accounts.find(x => x.id === c.id)
+        if (acct?.archived) return problem(422, "about:blank", "Unprocessable Entity", "archived accounts cannot be renamed", "invalid_account")
+        if (acct) acct.name = name
+        patch.name = name
+      }
       applyPatch(c, patch)
       return ok(c)
     }

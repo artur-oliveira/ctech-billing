@@ -158,6 +158,22 @@ describe("F5 — a card's brand and last four digits (UX batch 3)", () => {
     await waitFor(() => expect(patch).toHaveBeenCalledWith(expect.anything(), "visa",
       expect.objectContaining({brand: "visa", last4: ""}), expect.any(String)))
   })
+
+  it("renames the card from its edit form, trimmed", async () => {
+    serve(ALL)
+    const patch = vi.spyOn(finance, "patchCard").mockResolvedValue({...CARD, name: "Visa Infinite"})
+    renderWithQuery(<CardsView/>)
+    await userEvent.click(await screen.findByRole("button", {name: "Editar cartão"}))
+    const form = screen.getByRole("form", {name: "Editar cartão"})
+    const name = within(form).getByLabelText(/^Nome/)
+    expect(name).toHaveValue("Visa")
+    await userEvent.clear(name)
+    expect(within(form).getByRole("button", {name: "Salvar"})).toBeDisabled()
+    await userEvent.type(name, " Visa Infinite  ")
+    await userEvent.click(within(form).getByRole("button", {name: "Salvar"}))
+    await waitFor(() => expect(patch).toHaveBeenCalledWith(expect.anything(), "visa",
+      expect.objectContaining({name: "Visa Infinite", closing_day: 3, due_day: 10}), expect.any(String)))
+  })
 })
 
 describe("F5 — statement status colours (UX batch 3)", () => {

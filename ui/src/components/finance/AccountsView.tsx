@@ -13,8 +13,8 @@ import {LedgerRow} from "@/components/finance/LedgerRow"
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
 import {DateField} from "@/components/ui/DateField"
 import {messageFor} from "@/lib/api/client"
-import {archiveAccount, createAccount, financeKeys, getSettings, listAccounts, listCards, postOpeningBalance, setDefaultReceivingAccount, setPostCTechInvoices} from "@/lib/api/finance"
-import type {Account, AccountClass, Card, DREGroup, OpeningBalance} from "@/lib/api/financeTypes"
+import {archiveAccount, createAccount, financeKeys, getSettings, listAccounts, listCards, postOpeningBalance, renameAccount, setDefaultReceivingAccount, setPostCTechInvoices} from "@/lib/api/finance"
+import type {Account, AccountClass, AccountPatch, Card, DREGroup, OpeningBalance} from "@/lib/api/financeTypes"
 import {classLabel, dreGroupLabel, groupsForClass} from "@/lib/finance/labels"
 import {selectCopy} from "@/lib/selectCopy"
 import {useFinanceMutation} from "@/lib/finance/useFinanceMutation"
@@ -116,6 +116,7 @@ function AccountRow({account, card, configure}: {account: Account; card?: Card; 
   const {t} = useTranslation()
   const [confirming, setConfirming] = useState(false)
   const [opening, setOpening] = useState(false)
+  const [renaming, setRenaming] = useState(false)
   const archive = useFinanceMutation(
     (c, id: string, key) => archiveAccount(c, id, key),
     c => [financeKeys.accounts(c.mode, c.space)],
@@ -144,10 +145,12 @@ function AccountRow({account, card, configure}: {account: Account; card?: Card; 
         <Link href={`/finance/cards?card=${encodeURIComponent(account.id)}`} className="inline-flex items-center px-2.5 text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline touch-target">{t("finance.accounts.open")}</Link>
       )}
       more={configure && !account.archived ? [
+        {key: "rename", label: t("finance.accounts.rename"), expanded: renaming, onSelect: () => setRenaming(v => !v)},
         ...(account.class === "asset" ? [{key: "opening", label: t("finance.accounts.openingBalance"), expanded: opening, onSelect: () => setOpening(v => !v)}] : []),
         {key: "archive", label: t("finance.accounts.archive"), destructive: true, expanded: confirming, onSelect: () => setConfirming(v => !v)},
       ] : []}
     >
+      {renaming && <RenameForm account={account} onDone={() => setRenaming(false)}/>}
       {confirming && (
         <div className="mt-2 flex flex-wrap items-center gap-2 text-sm motion-safe:animate-in motion-safe:fade-in">
           <p className="text-muted-foreground">{t("finance.accounts.archiveConfirm", {name: accountName(account)})}</p>
@@ -158,6 +161,52 @@ function AccountRow({account, card, configure}: {account: Account; card?: Card; 
       )}
       {opening && <OpeningForm account={account} onDone={() => setOpening(false)}/>}
     </LedgerRow>
+  )
+}
+
+/**
+ * Renames an account, a category or a card in place, under its row. Names only:
+ * the balance and every entry stay. Opens on the name as the list shows it, so a
+ * default category reads translated; saving that unchanged is not offered.
+ * On a phone the field takes the row's width and the buttons sit under it.
+ */
+function RenameForm({account, onDone}: {account: Account; onDone: () => void}) {
+  const {t} = useTranslation()
+  const shown = accountName(account)
+  const [name, setName] = useState(shown)
+  const fe = useFieldErrors(["name"])
+  // A card's name shows on Cartões, a category's on every bill: the whole space.
+  const save = useFinanceMutation(
+    (c, body: AccountPatch, key) => renameAccount(c, account.id, body, key),
+    c => [financeKeys.all(c.mode, c.space)],
+    onDone,
+    fe.set,
+  )
+  const next = name.trim()
+  const ready = next !== "" && next !== shown && !save.isPending
+  const id = `rn-${account.id}`
+  return (
+    <form
+      aria-label={t("finance.accounts.renameNamed", {name: shown})}
+      className="mt-2 grid items-start gap-3 rounded-lg bg-surface p-3 sm:grid-cols-[minmax(0,24rem)_auto] motion-safe:animate-in motion-safe:fade-in"
+      onSubmit={e => {
+        e.preventDefault()
+        if (!ready) return
+        fe.reset()
+        save.mutate({name: next})
+      }}
+      onKeyDown={e => { if (e.key === "Escape") onDone() }}
+    >
+      <Field label={t("finance.accounts.newName")} htmlFor={id} error={fe.of("name")}>
+        <Input id={id} maxLength={limits.text.accountName} autoComplete="off" value={name} {...fe.props("name", id)}
+          onChange={e => { setName(e.target.value); fe.clear("name") }} onFocus={e => e.currentTarget.select()} autoFocus/>
+      </Field>
+      <div className="flex gap-2 sm:pt-6">
+        <Button type="button" variant="outline" size="sm" onClick={onDone}>{t("finance.accounts.cancel")}</Button>
+        <Button type="submit" variant="brand" size="sm" disabled={!ready}>{t("finance.accounts.save")}</Button>
+      </div>
+      {fe.general ? <p role="alert" className="text-sm text-danger sm:col-span-2">{fe.general}</p> : null}
+    </form>
   )
 }
 
