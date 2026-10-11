@@ -4,6 +4,8 @@ package integration
 
 import (
 	"errors"
+	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -12,6 +14,7 @@ import (
 
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
 	"gopkg.aoctech.app/billing/api/internal/domain/id"
+	"gopkg.aoctech.app/billing/api/internal/middleware"
 	"gopkg.aoctech.app/billing/api/internal/repositories"
 )
 
@@ -167,5 +170,128 @@ func TestSetOwnerWritesNoConsoleKey(t *testing.T) {
 	got, err := orgRepo().Get(ctx, org.ID, true)
 	if err != nil || got.OwnerUserID != owner {
 		t.Fatalf("stored owner = %+v, %v", got, err)
+	}
+}
+
+// rowOf finds one tenant's row in a backfill report list.
+func rowOf(rows []repositories.OrganizationLookupRow, orgID string, live bool) *repositories.OrganizationLookupRow {
+	for i := range rows {
+		if rows[i].OrganizationID == orgID && rows[i].Livemode == live {
+			return &rows[i]
+		}
+	}
+	return nil
+}
+
+func TestBackfillRewritesALegacyOwnerKeyToTheAccountOrganization(t *testing.T) {
+	ctx := ctxT(t)
+	acct := newSpaceOrgID()
+	org := newLinkedOrg(t, true, acct)
+	legacyLookup(t, org)
+	if _, err := orgRepo().GetByAccountOrganization(ctx, acct, true); !errors.Is(err, repositories.ErrNotFound) {
+		t.Fatalf("before: %v", err)
+	}
+
+	dry, err := orgRepo().BackfillAccountOrganizationLookup(ctx, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := rowOf(dry.Missing, org.ID, true)
+	if r == nil || r.From != repositories.LookupOrganizationOwnerPK(true, org.OwnerUserID) ||
+		r.To != repositories.LookupOrganizationAccountPK(true, acct) {
+		t.Fatalf("dry run missing row = %+v", r)
+	}
+	if _, err := orgRepo().GetByAccountOrganization(ctx, acct, true); !errors.Is(err, repositories.ErrNotFound) {
+		t.Fatal("a dry run wrote")
+	}
+
+	if _, err := orgRepo().BackfillAccountOrganizationLookup(ctx, true); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := orgRepo().GetByAccountOrganization(ctx, acct, true); err != nil || got.ID != org.ID {
+		t.Fatalf("after apply = %v, %v", got, err)
+	}
+	again, err := orgRepo().BackfillAccountOrganizationLookup(ctx, false)
+	if err != nil || rowOf(again.Missing, org.ID, true) != nil {
+		t.Fatalf("re-run still lists the row: %v", err)
+	}
+}
+
+func TestBackfillReportsTwoTenantsOnOneOrganizationAndWritesNeither(t *testing.T) {
+	ctx := ctxT(t)
+	acct := newSpaceOrgID()
+	a, b := newOrg(t, true), newOrg(t, true)
+	setLookup(t, a, repositories.LookupOrganizationOwnerPK(true, a.OwnerUserID), acct)
+	setLookup(t, b, repositories.LookupOrganizationOwnerPK(true, b.OwnerUserID), acct)
+
+	rep, err := orgRepo().BackfillAccountOrganizationLookup(ctx, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rowOf(rep.Conflicts, a.ID, true) == nil || rowOf(rep.Conflicts, b.ID, true) == nil {
+		t.Fatalf("conflicts = %+v", rep.Conflicts)
+	}
+	if _, err := orgRepo().GetByAccountOrganization(ctx, acct, true); !errors.Is(err, repositories.ErrNotFound) {
+		t.Fatalf("a conflicting key was written: %v", err)
+	}
+}
+
+func TestBackfillReportsAForeignKeyAndLeavesIt(t *testing.T) {
+	ctx := ctxT(t)
+	acct := newSpaceOrgID()
+	org := newLinkedOrg(t, true, acct)
+	setLookup(t, org, "live#SOMETHING#else", "")
+	rep, err := orgRepo().BackfillAccountOrganizationLookup(ctx, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rowOf(rep.Mismatched, org.ID, true) == nil || rowOf(rep.Missing, org.ID, true) != nil {
+		t.Fatalf("mismatched = %+v", rep.Mismatched)
+	}
+}
+
+func TestBackfillListsUnlinkedTenantsThatHadAConsoleKey(t *testing.T) {
+	ctx := ctxT(t)
+	org := newOrg(t, true)
+	legacyLookup(t, org)
+	rep, err := orgRepo().BackfillAccountOrganizationLookup(ctx, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rowOf(rep.Unlinked, org.ID, true) == nil {
+		t.Fatalf("unlinked = %+v", rep.Unlinked)
+	}
+}
+
+// Spec § 10.6, first half: tenant zero is reachable by its owner and admins
+// after the backfill; before it, by its stored owner only (the fallback).
+func TestTenantZeroIsReachableByItsOwnerAndAdminsAfterTheBackfill(t *testing.T) {
+	ctx := ctxT(t)
+	e := newAPI(t)
+	legacyLookup(t, e.org) // production before the backfill
+	admin, member := "usr_"+id.New(), "usr_"+id.New()
+	e.account.set(e.accountOrg, admin, "organization", "admin")
+	e.account.set(e.accountOrg, member, "organization", "member")
+	read := func(sub string) apiResponse {
+		return e.console(t, "/v1.0/console/settings", e.token(t, sub, "sess_"+id.New(), middleware.ScopeOrganizationRead), "live")
+	}
+
+	if res := read(e.org.OwnerUserID); res.status != http.StatusOK {
+		t.Fatalf("owner before the backfill: %d %s", res.status, res.body)
+	}
+	if res := read(admin); res.status != http.StatusNotFound || !strings.Contains(string(res.body), `"no_merchant"`) {
+		t.Fatalf("admin before the backfill: %d %s", res.status, res.body)
+	}
+
+	if _, err := orgRepo().BackfillAccountOrganizationLookup(ctx, true); err != nil {
+		t.Fatal(err)
+	}
+	for _, sub := range []string{e.org.OwnerUserID, admin} {
+		if res := read(sub); res.status != http.StatusOK || !strings.Contains(string(res.body), e.org.ID) {
+			t.Fatalf("%s after the backfill: %d %s", sub, res.status, res.body)
+		}
+	}
+	if res := read(member); res.status != http.StatusForbidden {
+		t.Fatalf("member after the backfill: %d %s", res.status, res.body)
 	}
 }

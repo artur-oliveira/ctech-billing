@@ -232,6 +232,33 @@ production dry run reports `missing=0`. Done: `ListByCustomer` reads only the in
 first, following the continuation key, so an invoice row without `customer_pk` is invisible to it.
 If one ever appears (a restore from a pre-index backup, say), re-run the backfill.
 
+## Console access by membership (ADR 0028)
+
+The billing half of the console finds its tenant by `{mode}#ACCOUNT_ORG#{account_organization_id}`
+instead of `{mode}#OWNER#{user_id}`. Production rows (tenant zero `ctech`, linked to account
+organization `01a04ed6-1af9-745e-bcf7-d3b66fe52321`) still carry the owner key, so:
+
+1. **Deploy part 1 (API and UI together).** New and linked tenants get the new key; the console
+   falls back to the owner key **only** for a tenant linked to the selected organization, so tenant
+   zero stays reachable by its stored owner. Its other admins see "cobrança não ativada" until step 2.
+2. **Backfill production**, from a workstation:
+
+   ```sh
+   api/cmd/backfill-organization-lookup/run.sh prod           # dry run: lists what is missing
+   api/cmd/backfill-organization-lookup/run.sh prod -apply    # writes it
+   api/cmd/backfill-organization-lookup/run.sh prod           # must report missing=0, exit 0
+   ```
+
+   Both modes, every tenant, one pass. It reads `FIELD_ENCRYPTION_KEY` from SSM without printing it,
+   writes only `lookup_pk`, conditionally on the row being unchanged. Exit 1 means something is
+   missing, mismatched or in conflict (two tenants on one organization): read the log lines first.
+   `unlinked` lines are tenants that lose console access (reachable only by M2M credentials); none
+   is expected in production.
+3. **Confirm** tenant zero opens in the console for an admin of the CTech organization who is not
+   its `owner_user_id`.
+4. **Remove the fallback** (`GetByOwner`, the owner key): the follow-up pull request, merged only
+   after step 2's final dry run reports `missing=0`.
+
 ## Collection is configured in the other repository
 
 The charge route itself ships (`ctech-wallet/api/internal/services/charge_amount.go`). What does
