@@ -144,6 +144,7 @@ describe("the finance mock's cards", () => {
     expect(rename("poupanca", {name: "  Reserva "}, "r1").status).toBe(200)
     expect(accounts().find(a => a.id === "poupanca")?.name).toBe("Reserva")
     expect(rename("poupanca", {name: " "}, "r2").status).toBe(422)
+    expect(rename("poupanca", {name: "X", class: "income"}, "r2b").status).toBe(400)
     expect(rename("nope", {name: "X"}, "r4").status).toBe(404)
     expect(rename("card-nubank", {name: "Roxinho"}, "r5").status).toBe(200)
     expect(cards().find(c => c.id === "card-nubank")?.name).toBe("Roxinho")

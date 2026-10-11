@@ -169,7 +169,7 @@ export const createAccount = (c: FinanceCtx, body: NewAccount, idempotencyKey: s
   write<Account>(c, "POST", "/accounts", body, idempotencyKey)
 export const renameAccount = (c: FinanceCtx, id: string, body: AccountPatch, idempotencyKey: string) =>
   write<Account>(c, "PATCH", `/accounts/${encodeURIComponent(id)}`, body, idempotencyKey)
-export const archiveAccount =(c: FinanceCtx, id: string, idempotencyKey: string) =>
+export const archiveAccount = (c: FinanceCtx, id: string, idempotencyKey: string) =>
   write<void>(c, "POST", `/accounts/${encodeURIComponent(id)}/archive`, {}, idempotencyKey)
 export const getSettings = (c: FinanceCtx) => read<Settings>(c, "/settings")
 /** "" clears it: a paid CTech invoice then goes to the only bank or cash account, if one. */

@@ -24,9 +24,12 @@ export function CardForm({card, accounts, onDone}: {card?: Card; accounts: Accou
   const {t} = useTranslation()
   const assets = accounts.filter(a => a.class === "asset" && !a.system && !a.archived)
   const [name, setName] = useState(card?.name ?? "")
+  // The name the form opened with: a rename made elsewhere while it is open
+  // refreshes `card`, and comparing with that would write the old name back.
+  const [openedName] = useState(card?.name ?? "")
   // Sent only when it changed: the name is the card account's, and a PATCH of
   // the days alone must not rewrite it.
-  const renamed = card && name.trim() !== card.name ? {name: name.trim()} : {}
+  const renamed = card && name.trim() !== openedName ? {name: name.trim()} : {}
   const [closing, setClosing] = useState(String(card?.closing_day ?? ""))
   const [due, setDue] = useState(String(card?.due_day ?? ""))
   const [payer, setPayer] = useState(card?.paying_account_id ?? "")

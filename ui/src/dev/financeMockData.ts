@@ -598,7 +598,11 @@ function route(method: string, path: string, r: Req, s: SpaceState, can: (v: Ver
     if (!can("finance.configure")) return forbidden()
     const a = s.accounts.find(x => x.id === renameMatch[1])
     if (!a) return problem(404, "about:blank", "Not Found", "recurso não encontrado", "resource_not_found")
-    const name = (body<{name?: string | null}>(r).name ?? "").trim()
+    const sent = body<Record<string, unknown>>(r)
+    // Names only: the API's strict decoder refuses any other field with a 400.
+    const extra = Object.keys(sent).find(k => k !== "name")
+    if (extra) return problem(400, "/problems/bad-request", "Bad Request", `invalid request body: json: unknown field "${extra}"`, "invalid_body")
+    const name = (typeof sent.name === "string" ? sent.name : "").trim()
     if (!name) return problem(422, "about:blank", "Unprocessable Entity", "validation failed", "validation_failed", [{field: "name", code: "required", message: "required"}])
     if (a.system || a.archived) return problem(422, "about:blank", "Unprocessable Entity", "archived or system accounts cannot be renamed", "invalid_account")
     a.name = name
