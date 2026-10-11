@@ -528,6 +528,14 @@ caso os depósitos só seriam confirmados pelo *sweep* de reconciliação, e nã
 `httpStatus`). Se confirmado, cadastrar a URL-base e mover o segredo para o caminho, como no § 6.4. Isso é
 um ajuste na `ctech-wallet`, fora deste repositório.
 
+**[FATO, verificado em produção em 2026-10-11]** A suspeita não se confirma. O API Gateway do webhook da wallet tem
+uma única rota, `POST /pix/webhook`, e a Lambda recebeu callbacks reais do Inter de julho até 2026-10-06, todos com
+status 200 e com a conferência do `hmac` passando (nenhuma rejeição por `hmac`; um único 4xx em 90 dias). O Inter
+chama a URL cadastrada exatamente como foi registrada, sem acrescentar `/pix` ao caminho nem à query. Os depósitos
+são confirmados pelo webhook, não só pelo *sweep*. Consequência para o billing: não depender do sufixo `/pix`
+documentado; aceitar tanto o caminho cadastrado quanto a variante com sufixo. Os sufixos do Pix Automático
+(`/rec`, `/cobr`) continuam não verificados.
+
 ---
 
 ## 7. Extrato e saldo (sincronização para o Finanças)
@@ -699,7 +707,7 @@ que é a mesma preocupação de custo do spec de token da wallet.
 6. **Janela de 2 a 10 dias do Pix Automático:** um job atrasado faz o ciclo ser rejeitado pelo PSP pagador.
    **Mitigação:** emitir em D-7, com nova tentativa até D-3 e alarme.
 7. **Rate limit de 10/min no extrato:** o backfill de contas grandes fica lento. **Mitigação:** fila por tenant.
-8. **Webhook da wallet possivelmente sem uso** (§ 6.6): é um risco atual e fora deste repositório.
+8. ~~**Webhook da wallet possivelmente sem uso**~~ (§ 6.6): verificado em produção em 2026-10-11; o webhook funciona.
 
 ### Perguntas ao dono
 
@@ -768,4 +776,4 @@ As quatro do § 8.
 1. Resposta do advogado às perguntas do § 8.
 2. Merchant piloto com integração aprovada no Inter.
 3. Comparação do `ca.crt` entre duas contas.
-4. Conferência do sufixo `/pix` no webhook da wallet (§ 6.6).
+4. ~~Conferência do sufixo `/pix` no webhook da wallet (§ 6.6).~~ Feita em 2026-10-11: o Inter não acrescenta o sufixo nesse cadastro.
