@@ -32,6 +32,11 @@ const (
 	// change what every future customer pays.
 	ScopeProductsWrite    = "billing:products:write"
 	ScopeOrganizationRead = "billing:organization:read"
+	// ScopeOrganizationWrite changes what the organization is as a merchant:
+	// applying for CTech Billing and, in tenant zero, deciding applications
+	// (spec § 6.1). A user scope only: never marked "m2m", an integration has no
+	// business applying for its own organization.
+	ScopeOrganizationWrite = "billing:organization:write"
 	// The portal's scopes are `me`, not a resource, and that is the point
 	// (ADR 0012): `billing:my-invoices:read` reads **my** invoices, while
 	// `billing:invoices:read` reads the organization's. A consumer token must not
@@ -68,6 +73,7 @@ var AllScopes = []string{
 	ScopeProductsRead,
 	ScopeProductsWrite,
 	ScopeOrganizationRead,
+	ScopeOrganizationWrite,
 	ScopeMyInvoicesRead,
 	ScopeMySubscriptionsRead,
 	ScopeMyInvoicesWrite,

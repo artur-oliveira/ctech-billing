@@ -70,7 +70,8 @@ ctech_run setup-ssm-env.sh \
   ACCOUNT_CLIENT_SECRET=${ssm_account_client_secret} \
   CHECKOUT_LINK_SECRET=${ssm_checkout_link_secret} \
   FIELD_ENCRYPTION_KEY=${ssm_field_encryption_key} \
-  EMAIL_FROM=${ssm_email_from}
+  EMAIL_FROM=${ssm_email_from} \
+  APPLICATIONS_NOTIFY_EMAIL=${ssm_applications_notify_email}
 
 # Derived, not fetched: sourced after load-ssm-env.sh by start.sh and job.sh.
 # Each service appends the logical DB it owns; billing's JWKS cache must not

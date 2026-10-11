@@ -77,7 +77,13 @@
     "statement_empty": "The file has no transactions.",
     "statement_unreadable": "The file could not be read. Check that it is the bank's OFX or CSV.",
     "csv_mapping_required": "First say which CSV columns hold the date, the description and the amount.",
-    "invalid_csv_mapping": "The CSV columns are not right."
+    "invalid_csv_mapping": "The CSV columns are not right.",
+    "tenant_suspended": "This organization's billing is suspended. Integrations can only read data.",
+    "application_not_pending": "This application was already decided.",
+    "already_merchant": "This organization already bills through CTech Billing in live mode.",
+    "application_busy": "Someone else is deciding this application right now. Refresh the page.",
+    "no_application": "This organization has not applied for billing yet.",
+    "companies_unavailable": "We could not load the organization's companies right now. Try again."
   },
   "field": {
     "required": "Required.",
@@ -100,6 +106,8 @@
     "range_end_before_start": "The end cannot be before the start.",
     "range_too_long": "The maximum range is {{max}} {{unit}}.",
     "out_of_range": "Use a value between {{min}} and {{max}}.",
-    "invalid": "Invalid value."
+    "invalid": "Invalid value.",
+    "too_short": "Use at least {{min}} characters.",
+    "invalid_url": "Enter an address that starts with https://."
   }
 }

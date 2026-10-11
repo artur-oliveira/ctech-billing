@@ -280,6 +280,12 @@ export const FIXTURES: Record<MockScenario, Fixture> = {
     pixTtlSeconds: 1800,
   },
 
+  // Console part 2: Padaria applied (in review, or rejected), or CTech's own
+  // billing is suspended. The portal side is the ordinary one.
+  pedido_em_analise: {invoices: [], subscriptions: [], settleAfterSeconds: null, pixTtlSeconds: 1800},
+  pedido_recusado: {invoices: [], subscriptions: [], settleAfterSeconds: null, pixTtlSeconds: 1800},
+  cobranca_suspensa: {invoices: [], subscriptions: [], settleAfterSeconds: null, pixTtlSeconds: 1800},
+
   // The person has an account of their own; the organization they administer
   // has none yet, so picking it answers 403 no-billing-account like the real
   // portal does for an organization with no customer.

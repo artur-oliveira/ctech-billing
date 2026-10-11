@@ -142,6 +142,12 @@ type Config struct {
 	// invoices to PAST_DUE without ever having told the customer, which is the
 	// worst half of the policy running on its own.
 	EmailFrom string `env:"EMAIL_FROM"`
+
+	// ApplicationsNotifyEmail receives a message for every merchant application
+	// (spec § 4.1). From SSM /ctech-billing/{env}/billing/applications-notify-email.
+	// Empty, or EMAIL_FROM empty, means no notice: the application is still
+	// recorded and shown in Solicitações, and a missing e-mail never fails it.
+	ApplicationsNotifyEmail string `env:"APPLICATIONS_NOTIFY_EMAIL"`
 }
 
 // Load reads the configuration from the environment.

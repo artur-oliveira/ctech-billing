@@ -29,6 +29,11 @@ func TestTheUIReadsTheseLimits(t *testing.T) {
 			"productName": float64(ProductName), "ownerKey": float64(OwnerKey), "customerName": float64(CustomerName),
 			"legalName": float64(LegalName), "address": float64(Address), "email": float64(Email),
 			"reason": float64(Reason), "externalRef": float64(ExternalRef), "taxID": float64(TaxID),
+			"applicationDescription": float64(ApplicationDescription), "website": float64(Website),
+		},
+		"minText": map[string]any{
+			"applicationDescription": float64(ApplicationDescriptionMin),
+			"rejectionReason":        float64(RejectionReasonMin),
 		},
 		"maxInstallments":      float64(MaxInstallments),
 		"maxNetDays":           float64(MaxNetDays),

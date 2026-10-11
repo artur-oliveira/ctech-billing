@@ -1,4 +1,5 @@
 import type {
+  ApplicationStatus,
   AuditEntry,
   ConsoleCustomer,
   ConsoleCustomerDetail,
@@ -9,6 +10,8 @@ import type {
   ConsoleProduct,
   ConsoleSession,
   ConsoleTenant,
+  MerchantApplication,
+  MerchantCompany,
   MerchantOrganization,
   ConsoleSubscription,
   ConsoleSubscriptionDetail,
@@ -50,18 +53,42 @@ export const MOCK_CONSOLE_TENANT: Record<"live" | "test", ConsoleTenant> = {
   test: {organization_id: "org_mock_ctech", display_name: "CTech Tecnologia", livemode: false, payout_status: "enabled", can_charge: true},
 }
 
-/** The session per scenario: `sem_cobranca` administers one organization with no tenant. */
+/** The session per scenario: `sem_cobranca` administers one organization with no tenant;
+ *  `pedido_em_analise` / `pedido_recusado` put Padaria's application in review or rejected;
+ *  `cobranca_suspensa` suspends CTech's live tenant. CTech plays tenant zero (it reviews). */
 export function consoleSession(scenario: string | null): ConsoleSession {
+  const padariaStatus = scenario === "pedido_em_analise" ? "test" : scenario === "pedido_recusado" ? "rejected" : "none"
   const none: MerchantOrganization = {
-    organization_id: MOCK_NONE_ORG, selector: `org:${MOCK_NONE_ORG}`, display_name: "Padaria Bom Dia", role: "admin", merchant_status: "none",
+    organization_id: MOCK_NONE_ORG, selector: `org:${MOCK_NONE_ORG}`, display_name: "Padaria Bom Dia", role: "admin",
+    merchant_status: padariaStatus,
+    ...(scenario === "pedido_em_analise" ? {application_status: "pending" as const} : {}),
+    ...(scenario === "pedido_recusado" ? {application_status: "rejected" as const} : {}),
   }
   if (scenario === "sem_cobranca") return {organizations: [none], organizations_unavailable: false}
   return {
     organizations: [
-      {organization_id: MOCK_MERCHANT_ORG, selector: `org:${MOCK_MERCHANT_ORG}`, display_name: "CTech Tecnologia", role: "owner", merchant_status: "live"},
+      {
+        organization_id: MOCK_MERCHANT_ORG, selector: `org:${MOCK_MERCHANT_ORG}`, display_name: "CTech Tecnologia", role: "owner",
+        merchant_status: scenario === "cobranca_suspensa" ? "suspended" : "live", can_review_applications: true,
+      },
       none,
     ],
     organizations_unavailable: false,
+  }
+}
+
+export const MOCK_COMPANIES: MerchantCompany[] = [
+  {company_id: "cmp_mock_padaria", legal_name: "Padaria Bom Dia LTDA", trade_name: "Padaria Bom Dia", tax_id: "12345678000190"},
+]
+
+export function mockApplication(status: ApplicationStatus): MerchantApplication {
+  return {
+    id: "apl_mock_padaria", status, organization_id: MOCK_NONE_ORG, organization_name: "Padaria Bom Dia",
+    company: {id: "cmp_mock_padaria", legal_name: "Padaria Bom Dia LTDA", tax_id: "12345678000190"},
+    description: "Assinaturas semanais de pão e café para escritórios do bairro.",
+    website: "https://padaria.example", expected_monthly_volume: "up_to_10k", contact_email: "contato@padaria.example",
+    applied_by: "usr_mock", applied_at: "2026-10-09T14:20:00Z",
+    ...(status === "rejected" ? {decided_at: "2026-10-10T09:00:00Z", rejection_reason: "O site não abre. Envie de novo com o endereço certo."} : {}),
   }
 }
 

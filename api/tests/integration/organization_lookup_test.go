@@ -25,6 +25,24 @@ func orgRepo() *repositories.OrganizationRepository {
 	return repositories.NewOrganizationRepository(testDB, testCfg)
 }
 
+// setLookupAttr sets one string attribute on a tenant row, as a hand fix would.
+func setLookupAttr(t *testing.T, org *billing.Organization, attr, value string) {
+	t.Helper()
+	_, err := testDB.UpdateItem(ctxT(t), &dynamodb.UpdateItemInput{
+		TableName: aws.String(repositories.TableName(testCfg, repositories.TableOrganizations)),
+		Key: map[string]types.AttributeValue{
+			"pk": &types.AttributeValueMemberS{Value: repositories.TenantPK(org.ID, org.Livemode)},
+			"sk": &types.AttributeValueMemberS{Value: repositories.OrganizationSK()},
+		},
+		UpdateExpression:          aws.String("SET #a = :v"),
+		ExpressionAttributeNames:  map[string]string{"#a": attr},
+		ExpressionAttributeValues: map[string]types.AttributeValue{":v": &types.AttributeValueMemberS{Value: value}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 // setLookup overwrites a tenant row's lookup_pk (and, when acct is not empty,
 // its link) directly, the way rows written before this deploy look — or the
 // way a mistaken manual fix would leave them.

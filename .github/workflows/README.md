@@ -127,6 +127,9 @@ rather than silently degrading:
 | A tenant plan applied with `cmd/seed`                                                                                        | this repo, run by an operator                        | everything — see below                       |
 | An entry in `/ctech-wallet/{env}/m2m-clients` **keyed by the OAuth client id** (`ctech-charge`), carrying `webhook_url` and `"max_charge_cents": 1000000` — set 2026-08-16 | ctech-wallet, set out of band | every settlement; any invoice above R$ 1.000,00 |
 | The OAuth client `ctech-charge` holding `internal:wallet:charge-amount`, and `wallet-client-id` in SSM set to the same string | ctech-account (exists) + this repo's SSM             | opening any charge at all                    |
+| `/ctech-billing/{env}/billing/applications-notify-email` (String) | set out of band | the notice of a new merchant application |
+| billing's account client granted `internal:account:company-actor`; ctech-account route `GET /v1.0/internal/organizations/{id}/companies` | ctech-account (granted in prod to `billing-account-membership`; route shipped in ctech-account #56) | the application form's company picker and check |
+| OAuth client `billing` granted `billing:organization:write` | ctech-account (appended by the scopes job's publish) | **sign-in itself** once the UI asks for it |
 
 ## The pipeline does not seed
 
@@ -145,6 +148,12 @@ to a tenant that does not exist.
 
 `api/cmd/seed/run.sh {env}` does both runs in that order, reading `FIELD_ENCRYPTION_KEY` and
 `WEBHOOK_SECRET_DFE` from SSM without printing them (operator's AWS profile, `ctech` by default).
+
+**Re-seed after the applications deploy (console self-service part 2).** The plan
+gained `prod_billing` and `price_billing_early_access`; approving an application
+fails with `resource_not_found` on the price until it exists:
+
+    api/cmd/seed/run.sh prod   # test then live; idempotent
 
 The plan's `owner_user_id` is who reaches the tenant's console. A tenant first seeded without one
 (API-only, as `ctech` was in production until 2026-10-10) gets it on the next run, once.
@@ -259,6 +268,30 @@ organization `01a04ed6-1af9-745e-bcf7-d3b66fe52321`) still carry the owner key, 
 4. **Remove the fallback** (`GetByOwner`, the owner key): the follow-up pull request, merged only
    after step 2's final dry run reports `missing=0`.
 
+## Deploy sequence: console self-service part 2 (applications)
+
+1. ctech-account: the companies list route, and `internal:account:company-actor`
+   granted to billing's account client (`createclient -grant`), in this env.
+2. Terraform creates the `applications-notify-email` parameter (value
+   `SET-OUT-OF-BAND`) and the bootstrap variable; the launch template change
+   rolls the ASG (instance refresh). Set the parameter as soon as it exists:
+   `load-ssm-env.sh` holds the `aws ssm` calls, not their results, so the API
+   reads it at its next start (the API deploy below, or any restart). Until
+   then a new application's notice goes nowhere (logged, never a failed
+   application).
+3. Scopes job: publishes `billing:organization:write`. Publishing appends every
+   new public active scope to the first-party public client with the resource
+   server's id (ctech-account `EnsureFirstPartyPublicClientScopes`), so the
+   OAuth client `billing` holds it before the UI deploys (deploy.yml orders
+   scopes → API → frontend). Confirm in ctech-account's
+   `{env}_account_oauth_clients` (`CLIENT_billing`, `allowed_scopes`): the UI
+   asks for it, and ctech-account fails the whole sign-in on an ungranted scope.
+4. API.
+5. `api/cmd/seed/run.sh prod` (adds `prod_billing` and the early access price).
+6. UI.
+7. Smoke: apply from an organization you administer, see test mode, approve it
+   in tenant zero (Solicitações), see live; reject a second one and re-apply.
+
 ## Collection is configured in the other repository
 
 The charge route itself ships (`ctech-wallet/api/internal/services/charge_amount.go`). What does
@@ -291,3 +324,18 @@ mints the token the `azp` comes from.
 `Collector.Pay` refuses a test-mode invoice outright (`services.ErrTestModeNotPayable`) and no
 `checkout_url` is published for one. Integrators exercise the catalogue, subscriptions, usage and
 invoicing in test mode; collection is live-only until wallet has a sandbox charge kind.
+
+## Lifting a merchant suspension
+
+A live tenant whose `prod_billing` subscription in tenant zero is cancelled is
+suspended: its M2M writes answer `403 tenant_suspended`, and `sweep` and
+`dunning` skip it (spec § 4.3). Both jobs read one day's queue, so the days
+skipped stay where they were. When a new entitled subscription lifts the
+suspension, re-run each suspended day, oldest first; both are idempotent:
+
+    # on an instance, as the job user, once per day D of the suspension
+    /opt/app/job.sh sweep -date D
+    /opt/app/job.sh dunning -date D
+
+`reconcile` and `deliver` are never skipped: they record money that arrived and
+tell integrations about it.

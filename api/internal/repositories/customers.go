@@ -82,30 +82,27 @@ var ErrUserAlreadyCustomer = errors.New("user is already a customer of this orga
 // organization already has one in this tenant.
 var ErrOrganizationAlreadyCustomer = errors.New("organization is already a customer of this organization")
 
-// Create writes a new customer, failing if the id is taken.
-//
-// When the customer carries a ctech-account subject, the pointer row that lets
-// them sign in to the portal is written in the **same transaction** (ADR 0012).
-// Writing it afterwards would leave a window where the customer exists and their
-// own invoices are unreachable to them, and a failure in that window is silent.
-func (r *CustomerRepository) Create(ctx context.Context, c *billing.Customer, actor, requestID string, now time.Time) error {
+// createWrites is Create's transaction without committing it, so a caller in
+// this package can make a customer part of a larger one (the application,
+// spec § 4.1). isOrg reports an ORG_ customer, for the caller's error message.
+func (r *CustomerRepository) createWrites(c *billing.Customer, actor, requestID string, now time.Time) (writes []types.TransactWriteItem, isOrg bool, err error) {
 	if err := c.Metadata.Validate(); err != nil {
-		return err
+		return nil, false, err
 	}
 	if actor == "" {
 		// Every other write in this repository records who did it; a customer
 		// that appeared with no author is the row support cannot explain.
-		return fmt.Errorf("repositories: creating customer %s needs an actor", c.ID)
+		return nil, false, fmt.Errorf("repositories: creating customer %s needs an actor", c.ID)
 	}
 	row, err := r.customerRowOf(c, now)
 	if err != nil {
-		return err
+		return nil, false, err
 	}
 	item, err := Encode(row)
 	if err != nil {
-		return err
+		return nil, false, err
 	}
-	writes := txItems(r.base.BuildPutTxItemIfAbsent(item))
+	writes = txItems(r.base.BuildPutTxItemIfAbsent(item))
 
 	if c.UserID != "" {
 		pointer, err := Encode(customerUserRow{
@@ -114,7 +111,7 @@ func (r *CustomerRepository) Create(ctx context.Context, c *billing.Customer, ac
 			CustomerID: c.ID,
 		})
 		if err != nil {
-			return err
+			return nil, false, err
 		}
 		// Conditional: one account is one customer per organization. Without it
 		// the second write wins and one person's portal silently starts showing
@@ -129,7 +126,7 @@ func (r *CustomerRepository) Create(ctx context.Context, c *billing.Customer, ac
 			CustomerID:            c.ID,
 		})
 		if err != nil {
-			return err
+			return nil, false, err
 		}
 		writes = append(writes, r.base.BuildPutTxItemIfAbsent(pointer))
 	}
@@ -146,16 +143,30 @@ func (r *CustomerRepository) Create(ctx context.Context, c *billing.Customer, ac
 		After:     c.Name,
 	}, "", "", now)
 	if err != nil {
-		return err
+		return nil, false, err
 	}
 	writes = append(writes, r.audit.BuildPutTxItemIfAbsent(auditItem))
+	return writes, isOrg, nil
+}
 
+// Create writes a new customer, failing if the id is taken.
+//
+// When the customer carries a ctech-account subject, the pointer row that lets
+// them sign in to the portal is written in the **same transaction** (ADR 0012).
+// Writing it afterwards would leave a window where the customer exists and their
+// own invoices are unreachable to them, and a failure in that window is silent.
+func (r *CustomerRepository) Create(ctx context.Context, c *billing.Customer, actor, requestID string, now time.Time) error {
+	writes, isOrg, err := r.createWrites(c, actor, requestID, now)
+	if err != nil {
+		return err
+	}
 	err = r.base.TransactWrite(ctx, writes)
 	if IsConditionFailed(err) {
 		// The transaction cancels as a unit, so either the id or the subject was
 		// taken. Naming the subject is the useful answer: a caller that generated
 		// the id knows it is unique, and a caller that reused one is retrying.
 		if isOrg {
+			orgID, _ := OrganizationOfRef(c.ExternalRef)
 			return fmt.Errorf("%w: %s", ErrOrganizationAlreadyCustomer, orgID)
 		}
 		if c.UserID != "" {

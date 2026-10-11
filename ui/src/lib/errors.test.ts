@@ -13,6 +13,7 @@ const problem = (status: number, data: object) => ({response: {status, data: {ty
 
 const BACKEND_CODES = [
   "no_merchant", "merchant_role_required",
+  "tenant_suspended", "application_not_pending", "already_merchant", "application_busy", "no_application", "companies_unavailable",
   "invalid_body", "invalid_cursor", "invalid_link", "invalid_signature", "resource_not_found", "invoice_not_found",
   "subscription_not_found", "customer_tax_id_missing", "invoice_not_payable", "payment_unavailable",
   "charge_amount_rejected", "amount_exceeds_charge_ceiling", "subscription_no_billable_item", "invalid_credentials",
@@ -30,6 +31,7 @@ const BACKEND_CODES = [
   "statement_too_large", "statement_empty", "statement_unreadable", "csv_mapping_required", "invalid_csv_mapping",
 ]
 const FIELD_CODES = [
+  "too_short", "invalid_url",
   "required", "too_long", "too_many", "too_large", "invalid_chars", "invalid_id", "invalid_email", "invalid_tax_id",
   "invalid_format", "invalid_expression", "not_found", "unsupported_value", "required_with", "same_account",
   "installment_too_small", "date_too_early", "date_too_late", "range_end_before_start", "range_too_long", "out_of_range",

@@ -130,12 +130,25 @@ describe("AccountMenu with no billing account", () => {
     expect(getSession).toHaveBeenCalledTimes(1)
   })
 
-  it("offers no console to an admin whose organizations do not bill yet", async () => {
+  it("offers the console to an admin whose organization does not bill yet, to reach the invitation", async () => {
     vi.spyOn(portal, "getSession").mockResolvedValue({customer_id: "cus_1", name: FULL, email: EMAIL, terms_accepted: true})
     vi.spyOn(consoleApi, "getConsoleSession").mockResolvedValue({organizations: [{organization_id: "0190a1b2-c3d4-7e5f-8a9b-bbbbbbbbbbbb", selector: "org:0190a1b2-c3d4-7e5f-8a9b-bbbbbbbbbbbb", display_name: "Padaria", role: "admin", merchant_status: "none"}], organizations_unavailable: false})
     renderWithQuery(<AccountMenu view="portal"/>)
-    await vi.waitFor(() => expect(consoleApi.getConsoleSession).toHaveBeenCalled())
     const menu = await open()
-    expect(within(menu).queryByRole("menuitem", {name: "Console"})).toBeNull()
+    expect(await within(menu).findByRole("menuitem", {name: "Console"})).toBeInTheDocument()
+  })
+
+  // The menu's probe is display only: it does not ask ctech-account again every
+  // time the window regains focus (part 1 deferred minor). An application or a
+  // decision invalidates the session explicitly.
+  it("does not ask for the console session again when the window regains focus", async () => {
+    person({operator: true})
+    const {client} = renderWithQuery(<AccountMenu view="portal"/>)
+    await vi.waitFor(() => expect(consoleApi.getConsoleSession).toHaveBeenCalledTimes(1))
+    const query = client.getQueryCache().find({queryKey: consoleApi.consoleKeys.session()})
+    const options = query?.observers.map(o => o.options) ?? []
+    expect(options).toHaveLength(1)
+    expect(options[0].refetchOnWindowFocus).toBe(false)
+    expect(options[0].staleTime).toBeGreaterThanOrEqual(5 * 60_000)
   })
 })

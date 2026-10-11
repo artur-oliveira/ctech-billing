@@ -5,22 +5,27 @@ import (
 	"testing"
 )
 
-func TestMerchantStatusFromTheTenantRows(t *testing.T) {
+func TestMerchantStatusFromTheTenantRowsAndTheApplication(t *testing.T) {
 	test := &Organization{ID: "org_1", Livemode: false}
 	live := &Organization{ID: "org_1", Livemode: true}
+	suspended := &Organization{ID: "org_1", Livemode: true, SuspendedAt: "2026-10-10T12:00:00Z"}
 	for _, c := range []struct {
 		name       string
 		test, live *Organization
+		latest     ApplicationStatus
 		want       MerchantStatus
 	}{
-		{"no tenant", nil, nil, MerchantNone},
-		{"test only: applied, waiting", test, nil, MerchantTest},
-		{"live exists: approved", test, live, MerchantLive},
-		// A live row without a test row does not happen through the product,
-		// but a provisioned tenant can be live-only: it is still live.
-		{"live only", nil, live, MerchantLive},
+		{"nothing", nil, nil, "", MerchantNone},
+		{"applied, waiting", test, nil, ApplicationPending, MerchantTest},
+		{"provisioned test tenant, no application", test, nil, "", MerchantTest},
+		{"rejected keeps its test tenant", test, nil, ApplicationRejected, MerchantRejected},
+		{"approved", test, live, ApplicationApproved, MerchantLive},
+		{"provisioned live", nil, live, "", MerchantLive},
+		{"suspended wins over everything", test, suspended, ApplicationApproved, MerchantSuspended},
+		// A re-application after a rejection is pending again: test, not rejected.
+		{"re-applied", test, nil, ApplicationPending, MerchantTest},
 	} {
-		if got := MerchantStatusOf(c.test, c.live); got != c.want {
+		if got := MerchantStatusOf(c.test, c.live, c.latest); got != c.want {
 			t.Errorf("%s: %q, want %q", c.name, got, c.want)
 		}
 	}

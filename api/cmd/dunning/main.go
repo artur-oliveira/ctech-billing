@@ -92,6 +92,7 @@ func run(ctx context.Context, d *services.Dunner, livemode bool, date brcal.Date
 		"reminded", res.Reminded,
 		"escalated", res.Escalated,
 		"abandoned", res.Abandoned,
-		"skipped", res.Skipped)
+		"skipped", res.Skipped,
+		"suspended", res.Suspended)
 	return res
 }

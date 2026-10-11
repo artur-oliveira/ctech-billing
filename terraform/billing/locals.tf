@@ -42,6 +42,9 @@ locals {
     # The verified SES identity dunning reminders come from. A plain String: it
     # is an address, printed on every email it sends.
     email_from = "${local.ssm_prefix}/email-from"
+    # Where a new merchant application is announced (spec § 4.1). A String:
+    # an address, set out of band like email_from.
+    applications_notify_email = "${local.ssm_prefix}/applications-notify-email"
 
   }
 

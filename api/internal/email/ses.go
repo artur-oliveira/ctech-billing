@@ -106,3 +106,49 @@ func reminderHTML(r Reminder) string {
 		`<p style="color:#666;font-size:13px">Se você já pagou, ignore este aviso.</p>` +
 		`</body></html>`
 }
+
+// ApplicationReceived tells CTech someone asked to bill through CTech Billing
+// (spec § 4.1). Every field is what the applicant typed or chose: escaped.
+type ApplicationReceived struct {
+	ApplicationID, OrganizationName, CompanyLegalName, Description, Website, ContactEmail string
+}
+
+// ApplicationDecided tells the applicant the outcome (spec § 4.2).
+type ApplicationDecided struct {
+	OrganizationName string
+	Approved         bool
+	Reason           string
+}
+
+func (c *Client) SendApplicationReceived(ctx context.Context, to string, n ApplicationReceived) error {
+	if to == "" {
+		return fmt.Errorf("email: no recipient")
+	}
+	subject := "Novo pedido de cobrança: " + n.OrganizationName
+	body := `<!doctype html><html lang="pt-BR"><body style="font-family:system-ui,sans-serif;color:#1a1a1a">` +
+		`<p>` + html.EscapeString(n.OrganizationName) + ` pediu para cobrar os próprios clientes pelo CTech Billing.</p>` +
+		`<p><strong>Empresa:</strong> ` + html.EscapeString(n.CompanyLegalName) + `</p>` +
+		`<p><strong>O que vende:</strong> ` + html.EscapeString(n.Description) + `</p>` +
+		`<p><strong>Site:</strong> ` + html.EscapeString(n.Website) + `</p>` +
+		`<p><strong>Contato:</strong> ` + html.EscapeString(n.ContactEmail) + `</p>` +
+		`<p style="color:#666;font-size:13px">Pedido ` + html.EscapeString(n.ApplicationID) + `. Decida em Console, Solicitações.</p>` +
+		`</body></html>`
+	return c.tx.Send(ctx, to, subject, body)
+}
+
+func (c *Client) SendApplicationDecided(ctx context.Context, to string, n ApplicationDecided) error {
+	if to == "" {
+		return fmt.Errorf("email: no recipient")
+	}
+	name := html.EscapeString(n.OrganizationName)
+	subject := "Seu pedido de cobrança foi aprovado: CTech Billing"
+	lead := `<p>O modo produção de ` + name + ` está pronto. Abra o console do CTech Billing para conectar suas credenciais.</p>`
+	if !n.Approved {
+		subject = "Seu pedido de cobrança não foi aprovado: CTech Billing"
+		lead = `<p>O pedido de modo produção de ` + name + ` não foi aprovado.</p>` +
+			`<p><strong>Motivo:</strong> ` + html.EscapeString(n.Reason) + `</p>` +
+			`<p>O modo de teste continua disponível, e você pode pedir de novo pelo console.</p>`
+	}
+	return c.tx.Send(ctx, to, subject,
+		`<!doctype html><html lang="pt-BR"><body style="font-family:system-ui,sans-serif;color:#1a1a1a">`+lead+`</body></html>`)
+}

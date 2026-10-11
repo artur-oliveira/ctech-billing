@@ -77,7 +77,13 @@
     "statement_empty": "O arquivo não tem lançamentos.",
     "statement_unreadable": "Não foi possível ler o arquivo. Confira se é um OFX ou CSV do banco.",
     "csv_mapping_required": "Diga primeiro quais colunas do CSV são a data, a descrição e o valor.",
-    "invalid_csv_mapping": "As colunas do CSV não estão certas."
+    "invalid_csv_mapping": "As colunas do CSV não estão certas.",
+    "tenant_suspended": "A cobrança desta organização está suspensa. As integrações só podem ler dados.",
+    "application_not_pending": "Este pedido já foi decidido.",
+    "already_merchant": "Esta organização já cobra pelo CTech Billing no modo produção.",
+    "application_busy": "Outra pessoa está decidindo este pedido agora. Atualize a página.",
+    "no_application": "Esta organização ainda não pediu acesso à cobrança.",
+    "companies_unavailable": "Não foi possível carregar as empresas da organização agora. Tente de novo."
   },
   "field": {
     "required": "Obrigatório.",
@@ -100,6 +106,8 @@
     "range_end_before_start": "O fim não pode ser antes do início.",
     "range_too_long": "O intervalo máximo é {{max}} {{unit}}.",
     "out_of_range": "Use um valor entre {{min}} e {{max}}.",
-    "invalid": "Valor inválido."
+    "invalid": "Valor inválido.",
+    "too_short": "Use pelo menos {{min}} caracteres.",
+    "invalid_url": "Informe um endereço que comece com https://."
   }
 }

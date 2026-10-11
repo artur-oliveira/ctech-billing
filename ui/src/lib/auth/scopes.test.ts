@@ -14,6 +14,10 @@ const published = new Set(manifest.scopes.filter(s => s.status === "active" && s
 const requested = OAUTH_SCOPE.split(" ")
 
 describe("OAUTH_SCOPE", () => {
+  it("requests the organization write scope (apply, review)", () => {
+    expect(requested).toContain("billing:organization:write")
+  })
+
   it("requests the finance scopes", () => {
     expect(requested).toEqual(expect.arrayContaining(["billing:finance:read", "billing:finance:write"]))
   })
@@ -32,8 +36,8 @@ function jwt(claims: object): string {
 
 describe("missingScopes", () => {
   it("names what the token lacks of what the app asks for", () => {
-    const old = requested.filter(s => !s.startsWith("billing:finance:")).join(" ")
-    expect(missingScopes(jwt({scope: old}))).toEqual(["billing:finance:read", "billing:finance:write"])
+    const old = requested.filter(s => !s.startsWith("billing:finance:") && s !== "billing:organization:write").join(" ")
+    expect(missingScopes(jwt({scope: old}))).toEqual(["billing:organization:write", "billing:finance:read", "billing:finance:write"])
   })
   it("is empty for a token granted everything, identity scopes aside", () => {
     expect(missingScopes(jwt({scope: requested.filter(s => s !== "openid" && s !== "profile").join(" ")}))).toEqual([])

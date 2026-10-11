@@ -20,6 +20,16 @@ type SubscriptionRepository struct {
 	base   Base
 	audit  Base
 	events Base
+	// hook keeps the merchant suspension in step with tenant zero's
+	// prod_billing subscriptions (spec § 4.3). Nil in unit tests.
+	hook EntitlementHook
+}
+
+// WithEntitlementHook attaches the merchant suspension (app wires it in every
+// binary). Nil leaves subscriptions unaware of merchants, as in unit tests.
+func (r *SubscriptionRepository) WithEntitlementHook(h EntitlementHook) *SubscriptionRepository {
+	r.hook = h
+	return r
 }
 
 func NewSubscriptionRepository(db *dynamodb.Client, cfg *config.Config) *SubscriptionRepository {
@@ -121,6 +131,14 @@ func (r *SubscriptionRepository) Create(ctx context.Context, s *billing.Subscrip
 		return err
 	}
 	writes = append(writes, event)
+
+	if r.hook != nil && s.IsEntitled() {
+		extra, err := r.hook.EntitlementWrites(ctx, s, true, billing.CauseManual, "", "", now)
+		if err != nil {
+			return err
+		}
+		writes = append(writes, extra...)
+	}
 
 	err = r.base.TransactWrite(ctx, writes)
 	if IsConditionFailed(err) {
@@ -228,7 +246,13 @@ func (r *SubscriptionRepository) Transition(
 		Emit:    events,
 		Subject: subscriptionSubject(&updated),
 	}
-	if err := CommitStatusChange(ctx, r.tables(), change, now); err != nil {
+	var extra []types.TransactWriteItem
+	if r.hook != nil && s.IsEntitled() != updated.IsEntitled() {
+		if extra, err = r.hook.EntitlementWrites(ctx, &updated, updated.IsEntitled(), cause, actor, requestID, now); err != nil {
+			return nil, err
+		}
+	}
+	if err := commitWithExtraWrites(ctx, r.tables(), change, now, extra...); err != nil {
 		return nil, err
 	}
 	*s = updated

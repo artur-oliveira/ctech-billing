@@ -155,14 +155,15 @@ locals {
     ssm_account_jwks_url     = local.account_ssm.internal_jwks_url
     ssm_wallet_internal_url  = local.wallet_ssm.internal_base_url
 
-    ssm_wallet_client_id      = local.ssm_paths.wallet_client_id
-    ssm_wallet_client_secret  = local.ssm_paths.wallet_client_secret
-    ssm_wallet_webhook_secret = local.ssm_paths.wallet_webhook_secret
-    ssm_account_client_id     = local.ssm_paths.account_client_id
-    ssm_account_client_secret = local.ssm_paths.account_client_secret
-    ssm_checkout_link_secret  = local.ssm_paths.checkout_link_secret
-    ssm_field_encryption_key  = local.ssm_paths.field_encryption_key
-    ssm_email_from            = local.ssm_paths.email_from
+    ssm_wallet_client_id          = local.ssm_paths.wallet_client_id
+    ssm_wallet_client_secret      = local.ssm_paths.wallet_client_secret
+    ssm_wallet_webhook_secret     = local.ssm_paths.wallet_webhook_secret
+    ssm_account_client_id         = local.ssm_paths.account_client_id
+    ssm_account_client_secret     = local.ssm_paths.account_client_secret
+    ssm_checkout_link_secret      = local.ssm_paths.checkout_link_secret
+    ssm_field_encryption_key      = local.ssm_paths.field_encryption_key
+    ssm_email_from                = local.ssm_paths.email_from
+    ssm_applications_notify_email = local.ssm_paths.applications_notify_email
 
     alerts_topic_arn = local.alerts_topic_arn
 

@@ -140,7 +140,7 @@ func TestMerchantOrganizationWireShape(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := `{"organizations":[{"organization_id":"` + acctA + `","selector":"org:` + acctA +
-		`","display_name":"CTech","role":"owner","merchant_status":"live"}],"organizations_unavailable":false}`
+		`","display_name":"CTech","role":"owner","merchant_status":"live","can_review_applications":false}],"organizations_unavailable":false}`
 	if string(raw) != want {
 		t.Fatalf("got  %s\nwant %s", raw, want)
 	}
@@ -184,5 +184,24 @@ func TestTheConsoleIdentitySkipsAnUnreadableOrganization(t *testing.T) {
 	org, err := h.consoleIdentity(context.Background(), "alice")
 	if err != nil || org == nil || org.ID != "ctech" {
 		t.Fatalf("identity = %+v, %v", org, err)
+	}
+}
+
+func TestOnlyTenantZerosOrganizationReviewsApplications(t *testing.T) {
+	l := &fakeLister{orgs: map[string][]accountorgs.Organization{"alice": {
+		{ID: acctA, DisplayName: "CTech", Role: "admin", Kind: "organization"},
+		{ID: acctB, DisplayName: "Padaria", Role: "owner", Kind: "organization"},
+	}}}
+	m := fakeMerchants{acctA + "|live": {ID: "ctech", Livemode: true}, acctB + "|live": {ID: "org_b", Livemode: true}}
+	_, raw, _ := getSession(t, sessionApp(&consoleHandlers{spaces: l, merchants: m, portalOrganizationID: "ctech"}, sessionClaims))
+	var b struct {
+		Organizations []struct {
+			DisplayName string `json:"display_name"`
+			Reviewer    bool   `json:"can_review_applications"`
+		} `json:"organizations"`
+	}
+	_ = json.Unmarshal([]byte(raw), &b)
+	if len(b.Organizations) != 2 || !b.Organizations[0].Reviewer || b.Organizations[1].Reviewer {
+		t.Fatalf("organizations = %+v", b.Organizations)
 	}
 }

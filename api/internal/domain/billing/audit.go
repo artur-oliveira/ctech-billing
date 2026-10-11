@@ -23,6 +23,16 @@ const (
 	// AuditManualPaymentRecorded records an out-of-band receipt, naming who
 	// recorded it. It must never be indistinguishable from an automatic payment.
 	AuditManualPaymentRecorded = "invoice.manual_payment_recorded"
+
+	// The application lifecycle (spec § 4), audited in tenant zero's live
+	// partition with the application id as the entity.
+	AuditApplicationSubmitted = "application.submitted"
+	AuditApplicationApproved  = "application.approved"
+	AuditApplicationRejected  = "application.rejected"
+	// A live tenant losing and regaining its prod_billing entitlement (spec
+	// § 4.3), audited in the tenant's own live partition.
+	AuditOrganizationSuspended  = "organization.suspended"
+	AuditOrganizationReinstated = "organization.reinstated"
 )
 
 // AuditLog is an append-only record of who did what.

@@ -49,27 +49,44 @@ func (r *OrganizationRepository) Create(ctx context.Context, org *billing.Organi
 	if org.PayoutStatus == "" {
 		org.PayoutStatus = billing.PayoutNotConfigured
 	}
-	row := organizationRow{
-		keys:         newKeys(TenantPK(org.ID, org.Livemode), OrganizationSK(), RetentionOrganization, now),
-		Organization: *org,
-	}
 	// Only a linked tenant is reachable from the console (ADR 0028). The owner
 	// is stored, never indexed: it no longer grants access.
 	if org.AccountOrganizationID != "" {
 		if err := r.ensureAccountOrganizationFree(ctx, org.ID, org.AccountOrganizationID, org.Livemode); err != nil {
 			return err
 		}
-		row.LookupPK = LookupOrganizationAccountPK(org.Livemode, org.AccountOrganizationID)
 	}
-	item, err := Encode(row)
+	put, err := organizationPut(r.base, org, now)
 	if err != nil {
 		return err
 	}
-	err = r.base.TransactWrite(ctx, txItems(r.base.BuildPutTxItemIfAbsent(item)))
+	err = r.base.TransactWrite(ctx, txItems(put))
 	if IsConditionFailed(err) {
 		return fmt.Errorf("organization %s already exists in %s mode", org.ID, Mode(org.Livemode))
 	}
 	return err
+}
+
+// organizationPut is the conditional put of a new tenant row with its console
+// lookup key (part 1: only a linked tenant gets one). It does not check the
+// key is free: Create reads first, and the application transaction is guarded
+// by its pointer row instead.
+func organizationPut(base Base, org *billing.Organization, now time.Time) (types.TransactWriteItem, error) {
+	if org.PayoutStatus == "" {
+		org.PayoutStatus = billing.PayoutNotConfigured
+	}
+	row := organizationRow{
+		keys:         newKeys(TenantPK(org.ID, org.Livemode), OrganizationSK(), RetentionOrganization, now),
+		Organization: *org,
+	}
+	if org.AccountOrganizationID != "" {
+		row.LookupPK = LookupOrganizationAccountPK(org.Livemode, org.AccountOrganizationID)
+	}
+	item, err := Encode(row)
+	if err != nil {
+		return types.TransactWriteItem{}, err
+	}
+	return base.BuildPutTxItemIfAbsent(item), nil
 }
 
 // Get reads an organization.
@@ -490,4 +507,29 @@ func (r *OrganizationRepository) SetOwner(
 	}
 	org.OwnerUserID = ownerUserID
 	return nil
+}
+
+// suspensionWrites are the live tenant's suspended_at change and its audit row,
+// for the transaction of the subscription change that caused them. The update
+// is conditional only on the row existing: a concurrent writer of suspended_at
+// must not cancel a subscription's cancellation.
+func (r *OrganizationRepository) suspensionWrites(org *billing.Organization, suspend bool, cause billing.Cause,
+	actor, requestID string, now time.Time) ([]types.TransactWriteItem, error) {
+	stamp := now.UTC().Format(time.RFC3339Nano)
+	expr, action, before, after := "SET suspended_at = if_not_exists(suspended_at, :now), updated_at = :now",
+		billing.AuditOrganizationSuspended, "", stamp
+	if !suspend {
+		expr, action, before, after = "SET updated_at = :now REMOVE suspended_at",
+			billing.AuditOrganizationReinstated, org.SuspendedAt, ""
+	}
+	auditItem, err := buildAuditItem(org.ID, true, AuditEntry{
+		Entity: EntityOrganization, EntityID: org.ID, Action: action, Cause: cause,
+		Actor: actor, RequestID: requestID, Before: before, After: after,
+	}, "", "", now)
+	if err != nil {
+		return nil, err
+	}
+	update := r.base.BuildRawUpdateTxItem(TenantPK(org.ID, true), new(OrganizationSK()), expr, "attribute_exists(pk)", nil,
+		map[string]types.AttributeValue{":now": &types.AttributeValueMemberS{Value: stamp}})
+	return txItems(update, r.audit.BuildPutTxItemIfAbsent(auditItem)), nil
 }

@@ -17,10 +17,9 @@ const (
 	// MerchantLive: a live tenant exists (approved, or provisioned by CTech).
 	MerchantLive MerchantStatus = "live"
 	// MerchantRejected: the latest application was rejected; the test tenant
-	// stays. Computed from part 2 on.
+	// stays.
 	MerchantRejected MerchantStatus = "rejected"
-	// MerchantSuspended: the live tenant is suspended (reads only). Computed
-	// from part 2 on.
+	// MerchantSuspended: the live tenant is suspended (reads only).
 	MerchantSuspended MerchantStatus = "suspended"
 )
 
@@ -34,12 +33,16 @@ func (s MerchantStatus) Valid() bool {
 }
 
 // MerchantStatusOf derives the status from one account organization's tenant
-// rows, nil when absent. Part 2 adds the application and the live row's
-// suspension to its inputs; until then rejected and suspended cannot arise.
-func MerchantStatusOf(test, live *Organization) MerchantStatus {
+// rows (nil when absent) and its latest application's status ("" when it never
+// applied). A suspended live tenant wins: it is the fact a merchant must see.
+func MerchantStatusOf(test, live *Organization, latest ApplicationStatus) MerchantStatus {
 	switch {
+	case live != nil && live.Suspended():
+		return MerchantSuspended
 	case live != nil:
 		return MerchantLive
+	case latest == ApplicationRejected:
+		return MerchantRejected
 	case test != nil:
 		return MerchantTest
 	default:

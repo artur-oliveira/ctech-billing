@@ -32,6 +32,12 @@ const (
 	ExternalRef  = 128
 	TaxID        = 18 // "00.000.000/0000-00", the longest formatted document
 
+	// The merchant application (spec § 4.1–4.2).
+	ApplicationDescriptionMin = 20
+	ApplicationDescription    = 1000
+	Website                   = 200
+	RejectionReasonMin        = 10 // the maximum is Reason
+
 	MaxInstallments      = 48
 	MaxNetDays           = 90
 	MaxSubscriptionItems = 20

@@ -228,3 +228,19 @@ type customerOrgRow struct {
 	AccountOrganizationID string `dynamodbav:"account_organization_id"`
 	CustomerID            string `dynamodbav:"customer_id"`
 }
+
+// applicationRow is one application. CompanyTaxID is sealed in the row.
+type applicationRow struct {
+	keys
+	billing.Application
+	LookupPK string `dynamodbav:"lookup_pk"`
+}
+
+// applicationOrgRow points an account organization at its current application.
+type applicationOrgRow struct {
+	keys
+	AccountOrganizationID string                    `dynamodbav:"account_organization_id"`
+	TenantID              string                    `dynamodbav:"tenant_id"`
+	ApplicationID         string                    `dynamodbav:"application_id"`
+	Status                billing.ApplicationStatus `dynamodbav:"status"`
+}

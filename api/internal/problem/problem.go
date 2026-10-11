@@ -51,6 +51,12 @@ const (
 	// branches on it; it says nothing a member of the organization does not
 	// already know, and only members get this far.
 	TypeNoMerchant = "/problems/no-merchant"
+	// TypeTenantSuspended is a live tenant whose prod_billing entitlement ended:
+	// writes refused, reads served (spec § 4.3).
+	TypeTenantSuspended = "/problems/tenant-suspended"
+	// TypeCompaniesUnavailable is ctech-account not answering about an
+	// organization's companies: the application form cannot be filled now.
+	TypeCompaniesUnavailable = "/problems/companies-unavailable"
 )
 
 // FieldError is a single field-level validation failure.
@@ -166,6 +172,13 @@ func FromError(err error) *Problem {
 
 	case errors.Is(err, repositories.ErrNotFound):
 		return NotFound("resource not found").WithCode("resource_not_found")
+
+	case errors.Is(err, billing.ErrApplicationNotPending):
+		return Conflict("the application was already decided").WithCode("application_not_pending")
+	case errors.Is(err, billing.ErrAlreadyMerchant):
+		return Conflict("this organization already bills in live mode").WithCode("already_merchant")
+	case errors.Is(err, repositories.ErrApplicationBusy):
+		return Conflict("another decision on this application is in progress").WithCode("application_busy")
 
 	case errors.Is(err, space.ErrDenied):
 		return Forbidden("your role does not allow this operation").WithCode("role_denied")

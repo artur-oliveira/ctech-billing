@@ -556,3 +556,44 @@ with one retry ("Tentar de novo"); the person is never sent to Finanças for an 
 **The Console entry needs an organization that bills.** The account menu offers Console only when the
 session lists an organization whose `merchant_status` is not `none`; part 2 widens it to everyone who
 can apply.
+
+## Console: applying and reviewing (2026-10-10)
+
+Console self-service part 2. An organization the person runs that has no tenant in the current
+mode is a beginning, never a fault.
+
+**The invitation replaces `NoMerchant`.** Left-aligned at every width: the heading ("Cobre seus
+clientes com o CTech Billing"), one paragraph naming the organization, three points with a brand
+check, one brand action (**Quero cobrar meus clientes**, full width on a phone) and, under it in
+`muted-foreground`, that live mode waits for review. No card, no error colour. Once the organization
+applied, the same place says where live mode stands ("Modo produção em análise" / "não aprovado")
+and offers test mode; a refused one also offers **Pedir de novo**.
+
+**The form is one column at every width** (`max-w-xl`), behind a `PageHeader` that names the
+organization. Its actions sit under a hairline: a full-width column on a phone with the primary
+first, a right-aligned row from `sm`. Every rule is the API's and is checked before the round trip
+with the API's codes; the server's answer (a 409, a 503) is a `role="alert"` line above the actions.
+The company picker shows "Razão social • documento". ctech-account lists at most 200 companies by
+legal name: when it says it cut the list, a muted line under the picker says so and offers
+**Informar o código da empresa**, which swaps the picker for a text field (the server checks the
+code against the organization). An organization with no company gets one sentence pointing to
+CTech Conta, never an empty select. After sending, the page becomes "Pedido enviado" with
+**Abrir o modo de teste**.
+
+**The status band** sits under the test-mode band: `surface` for live under review or refused
+(with the reason and **Pedir de novo**), a `danger` tint for a suspended merchant (the only status
+fill on the page, and it names what still works). On a phone its action is on its own line. It is
+silent for a live merchant and where the invitation already says the same thing.
+
+**The Console entry** in the account menu shows for any organization the person runs (one that
+does not bill opens the invitation). Its probe is display only: it is not re-asked on window focus,
+and stays fresh for five minutes; applying invalidates the session explicitly.
+
+**Solicitações** (tenant zero only) is a nav section after Configurações, shown when the session
+marks the organization `can_review_applications`; any other tenant gets a 404 from the server.
+The review screen is a ruled list, not cards: one block per application separated by hairlines
+(name and date, company and document, description, then site, volume and contact). On a phone the
+two actions share a full-width row at the bottom (Recusar outline, Aprovar brand); from `sm` the
+grid lifts them beside the name. The filter is `Segmented` (Pendentes, Aprovadas, Recusadas),
+full width on a phone; pending opens first, oldest first. Approving confirms what it does (live
+mode and the R$ 0 early access subscription); rejecting needs a reason of 10 to 500 characters.

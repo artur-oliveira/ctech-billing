@@ -40,9 +40,16 @@ const PORTAL_SCOPES = [
  * The finance scopes are asked for by the same login and hold nothing alone:
  * the API resolves the space (personal or an organization) and the verbs the
  * person has in it on every request (ADR 0025).
+ *
+ * `billing:organization:write` applies for billing and decides applications;
+ * the `billing` client at ctech-account must hold it before this ships (plan
+ * part 2, decision 8). The scopes job's publish appends it (ctech-account adds
+ * every new public scope to the first-party client named like the resource
+ * server), and deploy.yml runs that job before the frontend.
  */
 const CONSOLE_SCOPES = [
   "billing:organization:read",
+  "billing:organization:write",
   "billing:invoices:read",
   "billing:invoices:write",
   "billing:subscriptions:read",
