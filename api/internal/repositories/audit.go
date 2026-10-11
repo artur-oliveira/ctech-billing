@@ -51,18 +51,36 @@ func (r *AuditRepository) ListForEntity(
 	entityID string,
 	limit int,
 ) ([]billing.AuditLog, error) {
-	res, err := r.base.Query(ctx, QueryOpts{
-		PK:               TenantPK(organizationID, livemode),
-		SKPrefix:         skAudit,
-		FilterField:      "entity_id",
-		FilterValue:      entityID,
-		Limit:            limit,
-		ScanIndexForward: true,
-	})
-	if err != nil {
-		return nil, err
+	// entity_id is a filter, and DynamoDB applies Limit to the rows it reads
+	// before filtering: one call returned an empty trail whenever the entity's
+	// entries came after the first Limit rows of the tenant's other activity.
+	// Base.Query fills the page within a read budget per call; this keeps
+	// following the cursor until limit entries are found or the range ends.
+	if limit <= 0 {
+		limit = 100
 	}
-	rows, err := DecodeItems[auditRow](res.Items)
+	var items []map[string]types.AttributeValue
+	var start map[string]types.AttributeValue
+	for {
+		res, err := r.base.Query(ctx, QueryOpts{
+			PK:                TenantPK(organizationID, livemode),
+			SKPrefix:          skAudit,
+			FilterField:       "entity_id",
+			FilterValue:       entityID,
+			Limit:             limit - len(items),
+			ScanIndexForward:  true,
+			ExclusiveStartKey: start,
+		})
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, res.Items...)
+		if res.LastEvaluatedKey == nil || len(items) >= limit {
+			break
+		}
+		start = res.LastEvaluatedKey
+	}
+	rows, err := DecodeItems[auditRow](items)
 	if err != nil {
 		return nil, err
 	}
