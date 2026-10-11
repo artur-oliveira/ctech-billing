@@ -8,7 +8,8 @@ import {CardsView, statementState} from "@/components/finance/CardsView"
 import {pick, renderWithQuery} from "@/components/finance/finance.test-utils"
 import * as finance from "@/lib/api/finance"
 import * as createRequest from "@/lib/finance/createRequest"
-import type {Account, Card, CardStatement, Purchase, Verb} from "@/lib/api/financeTypes"
+import type {Account, Card, CardStatement, Purchase, StatementSummary, Verb} from "@/lib/api/financeTypes"
+import {shiftMonth} from "@/lib/finance/statementTimeline"
 
 const ALL: Verb[] = ["finance.read", "finance.write", "finance.settle", "finance.import", "finance.configure"]
 const ACCOUNTS: Account[] = [
@@ -26,14 +27,36 @@ const statement = (month: string, status: CardStatement["status"], number: numbe
   items: [{purchase_id: "p1", description: "Geladeira", category_id: "food", date: "2026-03-01", number, of: 3, kind: "installment", amount: 10000}],
 })
 
+const FIRST = "2025-06", LAST = "2027-06"
+const summary = (month: string): StatementSummary => ({
+  card_id: "visa", month, status: month < "2026-03" ? "paid" : month === "2026-03" ? "open" : "future",
+  closing_date: `${month}-03`, due_date: `${month}-10`, total: 10000, items_count: 1,
+})
+
 function serve(verbs: Verb[], cards: Card[] = [CARD]) {
   vi.spyOn(finance, "getFinanceSpaces").mockResolvedValue({spaces: [{selector: "personal", kind: "personal_default", display_name: "Pessoal", verbs, manage_people: false}], organizations_unavailable: false})
   vi.spyOn(finance, "listAccounts").mockResolvedValue({data: ACCOUNTS, has_more: false})
   vi.spyOn(finance, "listCards").mockResolvedValue({data: cards, has_more: false})
   vi.spyOn(finance, "listPurchases").mockResolvedValue({data: [PURCHASE], has_more: false})
-  return vi.spyOn(finance, "getCardStatement").mockImplementation(async (_c, _id, month) =>
+  const range = vi.spyOn(finance, "listCardStatements").mockImplementation(async (_c, _id, from, count, direction) => {
+    const out: StatementSummary[] = []
+    let m = direction === "forward" && from < FIRST ? FIRST : from
+    while (out.length < count && m >= FIRST && m <= LAST) { out.push(summary(m)); m = shiftMonth(m, direction === "forward" ? 1 : -1) }
+    const edge = out.at(-1)?.month
+    return {data: out, has_more: direction === "forward" ? !!edge && edge < LAST : !!edge && edge > FIRST}
+  })
+  const items = vi.spyOn(finance, "getCardStatement").mockImplementation(async (_c, _id, month) =>
     statement(month, month === "2026-03" ? "open" : "future", month === "2026-03" ? 1 : 2))
+  return {range, items}
 }
+
+/** Months each range request covered, to prove nothing loaded is asked again. */
+function covered(range: ReturnType<typeof serve>["range"]): string[] {
+  return range.mock.calls.flatMap(([, , from, count, direction]) =>
+    Array.from({length: count}, (_, i) => shiftMonth(from, direction === "forward" ? i : -i)).filter(m => m >= FIRST && m <= LAST))
+}
+
+const inWindow = () => screen.getAllByRole("button", {name: /^Fatura de /}).filter(b => b.closest("[data-in-window]")).map(b => b.dataset.month)
 
 const pickIn = (root: HTMLElement, label: string, option: string) => pick(label, option, root)
 
@@ -44,19 +67,129 @@ describe("F5 — cartões", () => {
   it("opens on the card's open statement, in words, with its total", async () => {
     serve(ALL)
     renderWithQuery(<CardsView/>)
-    expect(await screen.findByText("Aberta")).toBeInTheDocument()
-    expect(screen.getByText("Mar/26")).toBeInTheDocument()
+    const block = await screen.findByRole("region", {name: "Fatura Mar/26"})
+    expect(await within(block).findByText("Aberta")).toBeInTheDocument()
     const row = (await screen.findByText("Geladeira")).closest("li") as HTMLElement
     expect(within(row).getByText(/1\/3/)).toBeInTheDocument()
   })
-
-  it("pages to the next statement, which is still to come", async () => {
+  // Spec § 6.6.
+  it("opens on the open statement with three before and three after, selected", async () => {
     serve(ALL)
     renderWithQuery(<CardsView/>)
-    await screen.findByText("Aberta")
-    await userEvent.click(screen.getByRole("button", {name: "Próxima fatura"}))
-    expect(await screen.findByText("Futura")).toBeInTheDocument()
+    await waitFor(() => expect(inWindow()).toEqual(["2025-12", "2026-01", "2026-02", "2026-03", "2026-04", "2026-05", "2026-06"]))
+    const open = screen.getByRole("button", {name: /^Fatura de Mar\/26/})
+    expect(open).toHaveAttribute("aria-pressed", "true")
+    expect(within(open).getByText("Aberta")).toBeInTheDocument()
+    expect(await screen.findByText("Geladeira")).toBeInTheDocument() // the open statement's items, below
+  })
+
+  it("pages beyond the loaded edge in both directions without asking for a loaded month again", async () => {
+    const {range} = serve(ALL)
+    renderWithQuery(<CardsView/>)
+    await waitFor(() => expect(inWindow()).toContain("2026-03"))
+    for (let i = 0; i < 3; i++) await userEvent.click(screen.getByRole("button", {name: "Próximas faturas"}))
+    await waitFor(() => expect(inWindow()).toContain("2026-12"))
+    for (let i = 0; i < 6; i++) await userEvent.click(screen.getByRole("button", {name: "Faturas anteriores"}))
+    await waitFor(() => expect((inWindow()[0] ?? "") <= "2025-09").toBe(true))
+    const months = covered(range)
+    expect(new Set(months).size).toBe(months.length) // every month asked once
+  })
+
+  it("stops at the card's first statement", async () => {
+    serve(ALL)
+    renderWithQuery(<CardsView/>)
+    const earlier = await screen.findByRole("button", {name: "Faturas anteriores"})
+    for (let i = 0; i < 6; i++) if (!(earlier as HTMLButtonElement).disabled) await userEvent.click(earlier)
+    await waitFor(() => expect(inWindow()[0]).toBe(FIRST))
+    await waitFor(() => expect(earlier).toBeDisabled())
+  })
+
+  it("moves the selection with the arrow keys and loads that statement's items", async () => {
+    const {items} = serve(ALL)
+    renderWithQuery(<CardsView/>)
+    const open = await screen.findByRole("button", {name: /^Fatura de Mar\/26/})
+    open.focus()
+    await userEvent.keyboard("{ArrowRight}")
+    expect(screen.getByRole("button", {name: /^Fatura de Abr\/26/})).toHaveAttribute("aria-pressed", "true")
+    await waitFor(() => expect(items).toHaveBeenCalledWith(expect.anything(), "visa", "2026-04"))
     expect(await screen.findByText(/2\/3/)).toBeInTheDocument()
+  })
+
+  it("marks an item a recurrence posted, linking to it", async () => {
+    serve(ALL)
+    vi.spyOn(finance, "getCardStatement").mockResolvedValue({...statement("2026-03", "open", 1),
+      items: [{purchase_id: "p9", description: "Streaming", category_id: "food", date: "2026-03-02", number: 1, of: 1, kind: "installment", amount: 3990, recurrence_id: "r-stream"}]})
+    renderWithQuery(<CardsView/>)
+    const link = await screen.findByRole("link", {name: "Abrir a recorrência de Streaming"})
+    expect(link).toHaveAttribute("href", "/finance/recurrences?recurrence=r-stream")
+    expect(link).toHaveTextContent("recorrente")
+  })
+
+  it("has no em dash in what it shows", async () => {
+    serve(ALL)
+    renderWithQuery(<CardsView/>)
+    await screen.findByText("Geladeira")
+    expect(document.body.textContent).not.toContain("—")
+  })
+
+  describe("on a phone", () => {
+    beforeEach(() => {
+      vi.stubGlobal("matchMedia", (query: string) => ({matches: query.includes("max-width"), media: query, addEventListener: () => undefined, removeEventListener: () => undefined}))
+    })
+    afterEach(() => vi.unstubAllGlobals())
+
+    const strip = () => screen.getByRole("list", {name: "Faturas do cartão"})
+    // jsdom does no layout: give the strip a width and a scroll position it keeps.
+    const sized = (el: HTMLElement, width: number) => {
+      Object.defineProperty(el, "clientWidth", {configurable: true, value: width})
+      Object.defineProperty(el, "scrollLeft", {configurable: true, writable: true, value: 0})
+    }
+
+    it("shows one statement at a time and selects the one swiped to", async () => {
+      const {items} = serve(ALL)
+      renderWithQuery(<CardsView/>)
+      await screen.findByRole("button", {name: /^Fatura de Mar\/26/})
+      const el = strip()
+      sized(el, 300)
+      const index = within(el).getAllByRole("button").findIndex(b => b.dataset.month === "2026-04")
+      el.scrollLeft = index * 300
+      el.dispatchEvent(new Event("scroll"))
+      await waitFor(() => expect(screen.getByRole("button", {name: /^Fatura de Abr\/26/})).toHaveAttribute("aria-pressed", "true"))
+      await waitFor(() => expect(items).toHaveBeenCalledWith(expect.anything(), "visa", "2026-04"))
+    })
+
+    it("opens the strip on the open statement once the statements arrive", async () => {
+      // The strip mounts after the first page, with the selection already set: it must still scroll to it.
+      const left = new WeakMap<Element, number>()
+      vi.spyOn(HTMLOListElement.prototype, "clientWidth", "get").mockReturnValue(300)
+      Object.defineProperty(HTMLOListElement.prototype, "scrollLeft", {configurable: true,
+        get(this: Element) { return left.get(this) ?? 0 }, set(this: Element, v: number) { left.set(this, v) }})
+      try {
+        serve(ALL)
+        renderWithQuery(<CardsView/>)
+        await screen.findByRole("button", {name: /^Fatura de Mar\/26/})
+        const el = strip()
+        const index = within(el).getAllByRole("button").findIndex(b => b.dataset.month === "2026-03")
+        await waitFor(() => expect(el.scrollLeft).toBe(index * 300))
+      } finally {
+        delete (HTMLOListElement.prototype as unknown as Record<string, unknown>).scrollLeft
+      }
+    })
+
+    // Review Focus 5.
+    it("keeps the card on screen when older statements load on a phone", async () => {
+      serve(ALL)
+      renderWithQuery(<CardsView/>)
+      await screen.findByRole("button", {name: /^Fatura de Mar\/26/})
+      const el = strip()
+      sized(el, 300)
+      el.scrollLeft = 0 // the first loaded statement: the edge, so older ones load
+      el.dispatchEvent(new Event("scroll"))
+      const shown = within(el).getAllByRole("button")[0].dataset.month!
+      await waitFor(() => expect(within(el).getAllByRole("button")[0].dataset.month).not.toBe(shown))
+      const index = within(el).getAllByRole("button").findIndex(b => b.dataset.month === shown)
+      expect(el.scrollLeft).toBe(index * 300)
+    })
   })
 
   it("refunds a purchase after confirming", async () => {
@@ -211,7 +344,9 @@ describe("F5 — statement status colours (UX batch 3)", () => {
   })
   afterEach(() => vi.useRealTimers())
 
-  const badge = async (text: string) => (await screen.findByText(text)).closest("[data-slot=badge], span") as HTMLElement
+  // The selected statement's own badge, under the timeline.
+  const badge = async (text: string) =>
+    (await within(await screen.findByRole("region", {name: /^Fatura /})).findByText(text)).closest("[data-slot=badge], span") as HTMLElement
 
   it("an open statement is calm green, never a warning", async () => {
     serve(ALL)
@@ -223,7 +358,7 @@ describe("F5 — statement status colours (UX batch 3)", () => {
   })
 
   it("a closed statement not yet due is neutral; red only once it is past due unpaid", async () => {
-    const get = serve(ALL)
+    const get = serve(ALL).items
     get.mockImplementation(async (_c, _id, month) => ({
       ...statement(month, "closed", 1), bill_id: "b1",
       due_date: month === "2026-03" ? "2026-03-25" : "2026-03-10",
@@ -232,7 +367,7 @@ describe("F5 — statement status colours (UX batch 3)", () => {
     const closed = await badge("Fechada")
     expect(closed).not.toHaveClass("text-danger")
     expect(closed).not.toHaveClass("text-warning")
-    await userEvent.click(screen.getByRole("button", {name: "Fatura anterior"}))
+    await userEvent.click(await screen.findByRole("button", {name: /^Fatura de Fev\/26/}))
     const late = await badge("Vencida")
     expect(late).toHaveClass("text-danger")
   })
