@@ -29,6 +29,7 @@ const (
 	PrefixUsageRecord     = "ur_"
 	PrefixEvent           = "evt_"
 	PrefixAuditLog        = "log_"
+	PrefixApplication     = "apl_"
 )
 
 // New returns a bare ULID string. Uses crypto/rand entropy; safe for concurrent

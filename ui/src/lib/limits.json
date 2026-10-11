@@ -15,10 +15,16 @@
     "email": 254,
     "reason": 500,
     "externalRef": 128,
-    "taxID": 18
+    "taxID": 18,
+    "applicationDescription": 1000,
+    "website": 200
   },
   "maxInstallments": 48,
   "maxNetDays": 90,
   "maxSubscriptionItems": 20,
-  "maxUsageQuantity": 1000000000
+  "maxUsageQuantity": 1000000000,
+  "minText": {
+    "applicationDescription": 20,
+    "rejectionReason": 10
+  }
 }

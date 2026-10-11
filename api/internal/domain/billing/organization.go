@@ -77,7 +77,20 @@ type Organization struct {
 	// it is finalized, so editing this changes what happens to invoices issued
 	// afterwards and nothing about the ones already in flight.
 	DunningPolicy DunningSchedule `dynamodbav:"dunning_policy,omitempty" json:"dunning_policy,omitempty"`
+
+	// SuspendedAt is set on a live tenant whose prod_billing entitlement ended
+	// (spec § 4.3) and cleared when one is active again; RFC 3339 UTC. Written
+	// only in the transaction of the subscription change that caused it
+	// (repositories.TenantSuspension). Never on the wire.
+	SuspendedAt string `dynamodbav:"suspended_at,omitempty" json:"-"`
 }
+
+// ErrTenantSuspended is a write refused because the live tenant is suspended.
+var ErrTenantSuspended = errors.New("tenant is suspended")
+
+// Suspended reports a live tenant whose writes are refused. Test mode is never
+// suspended, whatever its row says.
+func (o *Organization) Suspended() bool { return o.Livemode && o.SuspendedAt != "" }
 
 // AuthorizeCharge is the **single** gate deciding whether an organization may
 // open a charge. Every path that collects money calls this one function.

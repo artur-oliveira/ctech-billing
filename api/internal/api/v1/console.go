@@ -157,7 +157,7 @@ func (h *consoleHandlers) merchantStatus(ctx context.Context, sub, accountOrgID 
 			return "", err
 		}
 	}
-	return billing.MerchantStatusOf(rows[0], rows[1]), nil
+	return billing.MerchantStatusOf(rows[0], rows[1], ""), nil
 }
 
 // listInvoicesConsole is C2. It defaults to the current month because that is
