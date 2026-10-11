@@ -123,10 +123,12 @@ R$ 0, `metadata.plan: early_access`, not shown in any public plan list).
 - `POST /v1.0/console/credentials` `{ "client_id": "…" }` — billing calls ctech-account's internal route (§ 6.3) and
   admits the client to the tenant in the current mode only if:
   - the client's owner is the person connecting it;
-  - it is active and holds at least one `billing:` M2M scope;
+  - it is active and holds **only** scopes marked `"m2m": true` (at least one `billing:` scope). A client that also
+    holds a sign-in scope (`billing:my-*`, `openid`, …) could never get a `client_credentials` token (§ 6.3), so it is
+    refused here, at connect time;
   - it is not admitted to any tenant (the global `Resolve` lookup).
   Refusals: `422` codes `client_not_yours` (also for an unknown client: no oracle), `client_has_no_billing_scope`,
-  `client_already_connected` (never says to which tenant). Live mode requires the live tenant (approved).
+  `client_not_machine_only`, `client_already_connected` (never says to which tenant). Live mode requires the live tenant (approved).
 - `DELETE /v1.0/console/credentials/:client_id` — removes the admission; audited.
 - The console links to ctech-account's developer page with the billing scopes preselected.
 - A credential belongs to the tenant: its connector leaving the organization does not remove it.
@@ -167,7 +169,19 @@ manifest; reads keep `billing:organization:read`.
 
 `GET /v1.0/internal/oauth-clients/{client_id}` → `{ "client_id", "owner_user_id", "allowed_scopes", "active" }`,
 never the secret. New scope `internal:account:oauth-client-read`, granted to the client billing already uses for its
-membership reads. Unknown client → `404`.
+membership reads (a new `cmd/createclient -grant` mode adds a scope to an existing client). Unknown client → `404`.
+
+**Third-party `client_credentials` (decided 2026-10-10).** Today ctech-account's `POST /v1.0/token` issues
+`client_credentials` tokens to first-party clients only, so a merchant's developer-page client could not call the M2M
+API at all. ctech-account changes so that a non-first-party confidential client gets a `client_credentials` token
+when its owner is active and **every scope it holds is marked `"m2m": true`** by the owning resource server's manifest
+(`"m2m"` is valid on public scopes only); otherwise the whole request is refused, never answered with a subset.
+First-party clients are unchanged. Billing marks `"m2m": true` on `billing:subscriptions:read|write`,
+`billing:invoices:read|write`, `billing:usage:write`, `billing:customers:read|write`, `billing:entitlements:read`,
+`billing:products:read|write` and `billing:organization:read` — never on `billing:my-*`, `billing:finance:*` or
+`billing:organization:write`. It publishes only after ctech-account's change is live in the same environment (an
+older ctech-account drops the unknown field, and a later identical publish would not resend it). Plan:
+`ctech-account/docs/plans/2026-10-10-oauth-client-internal-route.md`.
 
 ## 7. Console UI
 
@@ -192,13 +206,15 @@ Built with `/impeccable`, following `ui/DESIGN.md`; each screen has its own phon
 
 ## 9. Deploy
 
-1. ctech-account: the internal route and scope (§ 6.3); the scope granted to billing's client.
+1. ctech-account: the internal route and scope (§ 6.3); the scope granted to billing's client; third-party
+   `client_credentials` for m2m-only clients.
 2. billing part 1: membership resolution for the billing half, `ACCOUNT_ORG` lookup written on create/link, a backfill
    command (dry run by default) rewriting the lookup key of linked tenants; `GetByOwner` kept as a fallback until the
    backfill is confirmed, removed in the next deploy.
 3. billing part 2: applications, review, approval, suspension; seed gains `prod_billing` and the early access price
    (`api/cmd/seed/run.sh prod`).
-4. billing part 3: credentials and webhooks.
+4. billing part 3: credentials and webhooks; the manifest marks its integration scopes `"m2m": true` (after step 1 is
+   live).
 
 Each part deploys on its own; part 1 alone only changes how people get in.
 
