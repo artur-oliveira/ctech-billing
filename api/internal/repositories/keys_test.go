@@ -178,7 +178,7 @@ func TestTheAccountOrganizationKeyIsModeScopedAndDistinctFromTheOwnerKey(t *test
 		t.Fatalf("test key = %q", got)
 	}
 	// A user id that happens to equal an organization id must not collide.
-	if LookupOrganizationAccountPK(true, acct) == LookupOrganizationOwnerPK(true, acct) {
+	if LookupOrganizationAccountPK(true, acct) == "live#OWNER#"+acct {
 		t.Fatal("account and owner keys collide")
 	}
 }

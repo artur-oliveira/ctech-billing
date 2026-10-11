@@ -88,37 +88,6 @@ func (r *OrganizationRepository) Get(ctx context.Context, organizationID string,
 	return &row.Organization, nil
 }
 
-// GetByOwner resolves a console user to the organization they own, in one mode.
-//
-// This is the console's equivalent of CredentialRepository.Resolve, and it has
-// the same property: the tenant is the **answer**, so it cannot also be part of
-// the question. Nothing the browser sends names an organization — a session is
-// scoped by who the token says you are, not by what the request asks for
-// (ADR 0011).
-//
-// One owner, one organization per mode (ADR 0007). When that stops being true,
-// this returns a list and the console grows an organization switcher; until
-// then, a switcher would be UI for a state that cannot exist.
-func (r *OrganizationRepository) GetByOwner(ctx context.Context, userID string, livemode bool) (*billing.Organization, error) {
-	res, err := r.base.Query(ctx, QueryOpts{
-		IndexName: IndexLookup,
-		PKField:   "lookup_pk",
-		PK:        LookupOrganizationOwnerPK(livemode, userID),
-		Limit:     1,
-	})
-	if err != nil {
-		return nil, err
-	}
-	if len(res.Items) == 0 {
-		return nil, fmt.Errorf("%w: organization owned by %s", ErrNotFound, userID)
-	}
-	row, err := Decode[organizationRow](res.Items[0])
-	if err != nil {
-		return nil, err
-	}
-	return &row.Organization, nil
-}
-
 // ErrAccountOrganizationAmbiguous is two tenant rows carrying one account
 // organization's key in one mode. Answering with whichever row the index
 // returned first would hand one merchant another's data, so nothing is chosen.
@@ -129,7 +98,7 @@ var ErrAccountOrganizationAmbiguous = errors.New("more than one tenant is linked
 var ErrAccountOrganizationTaken = errors.New("account organization is already linked to another tenant")
 
 // GetByAccountOrganization resolves the selected ctech-account organization to
-// its tenant in one mode (ADR 0028). Like GetByOwner and
+// its tenant in one mode (ADR 0028). Like
 // CredentialRepository.Resolve, the tenant is the answer, never part of the
 // question: the caller passes an organization the resolver has already
 // confirmed the person belongs to.

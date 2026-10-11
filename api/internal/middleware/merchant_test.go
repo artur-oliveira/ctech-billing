@@ -33,19 +33,6 @@ func (f *tenants) GetByAccountOrganization(_ context.Context, acct string, live 
 	return nil, repositories.ErrNotFound
 }
 
-// legacyTenants also answers the pre-ADR-0028 owner lookup ("user|mode").
-type legacyTenants struct {
-	*tenants
-	byOwner map[string]*billing.Organization
-}
-
-func (f *legacyTenants) GetByOwner(_ context.Context, user string, live bool) (*billing.Organization, error) {
-	if o, ok := f.byOwner[user+"|"+repositories.Mode(live)]; ok {
-		return o, nil
-	}
-	return nil, repositories.ErrNotFound
-}
-
 var tenantA = &billing.Organization{ID: "org_a", Livemode: true, AccountOrganizationID: orgA}
 
 // merchantApp mounts the production chain in front of a handler that echoes
@@ -196,35 +183,12 @@ func TestACachedRefusalIsAPlain404(t *testing.T) {
 	}
 }
 
-// The fallback (until Task 11): a not-yet-backfilled tenant is reachable by its
-// stored owner only when it is linked to the selected organization.
-func TestTheLegacyOwnerKeyReachesOnlyALinkedTenant(t *testing.T) {
-	unlinked := &billing.Organization{ID: "org_u", Livemode: true}
-	elsewhere := &billing.Organization{ID: "org_e", Livemode: true, AccountOrganizationID: orgB}
-	for _, c := range []struct {
-		name   string
-		legacy *billing.Organization
-		want   int
-	}{
-		{"linked to the selected organization", tenantA, 200},
-		{"linked to another organization", elsewhere, 404},
-		{"not linked at all", unlinked, 404},
-	} {
-		src := &members{m: map[string]string{orgA + "|alice": "owner"}}
-		ts := &legacyTenants{tenants: &tenants{}, byOwner: map[string]*billing.Organization{"alice|live": c.legacy}}
-		app, _ := merchantApp(src, ts, "alice", "sess")
-		if code, body := get(t, app, "live", "org:"+orgA); code != c.want {
-			t.Fatalf("%s: %d %q, want %d", c.name, code, body, c.want)
-		}
-	}
-}
-
-func TestTheLegacyFallbackNeverWidensTheRole(t *testing.T) {
+func TestAMemberIsRefusedWhateverTheTenantRows(t *testing.T) {
 	src := &members{m: map[string]string{orgA + "|alice": "member"}}
-	ts := &legacyTenants{tenants: &tenants{}, byOwner: map[string]*billing.Organization{"alice|live": tenantA}}
+	ts := &tenants{byAccount: map[string]*billing.Organization{orgA + "|live": tenantA}}
 	app, ran := merchantApp(src, ts, "alice", "sess")
-	if code, body := get(t, app, "live", "org:"+orgA); code != 403 || *ran {
-		t.Fatalf("%d %q ran=%v", code, body, *ran)
+	if code, body := get(t, app, "live", "org:"+orgA); code != 403 || *ran || ts.calls != 0 {
+		t.Fatalf("%d %q ran=%v reads=%d", code, body, *ran, ts.calls)
 	}
 }
 

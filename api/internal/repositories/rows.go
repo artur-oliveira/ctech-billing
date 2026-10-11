@@ -36,10 +36,9 @@ type organizationRow struct {
 	keys
 	billing.Organization
 	// LookupPK resolves the tenant for the console session: the account
-	// organization it is linked to (LookupOrganizationAccountPK, ADR 0028), or,
-	// on rows written before that and not yet backfilled, its owner
-	// (LookupOrganizationOwnerPK, ADR 0011). Sparse: a tenant with neither is
-	// reachable only through M2M credentials, which is the safe direction.
+	// organization it is linked to (LookupOrganizationAccountPK, ADR 0028).
+	// Sparse: an unlinked tenant is reachable only through M2M credentials,
+	// which is the safe direction.
 	LookupPK string `dynamodbav:"lookup_pk,omitempty"`
 }
 

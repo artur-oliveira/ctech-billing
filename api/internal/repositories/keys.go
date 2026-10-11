@@ -391,25 +391,14 @@ func LookupCustomerRefPK(organizationID string, livemode bool, externalRef strin
 	return TenantPK(organizationID, livemode) + "#CUSTOMER_REF#" + externalRef
 }
 
-// LookupOrganizationOwnerPK resolves a console user to the organization they
-// own, which is the one read that must happen before the tenant is known
-// (ADR 0011). It is the user-session counterpart of LookupCredentialPK: an
-// integration arrives with a client id, a person arrives with a subject.
-//
-// The mode is in the key rather than filtered afterwards because the live and
-// test organizations are two rows with the same owner, and a lookup that returns
-// both and then picks one is a lookup that can pick wrong.
-func LookupOrganizationOwnerPK(livemode bool, userID string) string {
-	return Mode(livemode) + "#OWNER#" + userID
-}
-
 // LookupOrganizationAccountPK resolves a ctech-account organization to its
 // billing tenant in one mode (ADR 0028): the console's question is "which
 // tenant is the organization I selected", and the membership that authorizes
 // the question is checked before this key is ever read.
 //
-// The mode is in the key for the reason LookupOrganizationOwnerPK gives: the
-// live and test tenants are two rows linked to the same organization.
+// The mode is in the key rather than filtered afterwards: the live and test
+// tenants are two rows linked to the same organization, and a lookup that
+// returns both and then picks one is a lookup that can pick wrong.
 func LookupOrganizationAccountPK(livemode bool, accountOrgID string) string {
 	return Mode(livemode) + "#ACCOUNT_ORG#" + accountOrgID
 }

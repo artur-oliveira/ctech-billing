@@ -54,7 +54,7 @@ func setLookup(t *testing.T, org *billing.Organization, lookup, acct string) {
 // production row carries before the backfill.
 func legacyLookup(t *testing.T, org *billing.Organization) {
 	t.Helper()
-	setLookup(t, org, repositories.LookupOrganizationOwnerPK(org.Livemode, org.OwnerUserID), "")
+	setLookup(t, org, repositories.Mode(org.Livemode)+"#OWNER#"+org.OwnerUserID, "")
 }
 
 func TestATenantIsFoundByItsAccountOrganizationInItsModeOnly(t *testing.T) {
@@ -144,14 +144,6 @@ func TestSetOwnerNeverReplacesTheAccountOrganizationKey(t *testing.T) {
 	}
 }
 
-func TestAnUnlinkedTenantWithAnOwnerHasNoConsoleKey(t *testing.T) {
-	ctx := ctxT(t)
-	org := newOrg(t, true) // owner, no link
-	if _, err := orgRepo().GetByOwner(ctx, org.OwnerUserID, true); !errors.Is(err, repositories.ErrNotFound) {
-		t.Fatalf("GetByOwner = %v: a new tenant must not be reachable by its stored owner", err)
-	}
-}
-
 func TestSetOwnerWritesNoConsoleKey(t *testing.T) {
 	ctx := ctxT(t)
 	org := &billing.Organization{
@@ -163,9 +155,6 @@ func TestSetOwnerWritesNoConsoleKey(t *testing.T) {
 	owner := "usr_" + id.New()
 	if err := orgRepo().SetOwner(ctx, org, owner, "test", "req_1", now()); err != nil {
 		t.Fatal(err)
-	}
-	if _, err := orgRepo().GetByOwner(ctx, owner, true); !errors.Is(err, repositories.ErrNotFound) {
-		t.Fatalf("GetByOwner = %v", err)
 	}
 	got, err := orgRepo().Get(ctx, org.ID, true)
 	if err != nil || got.OwnerUserID != owner {
@@ -197,7 +186,7 @@ func TestBackfillRewritesALegacyOwnerKeyToTheAccountOrganization(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := rowOf(dry.Missing, org.ID, true)
-	if r == nil || r.From != repositories.LookupOrganizationOwnerPK(true, org.OwnerUserID) ||
+	if r == nil || r.From != "live#OWNER#"+org.OwnerUserID ||
 		r.To != repositories.LookupOrganizationAccountPK(true, acct) {
 		t.Fatalf("dry run missing row = %+v", r)
 	}
@@ -221,8 +210,8 @@ func TestBackfillReportsTwoTenantsOnOneOrganizationAndWritesNeither(t *testing.T
 	ctx := ctxT(t)
 	acct := newSpaceOrgID()
 	a, b := newOrg(t, true), newOrg(t, true)
-	setLookup(t, a, repositories.LookupOrganizationOwnerPK(true, a.OwnerUserID), acct)
-	setLookup(t, b, repositories.LookupOrganizationOwnerPK(true, b.OwnerUserID), acct)
+	setLookup(t, a, "live#OWNER#"+a.OwnerUserID, acct)
+	setLookup(t, b, "live#OWNER#"+b.OwnerUserID, acct)
 
 	rep, err := orgRepo().BackfillAccountOrganizationLookup(ctx, true)
 	if err != nil {
@@ -264,7 +253,7 @@ func TestBackfillListsUnlinkedTenantsThatHadAConsoleKey(t *testing.T) {
 }
 
 // Spec § 10.6, first half: tenant zero is reachable by its owner and admins
-// after the backfill; before it, by its stored owner only (the fallback).
+// after the backfill; before it, by nobody (the owner fallback is gone).
 func TestTenantZeroIsReachableByItsOwnerAndAdminsAfterTheBackfill(t *testing.T) {
 	ctx := ctxT(t)
 	e := newAPI(t)
@@ -276,7 +265,7 @@ func TestTenantZeroIsReachableByItsOwnerAndAdminsAfterTheBackfill(t *testing.T) 
 		return e.console(t, "/v1.0/console/settings", e.token(t, sub, "sess_"+id.New(), middleware.ScopeOrganizationRead), "live")
 	}
 
-	if res := read(e.org.OwnerUserID); res.status != http.StatusOK {
+	if res := read(e.org.OwnerUserID); res.status != http.StatusNotFound || !strings.Contains(string(res.body), `"no_merchant"`) {
 		t.Fatalf("owner before the backfill: %d %s", res.status, res.body)
 	}
 	if res := read(admin); res.status != http.StatusNotFound || !strings.Contains(string(res.body), `"no_merchant"`) {
@@ -293,5 +282,30 @@ func TestTenantZeroIsReachableByItsOwnerAndAdminsAfterTheBackfill(t *testing.T) 
 	}
 	if res := read(member); res.status != http.StatusForbidden {
 		t.Fatalf("member after the backfill: %d %s", res.status, res.body)
+	}
+}
+
+// Nobody reaches a tenant by owner_user_id alone: not as an owner of its
+// organization while the row carries only the old key, and not as a stored
+// owner who is no member of the organization. Two envs, so no membership
+// answer is cached across the two halves.
+func TestNobodyReachesATenantByOwnerUserIDAlone(t *testing.T) {
+	read := func(e *apiEnv) apiResponse {
+		token := e.token(t, e.org.OwnerUserID, "sess_"+id.New(), middleware.ScopeOrganizationRead)
+		return e.console(t, "/v1.0/console/settings", token, "live")
+	}
+
+	e := newAPI(t)
+	legacyLookup(t, e.org) // an un-backfilled row
+	if res := read(e); res.status != http.StatusNotFound || !strings.Contains(string(res.body), `"no_merchant"`) {
+		t.Fatalf("owner on a legacy-only row: %d %s", res.status, res.body)
+	}
+
+	f := newAPI(t)
+	f.account.mu.Lock()
+	delete(f.account.members, f.accountOrg+"|"+f.org.OwnerUserID)
+	f.account.mu.Unlock()
+	if res := read(f); res.status != http.StatusNotFound || !strings.Contains(string(res.body), "/problems/space-not-found") {
+		t.Fatalf("stored owner who is not a member: %d %s", res.status, res.body)
 	}
 }
