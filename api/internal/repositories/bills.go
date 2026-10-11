@@ -135,31 +135,10 @@ func newBillItem(sp space.ResolvedSpace, b finance.Bill, now time.Time) billItem
 // an active asset. The ledger's own balance conditions only prove an account
 // exists in the space. invalid is the sentinel the caller's refusals wrap.
 func checkDirectionAccounts(ctx context.Context, ledger *LedgerRepository, sp space.ResolvedSpace, dir finance.Direction, categoryID, accountID string, invalid error) error {
-	cat, err := ledger.getAccount(ctx, sp, categoryID)
-	if errors.Is(err, ErrNotFound) {
-		return fmt.Errorf("%w: category %s", ErrUnknownAccount, categoryID)
-	}
-	if err != nil {
+	if err := checkCategory(ctx, ledger, sp, dir, categoryID, invalid); err != nil {
 		return err
 	}
-	want := finance.ClassExpense
-	if dir == finance.Receivable {
-		want = finance.ClassIncome
-	}
-	if cat.Class != want || cat.System || cat.Archived {
-		return fmt.Errorf("%w: a %s needs an active %s category", invalid, dir, want)
-	}
-	acct, err := ledger.getAccount(ctx, sp, accountID)
-	if errors.Is(err, ErrNotFound) {
-		return fmt.Errorf("%w: account %s", ErrUnknownAccount, accountID)
-	}
-	if err != nil {
-		return err
-	}
-	if acct.Class != finance.ClassAsset || acct.System || acct.Archived {
-		return fmt.Errorf("%w: the account must be an active asset account", invalid)
-	}
-	return nil
+	return checkAssetAccount(ctx, ledger, sp, accountID, invalid)
 }
 
 func (r *BillRepository) checkBillAccounts(ctx context.Context, sp space.ResolvedSpace, b finance.Bill) error {
