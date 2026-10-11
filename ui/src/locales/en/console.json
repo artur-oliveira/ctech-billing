@@ -446,5 +446,58 @@
   "disconnectBody": "Calls from {{id}} to CTech Billing stop at once. The client still exists in CTech Account.",
   "back": "Back",
   "disconnected": "Client disconnected."
+ },
+ "webhooks": {
+  "title": "Webhooks",
+  "intro": "CTech Billing tells your API when something changes (an invoice paid, a subscription canceled). Every delivery is signed with the endpoint's secret.",
+  "new": "New endpoint",
+  "listTitle": "Endpoints",
+  "count": "{{count}} of {{max}} endpoints in this mode",
+  "atLimit": "Limit of {{max}} endpoints in this mode. Delete one to add another.",
+  "empty": "No endpoint in this mode.",
+  "emptyHint": "Add an https URL of your API to start receiving events.",
+  "allEvents": "All events",
+  "someEvents_one": "{{count}} event",
+  "someEvents_other": "{{count}} events",
+  "addedOn": "Added on {{date}}",
+  "provisioned": "Managed by CTech",
+  "active": "Active",
+  "disabled": "Disabled",
+  "disabledHint": "Disabled after repeated failures. Delete it and add it again.",
+  "test": "Test",
+  "tested": "Ping sent. It arrives within 2 minutes.",
+  "rotate": "Rotate secret",
+  "delete": "Delete",
+  "more": "More actions: {{url}}",
+  "back": "Back",
+  "form": {
+   "title": "New endpoint",
+   "url": "URL",
+   "urlHint": "https only, on a public address.",
+   "urlPlaceholder": "https://your-api.com/webhooks/billing",
+   "all": "All events",
+   "submit": "Add"
+  },
+  "groups": {
+   "invoice": "Invoices",
+   "subscription": "Subscriptions",
+   "payment": "Payments",
+   "checkout": "Checkout",
+   "credit_note": "Credit notes"
+  },
+  "secret": {
+   "title": "Copy the secret now",
+   "body": "It signs every delivery (X-Billing-Signature header) and is not shown again. If you lose it, rotate it.",
+   "label": "Signing secret",
+   "copy": "Copy",
+   "copied": "Secret copied.",
+   "copyFailed": "Could not copy. Select it and copy by hand.",
+   "done": "I copied it"
+  },
+  "rotateTitle": "Rotate the secret of {{url}}?",
+  "rotateBody": "The current secret stops working at once. Deliveries that fail while you update your API are retried, signed with the new secret.",
+  "deleteTitle": "Delete {{url}}?",
+  "deleteBody": "No event is sent to it after this, including the ones already queued.",
+  "deleted": "Endpoint deleted."
  }
 }

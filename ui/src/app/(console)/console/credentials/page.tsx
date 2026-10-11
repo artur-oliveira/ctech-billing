@@ -114,7 +114,7 @@ function ConnectBox({scopes, ready}: {scopes: string[]; ready: boolean}) {
             {ready ? (
               <a
                 href={developerClientURL(scopes)} target="_blank" rel="noopener noreferrer"
-                className={cn(buttonVariants({variant: "outline"}), "w-full gap-1.5 sm:w-auto")}
+                className={cn(buttonVariants({variant: "outline"}), "h-auto min-h-11 w-full gap-1.5 py-2 whitespace-normal sm:min-h-0 sm:w-auto")}
               >
                 {t("console.credentials.createClient")}
                 <ExternalLink aria-hidden className="size-3.5"/>

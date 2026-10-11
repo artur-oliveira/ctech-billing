@@ -446,5 +446,58 @@
   "disconnectBody": "As chamadas de {{id}} ao CTech Billing param na hora. O cliente continua existindo na CTech Account.",
   "back": "Voltar",
   "disconnected": "Cliente desconectado."
+ },
+ "webhooks": {
+  "title": "Webhooks",
+  "intro": "O CTech Billing avisa a sua API quando algo muda (uma fatura paga, uma assinatura cancelada). Cada entrega é assinada com o segredo do endpoint.",
+  "new": "Novo endpoint",
+  "listTitle": "Endpoints",
+  "count": "{{count}} de {{max}} endpoints neste modo",
+  "atLimit": "Limite de {{max}} endpoints neste modo. Exclua um para adicionar outro.",
+  "empty": "Nenhum endpoint neste modo.",
+  "emptyHint": "Adicione uma URL https da sua API para começar a receber os eventos.",
+  "allEvents": "Todos os eventos",
+  "someEvents_one": "{{count}} evento",
+  "someEvents_other": "{{count}} eventos",
+  "addedOn": "Adicionado em {{date}}",
+  "provisioned": "Gerenciado pela CTech",
+  "active": "Ativo",
+  "disabled": "Desativado",
+  "disabledHint": "Desativado depois de falhas seguidas. Exclua e cadastre de novo.",
+  "test": "Testar",
+  "tested": "Ping enviado. Ele chega em até 2 minutos.",
+  "rotate": "Trocar segredo",
+  "delete": "Excluir",
+  "more": "Mais ações: {{url}}",
+  "back": "Voltar",
+  "form": {
+   "title": "Novo endpoint",
+   "url": "URL",
+   "urlHint": "Só https, em um endereço público.",
+   "urlPlaceholder": "https://sua-api.com.br/webhooks/billing",
+   "all": "Todos os eventos",
+   "submit": "Adicionar"
+  },
+  "groups": {
+   "invoice": "Faturas",
+   "subscription": "Assinaturas",
+   "payment": "Pagamentos",
+   "checkout": "Checkout",
+   "credit_note": "Notas de crédito"
+  },
+  "secret": {
+   "title": "Copie o segredo agora",
+   "body": "Ele assina cada entrega (cabeçalho X-Billing-Signature) e não aparece de novo. Se perder, troque o segredo.",
+   "label": "Segredo de assinatura",
+   "copy": "Copiar",
+   "copied": "Segredo copiado.",
+   "copyFailed": "Não foi possível copiar. Selecione e copie à mão.",
+   "done": "Já copiei"
+  },
+  "rotateTitle": "Trocar o segredo de {{url}}?",
+  "rotateBody": "O segredo atual para de valer na hora. Entregas que falharem enquanto você atualiza a sua API são tentadas de novo, já com o segredo novo.",
+  "deleteTitle": "Excluir {{url}}?",
+  "deleteBody": "Nenhum evento é enviado para ele depois disso, nem os que estão na fila.",
+  "deleted": "Endpoint excluído."
  }
 }
