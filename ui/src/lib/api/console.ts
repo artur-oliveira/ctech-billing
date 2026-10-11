@@ -6,6 +6,8 @@ import type {SupportedLocale} from "@/lib/locale"
 import type {
   ApplicationStatus,
   ApplyRequest,
+  ConsoleCredential,
+  ConsoleCredentialList,
   ConsoleCustomer,
   ConsoleCustomerDetail,
   ConsoleInvoiceDetail,
@@ -19,6 +21,8 @@ import type {
   ConsoleSubscription,
   ConsoleSubscriptionDetail,
   ConsoleSubscriptionRow,
+  ConsoleWebhookList,
+  ConsoleWebhookWithSecret,
   DocumentLink,
   DunningPolicy,
   DunningStep,
@@ -49,6 +53,8 @@ export const consoleKeys = {
   overview: (s: ConsoleScope, year: number, month: number) =>
     ["console", s.org, s.mode, "overview", year, month] as const,
   settings: (s: ConsoleScope) => ["console", s.org, s.mode, "settings"] as const,
+  credentials: (s: ConsoleScope) => ["console", s.org, s.mode, "credentials"] as const,
+  webhooks: (s: ConsoleScope) => ["console", s.org, s.mode, "webhooks"] as const,
   invoices: (s: ConsoleScope) => ["console", s.org, s.mode, "invoices"] as const,
   invoiceMonth: (s: ConsoleScope, year: number, month: number) =>
     ["console", s.org, s.mode, "invoices", "month", year, month] as const,
@@ -364,5 +370,46 @@ export async function approveApplication(scope: ConsoleScope, id: string): Promi
 
 export async function rejectApplication(scope: ConsoleScope, id: string, reason: string): Promise<MerchantApplication> {
   const {data} = await apiClient.post<MerchantApplication>(`/v1.0/console/applications/${encodeURIComponent(id)}/reject`, {reason}, scopeHeaders(scope))
+  return data
+}
+
+/** The merchant's API credentials: their own ctech-account OAuth clients (spec § 5.1). */
+export async function listConsoleCredentials(scope: ConsoleScope): Promise<ConsoleCredentialList> {
+  const {data} = await apiClient.get<ConsoleCredentialList>("/v1.0/console/credentials", scopeHeaders(scope))
+  return data
+}
+
+export async function connectCredential(scope: ConsoleScope, clientId: string): Promise<ConsoleCredential> {
+  const {data} = await apiClient.post<ConsoleCredential>("/v1.0/console/credentials", {client_id: clientId}, scopeHeaders(scope))
+  return data
+}
+
+export async function disconnectCredential(scope: ConsoleScope, clientId: string): Promise<void> {
+  await apiClient.delete(`/v1.0/console/credentials/${encodeURIComponent(clientId)}`, scopeHeaders(scope))
+}
+
+export async function listConsoleWebhooks(scope: ConsoleScope): Promise<ConsoleWebhookList> {
+  const {data} = await apiClient.get<ConsoleWebhookList>("/v1.0/console/webhooks", scopeHeaders(scope))
+  return data
+}
+
+export async function createWebhook(scope: ConsoleScope, body: {url: string; events: string[]}): Promise<ConsoleWebhookWithSecret> {
+  const {data} = await apiClient.post<ConsoleWebhookWithSecret>("/v1.0/console/webhooks", body, scopeHeaders(scope))
+  return data
+}
+
+export async function deleteWebhook(scope: ConsoleScope, id: string): Promise<void> {
+  await apiClient.delete(`/v1.0/console/webhooks/${encodeURIComponent(id)}`, scopeHeaders(scope))
+}
+
+export async function rotateWebhookSecret(scope: ConsoleScope, id: string): Promise<ConsoleWebhookWithSecret> {
+  const {data} = await apiClient.post<ConsoleWebhookWithSecret>(
+    `/v1.0/console/webhooks/${encodeURIComponent(id)}/rotate-secret`, {}, scopeHeaders(scope))
+  return data
+}
+
+export async function testWebhook(scope: ConsoleScope, id: string): Promise<{event_id: string}> {
+  const {data} = await apiClient.post<{event_id: string}>(
+    `/v1.0/console/webhooks/${encodeURIComponent(id)}/test`, {}, scopeHeaders(scope))
   return data
 }

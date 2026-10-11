@@ -12,6 +12,9 @@ import {invoiceTitle} from "@/lib/invoice"
 const problem = (status: number, data: object) => ({response: {status, data: {type: "about:blank", title: "T", status, ...data}}})
 
 const BACKEND_CODES = [
+  "client_not_yours", "client_has_no_billing_scope", "client_not_machine_only", "client_already_connected",
+  "credential_provisioned", "account_unavailable", "webhook_endpoint_limit", "webhook_endpoint_provisioned",
+  "webhook_endpoint_disabled",
   "no_merchant", "merchant_role_required",
   "tenant_suspended", "application_not_pending", "already_merchant", "application_busy", "no_application", "companies_unavailable",
   "invalid_body", "invalid_cursor", "invalid_link", "invalid_signature", "resource_not_found", "invoice_not_found",

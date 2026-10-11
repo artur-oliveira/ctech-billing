@@ -19,6 +19,10 @@ import {
   consoleSubscriptionDetail,
   consoleSubscriptions,
   consoleSession,
+  MOCK_EVENT_TYPES,
+  MOCK_MACHINE_SCOPES,
+  mockCredentials,
+  mockWebhooks,
   MOCK_COMPANIES,
   MOCK_MERCHANT_ORG,
   MOCK_NONE_ORG,
@@ -276,6 +280,45 @@ export const mockAdapter: AxiosAdapter = async config => {
     const mode = (config.headers?.["X-Billing-Mode"] as string) === "test" ? "test" : "live"
     const invoices = consoleInvoices(mode)
 
+    if (url.endsWith("/v1.0/console/credentials") && method === "get") {
+      return ok(config, {data: mockCredentials, machine_scopes: MOCK_MACHINE_SCOPES})
+    }
+    if (url.endsWith("/v1.0/console/credentials") && method === "post") {
+      const clientId = String(JSON.parse(String(config.data ?? "{}")).client_id ?? "")
+      if (!clientId.startsWith("cli_")) fail(config, 422, "Unprocessable Entity", "the client cannot be connected", "about:blank", "client_not_yours")
+      const cred = {client_id: clientId, livemode: mode === "live", active: true, provisioned: false, connected_by: "usr_mock", connected_by_me: true, connected_at: new Date().toISOString()}
+      mockCredentials.push(cred)
+      return ok(config, cred, 201)
+    }
+    if (url.includes("/v1.0/console/credentials/") && method === "delete") {
+      const clientId = decodeURIComponent(url.split("/v1.0/console/credentials/")[1])
+      const i = mockCredentials.findIndex(c => c.client_id === clientId)
+      if (i >= 0 && mockCredentials[i].provisioned) fail(config, 409, "Conflict", "managed by CTech", "about:blank", "credential_provisioned")
+      if (i >= 0) mockCredentials.splice(i, 1)
+      return ok(config, undefined, 204)
+    }
+    if (url.endsWith("/v1.0/console/webhooks") && method === "get") {
+      return ok(config, {data: mockWebhooks, event_types: MOCK_EVENT_TYPES, max_endpoints: 5})
+    }
+    if (url.endsWith("/v1.0/console/webhooks") && method === "post") {
+      if (mockWebhooks.length >= 5) fail(config, 422, "Unprocessable Entity", "limit", "about:blank", "webhook_endpoint_limit")
+      const body = JSON.parse(String(config.data ?? "{}")) as {url: string; events: string[]}
+      const created = {id: `whe_mock${mockWebhooks.length}`, url: body.url, events: body.events, status: "active" as const, failure_run: 0, provisioned: false, added_at: new Date().toISOString()}
+      mockWebhooks.push(created)
+      return ok(config, {...created, secret: `whsec_${"ab".repeat(32)}`}, 201)
+    }
+    const hook = url.match(/\/v1\.0\/console\/webhooks\/([^/?]+)(\/rotate-secret|\/test)?$/)
+    if (hook) {
+      const e = mockWebhooks.find(w => w.id === decodeURIComponent(hook[1]))
+      if (!e) fail(config, 404, "Not Found", "resource not found", "about:blank", "resource_not_found")
+      if (e!.provisioned) fail(config, 409, "Conflict", "managed by CTech", "about:blank", "webhook_endpoint_provisioned")
+      if (hook[2] === "/rotate-secret") return ok(config, {...e!, secret: `whsec_${"cd".repeat(32)}`})
+      if (hook[2] === "/test") return ok(config, {event_id: "evt_mock"}, 202)
+      if (method === "delete") {
+        mockWebhooks.splice(mockWebhooks.indexOf(e!), 1)
+        return ok(config, undefined, 204)
+      }
+    }
     if (url.includes("/v1.0/console/overview")) {
       const params = new URLSearchParams(url.split("?")[1] ?? "")
       const today = new Date()

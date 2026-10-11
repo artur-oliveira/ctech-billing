@@ -336,3 +336,17 @@ export interface ConsolePage<T> {
   has_more: boolean
   cursor?: string
 }
+
+/** A merchant's API credential: their own ctech-account OAuth client, connected by id (spec § 5.1).
+ *  `provisioned` is one the tenant plan created (CTech's own services); it cannot be removed here. */
+export interface ConsoleCredential {client_id: string; livemode: boolean; active: boolean; provisioned: boolean; connected_by?: string; connected_by_me: boolean; connected_at?: string; description?: string}
+/** The credential list, with the scopes a connectable client may hold (the developer link preselects them). */
+export interface ConsoleCredentialList {data: ConsoleCredential[]; machine_scopes: string[]}
+/** An endpoint is disabled by the delivery job after repeated failures. */
+export type WebhookStatus = "active" | "disabled"
+/** A webhook endpoint as the console lists it; never carries the secret. `events: []` is every event. */
+export interface ConsoleWebhookEndpoint {id: string; url: string; events: string[]; status: WebhookStatus; failure_run: number; disabled_at?: string; provisioned: boolean; added_at?: string; owner_key?: string}
+/** The endpoint list, with the subscribable event types and the per-mode limit. */
+export interface ConsoleWebhookList {data: ConsoleWebhookEndpoint[]; event_types: string[]; max_endpoints: number}
+/** Only create and rotate answer with this; the secret is never shown again. */
+export interface ConsoleWebhookWithSecret extends ConsoleWebhookEndpoint {secret: string}
