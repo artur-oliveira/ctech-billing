@@ -58,8 +58,8 @@ export default function ConsoleLayout({children}: LayoutProps<"/console">) {
   const mode = useMode()
 
   const {data: session, error} = useQuery({
-    queryKey: consoleKeys.session(mode),
-    queryFn: () => getConsoleSession(mode),
+    queryKey: consoleKeys.session(),
+    queryFn: getConsoleSession,
     enabled: authenticated,
     retry: false,
   })
@@ -97,11 +97,6 @@ export default function ConsoleLayout({children}: LayoutProps<"/console">) {
                 <span className="ml-1.5 font-normal text-muted-foreground">Billing</span>
               </span>
             </Link>
-            {session && (
-              <span className="truncate border-l border-border pl-4 text-sm text-foreground">
-                {session.display_name}
-              </span>
-            )}
           </div>
 
           <div className="order-3 flex w-full min-w-0 items-center gap-x-3 gap-y-2 sm:order-2 sm:ml-auto sm:w-auto">

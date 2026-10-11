@@ -9,6 +9,9 @@ import ConsoleCustomerPage from "@/app/(console)/console/customer/page"
 import ConsoleSubscriptionsPage from "@/app/(console)/console/subscriptions/page"
 import * as consoleApi from "@/lib/api/console"
 import type {ConsoleSubscriptionRow} from "@/lib/api/consoleTypes"
+import {ConsoleScopeProvider} from "@/lib/console/scope"
+
+const SCOPE = {mode: "live", org: "0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b"} as const
 
 vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams("id=cus_1"),
@@ -20,7 +23,7 @@ afterEach(() => vi.restoreAllMocks())
 
 function wrap(ui: ReactNode) {
   const client = new QueryClient({defaultOptions: {queries: {retry: false}}})
-  return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>)
+  return render(<QueryClientProvider client={client}><ConsoleScopeProvider value={SCOPE}>{ui}</ConsoleScopeProvider></QueryClientProvider>)
 }
 
 function row(over: Partial<ConsoleSubscriptionRow> = {}): ConsoleSubscriptionRow {

@@ -46,8 +46,8 @@ export function AccountMenu({view}: {view: "portal" | "console" | "finance"}) {
   })
   const {data: operator} = useQuery({
     // Live: the portal has no mode switch, and the console opens on live too.
-    queryKey: consoleKeys.session("live"),
-    queryFn: () => getConsoleSession("live"),
+    queryKey: consoleKeys.session(),
+    queryFn: getConsoleSession,
     enabled: authenticated,
     retry: false,
     // An operator does not gain or lose an organization mid-session.

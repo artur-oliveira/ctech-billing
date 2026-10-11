@@ -14,7 +14,7 @@ import {Timeline} from "@/components/console/Timeline"
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
 import {messageFor, statusOf} from "@/lib/api/client"
 import {cancelConsoleSubscription, consoleKeys, getConsoleSubscription} from "@/lib/api/console"
-import {useMode} from "@/lib/console/useMode"
+import {useConsoleScope} from "@/lib/console/scope"
 import {longDate, money} from "@/lib/format"
 
 /**
@@ -38,22 +38,22 @@ export default function ConsoleSubscriptionPage() {
 function Detail() {
   const {t} = useTranslation()
   const id = useSearchParams().get("id") ?? ""
-  const mode = useMode()
+  const scope = useConsoleScope()
   const queryClient = useQueryClient()
   const [ending, setEnding] = useState<"now" | "period-end" | null>(null)
 
   const query = useQuery({
-    queryKey: consoleKeys.subscription(mode, id),
-    queryFn: () => getConsoleSubscription(id, mode),
+    queryKey: consoleKeys.subscription(scope, id),
+    queryFn: () => getConsoleSubscription(scope, id),
     enabled: id !== "",
   })
 
   const cancel = useMutation({
-    mutationFn: (atPeriodEnd: boolean) => cancelConsoleSubscription(id, atPeriodEnd, mode),
+    mutationFn: (atPeriodEnd: boolean) => cancelConsoleSubscription(scope, id, atPeriodEnd),
     onSuccess: () => {
       toast.success(t("console.subscription.done"))
-      void queryClient.invalidateQueries({queryKey: consoleKeys.subscription(mode, id)})
-      void queryClient.invalidateQueries({queryKey: consoleKeys.subscriptions(mode)})
+      void queryClient.invalidateQueries({queryKey: consoleKeys.subscription(scope, id)})
+      void queryClient.invalidateQueries({queryKey: consoleKeys.subscriptions(scope)})
     },
     onError: error => toast.error(messageFor(error)),
     onSettled: () => setEnding(null),

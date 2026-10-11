@@ -21,7 +21,7 @@ import {
   setProductDunningPolicy,
 } from "@/lib/api/console"
 import type {ConsolePrice, DunningStep} from "@/lib/api/consoleTypes"
-import {useMode} from "@/lib/console/useMode"
+import {useConsoleScope} from "@/lib/console/scope"
 import {money} from "@/lib/format"
 import {maskMoney, moneyPlaceholder, parseMoney} from "@/lib/money"
 import {useDocumentTitle} from "@/lib/hooks/useDocumentTitle"
@@ -51,29 +51,29 @@ export default function ConsoleProductPage() {
 function Detail() {
   const {t} = useTranslation()
   const id = useSearchParams().get("id") ?? ""
-  const mode = useMode()
+  const scope = useConsoleScope()
   const queryClient = useQueryClient()
   const [pricing, setPricing] = useState(false)
   const [archiving, setArchiving] = useState<ConsolePrice | null>(null)
 
   const query = useQuery({
-    queryKey: consoleKeys.product(mode, id),
-    queryFn: () => getConsoleProduct(id, mode),
+    queryKey: consoleKeys.product(scope, id),
+    queryFn: () => getConsoleProduct(scope, id),
     enabled: id !== "",
   })
 
   const refresh = () => {
-    void queryClient.invalidateQueries({queryKey: consoleKeys.product(mode, id)})
-    void queryClient.invalidateQueries({queryKey: consoleKeys.products(mode)})
+    void queryClient.invalidateQueries({queryKey: consoleKeys.product(scope, id)})
+    void queryClient.invalidateQueries({queryKey: consoleKeys.products(scope)})
   }
 
   const savePolicy = useMutation({
-    mutationFn: (steps: DunningStep[]) => setProductDunningPolicy(id, steps, mode),
+    mutationFn: (steps: DunningStep[]) => setProductDunningPolicy(scope, id, steps),
     onSuccess: refresh,
   })
 
   const archive = useMutation({
-    mutationFn: (priceId: string) => archivePrice(priceId, mode),
+    mutationFn: (priceId: string) => archivePrice(scope, priceId),
     onSuccess: () => {
       toast.success(t("console.product.archivedDone"))
       refresh()
@@ -214,7 +214,7 @@ function NewPriceDialog({
   onCreated,
 }: { open: boolean; productId: string; onClose: () => void; onCreated: () => void }) {
   const {t} = useTranslation()
-  const mode = useMode()
+  const scope = useConsoleScope()
   const [amount, setAmount] = useState("")
   const [type, setType] = useState<"fixed" | "metered">("fixed")
 
@@ -226,8 +226,7 @@ function NewPriceDialog({
   const fe = useFieldErrors(["unit_amount"], {keepOthers: false})
   const create = useMutation({
     mutationFn: () =>
-      createPrice(
-        {
+      createPrice(scope, {
           product_id: productId,
           type,
           unit_amount: cents,
@@ -236,9 +235,7 @@ function NewPriceDialog({
           // charges for, and the domain refuses it. Decided here rather than
           // offered as a choice that is only valid half the time.
           billing_timing: type === "metered" ? "arrears" : "advance",
-        },
-        mode,
-      ),
+        }),
     onSuccess: () => {
       toast.success(t("console.product.createdDone"))
       setAmount("")

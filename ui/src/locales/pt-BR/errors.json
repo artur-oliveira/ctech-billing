@@ -16,6 +16,8 @@
     "invalid_credentials": "Sessão inválida. Entre de novo.",
     "role_denied": "Seu papel não permite esta ação.",
     "user_session_required": "Entre com sua conta para continuar.",
+    "no_merchant": "Esta organização ainda não cobra os próprios clientes pelo CTech Billing neste modo.",
+    "merchant_role_required": "Só quem é proprietário ou administrador da organização acessa a cobrança.",
     "no_organization": "Você não pertence a nenhuma organização.",
     "service_token_required": "Esta ação só está disponível para integrações.",
     "credential_not_enabled": "Esta credencial não está habilitada.",

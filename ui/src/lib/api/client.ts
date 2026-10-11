@@ -207,3 +207,9 @@ export function problemCode(error: unknown): string | undefined {
 export function isSpaceNotFound(error: unknown): boolean {
   return (error as AxiosError<Problem>)?.response?.data?.type === SPACE_NOT_FOUND
 }
+
+/** The selected organization does not bill through CTech Billing in this mode
+ *  (spec § 3): the console renders its empty state, not a failure. */
+export function isNoMerchant(error: unknown): boolean {
+  return problemCode(error) === "no_merchant"
+}

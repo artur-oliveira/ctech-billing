@@ -16,6 +16,8 @@
     "invalid_credentials": "Invalid session. Sign in again.",
     "role_denied": "Your role does not allow this action.",
     "user_session_required": "Sign in with your account to continue.",
+    "no_merchant": "This organization does not bill its own customers through CTech Billing in this mode yet.",
+    "merchant_role_required": "Only owners and admins of the organization can open billing.",
     "no_organization": "You do not belong to any organization.",
     "service_token_required": "This action is only available to integrations.",
     "credential_not_enabled": "This credential is not enabled.",

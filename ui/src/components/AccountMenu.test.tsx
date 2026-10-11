@@ -26,8 +26,8 @@ const forbidden = {response: {status: 403, data: {title: "Sem organização"}}}
 function person({operator}: {operator: boolean}) {
   vi.spyOn(portal, "getSession").mockResolvedValue({customer_id: "cus_1", name: FULL, email: EMAIL, terms_accepted: true})
   const probe = vi.spyOn(consoleApi, "getConsoleSession")
-  if (operator) probe.mockResolvedValue({organization_id: "org", display_name: "Acme", livemode: true, payout_status: "ok", can_charge: true})
-  else probe.mockRejectedValue(forbidden)
+  if (operator) probe.mockResolvedValue({organizations: [{organization_id: "0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b", selector: "org:0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b", display_name: "Acme", role: "owner", merchant_status: "live"}], organizations_unavailable: false})
+  else probe.mockResolvedValue({organizations: [], organizations_unavailable: false})
 }
 
 async function open() {

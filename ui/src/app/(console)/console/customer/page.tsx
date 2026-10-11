@@ -14,7 +14,7 @@ import {Timeline} from "@/components/console/Timeline"
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
 import {messageFor, statusOf} from "@/lib/api/client"
 import {consoleKeys, getConsoleCustomer, revealTaxID} from "@/lib/api/console"
-import {useMode} from "@/lib/console/useMode"
+import {useConsoleScope} from "@/lib/console/scope"
 import {shortDate} from "@/lib/format"
 import {useDocumentTitle} from "@/lib/hooks/useDocumentTitle"
 
@@ -43,11 +43,11 @@ export default function ConsoleCustomerPage() {
 function Detail() {
   const {t} = useTranslation()
   const id = useSearchParams().get("id") ?? ""
-  const mode = useMode()
+  const scope = useConsoleScope()
 
   const query = useQuery({
-    queryKey: consoleKeys.customer(mode, id),
-    queryFn: () => getConsoleCustomer(id, mode),
+    queryKey: consoleKeys.customer(scope, id),
+    queryFn: () => getConsoleCustomer(scope, id),
     enabled: id !== "",
   })
 
@@ -131,17 +131,17 @@ function Detail() {
  */
 function TaxID({customerId, masked}: { customerId: string; masked?: string }) {
   const {t} = useTranslation()
-  const mode = useMode()
+  const scope = useConsoleScope()
   const queryClient = useQueryClient()
   const [full, setFull] = useState<string | null>(null)
 
   const reveal = useMutation({
-    mutationFn: () => revealTaxID(customerId, mode),
+    mutationFn: () => revealTaxID(scope, customerId),
     onSuccess: value => {
       setFull(value)
       // The timeline below now has a row it did not have a moment ago, and the
       // operator should see their own name in it.
-      void queryClient.invalidateQueries({queryKey: consoleKeys.customer(mode, customerId)})
+      void queryClient.invalidateQueries({queryKey: consoleKeys.customer(scope, customerId)})
     },
     onError: error => toast.error(messageFor(error)),
   })

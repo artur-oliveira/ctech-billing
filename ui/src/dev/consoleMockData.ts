@@ -8,6 +8,8 @@ import type {
   ConsolePrice,
   ConsoleProduct,
   ConsoleSession,
+  ConsoleTenant,
+  MerchantOrganization,
   ConsoleSubscription,
   ConsoleSubscriptionDetail,
   ConsoleSubscriptionRow,
@@ -40,21 +42,27 @@ const iso = (offset: number): string => {
   return d.toISOString()
 }
 
-export const MOCK_CONSOLE_SESSION: Record<"live" | "test", ConsoleSession> = {
-  live: {
-    organization_id: "org_mock_ctech",
-    display_name: "CTech Tecnologia",
-    livemode: true,
-    payout_status: "enabled",
-    can_charge: true,
-  },
-  test: {
-    organization_id: "org_mock_ctech",
-    display_name: "CTech Tecnologia",
-    livemode: false,
-    payout_status: "enabled",
-    can_charge: true,
-  },
+export const MOCK_MERCHANT_ORG = "0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b"
+export const MOCK_NONE_ORG = "0190a1b2-c3d4-7e5f-8a9b-bbbbbbbbbbbb"
+
+export const MOCK_CONSOLE_TENANT: Record<"live" | "test", ConsoleTenant> = {
+  live: {organization_id: "org_mock_ctech", display_name: "CTech Tecnologia", livemode: true, payout_status: "enabled", can_charge: true},
+  test: {organization_id: "org_mock_ctech", display_name: "CTech Tecnologia", livemode: false, payout_status: "enabled", can_charge: true},
+}
+
+/** The session per scenario: `sem_cobranca` administers one organization with no tenant. */
+export function consoleSession(scenario: string | null): ConsoleSession {
+  const none: MerchantOrganization = {
+    organization_id: MOCK_NONE_ORG, selector: `org:${MOCK_NONE_ORG}`, display_name: "Padaria Bom Dia", role: "admin", merchant_status: "none",
+  }
+  if (scenario === "sem_cobranca") return {organizations: [none], organizations_unavailable: false}
+  return {
+    organizations: [
+      {organization_id: MOCK_MERCHANT_ORG, selector: `org:${MOCK_MERCHANT_ORG}`, display_name: "CTech Tecnologia", role: "owner", merchant_status: "live"},
+      none,
+    ],
+    organizations_unavailable: false,
+  }
 }
 
 function invoice(over: Partial<ConsoleInvoiceRow> & Pick<ConsoleInvoice, "id" | "status">): ConsoleInvoiceRow {
@@ -493,7 +501,7 @@ export function setConsoleIssuer(next: typeof issuer) {
 
 export function consoleSettings(mode: "live" | "test") {
   return {
-    organization: MOCK_CONSOLE_SESSION[mode],
+    organization: MOCK_CONSOLE_TENANT[mode],
     dunning: consoleDunning(),
     issuer,
     documents_enabled: true,

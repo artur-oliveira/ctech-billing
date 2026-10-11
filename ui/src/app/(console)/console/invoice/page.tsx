@@ -23,7 +23,7 @@ import {
   voidInvoice,
 } from "@/lib/api/console"
 import type {ConsoleInvoiceDetail} from "@/lib/api/consoleTypes"
-import {useMode} from "@/lib/console/useMode"
+import {useConsoleScope} from "@/lib/console/scope"
 import {longDate, money, period, shortDate} from "@/lib/format"
 import {useDocumentTitle} from "@/lib/hooks/useDocumentTitle"
 
@@ -52,14 +52,14 @@ export default function ConsoleInvoicePage() {
 function Detail() {
   const {t} = useTranslation()
   const id = useSearchParams().get("id") ?? ""
-  const mode = useMode()
+  const scope = useConsoleScope()
   const queryClient = useQueryClient()
   const [voiding, setVoiding] = useState(false)
   const [crediting, setCrediting] = useState(false)
 
   const query = useQuery({
-    queryKey: consoleKeys.invoice(mode, id),
-    queryFn: () => getConsoleInvoice(id, mode),
+    queryKey: consoleKeys.invoice(scope, id),
+    queryFn: () => getConsoleInvoice(scope, id),
     enabled: id !== "",
   })
 
@@ -70,16 +70,16 @@ function Detail() {
     ({
       mutationFn: () => fn(id),
       onSuccess: (fresh: ConsoleInvoiceDetail) => {
-        queryClient.setQueryData(consoleKeys.invoice(mode, id), fresh)
-        void queryClient.invalidateQueries({queryKey: consoleKeys.invoices(mode)})
+        queryClient.setQueryData(consoleKeys.invoice(scope, id), fresh)
+        void queryClient.invalidateQueries({queryKey: consoleKeys.invoices(scope)})
         toast.success(done)
       },
       onError: (error: unknown) => toast.error(messageFor(error)),
     })
 
-  const finalize = useMutation(write(invoiceId => finalizeInvoice(invoiceId, mode), t("console.invoice.finalized")))
+  const finalize = useMutation(write(invoiceId => finalizeInvoice(scope, invoiceId), t("console.invoice.finalized")))
   const cancel = useMutation({
-    ...write(invoiceId => voidInvoice(invoiceId, mode), t("console.invoice.voided")),
+    ...write(invoiceId => voidInvoice(scope, invoiceId), t("console.invoice.voided")),
     onSettled: () => setVoiding(false),
   })
 
@@ -140,7 +140,7 @@ function Detail() {
                 the server refuses rather than rendering something that looks
                 official and refers to nothing. */}
             {invoice.status !== "DRAFT" && (
-              <DownloadPDF fetchLink={lang => getConsoleInvoicePDF(invoice.id, mode, lang)}/>
+              <DownloadPDF fetchLink={lang => getConsoleInvoicePDF(scope, invoice.id, lang)}/>
             )}
             {canVoid && (
               <Button variant="outline" size="sm" onClick={() => setVoiding(true)}>
@@ -275,7 +275,7 @@ function Detail() {
         credited={credited}
         onClose={() => setCrediting(false)}
         onIssued={() => {
-          void queryClient.invalidateQueries({queryKey: consoleKeys.invoice(mode, id)})
+          void queryClient.invalidateQueries({queryKey: consoleKeys.invoice(scope, id)})
           setCrediting(false)
         }}
       />

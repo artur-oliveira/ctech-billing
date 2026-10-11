@@ -8,6 +8,9 @@ import {afterEach, describe, expect, it, vi} from "vitest"
 import {CreditNoteDialog} from "@/components/console/CreditNoteDialog"
 import * as consoleApi from "@/lib/api/console"
 import type {ConsoleInvoice} from "@/lib/api/consoleTypes"
+import {ConsoleScopeProvider} from "@/lib/console/scope"
+
+const SCOPE = {mode: "live", org: "0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b"} as const
 
 const INVOICE = {id: "inv_1", total: 10000, currency: "BRL"} as ConsoleInvoice
 
@@ -20,7 +23,7 @@ describe("CreditNoteDialog", () => {
       {field: "reason", code: "required"},
     ]}}})
     const client = new QueryClient({defaultOptions: {mutations: {retry: false}}})
-    render(<QueryClientProvider client={client}><CreditNoteDialog open invoice={INVOICE} credited={0} onClose={() => {}} onIssued={() => {}}/></QueryClientProvider>)
+    render(<QueryClientProvider client={client}><ConsoleScopeProvider value={SCOPE}><CreditNoteDialog open invoice={INVOICE} credited={0} onClose={() => {}} onIssued={() => {}}/></ConsoleScopeProvider></QueryClientProvider>)
     await userEvent.type(screen.getByLabelText(/^Valor/), "50,00")
     await userEvent.type(screen.getByLabelText(/^Motivo/), "erro")
     await userEvent.click(screen.getByRole("button", {name: /Emitir/}))

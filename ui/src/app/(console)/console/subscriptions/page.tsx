@@ -11,7 +11,7 @@ import {SubscriptionStatusBadge} from "@/components/console/SubscriptionStatusBa
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
 import {consoleKeys, listConsoleSubscriptions} from "@/lib/api/console"
 import type {ConsoleSubscriptionRow, Recurrence} from "@/lib/api/consoleTypes"
-import {useMode} from "@/lib/console/useMode"
+import {useConsoleScope} from "@/lib/console/scope"
 import {shortDate} from "@/lib/format"
 
 /**
@@ -35,10 +35,10 @@ import {shortDate} from "@/lib/format"
  */
 export default function ConsoleSubscriptionsPage() {
   const {t} = useTranslation()
-  const mode = useMode()
+  const scope = useConsoleScope()
   const query = useQuery({
-    queryKey: consoleKeys.subscriptions(mode),
-    queryFn: () => listConsoleSubscriptions(mode),
+    queryKey: consoleKeys.subscriptions(scope),
+    queryFn: () => listConsoleSubscriptions(scope),
   })
 
   const subscriptions = query.data?.data ?? []
