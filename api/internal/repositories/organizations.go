@@ -508,3 +508,28 @@ func (r *OrganizationRepository) SetOwner(
 	org.OwnerUserID = ownerUserID
 	return nil
 }
+
+// suspensionWrites are the live tenant's suspended_at change and its audit row,
+// for the transaction of the subscription change that caused them. The update
+// is conditional only on the row existing: a concurrent writer of suspended_at
+// must not cancel a subscription's cancellation.
+func (r *OrganizationRepository) suspensionWrites(org *billing.Organization, suspend bool, cause billing.Cause,
+	actor, requestID string, now time.Time) ([]types.TransactWriteItem, error) {
+	stamp := now.UTC().Format(time.RFC3339Nano)
+	expr, action, before, after := "SET suspended_at = if_not_exists(suspended_at, :now), updated_at = :now",
+		billing.AuditOrganizationSuspended, "", stamp
+	if !suspend {
+		expr, action, before, after = "SET updated_at = :now REMOVE suspended_at",
+			billing.AuditOrganizationReinstated, org.SuspendedAt, ""
+	}
+	auditItem, err := buildAuditItem(org.ID, true, AuditEntry{
+		Entity: EntityOrganization, EntityID: org.ID, Action: action, Cause: cause,
+		Actor: actor, RequestID: requestID, Before: before, After: after,
+	}, "", "", now)
+	if err != nil {
+		return nil, err
+	}
+	update := r.base.BuildRawUpdateTxItem(TenantPK(org.ID, true), new(OrganizationSK()), expr, "attribute_exists(pk)", nil,
+		map[string]types.AttributeValue{":now": &types.AttributeValueMemberS{Value: stamp}})
+	return txItems(update, r.audit.BuildPutTxItemIfAbsent(auditItem)), nil
+}

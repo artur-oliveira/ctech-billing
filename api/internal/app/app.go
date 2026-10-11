@@ -44,7 +44,7 @@ func Build(ctx context.Context, cfg *config.Config, clock func() time.Time) (*fi
 	}
 
 	customers := repositories.NewCustomerRepository(db, cfg)
-	subs := repositories.NewSubscriptionRepository(db, cfg)
+	subs := newSubscriptions(db, cfg)
 	invoices := repositories.NewInvoiceRepository(db, cfg)
 	usage := repositories.NewUsageRepository(db, cfg)
 	levels := repositories.NewLevelRepository(db, cfg)
@@ -205,7 +205,7 @@ func BuildInvoicer(ctx context.Context, cfg *config.Config) (*services.Invoicer,
 	// could not read the tenant's default would silently issue every invoice on
 	// the built-in one.
 	return services.NewInvoicer(
-		repositories.NewSubscriptionRepository(db, cfg),
+		newSubscriptions(db, cfg),
 		repositories.NewInvoiceRepository(db, cfg),
 		repositories.NewCatalogRepository(db, cfg),
 		repositories.NewUsageRepository(db, cfg),
@@ -247,7 +247,7 @@ func BuildSubscriptions(ctx context.Context, cfg *config.Config) (*repositories.
 	if err != nil {
 		return nil, err
 	}
-	return repositories.NewSubscriptionRepository(db, cfg), nil
+	return newSubscriptions(db, cfg), nil
 }
 
 // BuildInvoices wires the invoice repository for cmd/backfill-invoice-lookup.
@@ -304,7 +304,7 @@ func BuildDunner(ctx context.Context, cfg *config.Config) (*services.Dunner, err
 	}
 	return services.NewDunner(
 		repositories.NewInvoiceRepository(db, cfg),
-		repositories.NewSubscriptionRepository(db, cfg),
+		newSubscriptions(db, cfg),
 		repositories.NewCustomerRepository(db, cfg),
 		links,
 		mail,
@@ -345,7 +345,7 @@ func BuildCollector(ctx context.Context, cfg *config.Config) (*services.Collecto
 		repositories.NewPaymentRepository(db, cfg),
 		customers,
 		orgs,
-		repositories.NewSubscriptionRepository(db, cfg),
+		newSubscriptions(db, cfg),
 		wallet.New(walletCfg),
 	).WithFinance(finance)
 	// The reconciler settles invoices the webhook missed, so it records them in
@@ -512,4 +512,14 @@ func BuildFinanceJobs(ctx context.Context, cfg *config.Config) (*services.Financ
 		repositories.NewBillRepository(db, cfg),
 		repositories.NewRecurrenceRepository(db, cfg),
 	).WithCards(repositories.NewCardRepository(db, cfg)), nil
+}
+
+// newSubscriptions is the only constructor of the subscription repository in
+// this package: every binary that moves a subscription (the API, the sweep,
+// dunning, the reconciler) keeps the merchant suspension in step (spec § 4.3).
+// TestTheSubscriptionRepositoryIsBuiltOnlyWithTheHook pins it.
+func newSubscriptions(db *dynamodb.Client, cfg *config.Config) *repositories.SubscriptionRepository {
+	subs := repositories.NewSubscriptionRepository(db, cfg)
+	return subs.WithEntitlementHook(repositories.NewTenantSuspension(cfg.PortalOrganizationID,
+		repositories.NewCustomerRepository(db, cfg), repositories.NewOrganizationRepository(db, cfg), subs))
 }
