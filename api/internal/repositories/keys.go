@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"gopkg.aoctech.app/billing/api/internal/domain/billing"
 	"gopkg.aoctech.app/billing/api/internal/domain/brcal"
 	"gopkg.aoctech.app/billing/api/internal/space"
 )
@@ -122,6 +123,7 @@ const (
 	EntityPrice          Entity = "PRICE"
 	EntityOrganization   Entity = "ORGANIZATION"
 	EntityAudit          Entity = "AUDIT"
+	EntityApplication    Entity = "APPLICATION"
 	EntityLedgerTx       Entity = "LEDGER_TX"
 	// EntityFinanceSettings is a finance space's settings row (SPACE).
 	EntityFinanceSettings Entity = "FINANCE_SETTINGS"
@@ -135,23 +137,26 @@ const (
 // console without knowing which table it came from, and dropping it would mean
 // a migration to add it back the first time a table gains a second row type.
 const (
-	skOrganization = "ORG"
-	skCustomer     = "CUSTOMER#"
-	skProduct      = "PRODUCT#"
-	skPrice        = "PRICE#"
-	skSubscription = "SUB#"
-	skInvoice      = "INVOICE#"
-	skCheckout     = "CHECKOUT#"
-	skCreditNote   = "CREDIT#"
-	skAudit        = "AUDIT#"
-	skCounter      = "COUNTER#"
-	skCustomerUser = "CUSTOMER_USER#"
-	skCustomerOrg  = "CUSTOMER_ORG#"
-	skCredential   = "CREDENTIAL#"
-	skIdempotency  = "IDEMPOTENCY#"
-	skEndpoint     = "ENDPOINT#"
-	skEvent        = "EVENT#"
-	skDelivery     = "DELIVERY#"
+	skOrganization    = "ORG"
+	skCustomer        = "CUSTOMER#"
+	skProduct         = "PRODUCT#"
+	skPrice           = "PRICE#"
+	skSubscription    = "SUB#"
+	skInvoice         = "INVOICE#"
+	skCheckout        = "CHECKOUT#"
+	skCreditNote      = "CREDIT#"
+	skAudit           = "AUDIT#"
+	skCounter         = "COUNTER#"
+	skCustomerUser    = "CUSTOMER_USER#"
+	skCustomerOrg     = "CUSTOMER_ORG#"
+	skApplication     = "APPLICATION#"
+	skApplicationOrg  = "APPLICATION_ORG#"
+	skApplicationLock = "APPLICATION_LOCK#"
+	skCredential      = "CREDENTIAL#"
+	skIdempotency     = "IDEMPOTENCY#"
+	skEndpoint        = "ENDPOINT#"
+	skEvent           = "EVENT#"
+	skDelivery        = "DELIVERY#"
 )
 
 // Mode renders the livemode flag as it appears in a key.
@@ -432,6 +437,25 @@ func OrganizationOfRef(ref string) (string, bool) {
 // customer, the organization counterpart of CustomerUserSK (ADR 0025,
 // 2026-10-07 amendment).
 func CustomerOrgSK(organizationID string) string { return skCustomerOrg + organizationID }
+
+// ApplicationSK, ApplicationOrgSK and the lease live in tenant zero's live
+// partition of the organizations table (spec § 6.2): an application is
+// something CTech's own tenant holds about a would-be merchant, like a
+// customer, and it is decided there.
+func ApplicationSK(applicationID string) string { return skApplication + applicationID }
+
+// ApplicationOrgSK is the pointer from an account organization to its current
+// application and its tenant id. It is also the guard: one first application
+// per organization (attribute_not_exists), one re-application per rejection
+// (conditional on the rejected id).
+func ApplicationOrgSK(accountOrgID string) string { return skApplicationOrg + accountOrgID }
+
+// LookupApplicationsPK partitions applications by status on lookup-index, so
+// "pending, oldest first" is a key condition. The sort key is the row's own
+// sk (APPLICATION# + ULID): creation order. A decision moves the row.
+func LookupApplicationsPK(tenantZero string, status billing.ApplicationStatus) string {
+	return TenantPK(tenantZero, true) + "#APPLICATIONS#" + string(status)
+}
 
 // CredentialSK and IdempotencySK are tenant-scoped rows.
 func CredentialSK(clientID string) string { return skCredential + clientID }
