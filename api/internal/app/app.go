@@ -250,6 +250,15 @@ func BuildSubscriptions(ctx context.Context, cfg *config.Config) (*repositories.
 	return repositories.NewSubscriptionRepository(db, cfg), nil
 }
 
+// BuildInvoices wires the invoice repository for cmd/backfill-invoice-lookup.
+func BuildInvoices(ctx context.Context, cfg *config.Config) (*repositories.InvoiceRepository, error) {
+	db, err := newDynamoDB(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+	return repositories.NewInvoiceRepository(db, cfg), nil
+}
+
 // BuildDeliverer wires only what the outbound webhook job needs.
 //
 // One repository: the delivery job reads endpoints, events and deliveries, and

@@ -112,7 +112,8 @@
       "period_sk": "S",
       "schedule_pk": "S",
       "schedule_sk": "S",
-      "lookup_pk": "S"
+      "lookup_pk": "S",
+      "customer_pk": "S"
     },
     "indexes": [
       {
@@ -128,6 +129,11 @@
       {
         "name": "lookup-index",
         "hash_key": "lookup_pk",
+        "range_key": "sk"
+      },
+      {
+        "name": "customer-index",
+        "hash_key": "customer_pk",
         "range_key": "sk"
       }
     ]

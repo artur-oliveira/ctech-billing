@@ -205,6 +205,31 @@ this order:
 
 The same sequence applies to any future index whose read must see rows that already exist.
 
+### Invoices by customer
+
+`InvoiceRepository.ListByCustomer` (the portal's invoice list) made **one** Query over the
+tenant's whole `INVOICE#` range — lines, attempts, checkouts and credit notes included — with a
+`customer_id` filter and the page limit. DynamoDB applies `Limit` before the filter, so a
+customer whose invoices were not among the first rows evaluated got an empty or short list. Same
+bug class as the subscriptions read above; same fix, same two pull requests.
+
+One difference: an invoice row's `lookup_pk` is already taken — it is the invoice's
+subscription partition (`LookupSubscriptionInvoicesPK`, read by `ListBySubscription`), and one
+attribute can name only one partition. So the customer partition is a **new attribute on a new
+index**: `customer-index` on `invoices` (hash `customer_pk`, range `sk`), with
+`customer_pk = {org}#{mode}#CUSTOMER_INVOICES#{customer_id}` (`repositories.LookupCustomerInvoicesPK`).
+Sparse: only the invoice row carries it, never its `#LINE#`, `#ATTEMPT#`, checkout or credit-note
+rows. Written once at `Create` (an invoice's customer never changes).
+
+```sh
+api/cmd/backfill-invoice-lookup/run.sh prod           # dry run: lists what is missing
+api/cmd/backfill-invoice-lookup/run.sh prod -apply    # writes customer_pk where absent
+api/cmd/backfill-invoice-lookup/run.sh prod           # must report missing=0, exit 0
+```
+
+The read moves onto `customer-index` in the second pull request, merged only after the final
+production dry run reports `missing=0`.
+
 ## Collection is configured in the other repository
 
 The charge route itself ships (`ctech-wallet/api/internal/services/charge_amount.go`). What does

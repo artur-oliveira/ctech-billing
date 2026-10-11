@@ -98,7 +98,7 @@ func TestNoAttributeIsDeclaredWithoutAKeyUsingIt(t *testing.T) {
 // for "period-index" creates an index nothing reads, and the queries fall back
 // to nothing at all — a runtime error, after a deploy.
 func TestIndexNamesAreTheOnesTheQueriesUse(t *testing.T) {
-	known := []string{IndexPeriod, IndexSchedule, IndexLookup, IndexOpen}
+	known := []string{IndexPeriod, IndexSchedule, IndexLookup, IndexOpen, IndexCustomer}
 	seen := map[string]bool{}
 	for name, s := range Schemas() {
 		for _, idx := range s.Indexes {

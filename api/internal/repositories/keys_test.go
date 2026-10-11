@@ -22,6 +22,7 @@ func TestEveryTenantKeyStartsWithTheTenant(t *testing.T) {
 		"LookupInvoiceGenerationPK":     LookupInvoiceGenerationPK(org, true, "si_1:2026-03-01"),
 		"PeriodPK":                      PeriodPK(org, true, EntityInvoice),
 		"LookupCustomerSubscriptionsPK": LookupCustomerSubscriptionsPK(org, true, "cus_1"),
+		"LookupCustomerInvoicesPK":      LookupCustomerInvoicesPK(org, true, "cus_1"),
 	}
 	for name, key := range keys {
 		if len(key) < len(prefix) || key[:len(prefix)] != prefix {
