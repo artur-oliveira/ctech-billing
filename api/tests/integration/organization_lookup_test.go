@@ -140,3 +140,32 @@ func TestSetOwnerNeverReplacesTheAccountOrganizationKey(t *testing.T) {
 		t.Fatalf("after SetOwner = %+v, %v", got, err)
 	}
 }
+
+func TestAnUnlinkedTenantWithAnOwnerHasNoConsoleKey(t *testing.T) {
+	ctx := ctxT(t)
+	org := newOrg(t, true) // owner, no link
+	if _, err := orgRepo().GetByOwner(ctx, org.OwnerUserID, true); !errors.Is(err, repositories.ErrNotFound) {
+		t.Fatalf("GetByOwner = %v: a new tenant must not be reachable by its stored owner", err)
+	}
+}
+
+func TestSetOwnerWritesNoConsoleKey(t *testing.T) {
+	ctx := ctxT(t)
+	org := &billing.Organization{
+		ID: id.NewWithPrefix(id.PrefixOrganization), DisplayName: "API only", Livemode: true, PayoutStatus: billing.PayoutEnabled,
+	}
+	if err := orgRepo().Create(ctx, org, now()); err != nil {
+		t.Fatal(err)
+	}
+	owner := "usr_" + id.New()
+	if err := orgRepo().SetOwner(ctx, org, owner, "test", "req_1", now()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := orgRepo().GetByOwner(ctx, owner, true); !errors.Is(err, repositories.ErrNotFound) {
+		t.Fatalf("GetByOwner = %v", err)
+	}
+	got, err := orgRepo().Get(ctx, org.ID, true)
+	if err != nil || got.OwnerUserID != owner {
+		t.Fatalf("stored owner = %+v, %v", got, err)
+	}
+}

@@ -53,16 +53,13 @@ func (r *OrganizationRepository) Create(ctx context.Context, org *billing.Organi
 		keys:         newKeys(TenantPK(org.ID, org.Livemode), OrganizationSK(), RetentionOrganization, now),
 		Organization: *org,
 	}
-	switch {
-	case org.AccountOrganizationID != "":
+	// Only a linked tenant is reachable from the console (ADR 0028). The owner
+	// is stored, never indexed: it no longer grants access.
+	if org.AccountOrganizationID != "" {
 		if err := r.ensureAccountOrganizationFree(ctx, org.ID, org.AccountOrganizationID, org.Livemode); err != nil {
 			return err
 		}
 		row.LookupPK = LookupOrganizationAccountPK(org.Livemode, org.AccountOrganizationID)
-	case org.OwnerUserID != "":
-		// Transitional: the owner key is read by the pre-ADR-0028 console until
-		// the switch, and is no longer written from the next task on.
-		row.LookupPK = LookupOrganizationOwnerPK(org.Livemode, org.OwnerUserID)
 	}
 	item, err := Encode(row)
 	if err != nil {
@@ -472,8 +469,8 @@ func (r *OrganizationRepository) tables() Tables {
 var ErrOrganizationOwned = errors.New("organization already has another owner")
 
 // SetOwner gives a tenant with no owner (one provisioned API-only) the person
-// who reaches its console, once, with its audit entry, and indexes it so the
-// console finds the tenant by that person.
+// who asked for it, once, with its audit entry. The owner is a record of who
+// asked for the tenant; it is not indexed and grants no access (ADR 0028).
 func (r *OrganizationRepository) SetOwner(
 	ctx context.Context,
 	org *billing.Organization,
@@ -501,21 +498,14 @@ func (r *OrganizationRepository) SetOwner(
 	if err != nil {
 		return err
 	}
-	// The owner key is written only on a tenant with no link: a linked tenant is
-	// found by its account organization (ADR 0028), and overwriting that key with
-	// an owner's would take it away from every admin. The condition re-checks the
-	// link on the row itself, not on the copy in memory.
+	// lookup_pk is never touched: a linked tenant is found by its account
+	// organization (ADR 0028), and the owner grants nothing.
 	expr := "SET owner_user_id = :o, updated_at = :now"
 	cond := "attribute_exists(pk) AND (attribute_not_exists(owner_user_id) OR owner_user_id = :empty)"
 	values := map[string]types.AttributeValue{
 		":o":     &types.AttributeValueMemberS{Value: ownerUserID},
 		":empty": &types.AttributeValueMemberS{Value: ""},
 		":now":   &types.AttributeValueMemberS{Value: now.UTC().Format(time.RFC3339Nano)},
-	}
-	if org.AccountOrganizationID == "" {
-		expr = "SET owner_user_id = :o, lookup_pk = :l, updated_at = :now"
-		cond += " AND attribute_not_exists(account_organization_id)"
-		values[":l"] = &types.AttributeValueMemberS{Value: LookupOrganizationOwnerPK(org.Livemode, ownerUserID)}
 	}
 	// An API-only tenant stores the owner as an empty string, not as absent.
 	update := r.base.BuildRawUpdateTxItem(
