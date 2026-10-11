@@ -35,6 +35,9 @@ export type MockScenario =
   | "sem_conta"
   | "org_sem_conta"
   | "sem_cobranca"
+  | "pedido_em_analise"
+  | "pedido_recusado"
+  | "cobranca_suspensa"
   | "em_dia"
   | "vence_em_3_dias"
   | "vencida"
@@ -62,6 +65,9 @@ export const MOCK_SCENARIOS: { id: MockScenario; label: string }[] = [
   {id: "sem_conta", label: "Sem conta de cobrança (403)"},
   {id: "org_sem_conta", label: "Organização sem conta de cobrança (403)"},
   {id: "sem_cobranca", label: "Console: organização sem cobrança (no_merchant)"},
+  {id: "pedido_em_analise", label: "Cobrança: pedido em análise"},
+  {id: "pedido_recusado", label: "Cobrança: pedido recusado"},
+  {id: "cobranca_suspensa", label: "Cobrança suspensa"},
   {id: "termos_pendentes", label: "Termos pendentes"},
   {id: "erro_de_rede", label: "Erro de rede"},
   {id: "manutencao", label: "Manutenção (503)"},

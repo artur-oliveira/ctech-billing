@@ -26,8 +26,7 @@ export interface ConsoleTenant {
 }
 
 /** Where an organization stands as a merchant (spec § 3). Display data; every
- *  billing-half request is re-authorized by the server. `rejected` and
- *  `suspended` arrive with part 2. */
+ *  billing-half request is re-authorized by the server. */
 export type MerchantStatus = "none" | "test" | "live" | "rejected" | "suspended"
 
 /** One organization the person may run billing for (owner or admin). */
@@ -38,6 +37,52 @@ export interface MerchantOrganization {
   display_name: string
   role: "owner" | "admin"
   merchant_status: MerchantStatus
+  /** Tenant zero's organization: the console shows Solicitações. Display data; the server decides. */
+  can_review_applications?: boolean
+}
+
+/** Where a merchant application stands (spec § 4). */
+export type ApplicationStatus = "pending" | "approved" | "rejected"
+
+/** The applicant's own estimate; labels live in console.volume.*. */
+export type MonthlyVolume = "up_to_10k" | "10k_to_50k" | "50k_to_200k" | "over_200k"
+
+/** One of the organization's companies, from ctech-account. */
+export interface MerchantCompany {
+  company_id: string
+  legal_name: string
+  trade_name?: string
+  tax_id: string
+}
+
+/** The form's picker: ctech-account lists at most 200 by legal name and says when it cut the list. */
+export interface MerchantCompanyList {
+  companies: MerchantCompany[]
+  truncated: boolean
+}
+
+export interface MerchantApplication {
+  id: string
+  status: ApplicationStatus
+  organization_id: string
+  organization_name: string
+  company: {id: string; legal_name: string; tax_id: string}
+  description: string
+  website?: string
+  expected_monthly_volume?: MonthlyVolume
+  contact_email: string
+  applied_by: string
+  applied_at: string
+  decided_at?: string
+  rejection_reason?: string
+}
+
+export interface ApplyRequest {
+  company_id: string
+  description: string
+  website?: string
+  expected_monthly_volume?: MonthlyVolume
+  contact_email: string
 }
 
 /** GET /v1.0/console/session (ADR 0028). */

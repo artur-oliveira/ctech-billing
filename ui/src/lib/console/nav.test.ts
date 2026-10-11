@@ -14,4 +14,9 @@ describe("consoleNav", () => {
     expect(labels[0]).toBe("Visão geral")
     expect(labels).not.toContain("Finanças")
   })
+  it("adds Solicitações only for tenant zero's organization", () => {
+    expect(consoleNav(true, true).map(i => i.href)).toContain("/console/applications")
+    expect(consoleNav(true, false).map(i => i.href)).not.toContain("/console/applications")
+    expect(consoleNav(false, true)).toEqual([])
+  })
 })

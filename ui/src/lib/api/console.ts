@@ -1,9 +1,11 @@
 "use client"
 
-import {apiClient} from "@/lib/api/client"
+import {apiClient, problemCode} from "@/lib/api/client"
 import {currentLocale} from "@/lib/i18n"
 import type {SupportedLocale} from "@/lib/locale"
 import type {
+  ApplicationStatus,
+  ApplyRequest,
   ConsoleCustomer,
   ConsoleCustomerDetail,
   ConsoleInvoiceDetail,
@@ -20,6 +22,9 @@ import type {
   DocumentLink,
   DunningPolicy,
   DunningStep,
+  MerchantApplication,
+  MerchantCompany,
+  MerchantCompanyList,
 } from "@/lib/api/consoleTypes"
 
 import type {ConsoleScope} from "@/lib/console/merchant"
@@ -55,6 +60,10 @@ export const consoleKeys = {
     ["console", s.org, s.mode, "subscriptions", "detail", id] as const,
   products: (s: ConsoleScope) => ["console", s.org, s.mode, "products"] as const,
   product: (s: ConsoleScope, id: string) => ["console", s.org, s.mode, "products", "detail", id] as const,
+  /** The application is not a mode's: no mode in the key (spec § 4.1). */
+  merchantApplication: (s: ConsoleScope) => ["console", s.org, "merchant", "application"] as const,
+  merchantCompanies: (s: ConsoleScope) => ["console", s.org, "merchant", "companies"] as const,
+  applications: (s: ConsoleScope, status: ApplicationStatus) => ["console", s.org, s.mode, "applications", status] as const,
 }
 
 /** The organizations this person may run billing for. No mode, no space: it is
@@ -316,4 +325,44 @@ export async function creditInvoice(
   input: CreditNoteInput,
 ): Promise<void> {
   await apiClient.post(`/v1.0/console/invoices/${id}/credit-notes`, input, scopeHeaders(scope))
+}
+
+/** The selected organization's current application; null when it never applied. */
+export async function getMerchantApplication(scope: ConsoleScope): Promise<MerchantApplication | null> {
+  try {
+    const {data} = await apiClient.get<MerchantApplication>("/v1.0/console/merchant/application", scopeHeaders(scope))
+    return data
+  } catch (error) {
+    if (problemCode(error) === "no_application") return null
+    throw error
+  }
+}
+
+export async function applyForMerchant(scope: ConsoleScope, body: ApplyRequest): Promise<MerchantApplication> {
+  const {data} = await apiClient.post<MerchantApplication>("/v1.0/console/merchant/application", body, scopeHeaders(scope))
+  return data
+}
+
+/** The organization's companies for the form; `truncated` when ctech-account cut the list at 200. */
+export async function listMerchantCompanies(scope: ConsoleScope): Promise<MerchantCompanyList> {
+  const {data} = await apiClient.get<{data: MerchantCompany[]; truncated?: boolean}>(
+    "/v1.0/console/merchant/companies", scopeHeaders(scope))
+  return {companies: data.data ?? [], truncated: data.truncated === true}
+}
+
+export async function listApplications(scope: ConsoleScope, status: ApplicationStatus, cursor?: string): Promise<ConsolePage<MerchantApplication>> {
+  const {data} = await apiClient.get<ConsolePage<MerchantApplication>>("/v1.0/console/applications", {
+    ...scopeHeaders(scope), params: {status, ...(cursor ? {cursor} : {})},
+  })
+  return data
+}
+
+export async function approveApplication(scope: ConsoleScope, id: string): Promise<MerchantApplication> {
+  const {data} = await apiClient.post<MerchantApplication>(`/v1.0/console/applications/${encodeURIComponent(id)}/approve`, {}, scopeHeaders(scope))
+  return data
+}
+
+export async function rejectApplication(scope: ConsoleScope, id: string, reason: string): Promise<MerchantApplication> {
+  const {data} = await apiClient.post<MerchantApplication>(`/v1.0/console/applications/${encodeURIComponent(id)}/reject`, {reason}, scopeHeaders(scope))
+  return data
 }

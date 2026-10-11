@@ -19,7 +19,10 @@ import {
   consoleSubscriptionDetail,
   consoleSubscriptions,
   consoleSession,
+  MOCK_COMPANIES,
   MOCK_MERCHANT_ORG,
+  MOCK_NONE_ORG,
+  mockApplication,
   setConsoleDunning,
   setConsoleIssuer,
 } from "./consoleMockData"
@@ -246,7 +249,28 @@ export const mockAdapter: AxiosAdapter = async config => {
     if (!selector.startsWith("org:") || !config.headers?.["X-Billing-Mode"]) {
       fail(config, 400, "Bad Request", "informe X-Billing-Mode e X-Billing-Space", "about:blank", "bad_request")
     }
-    if (selector !== `org:${MOCK_MERCHANT_ORG}`) {
+    // Part 2: the application runs without a tenant, for any organization.
+    if (url.includes("/v1.0/console/merchant/")) {
+      if (url.endsWith("/merchant/companies")) return ok(config, {data: MOCK_COMPANIES})
+      if (method === "post") return ok(config, mockApplication("pending"), 201)
+      if (scenario === "pedido_em_analise") return ok(config, mockApplication("pending"))
+      if (scenario === "pedido_recusado") return ok(config, mockApplication("rejected"))
+      fail(config, 404, "Not Found", "this organization has not applied", "about:blank", "no_application")
+    }
+    // Tenant zero's review: the merchant organization plays tenant zero.
+    if (url.includes("/v1.0/console/applications")) {
+      if (selector !== `org:${MOCK_MERCHANT_ORG}`) fail(config, 404, "Not Found", "resource not found", "about:blank", "resource_not_found")
+      if (method === "post") {
+        const decided = url.endsWith("/approve") ? "approved" : "rejected"
+        return ok(config, {...mockApplication(decided), status: decided, decided_at: new Date().toISOString()})
+      }
+      const status = String((config.params as {status?: string})?.status ?? "pending")
+      return ok(config, {data: status === "pending" ? [mockApplication("pending")] : [], has_more: false})
+    }
+    // Padaria has a test tenant once it applied (in review or rejected).
+    const padariaTest = selector === `org:${MOCK_NONE_ORG}` && config.headers?.["X-Billing-Mode"] === "test" &&
+      (scenario === "pedido_em_analise" || scenario === "pedido_recusado")
+    if (selector !== `org:${MOCK_MERCHANT_ORG}` && !padariaTest) {
       fail(config, 404, "No merchant", "this organization does not bill through CTech Billing in this mode", "/problems/no-merchant", "no_merchant")
     }
     const mode = (config.headers?.["X-Billing-Mode"] as string) === "test" ? "test" : "live"

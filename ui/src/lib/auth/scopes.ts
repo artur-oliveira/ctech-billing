@@ -40,9 +40,14 @@ const PORTAL_SCOPES = [
  * The finance scopes are asked for by the same login and hold nothing alone:
  * the API resolves the space (personal or an organization) and the verbs the
  * person has in it on every request (ADR 0025).
+ *
+ * `billing:organization:write` applies for billing and decides applications;
+ * the `billing` client at ctech-account must be granted it before this ships
+ * (plan part 2, decision 8).
  */
 const CONSOLE_SCOPES = [
   "billing:organization:read",
+  "billing:organization:write",
   "billing:invoices:read",
   "billing:invoices:write",
   "billing:subscriptions:read",

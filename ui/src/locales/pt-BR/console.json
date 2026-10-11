@@ -15,7 +15,8 @@
   "subscriptions": "Assinaturas",
   "customers": "Clientes",
   "catalog": "Catálogo",
-  "settings": "Configurações"
+  "settings": "Configurações",
+  "applications": "Solicitações"
  },
  "shell": {
   "testBanner": "Modo de teste. Nada aqui cobra de verdade."
@@ -335,5 +336,91 @@
   "add": "Adicionar passo",
   "reset": "Voltar a herdar ({{label}})",
   "none": "Sem passos próprios. As faturas seguem {{label}}."
+ },
+ "invitation": {
+  "title": "Cobre seus clientes com o CTech Billing",
+  "body": "{{name}} pode emitir faturas, cobrar assinaturas e receber avisos de pagamento pela API.",
+  "points": {
+   "subscriptions": "Assinaturas e faturas recorrentes",
+   "api": "Integração pela API, com webhooks",
+   "test": "Modo de teste na hora, para integrar sem risco"
+  },
+  "action": "Quero cobrar meus clientes",
+  "review": "O modo produção abre depois da nossa análise.",
+  "pendingTitle": "Modo produção em análise",
+  "pendingBody": "Enquanto analisamos, {{name}} já pode integrar no modo de teste.",
+  "rejectedTitle": "Modo produção não aprovado",
+  "rejectedBody": "O modo de teste continua disponível. Veja o motivo e peça de novo quando quiser.",
+  "toTest": "Ir para o modo de teste",
+  "applyAgain": "Pedir de novo"
+ },
+ "apply": {
+  "title": "Pedir acesso à cobrança",
+  "description": "Conte um pouco sobre o negócio de {{name}}. O modo de teste fica pronto assim que você enviar.",
+  "company": "Empresa que cobra",
+  "companyHint": "O nome e o documento dela aparecem nas faturas.",
+  "noCompanies": "Esta organização ainda não tem empresa cadastrada. Cadastre uma na CTech Conta e volte aqui.",
+  "retry": "Tentar de novo",
+  "about": "O que você vende e para quem",
+  "aboutHint": "Entre 20 e 1000 caracteres.",
+  "aboutPlaceholder": "Ex.: assinaturas mensais de cursos online para pessoas físicas",
+  "website": "Site (opcional)",
+  "volume": "Quanto espera cobrar por mês (opcional)",
+  "contact": "E-mail para contato",
+  "contactHint": "Avisamos aqui quando a análise terminar.",
+  "submit": "Enviar pedido",
+  "cancel": "Voltar",
+  "submittedTitle": "Pedido enviado",
+  "submittedBody": "O modo de teste de {{name}} está pronto. O modo produção está em análise; avisamos por e-mail quando terminar.",
+  "openTest": "Abrir o modo de teste",
+  "sentOn": "Enviado em {{date}}",
+  "truncated": "A lista mostra as 200 primeiras empresas em ordem alfabética. Se a sua não está nela, informe o código da empresa.",
+  "enterId": "Informar o código da empresa",
+  "pickFromList": "Escolher da lista",
+  "companyId": "Código da empresa",
+  "companyIdHint": "Está na página da empresa na CTech Conta."
+ },
+ "volume": {
+  "up_to_10k": "Até R$ 10 mil",
+  "10k_to_50k": "De R$ 10 mil a R$ 50 mil",
+  "50k_to_200k": "De R$ 50 mil a R$ 200 mil",
+  "over_200k": "Acima de R$ 200 mil"
+ },
+ "band": {
+  "pending": "Modo produção em análise. O modo de teste já está pronto para integrar.",
+  "rejected": "O modo produção não foi aprovado: {{reason}}",
+  "applyAgain": "Pedir de novo",
+  "suspended": "A cobrança de {{name}} está suspensa. As integrações só leem dados e novas faturas estão paradas."
+ },
+ "applications": {
+  "title": "Solicitações",
+  "description": "Organizações que pediram para cobrar os próprios clientes.",
+  "filter": "Situação",
+  "pending": "Pendentes",
+  "approved": "{{name}} aprovada.",
+  "rejected": "Recusadas",
+  "empty": {
+   "pending": "Nenhuma solicitação pendente.",
+   "approved": "Nenhuma solicitação aprovada ainda.",
+   "rejected": "Nenhuma solicitação recusada."
+  },
+  "company": "Empresa",
+  "website": "Site",
+  "volume": "Volume esperado",
+  "contact": "Contato",
+  "appliedOn": "Pedido em {{date}}",
+  "decidedOn": "Decidido em {{date}}",
+  "reason": "Motivo",
+  "approve": "Aprovar",
+  "reject": "Recusar",
+  "approveTitle": "Aprovar {{name}}?",
+  "approveBody": "Isso cria o modo produção e a assinatura de acesso antecipado (R$ 0). Avisamos o contato por e-mail.",
+  "rejectTitle": "Recusar {{name}}?",
+  "rejectBody": "O modo de teste continua. A pessoa recebe o motivo por e-mail e pode pedir de novo.",
+  "rejectReason": "Motivo",
+  "rejectHint": "Entre 10 e 500 caracteres. Escreva o que a pessoa precisa corrigir.",
+  "rejectSubmit": "Recusar pedido",
+  "rejected_toast": "Pedido de {{name}} recusado.",
+  "more": "Carregar mais"
  }
 }

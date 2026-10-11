@@ -13,8 +13,13 @@ const INVOICING_NAV = [
  * The console's sections: invoicing only. Finanças is its own area (/finance).
  * They appear only once the session has confirmed a tenant for the selected
  * organization in this mode: shown while it loads, they flashed for a person
- * who has none and vanished a moment later.
+ * who has none and vanished a moment later. Solicitações is added for the
+ * organization whose tenant is tenant zero (the server decides; this is display).
  */
-export function consoleNav(hasOrganization: boolean): {href: string; label: string}[] {
-  return hasOrganization ? [...INVOICING_NAV] : []
+/** Tenant zero's review of merchant applications (spec § 4.2). */
+const REVIEW_ITEM = {href: "/console/applications", label: "console.nav.applications"} as const
+
+export function consoleNav(hasOrganization: boolean, reviewer = false): {href: string; label: string}[] {
+  if (!hasOrganization) return []
+  return reviewer ? [...INVOICING_NAV, REVIEW_ITEM] : [...INVOICING_NAV]
 }
