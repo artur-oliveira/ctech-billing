@@ -103,3 +103,18 @@ func BillingCategory(dir Direction) LedgerAccount {
 	return LedgerAccount{ID: CategoryCTechSubscriptions, Name: "Assinaturas CTech", Class: ClassExpense,
 		Group: GroupOperatingExpenses, SystemKey: systemKey("assinaturas-ctech")}
 }
+
+const (
+	UnclassifiedInID  = "sys-unclassified-in"
+	UnclassifiedOutID = "sys-unclassified-out"
+)
+
+// UnclassifiedCategories are seeded with a space's first BYOK account (spec
+// § 8.1). Ordinary categories (not System): reports show them, and a person
+// moves their lines out by classifying.
+func UnclassifiedCategories() []LedgerAccount {
+	return []LedgerAccount{
+		{ID: UnclassifiedInID, Name: "A classificar (entradas)", Class: ClassIncome, Group: GroupOther, SystemKey: "unclassified_in"},
+		{ID: UnclassifiedOutID, Name: "A classificar (saídas)", Class: ClassExpense, Group: GroupOther, SystemKey: "unclassified_out"},
+	}
+}

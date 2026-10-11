@@ -226,3 +226,17 @@ func CancelBill(sys SystemAccounts, facts BillFacts, competence brcal.Date) (Tra
 	}
 	return NewTransaction(KindAdjustment, competence, legs...)
 }
+
+// BankLine is a synced statement line: credit moves cash in against an income
+// category, debit moves it out against an expense category.
+func BankLine(accountID, categoryID string, credit bool, amount billing.Cents, date brcal.Date) (Transaction, error) {
+	if amount <= 0 {
+		return Transaction{}, fmt.Errorf("%w: a bank line moves a positive amount", ErrInvalidTransaction)
+	}
+	if credit {
+		return NewTransaction(KindBankLine, date,
+			Leg{AccountID: accountID, Amount: amount, Flow: categoryID}, Leg{AccountID: categoryID, Amount: -amount})
+	}
+	return NewTransaction(KindBankLine, date,
+		Leg{AccountID: categoryID, Amount: amount}, Leg{AccountID: accountID, Amount: -amount, Flow: categoryID})
+}

@@ -448,6 +448,11 @@ func (r *BillRepository) Settle(ctx context.Context, sp space.ResolvedSpace, bil
 	if err := sp.Require(space.Write | space.Settle); err != nil {
 		return finance.Bill{}, err
 	}
+	if b, err := r.get(ctx, sp, billID); err == nil && b.AccountID != "" {
+		if acct, err := r.ledger.getAccount(ctx, sp, b.AccountID); err == nil && acct.Source == finance.SourceBYOK {
+			return finance.Bill{}, fmt.Errorf("%w: settle it by classifying its bank line", ErrAccountIsSynced)
+		}
+	}
 	p, err := r.planSettle(ctx, sp, billID, paid, differenceCategoryID, date, meta, now)
 	if err != nil {
 		return finance.Bill{}, err
@@ -637,7 +642,7 @@ func (r *BillRepository) Edit(ctx context.Context, sp space.ResolvedSpace, billI
 	case cur.Origin == finance.OriginCardStatement && next.AccountID != cur.AccountID:
 		// Its "category" is the card (a liability), not an expense: only the
 		// account that pays it is checked.
-		if err := r.ledger.activeCash(ctx, sp, next.AccountID); err != nil {
+		if err := r.ledger.activeManualCash(ctx, sp, next.AccountID); err != nil {
 			return finance.Bill{}, err
 		}
 	case cur.Origin != finance.OriginCardStatement && (next.CategoryID != cur.CategoryID || next.AccountID != cur.AccountID):
