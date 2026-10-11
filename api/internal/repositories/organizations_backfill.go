@@ -82,6 +82,8 @@ func (r *OrganizationRepository) BackfillAccountOrganizationLookup(ctx context.C
 		switch {
 		case row.From == row.To:
 			continue
+		// {mode}#OWNER#{user} is the pre-ADR-0028 console key (ADR 0011), which
+		// the console no longer reads; the backfill is the only code that knows it.
 		case row.From != "" && !strings.HasPrefix(row.From, Mode(row.Livemode)+"#OWNER#"):
 			rep.Mismatched = append(rep.Mismatched, row)
 			continue

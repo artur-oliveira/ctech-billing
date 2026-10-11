@@ -138,40 +138,11 @@ func ResolveMerchantTenant(src MerchantTenants) fiber.Handler {
 	}
 }
 
-// legacyOwnerTenants is the pre-ADR-0028 lookup by stored owner. It is
-// consulted only while tenants still carry the {mode}#OWNER# key, and is
-// deleted with GetByOwner once the backfill is confirmed (plan Task 11).
-type legacyOwnerTenants interface {
-	GetByOwner(ctx context.Context, userID string, livemode bool) (*billing.Organization, error)
-}
-
 // LookupMerchantTenant reads the tenant of an account organization in one
 // mode. The caller has already established that sub is an owner or admin of
-// accountOrgID (or, for the session, listed it from ctech-account's answer).
-//
-// Until the backfill runs, a tenant that still carries only the owner key is
-// accepted through GetByOwner(sub) — and only when it is linked to this very
-// organization in this mode. The fallback never decides the role and never
-// reaches an unlinked tenant.
+// accountOrgID (or listed it from ctech-account's answer); sub is kept in the
+// signature for the callers' sake and for logging, and decides nothing.
 func LookupMerchantTenant(ctx context.Context, src MerchantTenants, sub, accountOrgID string, livemode bool) (*billing.Organization, error) {
-	org, err := src.GetByAccountOrganization(ctx, accountOrgID, livemode)
-	if err == nil || !errors.Is(err, repositories.ErrNotFound) {
-		return org, err
-	}
-	legacy, ok := src.(legacyOwnerTenants)
-	if !ok || sub == "" {
-		return nil, err
-	}
-	old, lerr := legacy.GetByOwner(ctx, sub, livemode)
-	switch {
-	case errors.Is(lerr, repositories.ErrNotFound):
-		return nil, err
-	case lerr != nil:
-		return nil, lerr
-	case old.AccountOrganizationID != accountOrgID || old.Livemode != livemode:
-		return nil, err
-	}
-	slog.Info("console: tenant reached through the legacy owner key; run backfill-organization-lookup",
-		"tenant", old.ID, "mode", repositories.Mode(livemode))
-	return old, nil
+	_ = sub
+	return src.GetByAccountOrganization(ctx, accountOrgID, livemode)
 }
