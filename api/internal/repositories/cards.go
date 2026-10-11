@@ -231,6 +231,11 @@ func (r *CardRepository) UpdateCard(ctx context.Context, sp space.ResolvedSpace,
 	var rename []types.TransactWriteItem
 	if p.Name != nil {
 		name := strings.TrimSpace(*p.Name)
+		// loadCard tolerates a card whose account row is missing (its name reads
+		// ""; a stored account always has one): there is nothing to rename.
+		if row.Name == "" {
+			return CardRow{}, fmt.Errorf("%w: card %s has no account", ErrNotFound, cardID)
+		}
 		acct := AccountRow{LedgerAccount: finance.LedgerAccount{ID: cardID, Name: row.Name, Class: finance.ClassLiability}, Archived: row.Archived}
 		if err := checkRenamable(acct, name); err != nil {
 			return CardRow{}, err
@@ -260,8 +265,8 @@ func (r *CardRepository) UpdateCard(ctx context.Context, sp space.ResolvedSpace,
 	}
 	sk := CardSK(cardID)
 	err = r.cards.TransactWrite(ctx, append(txItems(r.cards.BuildRawUpdateTxItem(sp.PK(), &sk, set, "attribute_exists(pk)", nil, values)), rename...))
-	if err != nil && len(rename) > 0 && onlyConditionFailed(err) {
-		return CardRow{}, errRenameRaced
+	if len(rename) > 0 {
+		err = renameWriteErr(err)
 	}
 	if err != nil {
 		return CardRow{}, err

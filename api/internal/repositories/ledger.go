@@ -377,7 +377,8 @@ func (r *LedgerRepository) ArchiveAccount(ctx context.Context, sp space.Resolved
 const renamableCond = "attribute_exists(pk) AND (attribute_not_exists(#sys) OR #sys = :f) AND (attribute_not_exists(archived) OR archived = :f)"
 
 // checkRenamable refuses what renaming never touches: a system account (the
-// ledger's own, never listed) and an archived one (hidden from new activity;
+// ledger's own; listed by the API but never shown or edited by a client) and
+// an archived one (hidden from new activity;
 // restore is not offered, so neither is a rename). The name is validated as on
 // create.
 func checkRenamable(acct AccountRow, name string) error {
@@ -408,6 +409,16 @@ func (r *LedgerRepository) renameTxItem(sp space.ResolvedSpace, id, name string,
 // account was archived in between (accounts are never deleted).
 var errRenameRaced = fmt.Errorf("%w: the account was archived while renaming it", finance.ErrInvalidAccount)
 
+// renameWriteErr maps the error of a write carrying a rename: a cancellation
+// made only of failed conditions is errRenameRaced; anything else (a conflict,
+// a throttle) passes through unchanged.
+func renameWriteErr(err error) error {
+	if err != nil && onlyConditionFailed(err) {
+		return errRenameRaced
+	}
+	return err
+}
+
 // RenameAccount changes the name of an account, category or card account the
 // person holds. Only the name moves: class, group, balance and every entry stay,
 // and a default category keeps its system_key (clients show a stored name that
@@ -424,11 +435,7 @@ func (r *LedgerRepository) RenameAccount(ctx context.Context, sp space.ResolvedS
 	if err := checkRenamable(*acct, name); err != nil {
 		return AccountRow{}, err
 	}
-	err = r.accounts.TransactWrite(ctx, txItems(r.renameTxItem(sp, id, name, now)))
-	if err != nil && onlyConditionFailed(err) {
-		return AccountRow{}, errRenameRaced
-	}
-	if err != nil {
+	if err := renameWriteErr(r.accounts.TransactWrite(ctx, txItems(r.renameTxItem(sp, id, name, now)))); err != nil {
 		return AccountRow{}, err
 	}
 	acct.Name = name

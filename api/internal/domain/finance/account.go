@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 )
 
 // ErrInvalidAccount wraps every reason a ledger account is refused.
@@ -51,7 +52,7 @@ func (a LedgerAccount) Validate() error {
 	switch {
 	case !validAccountID(a.ID):
 		return fmt.Errorf("%w: id is 1..%d characters of A-Z a-z 0-9 '_' '-'", ErrInvalidAccount, maxAccountID)
-	case strings.TrimSpace(a.Name) == "" || len(a.Name) > maxAccountName:
+	case strings.TrimSpace(a.Name) == "" || utf8.RuneCountInString(a.Name) > maxAccountName:
 		return fmt.Errorf("%w: name is required and at most %d characters", ErrInvalidAccount, maxAccountName)
 	case !validClass(a.Class):
 		return fmt.Errorf("%w: unknown class %q", ErrInvalidAccount, a.Class)

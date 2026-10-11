@@ -57,6 +57,21 @@ func TestAnAccountIsRenamedAndKeepsItsMoney(t *testing.T) {
 	}
 }
 
+// The limit is 80 characters, as the UI counts them: 80 accented letters are a
+// valid name on create and on rename, and 81 is the field's too_long.
+func TestANameOfEightyAccentedCharactersIsAccepted(t *testing.T) {
+	f := newFinanceEnv(t)
+	long := strings.Repeat("é", 80)
+	var bank renamedAccount
+	f.must(t, 201, "POST", "/accounts", `{"name":"`+long+`","class":"asset"}`, &bank)
+	f.must(t, 200, "PATCH", "/accounts/"+bank.ID, `{"name":"`+strings.Repeat("ã", 80)+`"}`, nil)
+	f.must(t, 201, "POST", "/cards", fmt.Sprintf(`{"name":%q,"closing_day":3,"due_day":10,"paying_account_id":%q}`, long, bank.ID), &bank)
+	res := f.call(t, "PATCH", "/accounts/"+bank.ID, `{"name":"`+strings.Repeat("ã", 81)+`"}`)
+	if res.status != 422 || !strings.Contains(string(res.body), "too_long") {
+		t.Errorf("81 characters = %d %s, want 422 too_long", res.status, res.body)
+	}
+}
+
 func TestRenamingRefusesSystemArchivedUnknownAndInvalid(t *testing.T) {
 	f := newFinanceEnv(t)
 	var bank struct{ ID string }
@@ -75,7 +90,7 @@ func TestRenamingRefusesSystemArchivedUnknownAndInvalid(t *testing.T) {
 		t.Errorf("a rename that also sends class = %d %s, want 400", res.status, res.body)
 	}
 	f.must(t, 204, "POST", "/accounts/"+bank.ID+"/archive", `{}`, nil)
-	if res := f.call(t, "PATCH", "/accounts/"+bank.ID, `{"name":"Outro"}`); res.status != 422 {
+	if res := f.call(t, "PATCH", "/accounts/"+bank.ID, `{"name":"Outro"}`); res.status != 422 || !strings.Contains(string(res.body), "invalid_account") {
 		t.Errorf("renaming an archived account = %d %s, want 422", res.status, res.body)
 	}
 	if a := f.accountByID(t, bank.ID); a.Name != "Banco" {
@@ -126,7 +141,7 @@ func TestACardIsRenamedThroughItsPatch(t *testing.T) {
 		t.Errorf("renaming a card to empty = %d %s, want 422", res.status, res.body)
 	}
 	f.must(t, 204, "POST", "/accounts/"+card.ID+"/archive", `{}`, nil)
-	if res := f.call(t, "PATCH", "/cards/"+card.ID, `{"name":"Outro"}`); res.status != 422 {
+	if res := f.call(t, "PATCH", "/cards/"+card.ID, `{"name":"Outro"}`); res.status != 422 || !strings.Contains(string(res.body), "invalid_account") {
 		t.Errorf("renaming an archived card = %d %s, want 422", res.status, res.body)
 	}
 	if a := f.accountByID(t, card.ID); a.Name != "Visa" {
