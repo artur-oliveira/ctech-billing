@@ -74,18 +74,7 @@ func (r *InvoiceRepository) Create(
 	pk := TenantPK(inv.OrganizationID, inv.Livemode)
 	writes := make([]types.TransactWriteItem, 0, len(items)+2)
 
-	subscriptionLookup := ""
-	if inv.SubscriptionID != "" {
-		subscriptionLookup = LookupSubscriptionInvoicesPK(inv.OrganizationID, inv.Livemode, inv.SubscriptionID)
-	}
-
-	invItem, err := Encode(invoiceRow{
-		keys:          newKeys(pk, InvoiceSK(inv.ID), RetentionInvoice, now),
-		PeriodAttrs:   NewPeriodAttrs(inv.OrganizationID, inv.Livemode, EntityInvoice, inv.Period.Start, inv.ID),
-		Invoice:       *inv,
-		GenerationKey: generationKey,
-		LookupPK:      subscriptionLookup,
-	})
+	invItem, err := Encode(invoiceRowOf(inv, generationKey, now))
 	if err != nil {
 		return err
 	}
@@ -121,6 +110,28 @@ func (r *InvoiceRepository) Create(
 		return fmt.Errorf("%w: %s", ErrAlreadyGenerated, generationKey)
 	}
 	return err
+}
+
+// invoiceRowOf is the invoice row as Create writes it, with both of its index
+// partitions: its subscription's lookup_pk (absent on a one-off invoice) and
+// its customer's customer_pk.
+func invoiceRowOf(inv *billing.Invoice, generationKey string, now time.Time) invoiceRow {
+	subscriptionLookup := ""
+	if inv.SubscriptionID != "" {
+		subscriptionLookup = LookupSubscriptionInvoicesPK(inv.OrganizationID, inv.Livemode, inv.SubscriptionID)
+	}
+	customerPartition := ""
+	if inv.CustomerID != "" {
+		customerPartition = LookupCustomerInvoicesPK(inv.OrganizationID, inv.Livemode, inv.CustomerID)
+	}
+	return invoiceRow{
+		keys:          newKeys(TenantPK(inv.OrganizationID, inv.Livemode), InvoiceSK(inv.ID), RetentionInvoice, now),
+		PeriodAttrs:   NewPeriodAttrs(inv.OrganizationID, inv.Livemode, EntityInvoice, inv.Period.Start, inv.ID),
+		Invoice:       *inv,
+		GenerationKey: generationKey,
+		LookupPK:      subscriptionLookup,
+		CustomerPK:    customerPartition,
+	}
 }
 
 // Get reads an invoice.
@@ -410,10 +421,12 @@ func (r *InvoiceRepository) Transition(
 
 // ListByCustomer returns one customer's invoices, newest first.
 //
-// It reads the tenant partition and filters, rather than adding an index. The
-// portal opens this for one person at a time and a person's own invoice history
-// is small; the period index answers the tenant-wide question, which is the one
-// that grows. If this ever becomes a hot path the fix is an index — never a Scan.
+// It still filters the tenant partition. The index that replaces it,
+// customer-index on LookupCustomerInvoicesPK, is written by Create and
+// backfilled by cmd/backfill-invoice-lookup; this read moves onto it only once
+// the backfill has reported nothing missing in production, because an index
+// query cannot see a row without its key (.github/workflows/README.md,
+// "Adding an index to a live table").
 //
 // The `#LINE#` and `#ATTEMPT#` rows share the INVOICE# prefix and carry no
 // customer, so the filter already excludes them; the status check below is the

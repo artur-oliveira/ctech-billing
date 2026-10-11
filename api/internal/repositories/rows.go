@@ -126,6 +126,11 @@ type invoiceRow struct {
 	// return one. Written once at Create — an invoice's subscription does not
 	// change, so nothing else has to maintain it.
 	LookupPK string `dynamodbav:"lookup_pk,omitempty"`
+	// CustomerPK groups the invoice under its customer
+	// (LookupCustomerInvoicesPK) on customer-index. Written once at Create: an
+	// invoice's customer never changes. Line, attempt, checkout and credit-note
+	// rows never carry it.
+	CustomerPK string `dynamodbav:"customer_pk,omitempty"`
 }
 
 type invoiceItemRow struct {

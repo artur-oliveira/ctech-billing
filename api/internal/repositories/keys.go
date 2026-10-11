@@ -96,6 +96,11 @@ const (
 	// IndexOpen serves "a pagar", "a receber" and "vencidos". Sparse: a bill is
 	// in it only while it is a forecast, so these lists never read history.
 	IndexOpen = "open-index"
+	// IndexCustomer serves "this customer's invoices": partition customer_pk =
+	// LookupCustomerInvoicesPK, sort `sk`. Its own index rather than a lookup
+	// partition because an invoice row's lookup_pk is already its
+	// subscription's (LookupSubscriptionInvoicesPK). Sparse: invoice rows only.
+	IndexCustomer = "customer-index"
 )
 
 // Entity discriminates rows in a period index. It is part of the partition
@@ -476,6 +481,23 @@ func LookupSubscriptionInvoicesPK(organizationID string, livemode bool, subscrip
 // and by cmd/backfill-subscription-lookup for rows written before it existed.
 func LookupCustomerSubscriptionsPK(organizationID string, livemode bool, customerID string) string {
 	return TenantPK(organizationID, livemode) + "#CUSTOMER_SUBS#" + customerID
+}
+
+// LookupCustomerInvoicesPK partitions a customer's invoices, so "this
+// customer's invoices" is a key condition on customer-index rather than the
+// tenant's whole INVOICE# range — lines, attempts, checkouts and credit notes
+// included — read and filtered down to one customer_id.
+//
+// It is stored as customer_pk, not lookup_pk: an invoice row's lookup_pk is
+// already its subscription's partition (LookupSubscriptionInvoicesPK), and one
+// attribute can name only one partition. The sort key is the table's own `sk`
+// ("INVOICE#" plus the invoice's ULID), so the partition is in creation order
+// and newest-first is a backwards read. Sparse: only the invoice row carries
+// it, never its nested rows. Written once at Create — an invoice's customer
+// does not change — and by cmd/backfill-invoice-lookup for rows written before
+// it existed.
+func LookupCustomerInvoicesPK(organizationID string, livemode bool, customerID string) string {
+	return TenantPK(organizationID, livemode) + "#CUSTOMER_INVOICES#" + customerID
 }
 
 // PeriodPK is the period index's partition: tenant plus entity type, so a
