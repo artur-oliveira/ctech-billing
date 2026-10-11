@@ -71,7 +71,7 @@ func TestRangeTotalsEqualTheSingleMonthEndpoint(t *testing.T) {
 	ctx := context.Background()
 	f.purchase(t, card.ID, brcal.New(2026, time.March, 1), 90000, 3) // Mar, Apr, May
 	f.purchase(t, card.ID, brcal.New(2026, time.March, 2), 5000, 1)  // Mar
-	f.closeThrough(t, card.ID, brcal.New(2026, time.March, 3))      // March closed: a frozen total and a bill
+	f.closeThrough(t, card.ID, brcal.New(2026, time.March, 3))       // March closed: a frozen total and a bill
 	p, err := f.cards.StatementRange(ctx, f.sp, card.ID, finance.Month{Year: 2026, Month: time.March}, 3, false)
 	if err != nil || len(p.Statements) != 3 {
 		t.Fatalf("range = %v, %v", months(p), err)
