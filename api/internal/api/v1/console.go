@@ -125,7 +125,11 @@ func (h *consoleHandlers) session(c fiber.Ctx) error {
 		}
 		status, err := h.merchantStatus(c.Context(), sub, w.ID)
 		if err != nil {
-			return fail(c, err)
+			// One organization whose tenant cannot be read (two tenants on one
+			// key, a throttled read) is left out rather than taking the others
+			// away; a request about that organization answers 500 by itself.
+			slog.Error("console: merchant status failed", "account_organization", w.ID, "error", err)
+			continue
 		}
 		out.Organizations = append(out.Organizations, merchantOrganizationDTO{
 			OrganizationID: w.ID, Selector: "org:" + w.ID, DisplayName: w.DisplayName, Role: w.Role, MerchantStatus: status,

@@ -145,3 +145,44 @@ func TestMerchantOrganizationWireShape(t *testing.T) {
 		t.Fatalf("got  %s\nwant %s", raw, want)
 	}
 }
+
+// failingMerchants answers like fakeMerchants but fails for one account org
+// (an ambiguous pair, a throttled read).
+type failingMerchants struct {
+	fakeMerchants
+	bad string
+}
+
+func (f failingMerchants) GetByAccountOrganization(ctx context.Context, acct string, live bool) (*billing.Organization, error) {
+	if acct == f.bad {
+		return nil, repositories.ErrAccountOrganizationAmbiguous
+	}
+	return f.fakeMerchants.GetByAccountOrganization(ctx, acct, live)
+}
+
+// Final review: one organization whose tenant cannot be read must not take the
+// person's other organizations away; it is left out of the list.
+func TestOneUnreadableOrganizationDoesNotHideTheOthers(t *testing.T) {
+	l := &fakeLister{orgs: map[string][]accountorgs.Organization{"alice": {
+		{ID: acctA, DisplayName: "CTech", Role: "owner", Kind: "organization"},
+		{ID: acctB, DisplayName: "beta", Role: "owner", Kind: "organization"},
+	}}}
+	m := failingMerchants{fakeMerchants: fakeMerchants{acctA + "|live": {ID: "ctech", Livemode: true}}, bad: acctB}
+	code, raw, b := getSession(t, sessionApp(&consoleHandlers{spaces: l, merchants: m}, sessionClaims))
+	if code != 200 || len(b.Organizations) != 1 || b.Organizations[0].OrganizationID != acctA {
+		t.Fatalf("%d %s", code, raw)
+	}
+}
+
+func TestTheConsoleIdentitySkipsAnUnreadableOrganization(t *testing.T) {
+	l := &fakeLister{orgs: map[string][]accountorgs.Organization{"alice": {
+		{ID: acctB, DisplayName: "alpha", Role: "owner", Kind: "organization"}, // first by name, unreadable
+		{ID: acctA, DisplayName: "CTech", Role: "owner", Kind: "organization"},
+	}}}
+	m := failingMerchants{fakeMerchants: fakeMerchants{acctA + "|live": {ID: "ctech", DisplayName: "CTech", Livemode: true}}, bad: acctB}
+	h := &consoleHandlers{spaces: l, merchants: m}
+	org, err := h.consoleIdentity(context.Background(), "alice")
+	if err != nil || org == nil || org.ID != "ctech" {
+		t.Fatalf("identity = %+v, %v", org, err)
+	}
+}

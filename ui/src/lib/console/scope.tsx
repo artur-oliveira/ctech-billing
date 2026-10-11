@@ -1,15 +1,21 @@
 "use client"
 
-import {createContext, type ReactNode, useContext} from "react"
+import {createContext, Fragment, type ReactNode, useContext} from "react"
 
 import type {ConsoleScope} from "@/lib/console/merchant"
 
 const ScopeContext = createContext<ConsoleScope | null>(null)
 
 /** Provided by the console shell once an organization with a tenant in this
- *  mode is selected; nothing below it renders before that. */
+ *  mode is selected; nothing below it renders before that. The subtree is
+ *  keyed by the scope: a switch (here or in another tab) remounts it, so an
+ *  open form never carries one organization's draft into another. */
 export function ConsoleScopeProvider({value, children}: {value: ConsoleScope; children: ReactNode}) {
-  return <ScopeContext.Provider value={value}>{children}</ScopeContext.Provider>
+  return (
+    <ScopeContext.Provider value={value}>
+      <Fragment key={`${value.org}:${value.mode}`}>{children}</Fragment>
+    </ScopeContext.Provider>
+  )
 }
 
 /** The (mode, organization) every billing-half call and query key is made with. */

@@ -108,7 +108,9 @@ func (h *consoleHandlers) consoleIdentity(ctx context.Context, sub string) (*bil
 		case err == nil:
 			return org, nil
 		case !errors.Is(err, repositories.ErrNotFound):
-			return nil, err
+			// Skipped, not fatal: /me is a probe, and one unreadable
+			// organization must not hide the next one (or the portal identity).
+			slog.Error("me: console identity lookup failed", "account_organization", w.ID, "error", err)
 		}
 	}
 	return nil, nil
