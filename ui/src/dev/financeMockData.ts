@@ -59,7 +59,8 @@ interface SpaceState {
   entries: MEntry[]
   reversed: Set<string>
   openings: Set<string>
-  cards: Card[]
+  /** first_month is mock-only: the card's first statement (its creation month); never sent. */
+  cards: (Card & {first_month?: string})[]
   purchases: (Purchase & {card: string; advanced: number[]})[]
   /** Statement items, keyed by card and month like the API's ITEM rows. */
   items: (StatementItem & {card: string; month: string; key: string})[]
@@ -94,6 +95,18 @@ function todayIso(): string {
   const t = new Date()
   return iso(t.getFullYear(), t.getMonth() + 1, t.getDate())
 }
+/** `YYYY-MM` shifted by n months. */
+function ymAdd(ym: string, n: number): string {
+  const [y, m] = ym.split("-").map(Number)
+  const i = y * 12 + (m - 1) + n
+  return `${Math.floor(i / 12)}-${String((i % 12) + 1).padStart(2, "0")}`
+}
+/** The statement month a purchase on `date` lands on: after the closing day, the next one; never before the open month. */
+function statementMonthFor(date: string, c: Card): string {
+  let first = date.slice(0, 7)
+  if (Number(date.slice(8)) > Math.min(c.closing_day, daysIn(Number(first.slice(0, 4)), Number(first.slice(5))))) first = ymAdd(first, 1)
+  return first < c.open_month ? c.open_month : first
+}
 function monthOffset(s: string, n: number): [number, number] {
   const [y, m] = parts(s)
   const t = new Date(y, m - 1 + n, 1)
@@ -113,7 +126,7 @@ function seed(kind: "personal" | "org", mode: string): SpaceState {
   })
   const ledger = {
     entries: [] as MEntry[], reversed: new Set<string>(), openings: new Set<string>(),
-    cards: [] as Card[], purchases: [] as SpaceState["purchases"], items: [] as SpaceState["items"],
+    cards: [] as SpaceState["cards"], purchases: [] as SpaceState["purchases"], items: [] as SpaceState["items"],
     closed: new Map<string, {total: number; bill_id?: string}>(),
     imports: [] as SpaceState["imports"], locks: new Set<string>(), mappings: new Map<string, CsvMapping>(),
     autoPaid: new Set<string>(), linked: new Set<string>(),
@@ -140,13 +153,19 @@ function seed(kind: "personal" | "org", mode: string): SpaceState {
       const [py, pm] = monthOffset(today, -1)
       const ym = (n: number) => { const [y, m] = monthOffset(today, n); return `${y}-${String(m).padStart(2, "0")}` }
       ledger.cards.push({id: "card-nubank", name: "Nubank", closing_day: 3, due_day: 10, paying_account_id: "conta-corrente",
-        open_month: ym(0), balance: -90_000, archived: false, brand: "mastercard", last4: "4242"})
+        open_month: ym(0), balance: -93_990, archived: false, brand: "mastercard", last4: "4242", first_month: ym(-2)})
       ledger.purchases.push({id: "p-seed", card: "card-nubank", description: "Geladeira", category_id: "mercado", date: iso(py, pm, 2),
         total: 90_000, refunded: false, advanced: [], installments: [0, 1, 2].map(i => ({number: i + 1, amount: 30_000, month: ym(i - 1)}))})
       for (const i of [0, 1, 2]) {
         ledger.items.push({card: "card-nubank", month: ym(i - 1), key: `p-seed#${i + 1}`, purchase_id: "p-seed", description: "Geladeira",
           category_id: "mercado", date: iso(py, pm, 2), number: i + 1, of: 3, kind: "installment", amount: 30_000})
       }
+      // A streaming subscription paid by this card: the job posted this month's.
+      const [ty, tm] = monthOffset(today, 0)
+      ledger.purchases.push({id: "p-stream", card: "card-nubank", description: "Streaming", category_id: "assinaturas", date: iso(ty, tm, 2),
+        total: 3_990, refunded: false, advanced: [], installments: [{number: 1, amount: 3_990, month: ym(0)}], origin: "recurrence", recurrence_id: "r-streaming"})
+      ledger.items.push({card: "card-nubank", month: ym(0), key: "p-stream#1", purchase_id: "p-stream", description: "Streaming",
+        category_id: "assinaturas", date: iso(ty, tm, 2), number: 1, of: 1, kind: "installment", amount: 3_990, recurrence_id: "r-streaming"})
     }
     return {
       ...ledger,
@@ -158,8 +177,9 @@ function seed(kind: "personal" | "org", mode: string): SpaceState {
         acct("aluguel", "Aluguel", "expense", 0, {dre_group: "operating_expenses", system_key: "rent"}),
         acct("mercado", "Mercado", "expense", 0, {dre_group: "operating_expenses"}),
         acct("juros", "Juros e multas", "expense", 0, {dre_group: "financial_result", system_key: "interest_and_fines"}),
+        acct("assinaturas", "Assinaturas", "expense", live ? 3_990 : 0, {dre_group: "operating_expenses"}),
         acct("assinaturas-antigas", "Assinaturas antigas", "expense", 0, {dre_group: "operating_expenses", archived: true}),
-        ...(live ? [acct("card-nubank", "Nubank", "liability", -90_000)] : []),
+        ...(live ? [acct("card-nubank", "Nubank", "liability", -93_990)] : []),
       ],
       bills: [
         bill("b-aluguel", "payable", 180_000, addDays(today, -3), "aluguel", "Aluguel do apartamento"),
@@ -173,7 +193,11 @@ function seed(kind: "personal" | "org", mode: string): SpaceState {
         id: "r-aluguel", direction: "payable", amount: 180_000, category_id: "aluguel", account_id: "conta-corrente",
         description: "Aluguel do apartamento", expression: {kind: "day_of_month", day: 10}, start: "2026-01-01",
         business_day_adjust: "roll_forward", auto_settle: false, archived: false,
-      }],
+      }, ...(live ? [{
+        id: "r-streaming", direction: "payable" as const, amount: 3_990, category_id: "assinaturas", account_id: "", card_id: "card-nubank", installments: 1,
+        description: "Streaming", expression: {kind: "day_of_month" as const, day: 2}, start: "2026-01-01", business_day_adjust: "none" as const,
+        auto_settle: false, archived: false,
+      }] : [])],
     }
   }
   return {
@@ -232,6 +256,18 @@ function body<T>(r: Req): T {
  * The API's PATCH rule (UX batch 4): an absent field keeps, null clears (the
  * key leaves the row, as the API removes the attribute), a value replaces.
  */
+/** The API's 422 for a recurrence's target (spec D1), or "" when it is fine. */
+function targetError(p: Partial<Recurrence>): string {
+  if (p.card_id && p.account_id) return "pay with an account or a card, not both"
+  if (!p.card_id && !p.account_id) return "an account or a card is required"
+  if (p.card_id && p.direction === "receivable") return "a card pays expenses only"
+  if (p.card_id && p.auto_settle) return "auto_settle does not apply to a card"
+  if (!p.card_id && p.installments) return "installments are for a card only"
+  const n = p.installments ?? 1
+  if (p.card_id && (n < 1 || n > 48 || (p.amount ?? 0) < n)) return "installments must be 1..48, each at least 0,01"
+  return ""
+}
+
 function applyPatch(target: object, patch: object) {
   const t = target as Record<string, unknown>
   for (const [k, v] of Object.entries(patch)) {
@@ -514,8 +550,13 @@ function route(method: string, path: string, r: Req, s: SpaceState, can: (v: Ver
     if (!can("finance.write")) return forbidden()
     const p = body<Partial<Recurrence>>(r)
     if (p.auto_settle && !can("finance.settle")) return forbidden()
+    // Pay with an account or a card, exactly one; a card pays expenses only, without auto_settle.
+    const target = targetError(p)
+    if (target) return problem(422, "about:blank", "Unprocessable Entity", target, "invalid_recurrence")
+    const onCard = !!p.card_id
     const rec: Recurrence = {
-      id: nextId("r"), direction: p.direction!, amount: p.amount!, category_id: p.category_id!, account_id: p.account_id!,
+      id: nextId("r"), direction: p.direction!, amount: p.amount!, category_id: p.category_id!, account_id: onCard ? "" : p.account_id!,
+      ...(onCard ? {card_id: p.card_id, installments: p.installments ?? 1} : {}),
       description: p.description, expression: p.expression!, start: p.start!, end: p.end,
       business_day_adjust: p.business_day_adjust ?? "none", auto_settle: !!p.auto_settle, archived: false,
     }
@@ -532,6 +573,17 @@ function route(method: string, path: string, r: Req, s: SpaceState, can: (v: Ver
     const all = occurrences(rec.expression, rec.start, 24).filter(o => !rec.end || o.nominal <= rec.end)
     const [hy, hm] = monthOffset(today, 1)
     const horizonEnd = iso(hy, hm, daysIn(hy, hm))
+    if (rec.card_id) {
+      // A card recurrence: what the job posted is its items; the rest lands on a statement month.
+      const c = s.cards.find(x => x.id === rec.card_id)
+      const posted = s.items.filter(i => i.recurrence_id === rec.id && (i.number ?? 1) === 1)
+      const history = posted.map(i => ({nominal: i.date, due: i.date, purchase_id: i.purchase_id, card_id: i.card,
+        statement_month: i.month, amount: rec.amount, state: "posted"}))
+      const after = posted.map(i => i.date).sort().at(-1) ?? addDays(today, -1)
+      const upcoming = rec.archived ? [] : all.filter(o => o.nominal > after && o.nominal >= today).slice(0, 6)
+        .map(o => ({nominal: o.nominal, due: o.nominal, ...(c ? {statement_month: statementMonthFor(o.nominal, c)} : {})}))
+      return ok({history, upcoming})
+    }
     const made = rec.id === "r-aluguel" ? all.filter(o => o.nominal <= horizonEnd).slice(-6) : []
     const past = made.filter(o => o.nominal < today)
     const history = made.map(o => {
@@ -558,8 +610,20 @@ function route(method: string, path: string, r: Req, s: SpaceState, can: (v: Ver
       if (p.end && !p.archive && !occurrences(rec.expression, addDays(today, 1), 1).some(o => o.nominal <= p.end!)) {
         return problem(422, "about:blank", "Unprocessable", "this end date leaves the recurrence with no occurrence to come", "recurrence_would_end")
       }
+      if (p.card_id && p.account_id) return problem(422, "about:blank", "Unprocessable Entity", "pay with an account or a card, not both", "invalid_recurrence")
       const {archive, ...rest} = p
+      if (p.card_id) {
+        rest.account_id = ""
+        rest.auto_settle = rest.auto_settle ?? false
+        if (rest.auto_settle) return problem(422, "about:blank", "Unprocessable Entity", "auto_settle does not apply to a card", "invalid_recurrence")
+        rest.installments = rest.installments ?? rec.installments ?? 1
+      } else if (p.account_id) {
+        delete rec.card_id
+        delete rec.installments
+      }
       applyPatch(rec, rest)
+      // The person's edit answers needs_attention: the next run re-checks.
+      delete rec.needs_attention
       if (archive) rec.archived = true
       return ok(rec)
     }
@@ -620,22 +684,18 @@ function route(method: string, path: string, r: Req, s: SpaceState, can: (v: Ver
   }
   // cards (the backend's rules, small: allocation floored at the open month,
   // remainder on the first installment, close = frozen total + a statement bill)
-  const ymAdd = (ym: string, n: number) => {
-    const [y, m] = ym.split("-").map(Number)
-    const i = y * 12 + (m - 1) + n
-    return `${Math.floor(i / 12)}-${String((i % 12) + 1).padStart(2, "0")}`
-  }
   const clampDay = (ym: string, day: number) => {
     const [y, m] = ym.split("-").map(Number)
     return `${ym}-${String(Math.min(day, daysIn(y, m))).padStart(2, "0")}`
   }
   const itemOut = (i: SpaceState["items"][number]): StatementItem => ({
     purchase_id: i.purchase_id, description: i.description, category_id: i.category_id, date: i.date,
-    number: i.number, of: i.of, kind: i.kind, amount: i.amount,
+    number: i.number, of: i.of, kind: i.kind, amount: i.amount, ...(i.recurrence_id ? {recurrence_id: i.recurrence_id} : {}),
   })
   const purchaseOut = (p: SpaceState["purchases"][number]): Purchase => ({
     id: p.id, description: p.description, category_id: p.category_id, date: p.date, total: p.total,
     installments: p.installments, refunded: p.refunded,
+    ...(p.recurrence_id ? {origin: "recurrence" as const, recurrence_id: p.recurrence_id} : {}),
   })
   const statementOf = (c: Card, month: string): CardStatement => {
     const closingDate = clampDay(month, c.closing_day)
@@ -650,7 +710,7 @@ function route(method: string, path: string, r: Req, s: SpaceState, can: (v: Ver
     return {card_id: c.id, month, status, closing_date: closingDate, due_date: due, total, bill_id: frozen?.bill_id, items}
   }
   const cardMatch = path.match(/^\/cards\/([^/]+)(?:\/(statements|purchases|close)(?:\/([^/]+)(?:\/(refund|advance))?)?)?$/)
-  if (path === "/cards" && method === "get") return ok({data: s.cards, has_more: false})
+  if (path === "/cards" && method === "get") return ok({data: s.cards.map(({first_month: _, ...c}) => c), has_more: false})
   if (path === "/cards" && method === "post") {
     if (!can("finance.configure")) return forbidden()
     const p = body<{name: string; closing_day: number; due_day: number; paying_account_id: string; brand?: Card["brand"]; last4?: string}>(r)
@@ -682,6 +742,24 @@ function route(method: string, path: string, r: Req, s: SpaceState, can: (v: Ver
       applyPatch(c, patch)
       return ok(c)
     }
+    if (sub === "statements" && !arg && method === "get") {
+      const from = String(r.params?.from ?? "")
+      const count = Number(r.params?.count ?? 3)
+      const backward = r.params?.direction === "backward"
+      if (!/^\d{4}-\d{2}$/.test(from) || !(count >= 1 && count <= 12)) {
+        return problem(422, "/problems/validation", "Validation", "invalid range", "validation_failed")
+      }
+      // Bounds: back to the card's first month; forward to the later of open + 12 and the last item.
+      const first = c.first_month ?? c.open_month
+      const lastItem = s.items.filter(i => i.card === c.id).map(i => i.month).sort().at(-1) ?? first
+      const last = [ymAdd(c.open_month, 12), lastItem].sort().at(-1)!
+      const months: string[] = []
+      let m = backward ? (from > last ? last : from) : (from < first ? first : from)
+      while (months.length < count && m >= first && m <= last) { months.push(m); m = ymAdd(m, backward ? -1 : 1) }
+      const has_more = months.length > 0 && (backward ? months.at(-1)! > first : months.at(-1)! < last)
+      const data = months.map(month => { const {items, ...rest} = statementOf(c, month); return {...rest, items_count: items.length} })
+      return ok({data, has_more})
+    }
     if (sub === "statements" && arg && method === "get") return ok(statementOf(c, arg))
     if (sub === "purchases" && !arg && method === "get") {
       return ok({data: s.purchases.filter(p => p.card === c.id).map(purchaseOut), has_more: false})
@@ -690,9 +768,7 @@ function route(method: string, path: string, r: Req, s: SpaceState, can: (v: Ver
       if (!can("finance.write")) return forbidden()
       const p = body<{date: string; description: string; category_id: string; total: number; installments: number}>(r)
       const base = Math.floor(p.total / p.installments)
-      let first = p.date.slice(0, 7)
-      if (Number(p.date.slice(8)) > Math.min(c.closing_day, daysIn(Number(first.slice(0, 4)), Number(first.slice(5))))) first = ymAdd(first, 1)
-      if (first < c.open_month) first = c.open_month
+      const first = statementMonthFor(p.date, c)
       const id = nextId("p")
       const installments = Array.from({length: p.installments}, (_, i) => ({
         number: i + 1, amount: base + (i === 0 ? p.total - base * p.installments : 0), month: ymAdd(first, i),

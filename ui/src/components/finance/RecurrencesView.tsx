@@ -164,9 +164,9 @@ function RecurrenceDetail({id, rec}: {id: string; rec: Recurrence}) {
   const q = useQuery({queryKey: financeKeys.recurrenceOccurrences(ctx.mode, ctx.space, rec.id), queryFn: () => getRecurrenceOccurrences(ctx, rec.id)})
   const name = rec.description || t("bills.common.noDescription")
   const made = (o: NonNullable<typeof q.data>["history"][number]): TimelineEntry => ({
-    key: o.bill_id, nominal: o.nominal, due: o.due, kind: o.state, amount: money(o.amount),
+    key: o.bill_id ?? o.purchase_id ?? o.nominal, nominal: o.nominal, due: o.due, kind: o.state, amount: money(o.amount),
     state: o.state === "paid" && o.paid_date ? t("bills.rec.state.paidOn", {date: shortDate(o.paid_date)}) : t(`bills.rec.state.${o.state}`),
-    action: o.state === "overdue"
+    action: o.state === "overdue" && o.bill_id
       ? <Link href={`/finance/bills?direction=${rec.direction}&bill=${encodeURIComponent(o.bill_id)}`} className="inline-flex items-center text-sm text-foreground underline underline-offset-4 hover:text-brand-700 touch-target">{t(`bills.rec.openBill.${rec.direction}`)}</Link>
       : undefined,
   })

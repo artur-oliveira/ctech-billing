@@ -9,9 +9,10 @@ import {shortDate, weekdayShort} from "@/lib/format"
  * paid, forecast, overdue and skipped are bills a recurrence made; `upcoming`
  * is a date the rule will make (no bill yet), drawn as a faint outline: the
  * same "outline is not made yet" the projection uses for recurrences. A made
- * forecast is a firm outline; paid and overdue are filled.
+ * forecast is a firm outline; paid and overdue are filled. `posted` is a card
+ * occurrence the job put on a statement: made, filled in the neutral ink.
  */
-export type TimelineKind = "paid" | "forecast" | "overdue" | "skipped" | "upcoming"
+export type TimelineKind = "paid" | "forecast" | "overdue" | "skipped" | "upcoming" | "posted"
 
 export interface TimelineEntry {
   key: string
@@ -31,6 +32,7 @@ const MARKER: Record<TimelineKind, string> = {
   forecast: "border-foreground bg-background",
   upcoming: "border-muted-foreground/45 bg-background",
   skipped: "border-border bg-border",
+  posted: "border-foreground bg-foreground",
 }
 
 const STATE: Record<TimelineKind, string> = {
@@ -39,6 +41,7 @@ const STATE: Record<TimelineKind, string> = {
   forecast: "text-foreground",
   upcoming: "text-muted-foreground",
   skipped: "text-muted-foreground",
+  posted: "text-foreground",
 }
 
 /**

@@ -8,6 +8,7 @@ import {apiClient, isSpaceNotFound} from "@/lib/api/client"
 import type {
   Account, AccountPatch, Bill, BillPatch, Card, CardPatch, CardStatement, CashFlow, CurrentSpace, Direction, DRE, FinanceSpaces, ListResponse, NewAccount, NewBill,
   NewCard, NewPurchase, NewRecurrence, NewTransfer, Purchase, Occurrence, OpeningBalance, PreviewInput, ProjectionMonth, Recurrence, RecurrenceOccurrences, RecurrencePatch,
+  StatementDirection, StatementPage,
   ChoosePlan, PlanState, Settings, Settlement, Statement, CsvMapping, ImportDetail, ImportSummary, LineResult, NewImport,
 } from "@/lib/api/financeTypes"
 import {getSpace, PERSONAL, type Space, setSpace, spaceHeader} from "@/lib/console/space"
@@ -101,6 +102,9 @@ export const financeKeys = {
   cards: (mode: Mode, space: Space) => ["finance", mode, spaceHeader(space), "cards"] as const,
   cardStatement: (mode: Mode, space: Space, cardId: string, month: string) =>
     ["finance", mode, spaceHeader(space), "card-statement", cardId, month] as const,
+  // The timeline's pages: keyed by the open month, so a close starts a fresh window.
+  cardStatements: (mode: Mode, space: Space, cardId: string, openMonth: string) =>
+    ["finance", mode, spaceHeader(space), "card-statements", cardId, openMonth] as const,
   purchases: (mode: Mode, space: Space, cardId: string) => ["finance", mode, spaceHeader(space), "purchases", cardId] as const,
   imports: (mode: Mode, space: Space, accountId: string) => ["finance", mode, spaceHeader(space), "imports", accountId] as const,
   // No mode: the plan is always read live (tenant zero), so a change made from
@@ -206,6 +210,9 @@ export const patchCard = (c: FinanceCtx, id: string, body: CardPatch, idempotenc
 /** `month` is `YYYY-MM`. */
 export const getCardStatement = (c: FinanceCtx, cardId: string, month: string) =>
   read<CardStatement>(c, `${card(cardId)}/statements/${encodeURIComponent(month)}`)
+/** Statement summaries from `from` (`YYYY-MM`, inclusive), `count` 1..12, in `direction`. */
+export const listCardStatements = (c: FinanceCtx, cardId: string, from: string, count: number, direction: StatementDirection) =>
+  read<StatementPage>(c, `${card(cardId)}/statements`, {from, count, direction})
 export const listPurchases = (c: FinanceCtx, cardId: string) => read<ListResponse<Purchase>>(c, `${card(cardId)}/purchases`)
 export const createPurchase = (c: FinanceCtx, cardId: string, body: NewPurchase, idempotencyKey: string) =>
   write<Purchase>(c, "POST", `${card(cardId)}/purchases`, body, idempotencyKey)

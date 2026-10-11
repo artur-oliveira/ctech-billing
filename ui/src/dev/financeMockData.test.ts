@@ -355,3 +355,33 @@ describe("the plan in the mock", () => {
     setFinanceScenario("padrao")
   })
 })
+describe("statement ranges and card recurrences", () => {
+  const live = {"X-Billing-Mode": "live", "X-Billing-Space": "personal"}
+  const get = (url: string, params?: Record<string, unknown>) => financeMock({method: "get", url: `/v1.0/console/finance${url}`, headers: live, params})
+  const post = (url: string, data: unknown) =>
+    financeMock({method: "post", url: `/v1.0/console/finance${url}`, headers: {...live, "Idempotency-Key": crypto.randomUUID()}, data: JSON.stringify(data)})
+
+  beforeEach(() => resetFinanceMock())
+
+  it("pages statements forward and backward with has_more at the bounds", () => {
+    const cards = get("/cards").data as {data: {id: string; open_month: string}[]}
+    const card = cards.data[0]
+    const fwd = get(`/cards/${card.id}/statements`, {from: card.open_month, count: 3, direction: "forward"}).data as {data: {month: string; items_count: number}[]; has_more: boolean}
+    expect(fwd.data.map(s => s.month)[0]).toBe(card.open_month)
+    expect(fwd.data).toHaveLength(3)
+    expect(fwd.has_more).toBe(true)
+    const back = get(`/cards/${card.id}/statements`, {from: card.open_month, count: 12, direction: "backward"}).data as {data: {month: string}[]; has_more: boolean}
+    expect(back.has_more).toBe(false) // stops at the card's first month
+    expect(back.data[0].month).toBe(card.open_month)
+    expect("items" in (fwd.data[0] as object)).toBe(false)
+  })
+
+  it("creates a recurrence paid by card and refuses one with both targets", () => {
+    const card = (get("/cards").data as {data: {id: string}[]}).data[0]
+    const ok = post("/recurrences", {direction: "payable", amount: 3990, category_id: "mercado", card_id: card.id, expression: {kind: "day_of_month", day: 28}, start: "2026-01-01"})
+    expect(ok.status).toBe(201)
+    expect((ok.data as {installments: number; account_id: string}).installments).toBe(1)
+    const both = post("/recurrences", {direction: "payable", amount: 3990, category_id: "mercado", card_id: card.id, account_id: "conta-corrente", expression: {kind: "day_of_month", day: 28}, start: "2026-01-01"})
+    expect(both.status).toBe(422)
+  })
+})
