@@ -61,6 +61,7 @@ func TestEveryLedgerMethodRefusesTheZeroSpace(t *testing.T) {
 	_, err = r.AllTransactions(ctx, zero)
 	checks["AllTransactions"] = err
 	checks["ArchiveAccount"] = r.ArchiveAccount(ctx, zero, "a", time.Now())
+	_, checks["RenameAccount"] = r.RenameAccount(ctx, zero, "a", "b", time.Now())
 	checks["SetDefaultReceivingAccount"] = r.SetDefaultReceivingAccount(ctx, zero, "a", time.Now())
 	checks["SetPostCTechInvoices"] = r.SetPostCTechInvoices(ctx, zero, false, "a", "", time.Now())
 	_, err = r.GetSettings(ctx, zero)
@@ -88,6 +89,16 @@ func TestPostRefusesWithoutTheVerb(t *testing.T) {
 	writer := space.Narrow(full, space.Read|space.Write)
 	if _, err := r.Post(context.Background(), writer, settlement, PostMeta{}, time.Now()); !errors.Is(err, space.ErrDenied) {
 		t.Fatalf("a writer without finance.settle posted a settlement: %v", err)
+	}
+}
+
+// Renaming is configuring the chart: a member (write, settle, import) may not.
+func TestRenameAccountNeedsConfigure(t *testing.T) {
+	r := &LedgerRepository{}
+	full, _ := space.ForJob("USER#u1", true)
+	member := space.Narrow(full, space.All&^space.Configure)
+	if _, err := r.RenameAccount(context.Background(), member, "a", "b", time.Now()); !errors.Is(err, space.ErrDenied) {
+		t.Fatalf("member RenameAccount = %v, want ErrDenied", err)
 	}
 }
 

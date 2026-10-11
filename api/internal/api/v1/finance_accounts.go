@@ -69,6 +69,53 @@ func (h *financeHandlers) createAccount(c fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(accountDTO{ID: a.ID, Name: a.Name, Class: string(a.Class), DREGroup: string(a.Group)})
 }
 
+// renameField checks a new account or card name as create does (required, at
+// most limits.AccountName, no control characters) and returns it trimmed.
+func renameField(ch *checks, v string) *string {
+	ch.text("name", v, true, limits.AccountName)
+	name := strings.TrimSpace(v)
+	return &name
+}
+
+// accountPatchRequest renames an account: names only. Anything else (class,
+// group) is an unknown field, refused by decodeStrict.
+type accountPatchRequest struct {
+	Name patch.Optional[string] `json:"name"`
+}
+
+func (r accountPatchRequest) edit() (string, []problem.FieldError) {
+	ch := &checks{}
+	v, ok := required(ch, "name", r.Name)
+	if !ok {
+		if !r.Name.IsNull() {
+			ch.fail("name", "required", "required")
+		}
+		return "", ch.errs
+	}
+	return *renameField(ch, v), ch.errs
+}
+
+// patchAccount renames an account, category or card the person holds (not a
+// system or archived one). finance.configure, as creating and archiving.
+func (h *financeHandlers) patchAccount(c fiber.Ctx) error {
+	var req accountPatchRequest
+	if p := decodeStrict(c, &req); p != nil {
+		return p.Send(c)
+	}
+	name, errs := req.edit()
+	if len(errs) > 0 {
+		return problem.Validation(errs).Send(c)
+	}
+	r, err := h.ledger.RenameAccount(c.Context(), middleware.GetSpace(c), c.Params("id"), name, h.now())
+	if err != nil {
+		return fail(c, err)
+	}
+	return c.JSON(accountDTO{
+		ID: r.ID, Name: r.Name, Class: string(r.Class), DREGroup: string(r.Group),
+		System: r.System, SystemKey: r.SystemKey, Archived: r.Archived, Balance: r.Balance,
+	})
+}
+
 func (h *financeHandlers) archiveAccount(c fiber.Ctx) error {
 	if err := h.ledger.ArchiveAccount(c.Context(), middleware.GetSpace(c), c.Params("id"), h.now()); err != nil {
 		return fail(c, err)

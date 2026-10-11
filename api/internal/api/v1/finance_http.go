@@ -100,6 +100,7 @@ func financeRoutes() []financeRoute {
 
 		{"GET", "/accounts", space.Read, false, func(h *financeHandlers) fiber.Handler { return h.listAccounts }},
 		{"POST", "/accounts", space.Configure, true, func(h *financeHandlers) fiber.Handler { return h.createAccount }},
+		{"PATCH", "/accounts/:id", space.Configure, true, func(h *financeHandlers) fiber.Handler { return h.patchAccount }},
 		{"POST", "/accounts/:id/archive", space.Configure, true, func(h *financeHandlers) fiber.Handler { return h.archiveAccount }},
 		{"GET", "/accounts/:id/statement", space.Read, false, func(h *financeHandlers) fiber.Handler { return h.statement }},
 		{"POST", "/accounts/:id/opening-balance", space.Configure, true, func(h *financeHandlers) fiber.Handler { return h.openingBalance }},

@@ -167,6 +167,8 @@ func (h *financeHandlers) createCard(c fiber.Ctx) error {
 }
 
 type cardPatchRequest struct {
+	// Name renames the card (its account): absent keeps, null or blank is a 422.
+	Name            patch.Optional[string] `json:"name"`
 	ClosingDay      patch.Optional[int]    `json:"closing_day"`
 	DueDay          patch.Optional[int]    `json:"due_day"`
 	PayingAccountID patch.Optional[string] `json:"paying_account_id"`
@@ -178,6 +180,10 @@ type cardPatchRequest struct {
 // edit validates the body under the PATCH rule (package patch).
 func (r cardPatchRequest) edit() (repositories.CardPatch, []problem.FieldError) {
 	ch := &checks{}
+	var name *string
+	if v, ok := required(ch, "name", r.Name); ok {
+		name = renameField(ch, v)
+	}
 	day := func(field string, o patch.Optional[int]) {
 		if v, ok := required(ch, field, o); ok && (v < 1 || v > 31) {
 			ch.fail(field, "out_of_range", "a day between 1 and 31", "min", 1, "max", 31)
@@ -198,6 +204,7 @@ func (r cardPatchRequest) edit() (repositories.CardPatch, []problem.FieldError) 
 	}
 	cardIdentity(ch, b, l)
 	return repositories.CardPatch{
+		Name:       name,
 		ClosingDay: r.ClosingDay.Ptr(), DueDay: r.DueDay.Ptr(), PayingAccountID: r.PayingAccountID.Ptr(), Brand: brand, Last4: last4,
 	}, ch.errs
 }

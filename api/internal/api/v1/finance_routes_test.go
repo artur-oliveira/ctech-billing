@@ -122,6 +122,9 @@ func TestTheRolesMatchTheSpecTable(t *testing.T) {
 	}{
 		{"POST", "/accounts", "member", 403},
 		{"POST", "/accounts/:id/archive", "member", 403},
+		{"PATCH", "/accounts/:id", "member", 403},
+		{"PATCH", "/accounts/:id", "viewer", 403},
+		{"PATCH", "/accounts/:id", "admin", 200},
 		{"PUT", "/settings/default-receiving-account", "member", 403},
 		{"PUT", "/settings/post-ctech-invoices", "member", 403},
 		{"PUT", "/settings/post-ctech-invoices", "admin", 200},

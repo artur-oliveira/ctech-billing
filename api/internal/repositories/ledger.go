@@ -370,6 +370,71 @@ func (r *LedgerRepository) ArchiveAccount(ctx context.Context, sp space.Resolved
 		})))
 }
 
+// renamableCond is the condition every rename writes under: the account still
+// exists, is not a system account and is not archived. It closes the race with
+// an archive between the read and the write. `name` and `system` are DynamoDB
+// reserved words, hence the placeholders.
+const renamableCond = "attribute_exists(pk) AND (attribute_not_exists(#sys) OR #sys = :f) AND (attribute_not_exists(archived) OR archived = :f)"
+
+// checkRenamable refuses what renaming never touches: a system account (the
+// ledger's own, never listed) and an archived one (hidden from new activity;
+// restore is not offered, so neither is a rename). The name is validated as on
+// create.
+func checkRenamable(acct AccountRow, name string) error {
+	if acct.System {
+		return fmt.Errorf("%w: system accounts cannot be renamed", finance.ErrInvalidAccount)
+	}
+	if acct.Archived {
+		return fmt.Errorf("%w: archived accounts cannot be renamed", finance.ErrInvalidAccount)
+	}
+	next := acct.LedgerAccount
+	next.Name = name
+	return next.Validate()
+}
+
+// renameTxItem is the conditional write of a new name on an account row.
+func (r *LedgerRepository) renameTxItem(sp space.ResolvedSpace, id, name string, now time.Time) types.TransactWriteItem {
+	sk := LedgerAccountSK(id)
+	return r.accounts.BuildRawUpdateTxItem(sp.PK(), &sk, "SET #n = :n, updated_at = :now", renamableCond,
+		map[string]string{"#n": "name", "#sys": "system"},
+		map[string]types.AttributeValue{
+			":n":   &types.AttributeValueMemberS{Value: name},
+			":f":   &types.AttributeValueMemberBOOL{Value: false},
+			":now": &types.AttributeValueMemberS{Value: now.UTC().Format(time.RFC3339Nano)},
+		})
+}
+
+// errRenameRaced is a rename whose condition failed after the read passed: the
+// account was archived in between (accounts are never deleted).
+var errRenameRaced = fmt.Errorf("%w: the account was archived while renaming it", finance.ErrInvalidAccount)
+
+// RenameAccount changes the name of an account, category or card account the
+// person holds. Only the name moves: class, group, balance and every entry stay,
+// and a default category keeps its system_key (clients show a stored name that
+// differs from the seeded one as is). Another space's id is ErrNotFound.
+func (r *LedgerRepository) RenameAccount(ctx context.Context, sp space.ResolvedSpace, id, name string, now time.Time) (AccountRow, error) {
+	if err := sp.Require(space.Configure); err != nil {
+		return AccountRow{}, err
+	}
+	name = strings.TrimSpace(name)
+	acct, err := r.getAccount(ctx, sp, id)
+	if err != nil {
+		return AccountRow{}, err
+	}
+	if err := checkRenamable(*acct, name); err != nil {
+		return AccountRow{}, err
+	}
+	err = r.accounts.TransactWrite(ctx, txItems(r.renameTxItem(sp, id, name, now)))
+	if err != nil && onlyConditionFailed(err) {
+		return AccountRow{}, errRenameRaced
+	}
+	if err != nil {
+		return AccountRow{}, err
+	}
+	acct.Name = name
+	return *acct, nil
+}
+
 // Settings are the space's own preferences, on its SPACE row.
 type Settings struct {
 	DefaultReceivingAccountID string
