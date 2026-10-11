@@ -103,6 +103,15 @@
       "status": "active"
     },
     {
+      "name": "billing:organization:write",
+      "descriptions": {
+        "pt-BR": "Pedir acesso à cobrança para a organização e decidir pedidos.",
+        "en": "Apply for billing on the organization's behalf and decide applications."
+      },
+      "visibility": "public",
+      "status": "active"
+    },
+    {
       "name": "billing:my-invoices:read",
       "descriptions": {
         "pt-BR": "Ver suas próprias faturas.",
