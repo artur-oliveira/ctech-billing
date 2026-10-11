@@ -890,3 +890,45 @@ func (r *BillRepository) MadeAfter(ctx context.Context, sp space.ResolvedSpace, 
 	}
 	return out, nil
 }
+
+// PaidAmong answers which of the given bills are paid: one BatchGetItem (the
+// range endpoint's "paid" for up to 12 closed statements), retrying unprocessed
+// keys. Unknown ids are simply absent.
+func (r *BillRepository) PaidAmong(ctx context.Context, sp space.ResolvedSpace, ids []string) (map[string]bool, error) {
+	out := map[string]bool{}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	if err := sp.Require(space.Read); err != nil {
+		return nil, err
+	}
+	keys := make([]map[string]types.AttributeValue, len(ids))
+	for i, id := range ids {
+		keys[i] = map[string]types.AttributeValue{"pk": str(sp.PK()), "sk": str(BillSK(id))}
+	}
+	req := map[string]types.KeysAndAttributes{r.bills.TableName: {
+		Keys: keys, ConsistentRead: aws.Bool(true), ProjectionExpression: aws.String("#id, #st"),
+		ExpressionAttributeNames: map[string]string{"#id": "id", "#st": "status"},
+	}}
+	for attempt := 0; len(req) > 0; attempt++ {
+		if attempt == 5 {
+			return nil, fmt.Errorf("bills: %d keys still unprocessed after retries", len(req[r.bills.TableName].Keys))
+		}
+		res, err := r.bills.BatchGetItemRaw(ctx, &dynamodb.BatchGetItemInput{RequestItems: req})
+		if err != nil {
+			return nil, err
+		}
+		rows, err := DecodeItems[struct {
+			ID     string `dynamodbav:"id"`
+			Status string `dynamodbav:"status"`
+		}](res.Responses[r.bills.TableName])
+		if err != nil {
+			return nil, err
+		}
+		for _, row := range rows {
+			out[row.ID] = row.Status == string(finance.BillPaid)
+		}
+		req = res.UnprocessedKeys
+	}
+	return out, nil
+}

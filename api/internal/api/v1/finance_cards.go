@@ -339,3 +339,60 @@ func (h *financeHandlers) closeStatement(c fiber.Ctx) error {
 	}
 	return c.JSON(out)
 }
+
+type statementSummaryDTO struct {
+	CardID      string        `json:"card_id"`
+	Month       string        `json:"month"`
+	Status      string        `json:"status"` // open | future | closed | paid
+	ClosingDate string        `json:"closing_date"`
+	DueDate     string        `json:"due_date"`
+	Total       billing.Cents `json:"total"`
+	BillID      string        `json:"bill_id,omitempty"`
+	ItemsCount  int           `json:"items_count"`
+}
+
+// cardStatements is the timeline's read (spec § 4.1): summaries only; the
+// selected month's items come from GET /cards/:id/statements/:month.
+func (h *financeHandlers) cardStatements(c fiber.Ctx) error {
+	ch := &checks{}
+	from, err := finance.ParseMonth(c.Query("from"))
+	if err != nil {
+		ch.fail("from", "invalid_format", "use YYYY-MM", "format", "YYYY-MM")
+	}
+	count := fiber.Query(c, "count", 3)
+	if count < 1 || count > repositories.MaxStatementPage {
+		ch.fail("count", "out_of_range", "between 1 and 12", "min", 1, "max", repositories.MaxStatementPage)
+	}
+	direction := c.Query("direction", "forward")
+	if direction != "forward" && direction != "backward" {
+		ch.fail("direction", "unsupported_value", "use forward or backward", "allowed", []string{"forward", "backward"})
+	}
+	if len(ch.errs) > 0 {
+		return problem.Validation(ch.errs).Send(c)
+	}
+	sp := middleware.GetSpace(c)
+	page, err := h.cards.StatementRange(c.Context(), sp, c.Params("id"), from, count, direction == "backward")
+	if err != nil {
+		return fail(c, err)
+	}
+	var billIDs []string
+	for _, s := range page.Statements {
+		if s.BillID != "" {
+			billIDs = append(billIDs, s.BillID)
+		}
+	}
+	paid, err := h.bills.PaidAmong(c.Context(), sp, billIDs)
+	if err != nil {
+		return fail(c, err)
+	}
+	out := listResponse[statementSummaryDTO]{Data: make([]statementSummaryDTO, 0, len(page.Statements)), HasMore: page.HasMore}
+	for _, s := range page.Statements {
+		status := s.Status
+		if s.BillID != "" && paid[s.BillID] {
+			status = "paid"
+		}
+		out.Data = append(out.Data, statementSummaryDTO{CardID: s.CardID, Month: s.Month.String(), Status: status,
+			ClosingDate: s.ClosingDate.String(), DueDate: s.DueDate.String(), Total: s.Total, BillID: s.BillID, ItemsCount: len(s.Items)})
+	}
+	return c.JSON(out)
+}
