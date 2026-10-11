@@ -199,7 +199,9 @@ this order:
    safe to run while the API is creating subscriptions. Exit 1 means something is left (or a row is
    mismatched or has no customer); read the log lines before re-running.
 3. **Switch the read** to a key-condition query on `lookup-index` — the second pull request, merged
-   only after step 2's final dry run reports `missing=0`.
+   only after step 2's final dry run reports `missing=0`. Done: `ListByCustomer` reads only the
+   index now, so a subscription row without `lookup_pk` is invisible to it. If one ever appears
+   (a restore from a pre-index backup, say), re-run the backfill.
 
 The same sequence applies to any future index whose read must see rows that already exist.
 

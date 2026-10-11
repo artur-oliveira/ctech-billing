@@ -409,33 +409,36 @@ func priceIDsOf(items []billing.SubscriptionItem) []string {
 	return out
 }
 
-// ListByCustomer returns a customer's subscriptions, up to limit.
+// ListByCustomer returns a customer's subscriptions, oldest first, up to limit
+// (0 means all of them).
 //
-// It still filters the tenant partition. The index that replaces it,
-// lookup-index on LookupCustomerSubscriptionsPK, is written by Create and
-// backfilled by cmd/backfill-subscription-lookup; this read moves onto it only
-// once the backfill has reported nothing missing in production, because an
-// index query cannot see a row without its key (.github/workflows/README.md,
-// "Adding an index to a live table").
+// A key condition on lookup-index (LookupCustomerSubscriptionsPK), so the read
+// costs what this customer has, not what the tenant has. It used to filter the
+// tenant's whole SUB# range, which grew with every other customer's rows.
 //
-// It follows the continuation key to the end of the partition: DynamoDB applies
-// a Query's Limit BEFORE its filter, so one page of the tenant's rows says
-// nothing about this customer's. Reading only the first page made a subscriber
-// past it invisible — Free on screen and in entitlements, and a second paid
-// subscription on the next choice.
+// The index is sparse: only subscription rows carry lookup_pk, never their
+// `#ITEM#` rows, so the limit is applied by DynamoDB to rows that count. It
+// still follows the continuation key — a customer can hold more than one page —
+// and keeps the status check as the belt to that braces.
 //
-// The `#ITEM#` rows share the SUB# prefix, so they come back too and are
-// discarded by the decode filter below.
+// Rows written before the index existed were given lookup_pk by
+// cmd/backfill-subscription-lookup; a row without it is invisible here
+// (.github/workflows/README.md, "Adding an index to a live table").
 func (r *SubscriptionRepository) ListByCustomer(ctx context.Context, organizationID string, livemode bool, customerID string, limit int) ([]billing.Subscription, error) {
 	out := make([]billing.Subscription, 0)
 	var start map[string]types.AttributeValue
 	for {
+		page := 100
+		if limit > 0 && limit-len(out) < page {
+			page = limit - len(out)
+		}
 		res, err := r.base.Query(ctx, QueryOpts{
-			PK:                TenantPK(organizationID, livemode),
+			IndexName:         IndexLookup,
+			PKField:           "lookup_pk",
+			PK:                LookupCustomerSubscriptionsPK(organizationID, livemode, customerID),
 			SKPrefix:          skSubscription,
-			FilterField:       "customer_id",
-			FilterValue:       customerID,
 			ScanIndexForward:  true,
+			Limit:             page,
 			ExclusiveStartKey: start,
 		})
 		if err != nil {
@@ -446,7 +449,6 @@ func (r *SubscriptionRepository) ListByCustomer(ctx context.Context, organizatio
 			return nil, err
 		}
 		for _, row := range rows {
-			// Item rows carry no status; only subscriptions do.
 			if row.Subscription.Status == "" {
 				continue
 			}
@@ -464,7 +466,7 @@ func (r *SubscriptionRepository) ListByCustomer(ctx context.Context, organizatio
 
 // List pages the tenant's subscriptions, newest first.
 //
-// Unlike ListByCustomer this reads the period index, where only subscription
+// This reads the period index, where only subscription
 // rows are indexed — the `#ITEM#` rows are not, so nothing has to be filtered
 // out of the page and the limit means what it says.
 func (r *SubscriptionRepository) List(
