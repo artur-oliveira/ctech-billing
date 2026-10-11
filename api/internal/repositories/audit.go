@@ -2,6 +2,7 @@ package repositories
 
 import (
 	"context"
+	"slices"
 
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
@@ -38,12 +39,27 @@ func (r *AuditRepository) ListForMonth(
 		func(row auditRow) billing.AuditLog { return row.AuditLog })
 }
 
-// ListForEntity returns every audit entry about one entity, newest last.
+// Entity trail read budget: each Base.Query call evaluates up to
+// entityAuditReadSize rows per DynamoDB call (10 calls, the api-commons
+// default), and ListForEntity makes at most entityAuditMaxQueries of them — at
+// most 10,000 audit rows per request, newest first.
+const (
+	entityAuditReadSize   = 200
+	entityAuditMaxQueries = 5
+	entityAuditMaxLimit   = 100
+)
+
+// ListForEntity returns the newest audit entries (up to limit, at most 100)
+// about one entity, oldest first.
 //
-// It reads the tenant's audit rows and filters by entity rather than adding an
-// index. That is a deliberate, bounded compromise: this is the "who touched this
-// invoice" panel, opened one entity at a time by a human, not a hot path. If it
-// ever becomes one, the fix is an index — never a Scan.
+// It reads the tenant's audit rows newest first and filters by entity rather
+// than adding an index — the "who touched this invoice" panel, opened one
+// entity at a time by a human. entity_id is a filter, and DynamoDB applies
+// Limit to the rows it reads before filtering, so the read follows the cursor
+// until limit entries are found, the range ends, or the read budget above is
+// spent. Past that budget (an entity whose last activity is more than ~10,000
+// tenant audit rows ago) the trail can be incomplete; the fix for that is an
+// entity index — never a Scan.
 func (r *AuditRepository) ListForEntity(
 	ctx context.Context,
 	organizationID string,
@@ -51,24 +67,21 @@ func (r *AuditRepository) ListForEntity(
 	entityID string,
 	limit int,
 ) ([]billing.AuditLog, error) {
-	// entity_id is a filter, and DynamoDB applies Limit to the rows it reads
-	// before filtering: one call returned an empty trail whenever the entity's
-	// entries came after the first Limit rows of the tenant's other activity.
-	// Base.Query fills the page within a read budget per call; this keeps
-	// following the cursor until limit entries are found or the range ends.
-	if limit <= 0 {
-		limit = 100
+	if limit <= 0 || limit > entityAuditMaxLimit {
+		limit = entityAuditMaxLimit
 	}
 	var items []map[string]types.AttributeValue
 	var start map[string]types.AttributeValue
-	for {
+	for range entityAuditMaxQueries {
+		// A fixed read size: Limit is also the rows DynamoDB evaluates per call,
+		// so shrinking it to the matches still wanted would crawl a row at a time.
 		res, err := r.base.Query(ctx, QueryOpts{
 			PK:                TenantPK(organizationID, livemode),
 			SKPrefix:          skAudit,
 			FilterField:       "entity_id",
 			FilterValue:       entityID,
-			Limit:             limit - len(items),
-			ScanIndexForward:  true,
+			Limit:             max(limit, entityAuditReadSize),
+			ScanIndexForward:  false,
 			ExclusiveStartKey: start,
 		})
 		if err != nil {
@@ -80,6 +93,10 @@ func (r *AuditRepository) ListForEntity(
 		}
 		start = res.LastEvaluatedKey
 	}
+	if len(items) > limit {
+		items = items[:limit]
+	}
+	slices.Reverse(items) // read newest first, returned oldest first
 	rows, err := DecodeItems[auditRow](items)
 	if err != nil {
 		return nil, err

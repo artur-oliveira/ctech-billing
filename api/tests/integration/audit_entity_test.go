@@ -62,12 +62,52 @@ func TestTheAuditTrailOfAnEntityPastTheFirstPageIsFound(t *testing.T) {
 		}
 	}
 
-	// limit still caps the trail.
+	// limit caps the trail at the newest entries, still oldest first.
 	two, err := repositories.NewAuditRepository(testDB, testCfg).ListForEntity(ctx, org.ID, true, "in_target", 2)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(two) != 2 || two[0].ID != want[0] || two[1].ID != want[1] {
-		t.Fatalf("limit 2 = %+v, want the first two of %v", two, want)
+	if len(two) != 2 || two[0].ID != want[1] || two[1].ID != want[2] {
+		t.Fatalf("limit 2 = %+v, want the last two of %v", two, want)
+	}
+}
+
+// An entity whose entries are scattered through older tenant activity, with
+// more entries than the limit: the newest limit come back, oldest first, even
+// when one read returns more matches than the limit.
+func TestTheAuditTrailKeepsTheNewestEntriesWhenScattered(t *testing.T) {
+	ctx := ctxT(t)
+	org := newOrg(t, true)
+	pk := repositories.TenantPK(org.ID, true)
+	table := aws.String(repositories.TableName(testCfg, repositories.TableAudit))
+	var mine []string
+	for i := range 400 {
+		entity := fmt.Sprintf("in_other_%d", i)
+		if i%7 == 3 {
+			entity = "in_scattered"
+			mine = append(mine, fmt.Sprintf("a%04d", i))
+		}
+		sk := fmt.Sprintf("AUDIT#a%04d", i)
+		if _, err := testDB.PutItem(ctx, &dynamodb.PutItemInput{TableName: table, Item: map[string]types.AttributeValue{
+			"pk":        &types.AttributeValueMemberS{Value: pk},
+			"sk":        &types.AttributeValueMemberS{Value: sk},
+			"id":        &types.AttributeValueMemberS{Value: sk[len("AUDIT#"):]},
+			"entity_id": &types.AttributeValueMemberS{Value: entity},
+		}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	trail, err := repositories.NewAuditRepository(testDB, testCfg).ListForEntity(ctx, org.ID, true, "in_scattered", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := mine[len(mine)-10:]
+	if len(trail) != len(want) {
+		t.Fatalf("got %d entries, want %d", len(trail), len(want))
+	}
+	for i, e := range trail {
+		if e.ID != want[i] {
+			t.Fatalf("entry %d = %s, want %s (all: %v)", i, e.ID, want[i], want)
+		}
 	}
 }
