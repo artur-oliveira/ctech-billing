@@ -38,6 +38,7 @@ func billingHalfRoutes(t *testing.T, app *fiber.App) []fiber.Route {
 	for _, r := range app.GetRoutes(true) {
 		if !strings.HasPrefix(r.Path, "/v1.0/console/") ||
 			strings.HasPrefix(r.Path, "/v1.0/console/finance") ||
+			strings.HasPrefix(r.Path, "/v1.0/console/merchant/") ||
 			r.Path == "/v1.0/console/session" {
 			continue
 		}

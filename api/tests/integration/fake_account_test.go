@@ -26,6 +26,7 @@ type fakeAccount struct {
 	companies          map[string][]accountclient.Company // org -> companies
 	companiesDown      bool                               // both company routes answer 503
 	companiesTruncated bool                               // the list route says it cut the list
+	companiesUnknown   bool                               // the list route answers 404 (unknown organization)
 }
 
 // company registers one of an organization's companies.
@@ -92,7 +93,7 @@ func (a *fakeAccount) serve(t *testing.T) *httptest.Server {
 			case len(parts) >= 2 && parts[1] == "companies" && a.companiesDown:
 				http.Error(w, "down", http.StatusServiceUnavailable)
 			case len(parts) == 2 && parts[1] == "companies":
-				if !a.knows(parts[0]) {
+				if a.companiesUnknown || !a.knows(parts[0]) {
 					http.NotFound(w, r)
 					return
 				}

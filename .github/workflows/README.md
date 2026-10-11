@@ -127,6 +127,9 @@ rather than silently degrading:
 | A tenant plan applied with `cmd/seed`                                                                                        | this repo, run by an operator                        | everything — see below                       |
 | An entry in `/ctech-wallet/{env}/m2m-clients` **keyed by the OAuth client id** (`ctech-charge`), carrying `webhook_url` and `"max_charge_cents": 1000000` — set 2026-08-16 | ctech-wallet, set out of band | every settlement; any invoice above R$ 1.000,00 |
 | The OAuth client `ctech-charge` holding `internal:wallet:charge-amount`, and `wallet-client-id` in SSM set to the same string | ctech-account (exists) + this repo's SSM             | opening any charge at all                    |
+| `/ctech-billing/{env}/billing/applications-notify-email` (String) | set out of band | the notice of a new merchant application |
+| billing's account client granted `internal:account:company-actor`; ctech-account route `GET /v1.0/internal/organizations/{id}/companies` | ctech-account (granted in prod to `billing-account-membership`; route shipped in ctech-account #56) | the application form's company picker and check |
+| OAuth client `billing` granted `billing:organization:write` | ctech-account | **sign-in itself** once the UI asks for it |
 
 ## The pipeline does not seed
 
@@ -264,6 +267,22 @@ organization `01a04ed6-1af9-745e-bcf7-d3b66fe52321`) still carry the owner key, 
    its `owner_user_id`.
 4. **Remove the fallback** (`GetByOwner`, the owner key): the follow-up pull request, merged only
    after step 2's final dry run reports `missing=0`.
+
+## Deploy sequence: console self-service part 2 (applications)
+
+1. ctech-account: the companies list route, and `internal:account:company-actor`
+   granted to billing's account client (`createclient -grant`), in this env.
+2. Terraform (the `applications-notify-email` parameter and the bootstrap
+   variable), then set the parameter, then an instance refresh so the units
+   read it.
+3. Scopes job: publishes `billing:organization:write`. Then grant it to the
+   OAuth client `billing` at ctech-account. **Before step 6**: the UI asks for
+   it, and ctech-account fails the whole sign-in on an ungranted scope.
+4. API.
+5. `api/cmd/seed/run.sh prod` (adds `prod_billing` and the early access price).
+6. UI.
+7. Smoke: apply from an organization you administer, see test mode, approve it
+   in tenant zero (Solicitações), see live; reject a second one and re-apply.
 
 ## Collection is configured in the other repository
 

@@ -56,6 +56,9 @@ type merchantOrganizationDTO struct {
 	DisplayName    string                 `json:"display_name"`
 	Role           string                 `json:"role"`
 	MerchantStatus billing.MerchantStatus `json:"merchant_status"`
+	// CanReviewApplications marks the organization whose tenant is tenant zero:
+	// the console shows it Solicitações. Display data; RequireTenantZero decides.
+	CanReviewApplications bool `json:"can_review_applications"`
 }
 
 // auditResponse is one entry of a detail screen's timeline. It publishes who,

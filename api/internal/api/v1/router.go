@@ -28,10 +28,13 @@ type Deps struct {
 	Credentials   *repositories.CredentialRepository
 	Idempotency   *repositories.IdempotencyRepository
 	Organizations *repositories.OrganizationRepository
-	Audit         *repositories.AuditRepository
-	Payments      *repositories.PaymentRepository
-	CreditNotes   *repositories.CreditNoteRepository
-	Subscriber    *services.Subscriber
+	// Applications is the merchant application lifecycle (spec § 4). Disabled
+	// (routes not mounted) without tenant zero.
+	Applications *services.Applications
+	Audit        *repositories.AuditRepository
+	Payments     *repositories.PaymentRepository
+	CreditNotes  *repositories.CreditNoteRepository
+	Subscriber   *services.Subscriber
 	// Invoicer is the console's finalize path: the sweep's own, so an operator
 	// issuing a stuck draft produces the same invoice the scheduler would have.
 	Invoicer *services.Invoicer
@@ -263,6 +266,7 @@ func registerConsole(v1 fiber.Router, d Deps, h *handlers, auth fiber.Handler) {
 		invoicer:             d.Invoicer,
 		portalOrganizationID: d.PortalOrganizationID,
 		merchants:            d.Organizations,
+		applications:         d.Applications,
 	}
 	// Assigned only when set: a nil interface value in the field must stay nil.
 	if d.SpaceLister != nil {
@@ -295,6 +299,19 @@ func registerConsole(v1 fiber.Router, d Deps, h *handlers, auth fiber.Handler) {
 		// No resolver configured: every organization selector fails closed (503).
 		spaces = space.NewResolver(nil, nil)
 	}
+	// The application runs without a tenant: an organization with none is
+	// exactly who applies. Registered before the group for the reason the
+	// session is (a group's handlers run as prefix middleware). The mode header
+	// is required by ResolveSpace and ignored here (plan decision 6).
+	if ch.applications.Enabled() {
+		v1.Get("/console/merchant/application", auth, middleware.RequireUserSession(), middleware.ResolveSpace(spaces),
+			middleware.RequireMerchantRole(), middleware.RequireUserScope(middleware.ScopeOrganizationRead), ch.getMerchantApplication)
+		v1.Post("/console/merchant/application", auth, middleware.RequireUserSession(), middleware.ResolveSpace(spaces),
+			middleware.RequireMerchantRole(), middleware.RequireUserScope(middleware.ScopeOrganizationWrite), ch.applyMerchant)
+		v1.Get("/console/merchant/companies", auth, middleware.RequireUserSession(), middleware.ResolveSpace(spaces),
+			middleware.RequireMerchantRole(), middleware.RequireUserScope(middleware.ScopeOrganizationRead), ch.merchantCompanies)
+	}
+
 	console := v1.Group("/console", auth,
 		middleware.RequireUserSession(),
 		middleware.ResolveSpace(spaces),
@@ -392,6 +409,14 @@ func registerConsole(v1 fiber.Router, d Deps, h *handlers, auth fiber.Handler) {
 		middleware.RequireUserScope(middleware.ScopeProductsRead), ch.listProducts)
 	console.Get("/products/:id",
 		middleware.RequireUserScope(middleware.ScopeProductsRead), ch.getProduct)
+
+	// Tenant zero's review (spec § 4.2). Any other tenant: 404.
+	if ch.applications.Enabled() {
+		review := console.Group("/applications", middleware.RequireTenantZero(d.PortalOrganizationID))
+		review.Get("", middleware.RequireUserScope(middleware.ScopeOrganizationRead), ch.listApplications)
+		review.Post("/:id/approve", middleware.RequireUserScope(middleware.ScopeOrganizationWrite), ch.approveApplication)
+		review.Post("/:id/reject", middleware.RequireUserScope(middleware.ScopeOrganizationWrite), ch.rejectApplication)
+	}
 }
 
 // registerPortal mounts the consumer surface (ADR 0012).

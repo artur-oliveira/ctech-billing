@@ -18,6 +18,7 @@ import (
 	"gopkg.aoctech.app/api-commons/accountorgs"
 	"gopkg.aoctech.app/api-commons/cache"
 
+	"gopkg.aoctech.app/billing/api/internal/accountclient"
 	v1 "gopkg.aoctech.app/billing/api/internal/api/v1"
 	"gopkg.aoctech.app/billing/api/internal/config"
 	"gopkg.aoctech.app/billing/api/internal/email"
@@ -127,19 +128,36 @@ func Build(ctx context.Context, cfg *config.Config, clock func() time.Time) (*fi
 		BaseURL: cfg.AccountBaseURL, TokenURL: cfg.AccountTokenURL,
 		ClientID: cfg.AccountClientID, ClientSecret: cfg.AccountClientSecret, Cache: cacheBackend,
 	})
+	// ctech-account companies (the application form): the same credential as
+	// membership, its own scope. Typed nil when unconfigured: every call errors,
+	// read as companies_unavailable.
+	companies := accountclient.New(accountclient.Config{
+		BaseURL: cfg.AccountBaseURL, TokenURL: cfg.AccountTokenURL,
+		ClientID: cfg.AccountClientID, ClientSecret: cfg.AccountClientSecret, Cache: cacheBackend,
+	})
+	applications := services.NewApplications(repositories.NewApplicationRepository(db, cfg), orgs, customers, subs,
+		subscriber, companies, cfg.PortalOrganizationID)
+	if cfg.EmailFrom != "" {
+		if mail, err := email.New(ctx, cfg.AWSRegion, cfg.EmailFrom); err != nil {
+			slog.Warn("application notices are off: SES client", "error", err)
+		} else {
+			applications = applications.WithMail(mail, cfg.ApplicationsNotifyEmail)
+		}
+	}
 	billRepo := repositories.NewBillRepository(db, cfg)
 	recRepo := repositories.NewRecurrenceRepository(db, cfg)
 	ledgerRepo := repositories.NewLedgerRepository(db, cfg)
 	v1.Register(app, v1.Deps{
-		Customers:   customers,
-		Subs:        subs,
-		Invoices:    invoices,
-		Usage:       usage,
-		Levels:      levels,
-		FinancePlan: services.NewFinancePlan(customers, subs, invoices, catalog, levels, subscriber, cfg.PortalOrganizationID),
-		Catalog:     catalog,
-		Credentials: creds,
-		Idempotency: idem,
+		Applications: applications,
+		Customers:    customers,
+		Subs:         subs,
+		Invoices:     invoices,
+		Usage:        usage,
+		Levels:       levels,
+		FinancePlan:  services.NewFinancePlan(customers, subs, invoices, catalog, levels, subscriber, cfg.PortalOrganizationID),
+		Catalog:      catalog,
+		Credentials:  creds,
+		Idempotency:  idem,
 
 		Organizations: orgs,
 		Audit:         audit,
