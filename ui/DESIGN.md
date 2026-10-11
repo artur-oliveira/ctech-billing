@@ -591,3 +591,9 @@ and stays fresh for five minutes; applying invalidates the session explicitly.
 
 **Solicitações** (tenant zero only) is a nav section after Configurações, shown when the session
 marks the organization `can_review_applications`; any other tenant gets a 404 from the server.
+The review screen is a ruled list, not cards: one block per application separated by hairlines
+(name and date, company and document, description, then site, volume and contact). On a phone the
+two actions share a full-width row at the bottom (Recusar outline, Aprovar brand); from `sm` the
+grid lifts them beside the name. The filter is `Segmented` (Pendentes, Aprovadas, Recusadas),
+full width on a phone; pending opens first, oldest first. Approving confirms what it does (live
+mode and the R$ 0 early access subscription); rejecting needs a reason of 10 to 500 characters.

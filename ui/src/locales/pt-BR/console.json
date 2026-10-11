@@ -392,9 +392,7 @@
   "title": "Solicitações",
   "description": "Organizações que pediram para cobrar os próprios clientes.",
   "filter": "Situação",
-  "pending": "Pendentes",
   "approved": "{{name}} aprovada.",
-  "rejected": "Recusadas",
   "empty": {
    "pending": "Nenhuma solicitação pendente.",
    "approved": "Nenhuma solicitação aprovada ainda.",
@@ -417,6 +415,11 @@
   "rejectHint": "Entre 10 e 500 caracteres. Escreva o que a pessoa precisa corrigir.",
   "rejectSubmit": "Recusar pedido",
   "rejected_toast": "Pedido de {{name}} recusado.",
-  "more": "Carregar mais"
+  "more": "Carregar mais",
+  "status": {
+   "pending": "Pendentes",
+   "approved": "Aprovadas",
+   "rejected": "Recusadas"
+  }
  }
 }
