@@ -11,7 +11,8 @@ import {useTranslation} from "react-i18next"
 import {AccountMenu} from "@/components/AccountMenu"
 import {LanguageSwitcher} from "@/components/LanguageSwitcher"
 import {ModeSwitch} from "@/components/console/ModeSwitch"
-import {NoMerchant} from "@/components/console/NoMerchant"
+import {MerchantInvitation} from "@/components/console/MerchantInvitation"
+import {MerchantStatusBand} from "@/components/console/MerchantStatusBand"
 import {OrganizationSwitch} from "@/components/console/OrganizationSwitch"
 import {statusOf} from "@/lib/api/client"
 import {consoleKeys, getConsoleSession} from "@/lib/api/console"
@@ -19,6 +20,7 @@ import {useAuth} from "@/lib/auth/AuthContext"
 import {pickMerchantOrg, setMerchantOrg, tenantInMode} from "@/lib/console/merchant"
 import {consoleNav} from "@/lib/console/nav"
 import {ConsoleScopeProvider} from "@/lib/console/scope"
+import {MerchantSelectionProvider} from "@/lib/console/selection"
 import {useMerchantOrg} from "@/lib/console/useMerchantOrg"
 import {useMode} from "@/lib/console/useMode"
 import {FINANCE_HREF} from "@/lib/finance/href"
@@ -78,6 +80,11 @@ export default function ConsoleLayout({children}: LayoutProps<"/console">) {
   const org = selected?.organization_id
   // Stable per (mode, organization): the React Compiler memoizes it.
   const scope = org ? {mode, org} : null
+  // The selected organization with or without a tenant in this mode: the
+  // invitation, the apply form and the status band read it.
+  const selection = selected && scope ? {scope, organization: selected} : null
+  const onApply = pathname.startsWith("/console/apply")
+  const reviewer = selected?.can_review_applications === true
 
   // Owner or admin of no organization: nothing here is theirs; Finanças is.
   const noOrganization = statusOf(error) === 403 || (session !== undefined && !unavailable && organizations.length === 0)
@@ -95,7 +102,7 @@ export default function ConsoleLayout({children}: LayoutProps<"/console">) {
     if (noOrganization) router.replace(FINANCE_HREF)
   }, [noOrganization, router])
 
-  const nav = consoleNav(active)
+  const nav = consoleNav(active, reviewer)
 
   return (
     <DensityScope density="compact" className="min-h-dvh">
@@ -166,6 +173,9 @@ export default function ConsoleLayout({children}: LayoutProps<"/console">) {
           {t("console.shell.testBanner")}
         </p>
       )}
+      {selection && !onApply && (
+        <MerchantSelectionProvider value={selection}><MerchantStatusBand/></MerchantSelectionProvider>
+      )}
 
       <main className="mx-auto max-w-6xl px-4 py-8 pb-20">
         {loading || !authenticated || noOrganization || (session === undefined && isPending) ? (
@@ -180,10 +190,14 @@ export default function ConsoleLayout({children}: LayoutProps<"/console">) {
             description={t("console.organization.unavailable")}
             action={<Button variant="outline" onClick={() => void refetch()}>{t("console.organization.retry")}</Button>}
           />
-        ) : selected && !active ? (
-          <NoMerchant name={selected.display_name}/>
-        ) : scope ? (
-          <ConsoleScopeProvider value={scope}>{children}</ConsoleScopeProvider>
+        ) : selection ? (
+          // No tenant in this mode is a beginning: the invitation, or where
+          // the application stands. /console/apply runs without a tenant.
+          <MerchantSelectionProvider value={selection}>
+            {onApply ? children : !active ? <MerchantInvitation/> : (
+              <ConsoleScopeProvider value={selection.scope}>{children}</ConsoleScopeProvider>
+            )}
+          </MerchantSelectionProvider>
         ) : (
           <ShellSkeleton/>
         )}

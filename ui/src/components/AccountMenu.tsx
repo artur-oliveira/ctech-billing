@@ -22,7 +22,7 @@ const renderLink: RenderLink = props => <Link {...props}/>
  *
  * Portal and Finanças are everyone's (everybody is a customer and has a
  * personal space, ADR 0025). Console is invoicing, so it is offered only when
- * the console session lists an organization that bills; a failed probe is
+ * the console session lists an organization the person runs; a failed probe is
  * not an error, it means no console.
  *
  * The name comes from the portal session, which has the full name and the
@@ -49,11 +49,15 @@ export function AccountMenu({view}: {view: "portal" | "console" | "finance"}) {
     queryFn: getConsoleSession,
     enabled: authenticated,
     retry: false,
-    staleTime: 60_000,
-    // An organization with a tenant in either mode: the console is invoicing,
-    // and an organization that does not bill yet has nothing there (part 2
-    // brings the invitation and widens this).
-    select: s => s.organizations.some(o => o.merchant_status !== "none"),
+    // Display only, so it is not re-asked every time the window regains focus
+    // in the portal or Finanças (each ask lists the person's organizations at
+    // ctech-account). Applying or a decision invalidates it explicitly, and
+    // the console's own shell keeps its shorter freshness.
+    staleTime: 5 * 60_000,
+    refetchOnWindowFocus: false,
+    // Any organization the person runs: one that bills opens its console, one
+    // that does not opens the invitation to apply (part 2).
+    select: s => s.organizations.length > 0,
   })
 
   if (!authenticated) return null

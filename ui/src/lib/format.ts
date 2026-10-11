@@ -30,6 +30,10 @@ function civil(iso: IsoDate): Date {
 export const longDate = (iso: IsoDate) =>
   intl("long", l => new Intl.DateTimeFormat(l, {day: "numeric", month: "long", year: "numeric"})).format(civil(iso))
 
+/** "10 de outubro de 2026" for an RFC 3339 instant, in the reader's time zone. */
+export const instantDate = (instant: string) =>
+  intl("instant-long", l => new Intl.DateTimeFormat(l, {day: "numeric", month: "long", year: "numeric"})).format(new Date(instant))
+
 /** "03/03/2026" — for dates in a column. */
 export const shortDate = (iso: IsoDate) =>
   intl("short", l => new Intl.DateTimeFormat(l, {day: "2-digit", month: "2-digit", year: "numeric"})).format(civil(iso))
