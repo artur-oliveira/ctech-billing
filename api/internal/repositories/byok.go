@@ -101,11 +101,45 @@ func (r *ByokRepository) CreateConnection(ctx context.Context, c *byokconn.Conne
 	if err != nil {
 		return err
 	}
-	err = r.base.TransactWrite(ctx, txItems(r.base.BuildPutTxItemIfAbsent(item), audit))
+	// Conditional on no connection: an onboarding-only row (no state yet,
+	// PutOnboarding) is replaced, a connected one is not.
+	put := types.TransactWriteItem{Put: &types.Put{
+		TableName:                aws.String(r.base.TableName),
+		Item:                     item,
+		ConditionExpression:      aws.String("attribute_not_exists(#state)"),
+		ExpressionAttributeNames: map[string]string{"#state": "state"},
+	}}
+	err = r.base.TransactWrite(ctx, txItems(put, audit))
 	if IsConditionFailed(err) {
 		return ErrConnectionExists
 	}
 	return conflictErr(err)
+}
+
+// PutOnboarding records where the person stopped in the guided onboarding
+// (spec § 11.1, display only). Before connecting, the row has no state: the
+// job index never sees it (no schedule keys) and CreateConnection replaces it.
+func (r *ByokRepository) PutOnboarding(ctx context.Context, accountOrgID string, livemode bool, provider, step string, now time.Time) error {
+	sk := ByokConnectionSK(provider)
+	_, err := r.base.UpdateItemRaw(ctx, &dynamodb.UpdateItemInput{
+		Key: map[string]types.AttributeValue{
+			"pk": &types.AttributeValueMemberS{Value: ByokConnectionPK(accountOrgID, livemode)},
+			"sk": &types.AttributeValueMemberS{Value: sk},
+		},
+		UpdateExpression: aws.String("SET onboarding_step = :s, onboarding_since = :now, provider = :p, " +
+			"account_organization_id = :o, livemode = :l, created_at = if_not_exists(created_at, :now)"),
+		// The time is kept while the step is unchanged ("waiting since").
+		ConditionExpression: aws.String("attribute_not_exists(onboarding_step) OR onboarding_step <> :s"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":s": &types.AttributeValueMemberS{Value: step}, ":now": &types.AttributeValueMemberS{Value: now.UTC().Format(time.RFC3339Nano)},
+			":p": &types.AttributeValueMemberS{Value: provider}, ":o": &types.AttributeValueMemberS{Value: accountOrgID},
+			":l": &types.AttributeValueMemberBOOL{Value: livemode},
+		},
+	})
+	if IsConditionFailed(err) {
+		return nil // the same step again: nothing to change
+	}
+	return err
 }
 
 // SaveConnection replaces the row if its revision is still the one read.

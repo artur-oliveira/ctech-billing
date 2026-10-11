@@ -307,3 +307,15 @@ func (r *LedgerRepository) Classify(ctx context.Context, bills *BillRepository, 
 	}
 	return next.TxID, nil
 }
+
+// SetSyncState marks a BYOK account's sync ("active" on reconnect,
+// "disconnected" on disconnect). It writes the account row only.
+func (r *LedgerRepository) SetSyncState(ctx context.Context, sp space.ResolvedSpace, accountID, state string) error {
+	if err := sp.Require(space.Configure); err != nil {
+		return err
+	}
+	sk := LedgerAccountSK(accountID)
+	return r.accounts.TransactWrite(ctx, txItems(r.accounts.BuildRawUpdateTxItem(sp.PK(), &sk,
+		"SET sync_state = :st", "attribute_exists(pk) AND #src = :byok", map[string]string{"#src": "source"},
+		map[string]types.AttributeValue{":st": str(state), ":byok": str(finance.SourceBYOK)})))
+}

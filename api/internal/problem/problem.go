@@ -8,9 +8,11 @@ import (
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
+	"gopkg.aoctech.app/api-commons/byok"
 	fiberobs "gopkg.aoctech.app/api-commons/observability/fiber"
 	commonproblem "gopkg.aoctech.app/api-commons/problem"
 
+	"gopkg.aoctech.app/billing/api/internal/byokrpc"
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
 	"gopkg.aoctech.app/billing/api/internal/domain/finance"
 	"gopkg.aoctech.app/billing/api/internal/domain/finance/statement"
@@ -47,6 +49,9 @@ const (
 	// TypeSpaceUnavailable is ctech-account being unreachable: access fails
 	// closed, and the body says nothing about any organization.
 	TypeSpaceUnavailable = "/problems/space-unavailable"
+	// TypeProviderUnavailable is a merchant's bank (BYOK) or billing's outbound
+	// Lambda not answering. Retryable; nothing was decided.
+	TypeProviderUnavailable = "/problems/provider-unavailable"
 	// TypeAccountUnavailable: ctech-account did not answer a question billing
 	// must ask before acting (the owner of an OAuth client). Retryable.
 	TypeAccountUnavailable = "/problems/account-unavailable"
@@ -177,6 +182,35 @@ func FromError(err error) *Problem {
 
 	case errors.Is(err, repositories.ErrNotFound):
 		return NotFound("resource not found").WithCode("resource_not_found")
+
+	// BYOK (spec 2026-10-11 § 12.1). Details are fixed text: a provider's own
+	// message never reaches a client.
+	case errors.Is(err, services.ErrByokSpaceKind):
+		return New(404, TypeSpaceNotFound, "Space not found", "space not found")
+	case errors.Is(err, services.ErrByokNotConnected):
+		return NotFound("this organization has not connected this provider").WithCode("byok_not_connected")
+	case errors.Is(err, services.ErrConnectNotAuthorized):
+		return Validation([]FieldError{Field("authorized", "required", "the authorization must be accepted")})
+	case errors.Is(err, services.ErrBackfillRange):
+		return Validation([]FieldError{Field("backfill_months", "out_of_range", "backfill_months is 3 to 12", "min", 3, "max", 12)})
+	case errors.Is(err, services.ErrSandboxInLive):
+		return Conflict("the shared sandbox is test mode only").WithCode("byok_sandbox_test_only")
+	case errors.Is(err, repositories.ErrConnectionExists):
+		return Conflict("this organization already has a connection to this provider").WithCode("byok_already_connected")
+	case errors.Is(err, byok.ErrCertificateExpired):
+		return Unprocessable("the certificate has expired; renew it at the bank").WithCode("byok_certificate_expired")
+	case errors.Is(err, byok.ErrCertificateInvalid):
+		return Unprocessable("the certificate or the key is not a valid PEM file").WithCode("byok_certificate_invalid")
+	case errors.Is(err, byok.ErrKeyMismatch):
+		return Unprocessable("the key does not belong to this certificate").WithCode("byok_key_mismatch")
+	case errors.Is(err, byok.ErrCredentialsRefused), errors.Is(err, byok.ErrScopesRefused):
+		return Unprocessable("the bank refused these credentials").WithCode("byok_credentials_refused")
+	case errors.Is(err, byokrpc.ErrSandboxBusy):
+		return New(429, TypeTooManyRequests, "Too Many Requests", "the shared sandbox is busy; try again in a moment").WithCode("byok_sandbox_busy")
+	case errors.Is(err, byok.ErrUnavailable), errors.Is(err, byok.ErrRateLimited):
+		return New(503, TypeProviderUnavailable, "Provider Unavailable", "the bank could not be reached; try again later").WithCode("byok_provider_unavailable")
+	case errors.Is(err, byok.ErrInvalidRequest):
+		return Unprocessable("the bank connection request is invalid").WithCode("byok_invalid_request")
 
 	case errors.Is(err, billing.ErrApplicationNotPending):
 		return Conflict("the application was already decided").WithCode("application_not_pending")

@@ -72,6 +72,9 @@ type AccountRow struct {
 	// Provider is the bank's own balance of a BYOK account; nil for every
 	// other account and for a BYOK account before its first sync.
 	Provider *ProviderBalance
+	// SyncState is a BYOK account's sync: "active", or "disconnected" (read-only
+	// history, spec § 3.6 step 5). Empty for every other account.
+	SyncState string
 }
 
 // ErrAccountExists is CreateAccount refusing an id the chart already has. It
@@ -112,14 +115,16 @@ type accountItem struct {
 	ProviderBlocked int64  `dynamodbav:"provider_blocked,omitempty"`
 	ProviderAt      string `dynamodbav:"provider_balance_at,omitempty"`
 	SyncedAt        string `dynamodbav:"synced_at,omitempty"`
+	SyncState       string `dynamodbav:"sync_state,omitempty"`
 }
 
 func (i accountItem) row() AccountRow {
 	row := AccountRow{
 		LedgerAccount: finance.LedgerAccount{ID: i.ID, Name: i.Name, Class: i.Class, Group: i.Group, System: i.System,
 			SystemKey: i.SystemKey, Source: i.Source, Provider: i.Provider},
-		Balance:  billing.Cents(i.Balance),
-		Archived: i.Archived,
+		Balance:   billing.Cents(i.Balance),
+		Archived:  i.Archived,
+		SyncState: i.SyncState,
 	}
 	if i.ProviderBalance != nil {
 		pb := &ProviderBalance{Available: billing.Cents(*i.ProviderBalance), Blocked: billing.Cents(i.ProviderBlocked)}

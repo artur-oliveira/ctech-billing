@@ -21,7 +21,7 @@ import (
 // SetProviderBalance writes the bank's own balance snapshot onto a BYOK
 // account row (spec § 8.1): a fact about the bank, never an entry or the
 // ledger's balance.
-var settingsWriters = map[string]bool{"SetDefaultReceivingAccount": true, "SetPostCTechInvoices": true, "SetProviderBalance": true}
+var settingsWriters = map[string]bool{"SetDefaultReceivingAccount": true, "SetPostCTechInvoices": true, "SetProviderBalance": true, "SetSyncState": true}
 
 func TestLedgerRepositoryHasNoEditPath(t *testing.T) {
 	rt := reflect.TypeOf(&LedgerRepository{})
