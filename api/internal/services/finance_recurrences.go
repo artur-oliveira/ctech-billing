@@ -43,6 +43,7 @@ type recurrenceStore interface {
 	DueToMaterialise(ctx context.Context, livemode bool, today brcal.Date, limit int) ([]repositories.DueRecurrence, int, error)
 	MarkMaterialised(ctx context.Context, sp space.ResolvedSpace, id string, cursor brcal.Date, now time.Time) error
 	ListWithCursors(ctx context.Context, sp space.ResolvedSpace) ([]repositories.DueRecurrence, error)
+	FlagAttention(ctx context.Context, sp space.ResolvedSpace, id, reason string, now time.Time) error
 }
 
 // FinanceJobs is the daily job's logic and the projection read: materialise
@@ -50,7 +51,7 @@ type recurrenceStore interface {
 type FinanceJobs struct {
 	bills billStore
 	recs  recurrenceStore
-	cards cardCloser
+	cards cardStore
 }
 
 func NewFinanceJobs(bills billStore, recs recurrenceStore) *FinanceJobs {
@@ -89,6 +90,10 @@ func (j *FinanceJobs) Materialise(ctx context.Context, livemode bool, today brca
 	for _, d := range due {
 		res.Examined++
 		rec := d.Recurrence
+		if rec.IsCard() {
+			j.materialiseCard(ctx, d, today, now, meta, &res)
+			continue
+		}
 		drafts, err := rec.Materialise(d.Cursor, today)
 		if err != nil {
 			res.fail("recurrence %s: %v", rec.ID, err)
@@ -133,6 +138,85 @@ func (j *FinanceJobs) Materialise(ctx context.Context, livemode bool, today brca
 		}
 	}
 	return res
+}
+
+// materialiseCard posts a card recurrence's occurrences dated up to today as
+// purchases (spec § 3.2, D2). A broken target (archived card or category) is
+// flagged on the recurrence and stops it with its cursor kept, so the pending
+// occurrences post on the first run after the person fixes it.
+func (j *FinanceJobs) materialiseCard(ctx context.Context, d repositories.DueRecurrence, today brcal.Date, now time.Time, meta repositories.PostMeta, res *JobResult) {
+	rec := d.Recurrence
+	if j.cards == nil {
+		res.fail("recurrence %s: a card recurrence needs the card store", rec.ID)
+		return
+	}
+	flag := func(reason string) {
+		res.Skipped++
+		if rec.NeedsAttention == reason {
+			return
+		}
+		if err := j.recs.FlagAttention(ctx, d.Space, rec.ID, reason, now); err != nil {
+			res.fail("recurrence %s: flagging %s: %v", rec.ID, reason, err)
+		}
+	}
+	card, err := j.cards.GetCard(ctx, d.Space, rec.CardID)
+	switch {
+	case errors.Is(err, repositories.ErrNotFound):
+		flag(finance.AttentionCardArchived)
+		return
+	case err != nil:
+		res.fail("recurrence %s: reading card %s: %v", rec.ID, rec.CardID, err)
+		return
+	case card.Archived:
+		flag(finance.AttentionCardArchived)
+		return
+	}
+	charges, err := rec.CardDue(d.Cursor, today, card.FirstMonth.First())
+	if err != nil {
+		res.fail("recurrence %s: %v", rec.ID, err)
+		return
+	}
+	capped := len(charges) > maxDraftsPerRun
+	if capped {
+		charges = charges[:maxDraftsPerRun]
+	}
+	cursor := d.Cursor
+	for _, ch := range charges {
+		created, _, err := j.cards.PostOccurrence(ctx, d.Space, ch, meta, now)
+		if errors.Is(err, repositories.ErrCardMoved) {
+			// A close won the race: once more lands on the new open statement.
+			created, _, err = j.cards.PostOccurrence(ctx, d.Space, ch, meta, now)
+		}
+		switch {
+		case err == nil:
+		case errors.Is(err, repositories.ErrCardArchived):
+			flag(finance.AttentionCardArchived)
+			return
+		case errors.Is(err, repositories.ErrCategoryUnusable):
+			flag(finance.AttentionCategoryArchived)
+			return
+		case errors.Is(err, repositories.ErrRecurrenceChanged), errors.Is(err, repositories.ErrCardMoved):
+			res.Skipped++ // the next run works from the current rule and card
+			return
+		default:
+			res.fail("recurrence %s occurrence %s: %v", rec.ID, ch.Nominal, err)
+			return
+		}
+		if created {
+			res.Done++
+		} else {
+			res.Skipped++
+		}
+		cursor = ch.Nominal
+	}
+	if !capped && cursor.Before(today) {
+		// Everything up to today is handled: the cursor is today, so "posted iff
+		// nominal <= cursor" holds for the projection (spec § 3.4).
+		cursor = today
+	}
+	if err := j.recs.MarkMaterialised(ctx, d.Space, rec.ID, cursor, now); err != nil {
+		res.fail("recurrence %s: moving the cursor to %s: %v", rec.ID, cursor, err)
+	}
 }
 
 // AutoSettle settles, on each bill's own due date and for its own amount, the

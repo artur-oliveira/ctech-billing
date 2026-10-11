@@ -11,11 +11,13 @@ import (
 	"gopkg.aoctech.app/billing/api/internal/space"
 )
 
-type cardCloser interface {
+type cardStore interface {
 	DueToClose(ctx context.Context, livemode bool, today brcal.Date, limit int) ([]repositories.DueCard, int, error)
 	CloseDue(ctx context.Context, sp space.ResolvedSpace, cardID string, today brcal.Date, now time.Time) (int, error)
 	ListCards(ctx context.Context, sp space.ResolvedSpace) ([]repositories.CardRow, error)
 	GetStatement(ctx context.Context, sp space.ResolvedSpace, cardID string, m finance.Month) (repositories.Statement, error)
+	GetCard(ctx context.Context, sp space.ResolvedSpace, cardID string) (*repositories.CardRow, error)
+	PostOccurrence(ctx context.Context, sp space.ResolvedSpace, ch finance.CardCharge, meta repositories.PostMeta, now time.Time) (bool, repositories.Purchase, error)
 }
 
 // projectCards adds each card's open and future statements to the payables of
@@ -52,7 +54,7 @@ func (j *FinanceJobs) projectCards(ctx context.Context, sp space.ResolvedSpace, 
 }
 
 // WithCards gives the job the card statements to close (6.5).
-func (j *FinanceJobs) WithCards(c cardCloser) *FinanceJobs {
+func (j *FinanceJobs) WithCards(c cardStore) *FinanceJobs {
 	j.cards = c
 	return j
 }
