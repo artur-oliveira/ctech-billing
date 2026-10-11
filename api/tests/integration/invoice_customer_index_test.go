@@ -4,15 +4,24 @@ package integration
 
 import (
 	"testing"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+	"github.com/oklog/ulid/v2"
 
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
 	"gopkg.aoctech.app/billing/api/internal/domain/id"
 	"gopkg.aoctech.app/billing/api/internal/repositories"
 )
+
+// invoiceIDAt makes an invoice id whose ULID carries at, so a test can say
+// which invoice is older — the table's sort key, and so the order a customer's
+// invoices come back in, is that ULID.
+func invoiceIDAt(at time.Time) string {
+	return id.PrefixInvoice + ulid.MustNew(ulid.Timestamp(at), ulid.DefaultEntropy()).String()
+}
 
 // createInvoice writes a DRAFT invoice with two lines for customerID, through
 // the repository's own Create.
@@ -190,4 +199,117 @@ func TestTheBackfillIndexesLegacyInvoicesOnce(t *testing.T) {
 	if err != nil || len(bySub) != 1 || bySub[0].ID != legacy[0].ID {
 		t.Fatalf("subscription partition after backfill = %v, %v", bySub, err)
 	}
+}
+
+// The bug this index exists for: ListByCustomer was one Query over the
+// tenant's INVOICE# range with a customer_id filter and Limit = the page size,
+// and DynamoDB applies Limit before the filter. A customer whose only invoice
+// is older than the first page of the tenant's rows (newest first, lines
+// included) got an empty list.
+func TestAnInvoicePastTheFirstPageIsFound(t *testing.T) {
+	org := newOrg(t, true)
+	invoices := repositories.NewInvoiceRepository(testDB, testCfg)
+	t0 := time.Now().Add(-time.Hour)
+	target := "cus_" + id.New()
+	mine := createInvoice(t, invoices, org.ID, true, invoiceIDAt(t0), target, "")
+	for i := 1; i <= 60; i++ { // 60 invoices + 120 line rows, all newer than the target's
+		createInvoice(t, invoices, org.ID, true, invoiceIDAt(t0.Add(time.Duration(i)*time.Second)), "cus_"+id.New(), "")
+	}
+
+	got, err := invoices.ListByCustomer(ctxT(t), org.ID, true, target, 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].ID != mine.ID {
+		t.Fatalf("ListByCustomer = %v, want [%s]", invIDs(got), mine.ID)
+	}
+}
+
+// The per-customer read is a key condition on customer-index: an invoice whose
+// row lacks customer_pk — which only a pre-index row does — is invisible to
+// it. Filtering the tenant partition would have found it.
+func TestTheInvoiceCustomerReadGoesThroughTheIndex(t *testing.T) {
+	org := newOrg(t, true)
+	invoices := repositories.NewInvoiceRepository(testDB, testCfg)
+	customer := "cus_" + id.New()
+	indexed := createInvoice(t, invoices, org.ID, true, id.NewWithPrefix(id.PrefixInvoice), customer, "")
+	unindexed := createInvoice(t, invoices, org.ID, true, id.NewWithPrefix(id.PrefixInvoice), customer, "")
+	stripCustomerPK(t, org.ID, true, unindexed.ID)
+
+	got, err := invoices.ListByCustomer(ctxT(t), org.ID, true, customer, 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].ID != indexed.ID {
+		t.Fatalf("ListByCustomer = %v, want only the indexed %s", invIDs(got), indexed.ID)
+	}
+
+	// Put the attribute back so no later test (or backfill run) inherits it.
+	if _, err := invoices.BackfillCustomerIndex(ctxT(t), true); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A customer with many invoices among many other customers' rows: every one of
+// theirs comes back, past the index's own page, nobody else's does, newest
+// first, the limit means what it says, and test mode never reaches live.
+func TestACustomerWithManyInvoicesAmongManyOthers(t *testing.T) {
+	org := newOrg(t, true)
+	invoices := repositories.NewInvoiceRepository(testDB, testCfg)
+	t0 := time.Now().Add(-time.Hour)
+	at := 0
+	next := func() string { at++; return invoiceIDAt(t0.Add(time.Duration(at) * time.Second)) }
+	for i := 0; i < 30; i++ {
+		createInvoice(t, invoices, org.ID, true, next(), "cus_"+id.New(), "")
+	}
+	target := "cus_" + id.New()
+	var want []string          // in creation order; the read returns newest first
+	for i := 0; i < 130; i++ { // more than one 100-row page
+		want = append(want, createInvoice(t, invoices, org.ID, true, next(), target, "").ID)
+		if i%10 == 0 {
+			createInvoice(t, invoices, org.ID, true, next(), "cus_"+id.New(), "")
+		}
+	}
+	for i := 0; i < 30; i++ {
+		createInvoice(t, invoices, org.ID, true, next(), "cus_"+id.New(), "")
+	}
+	// The same customer id in test mode: a different partition.
+	createInvoice(t, invoices, org.ID, false, next(), target, "")
+
+	got, err := invoices.ListByCustomer(ctxT(t), org.ID, true, target, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := invIDs(got)
+	if len(ids) != len(want) {
+		t.Fatalf("found %d invoices, want %d", len(ids), len(want))
+	}
+	for i := range want {
+		if ids[i] != want[len(want)-1-i] {
+			t.Fatalf("[%d] = %s, want %s (newest first)", i, ids[i], want[len(want)-1-i])
+		}
+	}
+	for _, inv := range got {
+		if inv.CustomerID != target || !inv.Livemode || inv.Status == "" {
+			t.Fatalf("a row that is not this customer's live invoice: %+v", inv)
+		}
+	}
+
+	capped, err := invoices.ListByCustomer(ctxT(t), org.ID, true, target, 7)
+	if err != nil || len(capped) != 7 || capped[0].ID != want[len(want)-1] || capped[6].ID != want[len(want)-7] {
+		t.Fatalf("limit 7: %v, %v", invIDs(capped), err)
+	}
+
+	testMode, err := invoices.ListByCustomer(ctxT(t), org.ID, false, target, 0)
+	if err != nil || len(testMode) != 1 || testMode[0].Livemode {
+		t.Fatalf("test mode: %v, %v", invIDs(testMode), err)
+	}
+}
+
+func invIDs(invs []billing.Invoice) []string {
+	out := make([]string, len(invs))
+	for i, inv := range invs {
+		out[i] = inv.ID
+	}
+	return out
 }
