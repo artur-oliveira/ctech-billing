@@ -1,6 +1,6 @@
 "use client"
 
-import {DensityScope, Skeleton} from "@aoctech/ui"
+import {Button, DensityScope, ErrorState, Skeleton} from "@aoctech/ui"
 import {useQuery} from "@tanstack/react-query"
 import Image from "next/image"
 import Link from "next/link"
@@ -11,10 +11,15 @@ import {useTranslation} from "react-i18next"
 import {AccountMenu} from "@/components/AccountMenu"
 import {LanguageSwitcher} from "@/components/LanguageSwitcher"
 import {ModeSwitch} from "@/components/console/ModeSwitch"
+import {NoMerchant} from "@/components/console/NoMerchant"
+import {OrganizationSwitch} from "@/components/console/OrganizationSwitch"
 import {statusOf} from "@/lib/api/client"
 import {consoleKeys, getConsoleSession} from "@/lib/api/console"
 import {useAuth} from "@/lib/auth/AuthContext"
+import {pickMerchantOrg, setMerchantOrg, tenantInMode} from "@/lib/console/merchant"
 import {consoleNav} from "@/lib/console/nav"
+import {ConsoleScopeProvider} from "@/lib/console/scope"
+import {useMerchantOrg} from "@/lib/console/useMerchantOrg"
 import {useMode} from "@/lib/console/useMode"
 import {FINANCE_HREF} from "@/lib/finance/href"
 
@@ -37,13 +42,14 @@ import {FINANCE_HREF} from "@/lib/finance/href"
  * one bill; this reads a table.
  *
  * The mode is in the header and never anywhere else. It is the one thing an
- * operator switches, acting on the wrong one is the expensive mistake, and the
- * organization is *not* switchable — it comes from the signed-in owner, and a
- * tenant picker here would be asking a question the server already answered
- * (ADR 0011).
+ * operator switches that changes which world the numbers come from, and acting
+ * on the wrong one is the expensive mistake. The organization is switchable: it
+ * is the selected account organization where the person is owner or admin
+ * (ADR 0028), a request the server re-authorizes on every call; the mode is the
+ * other switch.
  */
 export default function ConsoleLayout({children}: LayoutProps<"/console">) {
-  const {t} = useTranslation()
+  const {t, i18n} = useTranslation()
   const pathname = usePathname()
   // The nav scrolls sideways without a visible bar on a phone, so the current
   // section is brought into view; only the row scrolls, never the page.
@@ -56,18 +62,30 @@ export default function ConsoleLayout({children}: LayoutProps<"/console">) {
   const router = useRouter()
   const {authenticated, loading} = useAuth()
   const mode = useMode()
-
-  const {data: session, error} = useQuery({
+  const stored = useMerchantOrg()
+  const {data: session, error, isPending, refetch} = useQuery({
     queryKey: consoleKeys.session(),
     queryFn: getConsoleSession,
     enabled: authenticated,
     retry: false,
+    staleTime: 60_000,
   })
 
-  // Signed in, no organization: nothing in the console is theirs. Finanças is
-  // (everyone has a personal space), and it is its own area now, so that is
-  // where they go. Decided from the session alone rather than per screen.
-  const noOrganization = statusOf(error) === 403 || statusOf(error) === 404
+  const organizations = session?.organizations ?? []
+  const unavailable = session?.organizations_unavailable ?? false
+  const selected = session ? pickMerchantOrg(organizations, stored, mode) : null
+  const active = selected !== null && tenantInMode(selected.merchant_status, mode)
+  const org = selected?.organization_id
+  // Stable per (mode, organization): the React Compiler memoizes it.
+  const scope = org ? {mode, org} : null
+
+  // Owner or admin of no organization: nothing here is theirs; Finanças is.
+  const noOrganization = statusOf(error) === 403 || (session !== undefined && !unavailable && organizations.length === 0)
+
+  // A stored organization the person no longer administers is replaced once.
+  useEffect(() => {
+    if (org && org !== stored) setMerchantOrg(org)
+  }, [org, stored])
 
   useEffect(() => {
     if (!loading && !authenticated) router.replace("/login")
@@ -77,7 +95,7 @@ export default function ConsoleLayout({children}: LayoutProps<"/console">) {
     if (noOrganization) router.replace(FINANCE_HREF)
   }, [noOrganization, router])
 
-  const nav = consoleNav(session !== undefined)
+  const nav = consoleNav(active)
 
   return (
     <DensityScope density="compact" className="min-h-dvh">
@@ -100,8 +118,8 @@ export default function ConsoleLayout({children}: LayoutProps<"/console">) {
           </div>
 
           <div className="order-3 flex w-full min-w-0 items-center gap-x-3 gap-y-2 sm:order-2 sm:ml-auto sm:w-auto">
-            {/* The organization comes from the signed-in owner (ADR 0011);
-                the mode is the one thing an operator switches. */}
+            {/* Whose billing, then which world: "CTech · Teste" reads as one thing. */}
+            {selected && <OrganizationSwitch organizations={organizations} selected={selected}/>}
             <ModeSwitch/>
           </div>
           {/* The person, the way to the portal, and Sair, all behind the
@@ -150,10 +168,24 @@ export default function ConsoleLayout({children}: LayoutProps<"/console">) {
       )}
 
       <main className="mx-auto max-w-6xl px-4 py-8 pb-20">
-        {loading || !authenticated || noOrganization ? (
+        {loading || !authenticated || noOrganization || (session === undefined && isPending) ? (
           <ShellSkeleton/>
+        ) : unavailable || (error && !session) ? (
+          // ctech-account did not answer, or the session itself failed: the
+          // list is unknown, not empty, so nothing is chosen and nobody is
+          // sent away. One retry, in the console's words.
+          <ErrorState
+            status={unavailable ? 503 : 500}
+            locale={i18n.language}
+            description={t("console.organization.unavailable")}
+            action={<Button variant="outline" onClick={() => void refetch()}>{t("console.organization.retry")}</Button>}
+          />
+        ) : selected && !active ? (
+          <NoMerchant name={selected.display_name}/>
+        ) : scope ? (
+          <ConsoleScopeProvider value={scope}>{children}</ConsoleScopeProvider>
         ) : (
-          children
+          <ShellSkeleton/>
         )}
       </main>
     </DensityScope>

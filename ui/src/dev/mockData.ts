@@ -269,6 +269,17 @@ export const FIXTURES: Record<MockScenario, Fixture> = {
     pixTtlSeconds: 1800,
   },
 
+  // The console's merchant side: the person administers one organization that
+  // does not bill through CTech Billing (no tenant in either mode), so the
+  // console shows its empty state and the account menu offers no Console. The
+  // portal side is the ordinary one.
+  sem_cobranca: {
+    invoices: [],
+    subscriptions: [],
+    settleAfterSeconds: null,
+    pixTtlSeconds: 1800,
+  },
+
   // The person has an account of their own; the organization they administer
   // has none yet, so picking it answers 403 no-billing-account like the real
   // portal does for an organization with no customer.

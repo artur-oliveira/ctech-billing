@@ -129,4 +129,13 @@ describe("AccountMenu with no billing account", () => {
     await screen.findByRole("button", {name: /Menu da conta/})
     expect(getSession).toHaveBeenCalledTimes(1)
   })
+
+  it("offers no console to an admin whose organizations do not bill yet", async () => {
+    vi.spyOn(portal, "getSession").mockResolvedValue({customer_id: "cus_1", name: FULL, email: EMAIL, terms_accepted: true})
+    vi.spyOn(consoleApi, "getConsoleSession").mockResolvedValue({organizations: [{organization_id: "0190a1b2-c3d4-7e5f-8a9b-bbbbbbbbbbbb", selector: "org:0190a1b2-c3d4-7e5f-8a9b-bbbbbbbbbbbb", display_name: "Padaria", role: "admin", merchant_status: "none"}], organizations_unavailable: false})
+    renderWithQuery(<AccountMenu view="portal"/>)
+    await vi.waitFor(() => expect(consoleApi.getConsoleSession).toHaveBeenCalled())
+    const menu = await open()
+    expect(within(menu).queryByRole("menuitem", {name: "Console"})).toBeNull()
+  })
 })

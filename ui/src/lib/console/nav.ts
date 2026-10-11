@@ -11,9 +11,9 @@ const INVOICING_NAV = [
 
 /**
  * The console's sections: invoicing only. Finanças is its own area (/finance).
- * They appear only once the session has CONFIRMED an organization: shown while
- * it loads, they flashed for a person who has none and vanished on the 403 a
- * moment later.
+ * They appear only once the session has confirmed a tenant for the selected
+ * organization in this mode: shown while it loads, they flashed for a person
+ * who has none and vanished a moment later.
  */
 export function consoleNav(hasOrganization: boolean): {href: string; label: string}[] {
   return hasOrganization ? [...INVOICING_NAV] : []

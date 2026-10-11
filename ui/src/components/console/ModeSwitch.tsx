@@ -5,6 +5,7 @@ import {useTranslation} from "react-i18next"
 
 import {segmentHit} from "@/components/ui/segmentHit"
 import {setMode} from "@/lib/console/mode"
+import {useMerchantOrg} from "@/lib/console/useMerchantOrg"
 import {useMode} from "@/lib/console/useMode"
 
 const OPTIONS = [
@@ -19,8 +20,8 @@ const OPTIONS = [
  * menu that hides the answer to "which one am I in", which is the question this
  * control exists to answer before it exists to change anything.
  *
- * Switching does not invalidate anything, and it does not need to — the mode is
- * part of every console query key, so the two modes are two caches and the
+ * Switching does not invalidate anything, and it does not need to — the
+ * organization and the mode are part of every console query key, so the two modes are two caches and the
  * screen re-reads the one it just moved to. What is removed instead is the
  * *other* mode's detail data, so a stale live invoice cannot be shown for a
  * frame while its test counterpart loads.
@@ -28,6 +29,7 @@ const OPTIONS = [
 export function ModeSwitch() {
   const {t} = useTranslation()
   const mode = useMode()
+  const org = useMerchantOrg()
   const queryClient = useQueryClient()
 
   return (
@@ -51,7 +53,7 @@ export function ModeSwitch() {
             onClick={() => {
               if (active) return
               setMode(option.id)
-              void queryClient.removeQueries({queryKey: ["console", mode]})
+              void queryClient.removeQueries({queryKey: ["console", org, mode]})
             }}
             className={`${segmentHit} rounded-md px-2.5 py-1 text-xs transition-colors ${
               active

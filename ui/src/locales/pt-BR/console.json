@@ -1,4 +1,13 @@
 {
+ "organization": {
+  "label": "Organização",
+  "unavailable": "Não foi possível verificar suas organizações agora.",
+  "retry": "Tentar de novo"
+ },
+ "noMerchant": {
+  "title": "Cobrança não ativada",
+  "body": "{{name}} ainda não cobra os próprios clientes pelo CTech Billing neste modo."
+ },
  "nav": {
   "label": "Seções",
   "overview": "Visão geral",
