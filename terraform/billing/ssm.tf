@@ -79,3 +79,14 @@ resource "aws_ssm_parameter" "email_from" {
     ignore_changes = [value]
   }
 }
+
+# Who at CTech hears about a new merchant application. Set out of band.
+resource "aws_ssm_parameter" "applications_notify_email" {
+  name  = local.ssm_paths.applications_notify_email
+  type  = "String"
+  value = "SET-OUT-OF-BAND"
+
+  lifecycle {
+    ignore_changes = [value]
+  }
+}
