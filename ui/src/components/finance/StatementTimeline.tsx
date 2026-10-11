@@ -78,8 +78,12 @@ export function StatementTimeline({card, selected, onSelect}: {card: Card; selec
     const prev = firstShown.current
     firstShown.current = months[0]
     if (prev && months[0] !== prev) {
-      // Older statements were prepended: keep the card under the finger.
-      el.scrollLeft += months.indexOf(prev) * el.clientWidth
+      // Older statements were prepended: keep the card under the finger. Set
+      // absolutely, from the selection (onScroll keeps it the card on screen):
+      // Chrome may already have re-snapped to it, and adding the shift would
+      // count it twice.
+      const i = months.indexOf(selected)
+      if (i >= 0) el.scrollLeft = i * el.clientWidth
     }
   }, [phone, months[0]]) // eslint-disable-line react-hooks/exhaustive-deps
   useLayoutEffect(() => {

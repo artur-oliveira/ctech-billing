@@ -176,6 +176,30 @@ describe("F5 — cartões", () => {
       }
     })
 
+    // Final review: Chrome itself re-snaps a scroll-snap strip to the element it
+    // showed when nodes are inserted before it, during the layout a read of
+    // clientWidth forces. A correction that adds the shift on top of that moves
+    // the strip a page too far.
+    it("keeps the card on screen when the browser re-snaps the strip itself", async () => {
+      serve(ALL)
+      renderWithQuery(<CardsView/>)
+      await screen.findByRole("button", {name: /^Fatura de Mar\/26/})
+      const el = strip()
+      const months = () => within(el).getAllByRole("button").map(b => b.dataset.month!)
+      let left = 0
+      let snapped: string | undefined
+      // Any layout read (scrollLeft or clientWidth) re-snaps to the element that was on screen.
+      const layout = () => { const i = snapped ? months().indexOf(snapped) : -1; if (i >= 0) left = i * 300 }
+      Object.defineProperty(el, "scrollLeft", {configurable: true,
+        get: () => { layout(); return left }, set: (v: number) => { left = v; snapped = months()[Math.round(v / 300)] }})
+      Object.defineProperty(el, "clientWidth", {configurable: true, get: () => { layout(); return 300 }})
+      el.scrollLeft = 0
+      el.dispatchEvent(new Event("scroll"))
+      const shown = months()[0]
+      await waitFor(() => expect(months()[0]).not.toBe(shown))
+      expect(left).toBe(months().indexOf(shown) * 300)
+    })
+
     // Review Focus 5.
     it("keeps the card on screen when older statements load on a phone", async () => {
       serve(ALL)
