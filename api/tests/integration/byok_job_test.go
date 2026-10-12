@@ -24,7 +24,9 @@ func TestTheHourlyJobSyncsTheConnectionsOfItsMode(t *testing.T) {
 	}
 	env.fake.SetBalance(byok.Balance{Available: 700})
 	env.fake.AddLines(lineOn(env.today, "J1", true, 700))
-	spaceFor := func(c *byokconn.Connection) (space.ResolvedSpace, error) { return space.ForJob(c.AccountOrganizationID, c.Livemode) }
+	spaceFor := func(c *byokconn.Connection) (space.ResolvedSpace, error) {
+		return space.ForJob(c.AccountOrganizationID, c.Livemode)
+	}
 	job := services.NewByokJob(env.repo, env.connections, env.statement, nil, alerts.Nop{}, spaceFor)
 	for range 2 {
 		res := job.Run(ctx, true, now())
