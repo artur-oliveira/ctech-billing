@@ -26,6 +26,7 @@ import type {
   DocumentLink,
   DunningPolicy,
   DunningStep,
+  ExcessPayment,
   MerchantApplication,
   MerchantCompany,
   MerchantCompanyList,
@@ -323,6 +324,8 @@ export interface CreditNoteInput {
   reason: string
   refunded_externally: boolean
   external_refund_ref?: string
+  /** BYOK: give the amount back from the invoice's Pix (spec § 7.5). */
+  refund_via_pix?: boolean
 }
 
 export async function creditInvoice(
@@ -411,5 +414,33 @@ export async function rotateWebhookSecret(scope: ConsoleScope, id: string): Prom
 export async function testWebhook(scope: ConsoleScope, id: string): Promise<{event_id: string}> {
   const {data} = await apiClient.post<{event_id: string}>(
     `/v1.0/console/webhooks/${encodeURIComponent(id)}/test`, {}, scopeHeaders(scope))
+  return data
+}
+
+/** "Gerar novo Pix": a new BYOK charge after the previous one ended unpaid. */
+export async function newInvoicePix(scope: ConsoleScope, id: string): Promise<ConsoleInvoiceDetail> {
+  const {data} = await apiClient.post<ConsoleInvoiceDetail>(`/v1.0/console/invoices/${id}/charge`, {}, scopeHeaders(scope))
+  return data
+}
+
+/** Test mode only: pays the Pix in the provider's sandbox; the confirmation
+ *  then arrives through the real path, so the screen refetches. */
+export async function simulateInvoicePayment(scope: ConsoleScope, id: string): Promise<void> {
+  await apiClient.post(`/v1.0/console/invoices/${id}/simulate-payment`, {}, scopeHeaders(scope))
+}
+
+/** "Devolver": the merchant's explicit act (D19). */
+export async function refundExcessPayment(scope: ConsoleScope, id: string): Promise<ExcessPayment> {
+  const {data} = await apiClient.post<ExcessPayment>(`/v1.0/console/excess-payments/${id}/refund`, {}, scopeHeaders(scope))
+  return data
+}
+
+/** Turns the provider on for collection with its late fees, as percentages
+ *  with two decimals (the server stores basis points). */
+export async function setCollection(
+  scope: ConsoleScope,
+  body: {provider: string; late_fee_percent: number; monthly_interest_percent: number},
+): Promise<ConsoleSettings> {
+  const {data} = await apiClient.put<ConsoleSettings>("/v1.0/console/collection", body, scopeHeaders(scope))
   return data
 }

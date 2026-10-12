@@ -29,6 +29,11 @@ function show(app = APP) {
 afterEach(() => vi.restoreAllMocks())
 
 describe("ApplicationCard", () => {
+  it("shows an approved merchant's collection rail in words", () => {
+    show({...APP, status: "approved", decided_at: "2026-10-10T10:00:00Z", payout: {rail: "byok", provider: "inter", status: "enabled"}})
+    expect(screen.getByText("Pix com vencimento no Banco Inter · Ativa")).toBeInTheDocument()
+  })
+
   it("shows what a reviewer decides on, with the volume's label, never its key", () => {
     show()
     expect(screen.getByText("Padaria Bom Dia")).toBeInTheDocument()

@@ -2,6 +2,7 @@
 
 import {useTranslation} from "react-i18next"
 
+import {ConsoleCollection} from "@/components/collection/ConsoleCollection"
 import {InterConnectionScreen} from "@/components/connections/InterConnectionScreen"
 import {useConsoleScope} from "@/lib/console/scope"
 import {useDocumentTitle} from "@/lib/hooks/useDocumentTitle"
@@ -10,5 +11,9 @@ import {useDocumentTitle} from "@/lib/hooks/useDocumentTitle"
 export default function ConsoleInterConnectionPage() {
   const {t} = useTranslation()
   useDocumentTitle(t("connections.providers.inter"))
-  return <InterConnectionScreen scope={useConsoleScope()} backHref="/console/connections"/>
+  const scope = useConsoleScope()
+  return (
+    <InterConnectionScreen scope={scope} backHref="/console/connections"
+      extra={c => c.capabilities.includes("collection") ? <ConsoleCollection scope={scope} provider={c.provider}/> : null}/>
+  )
 }

@@ -32,10 +32,14 @@ export function CreditNoteDialog({
   credited,
   onClose,
   onIssued,
+  refundViaPix,
 }: {
   open: boolean
   invoice: ConsoleInvoice
   credited: number
+  /** BYOK: the invoice was paid by Pix into the merchant's bank, so the
+   *  credit can be given back from that payment (spec § 7.5). */
+  refundViaPix?: boolean
   onClose: () => void
   onIssued: () => void
 }) {
@@ -45,6 +49,7 @@ export function CreditNoteDialog({
   const [amount, setAmount] = useState("")
   const [reason, setReason] = useState("")
   const [refunded, setRefunded] = useState(false)
+  const [viaPix, setViaPix] = useState(false)
 
   const cents = parseMoney(amount) ?? 0
   const valid = cents > 0 && cents <= remaining && reason.trim() !== ""
@@ -52,7 +57,8 @@ export function CreditNoteDialog({
   const fe = useFieldErrors(["amount", "reason"], {keepOthers: false})
   const issue = useMutation({
     mutationFn: () =>
-      creditInvoice(scope, invoice.id, {amount: cents, reason: reason.trim(), refunded_externally: refunded}),
+      creditInvoice(scope, invoice.id, {amount: cents, reason: reason.trim(), refunded_externally: refunded && !viaPix,
+        ...(viaPix ? {refund_via_pix: true} : {})}),
     onSuccess: () => {
       toast.success(t("console.credit.done"))
       setAmount("")
@@ -112,7 +118,16 @@ export function CreditNoteDialog({
             primitive is Base UI's bare Root, and the sentence under it is the
             part that matters — a checkbox that quietly records a refund nobody
             made is a history that lies. */}
-        <label className="flex items-start gap-2.5 text-sm text-foreground">
+        {refundViaPix && (
+          <label className="flex items-start gap-2.5 text-sm text-foreground">
+            <Checkbox checked={viaPix} onCheckedChange={setViaPix} className="mt-0.5 shrink-0"/>
+            <span>
+              {t("console.credit.viaPix")}
+              <span className="mt-0.5 block text-xs text-muted-foreground">{t("console.credit.viaPixNote")}</span>
+            </span>
+          </label>
+        )}
+        {!viaPix && <label className="flex items-start gap-2.5 text-sm text-foreground">
           <Checkbox
             checked={refunded}
             onCheckedChange={setRefunded}
@@ -124,7 +139,7 @@ export function CreditNoteDialog({
               {t("console.credit.refundedNote")}
             </span>
           </span>
-        </label>
+        </label>}
       </div>
     </Modal>
   )

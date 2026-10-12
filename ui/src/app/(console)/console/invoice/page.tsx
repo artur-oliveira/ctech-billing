@@ -9,6 +9,8 @@ import {Suspense, useState} from "react"
 import {useTranslation} from "react-i18next"
 import {toast} from "sonner"
 
+import {ExcessPayments} from "@/components/collection/ExcessPayments"
+import {InvoicePix} from "@/components/collection/InvoicePix"
 import {CreditNoteDialog} from "@/components/console/CreditNoteDialog"
 import {DownloadPDF} from "@/components/DownloadPDF"
 import {InvoiceStatusBadge} from "@/components/console/InvoiceStatusBadge"
@@ -20,6 +22,9 @@ import {
   finalizeInvoice,
   getConsoleInvoice,
   getConsoleInvoicePDF,
+  newInvoicePix,
+  refundExcessPayment,
+  simulateInvoicePayment,
   voidInvoice,
 } from "@/lib/api/console"
 import type {ConsoleInvoiceDetail} from "@/lib/api/consoleTypes"
@@ -81,6 +86,18 @@ function Detail() {
   const cancel = useMutation({
     ...write(invoiceId => voidInvoice(scope, invoiceId), t("console.invoice.voided")),
     onSettled: () => setVoiding(false),
+  })
+
+  // BYOK (spec § 11.3): a new Pix answers with the detail; the sandbox
+  // payment is confirmed through the real path, so the screen refetches.
+  const newPix = useMutation(write(invoiceId => newInvoicePix(scope, invoiceId), t("connections.pix.created")))
+  const simulate = useMutation({
+    mutationFn: () => simulateInvoicePayment(scope, id),
+    onSuccess: () => {
+      toast.success(t("connections.pix.simulated"))
+      window.setTimeout(() => void queryClient.invalidateQueries({queryKey: consoleKeys.invoice(scope, id)}), 2500)
+    },
+    onError: (error: unknown) => toast.error(messageFor(error)),
   })
 
   useDocumentTitle(query.data?.invoice.number ? t("console.invoice.title", {number: query.data.invoice.number}) : null)
@@ -181,6 +198,23 @@ function Detail() {
         </dl>
       </section>
 
+      {query.data.byok && (
+        <section aria-labelledby="pix" className="space-y-3">
+          <h2 id="pix" className="text-sm font-medium text-muted-foreground">{t("connections.pix.title")}</h2>
+          <InvoicePix byok={query.data.byok} currency={invoice.currency} busy={newPix.isPending || simulate.isPending}
+            onSimulate={() => simulate.mutate()} onNewPix={() => newPix.mutate()}/>
+        </section>
+      )}
+
+      {query.data.byok && (
+        <ExcessPayments rows={query.data.byok.excess_payments} currency={invoice.currency}
+          onRefund={async excessId => {
+            const next = await refundExcessPayment(scope, excessId)
+            void queryClient.invalidateQueries({queryKey: consoleKeys.invoice(scope, id)})
+            return next
+          }}/>
+      )}
+
       <section aria-labelledby="linhas" className="space-y-3">
         <h2 id="linhas" className="text-sm font-medium text-muted-foreground">{t("console.invoice.lines")}</h2>
         <div className="overflow-x-auto">
@@ -273,6 +307,7 @@ function Detail() {
         open={crediting}
         invoice={invoice}
         credited={credited}
+        refundViaPix={query.data.byok?.attempt_status === "SUCCEEDED"}
         onClose={() => setCrediting(false)}
         onIssued={() => {
           void queryClient.invalidateQueries({queryKey: consoleKeys.invoice(scope, id)})

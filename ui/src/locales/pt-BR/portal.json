@@ -113,7 +113,8 @@
     "expired": "Código expirado",
     "expiredHint": "Gere um novo código. Nada foi cobrado.",
     "regenerate": "Gerar novo código",
-    "generating": "Gerando…"
+    "generating": "Gerando…",
+    "payUntil": "pague até {{date}}"
   },
   "terms": {
     "title": "Termos",

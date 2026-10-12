@@ -71,6 +71,17 @@ export function ApplicationCard({application: a}: {application: MerchantApplicat
           <div><dt className="text-xs text-muted-foreground">{t("console.applications.volume")}</dt><dd>{t(`console.volume.${a.expected_monthly_volume}`)}</dd></div>
         )}
         <div className="min-w-0"><dt className="text-xs text-muted-foreground">{t("console.applications.contact")}</dt><dd className="break-all">{a.contact_email}</dd></div>
+        {a.payout && (
+          <div className="min-w-0">
+            <dt className="text-xs text-muted-foreground">{t("console.applications.payout")}</dt>
+            <dd>
+              {a.payout.rail === "byok"
+                ? t("console.applications.railByok", {bank: t(`connections.providers.${a.payout.provider ?? "inter"}`)})
+                : t("console.applications.railWallet")}
+              {" · "}{t(`console.applications.payoutStatus.${a.payout.status}`, {defaultValue: a.payout.status})}
+            </dd>
+          </div>
+        )}
       </dl>
       {a.rejection_reason && (
         <p className="text-sm text-muted-foreground"><span className="font-medium text-foreground">{t("console.applications.reason")}: </span>{a.rejection_reason}</p>

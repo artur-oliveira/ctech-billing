@@ -33,4 +33,18 @@ describe("CreditNoteDialog", () => {
     await userEvent.type(screen.getByLabelText(/^Motivo/), "x")
     expect(screen.queryByText("Obrigatório.")).not.toBeInTheDocument()
   })
+
+  it("offers to give the amount back by Pix only on an invoice paid by Pix through the bank", async () => {
+    const spy = vi.spyOn(consoleApi, "creditInvoice").mockResolvedValue(undefined)
+    const client = new QueryClient({defaultOptions: {mutations: {retry: false}}})
+    const {unmount} = render(<QueryClientProvider client={client}><ConsoleScopeProvider value={SCOPE}><CreditNoteDialog open invoice={INVOICE} credited={0} onClose={() => {}} onIssued={() => {}}/></ConsoleScopeProvider></QueryClientProvider>)
+    expect(screen.queryByText("Devolver via Pix")).not.toBeInTheDocument()
+    unmount()
+    render(<QueryClientProvider client={client}><ConsoleScopeProvider value={SCOPE}><CreditNoteDialog open invoice={INVOICE} credited={0} refundViaPix onClose={() => {}} onIssued={() => {}}/></ConsoleScopeProvider></QueryClientProvider>)
+    await userEvent.type(screen.getByLabelText(/^Valor/), "20,00")
+    await userEvent.type(screen.getByLabelText(/^Motivo/), "devolução parcial")
+    await userEvent.click(screen.getByText("Devolver via Pix"))
+    await userEvent.click(screen.getByRole("button", {name: /Emitir/}))
+    expect(spy).toHaveBeenCalledWith(SCOPE, "inv_1", expect.objectContaining({amount: 2000, refund_via_pix: true, refunded_externally: false}))
+  })
 })

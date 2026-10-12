@@ -141,7 +141,15 @@
     "onlyYou": "Só você pode cancelar a integração no Inter: Internet Banking, Integrar, a integração, Cancelar. O cancelamento não tem volta.",
     "confirm": "Desconectar",
     "cancel": "Manter conectado",
-    "done": "Banco Inter desconectado"
+    "done": "Banco Inter desconectado",
+    "openCharges": "Há {{count}} cobranças em aberto. Desconectar cancela todas.",
+    "openCharges_one": "Há 1 cobrança em aberto. Desconectar cancela essa cobrança.",
+    "cancelAndLeave": "Cancelar cobranças e desconectar",
+    "anyway": "Desconectar mesmo assim",
+    "anywayBody": "O Inter não respondeu. Se desconectar mesmo assim, remova você mesmo no Inter as cobranças e o aviso abaixo.",
+    "leftoverTitle": "Remova no Inter",
+    "leftoverCharges": "Cobranças (txid): {{refs}}",
+    "leftoverWebhook": "Aviso de pagamentos: {{url}}"
   },
   "unclassified": {
     "title": "A classificar",
@@ -165,5 +173,65 @@
     "out": "Saída",
     "account": "Conta",
     "synced": "Sincronizada com o banco"
+  },
+  "collection": {
+    "title": "Cobrança via Inter",
+    "use": "Usar o Inter para cobrar",
+    "configure": "Configurar multa e juros",
+    "intro": "As faturas passam a ter um Pix com vencimento, pago direto na sua conta no Inter. Multa e juros entram no Pix de cada fatura emitida a partir de agora.",
+    "active": "As faturas desta organização são cobradas por Pix com vencimento no Inter.",
+    "fine": "Multa por atraso (%)",
+    "interest": "Juros ao mês (%)",
+    "fineHint": "De 0 a 20%, cobrada uma vez após o vencimento.",
+    "interestHint": "De 0 a 10% ao mês, por dia corrido de atraso.",
+    "save": "Salvar",
+    "saved": "Cobrança via Inter atualizada.",
+    "outOfRange": "Use um valor de {{min}} a {{max}}.",
+    "needsCollection": "Para cobrar, a integração precisa dos escopos de cobrança (cobv, pix e webhook)."
+  },
+  "pix": {
+    "title": "Pix com vencimento",
+    "due": "Vence em {{date}}",
+    "payUntil": "Pague até {{date}}",
+    "copy": "Copiar código Pix",
+    "copied": "Código Pix copiado.",
+    "copyFailed": "Não foi possível copiar. Selecione o código e copie.",
+    "qrTitle": "QR Code do Pix desta fatura",
+    "simulate": "Simular pagamento",
+    "simulated": "Pagamento simulado no ambiente de testes. A fatura é confirmada em instantes.",
+    "newPix": "Gerar novo Pix",
+    "created": "Pix gerado.",
+    "paid": "Pago por Pix no {{bank}}.",
+    "lateCharges": "Inclui {{amount}} de multa e juros.",
+    "none": "Sem Pix",
+    "excessTitle": "Pagamento em duplicidade",
+    "excessBody": "Recebemos {{amount}} a mais nesta fatura. O dinheiro está na sua conta; devolva se for o caso.",
+    "creditRefund": "Devolução de nota de crédito",
+    "refund": "Devolver",
+    "refundTitle": "Devolver {{amount}}?",
+    "refundBody": "O Inter devolve o valor por Pix para quem pagou. Não dá para desfazer.",
+    "refundConfirm": "Devolver",
+    "refundKeep": "Manter",
+    "refundStarted": "Devolução pedida ao Inter.",
+    "excessStatus": {
+      "open": "Na sua conta",
+      "refunding": "Devolução em processamento",
+      "refunded": "Devolvido",
+      "refund_failed": "Devolução recusada"
+    }
+  },
+  "webhook": {
+    "title": "Aviso de pagamentos",
+    "registered": "Aviso registrado: o Inter avisa a CTech de cada Pix pago.",
+    "notRegistered": "Sem aviso: as confirmações chegam em até uma hora.",
+    "overwritten": "Outro sistema passou a receber os avisos desta chave. As confirmações chegam em até uma hora.",
+    "conflictTitle": "Outro sistema recebe os avisos desta chave",
+    "conflictBody": "Os avisos de pagamento desta chave Pix vão para {{host}}. Se a CTech registrar o dela, esse sistema deixa de receber os avisos. O melhor é usar uma chave aleatória (EVP) só para a CTech.",
+    "register": "Registrar aviso novamente",
+    "replace": "Substituir mesmo assim",
+    "replaceTitle": "Substituir o aviso de {{host}}?",
+    "replaceBody": "{{host}} deixa de receber os avisos de pagamento desta chave Pix. Faça isso só se esse sistema não precisar mais deles.",
+    "replaceKeep": "Manter o atual",
+    "done": "Aviso de pagamentos registrado."
   }
 }
