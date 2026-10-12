@@ -35,7 +35,9 @@ type CardSpendingReport struct {
 }
 
 // CardSpending folds the lines into the report; lines outside from..to are
-// ignored, and a category or card whose lines net to nothing is not a row.
+// ignored, and a category or card with nothing in any month is not a row (one
+// that nets to zero over the range, a purchase and its refund on a later
+// statement, stays: the rows must add up to the total row month by month).
 func CardSpending(lines []SpendLine, from, to Month) CardSpendingReport {
 	r := CardSpendingReport{Months: months(from, to)}
 	idx := map[Month]int{}
@@ -74,7 +76,7 @@ func CardSpending(lines []SpendLine, from, to Month) CardSpendingReport {
 func largestFirst(rows map[string]*SpendRow, key func(SpendRow) string) []SpendRow {
 	out := make([]SpendRow, 0, len(rows))
 	for _, x := range rows {
-		if x.Total != 0 {
+		if slices.ContainsFunc(x.Amounts, func(a billing.Cents) bool { return a != 0 }) {
 			out = append(out, *x)
 		}
 	}

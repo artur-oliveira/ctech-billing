@@ -221,13 +221,11 @@ func (h *financeHandlers) cardSpending(c fiber.Ctx) error {
 		}
 		ids = []string{id}
 	} else {
-		cards, err := h.cards.ListCards(c.Context(), sp)
+		all, err := h.cards.CardIDs(c.Context(), sp)
 		if err != nil {
 			return fail(c, err)
 		}
-		for _, card := range cards {
-			ids = append(ids, card.ID)
-		}
+		ids = all
 	}
 	var lines []finance.SpendLine
 	for _, id := range ids {

@@ -170,6 +170,31 @@ func (r *CardRepository) GetCard(ctx context.Context, sp space.ResolvedSpace, ca
 
 // ListCards returns the space's cards: one prefix Query here and one on the
 // chart for their names and balances.
+// CardIDs lists the space's cards, archived ones included, by id only: one
+// prefix Query of the space partition, without the chart ListCards also reads.
+func (r *CardRepository) CardIDs(ctx context.Context, sp space.ResolvedSpace) ([]string, error) {
+	if err := sp.Require(space.Read); err != nil {
+		return nil, err
+	}
+	items, err := r.ledger.queryPrefix(ctx, r.cards, sp.PK(), "CARD#")
+	if err != nil {
+		return nil, err
+	}
+	rows, err := DecodeItems[cardItem](items)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(rows))
+	for _, it := range rows {
+		c, err := it.card()
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, c.ID)
+	}
+	return out, nil
+}
+
 func (r *CardRepository) ListCards(ctx context.Context, sp space.ResolvedSpace) ([]CardRow, error) {
 	if err := sp.Require(space.Read); err != nil {
 		return nil, err

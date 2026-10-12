@@ -41,6 +41,26 @@ func TestCardSpendLinesAreItsStatementLines(t *testing.T) {
 	}
 }
 
+// An advance bills the rest on the open statement: the whole amount counts
+// there, and nothing on the statements it left.
+func TestAnAdvanceCountsOnTheStatementItMovedTo(t *testing.T) {
+	f, card := newCardsFixture(t)
+	ctx := context.Background()
+	p := f.purchase(t, card.ID, brcal.New(2026, time.March, 1), 90000, 3) // Mar, Apr, May
+	if _, err := f.cards.Advance(ctx, f.sp, card.ID, p.ID, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	mar, may := finance.Month{Year: 2026, Month: time.March}, finance.Month{Year: 2026, Month: time.May}
+	lines, err := f.cards.SpendLines(ctx, f.sp, card.ID, mar, may)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := finance.CardSpending(lines, mar, may)
+	if r.ByMonth[0] != 90000 || r.ByMonth[1] != 0 || r.ByMonth[2] != 0 {
+		t.Fatalf("by month = %v", r.ByMonth)
+	}
+}
+
 func TestTheCardSpendingReport(t *testing.T) {
 	f := newFinanceEnv(t)
 	var bank, food, home, visa, master struct{ ID string }

@@ -278,10 +278,14 @@
     "spending": {
       "card": "Cartão",
       "all": "Todos os cartões",
-      "share": "Parte",
+      "share": "Participação",
       "basis": "Por mês da fatura: uma compra parcelada aparece em cada fatura que a cobra, e um estorno reduz a fatura em que é creditado. O DRE mostra a compra inteira no mês em que foi feita.",
       "byCard": "Por cartão",
-      "archivedCard": "{{name}} (arquivado)"
+      "archivedCard": "{{name}} (arquivado)",
+      "unknownCard": "Cartão",
+      "category": "Categoria",
+      "byCategoryList": "Gastos por categoria",
+      "byCardList": "Gastos por cartão"
     }
   },
   "statement": {

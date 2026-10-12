@@ -281,7 +281,11 @@
       "share": "Share",
       "basis": "By statement month: an installment purchase shows on each statement that bills it, and a refund lowers the statement it is credited on. The income statement holds the whole purchase in the month it was made.",
       "byCard": "By card",
-      "archivedCard": "{{name}} (archived)"
+      "archivedCard": "{{name}} (archived)",
+      "unknownCard": "Card",
+      "category": "Category",
+      "byCategoryList": "Spending by category",
+      "byCardList": "Spending by card"
     }
   },
   "statement": {

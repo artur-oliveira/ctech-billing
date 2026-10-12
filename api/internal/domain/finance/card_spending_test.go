@@ -42,3 +42,17 @@ func TestCardSpendingOmitsCategoriesThatNetToNothing(t *testing.T) {
 		t.Fatalf("report = %+v", r)
 	}
 }
+
+// A purchase billed in March and refunded on April's statement nets to zero
+// over the range, but both months moved money: the row stays, so the rows add
+// up to the total row month by month.
+func TestCardSpendingKeepsARowThatNetsToZeroAcrossMonths(t *testing.T) {
+	mar, apr := Month{Year: 2026, Month: time.March}, Month{Year: 2026, Month: time.April}
+	r := CardSpending([]SpendLine{
+		{CardID: "visa", CategoryID: "food", Month: mar, Amount: 10000},
+		{CardID: "visa", CategoryID: "food", Month: apr, Amount: -10000},
+	}, mar, apr)
+	if len(r.Categories) != 1 || r.Categories[0].Amounts[0] != 10000 || r.Categories[0].Amounts[1] != -10000 || len(r.Cards) != 1 {
+		t.Fatalf("report = %+v", r)
+	}
+}

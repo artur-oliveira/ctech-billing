@@ -927,8 +927,9 @@ function route(method: string, path: string, r: Req, s: SpaceState, can: (v: Ver
     const cats = new Map<string, number[]>(), cards = new Map<string, number[]>()
     const by_month = months.map(() => 0)
     for (const i of s.items) {
+      if (i.kind === "carry" || (only && i.card !== only)) continue
       const at = months.indexOf(i.month)
-      if (at < 0 || i.kind === "carry" || (only && i.card !== only)) continue
+      if (at < 0) continue
       for (const [rows, key] of [[cats, i.category_id ?? ""], [cards, i.card]] as const) {
         const v = rows.get(key) ?? months.map(() => 0)
         v[at] += i.amount
@@ -938,7 +939,7 @@ function route(method: string, path: string, r: Req, s: SpaceState, can: (v: Ver
     }
     const rows = (m: Map<string, number[]>, field: "category_id" | "card_id") => [...m.entries()]
       .map(([id, amounts]) => ({[field]: id, amounts, total: amounts.reduce((a, b) => a + b, 0)}))
-      .filter(x => x.total !== 0).sort((a, b) => b.total - a.total)
+      .filter(x => x.amounts.some(a => a !== 0)).sort((a, b) => b.total - a.total)
     return ok({basis: "statement", months, by_month, total: by_month.reduce((a, b) => a + b, 0), categories: rows(cats, "category_id"), cards: rows(cards, "card_id")})
   }
   if (path === "/reports/cash-flow" || path === "/reports/dre") {

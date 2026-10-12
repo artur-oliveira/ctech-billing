@@ -196,10 +196,10 @@ export const createTransfer = (c: FinanceCtx, body: NewTransfer, idempotencyKey:
 /** Only transfers and opening balances; a payment is undone with unsettleBill. */
 export const reverseTransaction = (c: FinanceCtx, txId: string, idempotencyKey: string) =>
   write<{transaction_id: string}>(c, "POST", `/transactions/${encodeURIComponent(txId)}/reverse`, {}, idempotencyKey)
-/** Months `YYYY-MM`, both inclusive. */
 /** What the cards billed per category and month, by statement month; `cardId` narrows it to one card. */
 export const getCardSpending = (c: FinanceCtx, from: string, to: string, cardId?: string) =>
   read<CardSpending>(c, "/reports/card-spending", {from, to, ...(cardId ? {card_id: cardId} : {})})
+/** Months `YYYY-MM`, both inclusive. */
 export const getCashFlow = (c: FinanceCtx, from: string, to: string) => read<CashFlow>(c, "/reports/cash-flow", {from, to})
 export const getDRE = (c: FinanceCtx, from: string, to: string) => read<DRE>(c, "/reports/dre", {from, to})
 
