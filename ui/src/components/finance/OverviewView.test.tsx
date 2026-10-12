@@ -42,9 +42,7 @@ function serve() {
 }
 
 async function loadProjection() {
-  const block = await screen.findByRole("region", {name: "Projeção"})
-  await userEvent.click(within(block).getByRole("button", {name: "Carregar projeção"}))
-  return block
+  return screen.findByRole("region", {name: "Projeção"})
 }
 
 beforeEach(() => window.localStorage.clear())
@@ -115,7 +113,6 @@ describe("F1 — visão geral", () => {
     serve()
     renderWithQuery(<OverviewView/>)
     const block = await screen.findByRole("region", {name: "Resultado do mês"})
-    await userEvent.click(within(block).getByRole("button", {name: "Carregar resultado do mês"}))
     expect(await within(block).findByText("R$ 3.000,00")).toBeInTheDocument()
     expect(within(block).getByText("R$ 1.800,00")).toBeInTheDocument()
     expect(within(block).getByText("R$ 1.200,00")).toBeInTheDocument()
@@ -135,8 +132,7 @@ describe("F1 — visão geral", () => {
   it("asks for the chosen window", async () => {
     const projection = serve()
     renderWithQuery(<OverviewView/>)
-    expect(projection).not.toHaveBeenCalled()
-    const block = await loadProjection()
+    await loadProjection()
     await waitFor(() => expect(projection).toHaveBeenCalledWith(expect.anything(), 6))
     // A segmented control, not a dropdown: three choices, all in view.
     const period = await screen.findByRole("group", {name: "Período"})
