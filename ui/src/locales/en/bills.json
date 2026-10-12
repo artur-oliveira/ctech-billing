@@ -9,6 +9,7 @@
     "income": "No income category. Create one in Accounts."
   },
   "noAccount": "No account. Create one in Accounts.",
+  "suggestions": {"title": "History suggestions"},
   "common": {
     "description": "Description",
     "noDescription": "No description",
@@ -188,6 +189,8 @@
   "editor": {
     "repeat": "Repeat",
     "kind": {
+      "daily": "Every day",
+      "business_days": "Every business day",
       "day_of_month": "Fixed day of the month",
       "workday_of_month": "Business day of the month",
       "nth_weekday_of_month": "Weekday of the month",
@@ -212,6 +215,8 @@
     "remove": "Remove {{date}}"
   },
   "rule": {
+    "daily": "Every day",
+    "businessDays": "Every business day",
     "dayOfMonth": "Day {{day}} of every month",
     "workday": "{{ord}} business day of the month",
     "lastWorkday": "Last business day of the month",

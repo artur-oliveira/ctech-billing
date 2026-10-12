@@ -31,6 +31,8 @@ export interface Bill {
 
 /** The 6.1 stored form of a temporal expression (a tagged union). */
 export type ExpressionJSON =
+  | {kind: "daily"}
+  | {kind: "business_days"}
   | {kind: "day_of_month"; day: number}
   | {kind: "workday_of_month"; n: number}
   | {kind: "nth_weekday_of_month"; weekday: number; n: number}

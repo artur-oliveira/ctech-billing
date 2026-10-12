@@ -66,7 +66,10 @@ export function RecurrencesView({focus}: {focus?: string} = {}) {
   const shown = panel?.mode === "new" && !can("finance.write") ? null : panel
   const recs = useQuery({queryKey: financeKeys.recurrences(ctx.mode, ctx.space), queryFn: () => listRecurrences(ctx)})
   const accounts = useQuery({queryKey: financeKeys.accounts(ctx.mode, ctx.space), queryFn: () => listAccounts(ctx)})
-  const cards = useQuery({queryKey: financeKeys.cards(ctx.mode, ctx.space), queryFn: () => listCards(ctx)})
+  const cards = useQuery({
+    queryKey: financeKeys.cards(ctx.mode, ctx.space), queryFn: () => listCards(ctx),
+    enabled: panel !== null || (recs.data?.data ?? []).some(r => !!r.card_id),
+  })
   const cardList = cards.data?.data ?? []
   const names = new Map((accounts.data?.data ?? []).map(a => [a.id, accountName(a)]))
   const active = (recs.data?.data ?? []).filter(r => !r.archived)

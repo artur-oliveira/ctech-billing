@@ -11,6 +11,8 @@ import {weekdayLabel} from "@/lib/finance/labels"
 import {currentLocale, t} from "@/lib/i18n"
 
 export type Pattern =
+  | {kind: "daily"}
+  | {kind: "business_days"}
   | {kind: "day_of_month"; day: number}
   | {kind: "workday_of_month"; n: number}
   | {kind: "nth_weekday_of_month"; weekday: number; n: number}
@@ -86,6 +88,8 @@ export function fromExpression(e: ExpressionJSON): EditorModel | null {
     cur = cur.include
   }
   switch (cur.kind) {
+    case "daily":
+    case "business_days":
     case "day_of_month":
     case "workday_of_month":
     case "nth_weekday_of_month":
@@ -102,6 +106,9 @@ export function validate(m: EditorModel): ModelError[] {
   const p = m.pattern
   const int = (v: number) => Number.isInteger(v)
   switch (p.kind) {
+    case "daily":
+    case "business_days":
+      break
     case "day_of_month":
       if (!int(p.day) || p.day < 1 || p.day > 31) errs.push({field: "day", message: t("bills.err.day")})
       break
@@ -142,6 +149,12 @@ export function describeModel(m: EditorModel): string {
   const masc = (d: number) => d === 0 || d === 6
   let base: string
   switch (p.kind) {
+    case "daily":
+      base = t("bills.rule.daily")
+      break
+    case "business_days":
+      base = t("bills.rule.businessDays")
+      break
     case "day_of_month":
       base = t("bills.rule.dayOfMonth", {day: p.day})
       break

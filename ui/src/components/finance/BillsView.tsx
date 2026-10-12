@@ -10,6 +10,7 @@ import {useTranslation} from "react-i18next"
 import {toast} from "sonner"
 
 import {LedgerRow} from "@/components/finance/LedgerRow"
+import {HistorySuggestions, type HistoryEntry} from "@/components/finance/HistorySuggestions"
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
 import {DateField} from "@/components/ui/DateField"
 import {messageFor, statusOf} from "@/lib/api/client"
@@ -116,7 +117,7 @@ export function BillsView({direction: initial = "payable", focus}: {direction?: 
 
       </div>
       <Drawer open={creating && can("finance.write")} onClose={() => setCreating(false)} title={t("bills.list.newTitle")}>
-        <NewBillPanel direction={direction} accounts={accounts.data?.data ?? []} onDone={() => setCreating(false)}/>
+        <NewBillPanel direction={direction} accounts={accounts.data?.data ?? []} history={rows} onDone={() => setCreating(false)}/>
       </Drawer>
     </div>
   )
@@ -324,7 +325,7 @@ function CancelConfirm({bill, onDone}: {bill: Bill; onDone: () => void}) {
   )
 }
 
-function NewBillPanel({direction, accounts, onDone}: {direction: Direction; accounts: Account[]; onDone: () => void}) {
+function NewBillPanel({direction, accounts, history, onDone}: {direction: Direction; accounts: Account[]; history: Bill[]; onDone: () => void}) {
   const {t} = useTranslation()
   const {can} = useFinanceSpaces()
   const [description, setDescription] = useState("")
@@ -363,6 +364,7 @@ function NewBillPanel({direction, accounts, onDone}: {direction: Direction; acco
   )
   const amount = parseMoney(amountText)
   const ready = amount !== null && category !== "" && account !== "" && due !== "" && !create.isPending && !create.isSuccess
+  const suggestions: HistoryEntry[] = history.map(b => ({description: b.description ?? "", amount: b.amount, categoryId: b.category_id, accountId: b.account_id}))
 
   return (
     <div className="space-y-3">
@@ -382,6 +384,12 @@ function NewBillPanel({direction, accounts, onDone}: {direction: Direction; acco
         }}
       >
         <Field label={t("bills.common.description")} htmlFor="nb-desc" error={fe.of("description")}><Input id="nb-desc" maxLength={limits.text.description} value={description} {...fe.props("description", "nb-desc")} onChange={e => { setDescription(e.target.value); fe.clear("description") }} autoFocus/></Field>
+        <HistorySuggestions value={description} entries={suggestions} onSelect={entry => {
+          setDescription(entry.description)
+          setAmountText(formatMoneyInput(entry.amount))
+          if (cats.some(a => a.id === entry.categoryId)) setCategory(entry.categoryId)
+          if (assets.some(a => a.id === entry.accountId)) setAccount(entry.accountId!)
+        }}/>
         <Field label={t("bills.common.amount")} htmlFor="nb-amount" required error={fe.of("amount")}><Input id="nb-amount" inputMode="decimal" placeholder={moneyPlaceholder()} value={amountText} {...fe.props("amount", "nb-amount")} onChange={e => { setAmountText(maskMoney(e.target.value)); fe.clear("amount") }}/></Field>
         <Field label={t("bills.common.due")} htmlFor="nb-due" required error={fe.of("due_date")}><DateField id="nb-due" min={limits.minDate} max={addYearsIso(todayIso(), limits.maxFutureYears)} value={due} invalid={!!fe.of("due_date")} onValueChange={v => { setDue(v); fe.clear("due_date") }}/></Field>
         <Field label={t("bills.new.competence")} htmlFor="nb-comp" error={fe.of("competence_date")}>

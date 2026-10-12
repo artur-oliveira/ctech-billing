@@ -93,22 +93,22 @@ function Balances() {
 function Realised() {
   const {t} = useTranslation()
   const ctx = useFinanceCtx()
+  const [open, setOpen] = useState(false)
   const month = todayIso().slice(0, 7)
-  const q = useQuery({queryKey: financeKeys.cashFlow(ctx.mode, ctx.space, month, month), queryFn: () => getCashFlow(ctx, month, month)})
+  const q = useQuery({queryKey: financeKeys.cashFlow(ctx.mode, ctx.space, month, month), queryFn: () => getCashFlow(ctx, month, month), enabled: open})
   const m = q.data?.months[0]
   return (
     <Block title={t("finance.overview.monthResult")} action={<Link href="/finance/reports?view=cash" className={quietLink}>{t("finance.overview.seeReports")}</Link>}>
-      {q.isLoading ? <Skeleton className="h-20 w-full"/> : q.error || !m ? (
+      {!open ? <Button variant="ghost" size="sm" onClick={() => setOpen(true)}>{t("finance.overview.loadResult")}</Button> : null}
+      {open && (q.isLoading ? <Skeleton className="h-20 w-full"/> : q.error || !m ? (
         <ErrorBlock error={q.error} onRetry={() => void q.refetch()}/>
       ) : (
-        <>
-          <dl className="divide-y divide-border border-y border-border text-sm">
-            <div className="flex items-center justify-between py-2"><dt>{t("finance.overview.in")}</dt><dd data-numeric className="tabular-nums">{money(m.in)}</dd></div>
-            <div className="flex items-center justify-between py-2"><dt>{t("finance.overview.out")}</dt><dd data-numeric className="tabular-nums">{money(m.out)}</dd></div>
-            <div className="flex items-center justify-between py-2 font-medium"><dt>{t("finance.overview.result")}</dt><dd data-numeric className="tabular-nums">{signedMoney(m.in - m.out)}</dd></div>
-          </dl>
-        </>
-      )}
+        <dl className="divide-y divide-border border-y border-border text-sm">
+          <div className="flex items-center justify-between py-2"><dt>{t("finance.overview.in")}</dt><dd data-numeric className="tabular-nums">{money(m.in)}</dd></div>
+          <div className="flex items-center justify-between py-2"><dt>{t("finance.overview.out")}</dt><dd data-numeric className="tabular-nums">{money(m.out)}</dd></div>
+          <div className="flex items-center justify-between py-2 font-medium"><dt>{t("finance.overview.result")}</dt><dd data-numeric className="tabular-nums">{signedMoney(m.in - m.out)}</dd></div>
+        </dl>
+      ))}
     </Block>
   )
 }
@@ -118,8 +118,8 @@ const DUE_SOON = 5
 function DueSoon() {
   const {t} = useTranslation()
   const ctx = useFinanceCtx()
-  const pay = useQuery({queryKey: financeKeys.bills(ctx.mode, ctx.space, "payable"), queryFn: () => listBills(ctx, "payable")})
-  const rec = useQuery({queryKey: financeKeys.bills(ctx.mode, ctx.space, "receivable"), queryFn: () => listBills(ctx, "receivable")})
+  const pay = useQuery({queryKey: financeKeys.billPreview(ctx.mode, ctx.space, "payable"), queryFn: () => listBills(ctx, "payable", undefined, DUE_SOON)})
+  const rec = useQuery({queryKey: financeKeys.billPreview(ctx.mode, ctx.space, "receivable"), queryFn: () => listBills(ctx, "receivable", undefined, DUE_SOON)})
   const order = {overdue: 0, today: 1, upcoming: 2}
   const items: Bill[] = [...(pay.data?.data ?? []), ...(rec.data?.data ?? [])]
     .sort((a, b) => order[a.bucket ?? "upcoming"] - order[b.bucket ?? "upcoming"] || a.due_date.localeCompare(b.due_date))
@@ -196,14 +196,17 @@ function Projection() {
   const narrow = useMediaQuery(NARROW)
   const [months, setMonths] = useState("6")
   const [chosen, setDisplay] = useState<Display | null>(null)
+  const [open, setOpen] = useState(false)
   const display: Display = chosen ?? (narrow ? "rows" : "chart")
   const [view, setView] = useState<View>("balance")
-  const q = useQuery({queryKey: financeKeys.projection(ctx.mode, ctx.space, Number(months)), queryFn: () => getProjection(ctx, Number(months))})
-  const accounts = useQuery({queryKey: financeKeys.accounts(ctx.mode, ctx.space), queryFn: () => listAccounts(ctx)})
+  const q = useQuery({queryKey: financeKeys.projection(ctx.mode, ctx.space, Number(months)), queryFn: () => getProjection(ctx, Number(months)), enabled: open})
+  const accounts = useQuery({queryKey: financeKeys.accounts(ctx.mode, ctx.space), queryFn: () => listAccounts(ctx), enabled: open})
   const start = (accounts.data?.data ?? []).filter(a => a.class === "asset" && !a.system && !a.archived).reduce((s, a) => s + a.balance, 0)
   const data = project(start, q.data?.data ?? [])
   return (
     <Block title={t("finance.overview.projection")}>
+      {!open ? <Button variant="ghost" size="sm" onClick={() => setOpen(true)}>{t("finance.overview.loadProjection")}</Button> : null}
+      {open && <>
       <div className="flex flex-wrap items-center gap-2">
         <Segmented
           label={t("finance.overview.viewLabel")}
@@ -241,6 +244,7 @@ function Projection() {
       <p className="text-xs text-muted-foreground">
         {t("finance.overview.projectionNote", {balance: signedMoney(start)})}
       </p>
+      </>}
     </Block>
   )
 }

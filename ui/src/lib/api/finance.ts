@@ -88,6 +88,7 @@ export const financeKeys = {
   all: (mode: Mode, space: Space) => ["finance", mode, spaceHeader(space)] as const,
   space: (mode: Mode, space: Space) => ["finance", mode, spaceHeader(space), "space"] as const,
   bills: (mode: Mode, space: Space, dir: Direction) => ["finance", mode, spaceHeader(space), "bills", dir] as const,
+  billPreview: (mode: Mode, space: Space, dir: Direction) => ["finance", mode, spaceHeader(space), "bills", dir, "preview"] as const,
   bill: (mode: Mode, space: Space, id: string) => ["finance", mode, spaceHeader(space), "bill", id] as const,
   recurrences: (mode: Mode, space: Space) => ["finance", mode, spaceHeader(space), "recurrences"] as const,
   // Under "recurrences", so every write that refreshes the list refreshes the detail.
@@ -129,8 +130,8 @@ export const getCurrentSpace = (c: FinanceCtx) => read<CurrentSpace>(c, "/space"
 
 // --- bills --------------------------------------------------------------------
 
-export const listBills = (c: FinanceCtx, direction: Direction, cursor?: string) =>
-  read<ListResponse<Bill>>(c, "/bills", {direction, cursor, limit: 100})
+export const listBills = (c: FinanceCtx, direction: Direction, cursor?: string, limit = 100) =>
+  read<ListResponse<Bill>>(c, "/bills", {direction, cursor, limit})
 export const getBill = (c: FinanceCtx, id: string) => read<Bill>(c, `/bills/${encodeURIComponent(id)}`)
 export const createBill = (c: FinanceCtx, body: NewBill, idempotencyKey: string) =>
   write<Bill>(c, "POST", "/bills", body, idempotencyKey)

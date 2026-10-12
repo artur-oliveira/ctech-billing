@@ -9,6 +9,7 @@
     "income": "Sem categoria de receita. Crie em Contas."
   },
   "noAccount": "Sem conta. Crie em Contas.",
+  "suggestions": {"title": "Sugestões do histórico"},
   "common": {
     "description": "Descrição",
     "noDescription": "Sem descrição",
@@ -188,6 +189,8 @@
   "editor": {
     "repeat": "Repetição",
     "kind": {
+      "daily": "Todo dia",
+      "business_days": "Todo dia útil",
       "day_of_month": "Dia fixo do mês",
       "workday_of_month": "Dia útil do mês",
       "nth_weekday_of_month": "Dia da semana do mês",
@@ -212,6 +215,8 @@
     "remove": "Remover {{date}}"
   },
   "rule": {
+    "daily": "Todo dia",
+    "businessDays": "Todo dia útil",
     "dayOfMonth": "Todo dia {{day}}",
     "workday": "{{ord}} dia útil do mês",
     "lastWorkday": "Último dia útil do mês",
