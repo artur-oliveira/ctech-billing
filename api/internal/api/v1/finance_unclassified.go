@@ -15,7 +15,7 @@ type unclassifiedDTO struct {
 	TxID      string        `json:"tx_id"`
 	Date      brcal.Date    `json:"date"`
 	Amount    billing.Cents `json:"amount"`
-	Direction string        `json:"direction"` // in | out
+	Direction string        `json:"direction"` // credit | debit
 	Memo      string        `json:"memo,omitempty"`
 }
 
@@ -26,9 +26,9 @@ func (h *financeHandlers) listUnclassified(c fiber.Ctx) error {
 	}
 	out := listResponse[unclassifiedDTO]{Data: make([]unclassifiedDTO, 0, len(lines))}
 	for _, l := range lines {
-		dir := "out"
+		dir := "debit"
 		if l.Credit {
-			dir = "in"
+			dir = "credit"
 		}
 		out.Data = append(out.Data, unclassifiedDTO{TxID: l.TxID, Date: l.Date, Amount: l.Amount, Direction: dir, Memo: l.Memo})
 	}

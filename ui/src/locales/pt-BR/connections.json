@@ -1,0 +1,166 @@
+{
+  "title": "Conexões bancárias",
+  "intro": "Conecte a conta da sua empresa para trazer o extrato e o saldo para o Finanças. O dinheiro fica no seu banco; a CTech não guarda saldo.",
+  "providers": {
+    "inter": "Banco Inter"
+  },
+  "providerBlurb": {
+    "inter": "Conta PJ Inter Empresas: extrato, saldo e, em breve, cobrança por Pix."
+  },
+  "status": {
+    "onboarding": "Em configuração",
+    "active": "Ativa",
+    "degraded": "Atenção",
+    "expired": "Certificado vencido",
+    "disconnected": "Desconectada",
+    "notConnected": "Não conectado"
+  },
+  "capabilities": {
+    "statement": "Extrato",
+    "collection": "Cobrança"
+  },
+  "open": "Abrir",
+  "connect": "Conectar",
+  "steps": {
+    "label": "Conectar o Banco Inter",
+    "requirements": {
+      "title": "Requisitos",
+      "body": "Você precisa de uma conta Inter Empresas (PJ). Quem cria a integração no Inter é um administrador da conta no Internet Banking.",
+      "next": "Tenho uma conta PJ"
+    },
+    "create_integration": {
+      "title": "Criar a integração no Inter",
+      "body": "No Internet Banking, abra Integrar e escolha Nova integração. Sugestão de nome: CTech Billing. Marque estes escopos:",
+      "copy": "Copiar escopos",
+      "copied": "Escopos copiados",
+      "noPayments": "Não marque nenhum escopo de pagamento (pagamento-*).",
+      "questionnaire": "O Inter pede um questionário em três partes e o aceite dos termos de uso da API.",
+      "next": "Criei a integração"
+    },
+    "validation": {
+      "title": "Aguardar a validação",
+      "body": "O Inter analisa a integração e avisa por e-mail. Enquanto isso, não dá para criar outra.",
+      "waiting": "Estou aguardando",
+      "since": "Aguardando desde {{date}}",
+      "next": "A integração foi aprovada"
+    },
+    "download": {
+      "title": "Baixar chave e certificado",
+      "body": "Na integração aprovada, baixe o certificado (.crt) e a chave (.key). O client_secret aparece só uma vez: copie agora.",
+      "next": "Baixei os arquivos"
+    },
+    "upload": {
+      "title": "Enviar para a CTech"
+    },
+    "webhook": {
+      "title": "Aviso de pagamentos",
+      "body": "Chega com a cobrança pelo Inter. A conexão já traz o extrato e o saldo."
+    },
+    "state": {
+      "done": "Concluído",
+      "current": "Agora",
+      "waiting": "Aguardando",
+      "upcoming": "Depois"
+    }
+  },
+  "form": {
+    "clientId": "Client ID",
+    "clientSecret": "Client secret",
+    "cert": "Certificado (.crt)",
+    "key": "Chave privada (.key)",
+    "account": "Conta corrente",
+    "accountHint": "Só números, com o dígito, sem zeros à esquerda.",
+    "pixKey": "Chave Pix para cobranças",
+    "pixKeyHint": "Opcional. Recomendamos uma chave aleatória só para a CTech: o aviso de pagamento do Inter é um por chave.",
+    "notifyEmail": "E-mail para avisos",
+    "notifyEmailHint": "Avisos de certificado e de conexão vão para este endereço.",
+    "backfill": "Histórico do extrato",
+    "backfillMonths": "{{count}} meses",
+    "authorize": "Declaro que esta integração é da minha empresa e autorizo a CTech a usá-la em nosso nome para ler o extrato e emitir cobranças.",
+    "submit": "Testar e conectar",
+    "testing": "Testando a conexão",
+    "choose": "Escolher arquivo",
+    "replace": "Trocar",
+    "remove": "Remover",
+    "tooLarge": "Arquivo maior que 16 KB",
+    "wrongType": "Envie o arquivo .crt, .key ou .pem baixado do Inter",
+    "required": "Preencha este campo.",
+    "invalidEmail": "Informe um e-mail válido.",
+    "invalidAccount": "Use só números."
+  },
+  "sandbox": {
+    "title": "Modo de teste",
+    "body": "No modo de teste, a CTech usa a própria integração com o ambiente de testes do Inter. Nenhum dado seu é necessário.",
+    "enable": "Ativar Inter (teste)",
+    "busy": "O ambiente de testes do Inter está ocupado. Tente em instantes.",
+    "unavailable": "O ambiente de testes do Inter pode estar indisponível.",
+    "enabled": "Inter (teste) ativado"
+  },
+  "screen": {
+    "back": "Conexões bancárias",
+    "certificate": "Certificado",
+    "subject": "Titular",
+    "fingerprint": "Impressão digital",
+    "expires": "Vence em {{date}}",
+    "daysLeft_one": "falta {{count}} dia",
+    "daysLeft_other": "faltam {{count}} dias",
+    "renewBanner": "O certificado do Inter vence em {{date}}. Renove no Internet Banking e envie o novo par.",
+    "expiredBanner": "O certificado do Inter venceu. O extrato parou de sincronizar até você enviar o novo par.",
+    "degradedBanner": "As últimas tentativas de falar com o Inter falharam. Teste a conexão; se a integração foi cancelada no Inter, conecte de novo ou desconecte.",
+    "health": "Saúde da conexão",
+    "capabilities": "O que a conexão faz",
+    "lastSync": "Última sincronização",
+    "never": "Ainda não sincronizou",
+    "lastError": "Último erro",
+    "account": "Conta ···{{last4}}",
+    "clientId": "Client ID",
+    "notifyEmail": "Avisos para",
+    "backfilling": "Trazendo o histórico do extrato. Pode levar alguns minutos.",
+    "statementFrom": "Extrato desde {{date}}",
+    "missingScopes": "Para cobrar pelo Inter, faltam estes escopos na integração: {{scopes}}",
+    "openStatement": "Ver no Finanças",
+    "test": "Testar conexão",
+    "renew": "Renovar certificado",
+    "syncNow": "Sincronizar agora",
+    "disconnect": "Desconectar",
+    "testOk": "Conexão funcionando",
+    "syncStarted": "Sincronização concluída: {{count}} lançamentos novos",
+    "tooSoon": "Sincronizado há pouco. Tente em alguns minutos.",
+    "renewTitle": "Renovar o certificado",
+    "renewBody": "Envie o novo certificado e a nova chave baixados do Inter. O client_id e o client_secret continuam os mesmos.",
+    "renewSubmit": "Enviar o novo par",
+    "renewed": "Certificado renovado",
+    "connected": "Conta conectada. Estamos trazendo o extrato."
+  },
+  "disconnect": {
+    "title": "Desconectar o Banco Inter?",
+    "body": "A CTech apaga as credenciais e para de sincronizar. O histórico no Finanças fica, só para leitura.",
+    "onlyYou": "Só você pode cancelar a integração no Inter: Internet Banking, Integrar, a integração, Cancelar. O cancelamento não tem volta.",
+    "confirm": "Desconectar",
+    "cancel": "Manter conectado",
+    "done": "Banco Inter desconectado"
+  },
+  "unclassified": {
+    "title": "A classificar",
+    "count_one": "{{count}} lançamento a classificar",
+    "count_other": "{{count}} lançamentos a classificar",
+    "category": "Categoria",
+    "bill": "Conta em aberto",
+    "transfer": "Transferência",
+    "kind": "Classificar como",
+    "save": "Classificar",
+    "empty": "Tudo classificado",
+    "emptyBody": "Os lançamentos novos do banco aparecem aqui até você dizer o que são.",
+    "updatedAt": "Saldo do Inter, atualizado às {{time}}",
+    "difference": "Diferença de {{amount}} entre o Inter e o Finanças",
+    "done": "Lançamento classificado",
+    "pickCategory": "Escolha a categoria",
+    "pickBill": "Escolha a conta",
+    "pickAccount": "Escolha a conta de destino",
+    "noBills": "Nenhuma conta em aberto com este valor",
+    "in": "Entrada",
+    "out": "Saída",
+    "account": "Conta",
+    "synced": "Sincronizada com o banco"
+  }
+}

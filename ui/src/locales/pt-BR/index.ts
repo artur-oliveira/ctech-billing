@@ -7,6 +7,7 @@ import console from "./console.json"
 import finance from "./finance.json"
 import bills from "./bills.json"
 import errors from "./errors.json"
+import connections from "./connections.json"
 
 const catalog = {
   common,
@@ -18,6 +19,7 @@ const catalog = {
   finance,
   bills,
   errors,
+  connections,
 }
 
 export default catalog

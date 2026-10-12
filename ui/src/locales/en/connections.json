@@ -1,0 +1,166 @@
+{
+  "title": "Bank connections",
+  "intro": "Connect your company's account to bring its statement and balance into Finanças. The money stays in your bank; CTech holds no balance.",
+  "providers": {
+    "inter": "Banco Inter"
+  },
+  "providerBlurb": {
+    "inter": "Inter Empresas business account: statement, balance and, soon, Pix charges."
+  },
+  "status": {
+    "onboarding": "Setting up",
+    "active": "Active",
+    "degraded": "Needs attention",
+    "expired": "Certificate expired",
+    "disconnected": "Disconnected",
+    "notConnected": "Not connected"
+  },
+  "capabilities": {
+    "statement": "Statement",
+    "collection": "Charges"
+  },
+  "open": "Open",
+  "connect": "Connect",
+  "steps": {
+    "label": "Connect Banco Inter",
+    "requirements": {
+      "title": "Requirements",
+      "body": "You need an Inter Empresas (business) account. The integration is created at Inter by an administrator of the account in Internet Banking.",
+      "next": "I have a business account"
+    },
+    "create_integration": {
+      "title": "Create the integration at Inter",
+      "body": "In Internet Banking, open Integrar and choose Nova integração. Suggested name: CTech Billing. Tick these scopes:",
+      "copy": "Copy scopes",
+      "copied": "Scopes copied",
+      "noPayments": "Do not tick any payment scope (pagamento-*).",
+      "questionnaire": "Inter asks for a three-part questionnaire and the acceptance of its API terms.",
+      "next": "I created the integration"
+    },
+    "validation": {
+      "title": "Wait for the validation",
+      "body": "Inter reviews the integration and tells you by e-mail. Meanwhile another one cannot be created.",
+      "waiting": "I am waiting",
+      "since": "Waiting since {{date}}",
+      "next": "The integration was approved"
+    },
+    "download": {
+      "title": "Download the key and certificate",
+      "body": "In the approved integration, download the certificate (.crt) and the key (.key). The client_secret is shown only once: copy it now.",
+      "next": "I downloaded the files"
+    },
+    "upload": {
+      "title": "Send them to CTech"
+    },
+    "webhook": {
+      "title": "Payment notices",
+      "body": "Comes with charging through Inter. The connection already brings the statement and the balance."
+    },
+    "state": {
+      "done": "Done",
+      "current": "Now",
+      "waiting": "Waiting",
+      "upcoming": "Later"
+    }
+  },
+  "form": {
+    "clientId": "Client ID",
+    "clientSecret": "Client secret",
+    "cert": "Certificate (.crt)",
+    "key": "Private key (.key)",
+    "account": "Checking account",
+    "accountHint": "Digits only, with the check digit, no leading zeros.",
+    "pixKey": "Pix key for charges",
+    "pixKeyHint": "Optional. We recommend a random key used only by CTech: Inter's payment notice is one per key.",
+    "notifyEmail": "E-mail for notices",
+    "notifyEmailHint": "Certificate and connection notices go to this address.",
+    "backfill": "Statement history",
+    "backfillMonths": "{{count}} months",
+    "authorize": "I declare this integration belongs to my company and I authorize CTech to use it on our behalf to read the statement and issue charges.",
+    "submit": "Test and connect",
+    "testing": "Testing the connection",
+    "choose": "Choose file",
+    "replace": "Replace",
+    "remove": "Remove",
+    "tooLarge": "File larger than 16 KB",
+    "wrongType": "Send the .crt, .key or .pem file downloaded from Inter",
+    "required": "Fill in this field.",
+    "invalidEmail": "Enter a valid e-mail.",
+    "invalidAccount": "Use digits only."
+  },
+  "sandbox": {
+    "title": "Test mode",
+    "body": "In test mode, CTech uses its own integration with Inter's test environment. None of your data is needed.",
+    "enable": "Turn on Inter (test)",
+    "busy": "Inter's test environment is busy. Try again in a moment.",
+    "unavailable": "Inter's test environment may be unavailable.",
+    "enabled": "Inter (test) turned on"
+  },
+  "screen": {
+    "back": "Bank connections",
+    "certificate": "Certificate",
+    "subject": "Holder",
+    "fingerprint": "Fingerprint",
+    "expires": "Expires on {{date}}",
+    "daysLeft_one": "{{count}} day left",
+    "daysLeft_other": "{{count}} days left",
+    "renewBanner": "The Inter certificate expires on {{date}}. Renew it in Internet Banking and send the new pair.",
+    "expiredBanner": "The Inter certificate expired. The statement stopped syncing until you send the new pair.",
+    "degradedBanner": "The last attempts to reach Inter failed. Test the connection; if the integration was cancelled at Inter, connect again or disconnect.",
+    "health": "Connection health",
+    "capabilities": "What the connection does",
+    "lastSync": "Last sync",
+    "never": "Not synced yet",
+    "lastError": "Last error",
+    "account": "Account ···{{last4}}",
+    "clientId": "Client ID",
+    "notifyEmail": "Notices to",
+    "backfilling": "Bringing the statement history. It may take a few minutes.",
+    "statementFrom": "Statement since {{date}}",
+    "missingScopes": "To charge through Inter, the integration lacks these scopes: {{scopes}}",
+    "openStatement": "See in Finanças",
+    "test": "Test connection",
+    "renew": "Renew certificate",
+    "syncNow": "Sync now",
+    "disconnect": "Disconnect",
+    "testOk": "Connection working",
+    "syncStarted": "Sync finished: {{count}} new entries",
+    "tooSoon": "Synced moments ago. Try again in a few minutes.",
+    "renewTitle": "Renew the certificate",
+    "renewBody": "Send the new certificate and the new key downloaded from Inter. The client_id and client_secret stay the same.",
+    "renewSubmit": "Send the new pair",
+    "renewed": "Certificate renewed",
+    "connected": "Account connected. We are bringing the statement."
+  },
+  "disconnect": {
+    "title": "Disconnect Banco Inter?",
+    "body": "CTech deletes the credentials and stops syncing. The history in Finanças stays, read-only.",
+    "onlyYou": "Only you can cancel the integration at Inter: Internet Banking, Integrar, the integration, Cancelar. Cancelling cannot be undone.",
+    "confirm": "Disconnect",
+    "cancel": "Keep connected",
+    "done": "Banco Inter disconnected"
+  },
+  "unclassified": {
+    "title": "To classify",
+    "count_one": "{{count}} entry to classify",
+    "count_other": "{{count}} entries to classify",
+    "category": "Category",
+    "bill": "Open bill",
+    "transfer": "Transfer",
+    "kind": "Classify as",
+    "save": "Classify",
+    "empty": "All classified",
+    "emptyBody": "New bank entries appear here until you say what they are.",
+    "updatedAt": "Inter balance, updated at {{time}}",
+    "difference": "Difference of {{amount}} between Inter and Finanças",
+    "done": "Entry classified",
+    "pickCategory": "Choose the category",
+    "pickBill": "Choose the bill",
+    "pickAccount": "Choose the destination account",
+    "noBills": "No open bill with this amount",
+    "in": "In",
+    "out": "Out",
+    "account": "Account",
+    "synced": "Synced with the bank"
+  }
+}
