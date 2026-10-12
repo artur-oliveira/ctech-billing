@@ -16,7 +16,12 @@ CTECH_SCRIPTS_ALPINE_VERSION='${ec2_scripts_alpine_version}'
 ctech_run(){ s="$1"; shift; ctech-ec2-agent s3-cp -bucket "$CTECH_SCRIPTS_ALPINE_BUCKET" -key "$CTECH_SCRIPTS_ALPINE_VERSION/$s" -dest "/tmp/$s" >/dev/null; bash "/tmp/$s" "$@"; }
 
 ctech_run setup-base.sh ctech-billing nginx
-ctech_run setup-swap.sh 256
+# 128 MB, not 256: the swap file lives on the 1 GB root, and a deploy unpacks
+# the next release (~120 MB) beside the current one before switching
+# (2026-10-12: 256 MB left too little and the deploy failed with "disk full").
+# A running instance keeps its swap file; the new size applies to instances
+# launched from the next launch template (the ASG's instance refresh).
+ctech_run setup-swap.sh 128
 ctech_run setup-dualstack.sh
 ctech_run setup-cloudflare-ca.sh
 

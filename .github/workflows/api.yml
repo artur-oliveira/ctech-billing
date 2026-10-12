@@ -92,7 +92,7 @@ jobs:
             out="$cmd"
             [ "$cmd" = "server" ] && out="app"
             CGO_ENABLED=0 GOOS=linux GOARCH=arm64 \
-              go build -ldflags="-s -w" -o "dist/$out" "./cmd/$cmd"
+              go build -trimpath -ldflags="-s -w" -o "dist/$out" "./cmd/$cmd"
           done
 
           # start.sh and job.sh source this, so the running process reports the
@@ -105,6 +105,9 @@ jobs:
           ARCHIVE="api-${ARTIFACT_VERSION}.zip"
           zip -j "$ARCHIVE" dist/app dist/sweep dist/reconcile dist/deliver dist/dunning dist/finance dist/byok dist/release.env
           echo "ARCHIVE_FILE=$ARCHIVE" >> "$GITHUB_ENV"
+          # The 1 GB Alpine root unpacks the next release beside the current
+          # one: a release past the budget fails here, not on the instance.
+          scripts/release-size.sh "$ARCHIVE" dist
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v6

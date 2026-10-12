@@ -6,30 +6,30 @@ GOOS        ?= linux
 GOARCH      ?= arm64
 CGO_ENABLED := 0
 
-.PHONY: build build-lambdas lint test test-integration vet cover clean
+.PHONY: build build-lambdas release-size lint test test-integration vet cover clean
 
 # Every binary ships together. The jobs are one-shot processes, not services, but
 # they run the same domain code against the same tables — building one from a
 # different commit than the API is a way to bill from logic nobody reviewed.
 build:
 	CGO_ENABLED=$(CGO_ENABLED) GOOS=$(GOOS) GOARCH=$(GOARCH) \
-		go build -ldflags="-s -w" -o $(BUILD_DIR)/$(BINARY) ./cmd/server
+		go build -trimpath -ldflags="-s -w" -o $(BUILD_DIR)/$(BINARY) ./cmd/server
 	CGO_ENABLED=$(CGO_ENABLED) GOOS=$(GOOS) GOARCH=$(GOARCH) \
-		go build -ldflags="-s -w" -o $(BUILD_DIR)/sweep ./cmd/sweep
+		go build -trimpath -ldflags="-s -w" -o $(BUILD_DIR)/sweep ./cmd/sweep
 	CGO_ENABLED=$(CGO_ENABLED) GOOS=$(GOOS) GOARCH=$(GOARCH) \
-		go build -ldflags="-s -w" -o $(BUILD_DIR)/reconcile ./cmd/reconcile
+		go build -trimpath -ldflags="-s -w" -o $(BUILD_DIR)/reconcile ./cmd/reconcile
 	CGO_ENABLED=$(CGO_ENABLED) GOOS=$(GOOS) GOARCH=$(GOARCH) \
-		go build -ldflags="-s -w" -o $(BUILD_DIR)/deliver ./cmd/deliver
+		go build -trimpath -ldflags="-s -w" -o $(BUILD_DIR)/deliver ./cmd/deliver
 	CGO_ENABLED=$(CGO_ENABLED) GOOS=$(GOOS) GOARCH=$(GOARCH) \
-		go build -ldflags="-s -w" -o $(BUILD_DIR)/dunning ./cmd/dunning
+		go build -trimpath -ldflags="-s -w" -o $(BUILD_DIR)/dunning ./cmd/dunning
 	CGO_ENABLED=$(CGO_ENABLED) GOOS=$(GOOS) GOARCH=$(GOARCH) \
-		go build -ldflags="-s -w" -o $(BUILD_DIR)/finance ./cmd/finance
+		go build -trimpath -ldflags="-s -w" -o $(BUILD_DIR)/finance ./cmd/finance
 	CGO_ENABLED=$(CGO_ENABLED) GOOS=$(GOOS) GOARCH=$(GOARCH) \
-		go build -ldflags="-s -w" -o $(BUILD_DIR)/byok ./cmd/byok
+		go build -trimpath -ldflags="-s -w" -o $(BUILD_DIR)/byok ./cmd/byok
 	CGO_ENABLED=$(CGO_ENABLED) GOOS=$(GOOS) GOARCH=$(GOARCH) \
-		go build -ldflags="-s -w" -o $(BUILD_DIR)/seed ./cmd/seed
+		go build -trimpath -ldflags="-s -w" -o $(BUILD_DIR)/seed ./cmd/seed
 	CGO_ENABLED=$(CGO_ENABLED) GOOS=$(GOOS) GOARCH=$(GOARCH) \
-		go build -ldflags="-s -w" -o $(BUILD_DIR)/finance-rebuild ./cmd/finance-rebuild
+		go build -trimpath -ldflags="-s -w" -o $(BUILD_DIR)/finance-rebuild ./cmd/finance-rebuild
 
 lint:
 	golangci-lint run ./...
@@ -63,3 +63,13 @@ build-lambdas:
 	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -tags lambda.norpc -ldflags="-s -w" \
 		-o $(BUILD_DIR)/lambda/byok-outbound/bootstrap ./cmd/byok-outbound
 	cd $(BUILD_DIR)/lambda/byok-outbound && zip -q -j ../byok-outbound.zip bootstrap
+
+# The release as CI ships it (stripped, trimmed), zipped and held to the size
+# budget a 1 GB Alpine root can deploy (scripts/release-size.sh).
+release-size: build
+	rm -f $(BUILD_DIR)/release.zip
+	cd $(BUILD_DIR) && zip -qj release.zip $(BINARY) sweep reconcile deliver dunning finance byok
+	mkdir -p $(BUILD_DIR)/release && cp $(BUILD_DIR)/$(BINARY) $(BUILD_DIR)/sweep $(BUILD_DIR)/reconcile $(BUILD_DIR)/deliver \
+		$(BUILD_DIR)/dunning $(BUILD_DIR)/finance $(BUILD_DIR)/byok $(BUILD_DIR)/release/
+	scripts/release-size_test.sh
+	scripts/release-size.sh $(BUILD_DIR)/release.zip $(BUILD_DIR)/release
