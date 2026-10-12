@@ -61,6 +61,9 @@ type collectEnv struct {
 	payments  *repositories.PaymentRepository
 	invoices  *repositories.InvoiceRepository
 	repo      *repositories.ByokRepository
+	webhooks  *services.ByokWebhooks
+	hookID    string
+	secret    string
 	cfg       config.Config
 }
 
@@ -143,6 +146,7 @@ func (e *collectEnv) wire(t *testing.T) {
 		repositories.NewUsageRepository(testDB, testCfg)).WithOrganizations(e.orgs).WithCharges(e.byok)
 	st.WithLinker(services.NewByokLinker(e.byok, e.payments, repositories.NewBillRepository(testDB, testCfg), ledger).WithClock(now))
 	e.conns, e.statement = conns, st
+	e.webhooks = services.NewByokWebhooks(e.repo, e.payments, e.byok, nil)
 	_ = ledger
 }
 

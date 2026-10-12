@@ -181,7 +181,9 @@ func Build(ctx context.Context, cfg *config.Config, clock func() time.Time) (*fi
 	// since it never calls the wallet. The invoicer creates the charge after
 	// every issue; checkout dispatches to it by rail.
 	byokCollector := byokCollection(ctx, cfg, db, byokConns, byokStatement, gates, finance, bus)
+	var byokWebhooks *services.ByokWebhooks
 	if byokCollector != nil {
+		byokWebhooks = services.NewByokWebhooks(repositories.NewByokRepository(db, cfg), payments, byokCollector, cacheBackend)
 		invoicer.WithCharges(byokCollector)
 		if collector != nil {
 			collector.WithByok(byokCollector)
@@ -192,6 +194,7 @@ func Build(ctx context.Context, cfg *config.Config, clock func() time.Time) (*fi
 		ByokStatement:   byokStatement,
 		ChargeGates:     gates,
 		ByokCollector:   byokCollector,
+		ByokWebhooks:    byokWebhooks,
 		Bills:           billRepo,
 		Applications:    applications,
 		Customers:       customers,

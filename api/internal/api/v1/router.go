@@ -26,6 +26,8 @@ type Deps struct {
 	// ByokCollector is the BYOK collection rail (spec § 7). Nil when BYOK is
 	// not configured: the collection routes are then not mounted.
 	ByokCollector *services.ByokCollector
+	// ByokWebhooks decides the webhook Lambda's notices; nil unmounts it.
+	ByokWebhooks *services.ByokWebhooks
 	// Bills is the bill repository the classification of a bank line settles
 	// through (spec § 8.3).
 	Bills *repositories.BillRepository
@@ -155,6 +157,7 @@ func Register(app *fiber.App, d Deps) {
 	v1.Get("/health-check", h.healthCheck)
 
 	auth := d.Verifier.Middleware()
+	registerByokNotify(v1, d, auth, clock)
 	tenant := middleware.ResolveTenant(d.Credentials)
 	idem := middleware.Idempotency(d.Idempotency, clock)
 
