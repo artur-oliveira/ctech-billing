@@ -67,6 +67,13 @@ const (
 	ExcessRefundFailed = "refund_failed"
 )
 
+// Kinds of a refundable payment row: money above what was owed (an excess),
+// or part of a paid invoice given back with a credit note ("devolver via Pix").
+const (
+	KindExcess     = "excess"
+	RefundOfCredit = "credit_refund"
+)
+
 // RefundWindow is Inter's limit for a Pix refund after the payment.
 const RefundWindow = 90 * 24 * time.Hour
 
@@ -74,19 +81,24 @@ const RefundWindow = 90 * 24 * time.Hour
 // the same charge (spec § 7.4 item 3). The money is the merchant's, in the
 // merchant's account; the row only says so and lets the merchant refund it.
 type ExcessPayment struct {
-	ID             string    `dynamodbav:"id"              json:"id"`
-	OrganizationID string    `dynamodbav:"organization_id" json:"-"`
-	Livemode       bool      `dynamodbav:"livemode"        json:"livemode"`
-	InvoiceID      string    `dynamodbav:"invoice_id"      json:"invoice_id"`
-	AttemptID      string    `dynamodbav:"attempt_id"      json:"attempt_id"`
-	AttemptNumber  int       `dynamodbav:"attempt_number"  json:"-"`
-	Provider       string    `dynamodbav:"provider"        json:"provider"`
-	PaymentID      string    `dynamodbav:"payment_id"      json:"-"`
-	Amount         Cents     `dynamodbav:"amount"          json:"amount"`
-	Status         string    `dynamodbav:"status"          json:"status"`
-	RefundID       string    `dynamodbav:"refund_id,omitempty" json:"-"`
-	PaidAt         time.Time `dynamodbav:"paid_at"         json:"paid_at"`
-	CreatedAt      time.Time `dynamodbav:"created_at"      json:"created_at"`
+	ID             string `dynamodbav:"id"              json:"id"`
+	OrganizationID string `dynamodbav:"organization_id" json:"-"`
+	Livemode       bool   `dynamodbav:"livemode"        json:"livemode"`
+	InvoiceID      string `dynamodbav:"invoice_id"      json:"invoice_id"`
+	AttemptID      string `dynamodbav:"attempt_id"      json:"attempt_id"`
+	AttemptNumber  int    `dynamodbav:"attempt_number"  json:"-"`
+	Provider       string `dynamodbav:"provider"        json:"provider"`
+	PaymentID      string `dynamodbav:"payment_id"      json:"-"`
+	// SourcePaymentID is the provider payment a refund is taken from (the
+	// excess's own payment, or the invoice's for a credit refund).
+	SourcePaymentID string    `dynamodbav:"source_payment_id" json:"-"`
+	Kind            string    `dynamodbav:"kind"              json:"kind"`
+	CreditNoteID    string    `dynamodbav:"credit_note_id,omitempty" json:"credit_note_id,omitempty"`
+	Amount          Cents     `dynamodbav:"amount"          json:"amount"`
+	Status          string    `dynamodbav:"status"          json:"status"`
+	RefundID        string    `dynamodbav:"refund_id,omitempty" json:"-"`
+	PaidAt          time.Time `dynamodbav:"paid_at"         json:"paid_at"`
+	CreatedAt       time.Time `dynamodbav:"created_at"      json:"created_at"`
 }
 
 // Refundable reports whether the provider still accepts a refund at now.

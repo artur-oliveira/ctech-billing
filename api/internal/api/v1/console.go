@@ -450,6 +450,13 @@ func (h *consoleHandlers) creditInvoice(c fiber.Ctx) error {
 	if h.finance != nil && inv.Status == billing.InvoicePaid {
 		h.finance.Credited(c.Context(), inv, cn, actorOfUser(c), middleware.GetRequestID(c), h.now())
 	}
+	// "Devolver via Pix": after the note exists. A refusal (window closed,
+	// not a BYOK payment) answers the error; the note stands.
+	if req.RefundViaPix && h.byok != nil {
+		if _, err := h.byok.RefundCredit(c.Context(), inv, cn, actorOfUser(c), middleware.GetRequestID(c), h.now()); err != nil {
+			return fail(c, err)
+		}
+	}
 	// An open invoice's BYOK charge follows the new amount due (spec § 7.3).
 	// The note stands either way; a provider failure is logged and the sweep's
 	// re-query and the merchant's next look correct it.

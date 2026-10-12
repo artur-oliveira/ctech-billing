@@ -117,29 +117,30 @@ func (c *ByokCollector) confirmAttempt(ctx context.Context, org *billing.Organiz
 		// merchant's account. Recorded as excess so it is never lost.
 		slog.WarnContext(ctx, "byok charge paid after its attempt ended", "attempt_id", a.ID, "status", a.Status)
 		for _, p := range ch.Payments {
-			c.excess(ctx, conn, a, p.ID, billing.Cents(p.Amount), p.PaidAt, now)
+			c.excess(ctx, conn, a, p.ID, p.ID, billing.Cents(p.Amount), p.PaidAt, now)
 		}
 		return OutcomeIgnored, nil
 	}
 	// Excess (D19): anything above amount + the provider's computed late
 	// charges, and every further payment on the same charge.
 	if allowed := int64(a.Amount) + first.LateCharges; first.Amount > allowed {
-		c.excess(ctx, conn, a, first.ID+"X", billing.Cents(first.Amount-allowed), first.PaidAt, now)
+		c.excess(ctx, conn, a, first.ID+"X", first.ID, billing.Cents(first.Amount-allowed), first.PaidAt, now)
 	}
 	for _, p := range ch.Payments[1:] {
-		c.excess(ctx, conn, a, p.ID, billing.Cents(p.Amount), p.PaidAt, now)
+		c.excess(ctx, conn, a, p.ID, p.ID, billing.Cents(p.Amount), p.PaidAt, now)
 	}
 	return outcome, nil
 }
 
 // excess records one excess payment (create-only by payment id) and tells
 // the merchant once. Never refunded here (D19).
-func (c *ByokCollector) excess(ctx context.Context, conn *byokconn.Connection, a *billing.PaymentAttempt, paymentID string, amount billing.Cents, paidAt, now time.Time) {
+func (c *ByokCollector) excess(ctx context.Context, conn *byokconn.Connection, a *billing.PaymentAttempt, paymentID, sourcePaymentID string, amount billing.Cents, paidAt, now time.Time) {
 	if amount <= 0 {
 		return
 	}
 	e := &billing.ExcessPayment{ID: "ex_" + id.New(), OrganizationID: a.OrganizationID, Livemode: a.Livemode, InvoiceID: a.InvoiceID,
 		AttemptID: a.ID, AttemptNumber: a.AttemptNumber, Provider: a.Provider, PaymentID: paymentID, Amount: amount,
+		SourcePaymentID: sourcePaymentID, Kind: billing.KindExcess,
 		Status: billing.ExcessOpen, PaidAt: paidAt.UTC()}
 	if e.PaidAt.IsZero() {
 		e.PaidAt = now.UTC()

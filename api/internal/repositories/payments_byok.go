@@ -258,11 +258,20 @@ func (r *PaymentRepository) SetExcessStatus(ctx context.Context, e *billing.Exce
 	sk := ExcessSK(e.InvoiceID, e.PaymentID)
 	expr := "SET #st = :to, updated_at = :now"
 	vals := map[string]types.AttributeValue{":to": str(status), ":from": str(e.Status), ":now": str(now.UTC().Format(time.RFC3339Nano))}
+	remove := ""
+	if status == billing.ExcessRefunding {
+		// The sweep follows refunds in flight through a sparse cross-tenant
+		// partition (ADR 0002: cmd/byok only), left on a terminal status.
+		expr += ", schedule_pk = :spk, schedule_sk = :ssk"
+		vals[":spk"], vals[":ssk"] = str(refundingPK(e.Livemode)), str(e.ID)
+	} else {
+		remove = " REMOVE schedule_pk, schedule_sk"
+	}
 	if refundID != "" {
 		expr += ", refund_id = :rf"
 		vals[":rf"] = str(refundID)
 	}
-	err := r.base.TransactWrite(ctx, txItems(r.base.BuildRawUpdateTxItem(TenantPK(e.OrganizationID, e.Livemode), &sk, expr,
+	err := r.base.TransactWrite(ctx, txItems(r.base.BuildRawUpdateTxItem(TenantPK(e.OrganizationID, e.Livemode), &sk, expr+remove,
 		"attribute_exists(pk) AND #st = :from", map[string]string{"#st": "status"}, vals)))
 	if IsConditionFailed(err) {
 		return fmt.Errorf("%w: excess payment %s is no longer %s", ErrConcurrentModification, e.ID, e.Status)
@@ -293,4 +302,27 @@ func (r *PaymentRepository) SetByokAmount(ctx context.Context, a *billing.Paymen
 	}
 	a.Amount = amount
 	return nil
+}
+
+func refundingPK(livemode bool) string { return Mode(livemode) + "#" + JobByokRefunding }
+
+// JobByokRefunding names the partition of refunds still in flight.
+const JobByokRefunding = "BYOK_REFUNDING"
+
+// Refunding pages through every tenant's refunds in flight (cmd/byok only).
+func (r *PaymentRepository) Refunding(ctx context.Context, livemode bool, start map[string]types.AttributeValue, limit int) (*Page[billing.ExcessPayment], error) {
+	res, err := r.base.Query(ctx, QueryOpts{IndexName: IndexSchedule, PKField: "schedule_pk", SKField: "schedule_sk",
+		PK: refundingPK(livemode), Limit: limit, ExclusiveStartKey: start, ScanIndexForward: true})
+	if err != nil {
+		return nil, err
+	}
+	rows, err := DecodeItems[excessRow](res.Items)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]billing.ExcessPayment, len(rows))
+	for i := range rows {
+		out[i] = rows[i].ExcessPayment
+	}
+	return &Page[billing.ExcessPayment]{Items: out, LastEvaluatedKey: res.LastEvaluatedKey}, nil
 }

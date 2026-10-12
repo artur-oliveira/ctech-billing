@@ -138,6 +138,9 @@ type creditNoteRequest struct {
 	RefundedExternally bool             `json:"refunded_externally"`
 	ExternalRefundRef  string           `json:"external_refund_ref"`
 	Metadata           billing.Metadata `json:"metadata"`
+	// RefundViaPix gives the credited amount back from a BYOK-paid invoice's
+	// payment (spec 2026-10-11 § 7.5), the merchant's explicit act.
+	RefundViaPix bool `json:"refund_via_pix"`
 }
 
 type creditNoteResponse struct {

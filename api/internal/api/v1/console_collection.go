@@ -15,6 +15,17 @@ func registerCollection(console fiber.Router, ch *consoleHandlers) {
 	}
 	write := middleware.RequireUserScope(middleware.ScopeOrganizationWrite)
 	console.Post("/invoices/:id/charge", write, ch.newCharge)
+	console.Post("/excess-payments/:id/refund", write, ch.refundExcess)
+}
+
+// refundExcess gives an excess payment back (D19: only on this press).
+func (h *consoleHandlers) refundExcess(c fiber.Ctx) error {
+	t := middleware.GetTenant(c)
+	e, err := h.byok.RefundExcess(c.Context(), t.OrganizationID, t.Livemode, c.Params("id"), actorOfUser(c), middleware.GetRequestID(c), h.now())
+	if err != nil {
+		return fail(c, err)
+	}
+	return c.JSON(e)
 }
 
 // newCharge opens a new BYOK charge after the previous one ended unpaid

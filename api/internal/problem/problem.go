@@ -187,6 +187,8 @@ func FromError(err error) *Problem {
 	// message never reaches a client.
 	case errors.Is(err, billing.ErrTenantSuspended):
 		return Forbidden("this organization's live billing is suspended").WithCode("tenant_suspended")
+	case errors.Is(err, services.ErrRefundWindowClosed):
+		return Unprocessable("the 90-day window to refund this Pix has closed").WithCode("refund_window_closed")
 	case errors.Is(err, services.ErrCustomerTaxIDRequired):
 		return Unprocessable("the customer has no CPF or CNPJ; add one to create the Pix").WithCode("customer_tax_id_required")
 	case errors.Is(err, services.ErrByokChargeOpen):
