@@ -1,9 +1,9 @@
 "use client"
 
 import {Badge, Button, Skeleton} from "@aoctech/ui"
-import {useInfiniteQuery} from "@tanstack/react-query"
+import {useQueries} from "@tanstack/react-query"
 import {ChevronLeft, ChevronRight} from "lucide-react"
-import {useEffect, useLayoutEffect, useRef, useState} from "react"
+import {useCallback, useEffect, useLayoutEffect, useRef, useState} from "react"
 import {useTranslation} from "react-i18next"
 
 import {STATUS, statementState} from "@/components/finance/statementStatus"
@@ -29,19 +29,11 @@ const MID = "(max-width: 63.999rem)"
  */
 export function StatementTimeline({card, selected, onSelect}: {card: Card; selected: string; onSelect: (month: string) => void}) {
   const {t} = useTranslation()
-  const ctx = useFinanceCtx()
   const phone = useMediaQuery(NARROW)
   const mid = useMediaQuery(MID)
   const size = phone ? 1 : mid ? 5 : 7
-  const q = useInfiniteQuery({
-    queryKey: financeKeys.cardStatements(ctx.mode, ctx.space, card.id, card.open_month),
-    queryFn: async ({pageParam}): Promise<TimelinePage> =>
-      ({...(await listCardStatements(ctx, card.id, pageParam.from, pageParam.count, pageParam.direction)), param: pageParam}),
-    initialPageParam: initialParam(card.open_month) as PageParam,
-    getNextPageParam: nextParam,
-    getPreviousPageParam: previousParam,
-  })
-  const all = flatten(q.data?.pages ?? [])
+  const q = useTimelinePages(card)
+  const all = flatten(q.pages)
   const months = all.map(s => s.month)
   const [start, setStart] = useState(() => shiftMonth(card.open_month, -3))
   const {from, to} = windowAt(months, phone ? selected : start, size)
@@ -52,9 +44,9 @@ export function StatementTimeline({card, selected, onSelect}: {card: Card; selec
   // cancelRefetch) and ask for its months again.
   useEffect(() => {
     if (!q.isSuccess || q.isFetching) return
-    if (before === 0 && q.hasPreviousPage) void q.fetchPreviousPage({cancelRefetch: false})
-    else if (after === 0 && q.hasNextPage) void q.fetchNextPage({cancelRefetch: false})
-  }, [q, before, after])
+    if (before === 0 && q.hasPreviousPage) q.fetchPreviousPage()
+    else if (after === 0 && q.hasNextPage) q.fetchNextPage()
+  }, [q.isSuccess, q.isFetching, q.hasPreviousPage, q.hasNextPage, q.fetchPreviousPage, q.fetchNextPage, before, after]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const select = (month: string) => {
     onSelect(month)
@@ -110,7 +102,7 @@ export function StatementTimeline({card, selected, onSelect}: {card: Card; selec
   }
 
   if (q.isLoading) return <div className="flex gap-2" aria-busy>{Array.from({length: 3}, (_, i) => <Skeleton key={i} className="h-24 flex-1"/>)}</div>
-  if (q.error) return <ErrorBlock error={q.error} onRetry={() => void q.refetch()}/>
+  if (q.error) return <ErrorBlock error={q.error} onRetry={q.refetch}/>
 
   const atStart = phone ? months.indexOf(selected) <= 0 : before === 0
   const atEnd = phone ? months.indexOf(selected) >= months.length - 1 : after === 0
@@ -135,6 +127,55 @@ export function StatementTimeline({card, selected, onSelect}: {card: Card; selec
       </Button>
     </div>
   )
+}
+
+/**
+ * The timeline's pages, one query each, under the card's timeline key. Not an
+ * infinite query: TanStack refetches one of those from its FIRST page and walks
+ * only forward (getNextPageParam), so once older statements were prepended (a
+ * backward page first) any refresh after a write (a purchase, a refund, an
+ * advance) or on focus kept just the older page and dropped the rest of the row
+ * until a reload. Each page here keeps the request that loaded it, so a refresh
+ * asks for exactly the months on screen, and new statements a purchase created
+ * beyond the last one show up through its has_more.
+ */
+function useTimelinePages(card: Card) {
+  const ctx = useFinanceCtx()
+  // Earliest first; a page is only added beyond one already loaded.
+  const [params, setParams] = useState<PageParam[]>(() => [initialParam(card.open_month)])
+  const results = useQueries({
+    queries: params.map(p => ({
+      queryKey: [...financeKeys.cardStatements(ctx.mode, ctx.space, card.id, card.open_month), p.direction, p.from, p.count],
+      queryFn: async (): Promise<TimelinePage> => ({...(await listCardStatements(ctx, card.id, p.from, p.count, p.direction)), param: p}),
+    })),
+  })
+  const pages = results.flatMap(r => (r.data ? [r.data] : []))
+  // From the loaded edges: while a page beyond one is in flight, the one asked
+  // for is still "the previous page", already in the list (fetching it is a no-op).
+  const previous = pages[0] ? previousParam(pages[0]) : undefined
+  const next = pages.at(-1) ? nextParam(pages.at(-1)!) : undefined
+  const same = (a: PageParam, b: PageParam) => a.from === b.from && a.direction === b.direction && a.count === b.count
+  const fetchPreviousPage = useCallback(() => {
+    if (previous) setParams(ps => ps.some(p => same(p, previous)) ? ps : [previous, ...ps])
+  }, [previous?.from, previous?.direction, previous?.count]) // eslint-disable-line react-hooks/exhaustive-deps
+  const fetchNextPage = useCallback(() => {
+    if (next) setParams(ps => ps.some(p => same(p, next)) ? ps : [...ps, next])
+  }, [next?.from, next?.direction, next?.count]) // eslint-disable-line react-hooks/exhaustive-deps
+  const failed = results.find(r => r.error)
+  return {
+    pages,
+    isLoading: pages.length === 0 && !failed,
+    isSuccess: pages.length > 0 && !failed,
+    isFetching: results.some(r => r.isFetching),
+    error: failed?.error ?? null,
+    refetch: () => { for (const r of results) if (r.error) void r.refetch() },
+    hasPreviousPage: !!previous,
+    hasNextPage: !!next,
+    isFetchingPreviousPage: params.length > 1 && !results[0]?.data,
+    isFetchingNextPage: params.length > 1 && !results.at(-1)?.data,
+    fetchPreviousPage,
+    fetchNextPage,
+  }
 }
 
 /**

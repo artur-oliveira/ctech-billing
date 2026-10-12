@@ -121,7 +121,7 @@ export function CardsView({card: initial = ""}: {card?: string}) {
 
       <CardHeader card={card}/>
 
-      <StatementTimeline key={card.id} card={card} selected={shown} onSelect={setMonth}/>
+      <StatementTimeline key={`${card.id}-${card.open_month}`} card={card} selected={shown} onSelect={setMonth}/>
 
       <StatementBlock key={`${card.id}-${shown}`} card={card} month={shown} accounts={all}/>
     </div>

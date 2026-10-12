@@ -5,7 +5,7 @@ import userEvent from "@testing-library/user-event"
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 
 import {CardsView, statementState} from "@/components/finance/CardsView"
-import {pick, renderWithQuery} from "@/components/finance/finance.test-utils"
+import {pick, renderWithQuery, serveFinanceMock} from "@/components/finance/finance.test-utils"
 import * as finance from "@/lib/api/finance"
 import * as createRequest from "@/lib/finance/createRequest"
 import type {Account, Card, CardStatement, Purchase, StatementSummary, Verb} from "@/lib/api/financeTypes"
@@ -225,6 +225,53 @@ describe("F5 — cartões", () => {
     expect(within(row).getByText(/As parcelas já cobradas voltam como crédito/)).toBeInTheDocument()
     await userEvent.click(within(row).getByRole("button", {name: "Confirmar"}))
     await waitFor(() => expect(refund).toHaveBeenCalledWith(expect.anything(), "visa", "p1", expect.any(String)))
+  })
+
+  // A write refreshes the timeline: TanStack refetches an infinite query from its
+  // FIRST page (the older statements, once they were prefetched) and walks
+  // forward from there. The row must still show the same statements after it.
+  for (const [name, label, mock] of [
+    ["a refund", "Estornar compra", "refundPurchase"],
+    ["an advance", "Antecipar parcelas", "advancePurchase"],
+  ] as const) {
+    it(`keeps the statement row whole after ${name}`, async () => {
+      const {range} = serve(ALL)
+      vi.spyOn(finance, mock).mockResolvedValue({...PURCHASE})
+      renderWithQuery(<CardsView/>)
+      const row = (await screen.findByText("Geladeira")).closest("li") as HTMLElement
+      await waitFor(() => expect(range.mock.calls.length).toBeGreaterThanOrEqual(2)) // the older page, prefetched
+      const before = inWindow()
+      const calls = range.mock.calls.length
+      await userEvent.click(within(row).getByRole("button", {name: label}))
+      await userEvent.click(within(row).getByRole("button", {name: "Confirmar"}))
+      await waitFor(() => expect(range.mock.calls.length).toBeGreaterThan(calls)) // refreshed
+      await waitFor(() => expect(screen.getAllByRole("button", {name: /^Fatura de /}).length).toBeGreaterThanOrEqual(10))
+      expect(inWindow()).toEqual(before)
+      expect(screen.getByRole("button", {name: /^Fatura de Mar\/26/})).toHaveAttribute("aria-pressed", "true")
+    })
+  }
+
+  // The reported bug, end to end through the dev mock: an installment purchase
+  // emptied the row until a reload.
+  it("keeps the statement row after an installment purchase, with the new totals", async () => {
+    serveFinanceMock()
+    renderWithQuery(<CardsView/>)
+    const open = await screen.findByRole("button", {name: /^Fatura de .* Aberta/})
+    const month = open.dataset.month!
+    await waitFor(() => expect(inWindow().length).toBeGreaterThan(3))
+    const before = inWindow()
+    await userEvent.click(screen.getByRole("button", {name: "Nova compra"}))
+    const form = await screen.findByRole("form", {name: "Nova compra"})
+    await userEvent.type(within(form).getByLabelText(/Descrição/), "Sofá")
+    await userEvent.type(within(form).getByLabelText(/Valor/), "300,00")
+    await pickIn(form, "Parcelas", "3×")
+    await pickIn(form, "Categoria", "Mercado")
+    await userEvent.click(within(form).getByRole("button", {name: "Salvar"}))
+    // Bought after this month's closing day or not, one of the next two statements gains R$ 100,00.
+    const totals = () => screen.getAllByRole("button", {name: /^Fatura de /}).map(b => b.getAttribute("aria-label"))
+    await waitFor(() => expect(totals().some(n => /(433|400),00$/.test(n ?? ""))).toBe(true))
+    expect(inWindow()).toEqual(before)
+    expect(screen.getByRole("button", {name: /Aberta/})).toHaveAttribute("data-month", month)
   })
 
   it("hides every action from a viewer", async () => {
