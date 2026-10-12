@@ -42,7 +42,8 @@ export function ImportView({account: initial = ""}: {account?: string}) {
   const {can} = useFinanceSpaces()
   const accounts = useQuery({queryKey: financeKeys.accounts(ctx.mode, ctx.space), queryFn: () => listAccounts(ctx)})
   const all = accounts.data?.data ?? []
-  const cash = all.filter(a => a.class === "asset" && !a.system && !a.archived).sort(byAccountName(currentLocale()))
+  // A bank-synced account is fed by its bank, never by a file (BYOK § 8.1).
+  const cash = all.filter(a => a.class === "asset" && !a.system && !a.archived && a.source !== "byok").sort(byAccountName(currentLocale()))
   const [picked, setPicked] = useState(initial)
   const account = cash.find(a => a.id === picked) ?? cash[0]
 
