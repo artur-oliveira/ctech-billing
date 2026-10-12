@@ -96,8 +96,16 @@ func TestProtectedResourceMetadata(t *testing.T) {
 	if len(body.AuthorizationServers) != 1 || body.AuthorizationServers[0] != "https://accounts.example.test" {
 		t.Errorf("authorization_servers = %v", body.AuthorizationServers)
 	}
-	if len(body.Scopes) != len(middleware.AllScopes) {
-		t.Errorf("scopes_supported = %d, want %d", len(body.Scopes), len(middleware.AllScopes))
+	// scopes_supported publishes the public scopes only; an internal one (the
+	// BYOK webhook's) is in the manifest and never advertised.
+	public := 0
+	for _, s := range middleware.AllScopes {
+		if !strings.HasPrefix(s, "internal:") {
+			public++
+		}
+	}
+	if len(body.Scopes) != public {
+		t.Errorf("scopes_supported = %d, want %d", len(body.Scopes), public)
 	}
 }
 
@@ -137,4 +145,22 @@ func TestNoUserScopeIsAMachineScope(t *testing.T) {
 			t.Errorf("%s is marked m2m", s.Name)
 		}
 	}
+}
+
+// BYOK part B: the webhook Lambda's scope. Internal, never machine-grantable
+// to a merchant, described in both languages.
+func TestTheByokNotifyScopeIsInternalAndNeverMachineGrantable(t *testing.T) {
+	m, err := ManifestDocument()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range m.Scopes {
+		if s.Name == "internal:billing:byok-notify" {
+			if s.Visibility != "internal" || s.M2M || s.Descriptions["pt-BR"] == "" || s.Descriptions["en"] == "" {
+				t.Fatalf("%+v", s)
+			}
+			return
+		}
+	}
+	t.Fatal("internal:billing:byok-notify missing")
 }

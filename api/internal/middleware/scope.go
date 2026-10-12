@@ -56,6 +56,11 @@ const (
 	// the caller's verbs.
 	ScopeFinanceRead  = "billing:finance:read"
 	ScopeFinanceWrite = "billing:finance:write"
+
+	// ScopeByokNotify is the BYOK webhook Lambda's (spec 2026-10-11 § 6.3):
+	// internal visibility, never machine-grantable to a merchant. Only the
+	// billing-byok-webhook client created in ctech-account holds it.
+	ScopeByokNotify = "internal:billing:byok-notify"
 )
 
 // AllScopes is the manifest ctech-account must know about. Keeping it in one
@@ -80,6 +85,7 @@ var AllScopes = []string{
 	ScopeMySubscriptionsWrite,
 	ScopeFinanceRead,
 	ScopeFinanceWrite,
+	ScopeByokNotify,
 }
 
 // RequireM2MScope gates a route on a client_credentials token carrying the

@@ -175,6 +175,15 @@
       },
       "visibility": "public",
       "status": "active"
+    },
+    {
+      "name": "internal:billing:byok-notify",
+      "descriptions": {
+        "pt-BR": "Avisar o CTech Billing de um pagamento recebido por uma conexão bancária (uso interno).",
+        "en": "Notify CTech Billing of a payment received through a bank connection (internal use)."
+      },
+      "visibility": "internal",
+      "status": "active"
     }
   ]
 }
