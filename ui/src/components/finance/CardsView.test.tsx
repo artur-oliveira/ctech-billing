@@ -16,6 +16,8 @@ const ACCOUNTS: Account[] = [
   {id: "cc", name: "Conta corrente", class: "asset", system: false, archived: false, balance: 0},
   {id: "food", name: "Mercado", class: "expense", dre_group: "operating_expenses", system: false, archived: false, balance: 0},
   {id: "visa", name: "Visa", class: "liability", system: false, archived: false, balance: -30000},
+  {id: "home", name: "Casa", class: "expense", dre_group: "operating_expenses", system: false, archived: false, balance: 0},
+  {id: "old", name: "Antiga", class: "expense", dre_group: "operating_expenses", system: false, archived: true, balance: 0},
 ]
 const CARD: Card = {id: "visa", name: "Visa", closing_day: 3, due_day: 10, paying_account_id: "cc", open_month: "2026-03", balance: -30000, archived: false}
 const PURCHASE: Purchase = {
@@ -216,6 +218,52 @@ describe("F5 — cartões", () => {
     })
   })
 
+  it("edits a purchase's description and category in place, sending only what changed", async () => {
+    serve(ALL)
+    const patch = vi.spyOn(finance, "patchPurchase").mockResolvedValue({...PURCHASE, description: "Geladeira Brastemp", category_id: "home"})
+    renderWithQuery(<CardsView/>)
+    const row = (await screen.findByText("Geladeira")).closest("li") as HTMLElement
+    await userEvent.click(within(row).getByRole("button", {name: "Editar compra"}))
+    const form = within(row).getByRole("form", {name: "Editar compra"})
+    const desc = within(form).getByLabelText(/Descrição/)
+    expect(desc).toHaveValue("Geladeira")
+    // Only the active expense categories; amounts and installments are not offered.
+    await userEvent.click(within(form).getByRole("combobox", {name: "Categoria"}))
+    expect((await screen.findAllByRole("option")).map(o => o.textContent?.trim())).toEqual(["Casa", "Mercado"])
+    await userEvent.keyboard("{Escape}")
+    expect(within(form).queryByLabelText(/Valor/)).not.toBeInTheDocument()
+    await userEvent.clear(desc)
+    await userEvent.type(desc, "  Geladeira Brastemp ")
+    await userEvent.click(within(form).getByRole("button", {name: "Salvar"}))
+    await waitFor(() => expect(patch).toHaveBeenCalledWith(expect.anything(), "visa", "p1", {description: "Geladeira Brastemp"}, expect.any(String)))
+    await waitFor(() => expect(within(row).queryByRole("form")).not.toBeInTheDocument())
+  })
+
+  it("moves a purchase to another category", async () => {
+    serve(ALL)
+    const patch = vi.spyOn(finance, "patchPurchase").mockResolvedValue({...PURCHASE, category_id: "home"})
+    renderWithQuery(<CardsView/>)
+    const row = (await screen.findByText("Geladeira")).closest("li") as HTMLElement
+    await userEvent.click(within(row).getByRole("button", {name: "Editar compra"}))
+    const form = within(row).getByRole("form", {name: "Editar compra"})
+    await pickIn(form, "Categoria", "Casa")
+    expect(within(form).getByText(/O valor inteiro passa para a nova categoria/)).toBeInTheDocument()
+    await userEvent.click(within(form).getByRole("button", {name: "Salvar"}))
+    await waitFor(() => expect(patch).toHaveBeenCalledWith(expect.anything(), "visa", "p1", {category_id: "home"}, expect.any(String)))
+  })
+
+  it("renames the purchase on its statement through the dev mock", async () => {
+    serveFinanceMock()
+    renderWithQuery(<CardsView/>)
+    const row = (await screen.findByText("Geladeira")).closest("li") as HTMLElement
+    await userEvent.click(within(row).getByRole("button", {name: "Editar compra"}))
+    const desc = within(row).getByLabelText(/Descrição/)
+    await userEvent.clear(desc)
+    await userEvent.type(desc, "Geladeira nova")
+    await userEvent.click(within(row).getByRole("button", {name: "Salvar"}))
+    expect(await screen.findByText("Geladeira nova")).toBeInTheDocument()
+  })
+
   it("refunds a purchase after confirming", async () => {
     serve(ALL)
     const refund = vi.spyOn(finance, "refundPurchase").mockResolvedValue({...PURCHASE, refunded: true})
@@ -282,7 +330,7 @@ describe("F5 — cartões", () => {
     serve(["finance.read"])
     renderWithQuery(<CardsView/>)
     await screen.findByText("Geladeira")
-    for (const name of ["Nova compra", "Estornar compra", "Antecipar parcelas", "Fechar fatura agora", "Novo cartão"]) {
+    for (const name of ["Nova compra", "Editar compra", "Estornar compra", "Antecipar parcelas", "Fechar fatura agora", "Novo cartão"]) {
       expect(screen.queryByRole("button", {name})).not.toBeInTheDocument()
     }
   })

@@ -1,6 +1,6 @@
 "use client"
 
-import {Badge, Button, Drawer, EmptyState, Field, Select, Skeleton} from "@aoctech/ui"
+import {Badge, Button, Drawer, EmptyState, Field, Input, Select, Skeleton} from "@aoctech/ui"
 import {useQuery} from "@tanstack/react-query"
 import {CreditCard, Repeat} from "lucide-react"
 import Link from "next/link"
@@ -19,9 +19,11 @@ import {ErrorBlock} from "@/components/portal/ErrorBlock"
 import {messageFor} from "@/lib/api/client"
 import {
   advancePurchase, closeStatement, type FinanceCtx, financeKeys, getBill, getCardStatement, listAccounts, listCards, listPurchases,
-  refundPurchase,
+  patchPurchase, refundPurchase,
 } from "@/lib/api/finance"
-import type {Account, Card, CardStatement, Purchase, StatementItem} from "@/lib/api/financeTypes"
+import type {Account, Card, CardStatement, Purchase, PurchasePatch, StatementItem} from "@/lib/api/financeTypes"
+import limits from "@/lib/limits.json"
+import {useFieldErrors} from "@/lib/useFieldErrors"
 import {currentLocale} from "@/lib/i18n"
 import {monthShort, todayIso} from "@/lib/finance/today"
 import {selectCopy} from "@/lib/selectCopy"
@@ -183,7 +185,7 @@ function StatementBlock({card, month, accounts}: {card: Card; month: string; acc
           ) : (
             <ul className="divide-y divide-border border-y border-border">
               {s.items.map(it => (
-                <ItemRow key={`${it.purchase_id}-${it.kind}-${it.number ?? 0}`} item={it} card={card}
+                <ItemRow key={`${it.purchase_id}-${it.kind}-${it.number ?? 0}`} item={it} card={card} accounts={accounts}
                   purchase={byId.get(it.purchase_id)} category={it.category_id ? names.get(it.category_id) : undefined}/>
               ))}
             </ul>
@@ -220,10 +222,12 @@ function PayStatement({billId, accounts, onDone}: {billId: string; accounts: Acc
   return <SettleForm bill={bill.data} accounts={accounts} onDone={onDone}/>
 }
 
-function ItemRow({item, card, purchase, category}: {item: StatementItem; card: Card; purchase?: Purchase; category?: string}) {
+function ItemRow({item, card, accounts, purchase, category}: {item: StatementItem; card: Card; accounts: Account[]; purchase?: Purchase; category?: string}) {
   const {t} = useTranslation()
   const {can} = useFinanceSpaces()
-  const [action, setAction] = useState<"refund" | "advance" | null>(null)
+  const [action, setAction] = useState<"edit" | "refund" | "advance" | null>(null)
+  // Its name and category can be corrected from any of its lines, an advance's too.
+  const editable = (item.kind === "installment" || item.kind === "advance") && purchase && !purchase.refunded && can("finance.write")
   const actionable = item.kind === "installment" && purchase && !purchase.refunded && can("finance.write")
   const canAdvance = actionable && purchase.installments.some(i => i.month > card.open_month)
   return (
@@ -244,11 +248,13 @@ function ItemRow({item, card, purchase, category}: {item: StatementItem; card: C
         )}
       </>}
       amount={<span data-numeric>{signedMoney(item.amount)}</span>}
-      more={actionable ? [
+      more={[
+        ...(editable ? [{key: "edit", label: t("finance.cards.editPurchase"), expanded: action === "edit", onSelect: () => setAction("edit")}] : []),
         ...(canAdvance ? [{key: "advance", label: t("finance.cards.advance"), expanded: action === "advance", onSelect: () => setAction("advance")}] : []),
-        {key: "refund", label: t("finance.cards.refund"), destructive: true, expanded: action === "refund", onSelect: () => setAction("refund")},
-      ] : []}
+        ...(actionable ? [{key: "refund", label: t("finance.cards.refund"), destructive: true, expanded: action === "refund", onSelect: () => setAction("refund")}] : []),
+      ]}
     >
+      {action === "edit" && purchase && <PurchaseEditForm card={card} purchase={purchase} accounts={accounts} onDone={() => setAction(null)}/>}
       {action === "refund" && purchase && (
         <Confirm
           text={t("finance.cards.refundConfirm")}
@@ -264,6 +270,56 @@ function ItemRow({item, card, purchase, category}: {item: StatementItem; card: C
         />
       )}
     </LedgerRow>
+  )
+}
+
+/**
+ * A purchase's safe fields, in place under its line: the name every statement
+ * shows and the category its expense is in. The amount, the date and the
+ * installments are what was charged, so they are not offered: a wrong amount
+ * is a refund and a new purchase.
+ */
+function PurchaseEditForm({card, purchase, accounts, onDone}: {card: Card; purchase: Purchase; accounts: Account[]; onDone: () => void}) {
+  const {t} = useTranslation()
+  const [description, setDescription] = useState(purchase.description)
+  const [category, setCategory] = useState(purchase.category_id)
+  const fe = useFieldErrors(["description", "category_id"])
+  const edit = useFinanceMutation((c, body: PurchasePatch, key) => patchPurchase(c, card.id, purchase.id, body, key), wholeSpace, onDone, fe.set)
+  // Active expense categories, and the current one even if it was archived since.
+  const cats = accounts.filter(a => a.class === "expense" && !a.system && (!a.archived || a.id === purchase.category_id))
+    .sort((a, b) => accountName(a).localeCompare(accountName(b), currentLocale()))
+  const id = `pe-${purchase.id}`
+  const moved = category !== purchase.category_id
+  return (
+    <form
+      aria-label={t("finance.cards.editPurchase")}
+      className="mt-3 grid items-start gap-3 rounded-lg bg-surface p-3 sm:grid-cols-2 motion-safe:animate-in motion-safe:fade-in [&>*]:min-w-0"
+      onSubmit={e => {
+        e.preventDefault()
+        const body: PurchasePatch = {}
+        const name = description.trim()
+        if (name !== purchase.description) body.description = name
+        if (moved) body.category_id = category
+        if (Object.keys(body).length === 0) return onDone()
+        fe.reset()
+        edit.mutate(body)
+      }}
+    >
+      <Field label={t("bills.common.description")} htmlFor={`${id}-d`} required error={fe.of("description")}>
+        <Input id={`${id}-d`} maxLength={limits.text.description} value={description} {...fe.props("description", `${id}-d`)}
+          onChange={e => { setDescription(e.target.value); fe.clear("description") }} autoFocus/>
+      </Field>
+      <Field label={t("bills.common.category")} htmlFor={`${id}-c`} required error={fe.of("category_id")}
+        hint={moved ? t("finance.cards.recategorizeHint") : undefined}>
+        <Select {...selectCopy()} id={`${id}-c`} aria-label={t("bills.common.category")} value={category} {...fe.props("category_id", `${id}-c`)}
+          onValueChange={v => { setCategory(v); fe.clear("category_id") }} options={cats.map(a => ({value: a.id, label: accountName(a)}))}/>
+      </Field>
+      <div className="flex flex-wrap items-center gap-2 sm:col-span-2">
+        <Button type="submit" variant="brand" size="sm" disabled={description.trim() === "" || edit.isPending}>{t("bills.common.save")}</Button>
+        <Button type="button" variant="outline" size="sm" onClick={onDone}>{t("finance.cards.back")}</Button>
+        {fe.general ? <p role="alert" className="text-sm text-danger">{fe.general}</p> : null}
+      </div>
+    </form>
   )
 }
 

@@ -789,6 +789,63 @@ func classifyPostCancel(err error, markerIdx int) error {
 }
 
 func (r *LedgerRepository) postItems(sp space.ResolvedSpace, txID string, tx finance.Transaction, meta PostMeta, now time.Time, entryKind finance.TxKind, reversal bool) (items []types.TransactWriteItem, markerIdx int, err error) {
+	return r.postItemsWith(sp, txID, tx, meta, now, entryKind, reversal, nil)
+}
+
+// legTotals gathers the balance and summary ADDs of several transactions written
+// together: DynamoDB refuses two operations on one item in a transaction, and a
+// reversal and its replacement touch the same accounts in the same month.
+type legTotals struct {
+	balance map[string]int64
+	sums    map[finance.SummaryKey][2]int64 // debits, credits
+	order   []string
+	sumKeys []finance.SummaryKey
+}
+
+func newLegTotals() *legTotals {
+	return &legTotals{balance: map[string]int64{}, sums: map[finance.SummaryKey][2]int64{}}
+}
+
+func (t *legTotals) add(month finance.Month, l finance.Leg) {
+	if _, seen := t.balance[l.AccountID]; !seen {
+		t.order = append(t.order, l.AccountID)
+	}
+	t.balance[l.AccountID] += int64(l.Amount)
+	k := finance.SummaryKey{Month: month, AccountID: l.AccountID}
+	v, seen := t.sums[k]
+	if !seen {
+		t.sumKeys = append(t.sumKeys, k)
+	}
+	if l.Amount > 0 {
+		v[0] += int64(l.Amount)
+	} else {
+		v[1] += int64(-l.Amount)
+	}
+	t.sums[k] = v
+}
+
+// items is one ADD per touched balance and per touched monthly summary.
+func (r *LedgerRepository) totalsItems(sp space.ResolvedSpace, t *legTotals) []types.TransactWriteItem {
+	var items []types.TransactWriteItem
+	for _, acct := range t.order {
+		acctSK := LedgerAccountSK(acct)
+		items = append(items, r.accounts.BuildRawUpdateTxItem(sp.PK(), &acctSK,
+			"ADD balance :amt", "attribute_exists(pk)", nil,
+			map[string]types.AttributeValue{":amt": numberValue(t.balance[acct])}))
+	}
+	for _, k := range t.sumKeys {
+		v := t.sums[k]
+		sumSK := LedgerSummarySK(k.Month, k.AccountID)
+		items = append(items, r.accounts.BuildRawUpdateTxItem(sp.PK(), &sumSK,
+			"ADD debits :d, credits :c", "", nil,
+			map[string]types.AttributeValue{":d": numberValue(v[0]), ":c": numberValue(v[1])}))
+	}
+	return items
+}
+
+// postItemsWith is postItems; with totals set, the balance and summary ADDs are
+// gathered there instead of written (the caller writes them once, totalsItems).
+func (r *LedgerRepository) postItemsWith(sp space.ResolvedSpace, txID string, tx finance.Transaction, meta PostMeta, now time.Time, entryKind finance.TxKind, reversal bool, totals *legTotals) (items []types.TransactWriteItem, markerIdx int, err error) {
 	markerIdx = -1
 	legs := make([]legItem, len(tx.Legs))
 	for i, l := range tx.Legs {
@@ -815,6 +872,10 @@ func (r *LedgerRepository) postItems(sp space.ResolvedSpace, txID string, tx fin
 			return nil, -1, err
 		}
 		items = append(items, r.txs.BuildPutTxItemIfAbsent(entry))
+		if totals != nil {
+			totals.add(month, l)
+			continue
+		}
 
 		acctSK := LedgerAccountSK(l.AccountID)
 		items = append(items, r.accounts.BuildRawUpdateTxItem(sp.PK(), &acctSK,
@@ -948,6 +1009,59 @@ func (r *LedgerRepository) planReverse(ctx context.Context, sp space.ResolvedSpa
 		meta.Ref = orig.Ref
 	}
 	return r.planPostAs(sp, rev, meta, now, orig.Tx.Kind, true)
+}
+
+// replacePlan is a reversal and its replacement, built but not sent.
+type replacePlan struct {
+	ReplacementID string
+	Items         []types.TransactWriteItem
+	MarkerIdx     int // the reversal marker's index in Items
+}
+
+// planReplace corrects a stored transaction the ADR 0024 way: entries are never
+// edited, so the original is reversed and the corrected fact posted, both on
+// date, as one write. The accounts both touch get one balance and one summary
+// ADD each (their sum), since a transaction cannot write an item twice. It
+// writes nothing; the caller adds its own rows and sends it.
+func (r *LedgerRepository) planReplace(ctx context.Context, sp space.ResolvedSpace, originalID string, replacement finance.Transaction, date brcal.Date, reverseMeta, meta PostMeta, now time.Time) (replacePlan, error) {
+	if err := sp.Require(space.Write); err != nil {
+		return replacePlan{}, err
+	}
+	orig, err := r.GetTransaction(ctx, sp, originalID)
+	if err != nil {
+		return replacePlan{}, err
+	}
+	if orig.Tx.Kind == finance.KindSettlement {
+		if err := sp.Require(space.Settle); err != nil {
+			return replacePlan{}, err
+		}
+	}
+	rev, err := finance.Reverse(orig.Tx, originalID, date)
+	if err != nil {
+		return replacePlan{}, err
+	}
+	next, err := finance.NewTransaction(replacement.Kind, replacement.Date, replacement.Legs...)
+	if err != nil {
+		return replacePlan{}, err
+	}
+	if reverseMeta.Memo == "" {
+		reverseMeta.Memo = orig.Memo
+	}
+	if reverseMeta.Ref == "" {
+		reverseMeta.Ref = orig.Ref
+	}
+	totals := newLegTotals()
+	revItems, marker, err := r.postItemsWith(sp, id.New(), rev, reverseMeta, now, orig.Tx.Kind, true, totals)
+	if err != nil {
+		return replacePlan{}, err
+	}
+	nextID := id.New()
+	nextItems, _, err := r.postItemsWith(sp, nextID, next, meta, now, next.Kind, false, totals)
+	if err != nil {
+		return replacePlan{}, err
+	}
+	items := append(append(revItems, nextItems...), r.totalsItems(sp, totals)...)
+	return replacePlan{ReplacementID: nextID, Items: items, MarkerIdx: marker}, nil
 }
 
 // EntriesFrom returns an account's entries dated from onward, in key order, with

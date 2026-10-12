@@ -784,6 +784,37 @@ function route(method: string, path: string, r: Req, s: SpaceState, can: (v: Ver
       if (cat) cat.balance += p.total
       return ok(purchaseOut(purchase), 201)
     }
+    if (sub === "purchases" && arg && !action && method === "patch") {
+      if (!can("finance.write")) return forbidden()
+      const purchase = s.purchases.find(p => p.id === arg && p.card === c.id)
+      if (!purchase) return problem(404, "about:blank", "Not Found", "recurso não encontrado", "resource_not_found")
+      if (purchase.refunded) return problem(409, "/problems/invalid-transition", "Invalid Transition", "Esta compra já foi estornada.", "purchase_refunded")
+      const patch = body<{description?: string | null; category_id?: string | null}>(r)
+      for (const k of ["description", "category_id"] as const) {
+        if (patch[k] === null) return problem(422, "about:blank", "Unprocessable Entity", "validation failed", "validation_failed", [{field: k, code: "required", message: "required: it cannot be cleared"}])
+      }
+      const description = patch.description == null ? purchase.description : patch.description.trim()
+      if (!description) return problem(422, "about:blank", "Unprocessable Entity", "validation failed", "validation_failed", [{field: "description", code: "required", message: "required"}])
+      const category = patch.category_id ?? purchase.category_id
+      const next = s.accounts.find(a => a.id === category)
+      if (!next || next.class !== "expense" || next.system || next.archived) {
+        return problem(422, "about:blank", "Unprocessable Entity", "the purchase needs an active expense category", "invalid_account")
+      }
+      if (category !== purchase.category_id) {
+        // The whole expense moves (the server replaces the ledger transaction).
+        const was = s.accounts.find(a => a.id === purchase.category_id)
+        if (was) was.balance -= purchase.total
+        next.balance += purchase.total
+      }
+      purchase.description = description
+      purchase.category_id = category
+      for (const i of s.items) {
+        if (i.purchase_id !== purchase.id || (i.kind !== "installment" && i.kind !== "advance")) continue
+        i.description = i.kind === "advance" ? `Antecipação: ${description}` : description
+        i.category_id = category
+      }
+      return ok(purchaseOut(purchase))
+    }
     if (sub === "purchases" && arg && (action === "refund" || action === "advance")) {
       if (!can("finance.write")) return forbidden()
       const purchase = s.purchases.find(p => p.id === arg && p.card === c.id)

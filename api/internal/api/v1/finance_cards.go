@@ -1,6 +1,8 @@
 package v1
 
 import (
+	"strings"
+
 	"github.com/gofiber/fiber/v3"
 
 	"gopkg.aoctech.app/api-commons/patch"
@@ -301,6 +303,45 @@ func (h *financeHandlers) createPurchase(c fiber.Ctx) error {
 		return fail(c, err)
 	}
 	return c.Status(fiber.StatusCreated).JSON(newPurchaseDTO(p))
+}
+
+// purchasePatchRequest edits a purchase's safe fields; anything else (total,
+// date, installments) is an unknown field, refused by decodeStrict.
+type purchasePatchRequest struct {
+	Description patch.Optional[string] `json:"description"`
+	CategoryID  patch.Optional[string] `json:"category_id"`
+}
+
+// edit validates like a purchase's creation: neither can be cleared.
+func (r purchasePatchRequest) edit() (repositories.PurchaseEdit, []problem.FieldError) {
+	ch := &checks{}
+	var out repositories.PurchaseEdit
+	if v, ok := required(ch, "description", r.Description); ok {
+		ch.text("description", v, true, limits.Description)
+		d := strings.TrimSpace(v)
+		out.Description = &d
+	}
+	if v, ok := required(ch, "category_id", r.CategoryID); ok {
+		ch.id("category_id", v, true)
+		out.CategoryID = &v
+	}
+	return out, ch.errs
+}
+
+func (h *financeHandlers) patchPurchase(c fiber.Ctx) error {
+	var req purchasePatchRequest
+	if p := decodeStrict(c, &req); p != nil {
+		return p.Send(c)
+	}
+	edit, errs := req.edit()
+	if len(errs) > 0 {
+		return problem.Validation(errs).Send(c)
+	}
+	p, err := h.cards.EditPurchase(c.Context(), middleware.GetSpace(c), c.Params("id"), c.Params("pid"), edit, h.postMeta(c, ""), h.now())
+	if err != nil {
+		return fail(c, err)
+	}
+	return c.JSON(newPurchaseDTO(p))
 }
 
 func (h *financeHandlers) refundPurchase(c fiber.Ctx) error {

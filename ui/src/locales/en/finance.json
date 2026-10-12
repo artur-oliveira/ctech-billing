@@ -160,6 +160,8 @@
     "closesOn": "Closes {{date}}",
     "dueOn": "Due {{date}}",
     "advance": "Pay installments early",
+    "editPurchase": "Edit purchase",
+    "recategorizeHint": "The whole amount moves to the new category, in the month of the purchase.",
     "refund": "Refund purchase",
     "refundConfirm": "Refund this purchase? Installments already billed come back as a credit on the open statement, and future ones are cancelled.",
     "advanceConfirm": "Move the remaining installments to the open statement?",
