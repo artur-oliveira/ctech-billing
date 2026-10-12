@@ -74,7 +74,7 @@ describe("F5 — cartões", () => {
     const row = (await screen.findByText("Geladeira")).closest("li") as HTMLElement
     expect(within(row).getByText(/1\/3/)).toBeInTheDocument()
   })
-  it("loads recurring installment estimates only when requested and keeps them outside the statement total", async () => {
+  it("loads recurring installment estimates with the statement and keeps them outside its total", async () => {
     serve(ALL)
     const forecast = vi.spyOn(finance, "getCardStatementForecast").mockResolvedValue({data: [
       {recurrence_id: "r-food", description: "Mercado mensal", nominal: "2026-10-20", installment: 2, of: 3, amount: 10000},
@@ -82,8 +82,7 @@ describe("F5 — cartões", () => {
     ], has_more: false})
     renderWithQuery(<CardsView/>)
     const block = await screen.findByRole("region", {name: "Fatura Mar/26"})
-    expect(forecast).not.toHaveBeenCalled()
-    await userEvent.click(await within(block).findByRole("button", {name: "Carregar previsão"}))
+    await waitFor(() => expect(forecast).toHaveBeenCalledWith(expect.anything(), "visa", "2026-03"))
     const forecastBlock = within(block).getByRole("region", {name: "Previsão de recorrências"})
     expect(await within(forecastBlock).findByText(/Mercado mensal/)).toBeInTheDocument()
     expect(within(forecastBlock).getByText(/Café.*aguardando confirmação/)).toBeInTheDocument()

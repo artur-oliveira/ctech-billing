@@ -165,11 +165,9 @@ function StatementBlock({card, month, accounts, purchases, purchasesError, retry
   const {can} = useFinanceSpaces()
   const q = useQuery({queryKey: financeKeys.cardStatement(ctx.mode, ctx.space, card.id, month), queryFn: () => getCardStatement(ctx, card.id, month)})
   const [action, setAction] = useState<"close" | "pay" | null>(null)
-  const [showForecast, setShowForecast] = useState(false)
   const forecast = useQuery({
     queryKey: financeKeys.cardForecast(ctx.mode, ctx.space, card.id, month),
     queryFn: () => getCardStatementForecast(ctx, card.id, month),
-    enabled: showForecast,
   })
   const names = new Map(accounts.map(a => [a.id, accountName(a)]))
   const byId = new Map(purchases.map(p => [p.id, p]))
@@ -185,9 +183,8 @@ function StatementBlock({card, month, accounts, purchases, purchasesError, retry
           <section aria-labelledby="card-recurring-forecast" className="space-y-2 border-t border-border pt-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h3 id="card-recurring-forecast" className="text-sm font-medium">{t("finance.cards.recurringForecast")}</h3>
-              {!showForecast && <Button size="sm" variant="ghost" onClick={() => setShowForecast(true)}>{t("finance.cards.loadForecast")}</Button>}
             </div>
-            {showForecast && (forecast.isLoading ? <Skeleton className="h-12 w-full"/> : forecast.error ? <ErrorBlock error={forecast.error} onRetry={() => void forecast.refetch()}/> : (forecast.data?.data.length ?? 0) === 0 ? (
+            {forecast.isLoading ? <Skeleton className="h-12 w-full"/> : forecast.error ? <ErrorBlock error={forecast.error} onRetry={() => void forecast.refetch()}/> : (forecast.data?.data.length ?? 0) === 0 ? (
               <p className="text-sm text-muted-foreground">{t("finance.cards.noRecurringForecast")}</p>
             ) : <>
               <ul className="divide-y divide-border border-y border-border">
@@ -197,7 +194,7 @@ function StatementBlock({card, month, accounts, purchases, purchasesError, retry
                 </li>)}
               </ul>
               <p className="text-xs text-muted-foreground">{t("finance.cards.forecastNotInTotal")}</p>
-            </>)}
+            </>}
           </section>
           {s.status === "open" && can("finance.write") && action !== "close" && (
             <Button variant="outline" size="sm" onClick={() => setAction("close")}>{t("finance.cards.closeNow")}</Button>
