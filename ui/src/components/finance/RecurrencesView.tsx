@@ -240,12 +240,14 @@ function EndCancels({rec, end}: {rec: Recurrence; end: string}) {
   const q = useQuery({queryKey: financeKeys.recurrenceOccurrences(ctx.mode, ctx.space, rec.id), queryFn: () => getRecurrenceOccurrences(ctx, rec.id)})
   const after = (q.data?.history ?? []).filter(o => o.nominal > end)
   const canceled = after.filter(o => o.state === "forecast" || o.state === "overdue")
+  const pending = after.filter(o => o.state === "pending_confirmation")
   const paid = after.filter(o => o.state === "paid")
-  if (canceled.length === 0 && paid.length === 0) return null
+  if (canceled.length === 0 && pending.length === 0 && paid.length === 0) return null
   const list = (xs: typeof after) => new Intl.ListFormat(currentLocale(), {type: "conjunction"}).format(xs.map(o => dayMonth(o.due)))
   return (
     <div className="w-full space-y-1">
       {canceled.length > 0 && <p className="text-foreground">{t("bills.rec.endCancels", {count: canceled.length, dates: list(canceled)})}</p>}
+      {pending.length > 0 && <p className="text-foreground">{t("bills.rec.endCancelsPending", {count: pending.length, dates: list(pending)})}</p>}
       {paid.length > 0 && <p className="text-muted-foreground">{t("bills.rec.endKeepsPaid", {count: paid.length, dates: list(paid)})}</p>}
     </div>
   )

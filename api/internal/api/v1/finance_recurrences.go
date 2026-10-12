@@ -15,6 +15,7 @@ import (
 	"gopkg.aoctech.app/billing/api/internal/middleware"
 	"gopkg.aoctech.app/billing/api/internal/problem"
 	"gopkg.aoctech.app/billing/api/internal/repositories"
+	"gopkg.aoctech.app/billing/api/internal/space"
 )
 
 type recurrenceDTO struct {
@@ -376,7 +377,18 @@ func (h *financeHandlers) patchRecurrence(c fiber.Ctx) error {
 		if err != nil {
 			return fail(c, err)
 		}
-		if n > 0 {
+		pending, err := h.recs.ListPendingOccurrencesForRecurrence(c.Context(), sp, c.Params("id"), 50)
+		if err != nil {
+			return fail(c, err)
+		}
+		pendingAfterEnd := false
+		for _, occurrence := range pending {
+			if occurrence.Nominal.String() > end.String() {
+				pendingAfterEnd = true
+				break
+			}
+		}
+		if n > 0 || pendingAfterEnd {
 			return fail(c, repositories.ErrEndCancelsBills)
 		}
 	}
@@ -391,6 +403,9 @@ func (h *financeHandlers) patchRecurrence(c fiber.Ctx) error {
 		canceled, err := h.bills.EndRecurrence(c.Context(), sp, c.Params("id"), end, actorOfUser(c), middleware.GetRequestID(c), h.now())
 		if err != nil {
 			return fail(c, err)
+		}
+		if err = h.skipPendingOccurrences(c, sp, c.Params("id"), func(nominal brcal.Date) bool { return nominal.String() > end.String() }); err != nil {
+			return fail(c, repositories.ErrEndIncomplete)
 		}
 		out.CanceledBillIDs = canceled
 	}
@@ -412,10 +427,30 @@ type patchRecurrenceResponse struct {
 }
 
 func (h *financeHandlers) archiveRecurrence(c fiber.Ctx) error {
-	if err := h.recs.Archive(c.Context(), middleware.GetSpace(c), c.Params("id"), h.now()); err != nil {
+	sp := middleware.GetSpace(c)
+	if err := h.recs.Archive(c.Context(), sp, c.Params("id"), h.now()); err != nil {
 		return fail(c, err)
 	}
+	if err := h.skipPendingOccurrences(c, sp, c.Params("id"), func(brcal.Date) bool { return true }); err != nil {
+		return fail(c, repositories.ErrEndIncomplete)
+	}
 	return c.SendStatus(fiber.StatusNoContent)
+}
+
+func (h *financeHandlers) skipPendingOccurrences(c fiber.Ctx, sp space.ResolvedSpace, recurrenceID string, shouldSkip func(brcal.Date) bool) error {
+	pending, err := h.recs.ListPendingOccurrencesForRecurrence(c.Context(), sp, recurrenceID, 50)
+	if err != nil {
+		return err
+	}
+	for _, occurrence := range pending {
+		if !shouldSkip(occurrence.Nominal) {
+			continue
+		}
+		if _, err := h.recs.SkipPendingOccurrence(c.Context(), sp, recurrenceID, occurrence.Nominal, h.now()); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // occurrenceHistoryLimit is how many made bills F4's detail shows: a year of a

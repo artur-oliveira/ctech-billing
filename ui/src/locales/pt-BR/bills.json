@@ -178,6 +178,8 @@
     "endAndArchive": "Encerrar e arquivar",
     "endCancels_one": "O lançamento em aberto depois do fim ({{dates}}) será cancelado.",
     "endCancels_other": "Os {{count}} lançamentos em aberto depois do fim ({{dates}}) serão cancelados.",
+    "endCancelsPending_one": "A ocorrência pendente de confirmação depois do fim ({{dates}}) será descartada.",
+    "endCancelsPending_other": "As {{count}} ocorrências pendentes de confirmação depois do fim ({{dates}}) serão descartadas.",
     "saveAndCancel": "Salvar e cancelar",
     "endIncomplete": {
       "archived": "A recorrência foi encerrada, mas alguns lançamentos não foram cancelados. Tente de novo.",
