@@ -11,7 +11,8 @@ AWS_PROFILE=ctech terraform/scripts/create-byok-credentials-key.sh prod
 ```
 
 It creates the SSM SecureString `/ctech-billing/prod/byok/credentials-key` (32 random bytes, base64), refuses to
-replace an existing one, never prints the value and passes it to the AWS CLI on stdin. Only the outbound Lambda's
+replace an existing one, never prints the value and passes it to the AWS CLI through a private temporary file (never
+argv). Created in prod on 2026-10-12. Only the outbound Lambda's
 role can read it; the api cannot.
 
 **Back it up** with the account's break-glass material, the same way as `field-encryption-key`. Losing it makes

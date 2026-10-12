@@ -6,8 +6,8 @@
 #
 # Refuses to overwrite (losing the key makes every stored connection unreadable;
 # merchants would have to upload their credentials again). Never prints the
-# value, and never puts it on a command line (it reaches the AWS CLI on stdin,
-# so it is not visible in the process list). Back the value up with the
+# value, and never puts it on a command line (it reaches the AWS CLI through a
+# private temporary file, so it is not visible in the process list). Back the value up with the
 # account's break-glass material, the same way as field-encryption-key
 # (terraform/billing/ssm.tf): docs/runbooks/byok.md says how without printing it.
 set -euo pipefail
@@ -18,8 +18,11 @@ if aws ssm get-parameter --region us-east-1 --name "$NAME" --query Parameter.Nam
   echo "$NAME already exists; refusing to replace it" >&2
   exit 1
 fi
-VALUE="$(head -c 32 /dev/urandom | base64 | tr -d '\n')"
-printf '{"Name":"%s","Type":"SecureString","Value":"%s","Overwrite":false}' "$NAME" "$VALUE" |
-  aws ssm put-parameter --region us-east-1 --cli-input-json file:///dev/stdin >/dev/null
-unset VALUE
+# The value goes through a private temporary file (mode 0600, removed on exit),
+# never through argv, so it is not visible in the process list.
+umask 077
+TMP="$(mktemp)"
+trap 'rm -f "$TMP"' EXIT
+head -c 32 /dev/urandom | base64 | tr -d '\n' > "$TMP"
+aws ssm put-parameter --region us-east-1 --name "$NAME" --type SecureString --value "file://$TMP" --no-overwrite >/dev/null
 echo "created $NAME (value not shown)"
