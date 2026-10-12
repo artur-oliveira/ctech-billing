@@ -240,12 +240,16 @@ describe("F5 — cartões", () => {
       renderWithQuery(<CardsView/>)
       const row = (await screen.findByText("Geladeira")).closest("li") as HTMLElement
       await waitFor(() => expect(range.mock.calls.length).toBeGreaterThanOrEqual(2)) // the older page, prefetched
+      await new Promise(r => setTimeout(r, 300)) // the prefetches settle
       const before = inWindow()
       const calls = range.mock.calls.length
       await userEvent.click(within(row).getByRole("button", {name: label}))
       await userEvent.click(within(row).getByRole("button", {name: "Confirmar"}))
-      await waitFor(() => expect(range.mock.calls.length).toBeGreaterThan(calls)) // refreshed
+      const loaded = range.mock.calls.slice(0, calls).map(([, , from, count, direction]) => `${direction} ${from} ${count}`).sort()
+      await waitFor(() => expect(range.mock.calls.length).toBe(2 * calls)) // refreshed
       await waitFor(() => expect(screen.getAllByRole("button", {name: /^Fatura de /}).length).toBeGreaterThanOrEqual(10))
+      // Exactly the pages loaded before, each asked once more.
+      expect(range.mock.calls.slice(calls).map(([, , from, count, direction]) => `${direction} ${from} ${count}`).sort()).toEqual(loaded)
       expect(inWindow()).toEqual(before)
       expect(screen.getByRole("button", {name: /^Fatura de Mar\/26/})).toHaveAttribute("aria-pressed", "true")
     })

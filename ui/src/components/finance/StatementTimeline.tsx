@@ -40,8 +40,7 @@ export function StatementTimeline({card, selected, onSelect}: {card: Card; selec
   const {before, after} = edges(months, phone ? selected : start, size)
 
   // Prefetch: when the window touches the loaded edge, load the page beyond it.
-  // One page in flight at a time: a second fetch would cancel the first (TanStack's
-  // cancelRefetch) and ask for its months again.
+  // One page in flight at a time, so the page beyond is read from settled edges.
   useEffect(() => {
     if (!q.isSuccess || q.isFetching) return
     if (before === 0 && q.hasPreviousPage) q.fetchPreviousPage()
