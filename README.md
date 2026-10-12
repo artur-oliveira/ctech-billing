@@ -29,6 +29,10 @@ the registry. What is left is **the first deploy, which has never run**, and the
 parameter. Nothing is deployed, nothing is committed, and nothing has moved real money.
 [PLAN.md § What is actually left](PLAN.md) is the ordered list.
 
+**BYOK (bank connections):** an organization connects its own bank account (Banco Inter first) for statement
+sync into Finanças and, in part B, collection; operations in [`docs/runbooks/byok.md`](docs/runbooks/byok.md),
+decisions in [ADR 0029](docs/adr/0029-byok-phase-1.md).
+
 ## Error observability
 
 The API uses `api-commons/observability` and `api-commons/observability/fiber`. Every RFC 7807 response is logged once
