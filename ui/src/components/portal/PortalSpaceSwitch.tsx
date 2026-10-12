@@ -74,15 +74,17 @@ export function PortalSpaceSwitch() {
   }
 
   return (
-    <Select {...selectCopy()}
-      aria-label={t("portal.space.label")}
-      className="order-3 w-48 min-w-0 max-w-full sm:order-2 sm:ml-auto sm:min-w-36 sm:max-w-56"
-      value={current}
-      onValueChange={v => void choose(v)}
-      options={spaces.map(s => ({
-        value: s.selector,
-        label: s.selector === "personal" ? t("portal.space.personal") : s.display_name,
-      }))}
-    />
+    <div data-slot="portal-space-switch" className="order-3 w-full min-w-0 sm:order-2 sm:ml-auto sm:w-48 sm:max-w-56">
+      <Select {...selectCopy()}
+        aria-label={t("portal.space.label")}
+        className="h-9 w-full min-w-0"
+        value={current}
+        onValueChange={v => void choose(v)}
+        options={spaces.map(s => ({
+          value: s.selector,
+          label: s.selector === "personal" ? t("portal.space.personal") : s.display_name,
+        }))}
+      />
+    </div>
   )
 }

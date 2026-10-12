@@ -48,6 +48,14 @@ describe("PortalSpaceSwitch", () => {
     expect(selectByLabel("Conta")).toHaveTextContent("Pessoal")
   })
 
+  it("fills the mobile header row and matches the 36px header control height", async () => {
+    vi.spyOn(portal, "listPortalSpaces").mockResolvedValue(withAcme)
+    renderWithQuery(<PortalSpaceSwitch/>)
+    const select = await screen.findByRole("combobox", {name: "Conta"})
+    expect(select).toHaveClass("h-9", "w-full")
+    expect(select.closest('[data-slot="portal-space-switch"]')).toHaveClass("w-full", "sm:w-48")
+  })
+
   it("switches to the organization, and the next portal call carries it", async () => {
     vi.spyOn(portal, "listPortalSpaces").mockResolvedValue(withAcme)
     renderWithQuery(<PortalSpaceSwitch/>)
