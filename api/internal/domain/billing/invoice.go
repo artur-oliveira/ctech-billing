@@ -151,6 +151,9 @@ type Invoice struct {
 	Discount   Cents `dynamodbav:"discount"    json:"discount"`
 	Total      Cents `dynamodbav:"total"       json:"total"`
 	AmountPaid Cents `dynamodbav:"amount_paid" json:"amount_paid"`
+	// CreditedTotal is the sum of the credit notes issued against this
+	// invoice, kept by the credit-note write (compare-and-set). Read-only here.
+	CreditedTotal Cents `dynamodbav:"credited_total,omitempty" json:"-"`
 
 	// PaidAt is when this invoice was settled, RFC 3339 in UTC. It is written by
 	// the repository on the transition to PAID, not by whoever caused it, so the

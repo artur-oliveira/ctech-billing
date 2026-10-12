@@ -91,7 +91,7 @@ func (h *checkoutHandlers) view(c fiber.Ctx) error {
 	if err != nil {
 		return failLink(c, err)
 	}
-	return c.JSON(checkoutResponse{Merchant: merchant, Invoice: newCheckoutInvoice(inv, lines, h.today())})
+	return c.JSON(checkoutResponse{Merchant: merchant.DisplayName, Invoice: newCheckoutInvoice(inv, lines, merchant, h.today())})
 }
 
 // pay opens the charge, or returns the one that is still live.
@@ -115,8 +115,8 @@ func (h *checkoutHandlers) pay(c fiber.Ctx) error {
 		return failCheckout(c, payErr)
 	}
 	return c.JSON(checkoutResponse{
-		Merchant: merchant,
-		Invoice:  newCheckoutInvoice(inv, lines, h.today()),
+		Merchant: merchant.DisplayName,
+		Invoice:  newCheckoutInvoice(inv, lines, merchant, h.today()),
 		Payment: &checkoutPayment{
 			Method:       string(billing.MethodPIX),
 			PixCode:      session.PixCode,
@@ -147,30 +147,30 @@ var errNoSuchLink = errors.New("no invoice behind this link")
 // nil on success, so a helper that returns *that* tells its caller "no error"
 // while having already answered — and the caller then works with a nil invoice.
 func (h *checkoutHandlers) load(c fiber.Ctx, org string, livemode bool, invoiceID string) (
-	*billing.Invoice, []billing.InvoiceItem, string, error,
+	*billing.Invoice, []billing.InvoiceItem, *billing.Organization, error,
 ) {
 	inv, err := h.invoices.Get(c.Context(), org, livemode, invoiceID)
 	if err != nil {
 		if errors.Is(err, repositories.ErrNotFound) {
-			return nil, nil, "", errNoSuchLink
+			return nil, nil, nil, errNoSuchLink
 		}
-		return nil, nil, "", err
+		return nil, nil, nil, err
 	}
 	if inv.Status == billing.InvoiceDraft {
-		return nil, nil, "", errNoSuchLink
+		return nil, nil, nil, errNoSuchLink
 	}
 	lines, err := h.invoices.ListItems(c.Context(), org, livemode, inv.ID)
 	if err != nil {
-		return nil, nil, "", err
+		return nil, nil, nil, err
 	}
 	organization, err := h.orgs.Get(c.Context(), org, livemode)
 	if err != nil {
-		return nil, nil, "", err
+		return nil, nil, nil, err
 	}
-	return inv, lines, organization.DisplayName, nil
+	return inv, lines, organization, nil
 }
 
-func newCheckoutInvoice(inv *billing.Invoice, lines []billing.InvoiceItem, today brcal.Date) checkoutInvoice {
+func newCheckoutInvoice(inv *billing.Invoice, lines []billing.InvoiceItem, org *billing.Organization, today brcal.Date) checkoutInvoice {
 	state, tone, daysUntilDue := invoiceState(inv, today)
 	description, extra := describeLines(lines)
 	out := checkoutInvoice{
@@ -183,7 +183,9 @@ func newCheckoutInvoice(inv *billing.Invoice, lines []billing.InvoiceItem, today
 		DueDate:      inv.DueDate,
 		AmountDue:    inv.AmountDue(),
 		Currency:     inv.Currency,
-		Payable:      inv.Payable(),
+		// A BYOK invoice is payable in test mode too: it reaches the
+		// provider's sandbox, never real money (spec 2026-10-11 § 9).
+		Payable: inv.Payable() || (org != nil && org.Rail() == billing.RailBYOK && inv.Status == billing.InvoiceOpen && inv.Collectable() > 0),
 	}
 	for _, l := range lines {
 		out.Lines = append(out.Lines, portalLine{

@@ -67,6 +67,36 @@ func (i *fakeInvoker) Invoke(ctx context.Context, in *lambda.InvokeInput, _ ...f
 	case byok.OpDeleteWebhook:
 		err = f.DeleteWebhook(ctx, creds, tok, decodeArgs[byok.WebhookArgs](req.Payload).Product)
 		out = struct{}{}
+	case byok.OpCreateDueCharge:
+		out, err = f.CreateDueCharge(ctx, creds, tok, decodeArgs[byok.DueCharge](req.Payload))
+	case byok.OpUpdateCharge:
+		a := decodeArgs[byok.UpdateArgs](req.Payload)
+		out, err = f.UpdateCharge(ctx, creds, tok, a.Ref, a.Amount)
+	case byok.OpCancelCharge:
+		err = f.CancelCharge(ctx, creds, tok, decodeArgs[byok.RefArgs](req.Payload).Ref)
+		out = struct{}{}
+	case byok.OpRefund:
+		out, err = f.Refund(ctx, creds, tok, decodeArgs[byok.RefundRequest](req.Payload))
+	case byok.OpGetRefund:
+		a := decodeArgs[byok.GetRefundArgs](req.Payload)
+		out, err = f.GetRefund(ctx, creds, tok, a.PaymentID, a.RefundID)
+	case byok.OpRegisterWebhook:
+		a := decodeArgs[byok.WebhookArgs](req.Payload)
+		err = f.RegisterWebhook(ctx, creds, tok, a.Product, a.URL)
+		out = struct{}{}
+	case byok.OpListCallbacks:
+		out, err = f.ListCallbacks(ctx, creds, tok, decodeArgs[byok.CallbacksArgs](req.Payload).Since)
+	case byok.OpRetryCallbacks:
+		err = f.RetryCallbacks(ctx, creds, tok, decodeArgs[byok.RetryArgs](req.Payload).Refs)
+		out = struct{}{}
+	case byok.OpSimulatePayment:
+		// The Lambda refuses SimulatePayment outside a sandbox (part A).
+		if req.Mode != "test" {
+			err = byok.ErrSandboxOnly
+			break
+		}
+		err = f.SimulatePayment(ctx, creds, tok, decodeArgs[byok.RefArgs](req.Payload).Ref)
+		out = struct{}{}
 	default:
 		err = byok.ErrInvalidRequest
 	}

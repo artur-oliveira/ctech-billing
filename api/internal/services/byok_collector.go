@@ -104,7 +104,7 @@ func pix(ctx context.Context, s byokrpc.Session) error { return s.Limits.Pix(ctx
 // tenant gets its charge now. A refusal or failure is logged and leaves the
 // invoice issued (spec § 7.2); checkout and the sweep retry.
 func (c *ByokCollector) Issued(ctx context.Context, inv *billing.Invoice, now time.Time) {
-	if inv.Status != billing.InvoiceOpen || inv.AmountDue() <= 0 {
+	if inv.Status != billing.InvoiceOpen || inv.Collectable() <= 0 {
 		return
 	}
 	org, err := c.orgs.Get(ctx, inv.OrganizationID, inv.Livemode)
@@ -178,7 +178,7 @@ func (c *ByokCollector) NewAttempt(ctx context.Context, inv *billing.Invoice, ac
 }
 
 func (c *ByokCollector) latest(ctx context.Context, inv *billing.Invoice) (*billing.PaymentAttempt, int, error) {
-	if inv.Status != billing.InvoiceOpen || inv.AmountDue() <= 0 {
+	if inv.Status != billing.InvoiceOpen || inv.Collectable() <= 0 {
 		return nil, 0, fmt.Errorf("%w: invoice %s is %s", ErrInvoiceNotPayable, inv.ID, inv.Status)
 	}
 	attempts, err := c.payments.ListAttempts(ctx, inv.OrganizationID, inv.Livemode, inv.ID)
@@ -205,7 +205,7 @@ func (c *ByokCollector) open(ctx context.Context, org *billing.Organization, inv
 	a := &billing.PaymentAttempt{
 		ID: id.NewWithPrefix(id.PrefixPaymentAttempt), OrganizationID: inv.OrganizationID, Livemode: inv.Livemode,
 		InvoiceID: inv.ID, AttemptNumber: number, Status: billing.AttemptPending, Method: billing.MethodBYOK,
-		Amount: inv.AmountDue(), Provider: org.PayoutProvider, Product: billing.ProductPixDue, DueDate: due, CreatedAt: now.UTC(),
+		Amount: inv.Collectable(), Provider: org.PayoutProvider, Product: billing.ProductPixDue, DueDate: due, CreatedAt: now.UTC(),
 	}
 	a.ChargeRef = billing.InterTxid(a.ID)
 	if err := c.payments.CreateByokAttempt(ctx, a, org.AccountOrganizationID, now); err != nil {
@@ -356,14 +356,14 @@ func (c *ByokCollector) Credited(ctx context.Context, inv *billing.Invoice, now 
 		return err
 	}
 	a := attempts[len(attempts)-1]
-	if a.Method != billing.MethodBYOK || a.Status != billing.AttemptPending || a.Amount == inv.AmountDue() {
+	if a.Method != billing.MethodBYOK || a.Status != billing.AttemptPending || a.Amount == inv.Collectable() {
 		return nil
 	}
 	org, err := c.orgs.Get(ctx, inv.OrganizationID, inv.Livemode)
 	if err != nil {
 		return err
 	}
-	if inv.AmountDue() <= 0 {
+	if inv.Collectable() <= 0 {
 		_, err := c.cancelAt(ctx, org, &a, "credited", billing.CausePaymentFailed, now)
 		return err
 	}
@@ -375,7 +375,7 @@ func (c *ByokCollector) Credited(ctx context.Context, inv *billing.Invoice, now 
 		return err
 	}
 	_, err = byokrpc.Call(ctx, sess, byok.CapabilityCollection, func(cr byok.Credentials, t byok.Token) (byok.Charge, error) {
-		return sess.P.UpdateCharge(ctx, cr, t, a.ChargeRef, int64(inv.AmountDue()))
+		return sess.P.UpdateCharge(ctx, cr, t, a.ChargeRef, int64(inv.Collectable()))
 	})
 	switch {
 	case errors.Is(err, byok.ErrConcluded):
@@ -384,7 +384,7 @@ func (c *ByokCollector) Credited(ctx context.Context, inv *billing.Invoice, now 
 	case err != nil:
 		return err
 	}
-	return c.payments.SetByokAmount(ctx, &a, inv.AmountDue(), now)
+	return c.payments.SetByokAmount(ctx, &a, inv.Collectable(), now)
 }
 
 // SimulatePayment pays a test invoice's charge in the provider's sandbox

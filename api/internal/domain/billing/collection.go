@@ -98,6 +98,11 @@ func PayableUntil(due brcal.Date, validityDays int) brcal.Date {
 	return due.AddDays(max(1, validityDays))
 }
 
+// Collectable is what a BYOK charge asks for: the amount due net of the credit
+// notes already issued (spec § 7.3: a credit note on an open invoice updates
+// the charge), never below zero.
+func (i *Invoice) Collectable() Cents { return max(0, i.AmountDue()-i.CreditedTotal) }
+
 // ValidityDays is how long after its due date an invoice's BYOK charge stays
 // payable: its copied dunning schedule's last offset, at least one day (plan
 // scope decision 4), so the Pix is payable exactly as long as billing chases.

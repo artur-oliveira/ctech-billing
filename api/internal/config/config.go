@@ -153,6 +153,10 @@ type Config struct {
 	// to a merchant's bank. Empty unmounts every connection route and
 	// cmd/byok refuses to start.
 	ByokOutboundFunction string `env:"BYOK_OUTBOUND_FUNCTION"`
+	// ByokHooksHost is the mTLS webhook host the providers call (spec § 6.1:
+	// billing-byok-hooks[-env].aoctech.app). Empty: no webhook is registered,
+	// and payments are confirmed by the hourly sweep.
+	ByokHooksHost string `env:"BYOK_HOOKS_HOST"`
 }
 
 // Load reads the configuration from the environment.
