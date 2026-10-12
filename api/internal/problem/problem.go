@@ -293,6 +293,8 @@ func FromError(err error) *Problem {
 	case errors.Is(err, statement.ErrInvalidMapping):
 		return Unprocessable(err.Error()).WithCode("invalid_csv_mapping")
 
+	case errors.Is(err, repositories.ErrNotUnclassified):
+		return Conflict("this bank line was already classified").WithCode("line_already_classified")
 	case errors.Is(err, repositories.ErrAccountIsSynced):
 		return Conflict("this account is synced from the bank; its movements come from the statement").WithCode("account_is_synced")
 	case errors.Is(err, repositories.ErrUnknownAccount):

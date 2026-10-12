@@ -106,6 +106,7 @@
     "byok_sandbox_test_only": "O ambiente de testes do banco é só para o modo de teste.",
     "byok_invalid_request": "Os dados da conexão não são válidos. Confira e tente de novo.",
     "byok_connection_changed": "A conexão mudou enquanto você editava. Tente de novo.",
+    "line_already_classified": "Este lançamento já foi classificado.",
     "account_is_synced": "Esta conta é sincronizada com o banco. Os lançamentos vêm do extrato."
   },
   "field": {

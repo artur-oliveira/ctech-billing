@@ -167,7 +167,9 @@ func (s *ByokStatement) Sync(ctx context.Context, sp space.ResolvedSpace, conn *
 	if err := s.ledger.SetProviderBalance(ctx, sp, conn.LedgerAccountID, pb); err != nil {
 		return res, err
 	}
-	s.record(ctx, conn, nil, now)
+	// Healthy again, recorded in the one save below (RecordOutcome would write
+	// the row a second time; final review I6).
+	conn.ConsecutiveFailures, conn.LastErrorCode, conn.LastTokenOKAt = 0, "", now.UTC()
 	conn.LastSyncOKAt, conn.SyncedThrough = now.UTC(), today
 	res.BackfillDone = conn.BackfillDone
 	return res, s.repo.SaveConnection(ctx, conn, "", "", "", now)

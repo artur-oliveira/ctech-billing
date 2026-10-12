@@ -3,12 +3,18 @@
 package integration
 
 import (
+	"context"
 	"errors"
+	"sync/atomic"
 	"testing"
 	"time"
 
-	"gopkg.aoctech.app/api-commons/byok"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 
+	"gopkg.aoctech.app/api-commons/byok"
+	"gopkg.aoctech.app/api-commons/cache"
+
+	"gopkg.aoctech.app/billing/api/internal/domain/byokconn"
 	"gopkg.aoctech.app/billing/api/internal/repositories"
 	"gopkg.aoctech.app/billing/api/internal/services"
 	"gopkg.aoctech.app/billing/api/internal/space"
@@ -155,4 +161,40 @@ func TestReconnectingTheSameAccountResumesWithoutDoubleCounting(t *testing.T) {
 	if acct.Balance != 1000 || acct.SyncState != "active" {
 		t.Fatalf("balance %d (bank 1000), sync_state %q", acct.Balance, acct.SyncState)
 	}
+}
+
+// Final review I6: an hourly sync writes the connection once, and the row it
+// writes is small (the sealed bundle lives in its own row, written only on
+// connect and renewal), so the hourly cost stays near the plan's budget.
+func TestAnHourlySyncWritesOneSmallRow(t *testing.T) {
+	ctx := ctxT(t)
+	env := newByokEnv(t)
+	env.conn.BackfillDone = true
+	if err := env.repo.SaveConnection(ctx, env.conn, "u", "r", "", now()); err != nil {
+		t.Fatal(err)
+	}
+	var calls, records atomic.Int64
+	counted := repositories.NewByokRepository(countingByokClient(&calls), testCfg)
+	st := services.NewByokStatement(counted, env.ledger, cache.NewMemoryBackend(100), env.connections.Session,
+		func(ctx context.Context, c *byokconn.Connection, err error, at time.Time) {
+			// RecordOutcome writes the row too: a success must not cost a second write.
+			records.Add(1)
+			env.connections.RecordOutcome(ctx, c, err, at)
+		})
+	if _, err := st.Sync(ctx, env.space, env.conn, now()); err != nil {
+		t.Fatal(err)
+	}
+	if calls.Load()+records.Load() != 1 {
+		t.Fatalf("%d row writes and %d health writes in one sync, want one write in all", calls.Load(), records.Load())
+	}
+	item := repositories.NewBase(testDB, testCfg, repositories.TableByok)
+	raw, _ := item.GetItem(ctx, env.conn.AccountOrganizationID+"#live", "CONNECTION#inter")
+	if _, has := raw["sealed"]; has {
+		t.Fatal("the hot connection row carries the sealed bundle")
+	}
+}
+
+// countingByokClient counts the DynamoDB calls a repository makes.
+func countingByokClient(n *atomic.Int64) *dynamodb.Client {
+	return countingClient(n)
 }

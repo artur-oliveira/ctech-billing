@@ -67,12 +67,15 @@ func TestTheRawConnectionItemHoldsOnlyCiphertext(t *testing.T) {
 		t.Fatalf("%d %s", r.status, r.body)
 	}
 	item := e.rawByokItem(t, e.accountOrg+"#live", "CONNECTION#inter")
-	for k, v := range item {
-		if s, ok := v.(*types.AttributeValueMemberS); ok && (strings.Contains(s.Value, "s3cr3t-value") || strings.Contains(s.Value, "BEGIN")) {
-			t.Fatalf("attribute %s holds plaintext", k)
+	sealed := e.rawByokItem(t, e.accountOrg+"#live", "SEALED#inter")
+	for _, it := range []map[string]types.AttributeValue{item, sealed} {
+		for k, v := range it {
+			if s, ok := v.(*types.AttributeValueMemberS); ok && (strings.Contains(s.Value, "s3cr3t-value") || strings.Contains(s.Value, "BEGIN")) {
+				t.Fatalf("attribute %s holds plaintext", k)
+			}
 		}
 	}
-	if !strings.HasPrefix(item["sealed"].(*types.AttributeValueMemberS).Value, "b1.") {
+	if !strings.HasPrefix(sealed["sealed"].(*types.AttributeValueMemberS).Value, "b1.") {
 		t.Fatal("sealed is a b1 bundle")
 	}
 	if strings.Contains(string(r.body), "s3cr3t-value") || strings.Contains(string(r.body), "sealed") {

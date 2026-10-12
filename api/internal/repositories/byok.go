@@ -39,27 +39,88 @@ func NewByokRepository(db *dynamodb.Client, cfg *config.Config) *ByokRepository 
 	return &ByokRepository{base: NewBase(db, cfg, TableByok), audit: NewBase(db, cfg, TableAudit)}
 }
 
+// sealedRow holds a connection's sealed bundle apart from the connection row:
+// the hot row (health, cursors) is rewritten every hour and is small; the
+// bundle is written only on connect and on renewal (final review I6: about
+// 4 WRU per connection-hour instead of 40).
+type sealedRow struct {
+	keys
+	Sealed  string `dynamodbav:"sealed"`
+	Version int    `dynamodbav:"version"`
+}
+
+// ByokSealedSK keys a connection's sealed bundle beside its row.
+func ByokSealedSK(provider string) string { return "SEALED#" + provider }
+
+func (r *ByokRepository) sealedPut(c *byokconn.Connection, now time.Time) (types.TransactWriteItem, error) {
+	item, err := Encode(sealedRow{keys: newKeys(ByokConnectionPK(c.AccountOrganizationID, c.Livemode), ByokSealedSK(c.Provider), RetentionByokConnection, now),
+		Sealed: c.Sealed, Version: c.Version})
+	if err != nil {
+		return types.TransactWriteItem{}, err
+	}
+	return r.base.BuildPutTxItem(item), nil
+}
+
+// LoadSealed reads the sealed bundle into a connection read from the job index
+// (which carries the hot row only). The shared sandbox has none.
+func (r *ByokRepository) LoadSealed(ctx context.Context, c *byokconn.Connection) error {
+	if c.Kind != byokconn.KindMerchant || c.Sealed != "" {
+		return nil
+	}
+	item, err := r.base.GetItem(ctx, ByokConnectionPK(c.AccountOrganizationID, c.Livemode), ByokSealedSK(c.Provider))
+	if err != nil || item == nil {
+		return err
+	}
+	row, err := Decode[sealedRow](item)
+	if err != nil {
+		return err
+	}
+	c.Sealed = row.Sealed
+	return nil
+}
+
 func (r *ByokRepository) row(c *byokconn.Connection, now time.Time) connectionRow {
-	row := connectionRow{keys: newKeys(ByokConnectionPK(c.AccountOrganizationID, c.Livemode), ByokConnectionSK(c.Provider), RetentionByokConnection, now), Connection: *c}
+	hot := *c
+	hot.Sealed = "" // its own row: sealedRow
+	row := connectionRow{keys: newKeys(ByokConnectionPK(c.AccountOrganizationID, c.Livemode), ByokConnectionSK(c.Provider), RetentionByokConnection, now), Connection: hot}
 	if c.State != byokconn.StateDisconnected {
 		row.SchedulePK, row.ScheduleSK = byokJobPK(c.Livemode), c.AccountOrganizationID+"#"+c.Provider
 	}
 	return row
 }
 
+// GetConnection reads the connection and its sealed bundle: one key-condition
+// query of the organization's small partition (a few rows per provider).
 func (r *ByokRepository) GetConnection(ctx context.Context, accountOrgID string, livemode bool, provider string) (*byokconn.Connection, error) {
-	item, err := r.base.GetItem(ctx, ByokConnectionPK(accountOrgID, livemode), ByokConnectionSK(provider))
+	res, err := r.base.Query(ctx, QueryOpts{PK: ByokConnectionPK(accountOrgID, livemode), Limit: 50})
 	if err != nil {
 		return nil, err
 	}
-	if item == nil {
+	var conn *byokconn.Connection
+	sealed := ""
+	for _, item := range res.Items {
+		sk, _ := item["sk"].(*types.AttributeValueMemberS)
+		switch {
+		case sk == nil:
+		case sk.Value == ByokConnectionSK(provider):
+			row, err := Decode[connectionRow](item)
+			if err != nil {
+				return nil, err
+			}
+			conn = &row.Connection
+		case sk.Value == ByokSealedSK(provider):
+			row, err := Decode[sealedRow](item)
+			if err != nil {
+				return nil, err
+			}
+			sealed = row.Sealed
+		}
+	}
+	if conn == nil {
 		return nil, fmt.Errorf("%w: connection %s", ErrNotFound, provider)
 	}
-	row, err := Decode[connectionRow](item)
-	if err != nil {
-		return nil, err
-	}
-	return &row.Connection, nil
+	conn.Sealed = sealed
+	return conn, nil
 }
 
 func (r *ByokRepository) ListConnections(ctx context.Context, accountOrgID string, livemode bool) ([]byokconn.Connection, error) {
@@ -109,7 +170,15 @@ func (r *ByokRepository) CreateConnection(ctx context.Context, c *byokconn.Conne
 		ConditionExpression:      aws.String("attribute_not_exists(#state)"),
 		ExpressionAttributeNames: map[string]string{"#state": "state"},
 	}}
-	err = r.base.TransactWrite(ctx, txItems(put, audit))
+	items := txItems(put, audit)
+	if c.Sealed != "" {
+		sp, err := r.sealedPut(c, now)
+		if err != nil {
+			return err
+		}
+		items = append(items, sp)
+	}
+	err = r.base.TransactWrite(ctx, items)
 	if IsConditionFailed(err) {
 		return ErrConnectionExists
 	}
@@ -152,13 +221,34 @@ func (r *ByokRepository) SaveConnection(ctx context.Context, c *byokconn.Connect
 	if err != nil {
 		return err
 	}
+	cond := aws.String("revision = :r")
+	vals := map[string]types.AttributeValue{":r": &types.AttributeValueMemberN{Value: strconv.Itoa(read)}}
+	if action == "" {
+		// The hourly save: one plain conditional put of the small hot row, no
+		// transaction (a transaction costs twice the write units).
+		_, err := r.base.PutItemRaw(ctx, &dynamodb.PutItemInput{Item: item, ConditionExpression: cond, ExpressionAttributeValues: vals})
+		if err != nil {
+			if IsConditionFailed(err) {
+				return ErrConnectionChanged
+			}
+			return err
+		}
+		*c = next
+		return nil
+	}
 	put := types.TransactWriteItem{Put: &types.Put{
-		TableName:                 aws.String(r.base.TableName),
-		Item:                      item,
-		ConditionExpression:       aws.String("revision = :r"),
-		ExpressionAttributeValues: map[string]types.AttributeValue{":r": &types.AttributeValueMemberN{Value: strconv.Itoa(read)}},
+		TableName: aws.String(r.base.TableName), Item: item, ConditionExpression: cond, ExpressionAttributeValues: vals,
 	}}
 	items := txItems(put)
+	// An audited change may carry a new bundle (a renewal): the sealed row is
+	// written with it. A plain save never changes the bundle.
+	if c.Sealed != "" {
+		sp, err := r.sealedPut(&next, now)
+		if err != nil {
+			return err
+		}
+		items = append(items, sp)
+	}
 	if action != "" {
 		audit, err := r.auditItem(c, action, actor, requestID, now)
 		if err != nil {
@@ -181,8 +271,10 @@ func (r *ByokRepository) DeleteConnection(ctx context.Context, c *byokconn.Conne
 	if err != nil {
 		return err
 	}
-	del := r.base.BuildDeleteTxItem(ByokConnectionPK(c.AccountOrganizationID, c.Livemode), ByokConnectionSK(c.Provider))
-	return conflictErr(r.base.TransactWrite(ctx, txItems(del, audit)))
+	pk := ByokConnectionPK(c.AccountOrganizationID, c.Livemode)
+	del := r.base.BuildDeleteTxItem(pk, ByokConnectionSK(c.Provider))
+	delSealed := r.base.BuildDeleteTxItem(pk, ByokSealedSK(c.Provider))
+	return conflictErr(r.base.TransactWrite(ctx, txItems(del, delSealed, audit)))
 }
 
 // ConnectionsForJob is cross-organization by design (ADR 0002): cmd/byok only.

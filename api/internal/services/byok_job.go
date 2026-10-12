@@ -49,6 +49,8 @@ type ByokMailer interface {
 type byokJobRepo interface {
 	ConnectionsForJob(ctx context.Context, livemode bool, startKey map[string]types.AttributeValue, limit int) (*repositories.Page[byokconn.Connection], error)
 	SaveConnection(ctx context.Context, c *byokconn.Connection, actor, requestID, action string, now time.Time) error
+	// LoadSealed adds the sealed bundle the job index does not carry.
+	LoadSealed(ctx context.Context, c *byokconn.Connection) error
 }
 
 // ByokJob is cmd/byok's work: every connection of a mode, through a bounded
@@ -196,6 +198,9 @@ func (j *ByokJob) runOne(ctx context.Context, conn *byokconn.Connection, now tim
 	sp, err := j.spaceFor(conn)
 	if err != nil {
 		return fmt.Errorf("%s %s: space: %w", conn.AccountOrganizationID, conn.Provider, err)
+	}
+	if err := j.repo.LoadSealed(ctx, conn); err != nil {
+		return fmt.Errorf("%s %s: sealed: %w", conn.AccountOrganizationID, conn.Provider, err)
 	}
 	for _, step := range stepOrder {
 		fn, ok := j.steps[step]

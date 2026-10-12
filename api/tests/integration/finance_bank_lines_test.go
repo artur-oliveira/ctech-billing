@@ -11,6 +11,7 @@ import (
 	"gopkg.aoctech.app/billing/api/internal/domain/brcal"
 	"gopkg.aoctech.app/billing/api/internal/domain/finance"
 	"gopkg.aoctech.app/billing/api/internal/repositories"
+	"gopkg.aoctech.app/billing/api/internal/services"
 	"gopkg.aoctech.app/billing/api/internal/space"
 )
 
@@ -199,5 +200,24 @@ func TestTheUnclassifiedListIsOneQueryWhateverTheHistory(t *testing.T) {
 	}
 	if calls.Load() != 1 {
 		t.Fatalf("%d DynamoDB calls, want 1", calls.Load())
+	}
+}
+
+// An auto-settling bill that expects a bank-synced account is settled by
+// classifying its bank line, never by the daily job: the job skips it instead
+// of failing every day (final review, re-graded).
+func TestTheAutoSettleJobSkipsBillsOfASyncedAccount(t *testing.T) {
+	ctx := ctxT(t)
+	_, sp := byokSpace(t)
+	bills := repositories.NewBillRepository(testDB, testCfg)
+	today := brcal.FromTime(now())
+	if _, err := bills.Create(ctx, sp, finance.Bill{Direction: finance.Payable, Amount: 300, AccountID: "byok-inter-abc", AutoSettle: true,
+		CategoryID: "cat-aluguel", Description: "Aluguel", Competence: today, Due: today, Origin: finance.OriginManual}, repositories.PostMeta{Actor: "u"}, now()); err != nil {
+		t.Fatal(err)
+	}
+	job := services.NewFinanceJobs(bills, repositories.NewRecurrenceRepository(testDB, testCfg))
+	res := job.AutoSettle(ctx, true, today, now())
+	if len(res.Errors) != 0 {
+		t.Fatalf("%v", res.Errors)
 	}
 }

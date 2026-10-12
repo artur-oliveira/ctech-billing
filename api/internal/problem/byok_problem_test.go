@@ -27,6 +27,7 @@ func TestByokErrorsHaveTheirOwnCodes(t *testing.T) {
 		{byok.ErrRateLimited, 503, "byok_provider_unavailable"},
 		{byok.ErrInvalidRequest, 422, "byok_invalid_request"},
 		{services.ErrSyncTooSoon, 429, "byok_sync_too_soon"},
+		{repositories.ErrNotUnclassified, 409, "line_already_classified"},
 		{services.ErrByokNotConnected, 404, "byok_not_connected"},
 		{services.ErrSandboxInLive, 409, "byok_sandbox_test_only"},
 		{repositories.ErrConnectionExists, 409, "byok_already_connected"},

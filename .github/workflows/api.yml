@@ -131,7 +131,7 @@ jobs:
           make build-lambdas
           for fn in dist/lambda/*.zip; do
             name="${ENVIRONMENT}-ctech-billing-$(basename "$fn" .zip)"
-            aws lambda update-function-code --function-name "$name" --zip-file "fileb://$fn" --publish >/dev/null
+            aws lambda update-function-code --function-name "$name" --zip-file "fileb://$fn" >/dev/null
             aws lambda wait function-updated-v2 --function-name "$name"
           done
 

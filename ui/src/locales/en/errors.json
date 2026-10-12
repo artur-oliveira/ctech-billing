@@ -106,6 +106,7 @@
     "byok_sandbox_test_only": "The bank's test environment is for test mode only.",
     "byok_invalid_request": "The connection details are not valid. Check them and try again.",
     "byok_connection_changed": "The connection changed while you were editing. Try again.",
+    "line_already_classified": "This entry was already classified.",
     "account_is_synced": "This account is synced with the bank. Its entries come from the statement."
   },
   "field": {

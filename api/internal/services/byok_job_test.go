@@ -53,6 +53,8 @@ func (m *memJobRepo) SaveConnection(_ context.Context, c *byokconn.Connection, _
 	return repositories.ErrNotFound
 }
 
+func (m *memJobRepo) LoadSealed(context.Context, *byokconn.Connection) error { return nil }
+
 type recordingMailer struct {
 	mu   sync.Mutex
 	sent []email.ByokNotice
