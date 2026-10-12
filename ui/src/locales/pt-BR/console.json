@@ -15,7 +15,10 @@
   "credentials": "Credenciais",
   "webhooks": "Webhooks",
   "settings": "Configurações",
-  "applications": "Solicitações"
+  "applications": "Solicitações",
+  "more": "Mais",
+  "moreTitle": "Mais seções",
+  "groupMore": "Gerenciar"
  },
  "shell": {
   "testBanner": "Modo de teste. Nada aqui cobra de verdade."

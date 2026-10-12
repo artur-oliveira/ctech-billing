@@ -67,7 +67,7 @@ export function ReportsView({view: initial = "dre"}: {view?: ReportView}) {
   return (
     <div className="space-y-4">
       <div className="space-y-3">
-        <div role="tablist" aria-label={t("finance.reports.report")} className="flex w-full min-w-0 items-center gap-0.5 overflow-x-auto whitespace-nowrap rounded-lg border border-border bg-surface p-0.5 [scrollbar-width:none]">
+        <div role="tablist" aria-label={t("finance.reports.report")} className="flex w-max max-w-full min-w-0 items-center gap-0.5 overflow-x-auto whitespace-nowrap rounded-lg border border-border bg-surface p-0.5 [scrollbar-width:none]">
           {TABS.map(tab => (
             <button
               key={tab}
