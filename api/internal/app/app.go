@@ -575,6 +575,19 @@ func BuildByok(ctx context.Context, cfg *config.Config, db *dynamodb.Client, c c
 	return conns, statement, nil
 }
 
+// BuildByokJob wires what cmd/byok needs: the connection services, the
+// repository it walks and the cache that guards the operator's warnings. No
+// HTTP app is built.
+func BuildByokJob(ctx context.Context, cfg *config.Config) (*services.ByokConnections, *services.ByokStatement, *repositories.ByokRepository, cache.Backend, error) {
+	db, err := newDynamoDB(ctx, cfg)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+	c := newCache(cfg)
+	conns, st, err := BuildByok(ctx, cfg, db, c, repositories.NewLedgerRepository(db, cfg))
+	return conns, st, repositories.NewByokRepository(db, cfg), c, err
+}
+
 // byokCounter counts the BYOK limiters in Valkey when the app has it, so every
 // instance shares one budget per connection; in memory otherwise.
 func byokCounter(c cache.Backend) ratelimit.Counter {

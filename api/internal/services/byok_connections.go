@@ -335,3 +335,13 @@ func (s *ByokConnections) RecordOutcome(ctx context.Context, conn *byokconn.Conn
 	}
 	_ = s.repo.SaveConnection(ctx, conn, "system", "", "", now) // a lost race: the other writer recorded health too
 }
+
+// SandboxCertNotAfter is the shared sandbox integration's certificate expiry,
+// as the outbound Lambda reports it with a token (a cached token carries it).
+func (s *ByokConnections) SandboxCertNotAfter(ctx context.Context, conn *byokconn.Connection) (time.Time, error) {
+	tok, err := s.tokens.Bearer(ctx, s.Session(conn).P, conn, byok.CapabilityStatement)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return tok.CertNotAfter, nil
+}

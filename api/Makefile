@@ -25,6 +25,8 @@ build:
 	CGO_ENABLED=$(CGO_ENABLED) GOOS=$(GOOS) GOARCH=$(GOARCH) \
 		go build -ldflags="-s -w" -o $(BUILD_DIR)/finance ./cmd/finance
 	CGO_ENABLED=$(CGO_ENABLED) GOOS=$(GOOS) GOARCH=$(GOARCH) \
+		go build -ldflags="-s -w" -o $(BUILD_DIR)/byok ./cmd/byok
+	CGO_ENABLED=$(CGO_ENABLED) GOOS=$(GOOS) GOARCH=$(GOARCH) \
 		go build -ldflags="-s -w" -o $(BUILD_DIR)/seed ./cmd/seed
 	CGO_ENABLED=$(CGO_ENABLED) GOOS=$(GOOS) GOARCH=$(GOARCH) \
 		go build -ldflags="-s -w" -o $(BUILD_DIR)/finance-rebuild ./cmd/finance-rebuild
