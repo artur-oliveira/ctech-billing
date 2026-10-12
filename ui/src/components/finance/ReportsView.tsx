@@ -7,8 +7,8 @@ import {useTranslation} from "react-i18next"
 
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
 import {segmentHit} from "@/components/ui/segmentHit"
-import {financeKeys, getCashFlow, getDRE, listAccounts} from "@/lib/api/finance"
-import type {Account, CashFlow, DRE, DREGroup} from "@/lib/api/financeTypes"
+import {financeKeys, getCardSpending, getCashFlow, getDRE, listAccounts, listCards} from "@/lib/api/finance"
+import type {Account, Card, CardSpending, CashFlow, DRE, DREGroup, SpendRow} from "@/lib/api/financeTypes"
 import {dreGroupLabel} from "@/lib/finance/labels"
 import {monthRange, type PresetId, PRESETS} from "@/lib/finance/periods"
 import {monthShort, todayIso} from "@/lib/finance/today"
@@ -18,9 +18,9 @@ import {money, signedMoney} from "@/lib/format"
 import {currentLocale, t as tr} from "@/lib/i18n"
 import {accountName} from "@/lib/finance/accountName"
 
-export type ReportView = "dre" | "cash"
+export type ReportView = "dre" | "cash" | "cards"
 
-const TABS: ReportView[] = ["dre", "cash"]
+const TABS: ReportView[] = ["dre", "cash", "cards"]
 
 /** The subtotal a DRE reader expects after each of these groups, cumulative. */
 const SUBTOTAL_AFTER: Partial<Record<DREGroup, "netRevenue" | "grossProfit" | "operatingResult">> = {
@@ -86,7 +86,9 @@ export function ReportsView({view: initial = "dre"}: {view?: ReportView}) {
         </Field>
       </div>
       <div role="tabpanel" id="report-panel" aria-labelledby={`tab-${view}`}>
-        {view === "dre" ? <DRETable from={from} to={to} accounts={names}/> : <CashTable from={from} to={to} accounts={names}/>}
+        {view === "dre" ? <DRETable from={from} to={to} accounts={names}/>
+          : view === "cash" ? <CashTable from={from} to={to} accounts={names}/>
+            : <CardSpendingView from={from} to={to} accounts={names}/>}
       </div>
     </div>
   )
@@ -208,5 +210,104 @@ function Figure({label, amount}: {label: string; amount: number}) {
       <span className="text-muted-foreground">{label}</span>
       <span data-numeric className="font-medium tabular-nums text-foreground">{signedMoney(amount)}</span>
     </div>
+  )
+}
+
+const ALL_CARDS = "all"
+
+function cardName(cards: Card[], id: string): string {
+  const c = cards.find(x => x.id === id)
+  if (!c) return tr("finance.reports.theCard")
+  return c.archived ? tr("finance.reports.spending.archivedCard", {name: c.name}) : c.name
+}
+
+/**
+ * What the cards billed, per category and month, by statement month (the
+ * statement that bills each installment): what the person pays, not the
+ * accrual the DRE shows. All cards or one; each row's share of the total.
+ */
+function CardSpendingView({from, to, accounts}: {from: string; to: string; accounts: Account[]}) {
+  const {t} = useTranslation()
+  const ctx = useFinanceCtx()
+  const [card, setCard] = useState(ALL_CARDS)
+  const cardId = card === ALL_CARDS ? undefined : card
+  const cards = useQuery({queryKey: financeKeys.cards(ctx.mode, ctx.space), queryFn: () => listCards(ctx)})
+  const q = useQuery({
+    queryKey: financeKeys.cardSpending(ctx.mode, ctx.space, from, to, card),
+    queryFn: () => getCardSpending(ctx, from, to, cardId),
+  })
+  const list = [...(cards.data?.data ?? [])].sort((a, b) => Number(a.archived) - Number(b.archived) || a.name.localeCompare(b.name, currentLocale()))
+  const r: CardSpending | undefined = q.data
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <Field label={t("finance.reports.spending.card")} htmlFor="rp-card">
+          <Select {...selectCopy()} id="rp-card" aria-label={t("finance.reports.spending.card")} value={card} onValueChange={setCard} className="w-56"
+            options={[{value: ALL_CARDS, label: t("finance.reports.spending.all")}, ...list.map(c => ({value: c.id, label: cardName(list, c.id)}))]}/>
+        </Field>
+      </div>
+      <p className="max-w-prose text-xs text-muted-foreground">{t("finance.reports.spending.basis")}</p>
+      {q.isLoading ? <Loading/> : q.error || !r ? <ErrorBlock error={q.error} onRetry={() => void q.refetch()}/> : r.categories.length === 0 ? <Empty/> : (
+        <>
+          <SpendTable months={r.months} rows={r.categories} label={row => nameOf(accounts, row.category_id ?? "")} byMonth={r.by_month} total={r.total}/>
+          {!cardId && r.cards.length > 1 && (
+            <section aria-label={t("finance.reports.spending.byCard")} className="space-y-2 pt-2">
+              <h2 className="text-sm font-medium text-foreground">{t("finance.reports.spending.byCard")}</h2>
+              <SpendTable months={r.months} rows={r.cards} label={row => cardName(list, row.card_id ?? "")} byMonth={r.by_month} total={r.total}/>
+            </section>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
+function SpendTable({months, rows, label, byMonth, total}: {months: string[]; rows: SpendRow[]; label: (r: SpendRow) => string; byMonth: number[]; total: number}) {
+  const {t} = useTranslation()
+  const pct = new Intl.NumberFormat(currentLocale(), {style: "percent", maximumFractionDigits: 0})
+  const share = (n: number) => (total > 0 ? pct.format(n / total) : "")
+  return (
+    <>
+    {/* A phone reads the ranking first: each row's total and share, then the months below. */}
+    <ul data-ranking className="divide-y divide-border border-y border-border sm:hidden">
+      {rows.map(row => (
+        <li key={row.category_id ?? row.card_id} className="flex items-baseline justify-between gap-3 py-2 text-sm">
+          <span className="min-w-0 [overflow-wrap:anywhere] text-foreground">{label(row)}</span>
+          <span className="shrink-0 text-right tabular-nums">
+            <span className="font-medium text-foreground">{money(row.total)}</span>
+            <span className="ml-2 text-muted-foreground">{share(row.total)}</span>
+          </span>
+        </li>
+      ))}
+    </ul>
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-max text-sm tabular-nums">
+        <thead>
+          <tr className="border-b border-border text-muted-foreground">
+            <th className="sticky left-0 bg-background py-2 pr-4 text-left font-normal">&nbsp;</th>
+            {months.map(m => <th key={m} className="py-2 pl-4 text-right font-normal">{monthShort(m)}</th>)}
+            <th className="py-2 pl-4 text-right font-normal">{t("finance.reports.total")}</th>
+            <th className="py-2 pl-4 text-right font-normal">{t("finance.reports.spending.share")}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(row => (
+            <tr key={row.category_id ?? row.card_id}>
+              <th scope="row" className="sticky left-0 max-w-[45vw] truncate bg-background py-1.5 pr-4 text-left font-normal text-foreground sm:max-w-none">{label(row)}</th>
+              {row.amounts.map((a, i) => <td key={i} className="py-1.5 pl-4 text-right text-muted-foreground">{money(a)}</td>)}
+              <td className="py-1.5 pl-4 text-right font-medium text-foreground">{money(row.total)}</td>
+              <td className="py-1.5 pl-4 text-right text-muted-foreground">{share(row.total)}</td>
+            </tr>
+          ))}
+          <tr className="border-t border-border">
+            <th scope="row" className="sticky left-0 bg-background py-1.5 pr-4 text-left font-semibold text-foreground">{t("finance.reports.total")}</th>
+            {byMonth.map((a, i) => <td key={i} className="py-1.5 pl-4 text-right font-semibold text-foreground">{money(a)}</td>)}
+            <td className="py-1.5 pl-4 text-right font-semibold text-foreground">{money(total)}</td>
+            <td className="py-1.5 pl-4 text-right text-muted-foreground">{share(total)}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    </>
   )
 }

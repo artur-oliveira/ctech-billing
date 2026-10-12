@@ -133,6 +133,7 @@ func financeRoutes() []financeRoute {
 		{"GET", "/accounts/:id/csv-mapping", space.Read, false, func(h *financeHandlers) fiber.Handler { return h.getCSVMapping }},
 		{"PUT", "/accounts/:id/csv-mapping", space.Import, true, func(h *financeHandlers) fiber.Handler { return h.putCSVMapping }},
 		{"GET", "/reports/dre", space.Read, false, func(h *financeHandlers) fiber.Handler { return h.dre }},
+		{"GET", "/reports/card-spending", space.Read, false, func(h *financeHandlers) fiber.Handler { return h.cardSpending }},
 		{"GET", "/reports/cash-flow", space.Read, false, func(h *financeHandlers) fiber.Handler { return h.cashFlow }},
 		{"GET", "/settings", space.Read, false, func(h *financeHandlers) fiber.Handler { return h.getSettings }},
 		{"PUT", "/settings/default-receiving-account", space.Configure, true, func(h *financeHandlers) fiber.Handler { return h.setDefaultReceivingAccount }},

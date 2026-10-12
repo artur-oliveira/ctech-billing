@@ -254,7 +254,8 @@
     "report": "Relatório",
     "tabs": {
       "dre": "DRE",
-      "cash": "Fluxo de caixa"
+      "cash": "Fluxo de caixa",
+      "cards": "Cartões"
     },
     "period": "Período",
     "empty": "Nada neste período.",
@@ -273,7 +274,15 @@
     "out": "Saídas",
     "openings": "Saldos iniciais",
     "monthResult": "Resultado do mês",
-    "closingBalance": "Saldo final"
+    "closingBalance": "Saldo final",
+    "spending": {
+      "card": "Cartão",
+      "all": "Todos os cartões",
+      "share": "Parte",
+      "basis": "Por mês da fatura: uma compra parcelada aparece em cada fatura que a cobra, e um estorno reduz a fatura em que é creditado. O DRE mostra a compra inteira no mês em que foi feita.",
+      "byCard": "Por cartão",
+      "archivedCard": "{{name}} (arquivado)"
+    }
   },
   "statement": {
     "receipt": "Recebimento",

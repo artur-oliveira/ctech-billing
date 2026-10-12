@@ -94,3 +94,53 @@ describe("F7 — relatórios", () => {
     expect(await screen.findByText("Nada neste período.")).toBeInTheDocument()
   })
 })
+
+describe("card spending (Gastos com cartão)", () => {
+  const CARDS = [
+    {id: "visa", name: "Visa", closing_day: 3, due_day: 10, paying_account_id: "cc", open_month: "2026-03", balance: 0, archived: false},
+    {id: "master", name: "Master", closing_day: 3, due_day: 10, paying_account_id: "cc", open_month: "2026-03", balance: 0, archived: true},
+  ]
+  const SPEND = {
+    basis: "statement" as const, months: ["2026-01", "2026-02"], by_month: [40000, 60000], total: 100000,
+    categories: [{category_id: "rent", amounts: [0, 75000], total: 75000}, {category_id: "tax", amounts: [40000, -15000], total: 25000}],
+    cards: [{card_id: "master", amounts: [0, 75000], total: 75000}, {card_id: "visa", amounts: [40000, -15000], total: 25000}],
+  }
+  function serveCards() {
+    serve()
+    vi.spyOn(finance, "listCards").mockResolvedValue({data: CARDS, has_more: false})
+    return vi.spyOn(finance, "getCardSpending").mockResolvedValue(SPEND)
+  }
+
+  it("is a third report: per category, largest first, with each one's share and the months", async () => {
+    const spend = serveCards()
+    renderWithQuery(<ReportsView view="cards"/>)
+    expect(screen.getByRole("tab", {name: "Cartões"})).toHaveAttribute("aria-selected", "true")
+    const rent = (await screen.findByRole("rowheader", {name: "Aluguel (arquivada)"})).closest("tr")!
+    expect(within(rent).getAllByRole("cell").map(c => c.textContent?.replace(/\s/g, " "))).toEqual(["R$ 0,00", "R$ 750,00", "R$ 750,00", "75%"])
+    const heads = screen.getAllByRole("rowheader").map(h => h.textContent)
+    expect(heads.slice(0, 3)).toEqual(["Aluguel (arquivada)", "Impostos", "Total"])
+    // By statement month, said in words.
+    expect(screen.getByText(/mês da fatura/)).toBeInTheDocument()
+    const {from, to} = monthRange("this_year", todayIso())
+    expect(spend).toHaveBeenCalledWith(expect.anything(), from, to, undefined)
+    // Every card's total too, archived ones included.
+    expect(screen.getByRole("rowheader", {name: "Master (arquivado)"})).toBeInTheDocument()
+    // A phone reads the ranking first: total and share per category.
+    const ranking = document.querySelector("[data-ranking]") as HTMLElement
+    expect(within(ranking).getAllByRole("listitem").map(li => li.textContent?.replace(/\s/g, " "))).toEqual(["Aluguel (arquivada)R$ 750,0075%", "ImpostosR$ 250,0025%"])
+  })
+
+  it("narrows to one card", async () => {
+    const spend = serveCards()
+    renderWithQuery(<ReportsView view="cards"/>)
+    await screen.findByRole("rowheader", {name: "Impostos"})
+    await pick("Cartão", "Visa")
+    await waitFor(() => expect(spend).toHaveBeenLastCalledWith(expect.anything(), expect.any(String), expect.any(String), "visa"))
+  })
+
+  it("says so when the cards billed nothing", async () => {
+    serveCards().mockResolvedValue({...SPEND, by_month: [0, 0], total: 0, categories: [], cards: []})
+    renderWithQuery(<ReportsView view="cards"/>)
+    expect(await screen.findByText("Nada neste período.")).toBeInTheDocument()
+  })
+})

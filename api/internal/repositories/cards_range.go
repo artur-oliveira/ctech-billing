@@ -8,6 +8,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 
+	"gopkg.aoctech.app/billing/api/internal/domain/billing"
 	"gopkg.aoctech.app/billing/api/internal/domain/finance"
 	"gopkg.aoctech.app/billing/api/internal/space"
 )
@@ -137,4 +138,39 @@ func statementMonthOf(sk string) (finance.Month, bool) {
 	}
 	m, err := finance.ParseMonth(rest[:7])
 	return m, err == nil
+}
+
+// SpendLines is a card's spending by statement month for the card-spending
+// report: every statement line of from..to (installments, advances, refund
+// credits), with ONE Query on the card's partition like StatementRange. A
+// carried credit is the previous statement's money, not spending, and is left
+// out; so is the frozen statement row.
+func (r *CardRepository) SpendLines(ctx context.Context, sp space.ResolvedSpace, cardID string, from, to finance.Month) ([]finance.SpendLine, error) {
+	if err := sp.Require(space.Read); err != nil {
+		return nil, err
+	}
+	raw, err := r.ledger.queryRange(ctx, r.cards, CardPK(sp, cardID), StatementSK(from), StatementSK(to)+"$")
+	if err != nil {
+		return nil, err
+	}
+	var out []finance.SpendLine
+	for _, it := range raw {
+		sk, ok := it["sk"].(*types.AttributeValueMemberS)
+		if !ok || !strings.Contains(sk.Value, "#ITEM#") {
+			continue
+		}
+		m, ok := statementMonthOf(sk.Value)
+		if !ok {
+			continue
+		}
+		row, err := Decode[itemRow](it)
+		if err != nil {
+			return nil, err
+		}
+		if row.Kind == "carry" {
+			continue
+		}
+		out = append(out, finance.SpendLine{CardID: cardID, CategoryID: row.CategoryID, Month: m, Amount: billing.Cents(row.Amount)})
+	}
+	return out, nil
 }
