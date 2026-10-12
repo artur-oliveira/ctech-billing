@@ -80,6 +80,15 @@ type Collector struct {
 	// Optional for the same reason the bus is: without it a paid invoice is a
 	// line missing from Finanças, never a payment refused.
 	finance InvoicePoster
+	// gates builds AuthorizeCharge's argument (spec 2026-10-11 § 7.1). Nil
+	// answers the empty gate: the wallet rail passes, a BYOK tenant is refused.
+	gates *ChargeGates
+}
+
+// WithGates attaches the single charge-gate builder.
+func (c *Collector) WithGates(g *ChargeGates) *Collector {
+	c.gates = g
+	return c
 }
 
 // InvoicePoster records a paid invoice in the finance ledger (spec § 3.8).
@@ -193,7 +202,7 @@ func (c *Collector) Pay(
 	if err != nil {
 		return nil, nil, err
 	}
-	if err := org.AuthorizeCharge(); err != nil {
+	if err := c.gates.Authorize(ctx, org); err != nil {
 		return nil, inv, err
 	}
 

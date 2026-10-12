@@ -35,6 +35,11 @@ type tenantResponse struct {
 	Livemode       bool                 `json:"livemode"`
 	PayoutStatus   billing.PayoutStatus `json:"payout_status"`
 	CanCharge      bool                 `json:"can_charge"`
+	// The collection rail (BYOK spec § 7.1, § 11.3) and, when can_charge is
+	// false, the problem code saying why.
+	PayoutRail     billing.PayoutRail `json:"payout_rail"`
+	PayoutProvider string             `json:"payout_provider,omitempty"`
+	ChargeBlock    string             `json:"charge_block,omitempty"`
 }
 
 // consoleSessionResponse is GET /v1.0/console/session (spec § 3, ADR 0028):

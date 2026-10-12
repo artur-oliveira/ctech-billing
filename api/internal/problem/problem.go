@@ -185,6 +185,16 @@ func FromError(err error) *Problem {
 
 	// BYOK (spec 2026-10-11 § 12.1). Details are fixed text: a provider's own
 	// message never reaches a client.
+	case errors.Is(err, billing.ErrTenantSuspended):
+		return Forbidden("this organization's live billing is suspended").WithCode("tenant_suspended")
+	case errors.Is(err, billing.ErrByokNotConnected):
+		return Conflict("no active bank connection for collection").WithCode("byok_not_connected")
+	case errors.Is(err, billing.ErrByokCertificateExpired):
+		return Conflict("the bank connection's certificate expired").WithCode("byok_certificate_expired")
+	case errors.Is(err, billing.ErrByokScopesMissing):
+		return Conflict("the bank integration lacks the collection scopes").WithCode("byok_collection_scopes_missing")
+	case errors.Is(err, billing.ErrByokQuotaExceeded):
+		return Conflict("the plan's charges are used up this month; upgrade to keep collecting").WithCode("byok_quota_exceeded")
 	case errors.Is(err, services.ErrByokSpaceKind):
 		return New(404, TypeSpaceNotFound, "Space not found", "space not found")
 	case errors.Is(err, services.ErrByokNotConnected):

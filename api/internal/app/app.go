@@ -93,10 +93,15 @@ func Build(ctx context.Context, cfg *config.Config, clock func() time.Time) (*fi
 		Cache:         cacheBackend,
 	}
 	finance := financeInvoices(db, cfg, orgs, customers)
+	// The single charge gate's facts (BYOK spec § 7.1): the connection row and,
+	// in live, the tenant's prod_billing entitlement. Built before the collector
+	// and the applications service it reads entitlement from.
+	gates := services.NewChargeGates(repositories.NewByokRepository(db, cfg), nil)
 	if walletCfg.Enabled() {
 		collector = services.NewCollector(invoices, payments, customers, orgs, subs, wallet.New(walletCfg)).
 			WithSettlementBus(bus).
-			WithFinance(finance)
+			WithFinance(finance).
+			WithGates(gates)
 	} else {
 		slog.Warn("wallet not configured — checkout and payment routes are not mounted")
 	}
@@ -162,6 +167,7 @@ func Build(ctx context.Context, cfg *config.Config, clock func() time.Time) (*fi
 			applications = applications.WithMail(mail, cfg.ApplicationsNotifyEmail)
 		}
 	}
+	gates.WithEntitlement(applications.Entitled)
 	billRepo := repositories.NewBillRepository(db, cfg)
 	recRepo := repositories.NewRecurrenceRepository(db, cfg)
 	ledgerRepo := repositories.NewLedgerRepository(db, cfg)
@@ -175,6 +181,7 @@ func Build(ctx context.Context, cfg *config.Config, clock func() time.Time) (*fi
 	v1.Register(app, v1.Deps{
 		ByokConnections: byokConns,
 		ByokStatement:   byokStatement,
+		ChargeGates:     gates,
 		Bills:           billRepo,
 		Applications:    applications,
 		Customers:       customers,

@@ -507,7 +507,7 @@ func TestPayoutGateIsAudited(t *testing.T) {
 	if org.PayoutStatus != billing.PayoutNotConfigured {
 		t.Fatalf("a new organization starts at %s, want not_configured", org.PayoutStatus)
 	}
-	if err := org.AuthorizeCharge(); !errors.Is(err, billing.ErrPayoutNotEnabled) {
+	if err := org.AuthorizeCharge(billing.ChargeGate{}); !errors.Is(err, billing.ErrPayoutNotEnabled) {
 		t.Fatalf("want ErrPayoutNotEnabled, got %v", err)
 	}
 

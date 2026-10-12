@@ -21,6 +21,8 @@ type Deps struct {
 	// unmounts the connection routes.
 	ByokConnections *services.ByokConnections
 	ByokStatement   *services.ByokStatement
+	// ChargeGates builds the single charge gate's facts (BYOK spec § 7.1).
+	ChargeGates *services.ChargeGates
 	// Bills is the bill repository the classification of a bank line settles
 	// through (spec § 8.3).
 	Bills *repositories.BillRepository
@@ -286,6 +288,7 @@ func registerConsole(v1 fiber.Router, d Deps, h *handlers, auth fiber.Handler) {
 		creds:                d.Credentials,
 		connector:            d.Connector,
 		hooks:                d.Webhooks,
+		gates:                d.ChargeGates,
 	}
 	// Assigned only when set: a nil interface value in the field must stay nil.
 	if d.SpaceLister != nil {

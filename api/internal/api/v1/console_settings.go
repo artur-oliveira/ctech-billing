@@ -100,13 +100,21 @@ func (h *consoleHandlers) settings(c fiber.Ctx) error {
 	if err != nil {
 		return fail(c, err)
 	}
+	gateErr := h.gates.Authorize(c.Context(), org)
+	block := ""
+	if p := problem.FromError(gateErr); gateErr != nil && p != nil {
+		block = p.Code
+	}
 	return c.JSON(settingsResponse{
 		Organization: tenantResponse{
 			OrganizationID: org.ID,
 			DisplayName:    org.DisplayName,
 			Livemode:       org.Livemode,
 			PayoutStatus:   org.PayoutStatus,
-			CanCharge:      org.AuthorizeCharge() == nil,
+			CanCharge:      gateErr == nil,
+			PayoutRail:     org.Rail(),
+			PayoutProvider: org.PayoutProvider,
+			ChargeBlock:    block,
 		},
 		Dunning:   newDunningPolicyResponse(org.DunningPolicy),
 		Issuer:    newIssuerResponse(org),

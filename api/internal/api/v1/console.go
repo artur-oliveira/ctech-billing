@@ -55,6 +55,9 @@ type consoleHandlers struct {
 	creds     *repositories.CredentialRepository
 	connector *services.CredentialConnector
 	hooks     *repositories.WebhookRepository
+	// gates is the single charge-gate builder (BYOK spec § 7.1): can_charge
+	// and the BYOK collection routes.
+	gates *services.ChargeGates
 }
 
 // creditPoster is the slice of services.FinanceInvoices the credit-note route

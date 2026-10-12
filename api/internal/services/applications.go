@@ -303,3 +303,24 @@ func (s *Applications) notifyDecided(ctx context.Context, app *billing.Applicati
 		slog.Error("applications: the decision e-mail was not sent", "application", app.ID, "error", err)
 	}
 }
+
+// Entitled reports a live tenant approved by an entitling prod_billing
+// subscription of its ORG_ customer in tenant zero (spec § 7.1, R4). Tenant
+// zero itself is always entitled. The BYOK charge gate reads it.
+func (s *Applications) Entitled(ctx context.Context, org *billing.Organization) (bool, error) {
+	if s.tenantZero != "" && org.ID == s.tenantZero {
+		return true, nil
+	}
+	if s.tenantZero == "" || org.AccountOrganizationID == "" {
+		return false, nil
+	}
+	customer, err := s.customers.GetByOrganization(ctx, s.tenantZero, true, org.AccountOrganizationID)
+	if errors.Is(err, repositories.ErrNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	sub, err := s.entitlement(ctx, customer.ID)
+	return sub != nil, err
+}

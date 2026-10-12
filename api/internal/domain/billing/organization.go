@@ -2,7 +2,6 @@ package billing
 
 import (
 	"errors"
-	"fmt"
 )
 
 // PayoutStatus is how far an organization has got in being able to receive money
@@ -83,6 +82,12 @@ type Organization struct {
 	// only in the transaction of the subscription change that caused it
 	// (repositories.TenantSuspension). Never on the wire.
 	SuspendedAt string `dynamodbav:"suspended_at,omitempty" json:"-"`
+
+	// PayoutRail and PayoutProvider are the collection rail (BYOK spec
+	// 2026-10-11 § 7.1): "" reads wallet; byok names the provider whose
+	// connection collects. Written by SetPayoutRail only (audited).
+	PayoutRail     PayoutRail `dynamodbav:"payout_rail,omitempty"     json:"payout_rail,omitempty"`
+	PayoutProvider string     `dynamodbav:"payout_provider,omitempty" json:"payout_provider,omitempty"`
 }
 
 // ErrTenantSuspended is a write refused because the live tenant is suspended.
@@ -91,17 +96,3 @@ var ErrTenantSuspended = errors.New("tenant is suspended")
 // Suspended reports a live tenant whose writes are refused. Test mode is never
 // suspended, whatever its row says.
 func (o *Organization) Suspended() bool { return o.Livemode && o.SuspendedAt != "" }
-
-// AuthorizeCharge is the **single** gate deciding whether an organization may
-// open a charge. Every path that collects money calls this one function.
-//
-// Keeping it in one place is the whole design: a gate spread across handlers is
-// a gate with a hole in it, and the hole is found by a merchant, not by a test.
-// The block is server-side authorization — hiding a button in the console is not
-// blocking anything.
-func (o *Organization) AuthorizeCharge() error {
-	if o.PayoutStatus == PayoutEnabled {
-		return nil
-	}
-	return fmt.Errorf("%w: payout_status is %q", ErrPayoutNotEnabled, o.PayoutStatus)
-}

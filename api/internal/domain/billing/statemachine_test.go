@@ -265,16 +265,16 @@ func TestCheckoutSessionExpiredCannotReopen(t *testing.T) {
 func TestOrganizationChargeGate(t *testing.T) {
 	for _, status := range []PayoutStatus{PayoutNotConfigured, PayoutPendingCustody} {
 		org := &Organization{PayoutStatus: status}
-		if err := org.AuthorizeCharge(); !errors.Is(err, ErrPayoutNotEnabled) {
+		if err := org.AuthorizeCharge(ChargeGate{}); !errors.Is(err, ErrPayoutNotEnabled) {
 			t.Errorf("payout_status %q must block charges, got %v", status, err)
 		}
 	}
-	if err := (&Organization{PayoutStatus: PayoutEnabled}).AuthorizeCharge(); err != nil {
+	if err := (&Organization{PayoutStatus: PayoutEnabled}).AuthorizeCharge(ChargeGate{}); err != nil {
 		t.Fatalf("an enabled organization must be allowed to charge: %v", err)
 	}
 	// The zero value must be closed, not open: a new organization that nobody has
 	// configured cannot be allowed to collect money by default.
-	if err := (&Organization{}).AuthorizeCharge(); err == nil {
+	if err := (&Organization{}).AuthorizeCharge(ChargeGate{}); err == nil {
 		t.Fatal("the zero-value organization must not be able to charge")
 	}
 }
