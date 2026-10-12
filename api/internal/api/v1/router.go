@@ -300,6 +300,7 @@ func registerConsole(v1 fiber.Router, d Deps, h *handlers, auth fiber.Handler) {
 		gates:                d.ChargeGates,
 		byok:                 d.ByokCollector,
 		setup:                d.ByokSetup,
+		payments:             d.Payments,
 	}
 	// Assigned only when set: a nil interface value in the field must stay nil.
 	if d.SpaceLister != nil {

@@ -59,8 +59,9 @@ type consoleHandlers struct {
 	// and the BYOK collection routes.
 	gates *services.ChargeGates
 	// byok is the BYOK collection rail; nil when not configured.
-	byok  *services.ByokCollector
-	setup *services.ByokCollectionSetup
+	byok     *services.ByokCollector
+	setup    *services.ByokCollectionSetup
+	payments *repositories.PaymentRepository
 }
 
 // creditPoster is the slice of services.FinanceInvoices the credit-note route
@@ -497,7 +498,9 @@ func (h *consoleHandlers) invoiceDetail(c fiber.Ctx, inv *billing.Invoice) error
 	if customer, err := h.customers.Get(c.Context(), t.OrganizationID, t.Livemode, inv.CustomerID); err == nil {
 		name = customer.Name
 	}
-	return c.JSON(newInvoiceDetailResponse(inv, lines, notes, trail, name, h.today(), h.links))
+	resp := newInvoiceDetailResponse(inv, lines, notes, trail, name, h.today(), h.links)
+	resp.Byok = h.byokBlock(c, inv)
+	return c.JSON(resp)
 }
 
 // createCustomer is C6's "novo cliente", on the shared implementation.

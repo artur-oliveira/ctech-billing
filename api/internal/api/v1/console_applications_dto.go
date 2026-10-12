@@ -24,6 +24,15 @@ type applicationResponse struct {
 	AppliedAt             string                    `json:"applied_at"`
 	DecidedAt             string                    `json:"decided_at,omitempty"`
 	RejectionReason       string                    `json:"rejection_reason,omitempty"`
+	// Payout is the approved merchant's live collection rail (BYOK spec
+	// § 11.3): what tenant zero's review shows per merchant.
+	Payout *applicationPayout `json:"payout,omitempty"`
+}
+
+type applicationPayout struct {
+	Rail     billing.PayoutRail   `json:"rail"`
+	Provider string               `json:"provider,omitempty"`
+	Status   billing.PayoutStatus `json:"status"`
 }
 
 func newApplicationResponse(a *billing.Application) applicationResponse {

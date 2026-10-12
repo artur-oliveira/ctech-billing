@@ -148,7 +148,14 @@ func (h *consoleHandlers) listApplications(c fiber.Ctx) error {
 	}
 	out := make([]applicationResponse, 0, len(page.Items))
 	for i := range page.Items {
-		out = append(out, newApplicationResponse(&page.Items[i]))
+		r := newApplicationResponse(&page.Items[i])
+		if page.Items[i].Status == billing.ApplicationApproved && page.Items[i].TenantID != "" {
+			// One point read per approved row of the page (at most pageLimit).
+			if org, err := h.orgs.Get(c.Context(), page.Items[i].TenantID, true); err == nil {
+				r.Payout = &applicationPayout{Rail: org.Rail(), Provider: org.PayoutProvider, Status: org.PayoutStatus}
+			}
+		}
+		out = append(out, r)
 	}
 	return c.JSON(pageOf(out, page.LastEvaluatedKey))
 }

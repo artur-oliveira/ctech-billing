@@ -362,3 +362,9 @@ var _ byokrpc.Session
 func todayPlus(n int) brcal.Date { return brcal.FromTime(now()).AddDays(n) }
 
 func bodyHas(b []byte, s string) bool { return strings.Contains(string(b), s) }
+
+// useWallet rebuilds the env's collector with this wallet client.
+func (e *collectEnv) useWallet(w services.ChargeOpener) {
+	customers := repositories.NewCustomerRepository(testDB, testCfg)
+	e.collector = services.NewCollector(e.invoices, e.payments, customers, e.orgs, hookedSubs(e.tz), w).WithGates(e.gates).WithByok(e.byok)
+}

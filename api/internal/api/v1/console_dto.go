@@ -107,6 +107,9 @@ type consoleInvoiceListItem struct {
 // field, one rule (Invoice.Payable).
 type invoiceDetailResponse struct {
 	Invoice invoiceResponse `json:"invoice"`
+	// Byok is the invoice's Pix on the BYOK rail (spec 2026-10-11 § 11.3);
+	// absent on the wallet rail.
+	Byok *invoiceByokResponse `json:"byok,omitempty"`
 	// CustomerName, for the same reason C2 carries it: an operator reading this
 	// screen is talking to a person, not to an id. Absent when the customer row
 	// cannot be read — the invoice is still a real document, and refusing to
