@@ -160,6 +160,8 @@
     "closesOn": "Fecha em {{date}}",
     "dueOn": "Vence em {{date}}",
     "advance": "Antecipar parcelas",
+    "editPurchase": "Editar compra",
+    "recategorizeHint": "O valor inteiro passa para a nova categoria, no mês da compra.",
     "refund": "Estornar compra",
     "refundConfirm": "Estornar esta compra? As parcelas já cobradas voltam como crédito na fatura aberta e as futuras são canceladas.",
     "advanceConfirm": "Trazer as parcelas restantes para a fatura aberta?",

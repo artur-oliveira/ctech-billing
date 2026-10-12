@@ -416,6 +416,11 @@ export interface Purchase {
   recurrence_id?: string
 }
 
+export interface PurchasePatch {
+  description?: string
+  category_id?: string
+}
+
 export interface NewPurchase {
   date: IsoDate
   description: string

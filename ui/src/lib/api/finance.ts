@@ -7,7 +7,7 @@ import {t} from "@/lib/i18n"
 import {apiClient, isSpaceNotFound} from "@/lib/api/client"
 import type {
   Account, AccountPatch, Bill, BillPatch, Card, CardPatch, CardStatement, CashFlow, CurrentSpace, Direction, DRE, FinanceSpaces, ListResponse, NewAccount, NewBill,
-  NewCard, NewPurchase, NewRecurrence, NewTransfer, Purchase, Occurrence, OpeningBalance, PreviewInput, ProjectionMonth, Recurrence, RecurrenceOccurrences, RecurrencePatch,
+  NewCard, NewPurchase, NewRecurrence, PurchasePatch, NewTransfer, Purchase, Occurrence, OpeningBalance, PreviewInput, ProjectionMonth, Recurrence, RecurrenceOccurrences, RecurrencePatch,
   StatementDirection, StatementPage,
   ChoosePlan, PlanState, Settings, Settlement, Statement, CsvMapping, ImportDetail, ImportSummary, LineResult, NewImport,
 } from "@/lib/api/financeTypes"
@@ -216,6 +216,9 @@ export const listCardStatements = (c: FinanceCtx, cardId: string, from: string, 
 export const listPurchases = (c: FinanceCtx, cardId: string) => read<ListResponse<Purchase>>(c, `${card(cardId)}/purchases`)
 export const createPurchase = (c: FinanceCtx, cardId: string, body: NewPurchase, idempotencyKey: string) =>
   write<Purchase>(c, "POST", `${card(cardId)}/purchases`, body, idempotencyKey)
+/** Renames or recategorises a purchase; amounts, dates and installments never change. */
+export const patchPurchase = (c: FinanceCtx, cardId: string, purchaseId: string, body: PurchasePatch, idempotencyKey: string) =>
+  write<Purchase>(c, "PATCH", `${card(cardId)}/purchases/${encodeURIComponent(purchaseId)}`, body, idempotencyKey)
 export const refundPurchase = (c: FinanceCtx, cardId: string, purchaseId: string, idempotencyKey: string) =>
   write<Purchase>(c, "POST", `${card(cardId)}/purchases/${encodeURIComponent(purchaseId)}/refund`, {}, idempotencyKey)
 export const advancePurchase = (c: FinanceCtx, cardId: string, purchaseId: string, idempotencyKey: string) =>

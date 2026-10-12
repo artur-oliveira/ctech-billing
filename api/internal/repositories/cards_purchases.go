@@ -213,17 +213,14 @@ func (r *CardRepository) addPurchase(ctx context.Context, sp space.ResolvedSpace
 	if err != nil {
 		return Purchase{}, err
 	}
-	cat, err := r.ledger.getAccount(ctx, sp, p.CategoryID)
-	if errors.Is(err, ErrNotFound) {
-		return Purchase{}, fmt.Errorf("%w: %w: category %s", ErrUnknownAccount, ErrCategoryUnusable, p.CategoryID)
-	}
-	if err != nil {
+	if err := r.expenseCategory(ctx, sp, p.CategoryID); err != nil {
 		return Purchase{}, err
 	}
-	if cat.Class != finance.ClassExpense || cat.System || cat.Archived {
-		return Purchase{}, fmt.Errorf("%w: %w: the purchase needs an active expense category", finance.ErrInvalidTransaction, ErrCategoryUnusable)
-	}
 	if p.Description == "" {
+		cat, err := r.ledger.getAccount(ctx, sp, p.CategoryID)
+		if err != nil {
+			return Purchase{}, err
+		}
 		p.Description = cat.Name // a recurrence may have none
 	}
 	plan, err := finance.PlaceInstallments(p.Total, len(p.Installments), p.Date, card.ClosingDay, card.OpenMonth)
@@ -513,6 +510,11 @@ func (r *CardRepository) Refund(ctx context.Context, sp space.ResolvedSpace, car
 		case !onlyConditionFailed(err):
 			return Purchase{}, err
 		case rev.MarkerIdx >= 0 && rev.MarkerIdx < len(codes) && codes[rev.MarkerIdx] == codeConditionFailed:
+			// The transaction read was reversed meanwhile: by a refund, or by a
+			// category edit that replaced it (then try again with the new one).
+			if again, gerr := r.getPurchaseItem(ctx, sp, cardID, purchaseID); gerr == nil && !again.Refunded {
+				return Purchase{}, ErrCardMoved
+			}
 			return Purchase{}, ErrPurchaseRefunded
 		case purchaseIdx < len(codes) && codes[purchaseIdx] == codeConditionFailed:
 			// Refunded or advanced since it was read: read again.
@@ -524,4 +526,128 @@ func (r *CardRepository) Refund(ctx context.Context, sp space.ResolvedSpace, car
 	}
 	p.Refunded = true
 	return p, nil
+}
+
+// PurchaseEdit is a change to a purchase's safe fields. Nil keeps; amounts,
+// dates and installments never change (a wrong amount is a refund and a new
+// purchase).
+type PurchaseEdit struct {
+	Description *string
+	CategoryID  *string
+}
+
+// EditPurchase renames or recategorises a purchase. The description is the
+// purchase's and every one of its statement lines' (closed statements' too: a
+// label, never money). A new category moves the whole expense: the ledger
+// transaction is replaced (planReplace: reversed and posted again with the new
+// category, both on the purchase date, so the DRE moves it within the purchase's
+// month), and the purchase points at the replacement, which a later refund
+// reverses. One write: the ledger, the purchase (guarded like a refund, its rev
+// moved) and the lines. A description alone does not touch the ledger, whose
+// memo keeps the name the purchase was made with. A refunded purchase is
+// ErrPurchaseRefunded.
+func (r *CardRepository) EditPurchase(ctx context.Context, sp space.ResolvedSpace, cardID, purchaseID string, e PurchaseEdit, meta PostMeta, now time.Time) (Purchase, error) {
+	if err := sp.Require(space.Write); err != nil {
+		return Purchase{}, err
+	}
+	if _, err := r.loadCard(ctx, sp, cardID); err != nil {
+		return Purchase{}, err
+	}
+	row, err := r.getPurchaseItem(ctx, sp, cardID, purchaseID)
+	if err != nil {
+		return Purchase{}, err
+	}
+	if row.Refunded {
+		return Purchase{}, ErrPurchaseRefunded
+	}
+	p, err := row.purchase(cardID)
+	if err != nil {
+		return Purchase{}, err
+	}
+	next := p
+	if e.Description != nil {
+		next.Description = *e.Description
+	}
+	if e.CategoryID != nil {
+		next.CategoryID = *e.CategoryID
+	}
+	if next.Description == p.Description && next.CategoryID == p.CategoryID {
+		return p, nil
+	}
+	var items []types.TransactWriteItem
+	markerIdx := -1
+	if next.CategoryID != p.CategoryID {
+		if err := r.expenseCategory(ctx, sp, next.CategoryID); err != nil {
+			return Purchase{}, err
+		}
+		tx, err := finance.CardPurchase(cardID, next.CategoryID, p.Total, p.Date)
+		if err != nil {
+			return Purchase{}, err
+		}
+		reverseMeta := meta
+		reverseMeta.Origin, reverseMeta.Memo, reverseMeta.Ref = "card_purchase_edit", "", "purchase:"+p.ID
+		meta.Origin, meta.Memo, meta.Ref = "card_purchase", next.Description, "purchase:"+p.ID
+		plan, err := r.ledger.planReplace(ctx, sp, p.TxID, tx, p.Date, reverseMeta, meta, now)
+		if err != nil {
+			return Purchase{}, err
+		}
+		items, markerIdx, next.TxID = plan.Items, plan.MarkerIdx, plan.ReplacementID
+	}
+	pk := CardPK(sp, cardID)
+	sk := PurchaseSK(p.ID)
+	purchaseIdx := len(items)
+	guard, values := purchaseGuard(row)
+	values[":d"], values[":c"], values[":tx"] = str(next.Description), str(next.CategoryID), str(next.TxID)
+	values[":now"], values[":one"] = str(now.UTC().Format(time.RFC3339Nano)), numberValue(1)
+	items = append(items, r.cards.BuildRawUpdateTxItem(pk, &sk,
+		"SET description = :d, category_id = :c, tx_id = :tx, updated_at = :now ADD rev :one", guard, nil, values))
+	// Its lines: one per installment billed as such, one "adv" per statement an
+	// advance moved installments onto.
+	seen := map[string]bool{}
+	for _, inst := range row.Installments {
+		tag, desc := installmentTag(inst.Number), next.Description
+		if inst.Advanced {
+			tag, desc = "adv", "Antecipação: "+next.Description
+		}
+		m, err := finance.ParseMonth(inst.Statement)
+		if err != nil {
+			return Purchase{}, err
+		}
+		itemSK := ItemSK(m, p.ID, tag)
+		if seen[itemSK] {
+			continue
+		}
+		seen[itemSK] = true
+		items = append(items, r.cards.BuildRawUpdateTxItem(pk, &itemSK, "SET description = :d, category_id = :c", "attribute_exists(pk)", nil,
+			map[string]types.AttributeValue{":d": str(desc), ":c": str(next.CategoryID)}))
+	}
+	if err := r.cards.TransactWrite(ctx, items); err != nil {
+		codes := cancellationCodes(err)
+		switch {
+		case !onlyConditionFailed(err):
+			return Purchase{}, err
+		case purchaseIdx < len(codes) && codes[purchaseIdx] == codeConditionFailed,
+			markerIdx >= 0 && markerIdx < len(codes) && codes[markerIdx] == codeConditionFailed:
+			// Refunded, advanced or edited since it was read: read again.
+			return Purchase{}, ErrCardMoved
+		}
+		return Purchase{}, classifyPostCancel(err, -1)
+	}
+	return next, nil
+}
+
+// expenseCategory checks an account can take a purchase: an active, non-system
+// expense category of this space.
+func (r *CardRepository) expenseCategory(ctx context.Context, sp space.ResolvedSpace, id string) error {
+	cat, err := r.ledger.getAccount(ctx, sp, id)
+	if errors.Is(err, ErrNotFound) {
+		return fmt.Errorf("%w: %w: category %s", ErrUnknownAccount, ErrCategoryUnusable, id)
+	}
+	if err != nil {
+		return err
+	}
+	if cat.Class != finance.ClassExpense || cat.System || cat.Archived {
+		return fmt.Errorf("%w: %w: the purchase needs an active expense category", finance.ErrInvalidTransaction, ErrCategoryUnusable)
+	}
+	return nil
 }
