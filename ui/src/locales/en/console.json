@@ -15,7 +15,10 @@
   "credentials": "Credentials",
   "webhooks": "Webhooks",
   "settings": "Settings",
-  "applications": "Applications"
+  "applications": "Applications",
+  "more": "More",
+  "moreTitle": "More sections",
+  "groupMore": "Manage"
  },
  "shell": {
   "testBanner": "Test mode. Nothing here charges real money."

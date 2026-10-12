@@ -76,7 +76,7 @@ export function PortalSpaceSwitch() {
   return (
     <Select {...selectCopy()}
       aria-label={t("portal.space.label")}
-      className="order-3 w-full min-w-0 sm:order-2 sm:ml-auto sm:w-auto sm:min-w-36 sm:max-w-56"
+      className="order-3 w-48 min-w-0 max-w-full sm:order-2 sm:ml-auto sm:min-w-36 sm:max-w-56"
       value={current}
       onValueChange={v => void choose(v)}
       options={spaces.map(s => ({

@@ -111,6 +111,8 @@ describe("F7 — relatórios", () => {
     renderWithQuery(<ReportsView/>)
     const tablist = screen.getByRole("tablist", {name: "Relatório"})
     const controls = tablist.parentElement!
+    expect(tablist).not.toHaveClass("w-full")
+    expect(tablist).toHaveClass("w-max")
     expect(controls.children[0]).toBe(tablist)
     expect(controls.children).toHaveLength(2)
 

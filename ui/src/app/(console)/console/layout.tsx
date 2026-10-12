@@ -1,11 +1,11 @@
 "use client"
 
-import {Button, DensityScope, ErrorState, Skeleton} from "@aoctech/ui"
+import {BottomNavSpacer, Button, DensityScope, ErrorState, Skeleton} from "@aoctech/ui"
 import {useQuery} from "@tanstack/react-query"
 import Image from "next/image"
 import Link from "next/link"
 import {usePathname, useRouter} from "next/navigation"
-import {useEffect, useRef} from "react"
+import {useEffect} from "react"
 import {useTranslation} from "react-i18next"
 
 import {AccountMenu} from "@/components/AccountMenu"
@@ -14,6 +14,8 @@ import {ModeSwitch} from "@/components/console/ModeSwitch"
 import {MerchantInvitation} from "@/components/console/MerchantInvitation"
 import {MerchantStatusBand} from "@/components/console/MerchantStatusBand"
 import {OrganizationSwitch} from "@/components/console/OrganizationSwitch"
+import {ConsoleBottomNav} from "@/components/console/ConsoleBottomNav"
+import {SectionNav} from "@/components/navigation/SectionNav"
 import {statusOf} from "@/lib/api/client"
 import {consoleKeys, getConsoleSession} from "@/lib/api/console"
 import {useAuth} from "@/lib/auth/AuthContext"
@@ -53,14 +55,6 @@ import {FINANCE_HREF} from "@/lib/finance/href"
 export default function ConsoleLayout({children}: LayoutProps<"/console">) {
   const {t, i18n} = useTranslation()
   const pathname = usePathname()
-  // The nav scrolls sideways without a visible bar on a phone, so the current
-  // section is brought into view; only the row scrolls, never the page.
-  const navRef = useRef<HTMLUListElement>(null)
-  useEffect(() => {
-    const ul = navRef.current
-    const active = ul?.querySelector<HTMLElement>('[aria-current="page"]')
-    if (ul && active) ul.scrollLeft = active.offsetLeft - (ul.clientWidth - active.offsetWidth) / 2
-  }, [pathname])
   const router = useRouter()
   const {authenticated, loading} = useAuth()
   const mode = useMode()
@@ -141,31 +135,6 @@ export default function ConsoleLayout({children}: LayoutProps<"/console">) {
           </div>
         </div>
 
-        <nav className="mx-auto max-w-6xl px-4" aria-label={t("console.nav.label")}>
-          <ul ref={navRef} className="relative -mb-px flex gap-1 touch:pt-1 overflow-x-auto overscroll-x-contain scrollbar-none max-sm:[mask-image:linear-gradient(to_right,#000_calc(100%-1.5rem),transparent)]">
-            {nav.map(item => {
-              const active = pathname.startsWith(item.href)
-              return (
-                <li key={item.href}>
-                  <Link
-                    href={item.href}
-                    aria-current={active ? "page" : undefined}
-                    // 40px drawn, as on a desk. Under touch the target grows 4px
-                    // up into the list's padding (the row scrolls sideways, so
-                    // it clips anything below): 44px without a taller bar.
-                    className={`relative inline-flex h-10 items-center touch:after:absolute touch:after:inset-x-0 touch:after:-top-1 touch:after:bottom-0 touch:after:content-[''] whitespace-nowrap border-b-2 px-3 text-sm transition-colors ${
-                      active
-                        ? "border-brand-600 font-medium text-brand-600"
-                        : "border-transparent text-muted-foreground hover:text-foreground"
-                    }`}
-                  >
-                    {t(item.label)}
-                  </Link>
-                </li>
-              )
-            })}
-          </ul>
-        </nav>
       </header>
 
       {/* The test-mode band. Deliberately the loudest thing on the page after
@@ -180,7 +149,11 @@ export default function ConsoleLayout({children}: LayoutProps<"/console">) {
         <MerchantSelectionProvider value={selection}><MerchantStatusBand/></MerchantSelectionProvider>
       )}
 
-      <main className="mx-auto max-w-6xl px-4 py-8 pb-20">
+      <main className="mx-auto grid max-w-6xl gap-6 px-4 py-8 pb-20 lg:grid-cols-[11rem_minmax(0,1fr)] lg:gap-10">
+        {active && <aside className="max-md:hidden lg:sticky lg:top-6 lg:self-start">
+          <SectionNav items={nav.map(item => ({href: item.href, label: item.label, exact: item.href === "/console/overview"}))} label={t("console.nav.label")} selectLabel={t("console.nav.label")}/>
+        </aside>}
+        <div className="min-w-0">
         {loading || !authenticated || noOrganization || (session === undefined && isPending) ? (
           <ShellSkeleton/>
         ) : unavailable || (error && !session) ? (
@@ -206,6 +179,9 @@ export default function ConsoleLayout({children}: LayoutProps<"/console">) {
         ) : (
           <ShellSkeleton/>
         )}
+          {active && <BottomNavSpacer/>}
+        </div>
+        {active && <ConsoleBottomNav hasOrganization={active} reviewer={reviewer}/>}
       </main>
     </DensityScope>
   )

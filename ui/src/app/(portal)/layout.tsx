@@ -1,10 +1,10 @@
 "use client"
 
-import {Skeleton} from "@aoctech/ui"
+import {BottomNavSpacer, Skeleton} from "@aoctech/ui"
 import {useQuery} from "@tanstack/react-query"
 import Image from "next/image"
 import Link from "next/link"
-import {usePathname, useRouter} from "next/navigation"
+import {useRouter} from "next/navigation"
 import {useEffect} from "react"
 import {useTranslation} from "react-i18next"
 
@@ -13,6 +13,8 @@ import {AccountMenu} from "@/components/AccountMenu"
 import {NoBillingAccount} from "@/components/portal/NoBillingAccount"
 import {PortalSpaceScope} from "@/components/portal/PortalSpaceScope"
 import {PortalSpaceSwitch} from "@/components/portal/PortalSpaceSwitch"
+import {PortalBottomNav} from "@/components/portal/PortalBottomNav"
+import {SectionNav} from "@/components/navigation/SectionNav"
 import {TermsGate} from "@/components/portal/TermsGate"
 import {isNoBillingAccount} from "@/lib/api/client"
 import {getSession, portalKeys} from "@/lib/api/portal"
@@ -47,7 +49,6 @@ const NAV = [
  */
 export default function PortalLayout({children}: LayoutProps<"/">) {
   const {t} = useTranslation()
-  const pathname = usePathname()
   const router = useRouter()
   const {authenticated, loading} = useAuth()
   // Read so the shell re-renders on a change of selection: the session key
@@ -75,7 +76,7 @@ export default function PortalLayout({children}: LayoutProps<"/">) {
   return (
     <div data-density="comfortable" className="min-h-dvh">
       <header className="border-b border-border">
-        <div className="mx-auto flex min-h-16 max-w-2xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2">
+        <div className="mx-auto flex min-h-16 max-w-6xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2">
           {/* The mark plus the wordmark, and the wordmark is the fourth place
               the brand colour appears — after the primary button, the active
               nav item and the selected row. A header that renders the company
@@ -112,52 +113,32 @@ export default function PortalLayout({children}: LayoutProps<"/">) {
             {(session || noAccount) && <AccountMenu view="portal"/>}
           </div>
         </div>
-        {/* Hidden with no billing account. Three tabs that all lead to the same
-            empty state read as three broken screens. */}
-        <nav hidden={noAccount} className="mx-auto max-w-2xl px-4" aria-label={t("portal.nav.label")}>
-          <ul className="-mb-px flex gap-1">
-            {NAV.map(item => {
-              const active =
-                item.href === "/dashboard"
-                  ? pathname === "/dashboard"
-                  : pathname.startsWith(item.href)
-              return (
-                <li key={item.href}>
-                  <Link
-                    href={item.href}
-                    aria-current={active ? "page" : undefined}
-                    className={`inline-flex h-11 items-center border-b-2 px-3 text-sm transition-colors ${
-                      active
-                        ? "border-brand-600 font-medium text-brand-600"
-                        : "border-transparent text-muted-foreground hover:text-foreground"
-                    }`}
-                  >
-                    {t(item.labelKey)}
-                  </Link>
-                </li>
-              )
-            })}
-          </ul>
-        </nav>
       </header>
 
-      <main className="mx-auto max-w-2xl px-4 py-8 pb-20">
+      <main className="mx-auto grid max-w-6xl gap-6 px-4 py-8 pb-20 lg:grid-cols-[11rem_minmax(0,1fr)] lg:gap-10">
         {/* Four states, in this order. The empty account comes before the terms
             gate because there is no session to read `terms_accepted` from when
             it applies, and the gate comes before the children because it needs
             the session to have answered — rendering it on `undefined` would ask
             somebody who already agreed to agree again on every refresh. */}
-        <PortalSpaceScope>
-          {loading || !authenticated ? (
-            <GateSkeleton/>
-          ) : noAccount ? (
-            <NoBillingAccount/>
-          ) : session && !session.terms_accepted ? (
-            <TermsGate/>
-          ) : (
-            children
-          )}
-        </PortalSpaceScope>
+        {!noAccount && <aside className="max-md:hidden lg:sticky lg:top-6 lg:self-start">
+          <SectionNav items={NAV.map(item => ({href: item.href, label: item.labelKey, exact: item.href === "/dashboard"}))} label={t("portal.nav.label")} selectLabel={t("portal.nav.label")}/>
+        </aside>}
+        <div className="mx-auto min-w-0 w-full max-w-2xl">
+          <PortalSpaceScope>
+            {loading || !authenticated ? (
+              <GateSkeleton/>
+            ) : noAccount ? (
+              <NoBillingAccount/>
+            ) : session && !session.terms_accepted ? (
+              <TermsGate/>
+            ) : (
+              children
+            )}
+          </PortalSpaceScope>
+          {!noAccount && <BottomNavSpacer/>}
+        </div>
+        <PortalBottomNav hidden={noAccount}/>
       </main>
     </div>
   )
