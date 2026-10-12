@@ -190,10 +190,15 @@ resource "aws_launch_template" "this" {
     cpu_credits = "standard"
   }
 
+  # Alpine's root was 1 GB: one unpacked release (~120 MB, seven binaries)
+  # left ~140 MB free, less than a deploy needs to unpack the next release
+  # beside the current one, so the 2026-10-12 deploy failed with "disk full"
+  # and the ASG replaced the instance. 2 GB is the next size; it adds
+  # about US$ 0.08 a month (gp3).
   block_device_mappings {
     device_name = "/dev/xvda"
     ebs {
-      volume_size           = var.os_family == "alpine" ? 1 : 4
+      volume_size           = var.os_family == "alpine" ? 2 : 4
       volume_type           = "gp3"
       delete_on_termination = true
       encrypted             = true
