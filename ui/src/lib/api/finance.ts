@@ -6,7 +6,7 @@ import {t} from "@/lib/i18n"
 
 import {apiClient, isSpaceNotFound} from "@/lib/api/client"
 import type {
-  Account, AccountPatch, Bill, BillPatch, Card, CardPatch, CardStatement, CashFlow, CurrentSpace, Direction, DRE, FinanceSpaces, ListResponse, NewAccount, NewBill,
+  Account, AccountPatch, Bill, BillPatch, Card, CardPatch, CardStatement, CardRecurringForecast, CashFlow, CurrentSpace, Direction, DRE, FinanceSpaces, ListResponse, NewAccount, NewBill,
   CardSpending, NewCard, NewPurchase, NewRecurrence, PurchasePatch, NewTransfer, Purchase, Occurrence, OpeningBalance, PreviewInput, ProjectionMonth, Recurrence, RecurrenceOccurrences, RecurrencePatch,
   StatementDirection, StatementPage,
   ChoosePlan, PlanState, Settings, Settlement, Statement, CsvMapping, ImportDetail, ImportSummary, LineResult, NewImport,
@@ -105,6 +105,9 @@ export const financeKeys = {
   cards: (mode: Mode, space: Space) => ["finance", mode, spaceHeader(space), "cards"] as const,
   cardStatement: (mode: Mode, space: Space, cardId: string, month: string) =>
     ["finance", mode, spaceHeader(space), "card-statement", cardId, month] as const,
+  cardForecasts: (mode: Mode, space: Space) => ["finance", mode, spaceHeader(space), "card-forecast"] as const,
+  cardForecast: (mode: Mode, space: Space, cardId: string, month: string) =>
+    ["finance", mode, spaceHeader(space), "card-forecast", cardId, month] as const,
   // The timeline's pages: keyed by the open month, so a close starts a fresh window.
   cardStatements: (mode: Mode, space: Space, cardId: string, openMonth: string) =>
     ["finance", mode, spaceHeader(space), "card-statements", cardId, openMonth] as const,
@@ -216,6 +219,8 @@ export const patchCard = (c: FinanceCtx, id: string, body: CardPatch, idempotenc
 /** `month` is `YYYY-MM`. */
 export const getCardStatement = (c: FinanceCtx, cardId: string, month: string) =>
   read<CardStatement>(c, `${card(cardId)}/statements/${encodeURIComponent(month)}`)
+export const getCardStatementForecast = (c: FinanceCtx, cardId: string, month: string) =>
+  read<ListResponse<CardRecurringForecast>>(c, `${card(cardId)}/statements/${encodeURIComponent(month)}/forecast`)
 /** Statement summaries from `from` (`YYYY-MM`, inclusive), `count` 1..12, in `direction`. */
 export const listCardStatements = (c: FinanceCtx, cardId: string, from: string, count: number, direction: StatementDirection) =>
   read<StatementPage>(c, `${card(cardId)}/statements`, {from, count, direction})

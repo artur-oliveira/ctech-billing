@@ -12,6 +12,7 @@ import {selectCopy} from "@/lib/selectCopy"
 // one row up, and two items with one name read as one menu printed twice.
 export const FINANCE_SECTIONS = [
   {href: "/finance", key: "overview", exact: true},
+  {href: "/finance/inbox", key: "inbox"},
   {href: "/finance/bills", key: "bills"},
   {href: "/finance/statement", key: "statement"},
   {href: "/finance/import", key: "import"},

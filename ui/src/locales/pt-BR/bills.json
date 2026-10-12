@@ -77,7 +77,11 @@
     },
     "diffCategory": "Categoria da diferença",
     "more": "{{amount}} a mais que {{bill}}",
-    "less": "{{amount}} a menos que {{bill}}"
+    "less": "{{amount}} a menos que {{bill}}",
+    "undoAvailable": "Pagamento registrado. Você pode desfazer por alguns segundos.",
+    "undoAction": "Desfazer",
+    "undone": "Pagamento desfeito.",
+    "undoFailed": "Não foi possível desfazer agora. Tente pelo extrato."
   },
   "new": {
     "competence": "Competência (DRE)",

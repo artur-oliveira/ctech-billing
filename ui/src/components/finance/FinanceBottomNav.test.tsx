@@ -62,7 +62,7 @@ describe("FinanceBottomNav", () => {
     await userEvent.click(more)
     const sheet = await screen.findByRole("dialog", {name: "Mais seções"})
     const launch = within(sheet).getByRole("region", {name: "Lançamentos"})
-    expect(within(launch).getAllByRole("link").map(l => l.textContent)).toEqual(["Recorrências", "Cartões", "Importar"])
+    expect(within(launch).getAllByRole("link").map(l => l.textContent)).toEqual(["Pendências", "Recorrências", "Cartões", "Importar"])
     const manage = within(sheet).getByRole("region", {name: "Análise e cadastro"})
     expect(within(manage).getAllByRole("link").map(l => l.textContent)).toEqual(["Relatórios", "Contas", "Plano"])
     expect(within(sheet).getByRole("link", {name: "Cartões"})).toHaveAttribute("aria-current", "page")

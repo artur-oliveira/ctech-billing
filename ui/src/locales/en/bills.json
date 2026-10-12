@@ -77,7 +77,11 @@
     },
     "diffCategory": "Difference category",
     "more": "{{amount}} more than {{bill}}",
-    "less": "{{amount}} less than {{bill}}"
+    "less": "{{amount}} less than {{bill}}",
+    "undoAvailable": "Payment recorded. You can undo it for a few seconds.",
+    "undoAction": "Undo",
+    "undone": "Payment undone.",
+    "undoFailed": "Could not undo it now. Try from the statement."
   },
   "new": {
     "competence": "Accrual date (P&L)",

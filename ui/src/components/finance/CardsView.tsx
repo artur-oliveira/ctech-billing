@@ -18,7 +18,7 @@ import {wholeSpace} from "@/components/finance/TransferPanel"
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
 import {messageFor} from "@/lib/api/client"
 import {
-  advancePurchase, closeStatement, type FinanceCtx, financeKeys, getBill, getCardStatement, listAccounts, listCards, listPurchases,
+  advancePurchase, closeStatement, type FinanceCtx, financeKeys, getBill, getCardStatement, getCardStatementForecast, listAccounts, listCards, listPurchases,
   patchPurchase, refundPurchase,
 } from "@/lib/api/finance"
 import type {Account, Card, CardStatement, Purchase, PurchasePatch, StatementItem} from "@/lib/api/financeTypes"
@@ -30,7 +30,7 @@ import {selectCopy} from "@/lib/selectCopy"
 import {useFinanceMutation} from "@/lib/finance/useFinanceMutation"
 import {useCreateRequest} from "@/lib/finance/createRequest"
 import {useFinanceCtx, useFinanceSpaces} from "@/lib/finance/useFinanceSpaces"
-import {shortDate, signedMoney} from "@/lib/format"
+import {money, shortDate, signedMoney} from "@/lib/format"
 import {accountName} from "@/lib/finance/accountName"
 
 export {statementState} from "@/components/finance/statementStatus"
@@ -165,6 +165,12 @@ function StatementBlock({card, month, accounts, purchases, purchasesError, retry
   const {can} = useFinanceSpaces()
   const q = useQuery({queryKey: financeKeys.cardStatement(ctx.mode, ctx.space, card.id, month), queryFn: () => getCardStatement(ctx, card.id, month)})
   const [action, setAction] = useState<"close" | "pay" | null>(null)
+  const [showForecast, setShowForecast] = useState(false)
+  const forecast = useQuery({
+    queryKey: financeKeys.cardForecast(ctx.mode, ctx.space, card.id, month),
+    queryFn: () => getCardStatementForecast(ctx, card.id, month),
+    enabled: showForecast,
+  })
   const names = new Map(accounts.map(a => [a.id, accountName(a)]))
   const byId = new Map(purchases.map(p => [p.id, p]))
   const s = q.data
@@ -176,6 +182,23 @@ function StatementBlock({card, month, accounts, purchases, purchasesError, retry
       ) : (
         <>
           <Summary statement={s}/>
+          <section aria-labelledby="card-recurring-forecast" className="space-y-2 border-t border-border pt-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 id="card-recurring-forecast" className="text-sm font-medium">{t("finance.cards.recurringForecast")}</h3>
+              {!showForecast && <Button size="sm" variant="ghost" onClick={() => setShowForecast(true)}>{t("finance.cards.loadForecast")}</Button>}
+            </div>
+            {showForecast && (forecast.isLoading ? <Skeleton className="h-12 w-full"/> : forecast.error ? <ErrorBlock error={forecast.error} onRetry={() => void forecast.refetch()}/> : (forecast.data?.data.length ?? 0) === 0 ? (
+              <p className="text-sm text-muted-foreground">{t("finance.cards.noRecurringForecast")}</p>
+            ) : <>
+              <ul className="divide-y divide-border border-y border-border">
+                {forecast.data!.data.map((item, index) => <li key={`${item.recurrence_id}-${item.nominal}-${item.installment}-${index}`} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
+                  <span className="min-w-0 truncate">{item.description || t("finance.cards.recurringPurchase")} · {shortDate(item.nominal)}{item.of > 1 ? ` · ${item.installment}/${item.of}` : ""}</span>
+                  <span className="tabular-nums">{money(item.amount)}</span>
+                </li>)}
+              </ul>
+              <p className="text-xs text-muted-foreground">{t("finance.cards.forecastNotInTotal")}</p>
+            </>)}
+          </section>
           {s.status === "open" && can("finance.write") && action !== "close" && (
             <Button variant="outline" size="sm" onClick={() => setAction("close")}>{t("finance.cards.closeNow")}</Button>
           )}

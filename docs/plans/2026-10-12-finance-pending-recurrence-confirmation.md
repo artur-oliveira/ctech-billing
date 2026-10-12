@@ -1,6 +1,6 @@
 # Finance recurring expenses with amount confirmation
 
-Status: design plan only. The confirmation workflow is not implemented in this change.
+Status: implementation plan. Daily and business-day schedules are implemented; pending confirmation is not yet implemented.
 
 ## Goal
 
@@ -28,3 +28,17 @@ Support expected recurring expenses whose final amount varies. An occurrence is 
 - Confirmation checks ownership, active destination/category, and recurrence state in the same transaction as booking.
 - Preserve the estimate and actual amount in audit metadata; do not rewrite previously confirmed occurrences when the recurrence changes.
 - Bound the pending window and provide a way to find overdue confirmations without scanning all finance data.
+
+## Expanded finance UX delivery plan
+
+The following requests share this PR and reuse the same finance-space, authorization, idempotency, and query-cache boundaries.
+
+1. **Action inbox (in progress).** The UI aggregates bounded open-bill previews, recurrence problems, and import summaries in one additional read; links lead to existing editors. Pending recurrence confirmations remain blocked on the occurrence API.
+2. **Variable recurrences (planned).** Persist `amount_mode=expected`; the scheduler writes a pending occurrence, never a bill or card purchase. Confirm/skip are atomic and idempotent; projection labels estimates separately from booked totals.
+3. **Card forecast (implemented in this PR).** A card-scoped server read computes recurrence estimates for a statement; the UI keeps estimates separate from actual items and loads them only when requested.
+4. **Quick entry (partially implemented).** Suggestions use already-loaded bill/purchase history, prefix matching is case-insensitive, and selection fills amount/category/account. Next: keyboard focus/submit shortcuts, preserving accessible form controls.
+5. **Configurable alerts (planned).** Persist per-space lead times and channels; job delivery is deduplicated by (space, event, date, channel). Start with in-app/email notifications; browser permission is strictly optional. Requires a trusted user-email source before enabling email delivery.
+6. **Monthly review (implemented in this PR).** The focused summary compares the selected complete month with the prior complete month; by default it opens the latest closed month to avoid comparing partial periods.
+7. **Undo (partially implemented).** A successful bill settlement offers a 10-second undo using the existing unsettle route. Add transactional undo tokens for cancellations, refunds, and reversals before exposing those actions as reversible.
+
+Do not claim the expanded set is complete until pending occurrences and card forecasts have backend tests, alerts are persisted and deduplicated, and every destructive undo has a server-side compensating action.

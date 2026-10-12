@@ -14,7 +14,7 @@ import {HistorySuggestions, type HistoryEntry} from "@/components/finance/Histor
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
 import {DateField} from "@/components/ui/DateField"
 import {messageFor, statusOf} from "@/lib/api/client"
-import {cancelBill, createBill, financeKeys, listAccounts, listBills, patchBill, settleBill} from "@/lib/api/finance"
+import {cancelBill, createBill, financeKeys, listAccounts, listBills, patchBill, settleBill, unsettleBill} from "@/lib/api/finance"
 import type {Account, Bill, BillPatch, Bucket, Direction, NewBill, Settlement} from "@/lib/api/financeTypes"
 import {bucketLabel} from "@/lib/finance/labels"
 import {addYearsIso, monthLabel, todayIso} from "@/lib/finance/today"
@@ -193,11 +193,27 @@ const inPanel = "mt-3 grid items-start gap-3 rounded-lg bg-surface p-3 sm:grid-c
 
 export function SettleForm({bill, accounts, onDone}: {bill: Bill; accounts: Account[]; onDone: () => void}) {
   const {t} = useTranslation()
+  const ctx = useFinanceCtx()
+  const queryClient = useQueryClient()
   const [amountText, setAmountText] = useState(formatMoneyInput(bill.amount))
   const [date, setDate] = useState(todayIso())
   const [category, setCategory] = useState("")
   const fe = useFieldErrors(["paid_date", "paid_amount", "difference_category_id"])
-  const settle = useFinanceMutation((c, body: Settlement, key) => settleBill(c, bill.id, body, key), touched, onDone, fe.set)
+  const settle = useFinanceMutation((c, body: Settlement, key) => settleBill(c, bill.id, body, key), touched, () => {
+    onDone()
+    toast.success(t("bills.settle.undoAvailable"), {
+      duration: 10000,
+      action: {
+        label: t("bills.settle.undoAction"),
+        onClick: () => {
+          void unsettleBill(ctx, bill.id, crypto.randomUUID()).then(async () => {
+            await Promise.all(touched(ctx).map(queryKey => queryClient.invalidateQueries({queryKey})))
+            toast.success(t("bills.settle.undone"))
+          }).catch(() => toast.error(t("bills.settle.undoFailed")))
+        },
+      },
+    })
+  }, fe.set)
 
   // The amount is always visible and starts at the bill's own: paying exactly
   // what was owed is the common case, and a different amount is just an edit

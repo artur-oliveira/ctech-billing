@@ -39,7 +39,7 @@ const adjustOptions = (): {value: Adjust; label: string}[] => [
   {value: "roll_forward", label: t("bills.rec.adjust.roll_forward")},
   {value: "none", label: t("bills.rec.adjust.none")},
 ]
-const touched = (c: FinanceCtx) => [financeKeys.recurrences(c.mode, c.space), [...financeKeys.all(c.mode, c.space), "projection"]]
+const touched = (c: FinanceCtx) => [financeKeys.recurrences(c.mode, c.space), [...financeKeys.all(c.mode, c.space), "projection"], financeKeys.cardForecasts(c.mode, c.space)]
 // Ending and archiving also cancels bills and reverses their recognition (UX
 // batch 5): Agenda, balances, statements and reports all move, so the whole space.
 const touchedByEdit = (c: FinanceCtx, _: unknown, body: RecurrencePatch) =>

@@ -374,6 +374,15 @@ export interface StatementItem {
   recurrence_id?: string
 }
 
+export interface CardRecurringForecast {
+  recurrence_id: string
+  description?: string
+  nominal: IsoDate
+  installment: number
+  of: number
+  amount: Cents
+}
+
 export type CardStatementStatus = "open" | "future" | "closed" | "paid"
 
 export interface CardStatement {
