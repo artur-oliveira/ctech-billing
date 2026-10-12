@@ -218,8 +218,23 @@ func (s *ByokConnections) create(ctx context.Context, sp space.ResolvedSpace, co
 		accountKey = "sandbox"
 	}
 	conn.LedgerAccountID = LedgerAccountID(conn.Provider, accountKey)
-	if _, err := s.ledger.EnsureByokAccount(ctx, sp, conn.LedgerAccountID, ledgerAccountName(conn.Provider, accountKey), conn.Provider, now); err != nil {
+	created, err := s.ledger.EnsureByokAccount(ctx, sp, conn.LedgerAccountID, ledgerAccountName(conn.Provider, accountKey), conn.Provider, now)
+	if err != nil {
 		return nil, err
+	}
+	if !created {
+		// The same bank account again (spec § 3.6 step 5): it resumes on its
+		// ledger account. Its opening already counts everything before the old
+		// first day, so the new backfill never reaches back past it; the lines
+		// after it are deduplicated by their FITID# locks (final review I4).
+		if err := s.ledger.SetSyncState(ctx, sp, conn.LedgerAccountID, string(byokconn.SyncActive)); err != nil {
+			return nil, err
+		}
+		if opened, ok, err := s.ledger.OpeningDate(ctx, sp, conn.LedgerAccountID); err != nil {
+			return nil, err
+		} else if ok && !opened.Before(conn.FirstDay) {
+			conn.FirstDay = opened.AddDays(1)
+		}
 	}
 	if err := s.repo.CreateConnection(ctx, conn, actor, requestID, now); err != nil {
 		return nil, err
@@ -256,7 +271,7 @@ func (s *ByokConnections) Test(ctx context.Context, sp space.ResolvedSpace, prov
 	if err != nil {
 		return nil, err
 	}
-	s.tokens.Invalidate(ctx, conn)
+	s.invalidate(ctx, conn)
 	_, err = s.Session(conn).Balance(ctx, byok.Date{})
 	s.RecordOutcome(ctx, conn, err, now)
 	if err != nil {
@@ -314,7 +329,7 @@ func (s *ByokConnections) Disconnect(ctx context.Context, sp space.ResolvedSpace
 	if conn.State == "" { // only onboarding progress: nothing to tear down
 		return s.repo.DeleteConnection(ctx, conn, actor, requestID, now)
 	}
-	s.tokens.Invalidate(ctx, conn)
+	s.invalidate(ctx, conn)
 	if err := s.repo.DeleteConnection(ctx, conn, actor, requestID, now); err != nil {
 		return err
 	}
@@ -344,4 +359,14 @@ func (s *ByokConnections) SandboxCertNotAfter(ctx context.Context, conn *byokcon
 		return time.Time{}, err
 	}
 	return tok.CertNotAfter, nil
+}
+
+// invalidate drops a connection's cached tokens. Never the shared sandbox's:
+// that token and its fetch limit belong to every test tenant together, and one
+// tenant's test or disconnect must not cost the others (final review I3).
+func (s *ByokConnections) invalidate(ctx context.Context, conn *byokconn.Connection) {
+	if conn.Kind == byokconn.KindSandboxShared {
+		return
+	}
+	s.tokens.Invalidate(ctx, conn)
 }

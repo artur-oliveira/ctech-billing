@@ -34,7 +34,9 @@ const (
 
 // stepOrder is the order steps run in for one connection, whatever the order
 // they were registered in.
-var stepOrder = []ByokStep{StepSweep, StepSync, StepCertificates, StepAudit, StepUsage}
+// Certificates first: an expired certificate makes the bank refuse every call,
+// so its expiry and notice must never wait for a sync that cannot succeed.
+var stepOrder = []ByokStep{StepCertificates, StepSweep, StepSync, StepAudit, StepUsage}
 
 // ByokStepFunc runs one step for one connection, in that connection's space.
 type ByokStepFunc func(ctx context.Context, sp space.ResolvedSpace, conn *byokconn.Connection, now time.Time) error

@@ -769,6 +769,11 @@ func (r *BillRepository) Unsettle(ctx context.Context, sp space.ResolvedSpace, b
 		return finance.Bill{}, fmt.Errorf("%w: only a paid bill can be reopened", finance.ErrBillState)
 	}
 	settlement := b.TransactionIDs[len(b.TransactionIDs)-1]
+	if stored, err := r.ledger.GetTransaction(ctx, sp, settlement); err != nil {
+		return finance.Bill{}, err
+	} else if err := r.ledger.refuseSyncedLegs(ctx, sp, stored.Tx); err != nil {
+		return finance.Bill{}, err
+	}
 	plan, err := r.ledger.planReverse(ctx, sp, settlement, date, billMeta(meta, *b), now)
 	if err != nil {
 		return finance.Bill{}, err

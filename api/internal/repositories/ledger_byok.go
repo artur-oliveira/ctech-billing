@@ -5,9 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
-	"strings"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
@@ -121,7 +121,13 @@ func (r *LedgerRepository) PostBankLine(ctx context.Context, sp space.ResolvedSp
 	if err != nil {
 		return "", false, err
 	}
-	items := append(append([]types.TransactWriteItem(nil), plan.Items...), r.imports.BuildPutTxItemIfAbsent(lock))
+	pending, err := Encode(unclassifiedItem{keys: newKeys(sp.PK(), UnclassifiedSK(accountID, plan.TxID), RetentionPermanent, now),
+		TxID: plan.TxID, Date: l.Date.String(), Amount: int64(l.Amount), Credit: l.Credit, Memo: l.Memo})
+	if err != nil {
+		return "", false, err
+	}
+	// The lock stays last: a concurrent sync is recognised by its condition.
+	items := append(append([]types.TransactWriteItem(nil), plan.Items...), r.txs.BuildPutTxItem(pending), r.imports.BuildPutTxItemIfAbsent(lock))
 	if err := r.txs.TransactWrite(ctx, items); err != nil {
 		if codes := cancellationCodes(err); len(codes) == len(items) && codes[len(items)-1] == codeConditionFailed {
 			return "", false, nil // a concurrent sync posted it
@@ -192,30 +198,48 @@ type UnclassifiedLine struct {
 	Memo   string
 }
 
+// unclassifiedItem is a bank line still on "A classificar": a sparse row
+// written with the line and deleted by its classification, so the list (and
+// the count on the accounts screen) reads only what is left, never the
+// history (final review I5).
+type unclassifiedItem struct {
+	keys
+	TxID   string `dynamodbav:"tx_id"`
+	Date   string `dynamodbav:"date"`
+	Amount int64  `dynamodbav:"amount"`
+	Credit bool   `dynamodbav:"credit,omitempty"`
+	Memo   string `dynamodbav:"memo,omitempty"`
+}
+
+// UnclassifiedSK keys a pending line under its account.
+func UnclassifiedSK(accountID, txID string) string { return "UNCLASSIFIED#" + accountID + "#" + txID }
+
 // Unclassified lists the account's lines still on the two system categories:
-// one key-condition read per category entry partition, filtered by the line
-// ref prefix (several BYOK accounts share the two categories).
+// one key-condition query of its pending rows.
 func (r *LedgerRepository) Unclassified(ctx context.Context, sp space.ResolvedSpace, accountID string) ([]UnclassifiedLine, error) {
-	prefix := "byok:" + accountID + ":"
+	if err := sp.Require(space.Read); err != nil {
+		return nil, err
+	}
 	var out []UnclassifiedLine
-	for _, cat := range []string{finance.UnclassifiedInID, finance.UnclassifiedOutID} {
-		entries, err := r.EntriesFrom(ctx, sp, cat, brcal.Date{})
+	var start map[string]types.AttributeValue
+	for {
+		res, err := r.txs.Query(ctx, QueryOpts{PK: sp.PK(), SKPrefix: "UNCLASSIFIED#" + accountID + "#", ExclusiveStartKey: start, Limit: 500})
 		if err != nil {
 			return nil, err
 		}
-		for _, e := range entries {
-			if e.Reversed || e.Reversal || !strings.HasPrefix(e.Ref, prefix) {
-				continue
-			}
-			amt := -e.Amount // income leg is a credit (negative); show the cash amount positive
-			credit := cat == finance.UnclassifiedInID
-			if !credit {
-				amt = e.Amount
-			}
-			out = append(out, UnclassifiedLine{TxID: e.TxID, Date: e.Date, Amount: amt, Credit: credit, Memo: e.Memo})
+		rows, err := DecodeItems[unclassifiedItem](res.Items)
+		if err != nil {
+			return nil, err
 		}
+		for _, it := range rows {
+			d, _ := brcal.Parse(it.Date)
+			out = append(out, UnclassifiedLine{TxID: it.TxID, Date: d, Amount: billing.Cents(it.Amount), Credit: it.Credit, Memo: it.Memo})
+		}
+		if res.LastEvaluatedKey == nil {
+			return out, nil
+		}
+		start = res.LastEvaluatedKey
 	}
-	return out, nil
 }
 
 type Classification struct{ CategoryID, BillID, TransferAccountID string }
@@ -298,7 +322,15 @@ func (r *LedgerRepository) Classify(ctx context.Context, bills *BillRepository, 
 	default:
 		return "", fmt.Errorf("%w: choose a category, a bill or a transfer", finance.ErrInvalidTransaction)
 	}
-	items := mergeAdds(append(append(append([]types.TransactWriteItem(nil), rev.Items...), next.Items...), extra...))
+	// The pending row goes in the same transaction, conditional on existing:
+	// of two classifications of one line, exactly one commits.
+	sk := UnclassifiedSK(cash.AccountID, txID)
+	pending := types.TransactWriteItem{Delete: &types.Delete{
+		TableName:           aws.String(r.txs.TableName),
+		Key:                 map[string]types.AttributeValue{"pk": str(sp.PK()), "sk": str(sk)},
+		ConditionExpression: aws.String("attribute_exists(pk)"),
+	}}
+	items := mergeAdds(append(append(append([]types.TransactWriteItem{pending}, rev.Items...), next.Items...), extra...))
 	if err := r.txs.TransactWrite(ctx, items); err != nil {
 		if onlyConditionFailed(err) {
 			return "", ErrNotUnclassified // a concurrent classification reversed it first
@@ -318,4 +350,47 @@ func (r *LedgerRepository) SetSyncState(ctx context.Context, sp space.ResolvedSp
 	return r.accounts.TransactWrite(ctx, txItems(r.accounts.BuildRawUpdateTxItem(sp.PK(), &sk,
 		"SET sync_state = :st", "attribute_exists(pk) AND #src = :byok", map[string]string{"#src": "source"},
 		map[string]types.AttributeValue{":st": str(state), ":byok": str(finance.SourceBYOK)})))
+}
+
+// refuseSyncedLegs keeps a bank-synced account equal to its bank: a person may
+// not undo a fact that moved its cash (a classified line's transfer or bill
+// settlement, the bank's opening). The original bank line is already reversed
+// and its FITID# lock kept, so the sync would never post it again and the
+// difference would be permanent (BYOK spec § 8.1, final review C1). One read
+// per distinct account, only on a manual undo.
+func (r *LedgerRepository) refuseSyncedLegs(ctx context.Context, sp space.ResolvedSpace, tx finance.Transaction) error {
+	seen := map[string]bool{}
+	for _, l := range tx.Legs {
+		if seen[l.AccountID] {
+			continue
+		}
+		seen[l.AccountID] = true
+		acct, err := r.getAccount(ctx, sp, l.AccountID)
+		if errors.Is(err, ErrNotFound) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if acct.Source == finance.SourceBYOK {
+			return fmt.Errorf("%w: %s", ErrAccountIsSynced, l.AccountID)
+		}
+	}
+	return nil
+}
+
+// OpeningDate is the date of the account's opening balance, if it has one.
+func (r *LedgerRepository) OpeningDate(ctx context.Context, sp space.ResolvedSpace, accountID string) (brcal.Date, bool, error) {
+	if err := sp.Require(space.Read); err != nil {
+		return brcal.Date{}, false, err
+	}
+	txID, err := r.openingTx(ctx, sp, accountID)
+	if err != nil || txID == "" {
+		return brcal.Date{}, false, err
+	}
+	tx, err := r.GetTransaction(ctx, sp, txID)
+	if err != nil {
+		return brcal.Date{}, false, err
+	}
+	return tx.Tx.Date, true, nil
 }

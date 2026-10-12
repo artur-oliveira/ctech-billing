@@ -4,6 +4,8 @@ package integration
 
 import (
 	"errors"
+	"fmt"
+	"sync/atomic"
 	"testing"
 
 	"gopkg.aoctech.app/billing/api/internal/domain/brcal"
@@ -129,5 +131,73 @@ func TestALineSettlesOnlyABillOfItsOwnDirection(t *testing.T) {
 	}
 	if got := byokBalance(t, ledger, sp, "byok-inter-abc"); got != 0 {
 		t.Fatalf("balance %d, want 0 (+2500 -2500, classification moves nothing)", got)
+	}
+}
+
+// A classified line's replacement and the bank's opening cannot be undone by
+// hand: the original bank line is already reversed and its lock kept, so an
+// undo would move the bank balance for good (final review C1).
+func TestUndoingAClassifiedLineOrTheBankOpeningIsRefused(t *testing.T) {
+	ctx := ctxT(t)
+	ledger, sp := byokSpace(t)
+	bills := repositories.NewBillRepository(testDB, testCfg)
+	if err := ledger.CreateAccount(ctx, sp, finance.LedgerAccount{ID: "caixa", Name: "Caixa", Class: finance.ClassAsset}, now()); err != nil {
+		t.Fatal(err)
+	}
+	d := brcal.MustParse("2026-10-05")
+	opening, err := ledger.PostProviderOpening(ctx, sp, "byok-inter-abc", 5000, d.AddDays(-1), repositories.PostMeta{}, now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	line, _, _ := ledger.PostBankLine(ctx, sp, "byok-inter-abc", repositories.BankLine{Provider: "inter", LineID: "TR", Date: d, Credit: true, Amount: 700}, repositories.PostMeta{}, now())
+	transfer, err := ledger.Classify(ctx, bills, sp, line, repositories.Classification{TransferAccountID: "caixa"}, repositories.PostMeta{Actor: "u"}, now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, id := range map[string]string{"transfer": transfer, "opening": opening} {
+		if _, err := ledger.ReverseManual(ctx, sp, id, d, repositories.PostMeta{Actor: "u"}, now()); !errors.Is(err, repositories.ErrAccountIsSynced) {
+			t.Fatalf("%s: %v", name, err)
+		}
+	}
+	payable, _ := bills.Create(ctx, sp, finance.Bill{Direction: finance.Payable, Amount: 300, AccountID: "byok-inter-abc",
+		CategoryID: "cat-aluguel", Description: "Aluguel", Competence: d, Due: d, Origin: finance.OriginManual}, repositories.PostMeta{Actor: "u"}, now())
+	out, _, _ := ledger.PostBankLine(ctx, sp, "byok-inter-abc", repositories.BankLine{Provider: "inter", LineID: "OUT", Date: d, Amount: 300}, repositories.PostMeta{}, now())
+	if _, err := ledger.Classify(ctx, bills, sp, out, repositories.Classification{BillID: payable.ID}, repositories.PostMeta{Actor: "u"}, now()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := bills.Unsettle(ctx, sp, payable.ID, d, repositories.PostMeta{Actor: "u"}, now()); !errors.Is(err, repositories.ErrAccountIsSynced) {
+		t.Fatalf("reopening a bill settled by a bank line: %v", err)
+	}
+	if got := byokBalance(t, ledger, sp, "byok-inter-abc"); got != 5000+700-300 {
+		t.Fatalf("balance %d", got)
+	}
+}
+
+// Final review I5: listing what is left to classify reads only what is left,
+// one key-condition query, however long the account's history grows.
+func TestTheUnclassifiedListIsOneQueryWhateverTheHistory(t *testing.T) {
+	ctx := ctxT(t)
+	ledger, sp := byokSpace(t)
+	bills := repositories.NewBillRepository(testDB, testCfg)
+	d := brcal.MustParse("2026-10-01")
+	for i := range 5 {
+		tx, _, err := ledger.PostBankLine(ctx, sp, "byok-inter-abc", repositories.BankLine{Provider: "inter", LineID: fmt.Sprint("H", i), Date: d, Credit: true, Amount: 100}, repositories.PostMeta{}, now())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if i < 4 {
+			if _, err := ledger.Classify(ctx, bills, sp, tx, repositories.Classification{CategoryID: "cat-vendas"}, repositories.PostMeta{Actor: "u"}, now()); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	var calls atomic.Int64
+	counted := ledgerFor(t, countingClient(&calls))
+	un, err := counted.Unclassified(ctx, sp, "byok-inter-abc")
+	if err != nil || len(un) != 1 {
+		t.Fatalf("%+v %v", un, err)
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("%d DynamoDB calls, want 1", calls.Load())
 	}
 }

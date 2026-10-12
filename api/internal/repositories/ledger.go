@@ -1376,6 +1376,9 @@ func (r *LedgerRepository) ReverseManual(ctx context.Context, sp space.ResolvedS
 	if orig.Tx.Kind != finance.KindTransfer && orig.Tx.Kind != finance.KindOpeningBalance {
 		return "", ErrNotManual
 	}
+	if err := r.refuseSyncedLegs(ctx, sp, orig.Tx); err != nil {
+		return "", err
+	}
 	if orig.Tx.Kind == finance.KindOpeningBalance {
 		// Posting one needs configure; so does taking it back.
 		if err := sp.Require(space.Configure); err != nil {

@@ -187,3 +187,20 @@ func TestTheSandboxCertificateWarnsTheOperatorOncePerThreshold(t *testing.T) {
 		t.Fatalf("%d alerts, want one (D-7) for one shared integration", len(al.got))
 	}
 }
+
+// Final review I2: a certificate that expired makes the bank refuse the token,
+// so sync fails; the expiry and its notice must not depend on sync succeeding.
+func TestAnExpiredCertificateIsHandledEvenWhenTheSyncFails(t *testing.T) {
+	mail := &recordingMailer{}
+	c := liveConn("c1")
+	c.CertNotAfter = time.Now().Add(-time.Hour)
+	repo := &memJobRepo{conns: []byokconn.Connection{c}}
+	j := NewByokJob(repo, nil, nil, mail, alerts.Nop{}, jobSpaces)
+	j.Register(StepSync, func(context.Context, space.ResolvedSpace, *byokconn.Connection, time.Time) error {
+		return byok.ErrCredentialsRefused
+	})
+	j.Run(context.Background(), true, time.Now())
+	if repo.conns[0].State != byokconn.StateExpired || len(mail.kinds()) != 1 {
+		t.Fatalf("state %s, mail %v", repo.conns[0].State, mail.kinds())
+	}
+}
