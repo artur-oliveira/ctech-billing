@@ -5,6 +5,7 @@ package integration
 import (
 	"errors"
 	"testing"
+	"time"
 
 	"gopkg.aoctech.app/api-commons/byok"
 
@@ -140,5 +141,39 @@ func TestTheGateRefusesALiveTenantWithoutEntitlementOrConnection(t *testing.T) {
 	r := env.consoleAs(t, "GET", "/v1.0/console/settings", env.sessionToken(t, collectScopes...), "live", "org:"+env.accountOrg, "")
 	if r.status != 200 || !bodyHas(r.body, `"payout_rail":"byok"`) || !bodyHas(r.body, `"can_charge":true`) || !bodyHas(r.body, `"collection":{"fine_bp":0`) {
 		t.Fatalf("%d %s", r.status, r.body)
+	}
+}
+
+func TestACreditNoteTheBankMissedIsAppliedByTheSweep(t *testing.T) {
+	env := newCollectEnv(t, collectTest)
+	inv := env.finalizeInvoice(t, 5000)
+	env.fake.FailNext(byok.OpUpdateCharge, byok.ErrUnavailable)
+	if r := env.consoleWrite(t, "POST", "/v1.0/console/invoices/"+inv.ID+"/credit-notes", `{"amount":1000,"reason":"desconto"}`); r.status != 201 {
+		t.Fatalf("%d %s", r.status, r.body)
+	}
+	if ch, _ := env.fake.Charge(env.attempt(t, inv).ChargeRef); ch.Amount != 5000 {
+		t.Fatal("the bank was down")
+	}
+	env.runJob(t, now().Add(10*time.Minute))
+	if ch, _ := env.fake.Charge(env.attempt(t, inv).ChargeRef); ch.Amount != 4000 || env.attempt(t, inv).Amount != 4000 {
+		t.Fatalf("the sweep applies the credit: %d", ch.Amount)
+	}
+}
+
+func TestAPaymentOfAStaleAmountAfterACreditIsPartlyExcess(t *testing.T) {
+	env := newCollectEnv(t, collectTest)
+	inv := env.finalizeInvoice(t, 5000)
+	env.fake.FailNext(byok.OpUpdateCharge, byok.ErrUnavailable)
+	env.consoleWrite(t, "POST", "/v1.0/console/invoices/"+inv.ID+"/credit-notes", `{"amount":1000,"reason":"desconto"}`)
+	ref := env.chargeRef(t, inv)
+	env.fake.Pay(ref.Ref, 5000, 0, now())
+	if out, err := env.byok.Confirm(ctxT(t), ref, services.WakeWebhook, now()); out != services.OutcomeSettled || err != nil {
+		t.Fatalf("%s %v", out, err)
+	}
+	if ex := env.excess(t, inv); len(ex) != 1 || ex[0].Amount != 1000 {
+		t.Fatalf("the credited part paid anyway is excess: %+v", ex)
+	}
+	if a := env.attempt(t, inv); a.Amount != 4000 {
+		t.Fatalf("the attempt settles what was owed: %d", a.Amount)
 	}
 }

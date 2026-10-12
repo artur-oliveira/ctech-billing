@@ -9,6 +9,7 @@ import (
 	"gopkg.aoctech.app/api-commons/byok"
 
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
+	"gopkg.aoctech.app/billing/api/internal/repositories"
 	"gopkg.aoctech.app/billing/api/internal/services"
 )
 
@@ -78,5 +79,32 @@ func TestACreditNoteRefundsAPaidInvoiceViaPix(t *testing.T) {
 	}
 	if rows := env.excess(t, inv); len(rows) != 1 || rows[0].Kind != billing.RefundOfCredit || rows[0].Amount != 2000 {
 		t.Fatalf("%+v", rows)
+	}
+}
+
+func TestARefundViaPixThatCannotHappenIssuesNoCreditNote(t *testing.T) {
+	env := newCollectEnv(t, collectTest)
+	inv := env.finalizeInvoice(t, 5000)
+	ref := env.chargeRef(t, inv)
+	env.fake.Pay(ref.Ref, 5000, 0, now())
+	_, _ = env.byok.Confirm(ctxT(t), ref, services.WakeWebhook, now().AddDate(0, 0, -91))
+	setPaidAt(t, env, inv, now().AddDate(0, 0, -91))
+	r := env.consoleWrite(t, "POST", "/v1.0/console/invoices/"+inv.ID+"/credit-notes", `{"amount":2000,"reason":"devolução","refund_via_pix":true}`)
+	if r.code() != "refund_window_closed" {
+		t.Fatalf("%d %s", r.status, r.body)
+	}
+	notes, _ := repositories.NewCreditNoteRepository(testDB, testCfg).ListByInvoice(ctxT(t), inv.OrganizationID, inv.Livemode, inv.ID)
+	if len(notes) != 0 {
+		t.Fatal("no credit note when its refund cannot happen")
+	}
+}
+
+// setPaidAt backdates an invoice's paid_at (a payment 91 days ago).
+func setPaidAt(t *testing.T, env *collectEnv, inv *billing.Invoice, at time.Time) {
+	t.Helper()
+	base := repositories.NewBase(testDB, testCfg, repositories.TableInvoices)
+	sk := repositories.InvoiceSK(inv.ID)
+	if _, err := base.UpdateItem(ctxT(t), repositories.TenantPK(inv.OrganizationID, inv.Livemode), &sk, map[string]any{"paid_at": at.UTC().Format(time.RFC3339)}); err != nil {
+		t.Fatal(err)
 	}
 }

@@ -120,7 +120,8 @@
     "byok_webhook_unavailable": "O aviso de pagamentos não está disponível agora. As confirmações chegam em até uma hora.",
     "refund_window_closed": "Passaram mais de 90 dias do pagamento. O Inter não aceita mais a devolução.",
     "tenant_zero_rail": "A forma de cobrança da CTech é alterada pela equipe da CTech.",
-    "invalid_collection_settings": "Use multa de até 20% e juros de até 10% ao mês."
+    "invalid_collection_settings": "Use multa de até 20% e juros de até 10% ao mês.",
+    "byok_sandbox_webhook_shared": "O aviso de pagamentos do ambiente de testes é configurado pela CTech."
   },
   "field": {
     "required": "Obrigatório.",

@@ -432,6 +432,16 @@ func (h *consoleHandlers) creditInvoice(c fiber.Ctx) error {
 		return fail(c, err)
 	}
 
+	// "Devolver via Pix" is checked before the note exists: a refund that
+	// cannot happen refuses the note, so a retry never issues a second one.
+	if req.RefundViaPix {
+		if h.byok == nil {
+			return fail(c, services.ErrNotByokRail)
+		}
+		if err := h.byok.CheckRefundCredit(c.Context(), inv, h.now()); err != nil {
+			return fail(c, err)
+		}
+	}
 	cn := &billing.CreditNote{
 		ID:                 id.NewWithPrefix(id.PrefixCreditNote),
 		InvoiceID:          inv.ID,

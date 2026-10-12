@@ -66,6 +66,16 @@ func (k *ByokLinker) Link(ctx context.Context, sp space.ResolvedSpace, conn *byo
 	if a.Status == billing.AttemptSucceeded && (l.PaymentID == "" || l.PaymentID == a.PaymentID) {
 		bill, err := k.bills.Get(ctx, sp, repositories.InvoiceBillID(sp, ref.InvoiceID))
 		if err == nil && len(bill.TransactionIDs) > 1 {
+			// The invoice posted amount + late charges; anything the line
+			// carries above that (an overpayment, recorded as excess) posts
+			// as its own bank line to classify, so the ledger equals the bank.
+			if posted := a.Amount + a.LateCharges; l.Amount > posted {
+				over := l
+				over.LineID, over.Amount, over.Memo = l.LineID+":excess", l.Amount-posted, l.Memo
+				if _, _, err := k.ledger.PostBankLine(ctx, sp, conn.LedgerAccountID, over, repositories.PostMeta{Actor: "system:byok"}, k.clock()); err != nil {
+					return false, err
+				}
+			}
 			if _, err := k.ledger.LinkBankLine(ctx, sp, conn.LedgerAccountID, l, bill.TransactionIDs[1], k.clock()); err != nil {
 				return false, err
 			}

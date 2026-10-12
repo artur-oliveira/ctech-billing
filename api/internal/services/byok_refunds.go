@@ -51,15 +51,15 @@ func (c *ByokCollector) RefundExcess(ctx context.Context, organizationID string,
 	return e, c.sendRefund(ctx, org, e, now)
 }
 
-// RefundCredit gives back part of a BYOK-paid invoice with a credit note
-// ("devolver via Pix", spec § 7.5), from the payment that settled it.
-func (c *ByokCollector) RefundCredit(ctx context.Context, inv *billing.Invoice, cn *billing.CreditNote, actor, requestID string, now time.Time) (*billing.ExcessPayment, error) {
-	if inv.Status != billing.InvoicePaid || cn.Amount <= 0 {
-		return nil, fmt.Errorf("%w: only a paid invoice is refunded", ErrInvoiceNotPayable)
+// creditRefundSource is the payment a credit refund gives back from, and the
+// day it was paid; ErrNotByokRail when the invoice was not paid by BYOK.
+func (c *ByokCollector) creditRefundSource(ctx context.Context, inv *billing.Invoice, now time.Time) (*billing.PaymentAttempt, time.Time, error) {
+	if inv.Status != billing.InvoicePaid {
+		return nil, time.Time{}, fmt.Errorf("%w: only a paid invoice is refunded", ErrInvoiceNotPayable)
 	}
 	attempts, err := c.payments.ListAttempts(ctx, inv.OrganizationID, inv.Livemode, inv.ID)
 	if err != nil {
-		return nil, err
+		return nil, time.Time{}, err
 	}
 	var paid *billing.PaymentAttempt
 	for i := range attempts {
@@ -68,17 +68,57 @@ func (c *ByokCollector) RefundCredit(ctx context.Context, inv *billing.Invoice, 
 		}
 	}
 	if paid == nil || paid.PaymentID == "" {
-		return nil, ErrNotByokRail
+		return nil, time.Time{}, ErrNotByokRail
 	}
 	paidAt, _ := time.Parse(time.RFC3339, inv.PaidAt)
 	if paidAt.IsZero() {
 		paidAt = now
 	}
+	return paid, paidAt, nil
+}
+
+// CheckRefundCredit answers, before a credit note exists, whether "Devolver
+// via Pix" can happen for it: paid by BYOK, inside Inter's 90 days, the gate
+// open. The console refuses the note otherwise, so a retry never issues two.
+func (c *ByokCollector) CheckRefundCredit(ctx context.Context, inv *billing.Invoice, now time.Time) error {
+	_, paidAt, err := c.creditRefundSource(ctx, inv, now)
+	if err != nil {
+		return err
+	}
+	if !(billing.ExcessPayment{PaidAt: paidAt}).Refundable(now) {
+		return ErrRefundWindowClosed
+	}
+	org, err := c.orgs.Get(ctx, inv.OrganizationID, inv.Livemode)
+	if err != nil {
+		return err
+	}
+	return c.gates.Authorize(ctx, org)
+}
+
+// RefundCredit gives back part of a BYOK-paid invoice with a credit note
+// ("devolver via Pix", spec § 7.5), from the payment that settled it. The
+// row is keyed by the credit note: a second call finds it and resumes.
+func (c *ByokCollector) RefundCredit(ctx context.Context, inv *billing.Invoice, cn *billing.CreditNote, actor, requestID string, now time.Time) (*billing.ExcessPayment, error) {
+	if cn.Amount <= 0 {
+		return nil, fmt.Errorf("%w: nothing to refund", ErrInvoiceNotPayable)
+	}
+	paid, paidAt, err := c.creditRefundSource(ctx, inv, now)
+	if err != nil {
+		return nil, err
+	}
 	e := &billing.ExcessPayment{ID: "ex_" + id.New(), OrganizationID: inv.OrganizationID, Livemode: inv.Livemode, InvoiceID: inv.ID,
 		AttemptID: paid.ID, AttemptNumber: paid.AttemptNumber, Provider: paid.Provider, PaymentID: cn.ID, SourcePaymentID: paid.PaymentID,
 		Amount: cn.Amount, Status: billing.ExcessOpen, Kind: billing.RefundOfCredit, CreditNoteID: cn.ID, PaidAt: paidAt}
-	if _, err := c.payments.RecordExcess(ctx, e, now); err != nil {
+	created, err := c.payments.RecordExcess(ctx, e, now)
+	if err != nil {
 		return nil, err
+	}
+	if !created {
+		existing, err := c.payments.GetExcessByPayment(ctx, inv.OrganizationID, inv.Livemode, inv.ID, cn.ID)
+		if err != nil {
+			return nil, err
+		}
+		e = existing
 	}
 	return c.RefundExcess(ctx, inv.OrganizationID, inv.Livemode, e.ID, actor, requestID, now)
 }

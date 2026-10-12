@@ -326,3 +326,24 @@ func (r *PaymentRepository) Refunding(ctx context.Context, livemode bool, start 
 	}
 	return &Page[billing.ExcessPayment]{Items: out, LastEvaluatedKey: res.LastEvaluatedKey}, nil
 }
+
+// GetExcessByPayment reads an invoice's excess row by its payment id (for a
+// credit refund, the credit note's id), strongly consistent.
+func (r *PaymentRepository) GetExcessByPayment(ctx context.Context, organizationID string, livemode bool, invoiceID, paymentID string) (*billing.ExcessPayment, error) {
+	out, err := r.base.QueryRaw(ctx, &dynamodb.QueryInput{
+		KeyConditionExpression:    aws.String("pk = :pk AND sk = :sk"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{":pk": str(TenantPK(organizationID, livemode)), ":sk": str(ExcessSK(invoiceID, paymentID))},
+		ConsistentRead:            aws.Bool(true),
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(out.Items) == 0 {
+		return nil, fmt.Errorf("%w: excess payment", ErrNotFound)
+	}
+	row, err := Decode[excessRow](out.Items[0])
+	if err != nil {
+		return nil, err
+	}
+	return &row.ExcessPayment, nil
+}

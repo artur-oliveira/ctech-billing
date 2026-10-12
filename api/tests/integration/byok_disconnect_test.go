@@ -125,3 +125,14 @@ func TestUseForCollectionTurnsTheRailOnWithTheLateFees(t *testing.T) {
 		t.Fatalf("over 20%%: %d %s", r.status, r.body)
 	}
 }
+
+func TestATestTenantCannotReplaceTheSharedSandboxWebhook(t *testing.T) {
+	env := newCollectEnv(t, collectTest)
+	env.fake.SetWebhookURL(byok.ProductPix, "https://pix.wallet.aoctech.app/pix/webhook")
+	if r := env.connWrite(t, "POST", "/v1.0/console/connections/inter/webhook", `{"replace_existing":true}`); r.status != 409 {
+		t.Fatalf("%d %s", r.status, r.body)
+	}
+	if env.fake.WebhookURL(byok.ProductPix) != "https://pix.wallet.aoctech.app/pix/webhook" {
+		t.Fatal("the shared key's webhook is the operator's")
+	}
+}

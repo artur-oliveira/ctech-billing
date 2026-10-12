@@ -91,3 +91,18 @@ func TestAnUnpaidChargeLineWaitsAndAnExcessLinePostsToClassify(t *testing.T) {
 		t.Fatalf("the invoice's payment once and the duplicate as a bank line: %d", got)
 	}
 }
+
+func TestAnOverpaidLineKeepsTheLedgerEqualToTheBank(t *testing.T) {
+	env := newCollectEnv(t, collectTest)
+	inv := env.finalizeInvoice(t, 10000)
+	ref := env.chargeRef(t, inv)
+	env.fake.Pay(ref.Ref, 10500, 300, now())
+	ch, _ := env.fake.Charge(ref.Ref)
+	_, _ = env.byok.Confirm(ctxT(t), ref, services.WakeWebhook, now())
+	env.fake.AddLines(byok.StatementLine{ID: "L-over", Date: byokToday(), Direction: byok.Credit, Amount: 10500, ChargeRef: ref.Ref, PaymentID: ch.Payments[0].ID})
+	env.syncNow(t)
+	env.syncNow(t)
+	if got := env.byokAccountBalance(t); got != 10500 {
+		t.Fatalf("one line of 10500 in the bank, %d in the ledger", got)
+	}
+}

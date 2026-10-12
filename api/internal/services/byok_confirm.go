@@ -92,6 +92,17 @@ func (c *ByokCollector) confirmAttempt(ctx context.Context, org *billing.Organiz
 		return OutcomeOpen, nil // still payable: nothing to do
 	}
 	first := ch.Payments[0]
+	if a.Status == billing.AttemptPending {
+		// A credit note the bank never applied (it was down): what is owed is
+		// the invoice's collectable amount; the rest paid is excess (§ 7.3).
+		if inv, err := c.invoices.Get(ctx, a.OrganizationID, a.Livemode, a.InvoiceID); err == nil && inv.Status == billing.InvoiceOpen {
+			if owed := inv.Collectable(); owed > 0 && owed < a.Amount && first.Amount >= int64(owed) {
+				if err := c.payments.SetByokAmount(ctx, a, owed, now); err != nil {
+					return "", err
+				}
+			}
+		}
+	}
 	if first.Amount < int64(a.Amount) {
 		slog.ErrorContext(ctx, "byok charge paid below the amount due", "attempt_id", a.ID, "expected", int64(a.Amount), "paid", first.Amount)
 		return "", fmt.Errorf("%w: attempt %s paid %d, expected %d", ErrAmountMismatch, a.ID, first.Amount, int64(a.Amount))
@@ -99,7 +110,9 @@ func (c *ByokCollector) confirmAttempt(ctx context.Context, org *billing.Organiz
 	outcome := OutcomeAlreadySettled
 	switch a.Status {
 	case billing.AttemptPending:
-		a.PaymentID, a.LateCharges = first.ID, billing.Cents(first.Amount-int64(a.Amount))
+		// Late charges are the provider's computed multa + juros, never more
+		// than what was paid above the amount: the rest is excess (D19).
+		a.PaymentID, a.LateCharges = first.ID, billing.Cents(min(first.LateCharges, first.Amount-int64(a.Amount)))
 		won, err := c.settler.SettleAttempt(ctx, a, billing.CauseByokConfirmed, actor, "", now)
 		if err != nil {
 			return "", err

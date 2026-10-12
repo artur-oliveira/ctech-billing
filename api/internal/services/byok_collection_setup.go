@@ -27,6 +27,9 @@ var (
 	// ErrTenantZeroRail: moving tenant zero's rail is the operator's audited
 	// action (spec § 12.6), never a console route.
 	ErrTenantZeroRail = errors.New("byok: tenant zero's collection rail is changed by the operator")
+	// ErrSandboxWebhookShared: the shared sandbox key's webhook belongs to
+	// every test tenant; only cmd/byok's bootstrap registers it.
+	ErrSandboxWebhookShared = errors.New("byok: the shared sandbox webhook is the operator's")
 )
 
 // ErrWebhookConflict: another system's URL receives the provider's payment
@@ -93,6 +96,9 @@ func (s *ByokCollectionSetup) RegisterWebhook(ctx context.Context, sp space.Reso
 func (s *ByokCollectionSetup) register(ctx context.Context, conn *byokconn.Connection, replace bool, actor, requestID string, now time.Time) error {
 	if !conn.Has(byok.CapabilityCollection) {
 		return billing.ErrByokScopesMissing
+	}
+	if replace && conn.Kind == byokconn.KindSandboxShared {
+		return ErrSandboxWebhookShared
 	}
 	if s.host == "" {
 		return ErrNoHooksHost

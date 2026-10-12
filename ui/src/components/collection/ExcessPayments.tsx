@@ -56,7 +56,7 @@ export function ExcessPayments({rows, currency, onRefund}: {
             </div>
             <div className="flex items-center gap-2">
               <Badge tone={TONE[r.status]}>{t(`connections.pix.excessStatus.${r.status}`)}</Badge>
-              {(r.status === "open" || r.status === "refund_failed") && r.kind === "excess" && (
+              {(r.status === "refund_failed" || (r.status === "open" && r.kind === "excess")) && (
                 <Button variant="outline" size="sm" onClick={() => setAsking(r)}>{t("connections.pix.refund")}</Button>
               )}
             </div>

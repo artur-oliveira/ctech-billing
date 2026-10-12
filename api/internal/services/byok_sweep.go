@@ -85,7 +85,6 @@ func (s *ByokSweep) Sweep(ctx context.Context, _ space.ResolvedSpace, conn *byok
 	if err != nil {
 		return err
 	}
-	var errs []error
 	var start map[string]types.AttributeValue
 	for {
 		page, err := s.payments.OpenByok(ctx, tenant.ID, tenant.Livemode, start, 100)
@@ -97,8 +96,15 @@ func (s *ByokSweep) Sweep(ctx context.Context, _ space.ResolvedSpace, conn *byok
 			if a.Provider != conn.Provider {
 				continue
 			}
+			// One charge the bank refuses never stops this connection's
+			// statement sync or audit: logged (and alerted in live), not
+			// returned. Only a failure to list is the step's error.
 			if err := s.sweepOne(ctx, tenant, a, now); err != nil {
-				errs = append(errs, fmt.Errorf("attempt %s: %w", a.ID, err))
+				slog.WarnContext(ctx, "byok sweep: attempt", "attempt_id", a.ID, "code", byok.ErrorCode(err))
+				if conn.Livemode && !errors.Is(err, byok.ErrUnavailable) {
+					s.alerts.Alert(ctx, alerts.Alert{Job: "byok", Summary: "a BYOK charge could not be swept", Err: err,
+						Detail: fmt.Sprintf("attempt %s of invoice %s (tenant %s)", a.ID, a.InvoiceID, a.OrganizationID)})
+				}
 			}
 		}
 		if page.LastEvaluatedKey == nil {
@@ -106,7 +112,7 @@ func (s *ByokSweep) Sweep(ctx context.Context, _ space.ResolvedSpace, conn *byok
 		}
 		start = page.LastEvaluatedKey
 	}
-	return errors.Join(errs...)
+	return nil
 }
 
 func (s *ByokSweep) sweepOne(ctx context.Context, tenant *billing.Organization, a *billing.PaymentAttempt, now time.Time) error {
@@ -126,6 +132,13 @@ func (s *ByokSweep) sweepOne(ctx context.Context, tenant *billing.Organization, 
 	}
 	if !a.CheckedAt.IsZero() && now.Sub(a.CheckedAt) < every {
 		return nil
+	}
+	// A credit note the bank did not take when it was issued (spec § 7.3).
+	if inv, err := s.collector.invoices.Get(ctx, a.OrganizationID, a.Livemode, a.InvoiceID); err == nil &&
+		inv.Status == billing.InvoiceOpen && inv.Collectable() != a.Amount {
+		if err := s.collector.Credited(ctx, inv, now); err != nil {
+			return err
+		}
 	}
 	_, err := s.collector.confirmAttempt(ctx, tenant, a, WakeSweep, now)
 	if errors.Is(err, ErrAmountMismatch) {

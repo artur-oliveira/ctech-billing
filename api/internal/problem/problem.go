@@ -187,6 +187,8 @@ func FromError(err error) *Problem {
 	// message never reaches a client.
 	case errors.Is(err, billing.ErrTenantSuspended):
 		return Forbidden("this organization's live billing is suspended").WithCode("tenant_suspended")
+	case errors.Is(err, services.ErrSandboxWebhookShared):
+		return Conflict("the shared sandbox webhook is managed by CTech").WithCode("byok_sandbox_webhook_shared")
 	case errors.Is(err, services.ErrTenantZeroRail):
 		return Conflict("tenant zero's collection rail is changed by the operator").WithCode("tenant_zero_rail")
 	case errors.Is(err, services.ErrNoHooksHost):

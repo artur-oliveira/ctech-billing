@@ -82,6 +82,9 @@ func TestAnOverpaymentAboveTheLateChargesIsExcess(t *testing.T) {
 	if ex := env.excess(t, inv); len(ex) != 1 || ex[0].Amount != 200 {
 		t.Fatalf("%+v", ex)
 	}
+	if a := env.attempt(t, inv); a.LateCharges != 300 {
+		t.Fatalf("the overpayment is excess, not late charges: %d", a.LateCharges)
+	}
 }
 
 func TestAnUnderpaidChargeAlarmsAndSettlesNothing(t *testing.T) {

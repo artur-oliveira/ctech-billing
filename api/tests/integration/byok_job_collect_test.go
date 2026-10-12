@@ -134,3 +134,13 @@ func TestTheFirstTestRunRegistersTheSandboxWebhook(t *testing.T) {
 		t.Fatal("registered on the sandbox key")
 	}
 }
+
+func TestOneFailingChargeDoesNotStopTheStatementSync(t *testing.T) {
+	env := newCollectEnv(t, collectLive)
+	env.finalizeInvoice(t, 1000)
+	env.fake.FailNext(byok.OpGetCharge, byok.ErrInvalidRequest)
+	env.runJob(t, now().Add(2*time.Hour))
+	if env.connection(t).LastSyncOKAt.IsZero() {
+		t.Fatal("the statement sync ran despite one charge the bank refused")
+	}
+}

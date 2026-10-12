@@ -22,6 +22,11 @@ describe("ExcessPayments", () => {
     expect(screen.queryByRole("button", {name: "Devolver"})).toBeNull()
   })
 
+  it("offers to retry a credit refund the bank refused", () => {
+    renderWithQuery(<ExcessPayments rows={[{...row, kind: "credit_refund", status: "refund_failed"}]} currency="BRL" onRefund={vi.fn()}/>)
+    expect(screen.getByRole("button", {name: "Devolver"})).toBeTruthy()
+  })
+
   it("renders nothing without rows", () => {
     const {container} = renderWithQuery(<ExcessPayments rows={[]} currency="BRL" onRefund={vi.fn()}/>)
     expect(container.textContent).toBe("")

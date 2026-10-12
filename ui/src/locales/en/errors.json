@@ -120,7 +120,8 @@
     "byok_webhook_unavailable": "Payment notices are not available right now. Confirmations arrive within an hour.",
     "refund_window_closed": "More than 90 days passed since the payment. Inter no longer accepts the refund.",
     "tenant_zero_rail": "CTech's own collection rail is changed by the CTech team.",
-    "invalid_collection_settings": "Use a fine up to 20% and interest up to 10% a month."
+    "invalid_collection_settings": "Use a fine up to 20% and interest up to 10% a month.",
+    "byok_sandbox_webhook_shared": "The sandbox payment notices are managed by CTech."
   },
   "field": {
     "required": "Required.",
