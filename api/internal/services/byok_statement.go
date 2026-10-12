@@ -62,7 +62,7 @@ func fromByok(d byok.Date) brcal.Date { return brcal.Date{Year: d.Year, Month: d
 // StartBackfill runs the first window right after connect, detached from the
 // request, bounded to 4 minutes; cmd/byok continues anything left. sp is the
 // connecting request's space (already resolved: a value, safe to keep).
-func (s *ByokStatement) StartBackfill(sp space.ResolvedSpace, conn *byokconn.Connection) {
+func (s *ByokStatement) StartBackfill(sp space.ResolvedSpace, conn *byokconn.Connection, now time.Time) {
 	if s == nil {
 		return
 	}
@@ -70,7 +70,7 @@ func (s *ByokStatement) StartBackfill(sp space.ResolvedSpace, conn *byokconn.Con
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
 		defer cancel()
-		if _, err := s.Sync(ctx, sp, &c, time.Now()); err != nil {
+		if _, err := s.Sync(ctx, sp, &c, now); err != nil {
 			slog.WarnContext(ctx, "byok first backfill window", "connection_id", c.ID, "code", byok.ErrorCode(err))
 		}
 	}()

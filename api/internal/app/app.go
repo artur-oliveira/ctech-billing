@@ -11,6 +11,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awscfg "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
+	"github.com/aws/aws-sdk-go-v2/service/lambda"
+	smithymw "github.com/aws/smithy-go/middleware"
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/cors"
 	"github.com/gofiber/fiber/v3/middleware/logger"
@@ -18,10 +20,14 @@ import (
 	"gopkg.aoctech.app/api-commons/accountorgs"
 	"gopkg.aoctech.app/api-commons/cache"
 	"gopkg.aoctech.app/api-commons/oauthclients"
+	"gopkg.aoctech.app/api-commons/ratelimit"
 
 	"gopkg.aoctech.app/billing/api/internal/accountclient"
 	v1 "gopkg.aoctech.app/billing/api/internal/api/v1"
+	"gopkg.aoctech.app/billing/api/internal/byokrpc"
 	"gopkg.aoctech.app/billing/api/internal/config"
+	"gopkg.aoctech.app/billing/api/internal/crypto"
+	"gopkg.aoctech.app/billing/api/internal/domain/byokconn"
 	"gopkg.aoctech.app/billing/api/internal/email"
 	"gopkg.aoctech.app/billing/api/internal/invoicepdf"
 	"gopkg.aoctech.app/billing/api/internal/middleware"
@@ -159,19 +165,29 @@ func Build(ctx context.Context, cfg *config.Config, clock func() time.Time) (*fi
 	billRepo := repositories.NewBillRepository(db, cfg)
 	recRepo := repositories.NewRecurrenceRepository(db, cfg)
 	ledgerRepo := repositories.NewLedgerRepository(db, cfg)
+	byokConns, byokStatement, err := BuildByok(ctx, cfg, db, cacheBackend, ledgerRepo)
+	if err != nil {
+		return nil, err
+	}
+	if byokConns == nil {
+		slog.Warn("BYOK_OUTBOUND_FUNCTION not set — bank connection routes are not mounted")
+	}
 	v1.Register(app, v1.Deps{
-		Applications: applications,
-		Customers:    customers,
-		Subs:         subs,
-		Invoices:     invoices,
-		Usage:        usage,
-		Levels:       levels,
-		FinancePlan:  services.NewFinancePlan(customers, subs, invoices, catalog, levels, subscriber, cfg.PortalOrganizationID),
-		Catalog:      catalog,
-		Credentials:  creds,
-		Idempotency:  idem,
-		Connector:    services.NewCredentialConnector(clientReader, creds, machineScopes),
-		Webhooks:     repositories.NewWebhookRepository(db, cfg),
+		ByokConnections: byokConns,
+		ByokStatement:   byokStatement,
+		Bills:           billRepo,
+		Applications:    applications,
+		Customers:       customers,
+		Subs:            subs,
+		Invoices:        invoices,
+		Usage:           usage,
+		Levels:          levels,
+		FinancePlan:     services.NewFinancePlan(customers, subs, invoices, catalog, levels, subscriber, cfg.PortalOrganizationID),
+		Catalog:         catalog,
+		Credentials:     creds,
+		Idempotency:     idem,
+		Connector:       services.NewCredentialConnector(clientReader, creds, machineScopes),
+		Webhooks:        repositories.NewWebhookRepository(db, cfg),
 
 		Organizations: orgs,
 		Audit:         audit,
@@ -516,7 +532,56 @@ func newDynamoDB(ctx context.Context, cfg *config.Config) (*dynamodb.Client, err
 		if cfg.DynamoDBEndpoint != "" {
 			o.BaseEndpoint = aws.String(cfg.DynamoDBEndpoint)
 		}
+		o.APIOptions = append(o.APIOptions, DynamoDBAPIOptions...)
 	}), nil
+}
+
+// Test hooks, nil in production. ByokInvoker replaces the outbound Lambda client
+// (the integration tests route envelopes to a byoktest.Fake); DynamoDBAPIOptions
+// lets a test observe the app's own DynamoDB calls (the zero-reads-before-
+// membership proofs). Set them before Build; Build reads them once.
+var (
+	ByokInvoker        byokrpc.Invoker
+	DynamoDBAPIOptions []func(*smithymw.Stack) error
+)
+
+// BuildByok wires the BYOK connection services (spec 2026-10-11) for the api
+// and cmd/byok. Both are nil when BYOK_OUTBOUND_FUNCTION is not set: the
+// connection routes are then not mounted and cmd/byok refuses to start.
+func BuildByok(ctx context.Context, cfg *config.Config, db *dynamodb.Client, c cache.Backend, ledger *repositories.LedgerRepository) (*services.ByokConnections, *services.ByokStatement, error) {
+	if cfg.ByokOutboundFunction == "" {
+		return nil, nil, nil
+	}
+	inv := ByokInvoker
+	if inv == nil {
+		awsCfg, err := awscfg.LoadDefaultConfig(ctx, awscfg.WithRegion(cfg.AWSRegion))
+		if err != nil {
+			return nil, nil, fmt.Errorf("aws config: %w", err)
+		}
+		inv = lambda.NewFromConfig(awsCfg)
+	}
+	out := byokrpc.NewOutbound(inv, cfg.ByokOutboundFunction)
+	counter := byokCounter(c)
+	tokens := byokrpc.NewTokenManager(c, counter, crypto.NewSealer(cfg.FieldEncryptionKey))
+	limits := byokrpc.NewLimits(counter)
+	repo := repositories.NewByokRepository(db, cfg)
+	var conns *services.ByokConnections
+	statement := services.NewByokStatement(repo, ledger, c,
+		func(conn *byokconn.Connection) byokrpc.Session { return conns.Session(conn) },
+		func(ctx context.Context, conn *byokconn.Connection, err error, now time.Time) {
+			conns.RecordOutcome(ctx, conn, err, now)
+		})
+	conns = services.NewByokConnections(repo, ledger, out, tokens, limits, statement)
+	return conns, statement, nil
+}
+
+// byokCounter counts the BYOK limiters in Valkey when the app has it, so every
+// instance shares one budget per connection; in memory otherwise.
+func byokCounter(c cache.Backend) ratelimit.Counter {
+	if rb, ok := c.(*cache.RedisBackend); ok {
+		return ratelimit.NewValkeyCounter(rb.Client())
+	}
+	return ratelimit.NewMemoryCounter()
 }
 
 func newCache(cfg *config.Config) cache.Backend {

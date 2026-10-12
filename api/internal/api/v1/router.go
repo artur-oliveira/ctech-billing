@@ -17,6 +17,14 @@ import (
 // Deps is everything the routes need, passed explicitly rather than assembled
 // from a container here — wiring belongs in one place, and that place is app.
 type Deps struct {
+	// BYOK (spec 2026-10-11): bank connections and their statement sync. Nil
+	// unmounts the connection routes.
+	ByokConnections *services.ByokConnections
+	ByokStatement   *services.ByokStatement
+	// Bills is the bill repository the classification of a bank line settles
+	// through (spec § 8.3).
+	Bills *repositories.BillRepository
+
 	Customers *repositories.CustomerRepository
 	Subs      *repositories.SubscriptionRepository
 	Invoices  *repositories.InvoiceRepository
@@ -208,6 +216,10 @@ func Register(app *fiber.App, d Deps) {
 	// space; its handlers end the chain, so the console middleware never runs for
 	// them (TestFinanceIsNotBehindTheConsoleTenantResolver).
 	registerFinance(v1, d, auth, clock)
+	// Bank connections, before the console group for the same reason: an
+	// organization with no billing tenant may connect for statement sync (BYOK
+	// spec § 3.1), so the merchant tenant resolver must never run in front.
+	registerConnections(v1, d, auth, clock)
 	registerConsole(v1, d, h, auth)
 	registerPortal(v1, d, h, auth)
 	registerCheckout(v1, d, h)

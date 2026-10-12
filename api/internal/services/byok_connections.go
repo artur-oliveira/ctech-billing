@@ -150,8 +150,8 @@ func (s *ByokConnections) Get(ctx context.Context, sp space.ResolvedSpace, provi
 	return conn, err
 }
 
-// connected is Get for an action: an onboarding-only row has no credentials.
-func (s *ByokConnections) connected(ctx context.Context, sp space.ResolvedSpace, provider string) (*byokconn.Connection, error) {
+// Connected is Get for an action: an onboarding-only row has no credentials.
+func (s *ByokConnections) Connected(ctx context.Context, sp space.ResolvedSpace, provider string) (*byokconn.Connection, error) {
 	conn, err := s.Get(ctx, sp, provider)
 	if err != nil {
 		return nil, err
@@ -224,7 +224,9 @@ func (s *ByokConnections) create(ctx context.Context, sp space.ResolvedSpace, co
 	if err := s.repo.CreateConnection(ctx, conn, actor, requestID, now); err != nil {
 		return nil, err
 	}
-	s.statement.StartBackfill(sp, conn) // detached, bounded, under the connection lock (Task 15)
+	if !conn.BackfillDone { // the shared sandbox has no history to backfill
+		s.statement.StartBackfill(sp, conn, now) // detached, bounded, under the connection lock
+	}
 	return conn, nil
 }
 
@@ -250,7 +252,7 @@ func (s *ByokConnections) EnableSandbox(ctx context.Context, sp space.ResolvedSp
 
 // Test re-runs a token fetch and a balance read, records health and answers it.
 func (s *ByokConnections) Test(ctx context.Context, sp space.ResolvedSpace, provider string, now time.Time) (*byokconn.Connection, error) {
-	conn, err := s.connected(ctx, sp, provider)
+	conn, err := s.Connected(ctx, sp, provider)
 	if err != nil {
 		return nil, err
 	}
@@ -266,7 +268,7 @@ func (s *ByokConnections) Test(ctx context.Context, sp space.ResolvedSpace, prov
 // Renew: § 3.2 checks, Reseal (the api never sees the client_secret again),
 // one conditional write of the new version; warnings reset.
 func (s *ByokConnections) Renew(ctx context.Context, sp space.ResolvedSpace, provider, certPEM, keyPEM, actor, requestID string, now time.Time) (*byokconn.Connection, error) {
-	conn, err := s.connected(ctx, sp, provider)
+	conn, err := s.Connected(ctx, sp, provider)
 	if err != nil {
 		return nil, err
 	}

@@ -28,8 +28,10 @@ type financeHandlers struct {
 	recs    *repositories.RecurrenceRepository
 	cards   *repositories.CardRepository
 	ledger  *repositories.LedgerRepository
-	clock   func() time.Time
-	spaces  spaceLister
+	// billsRepo settles a bill with a classified bank line (BYOK § 8.3).
+	billsRepo *repositories.BillRepository
+	clock     func() time.Time
+	spaces    spaceLister
 	// ensured runs a space's creation once per process, however many requests
 	// arrive together.
 	ensured ensureOnce
@@ -103,6 +105,9 @@ func financeRoutes() []financeRoute {
 		{"PATCH", "/accounts/:id", space.Configure, true, func(h *financeHandlers) fiber.Handler { return h.patchAccount }},
 		{"POST", "/accounts/:id/archive", space.Configure, true, func(h *financeHandlers) fiber.Handler { return h.archiveAccount }},
 		{"GET", "/accounts/:id/statement", space.Read, false, func(h *financeHandlers) fiber.Handler { return h.statement }},
+		// BYOK (spec § 8.3): a synced account's lines on "A classificar", and their classification.
+		{"GET", "/accounts/:id/unclassified", space.Read, false, func(h *financeHandlers) fiber.Handler { return h.listUnclassified }},
+		{"POST", "/unclassified/:tx_id/classify", space.Import, true, func(h *financeHandlers) fiber.Handler { return h.classify }},
 		{"POST", "/accounts/:id/opening-balance", space.Configure, true, func(h *financeHandlers) fiber.Handler { return h.openingBalance }},
 		{"POST", "/transfers", space.Write, true, func(h *financeHandlers) fiber.Handler { return h.transfer }},
 		{"POST", "/transactions/:id/reverse", space.Write, true, func(h *financeHandlers) fiber.Handler { return h.reverse }},
@@ -164,7 +169,7 @@ func registerFinance(v1 fiber.Router, d Deps, auth fiber.Handler, clock func() t
 	if d.Spaces == nil {
 		return
 	}
-	h := &financeHandlers{bills: d.FinanceBills, imports: d.FinanceImports, jobs: d.FinanceJobs, recs: d.Recurrences, cards: d.Cards, ledger: d.Ledger, clock: clock, spaces: d.SpaceLister}
+	h := &financeHandlers{bills: d.FinanceBills, imports: d.FinanceImports, jobs: d.FinanceJobs, recs: d.Recurrences, cards: d.Cards, ledger: d.Ledger, billsRepo: d.Bills, clock: clock, spaces: d.SpaceLister}
 	idem := middleware.SpaceIdempotency(d.Idempotency, clock)
 	fin := v1.Group("/console/finance", auth)
 	mountSpaces(fin, h)

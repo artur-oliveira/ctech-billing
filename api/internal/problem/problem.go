@@ -195,6 +195,8 @@ func FromError(err error) *Problem {
 		return Validation([]FieldError{Field("backfill_months", "out_of_range", "backfill_months is 3 to 12", "min", 3, "max", 12)})
 	case errors.Is(err, services.ErrSandboxInLive):
 		return Conflict("the shared sandbox is test mode only").WithCode("byok_sandbox_test_only")
+	case errors.Is(err, repositories.ErrConnectionChanged):
+		return New(409, TypeConcurrentUpdate, "Concurrent Update", "the connection changed meanwhile; try again").WithCode("byok_connection_changed")
 	case errors.Is(err, repositories.ErrConnectionExists):
 		return Conflict("this organization already has a connection to this provider").WithCode("byok_already_connected")
 	case errors.Is(err, byok.ErrCertificateExpired):
