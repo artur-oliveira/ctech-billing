@@ -88,6 +88,9 @@ type Organization struct {
 	// connection collects. Written by SetPayoutRail only (audited).
 	PayoutRail     PayoutRail `dynamodbav:"payout_rail,omitempty"     json:"payout_rail,omitempty"`
 	PayoutProvider string     `dynamodbav:"payout_provider,omitempty" json:"payout_provider,omitempty"`
+	// Collection are the late fees a BYOK charge carries, copied onto each
+	// invoice at finalization (spec § 7.2). Written by SetCollection.
+	Collection CollectionSettings `dynamodbav:"collection,omitempty" json:"collection,omitzero"`
 }
 
 // ErrTenantSuspended is a write refused because the live tenant is suspended.

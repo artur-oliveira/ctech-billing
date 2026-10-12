@@ -605,3 +605,33 @@ func (r *OrganizationRepository) SetPayoutRail(
 	}
 	return nil
 }
+
+// SetCollection stores the tenant's late fees for BYOK charges (spec § 7.2),
+// audited. Invoices already issued keep the terms they were finalized with.
+func (r *OrganizationRepository) SetCollection(ctx context.Context, org *billing.Organization, s billing.CollectionSettings, actor, requestID string, now time.Time) error {
+	if err := s.Validate(); err != nil {
+		return err
+	}
+	cv, err := attributevalue.Marshal(s)
+	if err != nil {
+		return err
+	}
+	describe := func(s billing.CollectionSettings) string {
+		return fmt.Sprintf("fine_bp=%d monthly_interest_bp=%d", s.FineBasisPoints, s.MonthlyInterestBasisPoints)
+	}
+	auditItem, err := buildAuditItem(org.ID, org.Livemode, AuditEntry{
+		Entity: EntityOrganization, EntityID: org.ID, Action: "organization.collection_changed", Cause: billing.CauseManual,
+		Actor: actor, RequestID: requestID, Before: describe(org.Collection), After: describe(s),
+	}, "", "", now)
+	if err != nil {
+		return err
+	}
+	update := r.base.BuildRawUpdateTxItem(TenantPK(org.ID, org.Livemode), new(OrganizationSK()),
+		"SET #c = :c, #ua = :now", "attribute_exists(pk)", map[string]string{"#c": "collection", "#ua": "updated_at"},
+		map[string]types.AttributeValue{":c": cv, ":now": &types.AttributeValueMemberS{Value: now.UTC().Format(time.RFC3339Nano)}})
+	if err := r.base.TransactWrite(ctx, txItems(update, r.audit.BuildPutTxItemIfAbsent(auditItem))); err != nil {
+		return conflictErr(err)
+	}
+	org.Collection = s
+	return nil
+}

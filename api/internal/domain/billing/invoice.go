@@ -40,7 +40,7 @@ const (
 // CauseManual is absent on purpose: an operator changing a status is not a
 // payment. CauseManualPayment is present because it records a real receipt with
 // an actor and its own permission (assessment § 6.4).
-var paymentCauses = []Cause{CauseWalletWebhook, CauseReconciliation, CauseManualPayment}
+var paymentCauses = []Cause{CauseWalletWebhook, CauseReconciliation, CauseManualPayment, CauseByokConfirmed}
 
 var invoiceTransitions = map[edge[InvoiceStatus]][]rule{
 	{InvoiceDraft, InvoiceOpen}: {{
@@ -125,6 +125,9 @@ type Invoice struct {
 	// Empty on an invoice finalized before per-plan policies existed, which
 	// Schedule() reads as the default.
 	Policy DunningSchedule `dynamodbav:"dunning_policy,omitempty" json:"-"`
+	// Collection are the late fees of a BYOK charge, copied from the tenant
+	// at finalization (spec 2026-10-11 § 7.2) like Policy.
+	Collection CollectionSettings `dynamodbav:"collection,omitempty" json:"-"`
 
 	// DunningStep is which entry of Policy this invoice has reached. It
 	// is stored rather than derived from today's date, which is what makes the
