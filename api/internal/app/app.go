@@ -180,7 +180,7 @@ func Build(ctx context.Context, cfg *config.Config, clock func() time.Time) (*fi
 	// The BYOK rail (spec 2026-10-11 § 7): wired whether or not the wallet is,
 	// since it never calls the wallet. The invoicer creates the charge after
 	// every issue; checkout dispatches to it by rail.
-	byokCollector := byokCollection(ctx, cfg, db, byokConns, gates, finance, bus)
+	byokCollector := byokCollection(ctx, cfg, db, byokConns, byokStatement, gates, finance, bus)
 	if byokCollector != nil {
 		invoicer.WithCharges(byokCollector)
 		if collector != nil {
@@ -251,7 +251,8 @@ func Build(ctx context.Context, cfg *config.Config, clock func() time.Time) (*fi
 // alike. Tenant zero is the only tenant whose customers' own spaces it writes.
 func financeInvoices(db *dynamodb.Client, cfg *config.Config, orgs *repositories.OrganizationRepository, customers *repositories.CustomerRepository) *services.FinanceInvoices {
 	return services.NewFinanceInvoices(repositories.NewBillRepository(db, cfg), orgs, customers,
-		repositories.NewInvoiceRepository(db, cfg), repositories.NewCreditNoteRepository(db, cfg), cfg.PortalOrganizationID)
+		repositories.NewInvoiceRepository(db, cfg), repositories.NewCreditNoteRepository(db, cfg), cfg.PortalOrganizationID).
+		WithByok(services.ByokPostingFrom(repositories.NewPaymentRepository(db, cfg), repositories.NewByokRepository(db, cfg)))
 }
 
 // BuildInvoicer wires only what the daily sweep needs.
@@ -279,11 +280,11 @@ func BuildInvoicer(ctx context.Context, cfg *config.Config) (*services.Invoicer,
 	// The sweep issues most invoices: a BYOK tenant's charge is created right
 	// after, as the console's issue does (spec § 7.2).
 	c := newCache(cfg)
-	conns, _, err := BuildByok(ctx, cfg, db, c, repositories.NewLedgerRepository(db, cfg))
+	conns, st, err := BuildByok(ctx, cfg, db, c, repositories.NewLedgerRepository(db, cfg))
 	if err != nil {
 		return nil, err
 	}
-	if bc := byokCollection(ctx, cfg, db, conns, newChargeGates(db, cfg), financeInvoices(db, cfg,
+	if bc := byokCollection(ctx, cfg, db, conns, st, newChargeGates(db, cfg), financeInvoices(db, cfg,
 		repositories.NewOrganizationRepository(db, cfg), repositories.NewCustomerRepository(db, cfg)), nil); bc != nil {
 		invoicer.WithCharges(bc)
 	}
@@ -667,7 +668,7 @@ func newSubscriptions(db *dynamodb.Client, cfg *config.Config) *repositories.Sub
 // (a Collector with no wallet client: the BYOK rail never calls it). Nil when
 // BYOK is not configured.
 func byokCollection(ctx context.Context, cfg *config.Config, db *dynamodb.Client, conns *services.ByokConnections,
-	gates *services.ChargeGates, finance *services.FinanceInvoices, bus settlement.Bus) *services.ByokCollector {
+	statement *services.ByokStatement, gates *services.ChargeGates, finance *services.FinanceInvoices, bus settlement.Bus) *services.ByokCollector {
 	if conns == nil {
 		return nil
 	}
@@ -685,6 +686,10 @@ func byokCollection(ctx context.Context, cfg *config.Config, db *dynamodb.Client
 		if mail, err := email.New(ctx, cfg.AWSRegion, cfg.EmailFrom); err == nil {
 			c = c.WithMail(mail)
 		}
+	}
+	// The statement sync links a paid invoice's line to its posting (§ 8.4).
+	if statement != nil {
+		statement.WithLinker(services.NewByokLinker(c, payments, repositories.NewBillRepository(db, cfg), repositories.NewLedgerRepository(db, cfg)))
 	}
 	return c
 }

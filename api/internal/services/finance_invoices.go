@@ -103,6 +103,50 @@ type FinanceInvoices struct {
 	invoices   invoiceQueue
 	credits    creditQueue
 	tenantZero string
+	// byok resolves a BYOK-collected invoice's issuer posting (spec 2026-10-11
+	// § 8.4): the provider's synced account, the amount the bank received and
+	// the late charges. Nil: every invoice posts as before.
+	byok ByokPosting
+}
+
+// ByokPosting answers whether inv was collected through a BYOK connection
+// and, if so, where and how much its cash landed.
+type ByokPosting func(ctx context.Context, inv *billing.Invoice, org *billing.Organization) (accountID string, amount, late billing.Cents, ok bool, err error)
+
+// WithByok attaches the BYOK posting resolver.
+func (s *FinanceInvoices) WithByok(p ByokPosting) *FinanceInvoices { s.byok = p; return s }
+
+// ByokPostingFrom is the resolver over the invoice's settled attempt and the
+// connection of its provider. A connection gone since (disconnected) falls
+// back to the receiving account: never a guess into a synced account.
+func ByokPostingFrom(payments *repositories.PaymentRepository, conns *repositories.ByokRepository) ByokPosting {
+	return func(ctx context.Context, inv *billing.Invoice, org *billing.Organization) (string, billing.Cents, billing.Cents, bool, error) {
+		if org == nil {
+			return "", 0, 0, false, nil
+		}
+		attempts, err := payments.ListAttempts(ctx, inv.OrganizationID, inv.Livemode, inv.ID)
+		if err != nil {
+			return "", 0, 0, false, err
+		}
+		for i := len(attempts) - 1; i >= 0; i-- {
+			a := attempts[i]
+			if a.Status != billing.AttemptSucceeded {
+				continue
+			}
+			if a.Method != billing.MethodBYOK {
+				return "", 0, 0, false, nil
+			}
+			conn, err := conns.GetConnection(ctx, org.AccountOrganizationID, inv.Livemode, a.Provider)
+			if errors.Is(err, repositories.ErrNotFound) || (err == nil && conn.LedgerAccountID == "") {
+				return "", 0, 0, false, nil
+			}
+			if err != nil {
+				return "", 0, 0, false, err
+			}
+			return conn.LedgerAccountID, a.Amount, a.LateCharges, true, nil
+		}
+		return "", 0, 0, false, nil
+	}
 }
 
 // NewFinanceInvoices wires the rule. tenantZero is PORTAL_ORGANIZATION_ID: the
@@ -168,6 +212,16 @@ func (s *FinanceInvoices) Paid(ctx context.Context, inv *billing.Invoice, actor,
 			InvoiceID: inv.ID, Direction: finance.Receivable, Amount: inv.AmountPaid,
 			Competence: inv.Period.Start, Due: inv.DueDate, Paid: paid, Description: charge,
 		}
+		if t.side == SideIssuer && s.byok != nil {
+			acct, amount, late, ok, err := s.byok(ctx, inv, org)
+			if err != nil {
+				out = append(out, Posting{Side: t.side, Result: PostingFailed, Err: err})
+				continue
+			}
+			if ok {
+				fact.AccountID, fact.Amount, fact.LateCharges = acct, amount, late
+			}
+		}
 		if t.side == SidePayer {
 			fact.Direction = finance.Payable
 			if org != nil && org.DisplayName != "" {
@@ -204,6 +258,18 @@ func (s *FinanceInvoices) Credited(ctx context.Context, inv *billing.Invoice, cn
 		if t.skip != nil {
 			out = append(out, *t.skip)
 			continue
+		}
+		if t.side == SideIssuer && s.byok != nil {
+			// A BYOK-paid invoice's cash is in a bank-synced account: a credit
+			// note moves no money there; a refund arrives as the bank's own line
+			// (spec § 8.1, BYOK part B ruling).
+			if _, _, _, ok, err := s.byok(ctx, inv, org); err != nil {
+				out = append(out, Posting{Side: t.side, Result: PostingFailed, Err: err})
+				continue
+			} else if ok {
+				out = append(out, Posting{Side: t.side, Result: PostingSkipped, Reason: "synced_account"})
+				continue
+			}
 		}
 		posted, err := s.books.RecordInvoiceCredit(ctx, t.sp, inv.ID, cn.ID, cn.Amount, day, repositories.PostMeta{Actor: actor, RequestID: requestID}, now)
 		switch {

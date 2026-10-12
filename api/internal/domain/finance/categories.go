@@ -104,6 +104,17 @@ func BillingCategory(dir Direction) LedgerAccount {
 		Group: GroupOperatingExpenses, SystemKey: systemKey("assinaturas-ctech")}
 }
 
+// CategoryLateChargesReceived is where a BYOK invoice's late charges (multa
+// and juros the payer added, spec 2026-10-11 § 7.4) post: income, financial
+// result. The seeded "Juros e multas" is an expense, so it is its own
+// category, ensured by the posting rule like BillingCategory.
+const CategoryLateChargesReceived = "cat-juros-multas-recebidos"
+
+func LateChargesCategory() LedgerAccount {
+	return LedgerAccount{ID: CategoryLateChargesReceived, Name: "Juros e multas recebidos", Class: ClassIncome,
+		Group: GroupFinancialResult, SystemKey: "interest_and_fines_received"}
+}
+
 const (
 	UnclassifiedInID  = "sys-unclassified-in"
 	UnclassifiedOutID = "sys-unclassified-out"

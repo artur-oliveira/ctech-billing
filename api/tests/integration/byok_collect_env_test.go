@@ -134,13 +134,14 @@ func (e *collectEnv) wire(t *testing.T) {
 	subs := hookedSubs(e.tz)
 	e.gates = services.NewChargeGates(e.repo, services.MerchantEntitlement(customers, subs, e.tz))
 	finance := services.NewFinanceInvoices(repositories.NewBillRepository(testDB, testCfg), e.orgs, customers, e.invoices,
-		repositories.NewCreditNoteRepository(testDB, testCfg), e.tz)
+		repositories.NewCreditNoteRepository(testDB, testCfg), e.tz).WithByok(services.ByokPostingFrom(e.payments, e.repo))
 	settler := services.NewCollector(e.invoices, e.payments, customers, e.orgs, subs, nil).WithFinance(finance).WithGates(e.gates)
 	e.byok = services.NewByokCollector(e.invoices, e.payments, customers, e.orgs, e.repo, e.gates, conns.Session, settler)
 	e.collector = services.NewCollector(e.invoices, e.payments, customers, e.orgs, subs, nil).WithFinance(finance).
 		WithGates(e.gates).WithByok(e.byok)
 	e.invoicer = services.NewInvoicer(subs, e.invoices, repositories.NewCatalogRepository(testDB, testCfg),
 		repositories.NewUsageRepository(testDB, testCfg)).WithOrganizations(e.orgs).WithCharges(e.byok)
+	st.WithLinker(services.NewByokLinker(e.byok, e.payments, repositories.NewBillRepository(testDB, testCfg), ledger).WithClock(now))
 	e.conns, e.statement = conns, st
 	_ = ledger
 }
