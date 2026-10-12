@@ -127,3 +127,19 @@ variable "alerts_topic_arn" {
   type        = string
   default     = ""
 }
+
+# BYOK webhooks (spec 2026-10-11 § 6.1). The S3 version id of
+# inter-ca-bundle.pem in the truststore bucket, set after the bundle is
+# uploaded (docs/runbooks/byok.md § CA bundle). Empty: the mTLS custom domain
+# is not created yet (API Gateway needs the truststore to exist).
+variable "byok_truststore_version" {
+  type    = string
+  default = ""
+}
+
+# The *.aoctech.app regional certificate (us-east-1) the webhook domain
+# presents; owned by ctech-cdk (the wallet references the same ARN).
+variable "wildcard_certificate_arn" {
+  type    = string
+  default = "arn:aws:acm:us-east-1:868899309401:certificate/29678869-bfc3-4688-b81b-55aa5b1d7443"
+}
