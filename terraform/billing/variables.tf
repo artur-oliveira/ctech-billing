@@ -127,18 +127,3 @@ variable "alerts_topic_arn" {
   type        = string
   default     = ""
 }
-
-# The legal gate (spec 2026-10-11 § 10). Live BYOK collection stays off until
-# the lawyer's answer is recorded in ADR 0030 and BOTH of these change in the
-# same reviewed pull request. They reach the outbound Lambda as environment
-# variables (an apply takes effect on the next invocation) and the api through
-# SSM (read at process start).
-variable "byok_live_collection" {
-  type    = bool
-  default = false
-}
-
-variable "byok_live_providers" {
-  type    = list(string)
-  default = []
-}

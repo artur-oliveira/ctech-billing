@@ -16,8 +16,9 @@ be Inter-shaped, because more providers will follow.
 
 The constraints that shape it: billing's hosts have no public IPv4 and Inter has no IPv6; merchants' credentials can
 create charges and read statements on real company accounts; the owner's cost rule forbids NAT gateways, per-call KMS
-and Secrets Manager; and live collection on a merchant's account raises legal questions a lawyer has not answered yet
-(parecer § 8).
+and Secrets Manager. Live collection on a merchant's account raised legal questions (parecer § 8); the owner decided
+the same day that they gate nothing, because the merchant authorizes CTech through the bank's official API (spec
+amendment 2026-10-11, "no legal gate").
 
 ## Decision
 
@@ -34,7 +35,8 @@ and Secrets Manager; and live collection on a merchant's account raises legal qu
   handed to the Lambda's `Connect` op (test, then seal); renewal uses `Reseal`. No KMS call per operation.
 - **A non-VPC arm64 Lambda is the egress (D5, § 4.1).** `{env}-ctech-billing-byok-outbound` gives IPv4 egress with no
   NAT gateway and no public address per instance, and is the only billing code that opens a connection to a provider.
-  It refuses ops by group (read, teardown, collect, sandbox).
+  Its op allowlist is a security control: it accepts only the known ops (read, teardown, collect, sandbox) for a
+  registered provider, and runs `SimulatePayment` only against a sandbox.
 - **Webhooks: one mTLS host, the secret in the path, re-query before paid (D8, D15, R6, § 6).** Built in part B.
   `/w/{provider}/{hook_id}/{secret}/{product}`, both suffix variants accepted, the parser chosen by the registered
   provider and product; nothing in a callback body is trusted; the provider's own client certificate is validated by
@@ -46,11 +48,12 @@ and Secrets Manager; and live collection on a merchant's account raises legal qu
 - **Shared code in ctech-go-common `v1.18.0` (D10, § 12.4).** `api-commons/byok` is the provider-neutral seam and the
   Lambda envelope; `api-commons/inter` is Inter's implementation with credentials passed per call. Billing's services
   depend on `byok.Provider` only; only the Lambda imports `inter`.
-- **The legal gate (D11, § 10).** `BYOK_LIVE_COLLECTION` and `BYOK_LIVE_PROVIDERS` default to off and empty, set by
-  Terraform variables that write both the SSM parameters (read by the `api` at start) and the Lambda's environment (an
-  apply is the instant kill switch). A live `collect` op is refused inside the Lambda unless both allow it.
-- **A new payout rail (D12, § 7.1).** `Organization.payout_rail` (`wallet` | `byok`), `payout_provider`, and the
-  status `pending_clearance`; `AuthorizeCharge` stays the single gate. Built in part B.
+- **No legal gate (D11 withdrawn, spec amendment 2026-10-11).** The merchant grants access to its own account through
+  the bank's official API; that is an authorized integration, not scraping. There are no `BYOK_LIVE_*` flags and no
+  ADR 0030; the merchant's written authorization in the connect form (§ 3.2) stays.
+- **A new payout rail (D12, § 7.1).** `Organization.payout_rail` (`wallet` | `byok`) and `payout_provider`; a live
+  tenant that chooses BYOK collection goes to `enabled` (no `pending_clearance`, spec amendment 2026-10-11);
+  `AuthorizeCharge` stays the single gate. Built in part B.
 - **The `api` owns the token lifecycle (D14, § 4.3).** Tokens are cached sealed in Valkey DB 3, fetched single-flight
   under a lock, at most 3 fetches per minute per connection, scoped to the capability in use.
 - **D16 to D24** as the spec states them: statement sync is not plan-gated (D16); one due-date charge per payment
@@ -63,9 +66,8 @@ and Secrets Manager; and live collection on a merchant's account raises legal qu
 
 ## Consequences
 
-- Live collection stays off until ADR 0030 records the lawyer's clearance per provider and the same pull request turns
-  on `BYOK_LIVE_COLLECTION` and lists the provider. Live statement sync may start with the pilot (CTech's own
-  organization).
+- Live collection and live statement sync may start with the pilot (CTech's own organization) as soon as part B
+  ships; nothing waits for a legal clearance (spec amendment 2026-10-11).
 - The infrastructure budget is the plan's "Custos de infra" table
   ([part A plan](../plans/2026-10-11-byok-phase-1-a-connection-and-statement.md)): about US$ 1/month at 10 merchants,
   US$ 11 at 1.000 and US$ 105 at 10.000. Deviations must be reported with their cost delta.

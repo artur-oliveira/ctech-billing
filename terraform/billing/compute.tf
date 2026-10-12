@@ -169,9 +169,7 @@ locals {
 
     invoice_documents_bucket = aws_s3_bucket.documents.bucket
 
-    byok_outbound_function   = aws_lambda_function.byok_outbound.function_name
-    ssm_byok_live_collection = aws_ssm_parameter.byok_live_collection.name
-    ssm_byok_live_providers  = aws_ssm_parameter.byok_live_providers.name
+    byok_outbound_function = aws_lambda_function.byok_outbound.function_name
   }
 
   bootstrap_sh = var.os_family == "alpine" ? templatefile("${path.module}/../assets/bootstrap-alpine.sh.tftpl", local.bootstrap_vars) : templatefile("${path.module}/../assets/bootstrap.sh.tftpl", local.bootstrap_vars)

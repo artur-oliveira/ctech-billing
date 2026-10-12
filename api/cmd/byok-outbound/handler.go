@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"slices"
 	"sync"
 	"time"
 
@@ -16,17 +15,12 @@ import (
 	"gopkg.aoctech.app/billing/api/internal/byokseal"
 )
 
-// gate is the legal gate as this Lambda sees it (spec § 4.1, § 10). It is
-// read from the environment, which Terraform sets from the same variables
-// that write the SSM parameters the api reads.
-type gate struct {
-	liveCollection bool
-	providers      []string
-	forceSandbox   bool // every non-prod environment
-}
-
-func (g gate) cleared(provider string) bool {
-	return g.liveCollection && slices.Contains(g.providers, provider)
+// rules are the environment's constraints on what this Lambda does. There is
+// no legal gate (owner decision 2026-10-11, spec amendment): the merchant
+// grants access to an official bank API. The op allowlist (byok.GroupOf) is a
+// security control only: an unknown op or provider never reaches a bank.
+type rules struct {
+	forceSandbox bool // every non-prod environment: no real bank, whatever the mode
 }
 
 type sandboxCreds struct {
@@ -37,7 +31,7 @@ type sandboxCreds struct {
 type handler struct {
 	sealer    *byokseal.Sealer
 	providers map[string]byok.Provider
-	gate      gate
+	rules     rules
 	sandbox   func(context.Context) (sandboxCreds, error)
 	bundles   *bundleCache
 }
@@ -72,7 +66,7 @@ func (b *bundleCache) put(k [32]byte, v map[string]string) {
 	b.mu.Unlock()
 }
 
-// handle never returns an invoke error for a provider or gate failure, and
+// handle never returns an invoke error for a provider or allowlist failure, and
 // never logs a payload, a bundle, a token or an account number.
 func (h *handler) handle(ctx context.Context, req byok.Request) (byok.Response, error) {
 	resp := h.dispatch(ctx, req)
@@ -118,10 +112,7 @@ func (h *handler) dispatch(ctx context.Context, req byok.Request) byok.Response 
 	if req.Mode == "test" && !sandboxRef {
 		return fail(fmt.Errorf("%w: test mode uses the shared sandbox integration only", byok.ErrInvalidRequest))
 	}
-	if req.Mode == "live" && group == byok.GroupCollect && !h.gate.cleared(req.Provider) {
-		return fail(byok.ErrOpRefused)
-	}
-	sandbox := sandboxRef || h.gate.forceSandbox
+	sandbox := sandboxRef || h.rules.forceSandbox
 	if group == byok.GroupSandbox && !sandbox {
 		return fail(byok.ErrSandboxOnly)
 	}

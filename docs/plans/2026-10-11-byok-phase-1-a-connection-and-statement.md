@@ -2,6 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **Amendment 2026-10-11 — no legal gate (owner decision, recorded in the spec's second amendment).** The
+> `BYOK_LIVE_COLLECTION` / `BYOK_LIVE_PROVIDERS` flags, their SSM parameters and Terraform variables, `config.ByokCleared`
+> and the Lambda's live-collect refusal described below were built and then removed in this part's pull request; the
+> Lambda's op allowlist stays as a security control only. Where the text below says otherwise, this note wins.
+
 **Goal:** An owner or admin of an organization connects the organization's own Inter Empresas integration (live) or turns on the shared CTech integration against Inter's sandbox (test); billing seals the credentials through a dedicated outbound Lambda, keeps the connection healthy (tokens, certificate warnings, renewal, disconnect), and syncs the bank statement and balance into a `source: byok` account in the organization's Finanças space. Read-only: no charge is created in this part.
 
 **Architecture:** Two new shared Go packages in ctech-go-common, `byok` (provider-neutral seam, RPC envelope, a fake provider for tests) and `inter` (Inter's implementation, credentials per call), tagged `v1.18.0`. In billing, a non-VPC arm64 Lambda `{env}-ctech-billing-byok-outbound` is the only code that talks to a provider: it holds the AES-256 credentials key (SSM SecureString read once at cold start), seals and opens credential bundles (`b1.`), dispatches ops through a provider registry and refuses live `collect` ops unless the legal gate is open. The `api` and `cmd/byok` reach it through `internal/byokrpc.LambdaProvider` (a `byok.Provider` over `lambda:InvokeFunction`) and own the token lifecycle in Valkey (sealed, single-flight, rate-limited). Connections live in a new `{env}_billing_byok` table; statement lines post through the existing ledger with a `FITID#…#B:` lock. Two small components (`Steps`, `FileDrop`) go to `@aoctech/ui` first (family rule).

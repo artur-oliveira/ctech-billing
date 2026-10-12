@@ -16,7 +16,7 @@ import (
 	"gopkg.aoctech.app/billing/api/internal/byokseal"
 )
 
-func newHandler(t *testing.T, gate gate) (*handler, *byoktest.Fake) {
+func newHandler(t *testing.T, r rules) (*handler, *byoktest.Fake) {
 	t.Helper()
 	k := make([]byte, 32)
 	_, _ = rand.Read(k)
@@ -25,7 +25,7 @@ func newHandler(t *testing.T, gate gate) (*handler, *byoktest.Fake) {
 		t.Fatal(err)
 	}
 	f := byoktest.New()
-	return &handler{sealer: s, providers: map[string]byok.Provider{"inter": f}, gate: gate,
+	return &handler{sealer: s, providers: map[string]byok.Provider{"inter": f}, rules: r,
 		sandbox: func(context.Context) (sandboxCreds, error) {
 			return sandboxCreds{values: map[string]string{"client_id": "ctech"}, account: "999", pixKey: "evp"}, nil
 		}, bundles: newBundleCache()}, f
@@ -58,37 +58,28 @@ func connect(t *testing.T, h *handler, mode string) byok.ConnectionRef {
 	return ref
 }
 
-func TestLiveCollectOpsAreRefusedUnlessTheProviderIsCleared(t *testing.T) {
-	for _, g := range []gate{{liveCollection: false, providers: []string{"inter"}}, {liveCollection: true}} {
-		h, f := newHandler(t, g)
-		ref := connect(t, h, "live")
-		create := call(t, h, byok.Request{Op: byok.OpCreateDueCharge, Provider: "inter", Mode: "live", Connection: ref,
-			OAuthToken: "t", Payload: payload(byok.DueCharge{Ref: "ctb01JABCDEFGHJKMNPQRSTVWXYZ", Amount: 100})})
-		if create.Code != "op_refused" || f.Calls(byok.OpCreateDueCharge) != 0 {
-			t.Fatalf("gate %+v: %+v, provider calls %d", g, create, f.Calls(byok.OpCreateDueCharge))
-		}
-		for _, op := range []byok.Op{byok.OpRegisterWebhook, byok.OpRefund, byok.OpUpdateCharge} {
-			if r := call(t, h, byok.Request{Op: op, Provider: "inter", Mode: "live", Connection: ref, OAuthToken: "t", Payload: payload(map[string]any{})}); r.Code != "op_refused" {
-				t.Fatalf("%s: %+v", op, r)
-			}
-		}
-		if r := call(t, h, byok.Request{Op: byok.OpBalance, Provider: "inter", Mode: "live", Connection: ref, OAuthToken: "t", Payload: payload(byok.BalanceArgs{})}); r.Code != "" {
-			t.Fatalf("read ops always work: %+v", r)
-		}
-		if r := call(t, h, byok.Request{Op: byok.OpDeleteWebhook, Provider: "inter", Mode: "live", Connection: ref, OAuthToken: "t", Payload: payload(byok.WebhookArgs{Product: byok.ProductPix})}); r.Code != "" {
-			t.Fatalf("teardown ops always work: %+v", r)
-		}
-	}
-	h, f := newHandler(t, gate{liveCollection: true, providers: []string{"inter"}})
+func TestLiveCollectOpsReachTheProviderAndUnknownOpsAreRefused(t *testing.T) {
+	// Owner decision 2026-10-11 (spec amendment): no legal gate. The allowlist
+	// is a security control only: every known op is accepted in live, an
+	// unknown one never reaches a provider.
+	h, f := newHandler(t, rules{})
 	ref := connect(t, h, "live")
 	if r := call(t, h, byok.Request{Op: byok.OpCreateDueCharge, Provider: "inter", Mode: "live", Connection: ref, OAuthToken: "t",
 		Payload: payload(byok.DueCharge{Ref: "ctb01JABCDEFGHJKMNPQRSTVWXYZ", Amount: 100})}); r.Code != "" || f.Calls(byok.OpCreateDueCharge) != 1 {
-		t.Fatalf("cleared: %+v", r)
+		t.Fatalf("a live collect op is accepted: %+v", r)
+	}
+	for _, op := range []byok.Op{"DeleteAllCharges", "", "connect"} {
+		if r := call(t, h, byok.Request{Op: op, Provider: "inter", Mode: "live", Connection: ref, OAuthToken: "t"}); r.Code != "invalid_request" {
+			t.Fatalf("unknown op %q: %+v", op, r)
+		}
+	}
+	if r := call(t, h, byok.Request{Op: byok.OpBalance, Provider: "other", Mode: "live", Connection: ref, OAuthToken: "t"}); r.Code != "invalid_request" {
+		t.Fatalf("unknown provider: %+v", r)
 	}
 }
 
 func TestSimulatePaymentIsRefusedOutsideTheSandbox(t *testing.T) {
-	h, _ := newHandler(t, gate{liveCollection: true, providers: []string{"inter"}})
+	h, _ := newHandler(t, rules{})
 	ref := connect(t, h, "live")
 	if r := call(t, h, byok.Request{Op: byok.OpSimulatePayment, Provider: "inter", Mode: "live", Connection: ref, OAuthToken: "t", Payload: payload(byok.RefArgs{Ref: "x"})}); r.Code != "sandbox_only" {
 		t.Fatalf("%+v", r)
@@ -96,7 +87,7 @@ func TestSimulatePaymentIsRefusedOutsideTheSandbox(t *testing.T) {
 }
 
 func TestTestModeOnlyEverUsesTheSandboxIntegration(t *testing.T) {
-	h, _ := newHandler(t, gate{})
+	h, _ := newHandler(t, rules{})
 	r := call(t, h, byok.Request{Op: byok.OpBalance, Provider: "inter", Mode: "test",
 		Connection: byok.ConnectionRef{ID: "conn-1", Sealed: "b1.x"}, OAuthToken: "t", Payload: payload(byok.BalanceArgs{})})
 	if r.Code != "invalid_request" {
@@ -109,7 +100,7 @@ func TestTestModeOnlyEverUsesTheSandboxIntegration(t *testing.T) {
 }
 
 func TestResealKeepsTheSecretAndBindsTheNextVersion(t *testing.T) {
-	h, _ := newHandler(t, gate{})
+	h, _ := newHandler(t, rules{})
 	ref := connect(t, h, "live")
 	resp := call(t, h, byok.Request{Op: byok.OpReseal, Provider: "inter", Mode: "live", Connection: ref,
 		Payload: payload(byok.ResealArgs{CertPEM: "new-cert", KeyPEM: "new-key"})})
@@ -124,7 +115,7 @@ func TestResealKeepsTheSecretAndBindsTheNextVersion(t *testing.T) {
 func TestPayloadsAndSecretsAreNeverLogged(t *testing.T) {
 	var buf bytes.Buffer
 	slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, nil)))
-	h, f := newHandler(t, gate{})
+	h, f := newHandler(t, rules{})
 	f.FailNext(byok.OpBalance, byok.ErrUnavailable)
 	ref := connect(t, h, "live")
 	call(t, h, byok.Request{Op: byok.OpBalance, Provider: "inter", Mode: "live", Connection: ref, OAuthToken: "bearer-xyz", Payload: payload(byok.BalanceArgs{})})

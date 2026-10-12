@@ -1,5 +1,6 @@
 # Spec 2026-10-11 § 17 item 4: the api role cannot read the credentials key;
-# the outbound Lambda can; the legal gate defaults closed; no VPC attachment.
+# the outbound Lambda can; there is no legal gate (owner decision 2026-10-11);
+# no VPC attachment.
 # Plan only, against mock providers: no credentials, nothing reaches AWS.
 mock_provider "aws" {
   mock_data "aws_ssm_parameter" {
@@ -22,17 +23,6 @@ override_resource {
   override_during = plan
   values          = { arn = "arn:aws:lambda:us-east-1:123456789012:function:dev-ctech-billing-byok-outbound" }
 }
-override_resource {
-  target          = aws_ssm_parameter.byok_live_collection
-  override_during = plan
-  values          = { arn = "arn:aws:ssm:us-east-1:123456789012:parameter/ctech-billing/dev/byok/live-collection-enabled" }
-}
-override_resource {
-  target          = aws_ssm_parameter.byok_live_providers
-  override_during = plan
-  values          = { arn = "arn:aws:ssm:us-east-1:123456789012:parameter/ctech-billing/dev/byok/live-providers" }
-}
-
 variables {
   environment = "dev"
 }
@@ -54,8 +44,13 @@ run "the_api_never_reads_the_credentials_key" {
   }
 
   assert {
-    condition     = aws_lambda_function.byok_outbound.environment[0].variables["BYOK_LIVE_COLLECTION"] == "false" && aws_lambda_function.byok_outbound.environment[0].variables["BYOK_LIVE_PROVIDERS"] == ""
-    error_message = "the legal gate defaults closed"
+    condition     = length([for k in keys(aws_lambda_function.byok_outbound.environment[0].variables) : k if startswith(k, "BYOK_LIVE_")]) == 0
+    error_message = "there is no legal gate (owner decision 2026-10-11): no BYOK_LIVE_* variable"
+  }
+
+  assert {
+    condition     = alltrue([for st in data.aws_iam_policy_document.byok_api.statement : alltrue([for r in st.resources : !strcontains(r, ":parameter/")])])
+    error_message = "the api reads no BYOK parameter: it only invokes the outbound Lambda"
   }
 
   assert {

@@ -11,8 +11,8 @@ posting, § 3.8 billing integration, § 12 item 2), [`2026-10-10-console-self-se
 encryption), [ADR 0024](../adr/0024-billing-keeps-a-management-ledger.md) (management ledger),
 [ADR 0025](../adr/0025-spaces-personal-and-organization.md) (spaces) ·
 Reused from ctech-wallet: `pix-gateway` (outbound Lambda, mTLS webhook stack), the Inter token manager spec ·
-Decision records: **ADR 0029** (this spec's decisions, written when the spec is approved) and **ADR 0030** (legal
-clearance of live BYOK collection per provider, written only when the lawyer answers, § 10)
+Decision records: **ADR 0029** (this spec's decisions, written when the spec is approved). ADR 0030 (legal clearance)
+is no longer planned: the legal gate was withdrawn on 2026-10-11 (amendment at the end)
 
 ## 1. What this is
 
@@ -67,7 +67,7 @@ argued where it is specified.
 | D8 | Webhooks: **one CTech host** for every merchant; per-connection opaque secret **in the URL path**; account check (Inter: `x-conta-corrente`); **re-query the provider before marking anything paid**; DNS-only (not proxied by Cloudflare); mTLS truststore holding the providers' CA(s); product paths handled (§ 6). Recovery through the provider's callbacks/resend endpoints; a reconciliation sweep is the safety net. |
 | D9 | **Test mode** uses one CTech-owned integration per provider for all tenants, against the provider's sandbox host. For Inter this is **the integration CTech already has (the wallet's)**: Inter has no separate sandbox kind of integration, the same credentials are used and only the base URL changes (amended 2026-10-11, § 9). Live mode uses each merchant's integration. |
 | D10 | Shared code: a new **`ctech-go-common/inter`** package (credentials passed per call) implementing the provider seam declared in **`ctech-go-common/byok`** (R3). Billing and wallet keep separate Lambdas and secrets. |
-| D11 | **Legal gate:** live-mode BYOK collection cannot be enabled until the owner records the lawyer's clearance: `BYOK_LIVE_COLLECTION` defaults off in live, `BYOK_LIVE_PROVIDERS` lists the cleared providers, plus ADR 0030 (R3). Read-only statement sync may go live without it (§ 10 agrees, with conditions). |
+| D11 | **Withdrawn 2026-10-11 (amendment at the end): there is no legal gate.** Original text: **Legal gate:** live-mode BYOK collection cannot be enabled until the owner records the lawyer's clearance: `BYOK_LIVE_COLLECTION` defaults off in live, `BYOK_LIVE_PROVIDERS` lists the cleared providers, plus ADR 0030 (R3). Read-only statement sync may go live without it (§ 10 agrees, with conditions). |
 | D12 | `payout_status` (ADR 0005) stays the per-merchant gate; BYOK is a **new rail** `payout_rail: byok` with `payout_provider: inter`, enabled per connection rather than by CTech custody (R3). The existing gate and its single function are kept. |
 | D13 | Onboarding guides the merchant through creating the integration (Inter: scopes, "Em validação", upload), then shows health and certificate expiry, in the console and in Finanças. Routes in English, Portuguese only in i18n. |
 | R1 | **No KMS per call.** A dedicated AES-256 key for bank credentials in an SSM SecureString, read **once per Lambda cold start**, readable only by the outbound Lambda; the `api` never holds it. Credentials reach the Lambda through a sealing op (`Connect`, which tests and seals; `Reseal` on renewal); the Lambda encrypts and returns the ciphertext the `api` stores (§ 3.3). Per-merchant KMS keys are a future option when cost allows; not now. |
@@ -1023,3 +1023,33 @@ sandbox host.
   `byok_provider_unavailable`, and the fallback is a dedicated sandbox integration whose values go into billing's own
   SecureStrings (only the Lambda's parameter names change; see `docs/runbooks/byok.md`).
 - D9, § 9 and § 12.3 above are edited accordingly. Plans: `docs/plans/2026-10-11-byok-phase-1-{a,b,c}-*.md`.
+
+## Amendment 2026-10-11 (second) — no legal gate
+
+Owner decision. **There is no legal gate on BYOK collection.** The merchant grants CTech access to its own account
+through the bank's **official** API (Inter's PJ APIs, with the merchant's own integration, scopes and terms acceptance);
+this is an authorized integration, not scraping, and needs no separate clearance before live collection.
+
+What this removes, everywhere in this spec:
+
+- **D11** is withdrawn. `BYOK_LIVE_COLLECTION` and `BYOK_LIVE_PROVIDERS` do not exist: no SSM parameter, no Terraform
+  variable, no `api` or Lambda environment variable (§ 10, § 12.3, § 16 steps 3 and 6).
+- **ADR 0030** is not planned. Parecer § 8's questions stay useful context for the terms and LGPD wording (the
+  merchant's authorization in the connect form, § 3.2, is kept), but they gate nothing.
+- **§ 4.1, the Lambda allowlist:** kept, as a **security control only**. The Lambda accepts exactly the known ops
+  (`byok.GroupOf`), for a registered provider and mode; an unknown op or provider never reaches a bank, and
+  `SimulatePayment` runs only against a sandbox. A live `collect` op is **not** refused for legal reasons.
+- **§ 7.1, the gate:** `payout_status` gains **no** `pending_clearance` value. A live tenant that chooses a
+  collection-capable connection goes straight to `byok` + provider + `enabled` (still subject to the entitling
+  `prod_billing` subscription, R4, and to suspension). `AuthorizeCharge` keeps every other condition and loses
+  `byok_collection_not_cleared`; `cmd/byok` step 5 (promotion) does not exist; webhook registration happens on
+  connect / choosing collection, in live as in test (§ 6.4).
+- **§ 11.2:** no "em liberação" state; the capabilities show "Cobrança" when the collection scopes are granted.
+- **§ 12.6, the pilot:** live collection for the pilot no longer waits for a clearance; moving tenant zero's
+  `payout_rail` to `byok` stays a deliberate, audited operator action.
+- **§ 17 item 2** becomes: an unknown op, provider or mode sent straight to the Lambda is refused there;
+  `SimulatePayment` is refused outside a sandbox.
+
+Implemented in part A's pull request (config, Terraform and the Lambda); part B's plan is adjusted in the same pull
+request. The owner also allowed loading the wallet's Inter SSM parameters into environment variables for scripts and
+tests (never printed or inspected).
