@@ -620,14 +620,32 @@ func BuildByok(ctx context.Context, cfg *config.Config, db *dynamodb.Client, c c
 // BuildByokJob wires what cmd/byok needs: the connection services, the
 // repository it walks and the cache that guards the operator's warnings. No
 // HTTP app is built.
-func BuildByokJob(ctx context.Context, cfg *config.Config) (*services.ByokConnections, *services.ByokStatement, *repositories.ByokRepository, cache.Backend, error) {
+func BuildByokJob(ctx context.Context, cfg *config.Config) (*services.ByokConnections, *services.ByokStatement, *repositories.ByokRepository, cache.Backend, *services.ByokSweep, error) {
 	db, err := newDynamoDB(ctx, cfg)
 	if err != nil {
-		return nil, nil, nil, nil, err
+		return nil, nil, nil, nil, nil, err
 	}
 	c := newCache(cfg)
 	conns, st, err := BuildByok(ctx, cfg, db, c, repositories.NewLedgerRepository(db, cfg))
-	return conns, st, repositories.NewByokRepository(db, cfg), c, err
+	if err != nil || conns == nil {
+		return conns, st, repositories.NewByokRepository(db, cfg), c, nil, err
+	}
+	// Part B (spec § 5 steps 1 and 4): the charge sweep settles through the
+	// same collector as the api, Finanças and the settlement bus included.
+	orgs := repositories.NewOrganizationRepository(db, cfg)
+	var bus settlement.Bus
+	if cfg.RedisURL != "" {
+		if vb, err := settlement.NewValkeyBus(cfg.RedisURL); err == nil {
+			bus = vb
+		}
+	}
+	gates := newChargeGates(db, cfg)
+	collector := byokCollection(ctx, cfg, db, conns, st, gates, financeInvoices(db, cfg, orgs, repositories.NewCustomerRepository(db, cfg)), bus)
+	repo := repositories.NewByokRepository(db, cfg)
+	payments := repositories.NewPaymentRepository(db, cfg)
+	webhooks := services.NewByokWebhooks(repo, payments, collector, c)
+	setup := services.NewByokCollectionSetup(conns, repo, orgs, payments, collector, webhooks, cfg.ByokHooksHost, cfg.PortalOrganizationID)
+	return conns, st, repo, c, services.NewByokSweep(collector, payments, orgs, setup, repo, conns, nil), nil
 }
 
 // byokCounter counts the BYOK limiters in Valkey when the app has it, so every

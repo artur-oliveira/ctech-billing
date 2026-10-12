@@ -98,7 +98,7 @@ type ExcessPayment struct {
 	Status          string    `dynamodbav:"status"          json:"status"`
 	RefundID        string    `dynamodbav:"refund_id,omitempty" json:"-"`
 	PaidAt          time.Time `dynamodbav:"paid_at"         json:"paid_at"`
-	CreatedAt       time.Time `dynamodbav:"created_at"      json:"created_at"`
+	CreatedAt       time.Time `dynamodbav:"recorded_at"     json:"created_at"`
 }
 
 // Refundable reports whether the provider still accepts a refund at now.

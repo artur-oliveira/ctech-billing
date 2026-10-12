@@ -107,7 +107,7 @@ type PaymentAttempt struct {
 	CheckedAt     time.Time  `dynamodbav:"checked_at,omitempty"     json:"checked_at,omitzero"`
 	PaymentID     string     `dynamodbav:"payment_id,omitempty"     json:"-"`
 	LateCharges   Cents      `dynamodbav:"late_charges,omitempty"   json:"late_charges,omitempty"`
-	CreatedAt     time.Time  `dynamodbav:"created_at,omitempty"     json:"created_at,omitzero"`
+	CreatedAt     time.Time  `dynamodbav:"opened_at,omitempty"      json:"created_at,omitzero"`
 	CancelledAt   time.Time  `dynamodbav:"cancelled_at,omitempty"   json:"-"`
 	UsageReported bool       `dynamodbav:"usage_reported,omitempty" json:"-"`
 }

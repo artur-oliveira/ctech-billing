@@ -69,6 +69,23 @@ type ByokJob struct {
 	// the operator alert to once per threshold.
 	sandboxCert func(context.Context, *byokconn.Connection) (time.Time, error)
 	guard       cache.Backend
+	// finally runs once per Run after every connection (cross-tenant work
+	// with its own partition: refunds in flight); sandboxHook registers the
+	// shared sandbox webhook on a test run (spec § 9).
+	finally     []func(ctx context.Context, livemode bool, now time.Time) []error
+	sandboxHook func(ctx context.Context, conn *byokconn.Connection, now time.Time) error
+}
+
+// WithFinally adds a once-per-run step.
+func (j *ByokJob) WithFinally(fn func(ctx context.Context, livemode bool, now time.Time) []error) *ByokJob {
+	j.finally = append(j.finally, fn)
+	return j
+}
+
+// WithSandboxHook bootstraps the shared sandbox webhook on test runs.
+func (j *ByokJob) WithSandboxHook(fn func(ctx context.Context, conn *byokconn.Connection, now time.Time) error) *ByokJob {
+	j.sandboxHook = fn
+	return j
 }
 
 const (
@@ -160,6 +177,16 @@ func (j *ByokJob) Run(ctx context.Context, livemode bool, now time.Time) ByokRun
 		if err := j.sandboxCertificate(ctx, sandbox, now); err != nil {
 			res.Errors = append(res.Errors, err)
 		}
+	}
+	if sandbox != nil && !livemode && j.sandboxHook != nil {
+		if err := j.repo.LoadSealed(ctx, sandbox); err == nil {
+			if err := j.sandboxHook(ctx, sandbox, now); err != nil {
+				res.Errors = append(res.Errors, fmt.Errorf("sandbox webhook: %w", err))
+			}
+		}
+	}
+	for _, fn := range j.finally {
+		res.Errors = append(res.Errors, fn(ctx, livemode, now)...)
 	}
 	return res
 }

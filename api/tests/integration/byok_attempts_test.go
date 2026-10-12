@@ -48,7 +48,7 @@ func TestABYOKAttemptAndItsPointerAreWrittenTogether(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, err := payments.GetAttempt(ctx, org.ID, false, a.InvoiceID, 1)
-	if err != nil || got.Payable != "000201PIX" || got.PayableUntil != brcal.New(2026, 4, 19) {
+	if err != nil || got.Payable != "000201PIX" || got.PayableUntil != brcal.New(2026, 4, 19) || !got.CreatedAt.Equal(now()) {
 		t.Fatalf("%+v %v", got, err)
 	}
 	a.PaymentID, a.LateCharges = "E2E1", 300
