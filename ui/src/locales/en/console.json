@@ -198,7 +198,9 @@
   "refunded": "The money was already refunded through the wallet",
   "refundedNote": "Billing only records the refund, it does not send it.",
   "submit": "Issue",
-  "done": "Credit note issued."
+  "done": "Credit note issued.",
+  "viaPix": "Refund via Pix",
+  "viaPixNote": "Inter sends this amount back by Pix to whoever paid the invoice, from its payment. This cannot be undone."
  },
  "subscriptions": {
   "title": "Subscriptions",
@@ -426,6 +428,14 @@
    "pending": "Pending",
    "approved": "Approved",
    "rejected": "Rejected"
+  },
+  "payout": "Collection",
+  "railByok": "Pix with due date at {{bank}}",
+  "railWallet": "Pix through the CTech wallet",
+  "payoutStatus": {
+   "enabled": "Active",
+   "not_configured": "Not configured",
+   "pending_custody": "Awaiting custody"
   }
  },
  "credentials": {

@@ -533,3 +533,105 @@ func (r *OrganizationRepository) suspensionWrites(org *billing.Organization, sus
 		map[string]types.AttributeValue{":now": &types.AttributeValueMemberS{Value: stamp}})
 	return txItems(update, r.audit.BuildPutTxItemIfAbsent(auditItem)), nil
 }
+
+// SetPayoutRail moves the tenant's collection rail, provider and payout gate
+// together (BYOK spec § 7.1), conditional on the gate still being the one read,
+// with one audit row (payout.rail_changed) naming before and after. An empty
+// rail clears rail and provider (the wallet default).
+func (r *OrganizationRepository) SetPayoutRail(
+	ctx context.Context,
+	org *billing.Organization,
+	rail billing.PayoutRail,
+	provider string,
+	status billing.PayoutStatus,
+	actor, requestID string,
+	now time.Time,
+) error {
+	if actor == "" {
+		return fmt.Errorf("repositories: changing the payout rail of %s needs an actor", org.ID)
+	}
+	describe := func(rail billing.PayoutRail, provider string, status billing.PayoutStatus) string {
+		s := string(rail)
+		if s == "" {
+			s = string(billing.RailWallet)
+		}
+		if provider != "" {
+			s += ":" + provider
+		}
+		return s + "/" + string(status)
+	}
+	names := map[string]string{"#ps": "payout_status", "#ua": "updated_at", "#pr": "payout_rail", "#pp": "payout_provider"}
+	values := map[string]types.AttributeValue{
+		":to":  &types.AttributeValueMemberS{Value: string(status)},
+		":now": &types.AttributeValueMemberS{Value: now.UTC().Format(time.RFC3339Nano)},
+	}
+	expr := "SET #ps = :to, #ua = :now"
+	var remove []string
+	if rail == "" {
+		remove = append(remove, "#pr", "#pp")
+	} else {
+		expr += ", #pr = :rail"
+		values[":rail"] = &types.AttributeValueMemberS{Value: string(rail)}
+		if provider == "" {
+			remove = append(remove, "#pp")
+		} else {
+			expr += ", #pp = :prov"
+			values[":prov"] = &types.AttributeValueMemberS{Value: provider}
+		}
+	}
+	if len(remove) > 0 {
+		expr += " REMOVE " + strings.Join(remove, ", ")
+	}
+	cond := "attribute_exists(pk) AND #ps = :from"
+	values[":from"] = &types.AttributeValueMemberS{Value: string(org.PayoutStatus)}
+	auditItem, err := buildAuditItem(org.ID, org.Livemode, AuditEntry{
+		Entity: EntityOrganization, EntityID: org.ID, Action: "payout.rail_changed", Cause: billing.CauseManual,
+		Actor: actor, RequestID: requestID,
+		Before: describe(org.PayoutRail, org.PayoutProvider, org.PayoutStatus), After: describe(rail, provider, status),
+	}, "", "", now)
+	if err != nil {
+		return err
+	}
+	update := r.base.BuildRawUpdateTxItem(TenantPK(org.ID, org.Livemode), new(OrganizationSK()), expr, cond, names, values)
+	if err := r.base.TransactWrite(ctx, txItems(update, r.audit.BuildPutTxItemIfAbsent(auditItem))); err != nil {
+		if IsConditionFailed(err) {
+			return fmt.Errorf("%w: the payout gate of %s changed meanwhile", ErrConcurrentModification, org.ID)
+		}
+		return conflictErr(err)
+	}
+	org.PayoutRail, org.PayoutProvider, org.PayoutStatus = rail, provider, status
+	if rail == "" {
+		org.PayoutProvider = ""
+	}
+	return nil
+}
+
+// SetCollection stores the tenant's late fees for BYOK charges (spec § 7.2),
+// audited. Invoices already issued keep the terms they were finalized with.
+func (r *OrganizationRepository) SetCollection(ctx context.Context, org *billing.Organization, s billing.CollectionSettings, actor, requestID string, now time.Time) error {
+	if err := s.Validate(); err != nil {
+		return err
+	}
+	cv, err := attributevalue.Marshal(s)
+	if err != nil {
+		return err
+	}
+	describe := func(s billing.CollectionSettings) string {
+		return fmt.Sprintf("fine_bp=%d monthly_interest_bp=%d", s.FineBasisPoints, s.MonthlyInterestBasisPoints)
+	}
+	auditItem, err := buildAuditItem(org.ID, org.Livemode, AuditEntry{
+		Entity: EntityOrganization, EntityID: org.ID, Action: "organization.collection_changed", Cause: billing.CauseManual,
+		Actor: actor, RequestID: requestID, Before: describe(org.Collection), After: describe(s),
+	}, "", "", now)
+	if err != nil {
+		return err
+	}
+	update := r.base.BuildRawUpdateTxItem(TenantPK(org.ID, org.Livemode), new(OrganizationSK()),
+		"SET #c = :c, #ua = :now", "attribute_exists(pk)", map[string]string{"#c": "collection", "#ua": "updated_at"},
+		map[string]types.AttributeValue{":c": cv, ":now": &types.AttributeValueMemberS{Value: now.UTC().Format(time.RFC3339Nano)}})
+	if err := r.base.TransactWrite(ctx, txItems(update, r.audit.BuildPutTxItemIfAbsent(auditItem))); err != nil {
+		return conflictErr(err)
+	}
+	org.Collection = s
+	return nil
+}

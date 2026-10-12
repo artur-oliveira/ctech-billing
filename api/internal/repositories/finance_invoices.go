@@ -33,6 +33,11 @@ type InvoiceFact struct {
 	Due         brcal.Date // zero means the paid day
 	Paid        brcal.Date // paid_at as a civil day
 	Description string
+	// BYOK (spec 2026-10-11 § 8.4): the cash leg goes to the collecting
+	// provider's synced account instead of the default receiving account,
+	// and the payer's late charges post beside it as interest received.
+	AccountID   string
+	LateCharges billing.Cents
 }
 
 // InvoiceBillID is the id of the bill an invoice makes in a space. Derived from
@@ -83,9 +88,14 @@ func (r *BillRepository) recordInvoiceOnce(ctx context.Context, sp space.Resolve
 	if f.Paid.IsZero() {
 		return finance.Bill{}, false, fmt.Errorf("%w: a paid invoice needs its paid day", finance.ErrInvalidBill)
 	}
-	accountID, err := r.receivingAccount(ctx, sp)
-	if err != nil {
-		return finance.Bill{}, false, err
+	accountID := f.AccountID
+	var err error
+	if accountID == "" {
+		if accountID, err = r.receivingAccount(ctx, sp); err != nil {
+			return finance.Bill{}, false, err
+		}
+	} else if acct, err := r.ledger.getAccount(ctx, sp, accountID); err != nil || acct.Class != finance.ClassAsset || acct.Archived {
+		return finance.Bill{}, false, fmt.Errorf("%w: the collecting account %s is not usable", ErrNoReceivingAccount, accountID)
 	}
 	if err := r.ledger.EnsureReady(ctx, sp, now); err != nil {
 		return finance.Bill{}, false, err
@@ -125,13 +135,32 @@ func (r *BillRepository) recordInvoiceOnce(ctx context.Context, sp space.Resolve
 		return finance.Bill{}, false, err
 	}
 	b.Status, b.PaidDate, b.TransactionIDs = finance.BillPaid, f.Paid, []string{recPlan.TxID, setPlan.TxID}
+	var extra []types.TransactWriteItem
+	if f.LateCharges > 0 {
+		lateCat, err := r.ledger.ensureCategory(ctx, sp, finance.LateChargesCategory(), now)
+		if err != nil {
+			return finance.Bill{}, false, err
+		}
+		late, err := finance.BankLine(accountID, lateCat, true, f.LateCharges, f.Paid)
+		if err != nil {
+			return finance.Bill{}, false, err
+		}
+		lm := billMeta(meta, b)
+		lm.Memo = "Juros e multas · " + b.Description
+		lm.txID = idempotentID(sp, "billing-invoice-late", f.InvoiceID)
+		latePlan, err := r.ledger.planPost(sp, late, lm, now)
+		if err != nil {
+			return finance.Bill{}, false, err
+		}
+		extra = latePlan.Items
+	}
 	row, err := Encode(newBillItem(sp, b, now))
 	if err != nil {
 		return finance.Bill{}, false, err
 	}
 	// Recognition and settlement both ADD to receivables (or payables) and, in
 	// the same month, to its summary: folded into one update each.
-	items := mergeAdds(append(append([]types.TransactWriteItem(nil), recPlan.Items...), setPlan.Items...))
+	items := mergeAdds(append(append(append([]types.TransactWriteItem(nil), recPlan.Items...), setPlan.Items...), extra...))
 	billIdx := len(items)
 	items = append(items, r.bills.BuildPutTxItemIfAbsent(row))
 	if err := r.bills.TransactWrite(ctx, items); err != nil {

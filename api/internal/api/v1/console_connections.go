@@ -19,6 +19,7 @@ import (
 const maxPEMBytes = 16 << 10
 
 type connectionHandlers struct {
+	setup     *services.ByokCollectionSetup
 	conns     *services.ByokConnections
 	statement *services.ByokStatement
 	clock     func() time.Time
@@ -28,7 +29,7 @@ func registerConnections(v1 fiber.Router, d Deps, auth fiber.Handler, clock func
 	if d.ByokConnections == nil || d.Spaces == nil {
 		return
 	}
-	h := &connectionHandlers{conns: d.ByokConnections, statement: d.ByokStatement, clock: clock}
+	h := &connectionHandlers{conns: d.ByokConnections, statement: d.ByokStatement, setup: d.ByokSetup, clock: clock}
 	idem := middleware.SpaceIdempotency(d.Idempotency, clock)
 	g := v1.Group("/console/connections", auth)
 	chain := func(write bool) []any {
@@ -54,6 +55,9 @@ func registerConnections(v1 fiber.Router, d Deps, auth fiber.Handler, clock func
 	add("POST", "/:provider/certificate", true, h.renew)
 	add("POST", "/:provider/sync", true, h.sync)
 	add("PUT", "/:provider/onboarding", true, h.onboarding)
+	if h.setup != nil {
+		add("POST", "/:provider/webhook", true, h.webhook)
+	}
 }
 
 func knownProvider(c fiber.Ctx) error {
@@ -194,9 +198,55 @@ func (h *connectionHandlers) onboarding(c fiber.Ctx) error {
 }
 
 func (h *connectionHandlers) disconnect(c fiber.Ctx) error {
-	if err := h.conns.Disconnect(c.Context(), middleware.GetSpace(c), c.Params("provider"),
-		middleware.GetClaims(c).Sub, middleware.GetRequestID(c), h.now()); err != nil {
+	if h.setup == nil {
+		if err := h.conns.Disconnect(c.Context(), middleware.GetSpace(c), c.Params("provider"),
+			middleware.GetClaims(c).Sub, middleware.GetRequestID(c), h.now()); err != nil {
+			return fail(c, err)
+		}
+		return c.SendStatus(fiber.StatusNoContent)
+	}
+	var body struct {
+		CancelOpenCharges bool `json:"cancel_open_charges"`
+		Force             bool `json:"force"`
+	}
+	if len(c.Body()) > 0 {
+		if p := decodeStrict(c, &body); p != nil {
+			return p.Send(c)
+		}
+	}
+	rep, err := h.setup.Disconnect(c.Context(), middleware.GetSpace(c), c.Params("provider"), body.CancelOpenCharges, body.Force,
+		middleware.GetClaims(c).Sub, middleware.GetRequestID(c), h.now())
+	if oc := (*services.ErrOpenCharges)(nil); errors.As(err, &oc) {
+		return c.Status(fiber.StatusConflict).JSON(fiber.Map{"type": "/problems/conflict", "title": "Conflict", "status": 409,
+			"detail": "there are open charges; disconnecting cancels them", "code": "byok_open_charges", "count": oc.Count})
+	}
+	if err != nil {
 		return fail(c, err)
 	}
+	if !rep.Empty() {
+		return c.JSON(rep)
+	}
 	return c.SendStatus(fiber.StatusNoContent)
+}
+
+// webhook is "Registrar aviso novamente" and the conflict's confirmation.
+func (h *connectionHandlers) webhook(c fiber.Ctx) error {
+	var body struct {
+		ReplaceExisting bool `json:"replace_existing"`
+	}
+	if len(c.Body()) > 0 {
+		if p := decodeStrict(c, &body); p != nil {
+			return p.Send(c)
+		}
+	}
+	conn, err := h.setup.RegisterWebhook(c.Context(), middleware.GetSpace(c), c.Params("provider"), body.ReplaceExisting,
+		middleware.GetClaims(c).Sub, middleware.GetRequestID(c), h.now())
+	if wc := (*services.ErrWebhookConflict)(nil); errors.As(err, &wc) {
+		return c.Status(fiber.StatusConflict).JSON(fiber.Map{"type": "/problems/conflict", "title": "Conflict", "status": 409,
+			"detail": "another system receives this key's payment notices", "code": "byok_webhook_conflict", "existing_host": wc.ExistingHost})
+	}
+	if err != nil {
+		return fail(c, err)
+	}
+	return c.JSON(toConnectionDTO(conn, h.now()))
 }

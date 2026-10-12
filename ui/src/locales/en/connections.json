@@ -141,7 +141,15 @@
     "onlyYou": "Only you can cancel the integration at Inter: Internet Banking, Integrar, the integration, Cancelar. Cancelling cannot be undone.",
     "confirm": "Disconnect",
     "cancel": "Keep connected",
-    "done": "Banco Inter disconnected"
+    "done": "Banco Inter disconnected",
+    "openCharges": "There are {{count}} open charges. Disconnecting cancels all of them.",
+    "openCharges_one": "There is 1 open charge. Disconnecting cancels it.",
+    "cancelAndLeave": "Cancel charges and disconnect",
+    "anyway": "Disconnect anyway",
+    "anywayBody": "Inter did not answer. If you disconnect anyway, remove the charges and the notice below at Inter yourself.",
+    "leftoverTitle": "Remove at Inter",
+    "leftoverCharges": "Charges (txid): {{refs}}",
+    "leftoverWebhook": "Payment notices: {{url}}"
   },
   "unclassified": {
     "title": "To classify",
@@ -165,5 +173,65 @@
     "out": "Out",
     "account": "Account",
     "synced": "Synced with the bank"
+  },
+  "collection": {
+    "title": "Collection through Inter",
+    "use": "Use Inter to collect",
+    "configure": "Set fine and interest",
+    "intro": "Invoices get a Pix with a due date, paid straight into your Inter account. Fine and interest apply to the Pix of every invoice issued from now on.",
+    "active": "This organization's invoices are collected by Pix with a due date at Inter.",
+    "fine": "Late fee (%)",
+    "interest": "Interest per month (%)",
+    "fineHint": "From 0 to 20%, charged once after the due date.",
+    "interestHint": "From 0 to 10% a month, per calendar day late.",
+    "save": "Save",
+    "saved": "Collection through Inter updated.",
+    "outOfRange": "Use a value from {{min}} to {{max}}.",
+    "needsCollection": "To collect, the integration needs the collection scopes (cobv, pix and webhook)."
+  },
+  "pix": {
+    "title": "Pix with due date",
+    "due": "Due on {{date}}",
+    "payUntil": "Pay until {{date}}",
+    "copy": "Copy Pix code",
+    "copied": "Pix code copied.",
+    "copyFailed": "Could not copy. Select the code and copy it.",
+    "qrTitle": "This invoice's Pix QR code",
+    "simulate": "Simulate payment",
+    "simulated": "Payment simulated in the sandbox. The invoice is confirmed in a moment.",
+    "newPix": "Create a new Pix",
+    "created": "Pix created.",
+    "paid": "Paid by Pix at {{bank}}.",
+    "lateCharges": "Includes {{amount}} of fine and interest.",
+    "none": "No Pix",
+    "excessTitle": "Duplicate payment",
+    "excessBody": "We received {{amount}} more on this invoice. The money is in your account; refund it if needed.",
+    "creditRefund": "Credit note refund",
+    "refund": "Refund",
+    "refundTitle": "Refund {{amount}}?",
+    "refundBody": "Inter sends the amount back by Pix to whoever paid. This cannot be undone.",
+    "refundConfirm": "Refund",
+    "refundKeep": "Keep",
+    "refundStarted": "Refund requested from Inter.",
+    "excessStatus": {
+      "open": "In your account",
+      "refunding": "Refund in progress",
+      "refunded": "Refunded",
+      "refund_failed": "Refund refused"
+    }
+  },
+  "webhook": {
+    "title": "Payment notices",
+    "registered": "Notices registered: Inter tells CTech about every Pix paid.",
+    "notRegistered": "No notices: confirmations arrive within an hour.",
+    "overwritten": "Another system now receives this key's notices. Confirmations arrive within an hour.",
+    "conflictTitle": "Another system receives this key's notices",
+    "conflictBody": "This Pix key's payment notices go to {{host}}. If CTech registers its own, that system stops receiving them. Better use a random key (EVP) for CTech only.",
+    "register": "Register notices again",
+    "replace": "Replace anyway",
+    "replaceTitle": "Replace the notices of {{host}}?",
+    "replaceBody": "{{host}} stops receiving this Pix key's payment notices. Do it only if that system no longer needs them.",
+    "replaceKeep": "Keep the current one",
+    "done": "Payment notices registered."
   }
 }

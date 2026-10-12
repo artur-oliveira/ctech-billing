@@ -21,6 +21,8 @@ import (
 // settingsResponse is C17.
 type settingsResponse struct {
 	Organization tenantResponse `json:"organization"`
+	// Collection are the late fees a BYOK Pix carries (spec 2026-10-11 § 7.2).
+	Collection billing.CollectionSettings `json:"collection"`
 	// Dunning is the schedule in force, always populated: an organization on the
 	// built-in default gets the built-in default here rather than an empty list,
 	// because the screen's question is "what happens to an unpaid invoice" and
@@ -100,19 +102,28 @@ func (h *consoleHandlers) settings(c fiber.Ctx) error {
 	if err != nil {
 		return fail(c, err)
 	}
+	gateErr := h.gates.Authorize(c.Context(), org)
+	block := ""
+	if p := problem.FromError(gateErr); gateErr != nil && p != nil {
+		block = p.Code
+	}
 	return c.JSON(settingsResponse{
 		Organization: tenantResponse{
 			OrganizationID: org.ID,
 			DisplayName:    org.DisplayName,
 			Livemode:       org.Livemode,
 			PayoutStatus:   org.PayoutStatus,
-			CanCharge:      org.AuthorizeCharge() == nil,
+			CanCharge:      gateErr == nil,
+			PayoutRail:     org.Rail(),
+			PayoutProvider: org.PayoutProvider,
+			ChargeBlock:    block,
 		},
-		Dunning:   newDunningPolicyResponse(org.DunningPolicy),
-		Issuer:    newIssuerResponse(org),
-		Documents: h.documents.Enabled(),
-		Numbering: "sequential_per_year_gapless",
-		Retention: "invoices_credit_notes_permanent_audit_5y",
+		Collection: org.Collection,
+		Dunning:    newDunningPolicyResponse(org.DunningPolicy),
+		Issuer:     newIssuerResponse(org),
+		Documents:  h.documents.Enabled(),
+		Numbering:  "sequential_per_year_gapless",
+		Retention:  "invoices_credit_notes_permanent_audit_5y",
 	})
 }
 

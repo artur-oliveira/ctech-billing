@@ -185,6 +185,32 @@ func FromError(err error) *Problem {
 
 	// BYOK (spec 2026-10-11 § 12.1). Details are fixed text: a provider's own
 	// message never reaches a client.
+	case errors.Is(err, billing.ErrTenantSuspended):
+		return Forbidden("this organization's live billing is suspended").WithCode("tenant_suspended")
+	case errors.Is(err, services.ErrSandboxWebhookShared):
+		return Conflict("the shared sandbox webhook is managed by CTech").WithCode("byok_sandbox_webhook_shared")
+	case errors.Is(err, services.ErrTenantZeroRail):
+		return Conflict("tenant zero's collection rail is changed by the operator").WithCode("tenant_zero_rail")
+	case errors.Is(err, services.ErrNoHooksHost):
+		return New(503, TypeProviderUnavailable, "Provider Unavailable", "payment notices are not available in this deployment").WithCode("byok_webhook_unavailable")
+	case errors.Is(err, billing.ErrInvalidCollectionSettings):
+		return Unprocessable("late fee up to 20% and monthly interest up to 10%").WithCode("invalid_collection_settings")
+	case errors.Is(err, services.ErrRefundWindowClosed):
+		return Unprocessable("the 90-day window to refund this Pix has closed").WithCode("refund_window_closed")
+	case errors.Is(err, services.ErrCustomerTaxIDRequired):
+		return Unprocessable("the customer has no CPF or CNPJ; add one to create the Pix").WithCode("customer_tax_id_required")
+	case errors.Is(err, services.ErrByokChargeOpen):
+		return Conflict("the invoice's Pix is still payable").WithCode("byok_charge_open")
+	case errors.Is(err, services.ErrNotByokRail):
+		return Conflict("this organization does not collect through a bank connection").WithCode("byok_not_collecting")
+	case errors.Is(err, billing.ErrByokNotConnected):
+		return Conflict("no active bank connection for collection").WithCode("byok_not_connected")
+	case errors.Is(err, billing.ErrByokCertificateExpired):
+		return Conflict("the bank connection's certificate expired").WithCode("byok_certificate_expired")
+	case errors.Is(err, billing.ErrByokScopesMissing):
+		return Conflict("the bank integration lacks the collection scopes").WithCode("byok_collection_scopes_missing")
+	case errors.Is(err, billing.ErrByokQuotaExceeded):
+		return Conflict("the plan's charges are used up this month; upgrade to keep collecting").WithCode("byok_quota_exceeded")
 	case errors.Is(err, services.ErrByokSpaceKind):
 		return New(404, TypeSpaceNotFound, "Space not found", "space not found")
 	case errors.Is(err, services.ErrByokNotConnected):

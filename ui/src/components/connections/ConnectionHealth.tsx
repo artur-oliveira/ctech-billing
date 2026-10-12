@@ -8,7 +8,7 @@ import {useState} from "react"
 import {useTranslation} from "react-i18next"
 import {toast} from "sonner"
 
-import {connectionKeys, disconnect, renewCertificate, syncNow, testConnection} from "@/lib/api/connections"
+import {connectionKeys, disconnect, registerWebhook, renewCertificate, syncNow, testConnection, type DisconnectReport} from "@/lib/api/connections"
 import {messageFor, problemCode} from "@/lib/api/client"
 import type {Connection, ConnectionStatus, ConnectionsScope} from "@/lib/api/connectionsTypes"
 import {codeMessage} from "@/lib/errors"
@@ -16,6 +16,7 @@ import {useIntent} from "@/lib/api/idempotency"
 import {instantShortDate} from "@/lib/format"
 
 import {DisconnectDialog} from "./DisconnectDialog"
+import {WebhookStep} from "./WebhookStep"
 import {RenewDialog} from "./RenewDialog"
 
 const TONE: Record<ConnectionStatus, "neutral" | "positive" | "attention" | "urgent"> = {
@@ -45,12 +46,21 @@ function when(instant: string, locale: string): string {
  * certificate's expiry from D-90, the last sync and the last error in words,
  * and the actions. Blocks are ruled, not boxed; one warning at a time.
  */
-export function ConnectionHealth({scope, connection: c, statementHref}: {scope: ConnectionsScope; connection: Connection; statementHref?: string}) {
+export function ConnectionHealth({scope, connection: c, statementHref, extra}: {
+  scope: ConnectionsScope
+  connection: Connection
+  statementHref?: string
+  /** The console's collection settings (spec § 11.2); Finanças passes none. */
+  extra?: React.ReactNode
+}) {
   const {t, i18n} = useTranslation()
   const qc = useQueryClient()
   const [renewing, setRenewing] = useState(false)
   const [leaving, setLeaving] = useState(false)
-  const testIntent = useIntent(), syncIntent = useIntent(), renewIntent = useIntent(), leaveIntent = useIntent()
+  const [openCharges, setOpenCharges] = useState(0)
+  const [unreachable, setUnreachable] = useState(false)
+  const [report, setReport] = useState<DisconnectReport | null>(null)
+  const testIntent = useIntent(), syncIntent = useIntent(), renewIntent = useIntent(), leaveIntent = useIntent(), hookIntent = useIntent()
   const refresh = (next?: Connection) => {
     if (next) qc.setQueryData(connectionKeys.one(scope, "inter"), next)
     void qc.invalidateQueries({queryKey: connectionKeys.one(scope, "inter")})
@@ -80,18 +90,33 @@ export function ConnectionHealth({scope, connection: c, statementHref}: {scope: 
     mutationFn: ({cert, key}: {cert: File; key: File}) => renewCertificate(scope, "inter", cert, key, renewIntent.key()),
     onSuccess: next => { renewIntent.done(); refresh(next); setRenewing(false); toast.success(t("connections.screen.renewed")) },
   })
+  // Spec § 3.6: open charges are cancelled only after the dialog says how
+  // many; a bank that does not answer is skipped only after "mesmo assim",
+  // and then the dialog lists what to remove at the bank.
   const leave = useMutation({
-    mutationFn: () => disconnect(scope, "inter", leaveIntent.key()),
-    onSuccess: () => {
+    mutationFn: () => disconnect(scope, "inter", leaveIntent.key(), {cancel_open_charges: openCharges > 0, force: unreachable}),
+    onSuccess: rep => {
       leaveIntent.done()
-      setLeaving(false)
+      if (rep && (rep.charge_refs.length > 0 || rep.webhook_url)) setReport(rep)
+      else closeLeave()
       qc.setQueryData(connectionKeys.one(scope, "inter"), null)
       refresh()
       void qc.invalidateQueries({queryKey: ["finance"]})
       toast.success(t("connections.disconnect.done"))
     },
-    onError: e => toast.error(words(e)),
+    onError: e => {
+      leaveIntent.done()
+      const code = problemCode(e)
+      if (code === "byok_open_charges") {
+        setOpenCharges((e as {response?: {data?: {count?: number}}}).response?.data?.count ?? 1)
+      } else if (code === "byok_provider_unavailable") {
+        setUnreachable(true)
+      } else {
+        toast.error(words(e))
+      }
+    },
   })
+  const closeLeave = () => { setLeaving(false); setOpenCharges(0); setUnreachable(false); setReport(null) }
 
   const merchant = c.kind !== "sandbox_shared"
   const days = c.cert_days_left
@@ -156,6 +181,18 @@ export function ConnectionHealth({scope, connection: c, statementHref}: {scope: 
         </section>
       )}
 
+      {merchant && c.capabilities.includes("collection") && (
+        <WebhookStep status={c.webhook_status} onRegister={async replace => {
+          try {
+            refresh(await registerWebhook(scope, "inter", replace, hookIntent.key()))
+          } finally {
+            hookIntent.done()
+          }
+        }}/>
+      )}
+
+      {extra}
+
       <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
         <Button variant="brand" disabled={sync.isPending} onClick={() => sync.mutate()}>{t("connections.screen.syncNow")}</Button>
         <Button variant="outline" disabled={test.isPending} onClick={() => test.mutate()}>{t("connections.screen.test")}</Button>
@@ -168,7 +205,8 @@ export function ConnectionHealth({scope, connection: c, statementHref}: {scope: 
 
       <RenewDialog open={renewing} onClose={() => setRenewing(false)} loading={renew.isPending}
         error={renew.isError ? words(renew.error) : undefined} onSubmit={(cert, key) => renew.mutate({cert, key})}/>
-      <DisconnectDialog open={leaving} onClose={() => setLeaving(false)} loading={leave.isPending} onConfirm={() => leave.mutate()}/>
+      <DisconnectDialog open={leaving} onClose={closeLeave} loading={leave.isPending} onConfirm={() => leave.mutate()}
+        openCharges={openCharges} unreachable={unreachable} report={report}/>
     </div>
   )
 }

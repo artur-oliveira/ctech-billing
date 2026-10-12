@@ -16,6 +16,16 @@ func TestOnlyTheLambdaImportsInterAndTheSealer(t *testing.T) {
 		if strings.HasPrefix(pkg, "gopkg.aoctech.app/billing/api/cmd/byok-outbound") || pkg == "gopkg.aoctech.app/billing/api/internal/byokseal" {
 			continue
 		}
+		// The webhook Lambda parses callbacks with inter's parser (no client,
+		// no credential); it must never hold the sealer.
+		if strings.HasPrefix(pkg, "gopkg.aoctech.app/billing/api/cmd/byok-webhook") {
+			for _, d := range strings.Fields(deps) {
+				if d == "gopkg.aoctech.app/billing/api/internal/byokseal" || strings.HasPrefix(d, "gopkg.aoctech.app/billing/api/internal/") {
+					t.Errorf("%s imports %s", pkg, d)
+				}
+			}
+			continue
+		}
 		for _, banned := range []string{"gopkg.aoctech.app/api-commons/inter", "gopkg.aoctech.app/billing/api/internal/byokseal"} {
 			for _, d := range strings.Fields(deps) {
 				if d == banned || strings.HasPrefix(d, banned+"/") {

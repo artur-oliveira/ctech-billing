@@ -100,6 +100,9 @@ export interface PixPayment {
   method: string
   pix_code: string
   expires_at: string
+  /** A BYOK Pix with due date's last payable day (YYYY-MM-DD): shown as
+   *  "pague até" instead of a countdown. */
+  payable_until?: string
 }
 
 export interface PaymentResult {

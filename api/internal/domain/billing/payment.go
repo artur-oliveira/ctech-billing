@@ -2,6 +2,8 @@ package billing
 
 import (
 	"strconv"
+
+	"gopkg.aoctech.app/billing/api/internal/domain/brcal"
 	"time"
 )
 
@@ -55,7 +57,7 @@ var paymentAttemptTransitions = map[edge[PaymentAttemptStatus]][]rule{
 	// polling does not change what happened to the customer's money.
 	{AttemptPending, AttemptFailed}: {{
 		event:  EventPaymentFailed,
-		causes: []Cause{CausePaymentFailed, CauseWalletWebhook, CauseReconciliation},
+		causes: []Cause{CausePaymentFailed, CauseWalletWebhook, CauseReconciliation, CauseByokDisconnected},
 	}},
 	// ABANDONED is reconciliation's alone, and it means something narrower than
 	// FAILED: wallet does not know this charge at all. Nobody declined to pay —
@@ -91,6 +93,23 @@ type PaymentAttempt struct {
 	// RecordedBy is the operator who recorded a MethodManual receipt. Empty for
 	// every automatic attempt.
 	RecordedBy string `dynamodbav:"recorded_by,omitempty" json:"recorded_by,omitempty"`
+
+	// BYOK (spec 2026-10-11 § 7.2). ChargeRef is the provider's reference
+	// (Inter: the txid, InterTxid(ID)), written before the provider call;
+	// Payable is the artefact (Inter: pixCopiaECola), empty until the charge
+	// exists; PaymentID and LateCharges come from the re-query that settled it.
+	Provider      string     `dynamodbav:"provider,omitempty"       json:"provider,omitempty"`
+	Product       string     `dynamodbav:"product,omitempty"        json:"product,omitempty"`
+	ChargeRef     string     `dynamodbav:"charge_ref,omitempty"     json:"charge_ref,omitempty"`
+	Payable       string     `dynamodbav:"payable,omitempty"        json:"payable,omitempty"`
+	DueDate       brcal.Date `dynamodbav:"due_date,omitempty"       json:"due_date,omitzero"`
+	PayableUntil  brcal.Date `dynamodbav:"payable_until,omitempty"  json:"payable_until,omitzero"`
+	CheckedAt     time.Time  `dynamodbav:"checked_at,omitempty"     json:"checked_at,omitzero"`
+	PaymentID     string     `dynamodbav:"payment_id,omitempty"     json:"-"`
+	LateCharges   Cents      `dynamodbav:"late_charges,omitempty"   json:"late_charges,omitempty"`
+	CreatedAt     time.Time  `dynamodbav:"opened_at,omitempty"      json:"created_at,omitzero"`
+	CancelledAt   time.Time  `dynamodbav:"cancelled_at,omitempty"   json:"-"`
+	UsageReported bool       `dynamodbav:"usage_reported,omitempty" json:"-"`
 }
 
 // IdempotencyKey is the key sent to wallet when opening this attempt's charge.
@@ -181,6 +200,9 @@ type CheckoutSession struct {
 	// image is a rendering of exactly this string, and a few kilobytes of base64
 	// per session buys nothing a renderer on the page does not already do.
 	PixCode string `dynamodbav:"pix_code,omitempty" json:"pix_code,omitempty"`
+	// PayableUntil is a BYOK due-date charge's last payable day ("pague até",
+	// spec 2026-10-11 § 7.2); zero on the wallet rail.
+	PayableUntil brcal.Date `dynamodbav:"payable_until,omitempty" json:"payable_until,omitzero"`
 
 	Metadata Metadata `dynamodbav:"metadata,omitempty" json:"metadata,omitempty"`
 }

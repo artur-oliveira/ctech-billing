@@ -94,7 +94,9 @@ type Connection struct {
 	BackfillFrom          brcal.Date        `dynamodbav:"backfill_from,omitempty" json:"backfill_from,omitzero"`
 	BackfillDone          bool              `dynamodbav:"backfill_done,omitempty" json:"backfill_done"`
 	LastManualSyncAt      time.Time         `dynamodbav:"last_manual_sync_at,omitempty" json:"-"`
-	CreatedAt             time.Time         `dynamodbav:"connected_at"           json:"connected_at"`
+	// AuditedOn is the São Paulo day of the last daily webhook audit (§ 5 step 4).
+	AuditedOn string    `dynamodbav:"audited_on,omitempty" json:"-"`
+	CreatedAt time.Time `dynamodbav:"connected_at"           json:"connected_at"`
 }
 
 func (c *Connection) Has(cap byok.Capability) bool { return slices.Contains(c.Capabilities, cap) }

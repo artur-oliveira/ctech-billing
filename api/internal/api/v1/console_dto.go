@@ -35,6 +35,11 @@ type tenantResponse struct {
 	Livemode       bool                 `json:"livemode"`
 	PayoutStatus   billing.PayoutStatus `json:"payout_status"`
 	CanCharge      bool                 `json:"can_charge"`
+	// The collection rail (BYOK spec § 7.1, § 11.3) and, when can_charge is
+	// false, the problem code saying why.
+	PayoutRail     billing.PayoutRail `json:"payout_rail"`
+	PayoutProvider string             `json:"payout_provider,omitempty"`
+	ChargeBlock    string             `json:"charge_block,omitempty"`
 }
 
 // consoleSessionResponse is GET /v1.0/console/session (spec § 3, ADR 0028):
@@ -102,6 +107,9 @@ type consoleInvoiceListItem struct {
 // field, one rule (Invoice.Payable).
 type invoiceDetailResponse struct {
 	Invoice invoiceResponse `json:"invoice"`
+	// Byok is the invoice's Pix on the BYOK rail (spec 2026-10-11 § 11.3);
+	// absent on the wallet rail.
+	Byok *invoiceByokResponse `json:"byok,omitempty"`
 	// CustomerName, for the same reason C2 carries it: an operator reading this
 	// screen is talking to a person, not to an id. Absent when the customer row
 	// cannot be read — the invoice is still a real document, and refusing to
@@ -133,6 +141,9 @@ type creditNoteRequest struct {
 	RefundedExternally bool             `json:"refunded_externally"`
 	ExternalRefundRef  string           `json:"external_refund_ref"`
 	Metadata           billing.Metadata `json:"metadata"`
+	// RefundViaPix gives the credited amount back from a BYOK-paid invoice's
+	// payment (spec 2026-10-11 § 7.5), the merchant's explicit act.
+	RefundViaPix bool `json:"refund_via_pix"`
 }
 
 type creditNoteResponse struct {

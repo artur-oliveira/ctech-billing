@@ -10,7 +10,7 @@ import {toast} from "sonner"
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
 import {connect, connectionKeys, listConnections} from "@/lib/api/connections"
 import {messageFor, problemCode} from "@/lib/api/client"
-import type {ConnectionsScope} from "@/lib/api/connectionsTypes"
+import type {Connection, ConnectionsScope} from "@/lib/api/connectionsTypes"
 import {codeMessage} from "@/lib/errors"
 import {useIntent} from "@/lib/api/idempotency"
 
@@ -24,7 +24,13 @@ import {InterOnboarding} from "./InterOnboarding"
  * until connected, then the connection's health. Test: CTech's own
  * integration against Inter's sandbox, turned on with one press.
  */
-export function InterConnectionScreen({scope, backHref, statementHref}: {scope: ConnectionsScope; backHref: string; statementHref?: (accountId: string) => string}) {
+export function InterConnectionScreen({scope, backHref, statementHref, extra}: {
+  scope: ConnectionsScope
+  backHref: string
+  statementHref?: (accountId: string) => string
+  /** Rendered under the health for a connected bank (the console's collection). */
+  extra?: (c: Connection) => React.ReactNode
+}) {
   const {t} = useTranslation()
   const q = useQuery({queryKey: connectionKeys.list(scope), queryFn: () => listConnections(scope)})
   const conn = q.data?.data.find(c => c.provider === "inter") ?? null
@@ -42,7 +48,8 @@ export function InterConnectionScreen({scope, backHref, statementHref}: {scope: 
       ) : q.isError ? (
         <ErrorBlock error={q.error} onRetry={() => void q.refetch()}/>
       ) : connected ? (
-        <ConnectionHealth scope={scope} connection={conn} statementHref={statementHref && conn.ledger_account_id ? statementHref(conn.ledger_account_id) : undefined}/>
+        <ConnectionHealth scope={scope} connection={conn} extra={extra?.(conn)}
+          statementHref={statementHref && conn.ledger_account_id ? statementHref(conn.ledger_account_id) : undefined}/>
       ) : scope.mode === "test" ? (
         <SandboxBlock scope={scope}/>
       ) : (

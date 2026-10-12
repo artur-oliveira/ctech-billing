@@ -8,7 +8,7 @@ import {useTranslation} from "react-i18next"
 import {toast} from "sonner"
 
 import type {Cents, PixPayment} from "@/lib/api/types"
-import {countdown, money} from "@/lib/format"
+import {countdown, money, shortDate} from "@/lib/format"
 import {usePaymentStream} from "@/lib/hooks/usePaymentStream"
 
 /**
@@ -93,7 +93,9 @@ export function PixPanel({
       <div className="flex items-baseline justify-between gap-4">
         <p className="text-sm font-medium text-foreground">{t("portal.pix.title")}</p>
         <p data-numeric className="text-sm text-muted-foreground">
-          {t("portal.pix.expiresIn", {time: countdown(secondsLeft)})}
+          {payment.payable_until
+            ? t("portal.pix.payUntil", {date: shortDate(payment.payable_until)})
+            : t("portal.pix.expiresIn", {time: countdown(secondsLeft)})}
         </p>
       </div>
 

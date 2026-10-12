@@ -1,6 +1,10 @@
 locals {
-  byok_ssm_prefix          = "/ctech-billing/${var.environment}/byok"
-  byok_outbound_name       = "${var.environment}-ctech-billing-byok-outbound"
+  byok_ssm_prefix         = "/ctech-billing/${var.environment}/byok"
+  byok_outbound_name      = "${var.environment}-ctech-billing-byok-outbound"
+  byok_webhook_name       = "${var.environment}-ctech-billing-byok-webhook"
+  byok_webhook_ssm_prefix = "/ctech-billing/${var.environment}/byok-webhook"
+  # One label under aoctech.app, so the wildcard certificate covers it (§ 6.1).
+  byok_hooks_domain        = var.environment == "prod" ? "billing-byok-hooks.aoctech.app" : "billing-byok-hooks-${var.environment}.aoctech.app"
   byok_credentials_key     = "${local.byok_ssm_prefix}/credentials-key"
   byok_credentials_key_arn = "arn:aws:ssm:${var.aws_region}:${var.aws_account}:parameter${local.byok_ssm_prefix}/credentials-key"
   # Test mode uses CTech's own Inter integration (the wallet's), against the

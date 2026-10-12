@@ -34,6 +34,33 @@ type Invoicer struct {
 	// levels and customers bill prices aggregated by max (WithLevels).
 	levels    *repositories.LevelRepository
 	customers *repositories.CustomerRepository
+	// charges creates a BYOK tenant's due-date charge after an invoice is
+	// issued (spec 2026-10-11 § 7.2). Nil: nothing to create.
+	charges ChargeCreator
+}
+
+// WithCharges attaches the BYOK rail's hook after every issue.
+func (s *Invoicer) WithCharges(c ChargeCreator) *Invoicer {
+	s.charges = c
+	return s
+}
+
+// finalize is every Finalize of this package: a BYOK tenant's late fees are
+// copied onto the invoice with it (spec § 7.2), and an issued invoice that
+// owes something gets its charge after the write commits, never inside it.
+func (s *Invoicer) finalize(ctx context.Context, inv *billing.Invoice, dueDate, settlement brcal.Date, cause billing.Cause, actor, requestID string, now time.Time) error {
+	if s.orgs != nil && s.charges != nil {
+		if org, err := s.orgs.Get(ctx, inv.OrganizationID, inv.Livemode); err == nil && org.Rail() == billing.RailBYOK {
+			inv.Collection = org.Collection
+		}
+	}
+	if _, err := s.invoices.Finalize(ctx, inv, dueDate, settlement, cause, actor, requestID, now); err != nil {
+		return err
+	}
+	if s.charges != nil && !inv.NothingDue() {
+		s.charges.Issued(ctx, inv, now)
+	}
+	return nil
 }
 
 // ErrLevelsNotWired is a max price closed by an Invoicer built without levels.
@@ -168,7 +195,7 @@ func (s *Invoicer) GenerateForPeriod(
 	// reminder, and a customer chased for a free plan learns to ignore the next
 	// message, which will be about a real one.
 	if inv.NothingDue() {
-		if _, err := s.invoices.Finalize(ctx, inv, dueDate, brcal.Date{}, billing.CauseScheduler, actor, "", now); err != nil {
+		if err := s.finalize(ctx, inv, dueDate, brcal.Date{}, billing.CauseScheduler, actor, "", now); err != nil {
 			return nil, err
 		}
 		if _, err := s.invoices.Transition(ctx, inv, billing.InvoicePaid, billing.CauseNothingDue, actor, "", now); err != nil {
@@ -184,7 +211,7 @@ func (s *Invoicer) GenerateForPeriod(
 	// days *before* the due date, because the only message that prevents a late
 	// invoice is one that arrives while it can still be paid on time.
 	settlement := inv.Schedule().FirstDunningDate(dueDate)
-	if _, err := s.invoices.Finalize(ctx, inv, dueDate, settlement, billing.CauseScheduler, actor, "", now); err != nil {
+	if err := s.finalize(ctx, inv, dueDate, settlement, billing.CauseScheduler, actor, "", now); err != nil {
 		return nil, err
 	}
 	return inv, nil
@@ -331,7 +358,7 @@ func (s *Invoicer) Issue(
 	if inv.NothingDue() {
 		settlement = brcal.Date{}
 	}
-	if _, err := s.invoices.Finalize(ctx, inv, dueDate, settlement, billing.CauseManual, actor, requestID, now); err != nil {
+	if err := s.finalize(ctx, inv, dueDate, settlement, billing.CauseManual, actor, requestID, now); err != nil {
 		return err
 	}
 	if inv.NothingDue() {

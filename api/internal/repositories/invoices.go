@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"math/rand/v2"
 	"strconv"
 	"strings"
@@ -239,6 +240,15 @@ func (r *InvoiceRepository) Finalize(
 		// are simply not written, which keeps the schedule index sparse: an
 		// invoice that owes nothing never appears in the dunning partition at all,
 		// rather than appearing and being filtered out every morning.
+		// A BYOK tenant's late fees, copied like the dunning policy (spec
+		// 2026-10-11 § 7.2): the caller sets inv.Collection from the tenant.
+		if !inv.Collection.IsZero() {
+			cv, err := attributevalue.Marshal(inv.Collection)
+			if err != nil {
+				return nil, err
+			}
+			set["collection"] = cv
+		}
 		if !settlementSweep.IsZero() {
 			set["schedule_pk"] = &types.AttributeValueMemberS{Value: SchedulePK(inv.Livemode, JobInvoiceSettlement, settlementSweep)}
 			set["schedule_sk"] = &types.AttributeValueMemberS{Value: inv.ID}

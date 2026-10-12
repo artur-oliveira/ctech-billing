@@ -300,3 +300,16 @@ func TestTheSessionTellsAProvisionedTestTenantFromAPendingApplication(t *testing
 		t.Fatalf("after applying: %s / %q", s, a)
 	}
 }
+
+// BYOK spec § 11.3: tenant zero sees each approved merchant's collection rail.
+func TestTheApprovedListShowsEachMerchantsRail(t *testing.T) {
+	m := newMerchantEnv(t)
+	appID := m.apply(t)
+	if r := m.as(t, m.reviewer, http.MethodPost, "/v1.0/console/applications/"+appID+"/approve", "live", m.ctechOrg, ""); r.status != http.StatusOK {
+		t.Fatalf("%d %s", r.status, r.body)
+	}
+	list := m.as(t, m.reviewer, http.MethodGet, "/v1.0/console/applications?status=approved", "live", m.ctechOrg, "")
+	if !bytes.Contains(list.body, []byte(`"payout":{"rail":"wallet"`)) {
+		t.Fatalf("%s", list.body)
+	}
+}

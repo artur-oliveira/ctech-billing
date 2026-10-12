@@ -63,6 +63,10 @@ build-lambdas:
 	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -tags lambda.norpc -ldflags="-s -w" \
 		-o $(BUILD_DIR)/lambda/byok-outbound/bootstrap ./cmd/byok-outbound
 	cd $(BUILD_DIR)/lambda/byok-outbound && zip -q -j ../byok-outbound.zip bootstrap
+	mkdir -p $(BUILD_DIR)/lambda/byok-webhook
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -tags lambda.norpc -trimpath -ldflags="-s -w" \
+		-o $(BUILD_DIR)/lambda/byok-webhook/bootstrap ./cmd/byok-webhook
+	cd $(BUILD_DIR)/lambda/byok-webhook && zip -q -j ../byok-webhook.zip bootstrap
 
 # The release as CI ships it (stripped, trimmed), zipped and held to the size
 # budget a 1 GB Alpine root can deploy (scripts/release-size.sh).

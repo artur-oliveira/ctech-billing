@@ -198,7 +198,9 @@
   "refunded": "O dinheiro já foi devolvido pelo wallet",
   "refundedNote": "O billing só registra a devolução, não devolve.",
   "submit": "Emitir",
-  "done": "Nota de crédito emitida."
+  "done": "Nota de crédito emitida.",
+  "viaPix": "Devolver via Pix",
+  "viaPixNote": "O Inter devolve este valor por Pix para quem pagou a fatura, a partir do pagamento dela. Não dá para desfazer."
  },
  "subscriptions": {
   "title": "Assinaturas",
@@ -426,6 +428,14 @@
    "pending": "Pendentes",
    "approved": "Aprovadas",
    "rejected": "Recusadas"
+  },
+  "payout": "Cobrança",
+  "railByok": "Pix com vencimento no {{bank}}",
+  "railWallet": "Pix pela carteira CTech",
+  "payoutStatus": {
+   "enabled": "Ativa",
+   "not_configured": "Não configurada",
+   "pending_custody": "Aguardando custódia"
   }
  },
  "credentials": {

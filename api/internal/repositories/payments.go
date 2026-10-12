@@ -30,6 +30,9 @@ type PaymentRepository struct {
 	base   Base
 	audit  Base
 	events Base
+	// byok holds the CHARGEREF# pointers (spec § 12.2), written in the same
+	// transaction as a BYOK attempt.
+	byok Base
 }
 
 func NewPaymentRepository(db *dynamodb.Client, cfg *config.Config) *PaymentRepository {
@@ -37,6 +40,7 @@ func NewPaymentRepository(db *dynamodb.Client, cfg *config.Config) *PaymentRepos
 		base:   NewBase(db, cfg, TableInvoices),
 		audit:  NewBase(db, cfg, TableAudit),
 		events: NewBase(db, cfg, TableWebhooks),
+		byok:   NewBase(db, cfg, TableByok),
 	}
 }
 
@@ -204,6 +208,21 @@ func (r *PaymentRepository) TransitionAttempt(
 	if updated.FailureReason != "" {
 		set["failure_reason"] = &types.AttributeValueMemberS{Value: updated.FailureReason}
 	}
+	if updated.PaymentID != "" {
+		set["payment_id"] = &types.AttributeValueMemberS{Value: updated.PaymentID}
+	}
+	if updated.LateCharges != 0 {
+		set["late_charges"] = numberValue(int64(updated.LateCharges))
+	}
+	if !updated.CancelledAt.IsZero() {
+		set["cancelled_at"] = &types.AttributeValueMemberS{Value: updated.CancelledAt.UTC().Format(time.RFC3339Nano)}
+	}
+	remove := []string{"schedule_pk", "schedule_sk"}
+	if a.Method == billing.MethodBYOK {
+		// A BYOK attempt leaves its tenant's open partition. Its pointer row
+		// keeps finding it (a late webhook still re-queries).
+		remove = append(remove, "lookup_pk")
+	}
 
 	change := StatusChange{
 		OrganizationID: a.OrganizationID,
@@ -216,7 +235,7 @@ func (r *PaymentRepository) TransitionAttempt(
 		// Every status reachable from PENDING is terminal, so the attempt always
 		// leaves the reconciliation sweep here. That is what keeps a settled charge
 		// from being re-asked about on every run for the rest of the day.
-		Remove: []string{"schedule_pk", "schedule_sk"},
+		Remove: remove,
 		Audit: AuditEntry{
 			Entity:    EntityPaymentAttempt,
 			EntityID:  a.ID,

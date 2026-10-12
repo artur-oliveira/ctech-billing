@@ -320,3 +320,61 @@ func (r *ByokRepository) ChargeRefOwner(ctx context.Context, provider string, li
 	}
 	return row.AccountOrganizationID, row.AccountOrganizationID != "", nil
 }
+
+// SandboxHookID is the shared sandbox's one webhook (spec § 9): the
+// CHARGEREF#…#test# pointer, which only billing writes, decides the tenant.
+const SandboxHookID = "sandbox"
+
+// Hook is a webhook's row (spec § 12.2): HOOK#{id} → HOOK. Only the SHA-256
+// of the path secret is kept; a rotated secret stays valid until
+// PreviousValidUntil (the provider's retries carry the old URL).
+type Hook struct {
+	ID                    string    `dynamodbav:"id"`
+	Provider              string    `dynamodbav:"provider"`
+	AccountOrganizationID string    `dynamodbav:"account_organization_id,omitempty"`
+	Livemode              bool      `dynamodbav:"livemode"`
+	SecretHash            string    `dynamodbav:"secret_hash"`
+	PreviousSecretHash    string    `dynamodbav:"previous_secret_hash,omitempty"`
+	PreviousValidUntil    time.Time `dynamodbav:"previous_valid_until,omitempty"`
+}
+
+type hookRow struct {
+	keys
+	Hook
+}
+
+func hookPK(id string) string { return "HOOK#" + id }
+
+func (r *ByokRepository) PutHook(ctx context.Context, h *Hook, now time.Time) error {
+	item, err := Encode(hookRow{keys: newKeys(hookPK(h.ID), "HOOK", RetentionByokConnection, now), Hook: *h})
+	if err != nil {
+		return err
+	}
+	return r.base.PutItem(ctx, item)
+}
+
+func (r *ByokRepository) GetHook(ctx context.Context, id string) (*Hook, error) {
+	if id == "" {
+		return nil, fmt.Errorf("%w: hook", ErrNotFound)
+	}
+	item, err := r.base.GetItem(ctx, hookPK(id), "HOOK")
+	if err != nil {
+		return nil, err
+	}
+	if item == nil {
+		return nil, fmt.Errorf("%w: hook", ErrNotFound)
+	}
+	row, err := Decode[hookRow](item)
+	if err != nil {
+		return nil, err
+	}
+	return &row.Hook, nil
+}
+
+func (r *ByokRepository) DeleteHook(ctx context.Context, id string) error {
+	if id == "" {
+		return nil
+	}
+	_, err := r.base.DeleteItem(ctx, hookPK(id), "HOOK")
+	return err
+}

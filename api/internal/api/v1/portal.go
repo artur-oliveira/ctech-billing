@@ -261,9 +261,10 @@ func (h *portalHandlers) payInvoice(c fiber.Ctx) error {
 	return c.JSON(portalPaymentResponse{
 		Invoice: newPortalInvoiceResponse(inv, lines, h.today()),
 		Payment: checkoutPayment{
-			Method:    string(billing.MethodPIX),
-			PixCode:   session.PixCode,
-			ExpiresAt: session.ExpiresAt,
+			Method:       string(billing.MethodPIX),
+			PixCode:      session.PixCode,
+			ExpiresAt:    session.ExpiresAt,
+			PayableUntil: session.PayableUntil,
 		},
 	})
 }

@@ -55,6 +55,13 @@ type consoleHandlers struct {
 	creds     *repositories.CredentialRepository
 	connector *services.CredentialConnector
 	hooks     *repositories.WebhookRepository
+	// gates is the single charge-gate builder (BYOK spec § 7.1): can_charge
+	// and the BYOK collection routes.
+	gates *services.ChargeGates
+	// byok is the BYOK collection rail; nil when not configured.
+	byok     *services.ByokCollector
+	setup    *services.ByokCollectionSetup
+	payments *repositories.PaymentRepository
 }
 
 // creditPoster is the slice of services.FinanceInvoices the credit-note route
@@ -370,6 +377,21 @@ func (h *consoleHandlers) voidInvoice(c fiber.Ctx) error {
 	if inv.Status == billing.InvoiceVoid {
 		return h.invoiceDetail(c, inv)
 	}
+	// A BYOK charge still payable is removed first (spec § 7.3); one paid
+	// meanwhile wins over the void, and the answer is the paid invoice.
+	if h.byok != nil && inv.Status == billing.InvoiceOpen {
+		paid, err := h.byok.Voided(c.Context(), inv, h.now())
+		if err != nil {
+			return fail(c, err)
+		}
+		if paid {
+			fresh, err := h.invoices.Get(c.Context(), t.OrganizationID, t.Livemode, inv.ID)
+			if err != nil {
+				return fail(c, err)
+			}
+			return h.invoiceDetail(c, fresh)
+		}
+	}
 	if _, err := h.invoices.Transition(
 		c.Context(), inv, billing.InvoiceVoid, billing.CauseManual,
 		actorOfUser(c), middleware.GetRequestID(c), h.now(),
@@ -410,6 +432,16 @@ func (h *consoleHandlers) creditInvoice(c fiber.Ctx) error {
 		return fail(c, err)
 	}
 
+	// "Devolver via Pix" is checked before the note exists: a refund that
+	// cannot happen refuses the note, so a retry never issues a second one.
+	if req.RefundViaPix {
+		if h.byok == nil {
+			return fail(c, services.ErrNotByokRail)
+		}
+		if err := h.byok.CheckRefundCredit(c.Context(), inv, h.now()); err != nil {
+			return fail(c, err)
+		}
+	}
 	cn := &billing.CreditNote{
 		ID:                 id.NewWithPrefix(id.PrefixCreditNote),
 		InvoiceID:          inv.ID,
@@ -429,6 +461,23 @@ func (h *consoleHandlers) creditInvoice(c fiber.Ctx) error {
 	// nothing the rule answers changes this response.
 	if h.finance != nil && inv.Status == billing.InvoicePaid {
 		h.finance.Credited(c.Context(), inv, cn, actorOfUser(c), middleware.GetRequestID(c), h.now())
+	}
+	// "Devolver via Pix": after the note exists. A refusal (window closed,
+	// not a BYOK payment) answers the error; the note stands.
+	if req.RefundViaPix && h.byok != nil {
+		if _, err := h.byok.RefundCredit(c.Context(), inv, cn, actorOfUser(c), middleware.GetRequestID(c), h.now()); err != nil {
+			return fail(c, err)
+		}
+	}
+	// An open invoice's BYOK charge follows the new amount due (spec § 7.3).
+	// The note stands either way; a provider failure is logged and the sweep's
+	// re-query and the merchant's next look correct it.
+	if h.byok != nil && inv.Status == billing.InvoiceOpen {
+		if fresh, err := h.invoices.Get(c.Context(), t.OrganizationID, t.Livemode, inv.ID); err == nil {
+			if err := h.byok.Credited(c.Context(), fresh, h.now()); err != nil {
+				slog.WarnContext(c.Context(), "byok charge not updated after a credit note", "invoice_id", inv.ID, "error", err)
+			}
+		}
 	}
 	return c.Status(fiber.StatusCreated).JSON(newCreditNoteResponse(cn))
 }
@@ -459,7 +508,9 @@ func (h *consoleHandlers) invoiceDetail(c fiber.Ctx, inv *billing.Invoice) error
 	if customer, err := h.customers.Get(c.Context(), t.OrganizationID, t.Livemode, inv.CustomerID); err == nil {
 		name = customer.Name
 	}
-	return c.JSON(newInvoiceDetailResponse(inv, lines, notes, trail, name, h.today(), h.links))
+	resp := newInvoiceDetailResponse(inv, lines, notes, trail, name, h.today(), h.links)
+	resp.Byok = h.byokBlock(c, inv)
+	return c.JSON(resp)
 }
 
 // createCustomer is C6's "novo cliente", on the shared implementation.

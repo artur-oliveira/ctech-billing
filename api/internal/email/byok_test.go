@@ -8,7 +8,7 @@ import (
 )
 
 func TestByokNoticesArePortugueseWithoutEmDashesAndEscaped(t *testing.T) {
-	for _, kind := range []string{"cert_90", "cert_30", "cert_7", "cert_expired", "degraded", "disconnected"} {
+	for _, kind := range []string{"cert_90", "cert_30", "cert_7", "cert_expired", "degraded", "disconnected", "excess_payment", "webhook_overwritten"} {
 		tx := &fakeTransport{}
 		c := &Client{tx: tx}
 		err := c.SendByokNotice(context.Background(), "a@example.com", ByokNotice{Kind: kind, Provider: "inter",
@@ -25,5 +25,13 @@ func TestByokNoticesArePortugueseWithoutEmDashesAndEscaped(t *testing.T) {
 	}
 	if err := (&Client{tx: &fakeTransport{}}).SendByokNotice(context.Background(), "a@example.com", ByokNotice{Kind: "nope"}); err == nil {
 		t.Fatal("an unknown kind is refused")
+	}
+}
+
+func TestBrlFormatsCentavos(t *testing.T) {
+	for in, want := range map[int64]string{0: "R$ 0,00", 5: "R$ 0,05", 123456: "R$ 1.234,56", 100000000: "R$ 1.000.000,00"} {
+		if got := brl(in); got != want {
+			t.Errorf("%d: %q", in, got)
+		}
 	}
 }

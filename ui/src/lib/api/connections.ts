@@ -97,8 +97,25 @@ export async function setOnboarding(s: ConnectionsScope, provider: string, step:
   await apiClient.put(`${BASE}/${provider}/onboarding`, {step}, {headers: headers(s, key)})
 }
 
-export async function disconnect(s: ConnectionsScope, provider: string, key: string): Promise<void> {
-  await apiClient.delete(`${BASE}/${provider}`, {headers: headers(s, key)})
+/** What "Desconectar mesmo assim" could not remove at the bank: the charges
+ *  and the webhook the merchant must remove there (spec § 3.6). */
+export interface DisconnectReport {
+  charge_refs: string[]
+  webhook_url?: string
+}
+
+export async function disconnect(
+  s: ConnectionsScope, provider: string, key: string,
+  opts: {cancel_open_charges?: boolean; force?: boolean} = {},
+): Promise<DisconnectReport | null> {
+  const res = await apiClient.delete<DisconnectReport | "">(`${BASE}/${provider}`, {headers: headers(s, key), data: opts})
+  return res.data && typeof res.data === "object" ? res.data : null
+}
+
+/** "Registrar aviso novamente", and the conflict's confirmation. */
+export async function registerWebhook(s: ConnectionsScope, provider: string, replaceExisting: boolean, key: string): Promise<Connection> {
+  const {data} = await apiClient.post<Connection>(`${BASE}/${provider}/webhook`, {replace_existing: replaceExisting}, {headers: headers(s, key)})
+  return data
 }
 
 function financeHeaders(c: FinanceCtx, key?: string): Record<string, string> {

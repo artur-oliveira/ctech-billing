@@ -80,6 +80,24 @@ type Collector struct {
 	// Optional for the same reason the bus is: without it a paid invoice is a
 	// line missing from Finanças, never a payment refused.
 	finance InvoicePoster
+	// gates builds AuthorizeCharge's argument (spec 2026-10-11 § 7.1). Nil
+	// answers the empty gate: the wallet rail passes, a BYOK tenant is refused.
+	gates *ChargeGates
+	// byok collects a BYOK-rail tenant's invoices (spec 2026-10-11 § 7). Pay
+	// dispatches to it by rail; the wallet client is never called for them.
+	byok *ByokCollector
+}
+
+// WithByok attaches the BYOK rail.
+func (c *Collector) WithByok(b *ByokCollector) *Collector {
+	c.byok = b
+	return c
+}
+
+// WithGates attaches the single charge-gate builder.
+func (c *Collector) WithGates(g *ChargeGates) *Collector {
+	c.gates = g
+	return c
 }
 
 // InvoicePoster records a paid invoice in the finance ledger (spec § 3.8).
@@ -163,18 +181,32 @@ func (c *Collector) Pay(
 	actor, requestID string,
 	now time.Time,
 ) (*billing.CheckoutSession, *billing.Invoice, error) {
-	// Before the read, because it needs nothing from it and because this is the
-	// choke point both callers pass through — the public link and the portal. A
-	// guard in each of them is a guard the third caller forgets.
-	if !livemode {
-		return nil, nil, fmt.Errorf("%w: invoice %s", ErrTestModeNotPayable, invoiceID)
-	}
 	inv, err := c.invoices.Get(ctx, organizationID, livemode, invoiceID)
 	if err != nil {
 		return nil, nil, err
 	}
 	if inv.Status != billing.InvoiceOpen {
 		return nil, inv, fmt.Errorf("%w: invoice %s is %s", ErrInvoiceNotPayable, inv.ID, inv.Status)
+	}
+	org, err := c.orgs.Get(ctx, organizationID, livemode)
+	if err != nil {
+		return nil, nil, err
+	}
+	// The rail decides who collects. A BYOK invoice is collected through the
+	// organization's own bank, in test mode against the provider's sandbox
+	// (spec § 9); it never reaches the wallet client.
+	if org.Rail() == billing.RailBYOK {
+		if c.byok == nil {
+			return nil, inv, fmt.Errorf("%w: the BYOK rail is not configured", ErrInvoiceNotPayable)
+		}
+		session, err := c.byok.Checkout(ctx, org, inv, actor, requestID, now)
+		return session, inv, err
+	}
+	// The wallet rail only: test mode would open a real charge (see the error).
+	// This is the choke point both callers pass through — the public link and
+	// the portal. A guard in each of them is a guard the third caller forgets.
+	if !livemode {
+		return nil, nil, fmt.Errorf("%w: invoice %s", ErrTestModeNotPayable, invoiceID)
 	}
 
 	session, err := c.payments.LatestSession(ctx, organizationID, livemode, invoiceID)
@@ -189,11 +221,7 @@ func (c *Collector) Pay(
 	// Tenant zero is enabled because the money lands in CTech's own account; an
 	// external merchant stays blocked until the legal opinion and the KYC test
 	// clear, and no button anywhere can change that.
-	org, err := c.orgs.Get(ctx, organizationID, livemode)
-	if err != nil {
-		return nil, nil, err
-	}
-	if err := org.AuthorizeCharge(); err != nil {
+	if err := c.gates.Authorize(ctx, org); err != nil {
 		return nil, inv, err
 	}
 
@@ -341,6 +369,36 @@ func (c *Collector) Confirm(ctx context.Context, livemode bool, chargeID string,
 	return c.settleInvoice(ctx, attempt, cause, actor, requestID, now)
 }
 
+// SettleAttempt moves a confirmed attempt to SUCCEEDED (the guarded PENDING
+// edge) and settles its invoice, for either rail. won reports this call made
+// the transition; a concurrent settlement of the same attempt loses the edge,
+// finds it SUCCEEDED and only finishes the invoice's half.
+func (c *Collector) SettleAttempt(ctx context.Context, a *billing.PaymentAttempt, cause billing.Cause, actor, requestID string, now time.Time) (bool, error) {
+	won := false
+	if a.Status == billing.AttemptPending {
+		_, err := c.payments.TransitionAttempt(ctx, a, billing.AttemptSucceeded, cause, actor, requestID, now)
+		switch {
+		case err == nil:
+			won = true
+		case errors.Is(err, repositories.ErrConcurrentModification), errors.Is(err, repositories.ErrTransactionConflict):
+			fresh, gerr := c.payments.GetAttempt(ctx, a.OrganizationID, a.Livemode, a.InvoiceID, a.AttemptNumber)
+			if gerr != nil {
+				return false, gerr
+			}
+			if fresh.Status != billing.AttemptSucceeded {
+				return false, err
+			}
+			*a = *fresh
+		default:
+			return false, err
+		}
+	}
+	if a.Status != billing.AttemptSucceeded {
+		return false, nil
+	}
+	return won, c.settleInvoice(ctx, a, cause, actor, requestID, now)
+}
+
 // actorWallet names the webhook in the audit trail. Not "system": during an
 // incident, "who marked this paid" has to distinguish the rail from the sweep
 // from an operator.
@@ -384,7 +442,13 @@ func (c *Collector) settleInvoice(ctx context.Context, attempt *billing.PaymentA
 		if _, err := c.invoices.Transition(
 			ctx, inv, billing.InvoicePaid, cause, actor, requestID, now,
 		); err != nil {
-			return err
+			// Two settlements of one payment (webhook, sweep, statement line)
+			// racing: the other one moved it first. Finish the rest on its PAID.
+			fresh, gerr := c.invoices.Get(ctx, attempt.OrganizationID, attempt.Livemode, attempt.InvoiceID)
+			if !errors.Is(err, repositories.ErrConcurrentModification) || gerr != nil || fresh.Status != billing.InvoicePaid {
+				return err
+			}
+			inv = fresh
 		}
 	}
 	c.activateSubscription(ctx, inv, cause, actor, requestID, now)

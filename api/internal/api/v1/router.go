@@ -21,6 +21,16 @@ type Deps struct {
 	// unmounts the connection routes.
 	ByokConnections *services.ByokConnections
 	ByokStatement   *services.ByokStatement
+	// ChargeGates builds the single charge gate's facts (BYOK spec § 7.1).
+	ChargeGates *services.ChargeGates
+	// ByokCollector is the BYOK collection rail (spec § 7). Nil when BYOK is
+	// not configured: the collection routes are then not mounted.
+	ByokCollector *services.ByokCollector
+	// ByokWebhooks decides the webhook Lambda's notices; nil unmounts it.
+	ByokWebhooks *services.ByokWebhooks
+	// ByokSetup is collection setup, webhook registration and the full
+	// disconnect (spec § 3.6, § 6.4); nil keeps part A's disconnect.
+	ByokSetup *services.ByokCollectionSetup
 	// Bills is the bill repository the classification of a bank line settles
 	// through (spec § 8.3).
 	Bills *repositories.BillRepository
@@ -150,6 +160,7 @@ func Register(app *fiber.App, d Deps) {
 	v1.Get("/health-check", h.healthCheck)
 
 	auth := d.Verifier.Middleware()
+	registerByokNotify(v1, d, auth, clock)
 	tenant := middleware.ResolveTenant(d.Credentials)
 	idem := middleware.Idempotency(d.Idempotency, clock)
 
@@ -286,6 +297,10 @@ func registerConsole(v1 fiber.Router, d Deps, h *handlers, auth fiber.Handler) {
 		creds:                d.Credentials,
 		connector:            d.Connector,
 		hooks:                d.Webhooks,
+		gates:                d.ChargeGates,
+		byok:                 d.ByokCollector,
+		setup:                d.ByokSetup,
+		payments:             d.Payments,
 	}
 	// Assigned only when set: a nil interface value in the field must stay nil.
 	if d.SpaceLister != nil {
@@ -431,6 +446,9 @@ func registerConsole(v1 fiber.Router, d Deps, h *handlers, auth fiber.Handler) {
 
 	// The integration tools (spec § 5): credentials and webhooks.
 	registerIntegrations(console, ch)
+
+	// BYOK collection (spec 2026-10-11 § 12.1).
+	registerCollection(console, ch)
 
 	// Tenant zero's review (spec § 4.2). Any other tenant: 404.
 	if ch.applications.Enabled() {

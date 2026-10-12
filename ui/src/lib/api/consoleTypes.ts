@@ -23,6 +23,44 @@ export interface ConsoleTenant {
    *  (ADR 0005). Published so the console can explain the gate, never so it can
    *  decide it. */
   can_charge: boolean
+  /** The collection rail (BYOK spec § 7.1): "wallet" or "byok". */
+  payout_rail?: "wallet" | "byok"
+  payout_provider?: string
+  /** When can_charge is false, the problem code saying why. */
+  charge_block?: string
+}
+
+/** A BYOK charge's late fees, in basis points (200 = 2%). */
+export interface CollectionSettings {
+  fine_bp: number
+  monthly_interest_bp: number
+}
+
+/** Money above what an invoice owed, or part of a paid one given back with a
+ *  credit note (BYOK spec § 7.4, § 7.5). Never refunded automatically. */
+export interface ExcessPayment {
+  id: string
+  invoice_id: string
+  kind: "excess" | "credit_refund"
+  amount: Cents
+  status: "open" | "refunding" | "refunded" | "refund_failed"
+  paid_at: string
+  provider: string
+}
+
+/** The invoice's Pix on the BYOK rail (spec § 11.3). */
+export interface InvoiceByok {
+  provider?: string
+  attempt_status?: "PENDING" | "SUCCEEDED" | "FAILED" | "ABANDONED"
+  payable?: string
+  due_date?: string
+  payable_until?: string
+  late_charges?: Cents
+  /** Why there is no payable Pix, as a problem code. */
+  reason?: string
+  can_retry: boolean
+  simulate: boolean
+  excess_payments: ExcessPayment[]
 }
 
 /** Where an organization stands as a merchant (spec § 3). Display data; every
@@ -78,6 +116,8 @@ export interface MerchantApplication {
   applied_at: string
   decided_at?: string
   rejection_reason?: string
+  /** An approved merchant's live collection rail (BYOK spec § 11.3). */
+  payout?: {rail: "wallet" | "byok"; provider?: string; status: string}
 }
 
 export interface ApplyRequest {
@@ -178,6 +218,8 @@ export interface ConsoleInvoiceDetail {
    *  paid and then fully credited is still a paid invoice. */
   fully_credited: boolean
   timeline: AuditEntry[]
+  /** Absent on the wallet rail. */
+  byok?: InvoiceByok
 }
 
 export interface ConsoleCustomer {
@@ -274,6 +316,7 @@ export interface ConsoleSettings {
   /** Whether this deployment renders PDFs at all. Configuring the issuer of
    *  documents that are never produced would be configuring nothing. */
   documents_enabled: boolean
+  collection: CollectionSettings
   /** Facts, not fields: numbering has no options and retention is a constant.
    *  Published so the screen can state them rather than leave an operator
    *  guessing what it controls. */
