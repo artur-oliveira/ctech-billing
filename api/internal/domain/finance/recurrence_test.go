@@ -85,3 +85,14 @@ func TestScheduleValidate(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestExpectedAmountRecurrenceMustWaitForConfirmation(t *testing.T) {
+	rec := Recurrence{Direction: Payable, Amount: 2800, AmountMode: AmountExpected, CategoryID: "food", AccountID: "bank", Schedule: Schedule{Expression: Daily{}, Start: d(2026, time.January, 1), Adjust: AdjustNone}}
+	if err := rec.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	rec.AutoSettle = true
+	if err := rec.Validate(); !errors.Is(err, ErrInvalidRecurrence) {
+		t.Fatalf("expected amount auto-settles: %v", err)
+	}
+}

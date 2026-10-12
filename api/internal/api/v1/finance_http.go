@@ -90,9 +90,12 @@ func financeRoutes() []financeRoute {
 		{"POST", "/bills/:id/unsettle", space.Settle, true, func(h *financeHandlers) fiber.Handler { return h.unsettleBill }},
 
 		{"GET", "/recurrences", space.Read, false, func(h *financeHandlers) fiber.Handler { return h.listRecurrences }},
+		{"GET", "/pending-occurrences", space.Read, false, func(h *financeHandlers) fiber.Handler { return h.listPendingOccurrences }},
 		{"POST", "/recurrences", space.Write, true, func(h *financeHandlers) fiber.Handler { return h.createRecurrence }},
 		{"POST", "/recurrences/preview", space.Read, false, func(h *financeHandlers) fiber.Handler { return h.previewRecurrence }},
 		{"GET", "/recurrences/:id/occurrences", space.Read, false, func(h *financeHandlers) fiber.Handler { return h.recurrenceOccurrences }},
+		{"POST", "/recurrences/:id/occurrences/:nominal/confirm", space.Write, true, func(h *financeHandlers) fiber.Handler { return h.confirmExpectedOccurrence }},
+		{"POST", "/recurrences/:id/occurrences/:nominal/skip", space.Write, true, func(h *financeHandlers) fiber.Handler { return h.skipExpectedOccurrence }},
 		{"PATCH", "/recurrences/:id", space.Write, true, func(h *financeHandlers) fiber.Handler { return h.patchRecurrence }},
 		{"POST", "/recurrences/:id/archive", space.Write, true, func(h *financeHandlers) fiber.Handler { return h.archiveRecurrence }},
 

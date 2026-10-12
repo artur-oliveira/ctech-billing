@@ -119,6 +119,10 @@
   "rec": {
     "title": "Recorrências",
     "new": "Nova recorrência",
+    "amountMode": {"label":"Como lançar o valor?","fixed":"Valor fixo","expected":"Confirmar a cada ocorrência"},
+    "expectedAmount": "Valor médio esperado",
+    "expectedHint": "Será uma estimativa. Nenhum lançamento ocorre até você confirmar o valor real.",
+    "expectedShort": "estimativa",
     "edit": "Editar recorrência",
     "empty": "Nenhuma recorrência",
     "emptyHint": "O que se repete vira conta sozinho.",
@@ -148,6 +152,8 @@
     "detail": "Ocorrências de {{name}}",
     "upcoming": "Próximas",
     "history": "Histórico",
+    "expectedPending": "Aguardando valor real",
+    "confirmAmount": "Confirmar na caixa de pendências",
     "nothingToCome": "Nenhuma data por vir.",
     "noHistory": "Nenhuma conta gerada ainda.",
     "state": {
@@ -156,6 +162,7 @@
       "forecast": "Prevista",
       "overdue": "Vencida",
       "skipped": "Pulada",
+      "pending_confirmation": "Aguardando confirmação",
       "upcoming": "A gerar",
       "posted": "Na fatura de {{month}}"
     },

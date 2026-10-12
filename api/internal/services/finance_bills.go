@@ -39,6 +39,12 @@ func (s *FinanceBills) Create(ctx context.Context, sp space.ResolvedSpace, b fin
 	return s.repo.Create(ctx, sp, b, m, now)
 }
 
+func (s *FinanceBills) ConfirmExpected(ctx context.Context, sp space.ResolvedSpace, pending repositories.PendingOccurrence, amount billing.Cents, actor, requestID, idempotencyKey string, now time.Time) (bool, finance.Bill, error) {
+	m := meta("recurrence_confirmation", actor, requestID)
+	m.IdempotencyKey = idempotencyKey
+	return s.repo.ConfirmExpectedOccurrence(ctx, sp, pending, amount, m, now)
+}
+
 func (s *FinanceBills) Get(ctx context.Context, sp space.ResolvedSpace, id string) (*finance.Bill, error) {
 	return s.repo.Get(ctx, sp, id)
 }

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 
@@ -57,13 +58,219 @@ const catchUpSlackDays = 31
 // bills through the daily job; editing one never touches bills that exist.
 type RecurrenceRepository struct {
 	recs   Base
+	bills  Base
 	ledger *LedgerRepository
 	// cards is read only to check a card target exists in the space.
 	cards Base
 }
 
 func NewRecurrenceRepository(db *dynamodb.Client, cfg *config.Config) *RecurrenceRepository {
-	return &RecurrenceRepository{recs: NewBase(db, cfg, TableRecurrences), ledger: NewLedgerRepository(db, cfg), cards: NewBase(db, cfg, TableCards)}
+	return &RecurrenceRepository{recs: NewBase(db, cfg, TableRecurrences), bills: NewBase(db, cfg, TableBills), ledger: NewLedgerRepository(db, cfg), cards: NewBase(db, cfg, TableCards)}
+}
+
+type PendingOccurrence struct {
+	RecurrenceID string
+	Nominal      brcal.Date
+	Due          brcal.Date
+	Direction    finance.Direction
+	Expected     billing.Cents
+	AccountID    string
+	CardID       string
+	CategoryID   string
+	Description  string
+	Installments int
+	State        string
+}
+
+var ErrOccurrenceAlreadyHandled = errors.New("recurrence occurrence is no longer pending")
+
+type pendingOccurrenceItem struct {
+	keys
+	RecurrenceID string `dynamodbav:"recurrence_id"`
+	Nominal      string `dynamodbav:"nominal"`
+	Due          string `dynamodbav:"due"`
+	Direction    string `dynamodbav:"direction"`
+	Expected     int64  `dynamodbav:"expected_amount"`
+	AccountID    string `dynamodbav:"account_id,omitempty"`
+	CardID       string `dynamodbav:"card_id,omitempty"`
+	CategoryID   string `dynamodbav:"category_id"`
+	Description  string `dynamodbav:"description,omitempty"`
+	Installments int    `dynamodbav:"installments,omitempty"`
+	State        string `dynamodbav:"state"`
+}
+
+func (i pendingOccurrenceItem) occurrence() (PendingOccurrence, error) {
+	nominal, err := brcal.Parse(i.Nominal)
+	if err != nil {
+		return PendingOccurrence{}, fmt.Errorf("pending occurrence has malformed nominal date: %w", err)
+	}
+	due, err := brcal.Parse(i.Due)
+	if err != nil {
+		return PendingOccurrence{}, fmt.Errorf("pending occurrence has malformed due date: %w", err)
+	}
+	return PendingOccurrence{RecurrenceID: i.RecurrenceID, Nominal: nominal, Due: due, Direction: finance.Direction(i.Direction), Expected: billing.Cents(i.Expected), AccountID: i.AccountID, CardID: i.CardID, CategoryID: i.CategoryID, Description: i.Description, Installments: i.Installments, State: i.State}, nil
+}
+
+func pendingItem(sp space.ResolvedSpace, rec finance.Recurrence, nominal, due brcal.Date, now time.Time) (pendingOccurrenceItem, error) {
+	return pendingOccurrenceItem{keys: newKeys(sp.PK(), PendingOccurrenceSK(rec.ID, nominal), RetentionPermanent, now), RecurrenceID: rec.ID, Nominal: nominal.String(), Due: due.String(), Direction: string(rec.Direction), Expected: int64(rec.Amount), AccountID: rec.AccountID, CardID: rec.CardID, CategoryID: rec.CategoryID, Description: rec.Description, Installments: rec.Installments, State: "pending_confirmation"}, nil
+}
+
+func (r *RecurrenceRepository) CreatePendingOccurrence(ctx context.Context, sp space.ResolvedSpace, rec finance.Recurrence, nominal, due brcal.Date, now time.Time) (bool, error) {
+	if err := sp.Require(space.Write); err != nil {
+		return false, err
+	}
+	row, err := pendingItem(sp, rec, nominal, due, now)
+	if err != nil {
+		return false, err
+	}
+	item, err := Encode(row)
+	if err != nil {
+		return false, err
+	}
+	values := map[string]types.AttributeValue{":f": &types.AttributeValueMemberBOOL{Value: false}, ":amt": numberValue(int64(rec.Amount)), ":cat": str(rec.CategoryID), ":mode": str(string(finance.AmountExpected)), ":nominal": str(nominal.String())}
+	condition := "attribute_exists(pk) AND (attribute_not_exists(archived) OR archived = :f) AND (attribute_not_exists(end) OR end >= :nominal) AND amount = :amt AND category_id = :cat AND amount_mode = :mode"
+	if rec.CardID != "" {
+		condition += " AND card_id = :target"
+		values[":target"] = str(rec.CardID)
+	} else {
+		condition += " AND account_id = :target"
+		values[":target"] = str(rec.AccountID)
+	}
+	check := types.TransactWriteItem{ConditionCheck: &types.ConditionCheck{TableName: aws.String(r.recs.TableName), Key: map[string]types.AttributeValue{"pk": str(sp.PK()), "sk": str(RecurrenceSK(rec.ID))}, ConditionExpression: aws.String(condition), ExpressionAttributeValues: values}}
+	if err = r.recs.TransactWrite(ctx, txItems(r.recs.BuildPutTxItemIfAbsent(item), check)); err == nil {
+		return true, nil
+	}
+	if !onlyConditionFailed(err) {
+		return false, err
+	}
+	if _, getErr := r.GetPendingOccurrence(ctx, sp, rec.ID, nominal); getErr == nil {
+		return false, nil
+	}
+	return false, ErrRecurrenceChanged
+}
+
+func (r *RecurrenceRepository) GetPendingOccurrence(ctx context.Context, sp space.ResolvedSpace, recID string, nominal brcal.Date) (PendingOccurrence, error) {
+	if err := sp.Require(space.Read); err != nil {
+		return PendingOccurrence{}, err
+	}
+	raw, err := r.recs.GetItem(ctx, sp.PK(), PendingOccurrenceSK(recID, nominal))
+	if err != nil {
+		return PendingOccurrence{}, err
+	}
+	if raw == nil {
+		return PendingOccurrence{}, fmt.Errorf("%w: pending occurrence", ErrNotFound)
+	}
+	row, err := Decode[pendingOccurrenceItem](raw)
+	if err != nil {
+		return PendingOccurrence{}, err
+	}
+	return row.occurrence()
+}
+
+func (r *RecurrenceRepository) ListPendingOccurrences(ctx context.Context, sp space.ResolvedSpace, limit int) ([]PendingOccurrence, error) {
+	if err := sp.Require(space.Read); err != nil {
+		return nil, err
+	}
+	if limit < 1 || limit > 5000 {
+		limit = 50
+	}
+	page, err := r.recs.Query(ctx, QueryOpts{PK: sp.PK(), SKPrefix: "PENDING#", ScanIndexForward: true, Limit: limit, ConsistentRead: true})
+	if err != nil {
+		return nil, err
+	}
+	rows, err := DecodeItems[pendingOccurrenceItem](page.Items)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]PendingOccurrence, 0, len(rows))
+	for _, row := range rows {
+		if row.State != "pending_confirmation" {
+			continue
+		}
+		occurrence, err := row.occurrence()
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, occurrence)
+	}
+	return out, nil
+}
+
+func (r *RecurrenceRepository) ListPendingOccurrencesForRecurrence(ctx context.Context, sp space.ResolvedSpace, recID string, limit int) ([]PendingOccurrence, error) {
+	if err := sp.Require(space.Read); err != nil {
+		return nil, err
+	}
+	if limit < 1 || limit > 50 {
+		limit = 12
+	}
+	page, err := r.recs.Query(ctx, QueryOpts{PK: sp.PK(), SKPrefix: "PENDING#" + recID + "#", ScanIndexForward: false, Limit: limit, ConsistentRead: true})
+	if err != nil {
+		return nil, err
+	}
+	rows, err := DecodeItems[pendingOccurrenceItem](page.Items)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]PendingOccurrence, 0, len(rows))
+	for _, row := range rows {
+		if row.State != "pending_confirmation" {
+			continue
+		}
+		item, err := row.occurrence()
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, item)
+	}
+	return out, nil
+}
+
+func (r *RecurrenceRepository) pendingCompletionTxItem(sp space.ResolvedSpace, recID string, nominal brcal.Date) types.TransactWriteItem {
+	return pendingDeleteTxItem(r.recs, sp, recID, nominal)
+}
+
+func pendingDeleteTxItem(table Base, sp space.ResolvedSpace, recID string, nominal brcal.Date) types.TransactWriteItem {
+	return types.TransactWriteItem{Delete: &types.Delete{TableName: aws.String(table.TableName), Key: map[string]types.AttributeValue{"pk": str(sp.PK()), "sk": str(PendingOccurrenceSK(recID, nominal))}, ConditionExpression: aws.String("#state = :pending"), ExpressionAttributeNames: map[string]string{"#state": "state"}, ExpressionAttributeValues: map[string]types.AttributeValue{":pending": str("pending_confirmation")}}}
+}
+
+func (r *RecurrenceRepository) SkipPendingOccurrence(ctx context.Context, sp space.ResolvedSpace, recID string, nominal brcal.Date, now time.Time) (bool, error) {
+	if err := sp.Require(space.Write); err != nil {
+		return false, err
+	}
+	pending, err := r.GetPendingOccurrence(ctx, sp, recID, nominal)
+	if err != nil {
+		if !errors.Is(err, ErrNotFound) {
+			return false, err
+		}
+		if r.occurrenceWasSkipped(ctx, sp, recID, nominal) {
+			return false, nil
+		}
+		return false, ErrOccurrenceAlreadyHandled
+	}
+	lock, err := Encode(occurrenceLockRow{keys: newKeys(sp.PK(), OccurrenceSK(recID, nominal), RetentionPermanent, now), State: "skipped", ExpectedAmount: int64(pending.Expected)})
+	if err != nil {
+		return false, err
+	}
+	err = r.recs.TransactWrite(ctx, txItems(r.pendingCompletionTxItem(sp, recID, nominal), r.bills.BuildPutTxItemIfAbsent(lock)))
+	if err == nil {
+		return true, nil
+	}
+	if !onlyConditionFailed(err) {
+		return false, err
+	}
+	if r.occurrenceWasSkipped(ctx, sp, recID, nominal) {
+		return false, nil
+	}
+	return false, ErrOccurrenceAlreadyHandled
+}
+
+func (r *RecurrenceRepository) occurrenceWasSkipped(ctx context.Context, sp space.ResolvedSpace, recID string, nominal brcal.Date) bool {
+	raw, err := r.bills.GetItem(ctx, sp.PK(), OccurrenceSK(recID, nominal))
+	if err != nil || raw == nil {
+		return false
+	}
+	row, err := Decode[occurrenceLockRow](raw)
+	return err == nil && row.State == "skipped"
 }
 
 type recurrenceItem struct {
@@ -71,6 +278,7 @@ type recurrenceItem struct {
 	ID         string `dynamodbav:"id"`
 	Direction  string `dynamodbav:"direction"`
 	Amount     int64  `dynamodbav:"amount"`
+	AmountMode string `dynamodbav:"amount_mode,omitempty"`
 	CategoryID string `dynamodbav:"category_id"`
 	AccountID  string `dynamodbav:"account_id,omitempty"`
 	CardID     string `dynamodbav:"card_id,omitempty"`
@@ -110,8 +318,13 @@ func (i recurrenceItem) recurrence() (finance.Recurrence, error) {
 			return finance.Recurrence{}, fmt.Errorf("recurrence %s has a malformed end: %w", i.ID, err)
 		}
 	}
+	mode := finance.AmountMode(i.AmountMode)
+	if mode == "" {
+		mode = finance.AmountFixed
+	}
 	return finance.Recurrence{
 		ID: i.ID, Direction: finance.Direction(i.Direction), Amount: billing.Cents(i.Amount),
+		AmountMode: mode,
 		CategoryID: i.CategoryID, AccountID: i.AccountID, Description: i.Description,
 		Schedule:   finance.Schedule{Expression: expr, Start: start, End: end, Adjust: finance.BusinessDayAdjust(i.Adjust)},
 		AutoSettle: i.AutoSettle, Archived: i.Archived,
@@ -153,6 +366,7 @@ func newRecurrenceItem(sp space.ResolvedSpace, rec finance.Recurrence, cursor br
 		keys: newKeys(sp.PK(), RecurrenceSK(rec.ID), RetentionPermanent, now),
 		ID:   rec.ID, Direction: string(rec.Direction), Amount: int64(rec.Amount),
 		CategoryID: rec.CategoryID, AccountID: rec.AccountID, Description: rec.Description,
+		AmountMode: string(rec.AmountMode),
 		Expression: string(expr), Start: rec.Schedule.Start.String(), End: end, Adjust: string(rec.Schedule.Adjust),
 		AutoSettle: rec.AutoSettle, Archived: rec.Archived, LastNominal: last, SchedulePK: pk, ScheduleSK: sk,
 		CardID: rec.CardID, Installments: rec.Installments,
@@ -161,6 +375,9 @@ func newRecurrenceItem(sp space.ResolvedSpace, rec finance.Recurrence, cursor br
 
 // Create validates a recurrence (including the bounded catch-up) and stores it.
 func (r *RecurrenceRepository) Create(ctx context.Context, sp space.ResolvedSpace, rec finance.Recurrence, meta PostMeta, now time.Time) (finance.Recurrence, error) {
+	if rec.AmountMode == "" {
+		rec.AmountMode = finance.AmountFixed
+	}
 	need := space.Write
 	if rec.AutoSettle {
 		// auto_settle makes the daily job settle on the user's behalf: choosing

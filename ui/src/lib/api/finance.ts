@@ -8,7 +8,7 @@ import {apiClient, isSpaceNotFound} from "@/lib/api/client"
 import type {
   Account, AccountPatch, Bill, BillPatch, Card, CardPatch, CardStatement, CardRecurringForecast, CashFlow, CurrentSpace, Direction, DRE, FinanceSpaces, ListResponse, NewAccount, NewBill,
   CardSpending, NewCard, NewPurchase, NewRecurrence, PurchasePatch, NewTransfer, Purchase, Occurrence, OpeningBalance, PreviewInput, ProjectionMonth, Recurrence, RecurrenceOccurrences, RecurrencePatch,
-  StatementDirection, StatementPage,
+  StatementDirection, StatementPage, PendingOccurrence,
   ChoosePlan, PlanState, Settings, Settlement, Statement, CsvMapping, ImportDetail, ImportSummary, LineResult, NewImport,
 } from "@/lib/api/financeTypes"
 import {getSpace, PERSONAL, type Space, setSpace, spaceHeader} from "@/lib/console/space"
@@ -91,6 +91,7 @@ export const financeKeys = {
   billPreview: (mode: Mode, space: Space, dir: Direction) => ["finance", mode, spaceHeader(space), "bills", dir, "preview"] as const,
   bill: (mode: Mode, space: Space, id: string) => ["finance", mode, spaceHeader(space), "bill", id] as const,
   recurrences: (mode: Mode, space: Space) => ["finance", mode, spaceHeader(space), "recurrences"] as const,
+  pendingOccurrences: (mode: Mode, space: Space) => ["finance", mode, spaceHeader(space), "pending-occurrences"] as const,
   // Under "recurrences", so every write that refreshes the list refreshes the detail.
   recurrenceOccurrences: (mode: Mode, space: Space, id: string) => ["finance", mode, spaceHeader(space), "recurrences", id, "occurrences"] as const,
   projection: (mode: Mode, space: Space, months: number) => ["finance", mode, spaceHeader(space), "projection", months] as const,
@@ -151,6 +152,11 @@ export const unsettleBill = (c: FinanceCtx, id: string, idempotencyKey: string) 
 // --- recurrences ----------------------------------------------------------------
 
 export const listRecurrences = (c: FinanceCtx) => read<ListResponse<Recurrence>>(c, "/recurrences")
+export const listPendingOccurrences = (c: FinanceCtx) => read<ListResponse<PendingOccurrence>>(c, "/pending-occurrences")
+export const confirmExpectedOccurrence = (c: FinanceCtx, id: string, nominal: string, amount: number, key: string) =>
+  write<{state:string; amount:number; bill_id?:string; purchase_id?:string}>(c,"POST",`/recurrences/${encodeURIComponent(id)}/occurrences/${encodeURIComponent(nominal)}/confirm`,{amount},key)
+export const skipExpectedOccurrence = (c: FinanceCtx, id: string, nominal: string, key: string) =>
+  write<{state:string}>(c,"POST",`/recurrences/${encodeURIComponent(id)}/occurrences/${encodeURIComponent(nominal)}/skip`,{},key)
 export const createRecurrence = (c: FinanceCtx, body: NewRecurrence, idempotencyKey: string) =>
   write<Recurrence>(c, "POST", "/recurrences", body, idempotencyKey)
 export const patchRecurrence = (c: FinanceCtx, id: string, body: RecurrencePatch, idempotencyKey: string) =>

@@ -119,6 +119,10 @@
   "rec": {
     "title": "Recurrences",
     "new": "New recurrence",
+    "amountMode": {"label":"How should the amount be posted?","fixed":"Fixed amount","expected":"Confirm each occurrence"},
+    "expectedAmount": "Expected average amount",
+    "expectedHint": "This is an estimate. Nothing is posted until you confirm the actual amount.",
+    "expectedShort": "estimate",
     "edit": "Edit recurrence",
     "empty": "No recurrences",
     "emptyHint": "Whatever repeats becomes a bill on its own.",
@@ -148,6 +152,8 @@
     "detail": "Occurrences of {{name}}",
     "upcoming": "Next",
     "history": "History",
+    "expectedPending": "Waiting for actual amount",
+    "confirmAmount": "Confirm in action inbox",
     "nothingToCome": "Nothing to come.",
     "noHistory": "No bill made yet.",
     "state": {
@@ -156,6 +162,7 @@
       "forecast": "Forecast",
       "overdue": "Overdue",
       "skipped": "Skipped",
+      "pending_confirmation": "Awaiting confirmation",
       "upcoming": "To be made",
       "posted": "On the {{month}} statement"
     },

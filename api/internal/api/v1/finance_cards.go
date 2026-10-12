@@ -252,12 +252,13 @@ func (h *financeHandlers) cardStatement(c fiber.Ctx) error {
 }
 
 type cardForecastDTO struct {
-	RecurrenceID string        `json:"recurrence_id"`
-	Description  string        `json:"description,omitempty"`
-	Nominal      brcal.Date    `json:"nominal"`
-	Installment  int           `json:"installment"`
-	Of           int           `json:"of"`
-	Amount       billing.Cents `json:"amount"`
+	RecurrenceID        string        `json:"recurrence_id"`
+	Description         string        `json:"description,omitempty"`
+	Nominal             brcal.Date    `json:"nominal"`
+	Installment         int           `json:"installment"`
+	Of                  int           `json:"of"`
+	Amount              billing.Cents `json:"amount"`
+	PendingConfirmation bool          `json:"pending_confirmation,omitempty"`
 }
 
 func (h *financeHandlers) cardStatementForecast(c fiber.Ctx) error {
@@ -309,6 +310,24 @@ func (h *financeHandlers) cardStatementForecast(c fiber.Ctx) error {
 							Installment: installment.Number, Of: len(plan), Amount: installment.Amount})
 					}
 				}
+			}
+		}
+	}
+	pending, err := h.recs.ListPendingOccurrences(c.Context(), sp, 5000)
+	if err != nil {
+		return fail(c, err)
+	}
+	for _, occurrence := range pending {
+		if occurrence.CardID != card.ID {
+			continue
+		}
+		plan, err := finance.PlaceInstallments(occurrence.Expected, occurrence.Installments, occurrence.Nominal, card.ClosingDay, card.OpenMonth)
+		if err != nil {
+			return fail(c, err)
+		}
+		for _, installment := range plan {
+			if installment.Statement == month {
+				data = append(data, cardForecastDTO{RecurrenceID: occurrence.RecurrenceID, Description: occurrence.Description, Nominal: occurrence.Nominal, Installment: installment.Number, Of: len(plan), Amount: installment.Amount, PendingConfirmation: true})
 			}
 		}
 	}

@@ -49,6 +49,7 @@ export interface Recurrence {
   id: string
   direction: Direction
   amount: Cents
+  amount_mode?: "fixed" | "expected"
   category_id: string
   /** "" on a recurrence paid by card. */
   account_id: string
@@ -66,6 +67,19 @@ export interface Recurrence {
   archived: boolean
 }
 
+export interface PendingOccurrence {
+  recurrence_id: string
+  nominal: IsoDate
+  due: IsoDate
+  direction: Direction
+  expected_amount: Cents
+  account_id?: string
+  card_id?: string
+  category_id: string
+  description?: string
+  installments?: number
+}
+
 export interface Occurrence {
   nominal: IsoDate
   due: IsoDate
@@ -75,7 +89,7 @@ export interface Occurrence {
 
 /** paid; forecast (made, not yet due); overdue (made, past due, unpaid); skipped (its bill was cancelled);
  *  posted (a card purchase the job made, on the statement of statement_month). */
-export type OccurrenceState = "paid" | "forecast" | "overdue" | "skipped" | "posted"
+export type OccurrenceState = "paid" | "forecast" | "overdue" | "skipped" | "posted" | "pending_confirmation"
 
 /** A bill a recurrence made, or a card purchase it posted, for F4's detail (UX batch 3). */
 export interface OccurrenceBill extends Occurrence {
@@ -84,6 +98,7 @@ export interface OccurrenceBill extends Occurrence {
   purchase_id?: string
   card_id?: string
   amount: Cents
+  expected_amount?: Cents
   state: OccurrenceState
   paid_date?: IsoDate
   /** The bill's own flag: an open one that has it is still paid by the daily job after the recurrence ends. */
@@ -193,6 +208,7 @@ export interface ScheduleInput {
 export interface NewRecurrence extends ScheduleInput {
   direction: Direction
   amount: Cents
+  amount_mode?: "fixed" | "expected"
   category_id: string
   /** Exactly one of account_id and card_id. */
   account_id?: string
@@ -381,6 +397,7 @@ export interface CardRecurringForecast {
   installment: number
   of: number
   amount: Cents
+  pending_confirmation?: boolean
 }
 
 export type CardStatementStatus = "open" | "future" | "closed" | "paid"

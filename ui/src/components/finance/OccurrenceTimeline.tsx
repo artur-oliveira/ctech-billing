@@ -12,7 +12,7 @@ import {shortDate, weekdayShort} from "@/lib/format"
  * forecast is a firm outline; paid and overdue are filled. `posted` is a card
  * occurrence the job put on a statement: made, filled in the neutral ink.
  */
-export type TimelineKind = "paid" | "forecast" | "overdue" | "skipped" | "upcoming" | "posted"
+export type TimelineKind = "paid" | "forecast" | "overdue" | "skipped" | "upcoming" | "posted" | "pending_confirmation"
 
 export interface TimelineEntry {
   key: string
@@ -33,6 +33,7 @@ const MARKER: Record<TimelineKind, string> = {
   upcoming: "border-muted-foreground/45 bg-background",
   skipped: "border-border bg-border",
   posted: "border-foreground bg-foreground",
+  pending_confirmation: "border-brand-600 bg-brand-600",
 }
 
 const STATE: Record<TimelineKind, string> = {
@@ -42,6 +43,7 @@ const STATE: Record<TimelineKind, string> = {
   upcoming: "text-muted-foreground",
   skipped: "text-muted-foreground",
   posted: "text-foreground",
+  pending_confirmation: "font-medium text-brand-700",
 }
 
 /**

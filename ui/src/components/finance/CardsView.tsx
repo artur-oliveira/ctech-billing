@@ -192,7 +192,7 @@ function StatementBlock({card, month, accounts, purchases, purchasesError, retry
             ) : <>
               <ul className="divide-y divide-border border-y border-border">
                 {forecast.data!.data.map((item, index) => <li key={`${item.recurrence_id}-${item.nominal}-${item.installment}-${index}`} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
-                  <span className="min-w-0 truncate">{item.description || t("finance.cards.recurringPurchase")} · {shortDate(item.nominal)}{item.of > 1 ? ` · ${item.installment}/${item.of}` : ""}</span>
+                  <span className="min-w-0 truncate">{item.description || t("finance.cards.recurringPurchase")} · {shortDate(item.nominal)}{item.of > 1 ? ` · ${item.installment}/${item.of}` : ""}{item.pending_confirmation ? ` · ${t("finance.cards.awaitingConfirmation")}` : ""}</span>
                   <span className="tabular-nums">{money(item.amount)}</span>
                 </li>)}
               </ul>

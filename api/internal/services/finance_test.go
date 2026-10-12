@@ -94,10 +94,11 @@ type fakeRecs struct {
 	markErr error
 	marks   int
 	flags   map[string]string
+	pending map[string]repositories.PendingOccurrence
 }
 
 func newFakeRecs(rs ...finance.Recurrence) *fakeRecs {
-	f := &fakeRecs{recs: map[string]finance.Recurrence{}, cursors: map[string]brcal.Date{}, flags: map[string]string{}}
+	f := &fakeRecs{recs: map[string]finance.Recurrence{}, cursors: map[string]brcal.Date{}, flags: map[string]string{}, pending: map[string]repositories.PendingOccurrence{}}
 	for _, r := range rs {
 		f.recs[r.ID] = r
 	}
@@ -134,6 +135,23 @@ func (f *fakeRecs) FlagAttention(_ context.Context, _ space.ResolvedSpace, id, r
 	return nil
 }
 
+func (f *fakeRecs) CreatePendingOccurrence(_ context.Context, _ space.ResolvedSpace, rec finance.Recurrence, nominal, due brcal.Date, _ time.Time) (bool, error) {
+	key := finance.OccurrenceRef(rec.ID, nominal)
+	if _, exists := f.pending[key]; exists {
+		return false, nil
+	}
+	f.pending[key] = repositories.PendingOccurrence{RecurrenceID: rec.ID, Nominal: nominal, Due: due, Expected: rec.Amount, State: "pending_confirmation"}
+	return true, nil
+}
+
+func (f *fakeRecs) ListPendingOccurrences(_ context.Context, _ space.ResolvedSpace, _ int) ([]repositories.PendingOccurrence, error) {
+	out := make([]repositories.PendingOccurrence, 0, len(f.pending))
+	for _, p := range f.pending {
+		out = append(out, p)
+	}
+	return out, nil
+}
+
 func (f *fakeRecs) ListWithCursors(_ context.Context, sp space.ResolvedSpace) ([]repositories.DueRecurrence, error) {
 	out := make([]repositories.DueRecurrence, 0, len(f.recs))
 	for id, r := range f.recs {
@@ -162,6 +180,48 @@ func TestMaterialiseIsRerunnable(t *testing.T) {
 	}
 	if bills.created != 4 || len(bills.byRef) != 4 {
 		t.Fatalf("created %d bills (%d refs), want exactly 4", bills.created, len(bills.byRef))
+	}
+}
+
+func TestExpectedRecurrenceQueuesConfirmationWithoutPostingBill(t *testing.T) {
+	rec := monthly("variable-food", 10)
+	rec.AmountMode = finance.AmountExpected
+	bills, recs := newFakeBills(), newFakeRecs(rec)
+	result := NewFinanceJobs(bills, recs).Materialise(context.Background(), true, day(2026, time.January, 10), time.Date(2026, time.January, 10, 12, 0, 0, 0, time.UTC))
+	ref := finance.OccurrenceRef(rec.ID, day(2026, time.January, 10))
+	if result.Failed != 0 || len(recs.pending) != 1 || bills.created != 0 {
+		t.Fatalf("result=%+v pending=%v bills=%d", result, recs.pending, bills.created)
+	}
+	if got := recs.pending[ref]; got.Expected != rec.Amount || got.State != "pending_confirmation" {
+		t.Fatalf("pending = %+v", got)
+	}
+}
+
+func TestExpectedCardOccurrenceWaitsForConfirmation(t *testing.T) {
+	rec := onCard("variable-card", 28, 1)
+	rec.AmountMode = finance.AmountExpected
+	bills, cards, recs := newFakeBills(), newRecCards(visa25()), newFakeRecs(rec)
+	result := NewFinanceJobs(bills, recs).WithCards(cards).Materialise(context.Background(), true, day(2026, time.March, 28), time.Now())
+	if result.Failed != 0 || len(recs.pending) != 1 || len(cards.posted) != 0 || bills.created != 0 {
+		t.Fatalf("result=%+v pending=%v posted=%v bills=%d", result, recs.pending, cards.posted, bills.created)
+	}
+}
+
+func TestPendingExpectedAmountRemainsInVirtualProjection(t *testing.T) {
+	rec := monthly("projected-variable", 10)
+	rec.AmountMode = finance.AmountExpected
+	bills, recs := newFakeBills(), newFakeRecs(rec)
+	jobs := NewFinanceJobs(bills, recs)
+	jobs.Materialise(context.Background(), true, day(2026, time.January, 10), time.Now())
+	projection, err := jobs.Project(context.Background(), testSpace(t), day(2026, time.January, 10), 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := projection.Months[0].VirtualPayable; got != rec.Amount {
+		t.Fatalf("pending occurrence disappeared from projection: %d", got)
+	}
+	if got := projection.Months[0].Payable; got != 0 {
+		t.Fatalf("pending estimate counted as booked payable: %d", got)
 	}
 }
 
