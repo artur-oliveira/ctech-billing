@@ -59,7 +59,10 @@
   },
   "delete": {
     "confirm": "Delete “{{name}}”? It leaves the list and the {{month}} result.",
-    "fallbackName": "this bill"
+    "fallbackName": "this bill",
+    "undoAvailable": "Entry canceled. You can undo it for a few seconds.",
+    "undone": "Cancellation undone.",
+    "undoFailed": "Could not undo the cancellation."
   },
   "conflict": "This bill changed. We refreshed the list; try again.",
   "settle": {

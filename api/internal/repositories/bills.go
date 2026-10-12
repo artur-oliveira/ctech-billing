@@ -649,6 +649,53 @@ func (r *BillRepository) Cancel(ctx context.Context, sp space.ResolvedSpace, bil
 	return *b, nil
 }
 
+// RestoreCancelled reverses a bill cancellation and returns the same bill to
+// the open list. The original cancellation and its reversal remain in the
+// immutable ledger; status and the compensating transaction move atomically.
+func (r *BillRepository) RestoreCancelled(ctx context.Context, sp space.ResolvedSpace, billID string, date brcal.Date, meta PostMeta, now time.Time) (finance.Bill, error) {
+	if err := sp.Require(space.Write); err != nil {
+		return finance.Bill{}, err
+	}
+	b, err := r.get(ctx, sp, billID)
+	if err != nil {
+		return finance.Bill{}, err
+	}
+	if b.Status != finance.BillCanceled || len(b.TransactionIDs) < 2 {
+		return finance.Bill{}, fmt.Errorf("%w: only a canceled bill can be restored", finance.ErrBillState)
+	}
+	if date.IsZero() {
+		date = b.Competence
+	}
+	cancellationID := b.TransactionIDs[len(b.TransactionIDs)-1]
+	plan, err := r.ledger.planReverse(ctx, sp, cancellationID, date, billMeta(meta, *b), now)
+	if err != nil {
+		return finance.Bill{}, err
+	}
+	reopened := *b
+	reopened.Status, reopened.AutoSettle = finance.BillForecast, false
+	openPK, openSK, _, _ := sparseKeys(sp, reopened)
+	sk := BillSK(billID)
+	values := map[string]types.AttributeValue{
+		":forecast": str(string(finance.BillForecast)), ":canceled": str(string(finance.BillCanceled)),
+		":n": numberValue(int64(len(b.TransactionIDs))), ":op": str(openPK), ":os": str(openSK),
+		":f": &types.AttributeValueMemberBOOL{Value: false}, ":now": r.stamp(now),
+		":tx": &types.AttributeValueMemberL{Value: []types.AttributeValue{str(plan.TxID)}},
+	}
+	names := map[string]string{"#status": "status", "#n": "transaction_ids"}
+	update := r.bills.BuildRawUpdateTxItem(sp.PK(), &sk,
+		"SET #status = :forecast, auto_settle = :f, open_pk = :op, open_sk = :os, #n = list_append(#n, :tx), updated_at = :now",
+		"#status = :canceled AND size(#n) = :n", names, values)
+	items := append(append([]types.TransactWriteItem(nil), plan.Items...), update)
+	if err := r.bills.TransactWrite(ctx, items); err != nil {
+		if onlyConditionFailed(err) {
+			return finance.Bill{}, finance.ErrBillState
+		}
+		return finance.Bill{}, err
+	}
+	reopened.TransactionIDs = append(append([]string(nil), b.TransactionIDs...), plan.TxID)
+	return reopened, nil
+}
+
 // BillEdit is a partial change to a forecast bill. Nil fields stay as they are.
 type BillEdit struct {
 	Amount      *billing.Cents

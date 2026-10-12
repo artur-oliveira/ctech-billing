@@ -145,6 +145,8 @@ export const settleBill = (c: FinanceCtx, id: string, body: Settlement, idempote
   write<Bill>(c, "POST", `/bills/${encodeURIComponent(id)}/settle`, body, idempotencyKey)
 export const cancelBill = (c: FinanceCtx, id: string, idempotencyKey: string) =>
   write<Bill>(c, "POST", `/bills/${encodeURIComponent(id)}/cancel`, {}, idempotencyKey)
+export const restoreCancelledBill = (c: FinanceCtx, id: string, idempotencyKey: string) =>
+  write<Bill>(c, "POST", `/bills/${encodeURIComponent(id)}/restore`, {}, idempotencyKey)
 /** Undoes a payment: the bill returns to the open list with auto-settle off. */
 export const unsettleBill = (c: FinanceCtx, id: string, idempotencyKey: string) =>
   write<Bill>(c, "POST", `/bills/${encodeURIComponent(id)}/unsettle`, {}, idempotencyKey)

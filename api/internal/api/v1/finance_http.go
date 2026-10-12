@@ -89,6 +89,7 @@ func financeRoutes() []financeRoute {
 		{"PATCH", "/bills/:id", space.Write, true, func(h *financeHandlers) fiber.Handler { return h.patchBill }},
 		{"POST", "/bills/:id/settle", space.Settle, true, func(h *financeHandlers) fiber.Handler { return h.settleBill }},
 		{"POST", "/bills/:id/cancel", space.Write, true, func(h *financeHandlers) fiber.Handler { return h.cancelBill }},
+		{"POST", "/bills/:id/restore", space.Write, true, func(h *financeHandlers) fiber.Handler { return h.restoreCancelledBill }},
 		{"POST", "/bills/:id/unsettle", space.Settle, true, func(h *financeHandlers) fiber.Handler { return h.unsettleBill }},
 
 		{"GET", "/recurrences", space.Read, false, func(h *financeHandlers) fiber.Handler { return h.listRecurrences }},

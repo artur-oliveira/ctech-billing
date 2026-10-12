@@ -14,7 +14,7 @@ import {HistorySuggestions, type HistoryEntry} from "@/components/finance/Histor
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
 import {DateField} from "@/components/ui/DateField"
 import {messageFor, statusOf} from "@/lib/api/client"
-import {cancelBill, createBill, financeKeys, listAccounts, listBills, patchBill, settleBill, unsettleBill} from "@/lib/api/finance"
+import {cancelBill, createBill, financeKeys, listAccounts, listBills, patchBill, restoreCancelledBill, settleBill, unsettleBill} from "@/lib/api/finance"
 import type {Account, Bill, BillPatch, Bucket, Direction, NewBill, Settlement} from "@/lib/api/financeTypes"
 import {bucketLabel} from "@/lib/finance/labels"
 import {addYearsIso, monthLabel, todayIso} from "@/lib/finance/today"
@@ -328,7 +328,23 @@ function EditForm({bill, accounts, onDone}: {bill: Bill; accounts: Account[]; on
 
 function CancelConfirm({bill, onDone}: {bill: Bill; onDone: () => void}) {
   const {t} = useTranslation()
-  const cancel = useFinanceMutation((c, _: void, key) => cancelBill(c, bill.id, key), touched, onDone)
+  const ctx = useFinanceCtx()
+  const queryClient = useQueryClient()
+  const cancel = useFinanceMutation((c, _: void, key) => cancelBill(c, bill.id, key), touched, () => {
+    onDone()
+    toast.success(t("bills.delete.undoAvailable"), {
+      duration: 10000,
+      action: {
+        label: t("bills.settle.undoAction"),
+        onClick: () => {
+          void restoreCancelledBill(ctx, bill.id, crypto.randomUUID()).then(async () => {
+            await Promise.all(touched(ctx).map(queryKey => queryClient.invalidateQueries({queryKey})))
+            toast.success(t("bills.delete.undone"))
+          }).catch(() => toast.error(t("bills.delete.undoFailed")))
+        },
+      },
+    })
+  })
   return (
     <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg bg-surface p-3 text-sm motion-safe:animate-in motion-safe:fade-in">
       <p className="text-muted-foreground">

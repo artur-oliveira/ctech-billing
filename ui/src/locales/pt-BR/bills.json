@@ -59,7 +59,10 @@
   },
   "delete": {
     "confirm": "Excluir “{{name}}”? Sai da lista e do resultado de {{month}}.",
-    "fallbackName": "esta conta"
+    "fallbackName": "esta conta",
+    "undoAvailable": "Lançamento cancelado. Você pode desfazer por alguns segundos.",
+    "undone": "Cancelamento desfeito.",
+    "undoFailed": "Não foi possível desfazer o cancelamento."
   },
   "conflict": "Esta conta mudou. Atualizamos a lista; tente de novo.",
   "settle": {
