@@ -28,6 +28,9 @@ type Deps struct {
 	ByokCollector *services.ByokCollector
 	// ByokWebhooks decides the webhook Lambda's notices; nil unmounts it.
 	ByokWebhooks *services.ByokWebhooks
+	// ByokSetup is collection setup, webhook registration and the full
+	// disconnect (spec § 3.6, § 6.4); nil keeps part A's disconnect.
+	ByokSetup *services.ByokCollectionSetup
 	// Bills is the bill repository the classification of a bank line settles
 	// through (spec § 8.3).
 	Bills *repositories.BillRepository
@@ -296,6 +299,7 @@ func registerConsole(v1 fiber.Router, d Deps, h *handlers, auth fiber.Handler) {
 		hooks:                d.Webhooks,
 		gates:                d.ChargeGates,
 		byok:                 d.ByokCollector,
+		setup:                d.ByokSetup,
 	}
 	// Assigned only when set: a nil interface value in the field must stay nil.
 	if d.SpaceLister != nil {

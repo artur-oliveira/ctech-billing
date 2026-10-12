@@ -182,8 +182,16 @@ func Build(ctx context.Context, cfg *config.Config, clock func() time.Time) (*fi
 	// every issue; checkout dispatches to it by rail.
 	byokCollector := byokCollection(ctx, cfg, db, byokConns, byokStatement, gates, finance, bus)
 	var byokWebhooks *services.ByokWebhooks
+	var byokSetup *services.ByokCollectionSetup
 	if byokCollector != nil {
 		byokWebhooks = services.NewByokWebhooks(repositories.NewByokRepository(db, cfg), payments, byokCollector, cacheBackend)
+		byokSetup = services.NewByokCollectionSetup(byokConns, repositories.NewByokRepository(db, cfg), orgs, payments, byokCollector,
+			byokWebhooks, cfg.ByokHooksHost, cfg.PortalOrganizationID)
+		if cfg.EmailFrom != "" {
+			if mail, err := email.New(ctx, cfg.AWSRegion, cfg.EmailFrom); err == nil {
+				byokSetup = byokSetup.WithMail(mail)
+			}
+		}
 		invoicer.WithCharges(byokCollector)
 		if collector != nil {
 			collector.WithByok(byokCollector)
@@ -195,6 +203,7 @@ func Build(ctx context.Context, cfg *config.Config, clock func() time.Time) (*fi
 		ChargeGates:     gates,
 		ByokCollector:   byokCollector,
 		ByokWebhooks:    byokWebhooks,
+		ByokSetup:       byokSetup,
 		Bills:           billRepo,
 		Applications:    applications,
 		Customers:       customers,

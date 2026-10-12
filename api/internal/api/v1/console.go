@@ -59,7 +59,8 @@ type consoleHandlers struct {
 	// and the BYOK collection routes.
 	gates *services.ChargeGates
 	// byok is the BYOK collection rail; nil when not configured.
-	byok *services.ByokCollector
+	byok  *services.ByokCollector
+	setup *services.ByokCollectionSetup
 }
 
 // creditPoster is the slice of services.FinanceInvoices the credit-note route

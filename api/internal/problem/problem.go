@@ -187,6 +187,12 @@ func FromError(err error) *Problem {
 	// message never reaches a client.
 	case errors.Is(err, billing.ErrTenantSuspended):
 		return Forbidden("this organization's live billing is suspended").WithCode("tenant_suspended")
+	case errors.Is(err, services.ErrTenantZeroRail):
+		return Conflict("tenant zero's collection rail is changed by the operator").WithCode("tenant_zero_rail")
+	case errors.Is(err, services.ErrNoHooksHost):
+		return New(503, TypeProviderUnavailable, "Provider Unavailable", "payment notices are not available in this deployment").WithCode("byok_webhook_unavailable")
+	case errors.Is(err, billing.ErrInvalidCollectionSettings):
+		return Unprocessable("late fee up to 20% and monthly interest up to 10%").WithCode("invalid_collection_settings")
 	case errors.Is(err, services.ErrRefundWindowClosed):
 		return Unprocessable("the 90-day window to refund this Pix has closed").WithCode("refund_window_closed")
 	case errors.Is(err, services.ErrCustomerTaxIDRequired):
