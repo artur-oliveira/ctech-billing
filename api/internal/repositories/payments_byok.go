@@ -276,3 +276,21 @@ func (r *PaymentRepository) SetExcessStatus(ctx context.Context, e *billing.Exce
 	}
 	return nil
 }
+
+// SetByokAmount records a credit note's new amount on the open charge's
+// attempt, after the provider accepted it (spec § 7.3).
+func (r *PaymentRepository) SetByokAmount(ctx context.Context, a *billing.PaymentAttempt, amount billing.Cents, now time.Time) error {
+	sk := PaymentAttemptSK(a.InvoiceID, a.AttemptNumber)
+	err := r.base.TransactWrite(ctx, txItems(r.base.BuildRawUpdateTxItem(TenantPK(a.OrganizationID, a.Livemode), &sk,
+		"SET amount = :a, updated_at = :now", "attribute_exists(pk) AND #st = :pending", map[string]string{"#st": "status"},
+		map[string]types.AttributeValue{":a": numberValue(int64(amount)), ":pending": str(string(billing.AttemptPending)),
+			":now": str(now.UTC().Format(time.RFC3339Nano))})))
+	if IsConditionFailed(err) {
+		return fmt.Errorf("%w: attempt %s is no longer pending", ErrConcurrentModification, a.ID)
+	}
+	if err != nil {
+		return conflictErr(err)
+	}
+	a.Amount = amount
+	return nil
+}

@@ -23,6 +23,9 @@ type Deps struct {
 	ByokStatement   *services.ByokStatement
 	// ChargeGates builds the single charge gate's facts (BYOK spec § 7.1).
 	ChargeGates *services.ChargeGates
+	// ByokCollector is the BYOK collection rail (spec § 7). Nil when BYOK is
+	// not configured: the collection routes are then not mounted.
+	ByokCollector *services.ByokCollector
 	// Bills is the bill repository the classification of a bank line settles
 	// through (spec § 8.3).
 	Bills *repositories.BillRepository
@@ -289,6 +292,7 @@ func registerConsole(v1 fiber.Router, d Deps, h *handlers, auth fiber.Handler) {
 		connector:            d.Connector,
 		hooks:                d.Webhooks,
 		gates:                d.ChargeGates,
+		byok:                 d.ByokCollector,
 	}
 	// Assigned only when set: a nil interface value in the field must stay nil.
 	if d.SpaceLister != nil {
@@ -434,6 +438,9 @@ func registerConsole(v1 fiber.Router, d Deps, h *handlers, auth fiber.Handler) {
 
 	// The integration tools (spec § 5): credentials and webhooks.
 	registerIntegrations(console, ch)
+
+	// BYOK collection (spec 2026-10-11 § 12.1).
+	registerCollection(console, ch)
 
 	// Tenant zero's review (spec § 4.2). Any other tenant: 404.
 	if ch.applications.Enabled() {

@@ -200,6 +200,9 @@ type CheckoutSession struct {
 	// image is a rendering of exactly this string, and a few kilobytes of base64
 	// per session buys nothing a renderer on the page does not already do.
 	PixCode string `dynamodbav:"pix_code,omitempty" json:"pix_code,omitempty"`
+	// PayableUntil is a BYOK due-date charge's last payable day ("pague até",
+	// spec 2026-10-11 § 7.2); zero on the wallet rail.
+	PayableUntil brcal.Date `dynamodbav:"payable_until,omitempty" json:"payable_until,omitzero"`
 
 	Metadata Metadata `dynamodbav:"metadata,omitempty" json:"metadata,omitempty"`
 }

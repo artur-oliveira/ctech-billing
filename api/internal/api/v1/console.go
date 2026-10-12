@@ -58,6 +58,8 @@ type consoleHandlers struct {
 	// gates is the single charge-gate builder (BYOK spec § 7.1): can_charge
 	// and the BYOK collection routes.
 	gates *services.ChargeGates
+	// byok is the BYOK collection rail; nil when not configured.
+	byok *services.ByokCollector
 }
 
 // creditPoster is the slice of services.FinanceInvoices the credit-note route
@@ -373,6 +375,21 @@ func (h *consoleHandlers) voidInvoice(c fiber.Ctx) error {
 	if inv.Status == billing.InvoiceVoid {
 		return h.invoiceDetail(c, inv)
 	}
+	// A BYOK charge still payable is removed first (spec § 7.3); one paid
+	// meanwhile wins over the void, and the answer is the paid invoice.
+	if h.byok != nil && inv.Status == billing.InvoiceOpen {
+		paid, err := h.byok.Voided(c.Context(), inv, h.now())
+		if err != nil {
+			return fail(c, err)
+		}
+		if paid {
+			fresh, err := h.invoices.Get(c.Context(), t.OrganizationID, t.Livemode, inv.ID)
+			if err != nil {
+				return fail(c, err)
+			}
+			return h.invoiceDetail(c, fresh)
+		}
+	}
 	if _, err := h.invoices.Transition(
 		c.Context(), inv, billing.InvoiceVoid, billing.CauseManual,
 		actorOfUser(c), middleware.GetRequestID(c), h.now(),
@@ -432,6 +449,16 @@ func (h *consoleHandlers) creditInvoice(c fiber.Ctx) error {
 	// nothing the rule answers changes this response.
 	if h.finance != nil && inv.Status == billing.InvoicePaid {
 		h.finance.Credited(c.Context(), inv, cn, actorOfUser(c), middleware.GetRequestID(c), h.now())
+	}
+	// An open invoice's BYOK charge follows the new amount due (spec § 7.3).
+	// The note stands either way; a provider failure is logged and the sweep's
+	// re-query and the merchant's next look correct it.
+	if h.byok != nil && inv.Status == billing.InvoiceOpen {
+		if fresh, err := h.invoices.Get(c.Context(), t.OrganizationID, t.Livemode, inv.ID); err == nil {
+			if err := h.byok.Credited(c.Context(), fresh, h.now()); err != nil {
+				slog.WarnContext(c.Context(), "byok charge not updated after a credit note", "invoice_id", inv.ID, "error", err)
+			}
+		}
 	}
 	return c.Status(fiber.StatusCreated).JSON(newCreditNoteResponse(cn))
 }

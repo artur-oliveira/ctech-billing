@@ -96,7 +96,7 @@ func Build(ctx context.Context, cfg *config.Config, clock func() time.Time) (*fi
 	// The single charge gate's facts (BYOK spec § 7.1): the connection row and,
 	// in live, the tenant's prod_billing entitlement. Built before the collector
 	// and the applications service it reads entitlement from.
-	gates := services.NewChargeGates(repositories.NewByokRepository(db, cfg), nil)
+	gates := newChargeGates(db, cfg)
 	if walletCfg.Enabled() {
 		collector = services.NewCollector(invoices, payments, customers, orgs, subs, wallet.New(walletCfg)).
 			WithSettlementBus(bus).
@@ -167,7 +167,6 @@ func Build(ctx context.Context, cfg *config.Config, clock func() time.Time) (*fi
 			applications = applications.WithMail(mail, cfg.ApplicationsNotifyEmail)
 		}
 	}
-	gates.WithEntitlement(applications.Entitled)
 	billRepo := repositories.NewBillRepository(db, cfg)
 	recRepo := repositories.NewRecurrenceRepository(db, cfg)
 	ledgerRepo := repositories.NewLedgerRepository(db, cfg)
@@ -178,10 +177,21 @@ func Build(ctx context.Context, cfg *config.Config, clock func() time.Time) (*fi
 	if byokConns == nil {
 		slog.Warn("BYOK_OUTBOUND_FUNCTION not set — bank connection routes are not mounted")
 	}
+	// The BYOK rail (spec 2026-10-11 § 7): wired whether or not the wallet is,
+	// since it never calls the wallet. The invoicer creates the charge after
+	// every issue; checkout dispatches to it by rail.
+	byokCollector := byokCollection(ctx, cfg, db, byokConns, gates, finance, bus)
+	if byokCollector != nil {
+		invoicer.WithCharges(byokCollector)
+		if collector != nil {
+			collector.WithByok(byokCollector)
+		}
+	}
 	v1.Register(app, v1.Deps{
 		ByokConnections: byokConns,
 		ByokStatement:   byokStatement,
 		ChargeGates:     gates,
+		ByokCollector:   byokCollector,
 		Bills:           billRepo,
 		Applications:    applications,
 		Customers:       customers,
@@ -259,13 +269,25 @@ func BuildInvoicer(ctx context.Context, cfg *config.Config) (*services.Invoicer,
 	// stamped with the dunning policy it will be chased under, and a sweep that
 	// could not read the tenant's default would silently issue every invoice on
 	// the built-in one.
-	return services.NewInvoicer(
+	invoicer := services.NewInvoicer(
 		newSubscriptions(db, cfg),
 		repositories.NewInvoiceRepository(db, cfg),
 		repositories.NewCatalogRepository(db, cfg),
 		repositories.NewUsageRepository(db, cfg),
 	).WithOrganizations(repositories.NewOrganizationRepository(db, cfg)).
-		WithLevels(repositories.NewLevelRepository(db, cfg), repositories.NewCustomerRepository(db, cfg)), nil
+		WithLevels(repositories.NewLevelRepository(db, cfg), repositories.NewCustomerRepository(db, cfg))
+	// The sweep issues most invoices: a BYOK tenant's charge is created right
+	// after, as the console's issue does (spec § 7.2).
+	c := newCache(cfg)
+	conns, _, err := BuildByok(ctx, cfg, db, c, repositories.NewLedgerRepository(db, cfg))
+	if err != nil {
+		return nil, err
+	}
+	if bc := byokCollection(ctx, cfg, db, conns, newChargeGates(db, cfg), financeInvoices(db, cfg,
+		repositories.NewOrganizationRepository(db, cfg), repositories.NewCustomerRepository(db, cfg)), nil); bc != nil {
+		invoicer.WithCharges(bc)
+	}
+	return invoicer, nil
 }
 
 // BuildProvisioner wires only what applying a tenant plan needs.
@@ -639,4 +661,37 @@ func newSubscriptions(db *dynamodb.Client, cfg *config.Config) *repositories.Sub
 	subs := repositories.NewSubscriptionRepository(db, cfg)
 	return subs.WithEntitlementHook(repositories.NewTenantSuspension(cfg.PortalOrganizationID,
 		repositories.NewCustomerRepository(db, cfg), repositories.NewOrganizationRepository(db, cfg), subs))
+}
+
+// byokCollection wires the BYOK rail's collector over its own settlement half
+// (a Collector with no wallet client: the BYOK rail never calls it). Nil when
+// BYOK is not configured.
+func byokCollection(ctx context.Context, cfg *config.Config, db *dynamodb.Client, conns *services.ByokConnections,
+	gates *services.ChargeGates, finance *services.FinanceInvoices, bus settlement.Bus) *services.ByokCollector {
+	if conns == nil {
+		return nil
+	}
+	invoices := repositories.NewInvoiceRepository(db, cfg)
+	payments := repositories.NewPaymentRepository(db, cfg)
+	customers := repositories.NewCustomerRepository(db, cfg)
+	orgs := repositories.NewOrganizationRepository(db, cfg)
+	settler := services.NewCollector(invoices, payments, customers, orgs, newSubscriptions(db, cfg), nil).
+		WithFinance(finance).WithGates(gates)
+	if bus != nil {
+		settler = settler.WithSettlementBus(bus)
+	}
+	c := services.NewByokCollector(invoices, payments, customers, orgs, repositories.NewByokRepository(db, cfg), gates, conns.Session, settler)
+	if cfg.EmailFrom != "" {
+		if mail, err := email.New(ctx, cfg.AWSRegion, cfg.EmailFrom); err == nil {
+			c = c.WithMail(mail)
+		}
+	}
+	return c
+}
+
+// newChargeGates is the single charge gate's builder (BYOK spec § 7.1) with
+// the live entitlement read from tenant zero.
+func newChargeGates(db *dynamodb.Client, cfg *config.Config) *services.ChargeGates {
+	return services.NewChargeGates(repositories.NewByokRepository(db, cfg), services.MerchantEntitlement(
+		repositories.NewCustomerRepository(db, cfg), newSubscriptions(db, cfg), cfg.PortalOrganizationID))
 }

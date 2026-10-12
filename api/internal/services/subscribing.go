@@ -391,7 +391,7 @@ func (s *Subscriber) invoiceChange(
 	// Due immediately: the customer is already on the new plan. Dunning is armed
 	// the same way the sweep arms it, because an unpaid upgrade is an unpaid bill.
 	dueDate := billing.DueDate(inv.Period, billing.BillAdvance, sub.NetDays)
-	if _, err := s.invoicer.invoices.Finalize(
+	if err := s.invoicer.finalize(
 		ctx, inv, dueDate, inv.Schedule().FirstDunningDate(dueDate), billing.CauseScheduler, actor, "", now,
 	); err != nil {
 		return nil, err

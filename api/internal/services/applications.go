@@ -304,23 +304,33 @@ func (s *Applications) notifyDecided(ctx context.Context, app *billing.Applicati
 	}
 }
 
-// Entitled reports a live tenant approved by an entitling prod_billing
-// subscription of its ORG_ customer in tenant zero (spec § 7.1, R4). Tenant
-// zero itself is always entitled. The BYOK charge gate reads it.
-func (s *Applications) Entitled(ctx context.Context, org *billing.Organization) (bool, error) {
-	if s.tenantZero != "" && org.ID == s.tenantZero {
-		return true, nil
-	}
-	if s.tenantZero == "" || org.AccountOrganizationID == "" {
+// MerchantEntitlement reports a live tenant approved by an entitling
+// prod_billing subscription of its ORG_ customer in tenant zero (spec § 7.1,
+// R4). Tenant zero itself is always entitled. The BYOK charge gate reads it.
+func MerchantEntitlement(customers *repositories.CustomerRepository, subs *repositories.SubscriptionRepository, tenantZero string) func(context.Context, *billing.Organization) (bool, error) {
+	return func(ctx context.Context, org *billing.Organization) (bool, error) {
+		if tenantZero != "" && org.ID == tenantZero {
+			return true, nil
+		}
+		if tenantZero == "" || org.AccountOrganizationID == "" {
+			return false, nil
+		}
+		customer, err := customers.GetByOrganization(ctx, tenantZero, true, org.AccountOrganizationID)
+		if errors.Is(err, repositories.ErrNotFound) {
+			return false, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		list, err := subs.ListByCustomer(ctx, tenantZero, true, customer.ID, 100)
+		if err != nil {
+			return false, err
+		}
+		for i := range list {
+			if list[i].OwnerKey == billing.MerchantOwnerKey && list[i].IsEntitled() {
+				return true, nil
+			}
+		}
 		return false, nil
 	}
-	customer, err := s.customers.GetByOrganization(ctx, s.tenantZero, true, org.AccountOrganizationID)
-	if errors.Is(err, repositories.ErrNotFound) {
-		return false, nil
-	}
-	if err != nil {
-		return false, err
-	}
-	sub, err := s.entitlement(ctx, customer.ID)
-	return sub != nil, err
 }

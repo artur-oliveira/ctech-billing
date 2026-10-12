@@ -187,6 +187,12 @@ func FromError(err error) *Problem {
 	// message never reaches a client.
 	case errors.Is(err, billing.ErrTenantSuspended):
 		return Forbidden("this organization's live billing is suspended").WithCode("tenant_suspended")
+	case errors.Is(err, services.ErrCustomerTaxIDRequired):
+		return Unprocessable("the customer has no CPF or CNPJ; add one to create the Pix").WithCode("customer_tax_id_required")
+	case errors.Is(err, services.ErrByokChargeOpen):
+		return Conflict("the invoice's Pix is still payable").WithCode("byok_charge_open")
+	case errors.Is(err, services.ErrNotByokRail):
+		return Conflict("this organization does not collect through a bank connection").WithCode("byok_not_collecting")
 	case errors.Is(err, billing.ErrByokNotConnected):
 		return Conflict("no active bank connection for collection").WithCode("byok_not_connected")
 	case errors.Is(err, billing.ErrByokCertificateExpired):

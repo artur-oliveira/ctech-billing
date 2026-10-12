@@ -76,6 +76,9 @@ type checkoutPayment struct {
 	Method    string    `json:"method"`
 	PixCode   string    `json:"pix_code"`
 	ExpiresAt time.Time `json:"expires_at"`
+	// PayableUntil is a BYOK due-date Pix's last payable day ("pague até",
+	// spec 2026-10-11 § 7.2); absent on the wallet rail.
+	PayableUntil brcal.Date `json:"payable_until,omitzero"`
 }
 
 // view renders the invoice behind a payment link.
@@ -115,9 +118,10 @@ func (h *checkoutHandlers) pay(c fiber.Ctx) error {
 		Merchant: merchant,
 		Invoice:  newCheckoutInvoice(inv, lines, h.today()),
 		Payment: &checkoutPayment{
-			Method:    string(billing.MethodPIX),
-			PixCode:   session.PixCode,
-			ExpiresAt: session.ExpiresAt,
+			Method:       string(billing.MethodPIX),
+			PixCode:      session.PixCode,
+			ExpiresAt:    session.ExpiresAt,
+			PayableUntil: session.PayableUntil,
 		},
 	})
 }
@@ -246,8 +250,13 @@ func failCheckout(c fiber.Ctx, err error) error {
 		return problem.Conflict("this invoice is not open for payment").WithCode("invoice_not_payable").Send(c)
 	case errors.Is(err, services.ErrNoPayerAccount),
 		errors.Is(err, services.ErrTestModeNotPayable),
-		errors.Is(err, billing.ErrPayoutNotEnabled):
-		// One message for three refusals, deliberately. Each has a reason that is
+		errors.Is(err, billing.ErrPayoutNotEnabled),
+		// The BYOK rail's refusals (spec 2026-10-11 § 7.1) are the merchant's
+		// business too, as is a customer with no tax id.
+		errors.Is(err, billing.ErrByokNotConnected), errors.Is(err, billing.ErrByokCertificateExpired),
+		errors.Is(err, billing.ErrByokScopesMissing), errors.Is(err, billing.ErrByokQuotaExceeded),
+		errors.Is(err, billing.ErrTenantSuspended), errors.Is(err, services.ErrCustomerTaxIDRequired):
+		// One message for every refusal, deliberately. Each has a reason that is
 		// CTech's business — no linked account, a test-mode document, a merchant
 		// still behind the payout gate — and none of them is something the person
 		// holding the bill can act on. The specific reason is in the log, which is
