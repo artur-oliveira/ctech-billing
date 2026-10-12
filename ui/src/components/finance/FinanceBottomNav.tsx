@@ -2,7 +2,7 @@
 
 import {BottomNav, type BottomNavAction, type RenderLink} from "@aoctech/ui"
 import {
-  ArrowLeftRight, BadgeCheck, Building2, ChartColumn, CreditCard, Ellipsis, House, Landmark, Plus, Receipt, Repeat, ScrollText, Upload,
+  ArrowLeftRight, BadgeCheck, Building2, ChartColumn, CreditCard, Ellipsis, House, Landmark, ListTodo, Plus, Receipt, Repeat, ScrollText, Upload,
 } from "lucide-react"
 import Link from "next/link"
 import {usePathname, useRouter} from "next/navigation"
@@ -119,6 +119,7 @@ export function FinanceBottomNav() {
           title: t("finance.nav.moreTitle"),
           icon: <Ellipsis/>,
           items: [
+            sheet(`${BASE}/inbox`, "inbox", <ListTodo/>, launch),
             sheet(`${BASE}/recurrences`, "recurrences", <Repeat/>, launch),
             sheet(`${BASE}/cards`, "cards", <CreditCard/>, launch),
             sheet(`${BASE}/import`, "import", <Upload/>, launch),

@@ -231,6 +231,10 @@ func FromError(err error) *Problem {
 
 	case errors.Is(err, repositories.ErrCardMoved):
 		return New(409, TypeConcurrentUpdate, "Concurrent Update", "The card changed while you were recording. Try again.").WithCode("card_moved")
+	case errors.Is(err, repositories.ErrRecurrenceChanged):
+		return New(409, TypeConcurrentUpdate, "Concurrent Update", "The recurrence changed while this occurrence was being confirmed. Refresh and try again.").WithCode("recurrence_changed")
+	case errors.Is(err, repositories.ErrOccurrenceAlreadyHandled):
+		return New(409, TypeInvalidTransition, "Occurrence Already Handled", "This recurring occurrence is no longer waiting for confirmation.").WithCode("occurrence_not_pending")
 
 	case errors.Is(err, repositories.ErrPurchaseRefunded):
 		return New(409, TypeInvalidTransition, "Invalid Transition", "This purchase has already been refunded.").WithCode("purchase_refunded")

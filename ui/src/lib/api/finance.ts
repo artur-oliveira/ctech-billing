@@ -6,9 +6,9 @@ import {t} from "@/lib/i18n"
 
 import {apiClient, isSpaceNotFound} from "@/lib/api/client"
 import type {
-  Account, AccountPatch, Bill, BillPatch, Card, CardPatch, CardStatement, CashFlow, CurrentSpace, Direction, DRE, FinanceSpaces, ListResponse, NewAccount, NewBill,
+  Account, AccountPatch, Bill, BillPatch, Card, CardPatch, CardStatement, CardRecurringForecast, CashFlow, CurrentSpace, Direction, DRE, FinanceSpaces, ListResponse, NewAccount, NewBill,
   CardSpending, NewCard, NewPurchase, NewRecurrence, PurchasePatch, NewTransfer, Purchase, Occurrence, OpeningBalance, PreviewInput, ProjectionMonth, Recurrence, RecurrenceOccurrences, RecurrencePatch,
-  StatementDirection, StatementPage,
+  StatementDirection, StatementPage, PendingOccurrence,
   ChoosePlan, PlanState, Settings, Settlement, Statement, CsvMapping, ImportDetail, ImportSummary, LineResult, NewImport,
 } from "@/lib/api/financeTypes"
 import {getSpace, PERSONAL, type Space, setSpace, spaceHeader} from "@/lib/console/space"
@@ -88,8 +88,10 @@ export const financeKeys = {
   all: (mode: Mode, space: Space) => ["finance", mode, spaceHeader(space)] as const,
   space: (mode: Mode, space: Space) => ["finance", mode, spaceHeader(space), "space"] as const,
   bills: (mode: Mode, space: Space, dir: Direction) => ["finance", mode, spaceHeader(space), "bills", dir] as const,
+  billPreview: (mode: Mode, space: Space, dir: Direction) => ["finance", mode, spaceHeader(space), "bills", dir, "preview"] as const,
   bill: (mode: Mode, space: Space, id: string) => ["finance", mode, spaceHeader(space), "bill", id] as const,
   recurrences: (mode: Mode, space: Space) => ["finance", mode, spaceHeader(space), "recurrences"] as const,
+  pendingOccurrences: (mode: Mode, space: Space) => ["finance", mode, spaceHeader(space), "pending-occurrences"] as const,
   // Under "recurrences", so every write that refreshes the list refreshes the detail.
   recurrenceOccurrences: (mode: Mode, space: Space, id: string) => ["finance", mode, spaceHeader(space), "recurrences", id, "occurrences"] as const,
   projection: (mode: Mode, space: Space, months: number) => ["finance", mode, spaceHeader(space), "projection", months] as const,
@@ -104,6 +106,9 @@ export const financeKeys = {
   cards: (mode: Mode, space: Space) => ["finance", mode, spaceHeader(space), "cards"] as const,
   cardStatement: (mode: Mode, space: Space, cardId: string, month: string) =>
     ["finance", mode, spaceHeader(space), "card-statement", cardId, month] as const,
+  cardForecasts: (mode: Mode, space: Space) => ["finance", mode, spaceHeader(space), "card-forecast"] as const,
+  cardForecast: (mode: Mode, space: Space, cardId: string, month: string) =>
+    ["finance", mode, spaceHeader(space), "card-forecast", cardId, month] as const,
   // The timeline's pages: keyed by the open month, so a close starts a fresh window.
   cardStatements: (mode: Mode, space: Space, cardId: string, openMonth: string) =>
     ["finance", mode, spaceHeader(space), "card-statements", cardId, openMonth] as const,
@@ -129,8 +134,8 @@ export const getCurrentSpace = (c: FinanceCtx) => read<CurrentSpace>(c, "/space"
 
 // --- bills --------------------------------------------------------------------
 
-export const listBills = (c: FinanceCtx, direction: Direction, cursor?: string) =>
-  read<ListResponse<Bill>>(c, "/bills", {direction, cursor, limit: 100})
+export const listBills = (c: FinanceCtx, direction: Direction, cursor?: string, limit = 100) =>
+  read<ListResponse<Bill>>(c, "/bills", {direction, cursor, limit})
 export const getBill = (c: FinanceCtx, id: string) => read<Bill>(c, `/bills/${encodeURIComponent(id)}`)
 export const createBill = (c: FinanceCtx, body: NewBill, idempotencyKey: string) =>
   write<Bill>(c, "POST", "/bills", body, idempotencyKey)
@@ -140,6 +145,8 @@ export const settleBill = (c: FinanceCtx, id: string, body: Settlement, idempote
   write<Bill>(c, "POST", `/bills/${encodeURIComponent(id)}/settle`, body, idempotencyKey)
 export const cancelBill = (c: FinanceCtx, id: string, idempotencyKey: string) =>
   write<Bill>(c, "POST", `/bills/${encodeURIComponent(id)}/cancel`, {}, idempotencyKey)
+export const restoreCancelledBill = (c: FinanceCtx, id: string, idempotencyKey: string) =>
+  write<Bill>(c, "POST", `/bills/${encodeURIComponent(id)}/restore`, {}, idempotencyKey)
 /** Undoes a payment: the bill returns to the open list with auto-settle off. */
 export const unsettleBill = (c: FinanceCtx, id: string, idempotencyKey: string) =>
   write<Bill>(c, "POST", `/bills/${encodeURIComponent(id)}/unsettle`, {}, idempotencyKey)
@@ -147,6 +154,11 @@ export const unsettleBill = (c: FinanceCtx, id: string, idempotencyKey: string) 
 // --- recurrences ----------------------------------------------------------------
 
 export const listRecurrences = (c: FinanceCtx) => read<ListResponse<Recurrence>>(c, "/recurrences")
+export const listPendingOccurrences = (c: FinanceCtx) => read<ListResponse<PendingOccurrence>>(c, "/pending-occurrences")
+export const confirmExpectedOccurrence = (c: FinanceCtx, id: string, nominal: string, amount: number, key: string) =>
+  write<{state:string; amount:number; bill_id?:string; purchase_id?:string}>(c,"POST",`/recurrences/${encodeURIComponent(id)}/occurrences/${encodeURIComponent(nominal)}/confirm`,{amount},key)
+export const skipExpectedOccurrence = (c: FinanceCtx, id: string, nominal: string, key: string) =>
+  write<{state:string}>(c,"POST",`/recurrences/${encodeURIComponent(id)}/occurrences/${encodeURIComponent(nominal)}/skip`,{},key)
 export const createRecurrence = (c: FinanceCtx, body: NewRecurrence, idempotencyKey: string) =>
   write<Recurrence>(c, "POST", "/recurrences", body, idempotencyKey)
 export const patchRecurrence = (c: FinanceCtx, id: string, body: RecurrencePatch, idempotencyKey: string) =>
@@ -215,6 +227,8 @@ export const patchCard = (c: FinanceCtx, id: string, body: CardPatch, idempotenc
 /** `month` is `YYYY-MM`. */
 export const getCardStatement = (c: FinanceCtx, cardId: string, month: string) =>
   read<CardStatement>(c, `${card(cardId)}/statements/${encodeURIComponent(month)}`)
+export const getCardStatementForecast = (c: FinanceCtx, cardId: string, month: string) =>
+  read<ListResponse<CardRecurringForecast>>(c, `${card(cardId)}/statements/${encodeURIComponent(month)}/forecast`)
 /** Statement summaries from `from` (`YYYY-MM`, inclusive), `count` 1..12, in `direction`. */
 export const listCardStatements = (c: FinanceCtx, cardId: string, from: string, count: number, direction: StatementDirection) =>
   read<StatementPage>(c, `${card(cardId)}/statements`, {from, count, direction})

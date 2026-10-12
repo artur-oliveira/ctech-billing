@@ -244,6 +244,14 @@ func (h *financeHandlers) cancelBill(c fiber.Ctx) error {
 	return c.JSON(newBillDTO(b, h.today()))
 }
 
+func (h *financeHandlers) restoreCancelledBill(c fiber.Ctx) error {
+	b, err := h.bills.RestoreCancelled(c.Context(), middleware.GetSpace(c), c.Params("id"), actorOfUser(c), middleware.GetRequestID(c), h.now())
+	if err != nil {
+		return fail(c, err)
+	}
+	return c.JSON(newBillDTO(b, h.today()))
+}
+
 // settleGapError is the rule "a paid amount different from the bill's needs a
 // category for the difference", apart from the handler so it is testable without
 // a bill to read.

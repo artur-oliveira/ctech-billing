@@ -13,6 +13,7 @@ type Recurrence struct {
 	ID         string
 	Direction  Direction
 	Amount     billing.Cents
+	AmountMode AmountMode
 	CategoryID string
 	// AccountID or CardID, exactly one (spec D1). A card recurrence posts each
 	// occurrence as a purchase on that card, on its own date (D2).
@@ -33,6 +34,13 @@ type Recurrence struct {
 	// successful run; never part of a request.
 	NeedsAttention string
 }
+
+type AmountMode string
+
+const (
+	AmountFixed    AmountMode = "fixed"
+	AmountExpected AmountMode = "expected"
+)
 
 const (
 	AttentionCardArchived     = "card_archived"
@@ -63,6 +71,10 @@ func (r Recurrence) Validate() error {
 		return fail("direction must be payable or receivable")
 	case r.Amount <= 0 || r.Amount > MaxLegAmount:
 		return fail("amount must be between 1 and %d centavos", MaxLegAmount)
+	case r.AmountMode != "" && r.AmountMode != AmountFixed && r.AmountMode != AmountExpected:
+		return fail("amount_mode must be fixed or expected")
+	case r.AmountMode == AmountExpected && r.AutoSettle:
+		return fail("an expected amount cannot auto-settle")
 	case r.CategoryID == "":
 		return fail("category is required")
 	case r.AccountID == "" && r.CardID == "":

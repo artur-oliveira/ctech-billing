@@ -18,9 +18,9 @@ import {money, signedMoney} from "@/lib/format"
 import {currentLocale, t as tr} from "@/lib/i18n"
 import {accountName} from "@/lib/finance/accountName"
 
-export type ReportView = "dre" | "cash" | "cards"
+export type ReportView = "dre" | "cash" | "cards" | "review"
 
-const TABS: ReportView[] = ["dre", "cash", "cards"]
+const TABS: ReportView[] = ["dre", "cash", "cards", "review"]
 
 /** The subtotal a DRE reader expects after each of these groups, cumulative. */
 const SUBTOTAL_AFTER: Partial<Record<DREGroup, "netRevenue" | "grossProfit" | "operatingResult">> = {
@@ -81,14 +81,15 @@ export function ReportsView({view: initial = "dre"}: {view?: ReportView}) {
             </button>
           ))}
         </div>
-        <Field label={t("finance.reports.period")} htmlFor="rp-period">
+        {view !== "review" && <Field label={t("finance.reports.period")} htmlFor="rp-period">
           <Select {...selectCopy()} id="rp-period" aria-label={t("finance.reports.period")} value={preset} onValueChange={v => setPreset(v as PresetId)} className="w-48" options={PRESETS.map(p => ({value: p.value, label: t(`finance.presets.${p.value}`)}))}/>
-        </Field>
+        </Field>}
       </div>
       <div role="tabpanel" id="report-panel" aria-labelledby={`tab-${view}`}>
         {view === "dre" ? <DRETable from={from} to={to} accounts={names}/>
           : view === "cash" ? <CashTable from={from} to={to} accounts={names}/>
-            : <CardSpendingView key={`${ctx.mode}-${ctx.space}`} from={from} to={to} accounts={names}/>}
+            : view === "cards" ? <CardSpendingView key={`${ctx.mode}-${ctx.space}`} from={from} to={to} accounts={names}/>
+              : <MonthlyReview/>}
       </div>
     </div>
   )
@@ -101,6 +102,51 @@ function Loading() {
 function Empty() {
   const {t} = useTranslation()
   return <p className="py-6 text-center text-sm text-muted-foreground">{t("finance.reports.empty")}</p>
+}
+
+function shiftMonth(month: string, offset: number): string {
+  const [year, number] = month.split("-").map(Number)
+  const index = year * 12 + number - 1 + offset
+  return `${Math.floor(index / 12)}-${String(index % 12 + 1).padStart(2, "0")}`
+}
+
+function MonthlyReview() {
+  const {t} = useTranslation()
+  const ctx = useFinanceCtx()
+  const latestComplete = shiftMonth(todayIso().slice(0, 7), -1)
+  const [month, setMonth] = useState(latestComplete)
+  const selected = month > latestComplete ? latestComplete : month
+  const from = shiftMonth(selected, -1)
+  const dre = useQuery({queryKey: financeKeys.dre(ctx.mode, ctx.space, from, selected), queryFn: () => getDRE(ctx, from, selected)})
+  const cash = useQuery({queryKey: financeKeys.cashFlow(ctx.mode, ctx.space, from, selected), queryFn: () => getCashFlow(ctx, from, selected)})
+  const cards = useQuery({queryKey: financeKeys.cardSpending(ctx.mode, ctx.space, from, selected, ""), queryFn: () => getCardSpending(ctx, from, selected)})
+  const failed = dre.error ?? cash.error ?? cards.error
+  const retry = () => { void dre.refetch(); void cash.refetch(); void cards.refetch() }
+  const resultAt = (key: string) => { const i = dre.data?.months.indexOf(key) ?? -1; return i < 0 ? 0 : dre.data?.result[i] ?? 0 }
+  const cashAt = (key: string) => cash.data?.months.find(row => row.month === key)
+  const cardAt = (key: string) => { const i = cards.data?.months.indexOf(key) ?? -1; return i < 0 ? 0 : cards.data?.by_month[i] ?? 0 }
+  const previous = from
+  const metrics = [
+    {key: "result", current: resultAt(selected), prior: resultAt(previous)},
+    {key: "in", current: cashAt(selected)?.in ?? 0, prior: cashAt(previous)?.in ?? 0},
+    {key: "out", current: cashAt(selected)?.out ?? 0, prior: cashAt(previous)?.out ?? 0},
+    {key: "cards", current: cardAt(selected), prior: cardAt(previous)},
+  ]
+  return <section className="space-y-4" aria-label={t("finance.reports.review.title")}>
+    <header className="space-y-1"><h2 className="text-base font-medium">{t("finance.reports.review.title")}</h2><p className="text-sm text-muted-foreground">{t("finance.reports.review.description")}</p></header>
+    <Field label={t("finance.reports.review.month")} htmlFor="review-month">
+      <input id="review-month" type="month" max={latestComplete} value={selected} onChange={event => setMonth(event.target.value)} className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"/>
+    </Field>
+    {failed ? <ErrorBlock error={failed} onRetry={retry}/> : dre.isLoading || cash.isLoading || cards.isLoading ? <Loading/> : (
+      <div className="grid gap-3 sm:grid-cols-2">
+        {metrics.map(metric => <article key={metric.key} className="rounded-lg border border-border p-4">
+          <h3 className="text-sm text-muted-foreground">{t(`finance.reports.review.${metric.key}`)}</h3>
+          <p className="mt-2 text-lg font-semibold tabular-nums">{money(metric.current)}</p>
+          <p className="mt-1 text-xs text-muted-foreground">{t("finance.reports.review.previous", {month: monthShort(previous), amount: money(metric.prior), delta: signedMoney(metric.current - metric.prior)})}</p>
+        </article>)}
+      </div>
+    )}
+  </section>
 }
 
 /** Wide tables scroll inside their box on a phone; the label column stays put. */

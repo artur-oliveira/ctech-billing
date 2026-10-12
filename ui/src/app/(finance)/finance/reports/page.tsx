@@ -21,6 +21,6 @@ export default function FinanceReportsPage() {
 
 function Reports() {
   const asked = useSearchParams().get("view")
-  const view = asked === "cash" || asked === "cards" ? asked : "dre"
+  const view = asked === "cash" || asked === "cards" || asked === "review" ? asked : "dre"
   return <ReportsView view={view}/>
 }

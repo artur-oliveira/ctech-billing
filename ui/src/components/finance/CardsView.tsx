@@ -18,7 +18,7 @@ import {wholeSpace} from "@/components/finance/TransferPanel"
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
 import {messageFor} from "@/lib/api/client"
 import {
-  advancePurchase, closeStatement, type FinanceCtx, financeKeys, getBill, getCardStatement, listAccounts, listCards, listPurchases,
+  advancePurchase, closeStatement, type FinanceCtx, financeKeys, getBill, getCardStatement, getCardStatementForecast, listAccounts, listCards, listPurchases,
   patchPurchase, refundPurchase,
 } from "@/lib/api/finance"
 import type {Account, Card, CardStatement, Purchase, PurchasePatch, StatementItem} from "@/lib/api/financeTypes"
@@ -30,7 +30,7 @@ import {selectCopy} from "@/lib/selectCopy"
 import {useFinanceMutation} from "@/lib/finance/useFinanceMutation"
 import {useCreateRequest} from "@/lib/finance/createRequest"
 import {useFinanceCtx, useFinanceSpaces} from "@/lib/finance/useFinanceSpaces"
-import {shortDate, signedMoney} from "@/lib/format"
+import {money, shortDate, signedMoney} from "@/lib/format"
 import {accountName} from "@/lib/finance/accountName"
 
 export {statementState} from "@/components/finance/statementStatus"
@@ -51,12 +51,18 @@ export function CardsView({card: initial = ""}: {card?: string}) {
   const [month, setMonth] = useState<string | null>(null)
   const [chosen, setChosen] = useState<Panel>(null)
   const [asked, setAsked] = useState(false)
+  const [loadPurchases, setLoadPurchases] = useState(false)
   useCreateRequest("purchase", () => setAsked(true))
 
   const cards = useQuery({queryKey: financeKeys.cards(ctx.mode, ctx.space), queryFn: () => listCards(ctx)})
   const accounts = useQuery({queryKey: financeKeys.accounts(ctx.mode, ctx.space), queryFn: () => listAccounts(ctx)})
   const active = (cards.data?.data ?? []).filter(c => !c.archived).sort((a, b) => a.name.localeCompare(b.name, currentLocale()))
   const card = active.find(c => c.id === picked) ?? active[0]
+  const purchases = useQuery({
+    queryKey: financeKeys.purchases(ctx.mode, ctx.space, card?.id ?? ""),
+    queryFn: () => listPurchases(ctx, card!.id),
+    enabled: !!card && (chosen === "purchase" || (asked && !cards.isLoading && !accounts.isLoading && can("finance.write")) || loadPurchases),
+  })
   const shown = month ?? card?.open_month ?? ""
   const all = accounts.data?.data ?? []
   // The central action on a phone: a purchase on the card on screen, or the
@@ -112,7 +118,7 @@ export function CardsView({card: initial = ""}: {card?: string}) {
       </div>
 
       <Drawer open={panel === "purchase"} onClose={() => setPanel(null)} title={t("finance.cards.newPurchase")} description={card.name}>
-        <PurchasePanel cardId={card.id} accounts={all} onDone={() => setPanel(null)}/>
+        <PurchasePanel cardId={card.id} accounts={all} history={purchases.data?.data ?? []} onDone={() => setPanel(null)}/>
       </Drawer>
       <Drawer open={panel === "edit-card"} onClose={() => setPanel(null)} title={t("finance.cards.editNamed", {name: card.name})}>
         <CardForm key={card.id} card={card} accounts={all} onDone={() => setPanel(null)}/>
@@ -125,7 +131,9 @@ export function CardsView({card: initial = ""}: {card?: string}) {
 
       <StatementTimeline key={financeKeys.cardStatements(ctx.mode, ctx.space, card.id, card.open_month).join("|")} card={card} selected={shown} onSelect={setMonth}/>
 
-      <StatementBlock key={`${card.id}-${shown}`} card={card} month={shown} accounts={all}/>
+      <StatementBlock key={`${card.id}-${shown}`} card={card} month={shown} accounts={all}
+        purchases={purchases.data?.data ?? []} purchasesError={purchases.error} retryPurchases={() => void purchases.refetch()}
+        onNeedPurchases={() => setLoadPurchases(true)}/>
     </div>
   )
 }
@@ -148,15 +156,23 @@ function CardHeader({card}: {card: Card}) {
   )
 }
 
-function StatementBlock({card, month, accounts}: {card: Card; month: string; accounts: Account[]}) {
+function StatementBlock({card, month, accounts, purchases, purchasesError, retryPurchases, onNeedPurchases}: {
+  card: Card; month: string; accounts: Account[]; purchases: Purchase[]; purchasesError: unknown;
+  retryPurchases: () => void; onNeedPurchases: () => void
+}) {
   const {t} = useTranslation()
   const ctx = useFinanceCtx()
   const {can} = useFinanceSpaces()
   const q = useQuery({queryKey: financeKeys.cardStatement(ctx.mode, ctx.space, card.id, month), queryFn: () => getCardStatement(ctx, card.id, month)})
-  const purchases = useQuery({queryKey: financeKeys.purchases(ctx.mode, ctx.space, card.id), queryFn: () => listPurchases(ctx, card.id)})
   const [action, setAction] = useState<"close" | "pay" | null>(null)
+  const [showForecast, setShowForecast] = useState(false)
+  const forecast = useQuery({
+    queryKey: financeKeys.cardForecast(ctx.mode, ctx.space, card.id, month),
+    queryFn: () => getCardStatementForecast(ctx, card.id, month),
+    enabled: showForecast,
+  })
   const names = new Map(accounts.map(a => [a.id, accountName(a)]))
-  const byId = new Map((purchases.data?.data ?? []).map(p => [p.id, p]))
+  const byId = new Map(purchases.map(p => [p.id, p]))
   const s = q.data
 
   return (
@@ -166,6 +182,23 @@ function StatementBlock({card, month, accounts}: {card: Card; month: string; acc
       ) : (
         <>
           <Summary statement={s}/>
+          <section aria-labelledby="card-recurring-forecast" className="space-y-2 border-t border-border pt-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 id="card-recurring-forecast" className="text-sm font-medium">{t("finance.cards.recurringForecast")}</h3>
+              {!showForecast && <Button size="sm" variant="ghost" onClick={() => setShowForecast(true)}>{t("finance.cards.loadForecast")}</Button>}
+            </div>
+            {showForecast && (forecast.isLoading ? <Skeleton className="h-12 w-full"/> : forecast.error ? <ErrorBlock error={forecast.error} onRetry={() => void forecast.refetch()}/> : (forecast.data?.data.length ?? 0) === 0 ? (
+              <p className="text-sm text-muted-foreground">{t("finance.cards.noRecurringForecast")}</p>
+            ) : <>
+              <ul className="divide-y divide-border border-y border-border">
+                {forecast.data!.data.map((item, index) => <li key={`${item.recurrence_id}-${item.nominal}-${item.installment}-${index}`} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
+                  <span className="min-w-0 truncate">{item.description || t("finance.cards.recurringPurchase")} · {shortDate(item.nominal)}{item.of > 1 ? ` · ${item.installment}/${item.of}` : ""}{item.pending_confirmation ? ` · ${t("finance.cards.awaitingConfirmation")}` : ""}</span>
+                  <span className="tabular-nums">{money(item.amount)}</span>
+                </li>)}
+              </ul>
+              <p className="text-xs text-muted-foreground">{t("finance.cards.forecastNotInTotal")}</p>
+            </>)}
+          </section>
           {s.status === "open" && can("finance.write") && action !== "close" && (
             <Button variant="outline" size="sm" onClick={() => setAction("close")}>{t("finance.cards.closeNow")}</Button>
           )}
@@ -186,7 +219,8 @@ function StatementBlock({card, month, accounts}: {card: Card; month: string; acc
             <ul className="divide-y divide-border border-y border-border">
               {s.items.map(it => (
                 <ItemRow key={`${it.purchase_id}-${it.kind}-${it.number ?? 0}`} item={it} card={card} accounts={accounts}
-                  purchase={byId.get(it.purchase_id)} category={it.category_id ? names.get(it.category_id) : undefined}/>
+                  purchase={byId.get(it.purchase_id)} category={it.category_id ? names.get(it.category_id) : undefined}
+                  purchasesError={purchasesError} retryPurchases={retryPurchases} onNeedPurchases={onNeedPurchases}/>
               ))}
             </ul>
           )}
@@ -222,14 +256,17 @@ function PayStatement({billId, accounts, onDone}: {billId: string; accounts: Acc
   return <SettleForm bill={bill.data} accounts={accounts} onDone={onDone}/>
 }
 
-function ItemRow({item, card, accounts, purchase, category}: {item: StatementItem; card: Card; accounts: Account[]; purchase?: Purchase; category?: string}) {
+function ItemRow({item, card, accounts, purchase, category, purchasesError, retryPurchases, onNeedPurchases}: {
+  item: StatementItem; card: Card; accounts: Account[]; purchase?: Purchase; category?: string;
+  purchasesError: unknown; retryPurchases: () => void; onNeedPurchases: () => void
+}) {
   const {t} = useTranslation()
   const {can} = useFinanceSpaces()
   const [action, setAction] = useState<"edit" | "refund" | "advance" | null>(null)
   // Its name and category can be corrected from any of its lines, an advance's too.
-  const editable = (item.kind === "installment" || item.kind === "advance") && purchase && !purchase.refunded && can("finance.write")
-  const actionable = item.kind === "installment" && purchase && !purchase.refunded && can("finance.write")
-  const canAdvance = actionable && purchase.installments.some(i => i.month > card.open_month)
+  const editable = (item.kind === "installment" || item.kind === "advance") && !purchase?.refunded && can("finance.write")
+  const actionable = item.kind === "installment" && !purchase?.refunded && can("finance.write")
+  const canAdvance = actionable && (!purchase || purchase.installments.some(i => i.month > card.open_month))
   return (
     // UX batch 4: a purchase's actions are a left swipe or "⋯" on a phone, each asking first.
     <LedgerRow
@@ -249,12 +286,13 @@ function ItemRow({item, card, accounts, purchase, category}: {item: StatementIte
       </>}
       amount={<span data-numeric>{signedMoney(item.amount)}</span>}
       more={[
-        ...(editable ? [{key: "edit", label: t("finance.cards.editPurchase"), expanded: action === "edit", onSelect: () => setAction("edit")}] : []),
-        ...(canAdvance ? [{key: "advance", label: t("finance.cards.advance"), expanded: action === "advance", onSelect: () => setAction("advance")}] : []),
-        ...(actionable ? [{key: "refund", label: t("finance.cards.refund"), destructive: true, expanded: action === "refund", onSelect: () => setAction("refund")}] : []),
+        ...(editable ? [{key: "edit", label: t("finance.cards.editPurchase"), expanded: action === "edit", onSelect: () => { onNeedPurchases(); setAction("edit") }}] : []),
+        ...(canAdvance ? [{key: "advance", label: t("finance.cards.advance"), expanded: action === "advance", onSelect: () => { onNeedPurchases(); setAction("advance") }}] : []),
+        ...(actionable ? [{key: "refund", label: t("finance.cards.refund"), destructive: true, expanded: action === "refund", onSelect: () => { onNeedPurchases(); setAction("refund") }}] : []),
       ]}
     >
       {action === "edit" && purchase && <PurchaseEditForm card={card} purchase={purchase} accounts={accounts} onDone={() => setAction(null)}/>}
+      {action && !purchase && (purchasesError ? <div className="mt-3"><ErrorBlock error={purchasesError} onRetry={retryPurchases}/></div> : <Skeleton className="mt-3 h-12 w-full"/>)}
       {action === "refund" && purchase && (
         <Confirm
           text={t("finance.cards.refundConfirm")}

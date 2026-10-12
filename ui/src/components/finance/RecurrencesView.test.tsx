@@ -373,7 +373,7 @@ describe("F4 — an end that cancels bills, and one that did not finish", () => 
     vi.setSystemTime(new Date(2026, 9, 9, 9, 0)) // 9 October 2026
   })
 
-  const made = (nominal: string, state: "paid" | "forecast" | "overdue") =>
+  const made = (nominal: string, state: "paid" | "forecast" | "overdue" | "pending_confirmation") =>
     ({nominal, due: nominal, bill_id: `b-${nominal}`, amount: 180000, state, auto_settle: false})
 
   async function saveEnd(patch: ReturnType<typeof vi.spyOn>) {
@@ -405,6 +405,18 @@ describe("F4 — an end that cancels bills, and one that did not finish", () => 
     await userEvent.click(await within(dialog).findByRole("button", {name: "Salvar e cancelar"}))
     await waitFor(() => expect(patch).toHaveBeenLastCalledWith(expect.anything(), "r1", {end: "2026-10-09", cancel_after_end: true}, expect.any(String)))
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
+  })
+
+  it("warns that expected-value occurrences past the end will be discarded", async () => {
+    serve(ALL)
+    vi.spyOn(finance, "getRecurrenceOccurrences").mockResolvedValue({history: [made("2026-10-10", "pending_confirmation")], upcoming: []})
+    const patch = vi.spyOn(finance, "patchRecurrence")
+      .mockRejectedValueOnce({response: {status: 422, data: {code: "end_cancels_bills", detail: "x"}}})
+      .mockResolvedValueOnce({...REC, end: "2026-10-09"})
+    const dialog = await saveEnd(patch)
+    expect(await within(dialog).findByText("A ocorrência pendente de confirmação depois do fim (10/10) será descartada.")).toBeInTheDocument()
+    await userEvent.click(await within(dialog).findByRole("button", {name: "Salvar e cancelar"}))
+    await waitFor(() => expect(patch).toHaveBeenLastCalledWith(expect.anything(), "r1", {end: "2026-10-09", cancel_after_end: true}, expect.any(String)))
   })
 
   it("says the end was saved but bills stayed open, keeps the panel, and the same request finishes it", async () => {

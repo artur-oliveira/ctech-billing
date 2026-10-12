@@ -47,6 +47,7 @@ func MarshalExpression(e Expression) ([]byte, error) {
 func toJSON(e Expression) (exprJSON, error) {
 	j := exprJSON{Kind: e.kind()}
 	switch v := e.(type) {
+	case Daily, BusinessDays:
 	case DayOfMonth:
 		j.Day = v.Day
 	case WorkdayOfMonth:
@@ -94,6 +95,10 @@ func parse(b []byte, depth int) (Expression, error) {
 		return nil, fmt.Errorf("%w: %v", ErrInvalidExpression, err)
 	}
 	switch j.Kind {
+	case "daily":
+		return Daily{}, nil
+	case "business_days":
+		return BusinessDays{}, nil
 	case "day_of_month":
 		if j.Day < 1 || j.Day > 31 {
 			return nil, fmt.Errorf("%w: day %d is not 1..31", ErrInvalidExpression, j.Day)

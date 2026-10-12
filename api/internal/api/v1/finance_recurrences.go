@@ -15,21 +15,23 @@ import (
 	"gopkg.aoctech.app/billing/api/internal/middleware"
 	"gopkg.aoctech.app/billing/api/internal/problem"
 	"gopkg.aoctech.app/billing/api/internal/repositories"
+	"gopkg.aoctech.app/billing/api/internal/space"
 )
 
 type recurrenceDTO struct {
-	ID          string          `json:"id"`
-	Direction   string          `json:"direction"`
-	Amount      billing.Cents   `json:"amount"`
-	CategoryID  string          `json:"category_id"`
-	AccountID   string          `json:"account_id"`
-	Description string          `json:"description,omitempty"`
-	Expression  json.RawMessage `json:"expression"`
-	Start       brcal.Date      `json:"start"`
-	End         *brcal.Date     `json:"end,omitempty"`
-	Adjust      string          `json:"business_day_adjust"`
-	AutoSettle  bool            `json:"auto_settle"`
-	Archived    bool            `json:"archived"`
+	ID          string             `json:"id"`
+	Direction   string             `json:"direction"`
+	Amount      billing.Cents      `json:"amount"`
+	AmountMode  finance.AmountMode `json:"amount_mode"`
+	CategoryID  string             `json:"category_id"`
+	AccountID   string             `json:"account_id"`
+	Description string             `json:"description,omitempty"`
+	Expression  json.RawMessage    `json:"expression"`
+	Start       brcal.Date         `json:"start"`
+	End         *brcal.Date        `json:"end,omitempty"`
+	Adjust      string             `json:"business_day_adjust"`
+	AutoSettle  bool               `json:"auto_settle"`
+	Archived    bool               `json:"archived"`
 	// CardID is set instead of AccountID on a recurrence paid by card.
 	CardID         string `json:"card_id,omitempty"`
 	Installments   int    `json:"installments,omitempty"`
@@ -42,7 +44,7 @@ func newRecurrenceDTO(r finance.Recurrence) (recurrenceDTO, error) {
 		return recurrenceDTO{}, err
 	}
 	d := recurrenceDTO{
-		ID: r.ID, Direction: string(r.Direction), Amount: r.Amount, CategoryID: r.CategoryID, AccountID: r.AccountID,
+		ID: r.ID, Direction: string(r.Direction), Amount: r.Amount, AmountMode: r.AmountMode, CategoryID: r.CategoryID, AccountID: r.AccountID,
 		Description: r.Description, Expression: expr, Start: r.Schedule.Start, Adjust: string(r.Schedule.Adjust),
 		AutoSettle: r.AutoSettle, Archived: r.Archived,
 		CardID: r.CardID, Installments: r.Installments, NeedsAttention: r.NeedsAttention,
@@ -94,12 +96,13 @@ func (s scheduleRequest) schedule(today brcal.Date) (finance.Schedule, []problem
 
 type createRecurrenceRequest struct {
 	scheduleRequest
-	Direction   string        `json:"direction"`
-	Amount      billing.Cents `json:"amount"`
-	CategoryID  string        `json:"category_id"`
-	AccountID   string        `json:"account_id"`
-	Description string        `json:"description"`
-	AutoSettle  bool          `json:"auto_settle"`
+	Direction   string             `json:"direction"`
+	Amount      billing.Cents      `json:"amount"`
+	AmountMode  finance.AmountMode `json:"amount_mode"`
+	CategoryID  string             `json:"category_id"`
+	AccountID   string             `json:"account_id"`
+	Description string             `json:"description"`
+	AutoSettle  bool               `json:"auto_settle"`
 	// CardID pays the recurrence by card instead of AccountID (exactly one);
 	// Installments splits each occurrence (card only, default 1).
 	CardID       string `json:"card_id"`
@@ -125,6 +128,12 @@ func (h *financeHandlers) createRecurrence(c fiber.Ctx) error {
 	sched, errs := req.scheduleRequest.schedule(h.today())
 	if req.Direction != string(finance.Payable) && req.Direction != string(finance.Receivable) {
 		errs = append(errs, fieldErr("direction", "unsupported_value", "use payable or receivable", "allowed", []string{"payable", "receivable"}))
+	}
+	if req.AmountMode == "" {
+		req.AmountMode = finance.AmountFixed
+	}
+	if req.AmountMode != finance.AmountFixed && req.AmountMode != finance.AmountExpected {
+		errs = append(errs, fieldErr("amount_mode", "unsupported_value", "use fixed or expected", "allowed", []string{string(finance.AmountFixed), string(finance.AmountExpected)}))
 	}
 	ch := &checks{}
 	ch.amount("amount", req.Amount)
@@ -158,7 +167,7 @@ func (h *financeHandlers) createRecurrence(c fiber.Ctx) error {
 		return problem.Validation(errs).Send(c)
 	}
 	rec, err := h.recs.Create(c.Context(), middleware.GetSpace(c), finance.Recurrence{
-		Direction: finance.Direction(req.Direction), Amount: req.Amount, CategoryID: req.CategoryID,
+		Direction: finance.Direction(req.Direction), Amount: req.Amount, AmountMode: req.AmountMode, CategoryID: req.CategoryID,
 		AccountID: req.AccountID, Description: req.Description, Schedule: sched, AutoSettle: req.AutoSettle,
 		CardID: req.CardID, Installments: req.Installments,
 	}, repositories.PostMeta{Actor: actorOfUser(c), RequestID: middleware.GetRequestID(c)}, h.now())
@@ -186,6 +195,108 @@ func (h *financeHandlers) listRecurrences(c fiber.Ctx) error {
 		out.Data = append(out.Data, dto)
 	}
 	return c.JSON(out)
+}
+
+type pendingOccurrenceDTO struct {
+	RecurrenceID string            `json:"recurrence_id"`
+	Nominal      brcal.Date        `json:"nominal"`
+	Due          brcal.Date        `json:"due"`
+	Direction    finance.Direction `json:"direction"`
+	Expected     billing.Cents     `json:"expected_amount"`
+	AccountID    string            `json:"account_id,omitempty"`
+	CardID       string            `json:"card_id,omitempty"`
+	CategoryID   string            `json:"category_id"`
+	Description  string            `json:"description,omitempty"`
+	Installments int               `json:"installments,omitempty"`
+}
+
+func pendingDTO(p repositories.PendingOccurrence) pendingOccurrenceDTO {
+	return pendingOccurrenceDTO{RecurrenceID: p.RecurrenceID, Nominal: p.Nominal, Due: p.Due, Direction: p.Direction, Expected: p.Expected, AccountID: p.AccountID, CardID: p.CardID, CategoryID: p.CategoryID, Description: p.Description, Installments: p.Installments}
+}
+
+func (h *financeHandlers) listPendingOccurrences(c fiber.Ctx) error {
+	rows, err := h.recs.ListPendingOccurrences(c.Context(), middleware.GetSpace(c), 50)
+	if err != nil {
+		return fail(c, err)
+	}
+	out := listResponse[pendingOccurrenceDTO]{Data: make([]pendingOccurrenceDTO, 0, len(rows))}
+	for _, row := range rows {
+		out.Data = append(out.Data, pendingDTO(row))
+	}
+	return c.JSON(out)
+}
+
+type confirmOccurrenceRequest struct {
+	Amount billing.Cents `json:"amount"`
+}
+
+type occurrenceActionResponse struct {
+	State      string        `json:"state"`
+	Amount     billing.Cents `json:"amount,omitempty"`
+	BillID     string        `json:"bill_id,omitempty"`
+	PurchaseID string        `json:"purchase_id,omitempty"`
+}
+
+func (h *financeHandlers) confirmExpectedOccurrence(c fiber.Ctx) error {
+	var req confirmOccurrenceRequest
+	if p := decodeStrict(c, &req); p != nil {
+		return p.Send(c)
+	}
+	validation := &checks{}
+	validation.amount("amount", req.Amount)
+	if len(validation.errs) > 0 {
+		return problem.Validation(validation.errs).Send(c)
+	}
+	sp := middleware.GetSpace(c)
+	nominal, err := brcal.Parse(c.Params("nominal"))
+	if err != nil {
+		return problem.Validation([]problem.FieldError{fieldErr("nominal", "invalid_date", "must be a valid date")}).Send(c)
+	}
+	pending, err := h.recs.GetPendingOccurrence(c.Context(), sp, c.Params("id"), nominal)
+	if err != nil {
+		return fail(c, err)
+	}
+	if pending.CardID != "" {
+		installmentCheck := &checks{}
+		installmentChecks(installmentCheck, req.Amount, pending.Installments)
+		if len(installmentCheck.errs) > 0 {
+			return problem.Validation(installmentCheck.errs).Send(c)
+		}
+	}
+	actor, requestID, key := actorOfUser(c), middleware.GetRequestID(c), c.Get(middleware.IdempotencyHeader)
+	if pending.CardID != "" {
+		meta := repositories.PostMeta{Origin: "recurrence_confirmation", Actor: actor, RequestID: requestID, IdempotencyKey: key}
+		created, purchase, err := h.cards.ConfirmExpectedOccurrence(c.Context(), sp, pending, req.Amount, meta, h.now())
+		if err != nil {
+			return fail(c, err)
+		}
+		status := fiber.StatusCreated
+		if !created {
+			status = fiber.StatusOK
+		}
+		return c.Status(status).JSON(occurrenceActionResponse{State: "confirmed", Amount: req.Amount, PurchaseID: purchase.ID})
+	}
+	created, bill, err := h.bills.ConfirmExpected(c.Context(), sp, pending, req.Amount, actor, requestID, key, h.now())
+	if err != nil {
+		return fail(c, err)
+	}
+	status := fiber.StatusCreated
+	if !created {
+		status = fiber.StatusOK
+	}
+	return c.Status(status).JSON(occurrenceActionResponse{State: "confirmed", Amount: req.Amount, BillID: bill.ID})
+}
+
+func (h *financeHandlers) skipExpectedOccurrence(c fiber.Ctx) error {
+	nominal, err := brcal.Parse(c.Params("nominal"))
+	if err != nil {
+		return problem.Validation([]problem.FieldError{fieldErr("nominal", "invalid_date", "must be a valid date")}).Send(c)
+	}
+	_, err = h.recs.SkipPendingOccurrence(c.Context(), middleware.GetSpace(c), c.Params("id"), nominal, h.now())
+	if err != nil {
+		return fail(c, err)
+	}
+	return c.Status(fiber.StatusOK).JSON(occurrenceActionResponse{State: "skipped"})
 }
 
 type patchRecurrenceRequest struct {
@@ -266,7 +377,18 @@ func (h *financeHandlers) patchRecurrence(c fiber.Ctx) error {
 		if err != nil {
 			return fail(c, err)
 		}
-		if n > 0 {
+		pending, err := h.recs.ListPendingOccurrencesForRecurrence(c.Context(), sp, c.Params("id"), 50)
+		if err != nil {
+			return fail(c, err)
+		}
+		pendingAfterEnd := false
+		for _, occurrence := range pending {
+			if occurrence.Nominal.String() > end.String() {
+				pendingAfterEnd = true
+				break
+			}
+		}
+		if n > 0 || pendingAfterEnd {
 			return fail(c, repositories.ErrEndCancelsBills)
 		}
 	}
@@ -281,6 +403,9 @@ func (h *financeHandlers) patchRecurrence(c fiber.Ctx) error {
 		canceled, err := h.bills.EndRecurrence(c.Context(), sp, c.Params("id"), end, actorOfUser(c), middleware.GetRequestID(c), h.now())
 		if err != nil {
 			return fail(c, err)
+		}
+		if err = h.skipPendingOccurrences(c, sp, c.Params("id"), func(nominal brcal.Date) bool { return nominal.String() > end.String() }); err != nil {
+			return fail(c, repositories.ErrEndIncomplete)
 		}
 		out.CanceledBillIDs = canceled
 	}
@@ -302,10 +427,30 @@ type patchRecurrenceResponse struct {
 }
 
 func (h *financeHandlers) archiveRecurrence(c fiber.Ctx) error {
-	if err := h.recs.Archive(c.Context(), middleware.GetSpace(c), c.Params("id"), h.now()); err != nil {
+	sp := middleware.GetSpace(c)
+	if err := h.recs.Archive(c.Context(), sp, c.Params("id"), h.now()); err != nil {
 		return fail(c, err)
 	}
+	if err := h.skipPendingOccurrences(c, sp, c.Params("id"), func(brcal.Date) bool { return true }); err != nil {
+		return fail(c, repositories.ErrEndIncomplete)
+	}
 	return c.SendStatus(fiber.StatusNoContent)
+}
+
+func (h *financeHandlers) skipPendingOccurrences(c fiber.Ctx, sp space.ResolvedSpace, recurrenceID string, shouldSkip func(brcal.Date) bool) error {
+	pending, err := h.recs.ListPendingOccurrencesForRecurrence(c.Context(), sp, recurrenceID, 50)
+	if err != nil {
+		return err
+	}
+	for _, occurrence := range pending {
+		if !shouldSkip(occurrence.Nominal) {
+			continue
+		}
+		if _, err := h.recs.SkipPendingOccurrence(c.Context(), sp, recurrenceID, occurrence.Nominal, h.now()); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // occurrenceHistoryLimit is how many made bills F4's detail shows: a year of a
@@ -316,10 +461,11 @@ const occurrenceHistoryLimit = 12
 const occurrenceUpcomingCount = 6
 
 type occurrenceBillDTO struct {
-	Nominal brcal.Date    `json:"nominal"`
-	Due     brcal.Date    `json:"due"`
-	BillID  string        `json:"bill_id,omitempty"`
-	Amount  billing.Cents `json:"amount"`
+	Nominal        brcal.Date    `json:"nominal"`
+	Due            brcal.Date    `json:"due"`
+	BillID         string        `json:"bill_id,omitempty"`
+	Amount         billing.Cents `json:"amount"`
+	ExpectedAmount billing.Cents `json:"expected_amount,omitempty"`
 	// State is paid, forecast, overdue (a forecast past its due date),
 	// skipped (the occurrence's bill was cancelled), or posted (a card purchase
 	// the job made, on the statement of statement_month).
@@ -369,17 +515,28 @@ func (h *financeHandlers) recurrenceOccurrences(c fiber.Ctx) error {
 	today := h.today()
 	out := recurrenceOccurrencesDTO{History: make([]occurrenceBillDTO, 0, len(made)), Upcoming: []occurrenceDTO{}}
 	for _, m := range made {
-		if p := m.Purchase; p != nil {
-			out.History = append(out.History, occurrenceBillDTO{Nominal: m.Nominal, Due: m.Nominal, Amount: p.Amount, State: "posted",
-				PurchaseID: p.ID, CardID: p.CardID, StatementMonth: p.Statement.String()})
+		if m.State == "skipped" {
+			out.History = append(out.History, occurrenceBillDTO{Nominal: m.Nominal, Due: m.Nominal, Amount: m.ExpectedAmount, ExpectedAmount: m.ExpectedAmount, State: "skipped"})
 			continue
 		}
-		d := occurrenceBillDTO{Nominal: m.Nominal, Due: m.Bill.Due, BillID: m.Bill.ID, Amount: m.Bill.Amount, State: occurrenceState(m.Bill, today), AutoSettle: m.Bill.AutoSettle}
+		if p := m.Purchase; p != nil {
+			out.History = append(out.History, occurrenceBillDTO{Nominal: m.Nominal, Due: m.Nominal, Amount: p.Amount, State: "posted",
+				ExpectedAmount: m.ExpectedAmount, PurchaseID: p.ID, CardID: p.CardID, StatementMonth: p.Statement.String()})
+			continue
+		}
+		d := occurrenceBillDTO{Nominal: m.Nominal, Due: m.Bill.Due, BillID: m.Bill.ID, Amount: m.Bill.Amount, ExpectedAmount: m.ExpectedAmount, State: occurrenceState(m.Bill, today), AutoSettle: m.Bill.AutoSettle}
 		if !m.Bill.PaidDate.IsZero() {
 			paid := m.Bill.PaidDate
 			d.PaidDate = &paid
 		}
 		out.History = append(out.History, d)
+	}
+	pending, err := h.recs.ListPendingOccurrencesForRecurrence(c.Context(), sp, rec.ID, occurrenceHistoryLimit)
+	if err != nil {
+		return fail(c, err)
+	}
+	for _, item := range pending {
+		out.History = append(out.History, occurrenceBillDTO{Nominal: item.Nominal, Due: item.Due, Amount: item.Expected, ExpectedAmount: item.Expected, State: "pending_confirmation"})
 	}
 	if !rec.Archived {
 		from := today

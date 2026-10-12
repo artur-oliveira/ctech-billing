@@ -18,7 +18,7 @@ import {t} from "@/lib/i18n"
 
 // Option lists are built at render, never at import: the language can change.
 const kindOptions = (): {value: Pattern["kind"]; label: string}[] =>
-  (["day_of_month", "workday_of_month", "nth_weekday_of_month", "weekly", "yearly"] as const)
+  (["daily", "business_days", "day_of_month", "workday_of_month", "nth_weekday_of_month", "weekly", "yearly"] as const)
     .map(value => ({value, label: t(`bills.editor.kind.${value}`)}))
 const weekdayOptions = () => [0, 1, 2, 3, 4, 5, 6].map(i => ({value: String(i), label: weekdayLabel(i) ?? ""}))
 const monthOptions = () => Array.from({length: 12}, (_, i) => ({value: String(i + 1), label: monthName(i + 1)}))
@@ -31,6 +31,8 @@ const nthOptions = () => [...[1, 2, 3, 4].map(n => ({value: String(n), label: or
 function patternFor(kind: Pattern["kind"], start: string, prev: Pattern): Pattern {
   const day = Number(start.split("-")[2]) || 10
   switch (kind) {
+    case "daily": return {kind}
+    case "business_days": return {kind}
     case "day_of_month": return {kind, day: "day" in prev ? prev.day : day}
     case "workday_of_month": return {kind, n: 5}
     case "nth_weekday_of_month": return {kind, weekday: 1, n: 1}

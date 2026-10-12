@@ -10,10 +10,11 @@ import {useTranslation} from "react-i18next"
 import {toast} from "sonner"
 
 import {LedgerRow} from "@/components/finance/LedgerRow"
+import {HistorySuggestions, type HistoryEntry} from "@/components/finance/HistorySuggestions"
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
 import {DateField} from "@/components/ui/DateField"
 import {messageFor, statusOf} from "@/lib/api/client"
-import {cancelBill, createBill, financeKeys, listAccounts, listBills, patchBill, settleBill} from "@/lib/api/finance"
+import {cancelBill, createBill, financeKeys, listAccounts, listBills, patchBill, restoreCancelledBill, settleBill, unsettleBill} from "@/lib/api/finance"
 import type {Account, Bill, BillPatch, Bucket, Direction, NewBill, Settlement} from "@/lib/api/financeTypes"
 import {bucketLabel} from "@/lib/finance/labels"
 import {addYearsIso, monthLabel, todayIso} from "@/lib/finance/today"
@@ -116,7 +117,7 @@ export function BillsView({direction: initial = "payable", focus}: {direction?: 
 
       </div>
       <Drawer open={creating && can("finance.write")} onClose={() => setCreating(false)} title={t("bills.list.newTitle")}>
-        <NewBillPanel direction={direction} accounts={accounts.data?.data ?? []} onDone={() => setCreating(false)}/>
+        <NewBillPanel direction={direction} accounts={accounts.data?.data ?? []} history={rows} onDone={() => setCreating(false)}/>
       </Drawer>
     </div>
   )
@@ -192,11 +193,27 @@ const inPanel = "mt-3 grid items-start gap-3 rounded-lg bg-surface p-3 sm:grid-c
 
 export function SettleForm({bill, accounts, onDone}: {bill: Bill; accounts: Account[]; onDone: () => void}) {
   const {t} = useTranslation()
+  const ctx = useFinanceCtx()
+  const queryClient = useQueryClient()
   const [amountText, setAmountText] = useState(formatMoneyInput(bill.amount))
   const [date, setDate] = useState(todayIso())
   const [category, setCategory] = useState("")
   const fe = useFieldErrors(["paid_date", "paid_amount", "difference_category_id"])
-  const settle = useFinanceMutation((c, body: Settlement, key) => settleBill(c, bill.id, body, key), touched, onDone, fe.set)
+  const settle = useFinanceMutation((c, body: Settlement, key) => settleBill(c, bill.id, body, key), touched, () => {
+    onDone()
+    toast.success(t("bills.settle.undoAvailable"), {
+      duration: 10000,
+      action: {
+        label: t("bills.settle.undoAction"),
+        onClick: () => {
+          void unsettleBill(ctx, bill.id, crypto.randomUUID()).then(async () => {
+            await Promise.all(touched(ctx).map(queryKey => queryClient.invalidateQueries({queryKey})))
+            toast.success(t("bills.settle.undone"))
+          }).catch(() => toast.error(t("bills.settle.undoFailed")))
+        },
+      },
+    })
+  }, fe.set)
 
   // The amount is always visible and starts at the bill's own: paying exactly
   // what was owed is the common case, and a different amount is just an edit
@@ -311,7 +328,23 @@ function EditForm({bill, accounts, onDone}: {bill: Bill; accounts: Account[]; on
 
 function CancelConfirm({bill, onDone}: {bill: Bill; onDone: () => void}) {
   const {t} = useTranslation()
-  const cancel = useFinanceMutation((c, _: void, key) => cancelBill(c, bill.id, key), touched, onDone)
+  const ctx = useFinanceCtx()
+  const queryClient = useQueryClient()
+  const cancel = useFinanceMutation((c, _: void, key) => cancelBill(c, bill.id, key), touched, () => {
+    onDone()
+    toast.success(t("bills.delete.undoAvailable"), {
+      duration: 10000,
+      action: {
+        label: t("bills.settle.undoAction"),
+        onClick: () => {
+          void restoreCancelledBill(ctx, bill.id, crypto.randomUUID()).then(async () => {
+            await Promise.all(touched(ctx).map(queryKey => queryClient.invalidateQueries({queryKey})))
+            toast.success(t("bills.delete.undone"))
+          }).catch(() => toast.error(t("bills.delete.undoFailed")))
+        },
+      },
+    })
+  })
   return (
     <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg bg-surface p-3 text-sm motion-safe:animate-in motion-safe:fade-in">
       <p className="text-muted-foreground">
@@ -324,7 +357,7 @@ function CancelConfirm({bill, onDone}: {bill: Bill; onDone: () => void}) {
   )
 }
 
-function NewBillPanel({direction, accounts, onDone}: {direction: Direction; accounts: Account[]; onDone: () => void}) {
+function NewBillPanel({direction, accounts, history, onDone}: {direction: Direction; accounts: Account[]; history: Bill[]; onDone: () => void}) {
   const {t} = useTranslation()
   const {can} = useFinanceSpaces()
   const [description, setDescription] = useState("")
@@ -363,6 +396,7 @@ function NewBillPanel({direction, accounts, onDone}: {direction: Direction; acco
   )
   const amount = parseMoney(amountText)
   const ready = amount !== null && category !== "" && account !== "" && due !== "" && !create.isPending && !create.isSuccess
+  const suggestions: HistoryEntry[] = history.map(b => ({description: b.description ?? "", amount: b.amount, categoryId: b.category_id, accountId: b.account_id}))
 
   return (
     <div className="space-y-3">
@@ -382,6 +416,12 @@ function NewBillPanel({direction, accounts, onDone}: {direction: Direction; acco
         }}
       >
         <Field label={t("bills.common.description")} htmlFor="nb-desc" error={fe.of("description")}><Input id="nb-desc" maxLength={limits.text.description} value={description} {...fe.props("description", "nb-desc")} onChange={e => { setDescription(e.target.value); fe.clear("description") }} autoFocus/></Field>
+        <HistorySuggestions value={description} entries={suggestions} onSelect={entry => {
+          setDescription(entry.description)
+          setAmountText(formatMoneyInput(entry.amount))
+          if (cats.some(a => a.id === entry.categoryId)) setCategory(entry.categoryId)
+          if (assets.some(a => a.id === entry.accountId)) setAccount(entry.accountId!)
+        }}/>
         <Field label={t("bills.common.amount")} htmlFor="nb-amount" required error={fe.of("amount")}><Input id="nb-amount" inputMode="decimal" placeholder={moneyPlaceholder()} value={amountText} {...fe.props("amount", "nb-amount")} onChange={e => { setAmountText(maskMoney(e.target.value)); fe.clear("amount") }}/></Field>
         <Field label={t("bills.common.due")} htmlFor="nb-due" required error={fe.of("due_date")}><DateField id="nb-due" min={limits.minDate} max={addYearsIso(todayIso(), limits.maxFutureYears)} value={due} invalid={!!fe.of("due_date")} onValueChange={v => { setDue(v); fe.clear("due_date") }}/></Field>
         <Field label={t("bills.new.competence")} htmlFor="nb-comp" error={fe.of("competence_date")}>

@@ -134,6 +134,7 @@ func TestTheRolesMatchTheSpecTable(t *testing.T) {
 		{"POST", "/bills/:id/settle", "member", 200}, // member holds finance.settle
 		{"GET", "/bills", "viewer", 200},
 		{"GET", "/projection", "viewer", 200},
+		{"GET", "/cards/:id/statements/:month/forecast", "viewer", 200},
 		{"POST", "/recurrences/preview", "viewer", 200}, // stateless: a read
 		{"GET", "/recurrences/:id/occurrences", "viewer", 200},
 		{"PATCH", "/recurrences/:id", "viewer", 403},
