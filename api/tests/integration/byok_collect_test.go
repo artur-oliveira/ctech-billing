@@ -138,7 +138,7 @@ func TestTheGateRefusesALiveTenantWithoutEntitlementOrConnection(t *testing.T) {
 		t.Fatalf("no connection: %v", err)
 	}
 	r := env.consoleAs(t, "GET", "/v1.0/console/settings", env.sessionToken(t, collectScopes...), "live", "org:"+env.accountOrg, "")
-	if r.status != 200 || !bodyHas(r.body, `"payout_rail":"byok"`) || !bodyHas(r.body, `"can_charge":true`) {
+	if r.status != 200 || !bodyHas(r.body, `"payout_rail":"byok"`) || !bodyHas(r.body, `"can_charge":true`) || !bodyHas(r.body, `"collection":{"fine_bp":0`) {
 		t.Fatalf("%d %s", r.status, r.body)
 	}
 }
