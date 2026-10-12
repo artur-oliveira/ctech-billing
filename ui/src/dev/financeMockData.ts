@@ -789,8 +789,11 @@ function route(method: string, path: string, r: Req, s: SpaceState, can: (v: Ver
       const purchase = s.purchases.find(p => p.id === arg && p.card === c.id)
       if (!purchase) return problem(404, "about:blank", "Not Found", "recurso não encontrado", "resource_not_found")
       if (purchase.refunded) return problem(409, "/problems/invalid-transition", "Invalid Transition", "Esta compra já foi estornada.", "purchase_refunded")
-      const patch = body<{description?: string; category_id?: string}>(r)
-      const description = patch.description === undefined ? purchase.description : patch.description.trim()
+      const patch = body<{description?: string | null; category_id?: string | null}>(r)
+      for (const k of ["description", "category_id"] as const) {
+        if (patch[k] === null) return problem(422, "about:blank", "Unprocessable Entity", "validation failed", "validation_failed", [{field: k, code: "required", message: "required: it cannot be cleared"}])
+      }
+      const description = patch.description == null ? purchase.description : patch.description.trim()
       if (!description) return problem(422, "about:blank", "Unprocessable Entity", "validation failed", "validation_failed", [{field: "description", code: "required", message: "required"}])
       const category = patch.category_id ?? purchase.category_id
       const next = s.accounts.find(a => a.id === category)

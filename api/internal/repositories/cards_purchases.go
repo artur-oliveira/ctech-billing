@@ -88,8 +88,10 @@ type purchaseItem struct {
 	Installments []installmentItem `dynamodbav:"installments"`
 	TxID         string            `dynamodbav:"tx_id"`
 	Refunded     bool              `dynamodbav:"refunded,omitempty"`
-	// Rev moves on every change to Installments (an advance), so a refund or
-	// an advance acting on a stale read fails instead of deleting the wrong items.
+	// Rev moves on every change to Installments (an advance) and on every edit
+	// (EditPurchase, which may swap TxID), so a refund, an advance or an edit
+	// acting on a stale read fails instead of acting on the wrong items or
+	// transaction.
 	Rev int64 `dynamodbav:"rev,omitempty"`
 	// Origin and OriginRef link a purchase the daily job posted to its
 	// recurrence occurrence ("recurrence", "{recurrence}@{nominal}").
@@ -603,6 +605,7 @@ func (r *CardRepository) EditPurchase(ctx context.Context, sp space.ResolvedSpac
 		"SET description = :d, category_id = :c, tx_id = :tx, updated_at = :now ADD rev :one", guard, nil, values))
 	// Its lines: one per installment billed as such, one "adv" per statement an
 	// advance moved installments onto.
+	linesIdx := len(items)
 	seen := map[string]bool{}
 	for _, inst := range row.Installments {
 		tag, desc := installmentTag(inst.Number), next.Description
@@ -630,6 +633,13 @@ func (r *CardRepository) EditPurchase(ctx context.Context, sp space.ResolvedSpac
 			markerIdx >= 0 && markerIdx < len(codes) && codes[markerIdx] == codeConditionFailed:
 			// Refunded, advanced or edited since it was read: read again.
 			return Purchase{}, ErrCardMoved
+		}
+		for i := linesIdx; i < len(codes); i++ {
+			if codes[i] == codeConditionFailed {
+				// A line the purchase's plan names is not there: data drift, not
+				// something the person can fix by choosing again.
+				return Purchase{}, fmt.Errorf("cards: purchase %s has no statement line %d of its plan", p.ID, i-linesIdx)
+			}
 		}
 		return Purchase{}, classifyPostCancel(err, -1)
 	}

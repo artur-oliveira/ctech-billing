@@ -12,6 +12,7 @@ import (
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
 	"gopkg.aoctech.app/billing/api/internal/domain/brcal"
 	"gopkg.aoctech.app/billing/api/internal/domain/finance"
+	"gopkg.aoctech.app/billing/api/internal/limits"
 	"gopkg.aoctech.app/billing/api/internal/repositories"
 )
 
@@ -231,5 +232,52 @@ func TestPatchingACardPurchase(t *testing.T) {
 	}
 	if res := f.call(t, "PATCH", "/cards/"+card.ID+"/purchases/nope", `{"description":"x"}`); res.status != 404 {
 		t.Fatalf("unknown purchase = %d %s", res.status, res.body)
+	}
+}
+
+// The largest purchase (limits.MaxInstallments) fits one write even with its
+// category replaced: the lines, the purchase and the ledger replacement.
+func TestRecategorisingTheLargestPurchaseFitsOneWrite(t *testing.T) {
+	f, card := newCardsFixture(t)
+	ctx := context.Background()
+	f.addCategory(t, finance.LedgerAccount{ID: "home", Name: "Casa", Class: finance.ClassExpense, Group: finance.GroupOperatingExpenses})
+	p := f.purchase(t, card.ID, brcal.New(2026, time.March, 1), 480000, limits.MaxInstallments)
+	got, err := f.cards.EditPurchase(ctx, f.sp, card.ID, p.ID, repositories.PurchaseEdit{Description: strp("TV"), CategoryID: strp("home")}, repositories.PostMeta{Actor: "u"}, time.Now())
+	if err != nil || got.CategoryID != "home" {
+		t.Fatalf("edit = %+v, %v", got, err)
+	}
+	if f.ledgerBal(t, "home") != 480000 || f.ledgerBal(t, "food") != 0 {
+		t.Fatal("the expense must move whole")
+	}
+}
+
+// A refund that read the purchase's transaction before an edit replaced it
+// (here: the transaction reversed under it) is told to try again, not that the
+// purchase was refunded; the retry refunds what is there now.
+func TestARefundRacingACategoryEditIsToldToRetry(t *testing.T) {
+	f, card := newCardsFixture(t)
+	ctx := context.Background()
+	p := f.purchase(t, card.ID, brcal.New(2026, time.March, 1), 90000, 3)
+	if _, err := f.ledger.Reverse(ctx, f.sp, p.TxID, p.Date, repositories.PostMeta{Actor: "u"}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.cards.Refund(ctx, f.sp, card.ID, p.ID, repositories.PostMeta{Actor: "u"}, time.Now()); !errors.Is(err, repositories.ErrCardMoved) {
+		t.Fatalf("refund = %v, want ErrCardMoved", err)
+	}
+}
+
+// A statement line missing under the purchase is data drift: an error, never
+// "unknown account" (which would tell the person to pick another category).
+func TestEditingAPurchaseWithAMissingLineIsNotAnUnknownAccount(t *testing.T) {
+	f, card := newCardsFixture(t)
+	ctx := context.Background()
+	p := f.purchase(t, card.ID, brcal.New(2026, time.March, 1), 90000, 3)
+	base := repositories.NewBase(testDB, testCfg, repositories.TableCards)
+	if _, err := base.DeleteItem(ctx, repositories.CardPK(f.sp, card.ID), repositories.ItemSK(p.Installments[1].Statement, p.ID, "02")); err != nil {
+		t.Fatal(err)
+	}
+	_, err := f.cards.EditPurchase(ctx, f.sp, card.ID, p.ID, repositories.PurchaseEdit{Description: strp("x")}, repositories.PostMeta{Actor: "u"}, time.Now())
+	if err == nil || errors.Is(err, repositories.ErrUnknownAccount) || errors.Is(err, repositories.ErrCardMoved) {
+		t.Fatalf("edit with a missing line = %v", err)
 	}
 }
