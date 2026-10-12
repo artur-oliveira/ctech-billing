@@ -144,6 +144,12 @@ func (c *ByokCollector) followRefund(ctx context.Context, e *billing.ExcessPayme
 		return err
 	}
 	sess, err := c.session(ctx, org)
+	if errors.Is(err, ErrNotByokRail) || errors.Is(err, billing.ErrByokNotConnected) {
+		// Disconnected since: CTech can no longer ask; the merchant sees the
+		// refund at the bank. Left as it is, logged, never an hourly error.
+		slog.WarnContext(ctx, "byok refund in flight on a disconnected organization", "excess_id", e.ID)
+		return nil
+	}
 	if err != nil {
 		return err
 	}
