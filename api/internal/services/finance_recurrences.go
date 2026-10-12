@@ -261,6 +261,10 @@ func (j *FinanceJobs) AutoSettle(ctx context.Context, livemode bool, today brcal
 			res.Done++
 		case errors.Is(err, finance.ErrBillState):
 			res.Skipped++
+		case errors.Is(err, repositories.ErrAccountIsSynced):
+			// A bank-synced account settles its bills from the bank's lines (BYOK
+			// spec § 8.1, § 8.3): not a failure of the job.
+			res.Skipped++
 		default:
 			res.fail("bill %s: %v", d.Bill.ID, err)
 		}

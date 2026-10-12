@@ -476,4 +476,25 @@ it("warns, before archiving a card, how many recurrences it pays", async () => {
   await userEvent.click(within(row).getByRole("button", {name: "Arquivar"}))
   expect(await within(row).findByText(/1 recorrência é paga com este cartão/)).toBeInTheDocument()
 })
+
+  // BYOK (spec 2026-10-11 § 8.1, § 11.3): a bank-synced account.
+  const synced: Account = {id: "byok-inter-1", name: "Inter ···4567", class: "asset", system: false, archived: false, balance: 10000,
+    source: "byok", provider: "inter", sync_state: "active", unclassified_count: 2,
+    provider_balance: {available: 10000, blocked: 0, at: "2026-10-11", synced_at: "2026-10-11T13:05:00Z"}}
+
+  it("shows the bank's balance and hides manual movements for a synced account", async () => {
+    serve(ALL, [synced])
+    renderWithQuery(<AccountsView/>)
+    const li = await row("Inter ···4567")
+    expect(within(li).getByText(/Saldo do Inter, atualizado às 10:05/)).toBeInTheDocument()
+    expect(within(li).getByRole("link", {name: "2 lançamentos a classificar"})).toHaveAttribute("href", "/finance/unclassified?account=byok-inter-1")
+    await userEvent.click(within(li).getByRole("button", {name: /mais|ações|more/i}))
+    expect(screen.queryByRole("menuitem", {name: /saldo inicial/i})).toBeNull()
+  })
+
+  it("shows the difference between the bank and the ledger", async () => {
+    serve(ALL, [{...synced, balance: 9000}])
+    renderWithQuery(<AccountsView/>)
+    expect(await screen.findByText(/Diferença de R\$\s?10,00 entre o Inter e o Finanças/)).toBeInTheDocument()
+  })
 })

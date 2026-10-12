@@ -1,6 +1,24 @@
-# BYOK phase 1, part B: due-date Pix collection behind the legal gate Implementation Plan
+# BYOK phase 1, part B: due-date Pix collection Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+> **Amendment 2026-10-11 — no legal gate (owner decision; spec amendment "no legal gate").** This plan was written
+> with a legal gate; the gate is withdrawn. Where the text below says otherwise, this note wins:
+>
+> - **No `BYOK_LIVE_COLLECTION` / `BYOK_LIVE_PROVIDERS`, no `config.ByokCleared`, no ADR 0030.** Part A removed them from
+>   config, Terraform and the outbound Lambda; the Lambda accepts every known op (its allowlist is a security control
+>   only: unknown op/provider/mode refused, `SimulatePayment` sandbox-only).
+> - **Task 3:** no `PayoutPendingClearance`, no `ErrByokNotCleared` / `byok_collection_not_cleared`, no `ChargeGate.Cleared`,
+>   no `cleared` argument to `NewChargeGates`. Drop the table rows "byok pending clearance" and "byok live flag off" and
+>   `TestRemovingTheProviderStopsCollectionAtOnce`; keep connection, scopes, certificate, entitlement and quota.
+> - **Tasks 5, 6, 8, 13:** `newCollectEnv(t, collectLive)` has no `clearedProviders(...)` argument and no `setCleared`.
+> - **Task 10:** `UseForCollection` sets a live tenant straight to `payout_rail: byok`, `payout_provider`, `enabled`
+>   and registers the webhook at once (live as test); there is no `PromoteCleared`.
+> - **Task 11:** `cmd/byok` has no promotion step (spec § 5 step 5 is gone); drop `TestPromotionWaitsForClearance`.
+> - **Task 15, deploy step 7 ("Live clearance")** is dropped: live collection is available once part B ships.
+> - **Review Focus 3** becomes: an unknown op, provider or mode sent straight to the Lambda never reaches a bank
+>   (part A `TestLiveCollectOpsReachTheProviderAndUnknownOpsAreRefused`).
+> - **Spec coverage:** "§ 10 legal gate" and the `pending_clearance` rows no longer apply.
 
 **Goal:** A billing tenant whose organization has a collection-capable connection collects its invoices by Pix with due date (Inter `cobv`) into its own bank account: the charge is created at finalization, confirmed only after re-querying the provider (webhook, hourly sweep or statement line), excess payments are flagged and refunded only by the merchant, and live collection stays refused until the provider is cleared (`BYOK_LIVE_COLLECTION` + `BYOK_LIVE_PROVIDERS`). Test mode collects against Inter's sandbox through CTech's own integration.
 

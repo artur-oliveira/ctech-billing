@@ -132,6 +132,14 @@ export interface Account {
   system_key?: string
   archived: boolean
   balance: Cents
+  /** "byok": the statement and balance are the bank's (BYOK spec § 8.1). */
+  source?: "byok"
+  provider?: string
+  /** The bank's own balance and when it was read; a synced account shows it as its balance. */
+  provider_balance?: {available: Cents; blocked: Cents; at: IsoDate; synced_at: string}
+  sync_state?: "active" | "disconnected"
+  /** Lines still on "A classificar". */
+  unclassified_count?: number
 }
 
 export interface Settings {

@@ -42,4 +42,23 @@ describe("FinanceNav", () => {
     const nav = screen.getByRole("navigation", {name: "Finanças"})
     expect(within(nav).queryByRole("link", {name: "Plano"})).toBeNull()
   })
+
+  // BYOK (spec 2026-10-11 § 11): the bank connections live in an organization
+  // space, for whoever may configure it (owner, admin).
+  it("lists Conexões bancárias only in an organization space a person may configure", () => {
+    setSpace({kind: "organization", organizationId: FINANCE_MOCK_HOUSE})
+    const {unmount} = render(<FinanceNav canConfigure/>)
+    let nav = screen.getByRole("navigation", {name: "Finanças"})
+    expect(within(nav).getByRole("link", {name: "Conexões bancárias"})).toHaveAttribute("href", "/finance/settings/connections")
+    unmount()
+    render(<FinanceNav canConfigure={false}/>)
+    nav = screen.getByRole("navigation", {name: "Finanças"})
+    expect(within(nav).queryByRole("link", {name: "Conexões bancárias"})).toBeNull()
+  })
+
+  it("never lists Conexões bancárias in Pessoal", () => {
+    render(<FinanceNav canConfigure/>)
+    const nav = screen.getByRole("navigation", {name: "Finanças"})
+    expect(within(nav).queryByRole("link", {name: "Conexões bancárias"})).toBeNull()
+  })
 })

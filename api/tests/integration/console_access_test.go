@@ -39,6 +39,9 @@ func billingHalfRoutes(t *testing.T, app *fiber.App) []fiber.Route {
 		if !strings.HasPrefix(r.Path, "/v1.0/console/") ||
 			strings.HasPrefix(r.Path, "/v1.0/console/finance") ||
 			strings.HasPrefix(r.Path, "/v1.0/console/merchant/") ||
+			// Bank connections resolve their own space and need no tenant (BYOK
+			// spec § 3.1); byok_routes_test.go covers who reaches them.
+			strings.HasPrefix(r.Path, "/v1.0/console/connections") ||
 			r.Path == "/v1.0/console/session" {
 			continue
 		}

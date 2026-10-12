@@ -30,4 +30,10 @@ describe("locale catalogs", () => {
   it("contain no em dash", () => {
     expect([...strings(ptBR), ...strings(en)].filter(s => s.includes("—"))).toEqual([])
   })
+
+  it("have the bank connections catalogue in both languages", () => {
+    const a = (ptBR as Record<string, unknown>).connections, b = (en as Record<string, unknown>).connections
+    expect(a).toBeTruthy()
+    expect(keys(b).sort()).toEqual(keys(a).sort())
+  })
 })

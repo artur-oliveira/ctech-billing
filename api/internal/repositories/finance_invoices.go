@@ -323,6 +323,10 @@ func (r *BillRepository) receivingAccount(ctx context.Context, sp space.Resolved
 	return only, nil
 }
 
+// usableCash is an account a default receiving or paying account may be.
+// Synced accounts are excluded: a posting that is not the bank's own line must
+// never land in a bank-synced account by default (BYOK plan decision 6). Part B
+// names the collecting provider's account explicitly instead.
 func usableCash(a AccountRow) bool {
-	return a.Class == finance.ClassAsset && !a.System && !a.Archived
+	return a.Class == finance.ClassAsset && !a.System && !a.Archived && a.Source != finance.SourceBYOK
 }

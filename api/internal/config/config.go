@@ -148,6 +148,11 @@ type Config struct {
 	// Empty, or EMAIL_FROM empty, means no notice: the application is still
 	// recorded and shown in Solicitações, and a missing e-mail never fails it.
 	ApplicationsNotifyEmail string `env:"APPLICATIONS_NOTIFY_EMAIL"`
+
+	// BYOK (spec 2026-10-11). The outbound Lambda is the only code that talks
+	// to a merchant's bank. Empty unmounts every connection route and
+	// cmd/byok refuses to start.
+	ByokOutboundFunction string `env:"BYOK_OUTBOUND_FUNCTION"`
 }
 
 // Load reads the configuration from the environment.

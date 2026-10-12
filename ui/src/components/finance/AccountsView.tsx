@@ -127,7 +127,9 @@ function AccountRow({account, card, configure}: {account: Account; card?: Card; 
   const ctx = useFinanceCtx()
   const recs = useQuery({queryKey: financeKeys.recurrences(ctx.mode, ctx.space), queryFn: () => listRecurrences(ctx), enabled: confirming && isCard})
   const paidByCard = (recs.data?.data ?? []).filter(r => r.card_id === account.id && !r.archived).length
+  const synced = account.source === "byok"
   const meta = [
+    synced ? t("connections.unclassified.synced") : "",
     account.dre_group ? dreGroupLabel(account.dre_group) : "",
     card?.last4 ? maskedLast4(card.last4) : "",
     account.archived ? t("finance.accounts.archived") : "",
@@ -142,7 +144,8 @@ function AccountRow({account, card, configure}: {account: Account; card?: Card; 
       leading={isCard ? <CardBrandMark brand={card?.brand ?? "other"} className="text-muted-foreground"/> : undefined}
       meta={meta.length > 0 ? <span className="tabular-nums">{meta.join(" • ")}</span> : undefined}
       // A card's balance is a credit: negative is what is owed.
-      amount={account.class === "asset" ? <span data-numeric>{money(account.balance)}</span>
+      amount={synced && account.provider_balance ? <span data-numeric>{money(account.provider_balance.available)}</span>
+        : account.class === "asset" ? <span data-numeric>{money(account.balance)}</span>
         : isCard ? <span data-numeric>{account.balance < 0 ? t("finance.accounts.owed", {amount: money(-account.balance)}) : money(account.balance)}</span>
           : null}
       actions={isCard && (
@@ -150,10 +153,12 @@ function AccountRow({account, card, configure}: {account: Account; card?: Card; 
       )}
       more={configure && !account.archived ? [
         {key: "rename", label: t("finance.accounts.rename"), expanded: renaming, onSelect: () => setRenaming(v => !v)},
-        ...(account.class === "asset" ? [{key: "opening", label: t("finance.accounts.openingBalance"), expanded: opening, onSelect: () => setOpening(v => !v)}] : []),
+        // A synced account's opening is the bank's (spec § 8.2): no manual one.
+        ...(account.class === "asset" && !synced ? [{key: "opening", label: t("finance.accounts.openingBalance"), expanded: opening, onSelect: () => setOpening(v => !v)}] : []),
         {key: "archive", label: t("finance.accounts.archive"), destructive: true, expanded: confirming, onSelect: () => setConfirming(v => !v)},
       ] : []}
     >
+      {synced && <SyncedFacts account={account}/>}
       {renaming && <RenameForm account={account} onDone={() => setRenaming(false)}/>}
       {confirming && (
         <div className="mt-2 flex flex-wrap items-center gap-2 text-sm motion-safe:animate-in motion-safe:fade-in">
@@ -426,5 +431,33 @@ function PostCTechInvoices() {
       <p id="post-ctech-invoices-help" className="text-sm text-muted-foreground">{t("finance.accounts.postCTechInvoicesHelp")}</p>
       {save.error && <p role="alert" className="text-sm text-danger">{messageFor(save.error)}</p>}
     </section>
+  )
+}
+
+/** "14:05" in São Paulo, the clock the person reads. */
+const hhmm = (instant: string) =>
+  new Intl.DateTimeFormat("pt-BR", {hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo"}).format(new Date(instant))
+
+/**
+ * Under a bank-synced account (BYOK spec § 8.1, § 11.3): whose balance this
+ * is and when it was read, what still waits on "A classificar", and the
+ * difference when the ledger and the bank disagree (a bug or a line the
+ * parser could not read, never something the person did).
+ */
+function SyncedFacts({account}: {account: Account}) {
+  const {t} = useTranslation()
+  const pb = account.provider_balance
+  const count = account.unclassified_count ?? 0
+  const diff = pb ? account.balance - pb.available : 0
+  return (
+    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+      {pb && <span className="text-muted-foreground">{t("connections.unclassified.updatedAt", {time: hhmm(pb.synced_at)})}</span>}
+      {count > 0 && (
+        <Link href={`/finance/unclassified?account=${encodeURIComponent(account.id)}`} className="text-brand-600 underline-offset-4 hover:underline touch-target">
+          {t("connections.unclassified.count", {count})}
+        </Link>
+      )}
+      {diff !== 0 && <span role="status" className="w-full text-warning">{t("connections.unclassified.difference", {amount: money(Math.abs(diff))})}</span>}
+    </div>
   )
 }

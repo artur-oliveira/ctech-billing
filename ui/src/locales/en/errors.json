@@ -93,7 +93,21 @@
     "application_busy": "Someone else is deciding this application right now. Refresh the page.",
     "no_application": "This organization has not applied for billing yet.",
     "companies_unavailable": "We could not load the organization's companies right now. Try again.",
-    "webhook_test_too_soon": "This endpoint was just tested. Wait half a minute to test it again."
+    "webhook_test_too_soon": "This endpoint was just tested. Wait half a minute to test it again.",
+    "byok_certificate_expired": "This certificate has expired. Renew it in Inter's Internet Banking and send the new one.",
+    "byok_certificate_invalid": "We could not read the certificate or the key. Send the files downloaded from Inter.",
+    "byok_key_mismatch": "The key does not match the certificate. Send the pair downloaded from the same integration.",
+    "byok_credentials_refused": "Inter refused these credentials. Check the client_id, the client_secret and the account.",
+    "byok_provider_unavailable": "Inter did not answer. Try again in a moment.",
+    "byok_sandbox_busy": "Inter's test environment is busy. Try again in a moment.",
+    "byok_sync_too_soon": "Synced moments ago. Try again in a few minutes.",
+    "byok_not_connected": "This organization has not connected this bank yet.",
+    "byok_already_connected": "This organization is already connected to this bank.",
+    "byok_sandbox_test_only": "The bank's test environment is for test mode only.",
+    "byok_invalid_request": "The connection details are not valid. Check them and try again.",
+    "byok_connection_changed": "The connection changed while you were editing. Try again.",
+    "line_already_classified": "This entry was already classified.",
+    "account_is_synced": "This account is synced with the bank. Its entries come from the statement."
   },
   "field": {
     "required": "Required.",

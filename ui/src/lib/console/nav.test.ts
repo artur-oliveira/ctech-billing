@@ -19,6 +19,9 @@ describe("consoleNav", () => {
     expect(consoleNav(true, false).map(i => i.href)).not.toContain("/console/applications")
     expect(consoleNav(false, true)).toEqual([])
   })
+  it("lists the bank connections (BYOK) with the invoicing sections", () => {
+    expect(consoleNav(true).map(i => i.href)).toContain("/console/connections")
+  })
   it("lists the integration tools before the settings", () => {
     const labels = consoleNav(true).map(i => t(i.label))
     expect(labels.slice(-3)).toEqual(["Credenciais", "Webhooks", "Configurações"])

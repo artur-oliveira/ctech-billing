@@ -22,7 +22,8 @@ const brandOptions = () => CARD_BRANDS.map(b => ({value: b, label: brandName(b),
 /** Creates a card, or edits the selected one's name, brand, last digits, days and paying account. */
 export function CardForm({card, accounts, onDone}: {card?: Card; accounts: Account[]; onDone: (id?: string) => void}) {
   const {t} = useTranslation()
-  const assets = accounts.filter(a => a.class === "asset" && !a.system && !a.archived)
+  // A card is paid from a manual account: a synced one moves only with its bank's lines.
+  const assets = accounts.filter(a => a.class === "asset" && !a.system && !a.archived && a.source !== "byok")
   const [name, setName] = useState(card?.name ?? "")
   // The name the form opened with: a rename made elsewhere while it is open
   // refreshes `card`, and comparing with that would write the old name back.

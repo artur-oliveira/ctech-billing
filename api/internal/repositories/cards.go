@@ -97,7 +97,7 @@ func (r *CardRepository) CreateCard(ctx context.Context, sp space.ResolvedSpace,
 	if err := c.Validate(); err != nil {
 		return CardRow{}, err
 	}
-	if err := r.ledger.activeCash(ctx, sp, c.PayingAccountID); err != nil {
+	if err := r.ledger.activeManualCash(ctx, sp, c.PayingAccountID); err != nil {
 		return CardRow{}, err
 	}
 	acct := finance.LedgerAccount{ID: c.ID, Name: name, Class: finance.ClassLiability}
@@ -260,7 +260,7 @@ func (r *CardRepository) UpdateCard(ctx context.Context, sp space.ResolvedSpace,
 		row.DueDay = *p.DueDay
 	}
 	if p.PayingAccountID != nil && *p.PayingAccountID != row.PayingAccountID {
-		if err := r.ledger.activeCash(ctx, sp, *p.PayingAccountID); err != nil {
+		if err := r.ledger.activeManualCash(ctx, sp, *p.PayingAccountID); err != nil {
 			return CardRow{}, err
 		}
 		row.PayingAccountID = *p.PayingAccountID

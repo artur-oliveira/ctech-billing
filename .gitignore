@@ -6,3 +6,5 @@ cdk.out/
 .idea/
 .terraform/
 api/coverage.out
+
+api/dist/

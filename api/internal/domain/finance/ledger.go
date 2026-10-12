@@ -64,6 +64,10 @@ const (
 	// KindAdjustment changes what a still-open bill recognised (an edit or a
 	// cancellation) as one net transaction.
 	KindAdjustment TxKind = "adjustment"
+	// KindBankLine is one line of a synced bank statement (BYOK): the cash leg
+	// is the bank's fact; the other leg is its category, "A classificar" until a
+	// person classifies it.
+	KindBankLine TxKind = "bank_line"
 )
 
 // Leg is one side of a transaction on one account. Amount is signed: **positive
@@ -171,7 +175,7 @@ func Reverse(original Transaction, originalID string, date brcal.Date) (Transact
 func (k TxKind) valid() bool {
 	switch k {
 	case KindRecognition, KindSettlement, KindTransfer, KindCardPurchase,
-		KindStatementPayment, KindOpeningBalance, KindReversal, KindAdjustment:
+		KindStatementPayment, KindOpeningBalance, KindReversal, KindAdjustment, KindBankLine:
 		return true
 	}
 	return false

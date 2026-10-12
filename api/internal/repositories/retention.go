@@ -64,6 +64,8 @@ const (
 	// A FITID# lock is kept as long as the space: expiring it would let an old
 	// file be imported twice (ADR 0026).
 	RetentionImportLock = RetentionPermanent
+	// A BYOK connection lives until it is disconnected (the row is deleted).
+	RetentionByokConnection = RetentionPermanent
 )
 
 // ExpiresAt returns the Unix timestamp DynamoDB should expire the item at, or

@@ -11,7 +11,7 @@ import {AccountMenu} from "@/components/AccountMenu"
 import {LanguageSwitcher} from "@/components/LanguageSwitcher"
 import {ModeSwitch} from "@/components/console/ModeSwitch"
 import {FinanceBottomNav} from "@/components/finance/FinanceBottomNav"
-import {FinanceNav} from "@/components/finance/FinanceNav"
+import {SpaceFinanceNav} from "@/components/finance/FinanceNav"
 import {SpaceSwitch} from "@/components/finance/SpaceSwitch"
 import {useAuth} from "@/lib/auth/AuthContext"
 import {useMode} from "@/lib/console/useMode"
@@ -87,7 +87,7 @@ export function FinanceShell({children}: {children: ReactNode}) {
         ) : (
           <div className="grid gap-6 lg:grid-cols-[11rem_minmax(0,1fr)] lg:gap-10">
             <aside className="max-md:hidden lg:sticky lg:top-6 lg:self-start">
-              <FinanceNav/>
+              <SpaceFinanceNav/>
             </aside>
             <div className="min-w-0">
               {children}

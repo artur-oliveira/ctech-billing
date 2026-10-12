@@ -30,6 +30,7 @@ import {
   setConsoleDunning,
   setConsoleIssuer,
 } from "./consoleMockData"
+import {connectionsMock} from "./connectionsMockData"
 import {financeMock} from "./financeMockData"
 import {FIXTURES, MOCK_PIX_CODE} from "./mockData"
 
@@ -225,6 +226,16 @@ export const mockAdapter: AxiosAdapter = async config => {
   // Above the console block, because `sem_conta` (no organization) still has a
   // personal finance space. The module enforces the space, mode and
   // idempotency headers itself.
+  // Bank connections and the synced account's classification (BYOK).
+  if (url.includes("/v1.0/console/connections") || /\/v1\.0\/console\/finance\/(accounts\/[^/]+\/unclassified|unclassified\/)/.test(url)) {
+    const res = connectionsMock({method, url, headers: config.headers as Record<string, unknown>, data: config.data})
+    if (res.status >= 400) {
+      const p = res.data as {title?: string; detail?: string; code?: string}
+      fail(config, res.status, p.title ?? "Error", p.detail ?? "", "about:blank", p.code)
+    }
+    return {...ok(config, res.data), status: res.status}
+  }
+
   if (url.includes("/v1.0/console/finance/")) {
     const res = financeMock({
       method, url, headers: config.headers as Record<string, unknown>, data: config.data,

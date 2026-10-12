@@ -180,3 +180,12 @@ func (d *Date) UnmarshalText(b []byte) error {
 	*d = parsed
 	return nil
 }
+
+// MustParse is Parse for tests and constants: it panics on a malformed date.
+func MustParse(s string) Date {
+	d, err := Parse(s)
+	if err != nil {
+		panic(err)
+	}
+	return d
+}

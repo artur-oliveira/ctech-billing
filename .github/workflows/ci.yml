@@ -131,6 +131,11 @@ jobs:
       - name: Build (arm64 — matches prod)
         run: GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build ./cmd/...
 
+      # The release as deploy ships it, held to the size a 1 GB Alpine root
+      # can unpack beside the current one (api/scripts/release-size.sh).
+      - name: Release size budget
+        run: make release-size
+
       - name: Unit tests
         run: go test ./... -race -count=1
 

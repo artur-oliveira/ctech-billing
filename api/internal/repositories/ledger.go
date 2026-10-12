@@ -51,6 +51,8 @@ type LedgerRepository struct {
 	accounts Base
 	txs      Base
 	audit    Base
+	// imports holds the FITID# locks a synced bank line claims (BYOK § 8.2).
+	imports Base
 }
 
 func NewLedgerRepository(db *dynamodb.Client, cfg *config.Config) *LedgerRepository {
@@ -58,6 +60,7 @@ func NewLedgerRepository(db *dynamodb.Client, cfg *config.Config) *LedgerReposit
 		accounts: NewBase(db, cfg, TableLedgerAccounts),
 		txs:      NewBase(db, cfg, TableLedgerTransactions),
 		audit:    NewBase(db, cfg, TableAudit),
+		imports:  NewBase(db, cfg, TableImports),
 	}
 }
 
@@ -66,6 +69,29 @@ type AccountRow struct {
 	finance.LedgerAccount
 	Balance  billing.Cents
 	Archived bool
+	// Provider is the bank's own balance of a BYOK account; nil for every
+	// other account and for a BYOK account before its first sync.
+	Provider *ProviderBalance
+	// SyncState is a BYOK account's sync: "active", or "disconnected" (read-only
+	// history, spec § 3.6 step 5). Empty for every other account.
+	SyncState string
+}
+
+// ErrAccountExists is CreateAccount refusing an id the chart already has. It
+// also wraps finance.ErrInvalidAccount, so the route keeps answering
+// invalid_account.
+var ErrAccountExists = errors.New("finance: account already exists")
+
+// ErrAccountIsSynced refuses a manual movement into a BYOK account: its
+// statement is the bank's (spec § 8.1). 409 account_is_synced.
+var ErrAccountIsSynced = errors.New("finance: the account is synced from the bank")
+
+// ProviderBalance is the bank's own balance of a BYOK account (spec § 8.1),
+// shown as the account's balance with its time.
+type ProviderBalance struct {
+	Available, Blocked billing.Cents
+	At                 brcal.Date
+	SyncedAt           time.Time
 }
 
 type accountItem struct {
@@ -81,20 +107,43 @@ type accountItem struct {
 	// Archived hides an account from new activity; it is never deleted, because
 	// its entries and reports must keep resolving.
 	Archived bool `dynamodbav:"archived,omitempty"`
+	// A BYOK account (spec § 8.1): its source, its bank and the bank's last
+	// balance with the time it was read.
+	Source          string `dynamodbav:"source,omitempty"`
+	Provider        string `dynamodbav:"provider,omitempty"`
+	ProviderBalance *int64 `dynamodbav:"provider_balance,omitempty"`
+	ProviderBlocked int64  `dynamodbav:"provider_blocked,omitempty"`
+	ProviderAt      string `dynamodbav:"provider_balance_at,omitempty"`
+	SyncedAt        string `dynamodbav:"synced_at,omitempty"`
+	SyncState       string `dynamodbav:"sync_state,omitempty"`
 }
 
 func (i accountItem) row() AccountRow {
-	return AccountRow{
-		LedgerAccount: finance.LedgerAccount{ID: i.ID, Name: i.Name, Class: i.Class, Group: i.Group, System: i.System, SystemKey: i.SystemKey},
-		Balance:       billing.Cents(i.Balance),
-		Archived:      i.Archived,
+	row := AccountRow{
+		LedgerAccount: finance.LedgerAccount{ID: i.ID, Name: i.Name, Class: i.Class, Group: i.Group, System: i.System,
+			SystemKey: i.SystemKey, Source: i.Source, Provider: i.Provider},
+		Balance:   billing.Cents(i.Balance),
+		Archived:  i.Archived,
+		SyncState: i.SyncState,
 	}
+	if i.ProviderBalance != nil {
+		pb := &ProviderBalance{Available: billing.Cents(*i.ProviderBalance), Blocked: billing.Cents(i.ProviderBlocked)}
+		if d, err := brcal.Parse(i.ProviderAt); err == nil {
+			pb.At = d
+		}
+		if t, err := time.Parse(time.RFC3339, i.SyncedAt); err == nil {
+			pb.SyncedAt = t
+		}
+		row.Provider = pb
+	}
+	return row
 }
 
 func newAccountItem(sp space.ResolvedSpace, a finance.LedgerAccount, now time.Time) accountItem {
 	return accountItem{
 		keys: newKeys(sp.PK(), LedgerAccountSK(a.ID), RetentionPermanent, now),
 		ID:   a.ID, Name: a.Name, Class: a.Class, Group: a.Group, System: a.System, SystemKey: a.SystemKey,
+		Source: a.Source, Provider: a.Provider,
 	}
 }
 
@@ -319,7 +368,7 @@ func (r *LedgerRepository) CreateAccount(ctx context.Context, sp space.ResolvedS
 	}
 	err = r.accounts.TransactWrite(ctx, txItems(r.accounts.BuildPutTxItemIfAbsent(item)))
 	if err != nil && onlyConditionFailed(err) {
-		return fmt.Errorf("%w: account %s already exists", finance.ErrInvalidAccount, a.ID)
+		return fmt.Errorf("%w: %w: %s", ErrAccountExists, finance.ErrInvalidAccount, a.ID)
 	}
 	return err
 }
@@ -1113,19 +1162,32 @@ func (r *LedgerRepository) reversedIDs(ctx context.Context, sp space.ResolvedSpa
 	return out, nil
 }
 
-// activeCash loads an account money can be moved in: an active asset the user
+// activeCashRow loads an account money can be moved in: an active asset the user
 // holds. Anything else, a category or a system account included, is
 // ErrUnknownAccount — it is not an account in that sense.
-func (r *LedgerRepository) activeCash(ctx context.Context, sp space.ResolvedSpace, id string) error {
+func (r *LedgerRepository) activeCashRow(ctx context.Context, sp space.ResolvedSpace, id string) (*AccountRow, error) {
 	acct, err := r.getAccount(ctx, sp, id)
 	if errors.Is(err, ErrNotFound) {
-		return fmt.Errorf("%w: %s", ErrUnknownAccount, id)
+		return nil, fmt.Errorf("%w: %s", ErrUnknownAccount, id)
 	}
+	if err != nil {
+		return nil, err
+	}
+	if acct.Class != finance.ClassAsset || acct.System || acct.Archived {
+		return nil, fmt.Errorf("%w: %s is not an active account", ErrUnknownAccount, id)
+	}
+	return acct, nil
+}
+
+// activeManualCash is activeCashRow for a movement a person makes: a synced
+// account takes only its bank's lines. Still one read.
+func (r *LedgerRepository) activeManualCash(ctx context.Context, sp space.ResolvedSpace, id string) error {
+	acct, err := r.activeCashRow(ctx, sp, id)
 	if err != nil {
 		return err
 	}
-	if acct.Class != finance.ClassAsset || acct.System || acct.Archived {
-		return fmt.Errorf("%w: %s is not an active account", ErrUnknownAccount, id)
+	if acct.Source == finance.SourceBYOK {
+		return fmt.Errorf("%w: %s", ErrAccountIsSynced, id)
 	}
 	return nil
 }
@@ -1137,9 +1199,16 @@ func (r *LedgerRepository) PostOpeningBalance(ctx context.Context, sp space.Reso
 	if err := sp.Require(space.Configure); err != nil {
 		return "", err
 	}
-	if err := r.activeCash(ctx, sp, accountID); err != nil {
+	if err := r.activeManualCash(ctx, sp, accountID); err != nil {
 		return "", err
 	}
+	return r.postOpening(ctx, sp, accountID, amount, date, meta, now)
+}
+
+// postOpening writes the opening balance and its OPENING# marker, once per
+// account. The caller has checked the account: a person's opening goes through
+// activeManualCash, a synced account's comes from the bank (PostProviderOpening).
+func (r *LedgerRepository) postOpening(ctx context.Context, sp space.ResolvedSpace, accountID string, amount billing.Cents, date brcal.Date, meta PostMeta, now time.Time) (string, error) {
 	sys, _ := finance.DefaultSystemAccounts()
 	tx, err := finance.OpeningBalance(sys, accountID, amount, date)
 	if err != nil {
@@ -1265,7 +1334,7 @@ func (r *LedgerRepository) PostTransfer(ctx context.Context, sp space.ResolvedSp
 		return "", fmt.Errorf("%w: a transfer needs two different accounts", finance.ErrInvalidTransaction)
 	}
 	for _, id := range []string{from, to} {
-		if err := r.activeCash(ctx, sp, id); err != nil {
+		if err := r.activeManualCash(ctx, sp, id); err != nil {
 			return "", err
 		}
 	}
@@ -1306,6 +1375,9 @@ func (r *LedgerRepository) ReverseManual(ctx context.Context, sp space.ResolvedS
 	}
 	if orig.Tx.Kind != finance.KindTransfer && orig.Tx.Kind != finance.KindOpeningBalance {
 		return "", ErrNotManual
+	}
+	if err := r.refuseSyncedLegs(ctx, sp, orig.Tx); err != nil {
+		return "", err
 	}
 	if orig.Tx.Kind == finance.KindOpeningBalance {
 		// Posting one needs configure; so does taking it back.
