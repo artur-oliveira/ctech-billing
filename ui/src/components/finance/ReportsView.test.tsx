@@ -93,6 +93,39 @@ describe("F7 — relatórios", () => {
     renderWithQuery(<ReportsView/>)
     expect(await screen.findByText("Nada neste período.")).toBeInTheDocument()
   })
+
+  it("opens the monthly review on the last closed month and loads it only on demand", async () => {
+    serve()
+    const spend = vi.spyOn(finance, "getCardSpending").mockResolvedValue({basis: "statement", months: [], by_month: [], total: 0, categories: [], cards: []})
+    renderWithQuery(<ReportsView/>)
+    expect(spend).not.toHaveBeenCalled()
+    await userEvent.click(screen.getByRole("tab", {name: "Revisão mensal"}))
+    expect(await screen.findByRole("heading", {name: "Revisão mensal"})).toBeInTheDocument()
+    expect(spend).toHaveBeenCalledWith(expect.anything(), expect.any(String), expect.any(String))
+    expect(screen.getByLabelText("Mês revisado")).toHaveAttribute("max", expect.stringMatching(/^\d{4}-\d{2}$/))
+    expect(screen.getByLabelText("Mês revisado")).toHaveAttribute("lang", "pt-BR")
+  })
+
+  it("keeps report navigation and its filter in stable rows when switching tabs", async () => {
+    serve()
+    renderWithQuery(<ReportsView/>)
+    const tablist = screen.getByRole("tablist", {name: "Relatório"})
+    const controls = tablist.parentElement!
+    expect(tablist).not.toHaveClass("w-full")
+    expect(tablist).toHaveClass("w-max")
+    expect(controls.children[0]).toBe(tablist)
+    expect(controls.children).toHaveLength(2)
+
+    await userEvent.click(screen.getByRole("tab", {name: "Cartões"}))
+    expect(controls.children[0]).toBe(tablist)
+    expect(controls.children).toHaveLength(2)
+    expect(within(controls.children[1] as HTMLElement).getByRole("combobox", {name: "Período"})).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole("tab", {name: "Revisão mensal"}))
+    expect(controls.children[0]).toBe(tablist)
+    expect(controls.children).toHaveLength(2)
+    expect(within(controls.children[1] as HTMLElement).getByLabelText("Mês revisado")).toHaveAttribute("lang", "pt-BR")
+  })
 })
 
 describe("card spending (Gastos com cartão)", () => {

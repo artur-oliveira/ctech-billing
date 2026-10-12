@@ -1,22 +1,25 @@
 "use client"
 
 import {Button, Field, Input, Select} from "@aoctech/ui"
+import {useQuery} from "@tanstack/react-query"
 import {useState} from "react"
 import {useTranslation} from "react-i18next"
 
 import {wholeSpace} from "@/components/finance/TransferPanel"
+import {HistorySuggestions} from "@/components/finance/HistorySuggestions"
 import {DateField} from "@/components/ui/DateField"
 import {selectCopy} from "@/lib/selectCopy"
 import {useFieldErrors} from "@/lib/useFieldErrors"
-import {createPurchase} from "@/lib/api/finance"
-import type {Account, NewPurchase} from "@/lib/api/financeTypes"
+import {createPurchase, financeKeys, listPurchases} from "@/lib/api/finance"
+import type {Account, NewPurchase, Purchase} from "@/lib/api/financeTypes"
 import {todayIso} from "@/lib/finance/today"
 import {useFinanceMutation} from "@/lib/finance/useFinanceMutation"
 import {money} from "@/lib/format"
 import {t} from "@/lib/i18n"
 import limits from "@/lib/limits.json"
-import {maskMoney, moneyPlaceholder, parseMoney} from "@/lib/money"
+import {formatMoneyInput, maskMoney, moneyPlaceholder, parseMoney} from "@/lib/money"
 import {accountName} from "@/lib/finance/accountName"
+import {useFinanceCtx} from "@/lib/finance/useFinanceSpaces"
 
 export const installmentOptions = () => Array.from({length: limits.maxInstallments}, (_, i) => ({
   value: String(i + 1), label: i === 0 ? `1× (${t("bills.purchase.cash")})` : `${i + 1}×`,
@@ -37,8 +40,10 @@ export function installmentsPreview(total: number, n: number): string {
 
 /** A new purchase on a card: the whole amount is the expense today; the
  *  installments only decide which statement bills each part. */
-export function PurchasePanel({cardId, accounts, onDone}: {cardId: string; accounts: Account[]; onDone: () => void}) {
+export function PurchasePanel({cardId, accounts, history = [], onDone}: {cardId: string; accounts: Account[]; history?: Purchase[]; onDone: () => void}) {
   const {t} = useTranslation()
+  const ctx = useFinanceCtx()
+  const purchases = useQuery({queryKey: financeKeys.purchases(ctx.mode, ctx.space, cardId), queryFn: () => listPurchases(ctx, cardId)})
   const cats = accounts.filter(a => a.class === "expense" && !a.system && !a.archived)
   const [description, setDescription] = useState("")
   const [amountText, setAmountText] = useState("")
@@ -64,6 +69,11 @@ export function PurchasePanel({cardId, accounts, onDone}: {cardId: string; accou
       <Field label={t("bills.common.description")} htmlFor="pu-desc" required error={fe.of("description")} className="sm:col-span-2">
         <Input id="pu-desc" maxLength={limits.text.description} value={description} {...fe.props("description", "pu-desc")} onChange={e => { setDescription(e.target.value); fe.clear("description") }} autoFocus/>
       </Field>
+      <HistorySuggestions value={description} entries={(history.length ? history : purchases.data?.data ?? []).filter(p => !p.refunded).map(p => ({description: p.description, amount: p.total, categoryId: p.category_id}))} onSelect={entry => {
+        setDescription(entry.description)
+        setAmountText(formatMoneyInput(entry.amount))
+        if (cats.some(a => a.id === entry.categoryId)) setCategory(entry.categoryId)
+      }}/>
       <Field label={t("bills.common.amount")} htmlFor="pu-amount" required error={fe.of("total")} hint={total ? installmentsPreview(total, n) : undefined}>
         <Input id="pu-amount" inputMode="decimal" placeholder={moneyPlaceholder()} value={amountText} {...fe.props("total", "pu-amount")} onChange={e => { setAmountText(maskMoney(e.target.value)); fe.clear("total") }}/>
       </Field>

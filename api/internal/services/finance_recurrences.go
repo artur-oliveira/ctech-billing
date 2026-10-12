@@ -44,6 +44,8 @@ type recurrenceStore interface {
 	MarkMaterialised(ctx context.Context, sp space.ResolvedSpace, id string, cursor brcal.Date, now time.Time) error
 	ListWithCursors(ctx context.Context, sp space.ResolvedSpace) ([]repositories.DueRecurrence, error)
 	FlagAttention(ctx context.Context, sp space.ResolvedSpace, id, reason string, now time.Time) error
+	CreatePendingOccurrence(ctx context.Context, sp space.ResolvedSpace, rec finance.Recurrence, nominal, due brcal.Date, now time.Time) (bool, error)
+	ListPendingOccurrences(ctx context.Context, sp space.ResolvedSpace, limit int) ([]repositories.PendingOccurrence, error)
 }
 
 // FinanceJobs is the daily job's logic and the projection read: materialise
@@ -99,12 +101,26 @@ func (j *FinanceJobs) Materialise(ctx context.Context, livemode bool, today brca
 			res.fail("recurrence %s: %v", rec.ID, err)
 			continue
 		}
+		if rec.AmountMode == finance.AmountExpected {
+			ready := drafts[:0]
+			for _, draft := range drafts {
+				if !draft.Nominal.After(today) {
+					ready = append(ready, draft)
+				}
+			}
+			drafts = ready
+		}
 		if len(drafts) > maxDraftsPerRun {
 			drafts = drafts[:maxDraftsPerRun]
 		}
 		cursor, failed := d.Cursor, false
 		for _, draft := range drafts {
-			created, _, err := j.bills.CreateFromOccurrence(ctx, d.Space, draft, rec.ID, meta, now)
+			created := false
+			if rec.AmountMode == finance.AmountExpected {
+				created, err = j.recs.CreatePendingOccurrence(ctx, d.Space, rec, draft.Nominal, draft.Bill.Due, now)
+			} else {
+				created, _, err = j.bills.CreateFromOccurrence(ctx, d.Space, draft, rec.ID, meta, now)
+			}
 			if errors.Is(err, repositories.ErrRecurrenceChanged) {
 				// Archived or retargeted after this run read it: not a failure. The
 				// cursor stays, so the next run works from the current rule.
@@ -127,7 +143,7 @@ func (j *FinanceJobs) Materialise(ctx context.Context, livemode bool, today brca
 		if failed {
 			continue
 		}
-		if len(drafts) == 0 {
+		if len(drafts) == 0 && rec.AmountMode != finance.AmountExpected {
 			// Due, but nothing falls in (cursor, horizon end]: move the cursor to
 			// the horizon end so the row leaves the list instead of being found
 			// again every day.
@@ -182,8 +198,13 @@ func (j *FinanceJobs) materialiseCard(ctx context.Context, d repositories.DueRec
 	}
 	cursor := d.Cursor
 	for _, ch := range charges {
-		created, _, err := j.cards.PostOccurrence(ctx, d.Space, ch, meta, now)
-		if errors.Is(err, repositories.ErrCardMoved) {
+		created := false
+		if rec.AmountMode == finance.AmountExpected {
+			created, err = j.recs.CreatePendingOccurrence(ctx, d.Space, rec, ch.Nominal, ch.Nominal, now)
+		} else {
+			created, _, err = j.cards.PostOccurrence(ctx, d.Space, ch, meta, now)
+		}
+		if rec.AmountMode != finance.AmountExpected && errors.Is(err, repositories.ErrCardMoved) {
 			// A close won the race: once more lands on the new open statement.
 			created, _, err = j.cards.PostOccurrence(ctx, d.Space, ch, meta, now)
 		}
@@ -392,6 +413,40 @@ func (j *FinanceJobs) Project(ctx context.Context, sp space.ResolvedSpace, today
 				window[i].Virtual -= r.Amount
 				window[i].VirtualPayable += r.Amount
 			}
+		}
+	}
+	pending, err := j.recs.ListPendingOccurrences(ctx, sp, 5000)
+	if err != nil {
+		return Projection{}, err
+	}
+	for _, occurrence := range pending {
+		if occurrence.CardID != "" {
+			card, ok := cards[occurrence.CardID]
+			if !ok {
+				continue
+			}
+			plan, err := finance.PlaceInstallments(occurrence.Expected, occurrence.Installments, occurrence.Nominal, card.ClosingDay, card.OpenMonth)
+			if err != nil {
+				return Projection{}, fmt.Errorf("projecting pending occurrence %s: %w", occurrence.RecurrenceID, err)
+			}
+			for _, installment := range plan {
+				if i, ok := slot(finance.DueDate(installment.Statement, card.ClosingDay, card.DueDay)); ok {
+					window[i].Virtual -= installment.Amount
+					window[i].VirtualPayable += installment.Amount
+				}
+			}
+			continue
+		}
+		i, ok := slot(occurrence.Due)
+		if !ok {
+			continue
+		}
+		if occurrence.Direction == finance.Receivable {
+			window[i].Virtual += occurrence.Expected
+			window[i].VirtualReceivable += occurrence.Expected
+		} else {
+			window[i].Virtual -= occurrence.Expected
+			window[i].VirtualPayable += occurrence.Expected
 		}
 	}
 	return Projection{Months: window}, nil

@@ -101,13 +101,11 @@ function Realised() {
       {q.isLoading ? <Skeleton className="h-20 w-full"/> : q.error || !m ? (
         <ErrorBlock error={q.error} onRetry={() => void q.refetch()}/>
       ) : (
-        <>
-          <dl className="divide-y divide-border border-y border-border text-sm">
-            <div className="flex items-center justify-between py-2"><dt>{t("finance.overview.in")}</dt><dd data-numeric className="tabular-nums">{money(m.in)}</dd></div>
-            <div className="flex items-center justify-between py-2"><dt>{t("finance.overview.out")}</dt><dd data-numeric className="tabular-nums">{money(m.out)}</dd></div>
-            <div className="flex items-center justify-between py-2 font-medium"><dt>{t("finance.overview.result")}</dt><dd data-numeric className="tabular-nums">{signedMoney(m.in - m.out)}</dd></div>
-          </dl>
-        </>
+        <dl className="divide-y divide-border border-y border-border text-sm">
+          <div className="flex items-center justify-between py-2"><dt>{t("finance.overview.in")}</dt><dd data-numeric className="tabular-nums">{money(m.in)}</dd></div>
+          <div className="flex items-center justify-between py-2"><dt>{t("finance.overview.out")}</dt><dd data-numeric className="tabular-nums">{money(m.out)}</dd></div>
+          <div className="flex items-center justify-between py-2 font-medium"><dt>{t("finance.overview.result")}</dt><dd data-numeric className="tabular-nums">{signedMoney(m.in - m.out)}</dd></div>
+        </dl>
       )}
     </Block>
   )
@@ -118,8 +116,8 @@ const DUE_SOON = 5
 function DueSoon() {
   const {t} = useTranslation()
   const ctx = useFinanceCtx()
-  const pay = useQuery({queryKey: financeKeys.bills(ctx.mode, ctx.space, "payable"), queryFn: () => listBills(ctx, "payable")})
-  const rec = useQuery({queryKey: financeKeys.bills(ctx.mode, ctx.space, "receivable"), queryFn: () => listBills(ctx, "receivable")})
+  const pay = useQuery({queryKey: financeKeys.billPreview(ctx.mode, ctx.space, "payable"), queryFn: () => listBills(ctx, "payable", undefined, DUE_SOON)})
+  const rec = useQuery({queryKey: financeKeys.billPreview(ctx.mode, ctx.space, "receivable"), queryFn: () => listBills(ctx, "receivable", undefined, DUE_SOON)})
   const order = {overdue: 0, today: 1, upcoming: 2}
   const items: Bill[] = [...(pay.data?.data ?? []), ...(rec.data?.data ?? [])]
     .sort((a, b) => order[a.bucket ?? "upcoming"] - order[b.bucket ?? "upcoming"] || a.due_date.localeCompare(b.due_date))

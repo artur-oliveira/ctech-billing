@@ -186,7 +186,7 @@ func (r *BillRepository) Create(ctx context.Context, sp space.ResolvedSpace, b f
 // a ConditionCheck on the recurrence row: if it fails the recurrence changed
 // after the job read it and ErrRecurrenceChanged comes back. A bill whose own
 // (idempotent) id already exists is returned as it is, created=false.
-func (r *BillRepository) createWithGuards(ctx context.Context, sp space.ResolvedSpace, b finance.Bill, lock, check *types.TransactWriteItem, meta PostMeta, now time.Time) (finance.Bill, bool, error) {
+func (r *BillRepository) createWithGuards(ctx context.Context, sp space.ResolvedSpace, b finance.Bill, lock, check *types.TransactWriteItem, meta PostMeta, now time.Time, extra ...types.TransactWriteItem) (finance.Bill, bool, error) {
 	sys, _ := finance.DefaultSystemAccounts()
 	rec, err := finance.RecognizeBill(sys, b.Facts(), b.Competence)
 	if err != nil {
@@ -213,6 +213,8 @@ func (r *BillRepository) createWithGuards(ctx context.Context, sp space.Resolved
 		checkIdx = len(items)
 		items = append(items, *check)
 	}
+	extraIdx := len(items)
+	items = append(items, extra...)
 	if err := r.bills.TransactWrite(ctx, items); err != nil {
 		codes := cancellationCodes(err)
 		failed := func(i int) bool { return i >= 0 && i < len(codes) && codes[i] == codeConditionFailed }
@@ -221,6 +223,8 @@ func (r *BillRepository) createWithGuards(ctx context.Context, sp space.Resolved
 			return finance.Bill{}, false, ErrRecurrenceChanged
 		case failed(lockIdx):
 			return finance.Bill{}, false, nil
+		case len(extra) > 0 && failed(extraIdx):
+			return finance.Bill{}, false, ErrOccurrenceAlreadyHandled
 		case failed(billIdx) && meta.IdempotencyKey != "":
 			if existing, gerr := r.get(ctx, sp, b.ID); gerr == nil {
 				return *existing, false, nil
@@ -287,6 +291,44 @@ func (r *BillRepository) CreateFromOccurrence(ctx context.Context, sp space.Reso
 	check := r.recurrenceUnchanged(sp, recurrenceID, b)
 	created, ok, err := r.createWithGuards(ctx, sp, b, &lock, &check, meta, now)
 	return ok, created, err
+}
+
+func (r *BillRepository) ConfirmExpectedOccurrence(ctx context.Context, sp space.ResolvedSpace, pending PendingOccurrence, amount billing.Cents, meta PostMeta, now time.Time) (bool, finance.Bill, error) {
+	if err := sp.Require(space.Write); err != nil {
+		return false, finance.Bill{}, err
+	}
+	if pending.State != "pending_confirmation" || pending.RecurrenceID == "" {
+		return false, finance.Bill{}, ErrOccurrenceAlreadyHandled
+	}
+	b := finance.Bill{Direction: pending.Direction, Amount: amount, AccountID: pending.AccountID, CategoryID: pending.CategoryID, Description: pending.Description, Competence: pending.Nominal, Due: pending.Due, Status: finance.BillForecast, Origin: finance.OriginRecurrence, OriginRef: finance.OccurrenceRef(pending.RecurrenceID, pending.Nominal)}
+	b.ID = id.New()
+	if meta.IdempotencyKey != "" {
+		b.ID = idempotentID(sp, "expected-confirmation", meta.IdempotencyKey)
+	}
+	if err := b.Validate(); err != nil {
+		return false, finance.Bill{}, err
+	}
+	lock, err := Encode(occurrenceLockRow{keys: newKeys(sp.PK(), OccurrenceSK(pending.RecurrenceID, pending.Nominal), RetentionPermanent, now), BillID: b.ID, Amount: int64(amount), ExpectedAmount: int64(pending.Expected)})
+	if err != nil {
+		return false, finance.Bill{}, err
+	}
+	lockTx := r.bills.BuildPutTxItemIfAbsent(lock)
+	check := r.expectedRecurrenceUnchanged(sp, pending)
+	bill, created, err := r.createWithGuards(ctx, sp, b, &lockTx, &check, meta, now, pendingDeleteTxItem(r.recs, sp, pending.RecurrenceID, pending.Nominal))
+	return created, bill, err
+}
+
+func (r *BillRepository) expectedRecurrenceUnchanged(sp space.ResolvedSpace, p PendingOccurrence) types.TransactWriteItem {
+	condition := "attribute_exists(pk) AND (attribute_not_exists(archived) OR archived = :f) AND amount_mode = :mode AND amount = :amount AND category_id = :category"
+	values := map[string]types.AttributeValue{":f": &types.AttributeValueMemberBOOL{Value: false}, ":mode": str(string(finance.AmountExpected)), ":amount": numberValue(int64(p.Expected)), ":category": str(p.CategoryID)}
+	if p.CardID != "" {
+		condition += " AND card_id = :target"
+		values[":target"] = str(p.CardID)
+	} else {
+		condition += " AND account_id = :target"
+		values[":target"] = str(p.AccountID)
+	}
+	return types.TransactWriteItem{ConditionCheck: &types.ConditionCheck{TableName: aws.String(r.recs.TableName), Key: map[string]types.AttributeValue{"pk": str(sp.PK()), "sk": str(RecurrenceSK(p.RecurrenceID))}, ConditionExpression: aws.String(condition), ExpressionAttributeValues: values}}
 }
 
 // DueBill is an auto-settle bill the daily job should settle.
@@ -607,6 +649,53 @@ func (r *BillRepository) Cancel(ctx context.Context, sp space.ResolvedSpace, bil
 	return *b, nil
 }
 
+// RestoreCancelled reverses a bill cancellation and returns the same bill to
+// the open list. The original cancellation and its reversal remain in the
+// immutable ledger; status and the compensating transaction move atomically.
+func (r *BillRepository) RestoreCancelled(ctx context.Context, sp space.ResolvedSpace, billID string, date brcal.Date, meta PostMeta, now time.Time) (finance.Bill, error) {
+	if err := sp.Require(space.Write); err != nil {
+		return finance.Bill{}, err
+	}
+	b, err := r.get(ctx, sp, billID)
+	if err != nil {
+		return finance.Bill{}, err
+	}
+	if b.Status != finance.BillCanceled || len(b.TransactionIDs) < 2 {
+		return finance.Bill{}, fmt.Errorf("%w: only a canceled bill can be restored", finance.ErrBillState)
+	}
+	if date.IsZero() {
+		date = b.Competence
+	}
+	cancellationID := b.TransactionIDs[len(b.TransactionIDs)-1]
+	plan, err := r.ledger.planReverse(ctx, sp, cancellationID, date, billMeta(meta, *b), now)
+	if err != nil {
+		return finance.Bill{}, err
+	}
+	reopened := *b
+	reopened.Status, reopened.AutoSettle = finance.BillForecast, false
+	openPK, openSK, _, _ := sparseKeys(sp, reopened)
+	sk := BillSK(billID)
+	values := map[string]types.AttributeValue{
+		":forecast": str(string(finance.BillForecast)), ":canceled": str(string(finance.BillCanceled)),
+		":n": numberValue(int64(len(b.TransactionIDs))), ":op": str(openPK), ":os": str(openSK),
+		":f": &types.AttributeValueMemberBOOL{Value: false}, ":now": r.stamp(now),
+		":tx": &types.AttributeValueMemberL{Value: []types.AttributeValue{str(plan.TxID)}},
+	}
+	names := map[string]string{"#status": "status", "#n": "transaction_ids"}
+	update := r.bills.BuildRawUpdateTxItem(sp.PK(), &sk,
+		"SET #status = :forecast, auto_settle = :f, open_pk = :op, open_sk = :os, #n = list_append(#n, :tx), updated_at = :now",
+		"#status = :canceled AND size(#n) = :n", names, values)
+	items := append(append([]types.TransactWriteItem(nil), plan.Items...), update)
+	if err := r.bills.TransactWrite(ctx, items); err != nil {
+		if onlyConditionFailed(err) {
+			return finance.Bill{}, finance.ErrBillState
+		}
+		return finance.Bill{}, err
+	}
+	reopened.TransactionIDs = append(append([]string(nil), b.TransactionIDs...), plan.TxID)
+	return reopened, nil
+}
+
 // BillEdit is a partial change to a forecast bill. Nil fields stay as they are.
 type BillEdit struct {
 	Amount      *billing.Cents
@@ -822,20 +911,24 @@ func (r *BillRepository) statementBillItem(sp space.ResolvedSpace, b finance.Bil
 // OccurrenceBill is a bill a recurrence made, with the nominal day it was made
 // for (the occurrence's identity).
 type OccurrenceBill struct {
-	Nominal  brcal.Date
-	Bill     finance.Bill
-	Purchase *OccurrencePurchase // set instead of Bill for a card occurrence
+	Nominal        brcal.Date
+	Bill           finance.Bill
+	Purchase       *OccurrencePurchase // set instead of Bill for a card occurrence
+	State          string
+	ExpectedAmount billing.Cents
 }
 
 // occurrenceLockRow is OCCURRENCE#{recurrence}#{nominal}: written once per
 // occurrence, with the bill it made or, for a card recurrence, the purchase.
 type occurrenceLockRow struct {
 	keys
-	BillID     string `dynamodbav:"bill_id,omitempty"`
-	PurchaseID string `dynamodbav:"purchase_id,omitempty"`
-	CardID     string `dynamodbav:"card_id,omitempty"`
-	Statement  string `dynamodbav:"statement,omitempty"` // the first installment's month
-	Amount     int64  `dynamodbav:"amount,omitempty"`
+	State          string `dynamodbav:"state,omitempty"`
+	BillID         string `dynamodbav:"bill_id,omitempty"`
+	PurchaseID     string `dynamodbav:"purchase_id,omitempty"`
+	CardID         string `dynamodbav:"card_id,omitempty"`
+	Statement      string `dynamodbav:"statement,omitempty"` // the first installment's month
+	Amount         int64  `dynamodbav:"amount,omitempty"`
+	ExpectedAmount int64  `dynamodbav:"expected_amount,omitempty"`
 }
 
 // OccurrencePurchase is a card occurrence the job posted.
@@ -873,12 +966,16 @@ func (r *BillRepository) ForRecurrence(ctx context.Context, sp space.ResolvedSpa
 		if err != nil {
 			return nil, fmt.Errorf("malformed occurrence lock %q: %w", l.SK, err)
 		}
+		if l.State == "skipped" {
+			out = append(out, OccurrenceBill{Nominal: nominal, State: "skipped", ExpectedAmount: billing.Cents(l.ExpectedAmount)})
+			continue
+		}
 		if l.PurchaseID != "" {
 			m, err := finance.ParseMonth(l.Statement)
 			if err != nil {
 				return nil, fmt.Errorf("malformed occurrence lock %q: %w", l.SK, err)
 			}
-			out = append(out, OccurrenceBill{Nominal: nominal, Purchase: &OccurrencePurchase{ID: l.PurchaseID, CardID: l.CardID, Statement: m, Amount: billing.Cents(l.Amount)}})
+			out = append(out, OccurrenceBill{Nominal: nominal, Purchase: &OccurrencePurchase{ID: l.PurchaseID, CardID: l.CardID, Statement: m, Amount: billing.Cents(l.Amount)}, ExpectedAmount: billing.Cents(l.ExpectedAmount)})
 			continue
 		}
 		b, err := r.get(ctx, sp, l.BillID)
@@ -888,7 +985,7 @@ func (r *BillRepository) ForRecurrence(ctx context.Context, sp space.ResolvedSpa
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, OccurrenceBill{Nominal: nominal, Bill: *b})
+		out = append(out, OccurrenceBill{Nominal: nominal, Bill: *b, ExpectedAmount: billing.Cents(l.ExpectedAmount)})
 	}
 	return out, nil
 }

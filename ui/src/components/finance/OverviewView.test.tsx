@@ -41,6 +41,10 @@ function serve() {
   return vi.spyOn(finance, "getProjection").mockResolvedValue({data: MONTHS, has_more: false})
 }
 
+async function loadProjection() {
+  return screen.findByRole("region", {name: "Projeção"})
+}
+
 beforeEach(() => window.localStorage.clear())
 afterEach(() => vi.restoreAllMocks())
 
@@ -67,7 +71,7 @@ describe("F1 — visão geral", () => {
   it("keeps recurrences not yet generated apart from the bills", async () => {
     serve()
     renderWithQuery(<OverviewView/>)
-    const block = await screen.findByRole("region", {name: "Projeção"})
+    const block = await loadProjection()
     await userEvent.click(await within(block).findByRole("button", {name: "Ver tabela"}))
     const table = within(block).getByRole("table")
     const headers = within(table).getAllByRole("columnheader").map(h => h.textContent)
@@ -81,7 +85,7 @@ describe("F1 — visão geral", () => {
   it("accumulates the projected balance month by month, in the table and the chart", async () => {
     serve()
     renderWithQuery(<OverviewView/>)
-    const block = await screen.findByRole("region", {name: "Projeção"})
+    const block = await loadProjection()
     await waitFor(() => expect(block.querySelector("svg title")?.textContent?.replace(/\s/g, " ")).toMatch(/^Out\/26: saldo R\$ 18\.668,25 /))
     // The Y axis says what the bars are in: R$, from zero up past the highest.
     const ticks = [...block.querySelectorAll("svg [data-axis=y]")].map(t => t.textContent?.replace(/\s/g, " "))
@@ -98,7 +102,7 @@ describe("F1 — visão geral", () => {
       {month: "2026-11", receivable: 350000, payable: 40000, virtual: 70000, virtual_receivable: 100000, virtual_payable: 30000},
     ], has_more: false})
     renderWithQuery(<OverviewView/>)
-    const projection = await screen.findByRole("region", {name: "Projeção"})
+    const projection = await loadProjection()
     await userEvent.click(await within(projection).findByRole("button", {name: "Entradas e saídas"}))
     const title = await within(projection).findByText(/entradas R\$\s*4\.500,00, saídas R\$\s*700,00, resultado R\$\s*3\.800,00/)
     expect(title).toBeInTheDocument()
@@ -120,7 +124,7 @@ describe("F1 — visão geral", () => {
   it("fails one block without blanking the others", async () => {
     serve().mockRejectedValue({response: {status: 500, data: {title: "Erro"}}})
     renderWithQuery(<OverviewView/>)
-    const projection = await screen.findByRole("region", {name: "Projeção"})
+    const projection = await loadProjection()
     expect(await within(projection).findByRole("button", {name: "Tentar novamente"})).toBeInTheDocument()
     expect(await within(screen.getByRole("region", {name: "Saldos"})).findByText("Conta corrente")).toBeInTheDocument()
   })
@@ -128,6 +132,7 @@ describe("F1 — visão geral", () => {
   it("asks for the chosen window", async () => {
     const projection = serve()
     renderWithQuery(<OverviewView/>)
+    await loadProjection()
     await waitFor(() => expect(projection).toHaveBeenCalledWith(expect.anything(), 6))
     // A segmented control, not a dropdown: three choices, all in view.
     const period = await screen.findByRole("group", {name: "Período"})
@@ -144,7 +149,7 @@ describe("F1 — visão geral", () => {
       {month: "2026-11", receivable: 350000, payable: 40000, virtual: 70000, virtual_receivable: 100000, virtual_payable: 30000},
     ], has_more: false})
     renderWithQuery(<OverviewView/>)
-    const block = await screen.findByRole("region", {name: "Projeção"})
+    const block = await loadProjection()
     await userEvent.click(await within(block).findByRole("button", {name: "Ver tabela"}))
     expect(within(block).getByRole("button", {name: "Ver tabela"})).toHaveAttribute("aria-pressed", "true")
     const flow = within(block).getByRole("button", {name: "Entradas e saídas"})
@@ -170,7 +175,7 @@ describe("F1 — visão geral", () => {
     it("lists the months instead of drawing the chart, and keeps the chart one tap away", async () => {
       serve()
       renderWithQuery(<OverviewView/>)
-      const block = await screen.findByRole("region", {name: "Projeção"})
+      const block = await loadProjection()
       const list = await within(block).findByRole("list", {name: "Projeção mês a mês"})
       expect(block.querySelector("svg[role=img]")).toBeNull()
       const rows = within(list).getAllByRole("listitem")
@@ -191,7 +196,7 @@ describe("F1 — visão geral", () => {
         {month: "2026-11", receivable: 350000, payable: 40000, virtual: 70000, virtual_receivable: 100000, virtual_payable: 30000},
       ], has_more: false})
       renderWithQuery(<OverviewView/>)
-      const block = await screen.findByRole("region", {name: "Projeção"})
+      const block = await loadProjection()
       const list = await within(block).findByRole("list", {name: "Projeção mês a mês"})
       const nov = within(list).getAllByRole("listitem")[0]
       expect(nov.textContent?.replace(/\s/g, " ")).toMatch(/Entradas R\$ 4\.500,00.*R\$ 1\.000,00 de recorrências.*Saídas R\$ 700,00.*R\$ 300,00 de recorrências/)
@@ -200,7 +205,7 @@ describe("F1 — visão geral", () => {
     it("shows each month's result in the list when the view is Entradas e saídas", async () => {
       serve()
       renderWithQuery(<OverviewView/>)
-      const block = await screen.findByRole("region", {name: "Projeção"})
+      const block = await loadProjection()
       await userEvent.click(await within(block).findByRole("button", {name: "Entradas e saídas"}))
       const list = await within(block).findByRole("list", {name: "Projeção mês a mês"})
       const rows = within(list).getAllByRole("listitem")

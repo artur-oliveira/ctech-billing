@@ -9,6 +9,7 @@
     "income": "No income category. Create one in Accounts."
   },
   "noAccount": "No account. Create one in Accounts.",
+  "suggestions": {"title": "History suggestions"},
   "common": {
     "description": "Description",
     "noDescription": "No description",
@@ -58,7 +59,10 @@
   },
   "delete": {
     "confirm": "Delete “{{name}}”? It leaves the list and the {{month}} result.",
-    "fallbackName": "this bill"
+    "fallbackName": "this bill",
+    "undoAvailable": "Entry canceled. You can undo it for a few seconds.",
+    "undone": "Cancellation undone.",
+    "undoFailed": "Could not undo the cancellation."
   },
   "conflict": "This bill changed. We refreshed the list; try again.",
   "settle": {
@@ -76,7 +80,11 @@
     },
     "diffCategory": "Difference category",
     "more": "{{amount}} more than {{bill}}",
-    "less": "{{amount}} less than {{bill}}"
+    "less": "{{amount}} less than {{bill}}",
+    "undoAvailable": "Payment recorded. You can undo it for a few seconds.",
+    "undoAction": "Undo",
+    "undone": "Payment undone.",
+    "undoFailed": "Could not undo it now. Try from the statement."
   },
   "new": {
     "competence": "Accrual date (P&L)",
@@ -114,6 +122,10 @@
   "rec": {
     "title": "Recurrences",
     "new": "New recurrence",
+    "amountMode": {"label":"How should the amount be posted?","fixed":"Fixed amount","expected":"Confirm each occurrence"},
+    "expectedAmount": "Expected average amount",
+    "expectedHint": "This is an estimate. Nothing is posted until you confirm the actual amount.",
+    "expectedShort": "estimate",
     "edit": "Edit recurrence",
     "empty": "No recurrences",
     "emptyHint": "Whatever repeats becomes a bill on its own.",
@@ -143,6 +155,8 @@
     "detail": "Occurrences of {{name}}",
     "upcoming": "Next",
     "history": "History",
+    "expectedPending": "Waiting for actual amount",
+    "confirmAmount": "Confirm in action inbox",
     "nothingToCome": "Nothing to come.",
     "noHistory": "No bill made yet.",
     "state": {
@@ -151,6 +165,7 @@
       "forecast": "Forecast",
       "overdue": "Overdue",
       "skipped": "Skipped",
+      "pending_confirmation": "Awaiting confirmation",
       "upcoming": "To be made",
       "posted": "On the {{month}} statement"
     },
@@ -166,6 +181,8 @@
     "endAndArchive": "End and archive",
     "endCancels_one": "The open bill after the end ({{dates}}) will be canceled.",
     "endCancels_other": "The {{count}} open bills after the end ({{dates}}) will be canceled.",
+    "endCancelsPending_one": "The pending confirmation after the end ({{dates}}) will be discarded.",
+    "endCancelsPending_other": "The {{count}} pending confirmations after the end ({{dates}}) will be discarded.",
     "saveAndCancel": "Save and cancel",
     "endIncomplete": {
       "archived": "The recurrence was ended, but some bills were not canceled. Try again.",
@@ -188,6 +205,8 @@
   "editor": {
     "repeat": "Repeat",
     "kind": {
+      "daily": "Every day",
+      "business_days": "Every business day",
       "day_of_month": "Fixed day of the month",
       "workday_of_month": "Business day of the month",
       "nth_weekday_of_month": "Weekday of the month",
@@ -212,6 +231,8 @@
     "remove": "Remove {{date}}"
   },
   "rule": {
+    "daily": "Every day",
+    "businessDays": "Every business day",
     "dayOfMonth": "Day {{day}} of every month",
     "workday": "{{ord}} business day of the month",
     "lastWorkday": "Last business day of the month",

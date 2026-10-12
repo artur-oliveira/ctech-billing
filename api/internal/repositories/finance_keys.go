@@ -48,6 +48,10 @@ func OccurrenceSK(recurrenceID string, nominal brcal.Date) string {
 	return "OCCURRENCE#" + recurrenceID + "#" + nominal.String()
 }
 
+func PendingOccurrenceSK(recurrenceID string, nominal brcal.Date) string {
+	return "PENDING#" + recurrenceID + "#" + nominal.String()
+}
+
 // OpenPK is the open-index partition: the space and the direction. It begins
 // with the space key like every finance tenant partition.
 func OpenPK(sp space.ResolvedSpace, dir finance.Direction) string {

@@ -62,6 +62,18 @@ type DayOfMonth struct {
 	Day int // 1..31
 }
 
+type Daily struct{}
+
+func (Daily) kind() string { return "daily" }
+
+func (Daily) Includes(brcal.Date) bool { return true }
+
+type BusinessDays struct{}
+
+func (BusinessDays) kind() string { return "business_days" }
+
+func (BusinessDays) Includes(d brcal.Date) bool { return brcal.IsBusinessDay(d) }
+
 func (e DayOfMonth) kind() string { return "day_of_month" }
 
 func (e DayOfMonth) Includes(d brcal.Date) bool {

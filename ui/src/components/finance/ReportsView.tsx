@@ -18,9 +18,9 @@ import {money, signedMoney} from "@/lib/format"
 import {currentLocale, t as tr} from "@/lib/i18n"
 import {accountName} from "@/lib/finance/accountName"
 
-export type ReportView = "dre" | "cash" | "cards"
+export type ReportView = "dre" | "cash" | "cards" | "review"
 
-const TABS: ReportView[] = ["dre", "cash", "cards"]
+const TABS: ReportView[] = ["dre", "cash", "cards", "review"]
 
 /** The subtotal a DRE reader expects after each of these groups, cumulative. */
 const SUBTOTAL_AFTER: Partial<Record<DREGroup, "netRevenue" | "grossProfit" | "operatingResult">> = {
@@ -51,6 +51,9 @@ export function ReportsView({view: initial = "dre"}: {view?: ReportView}) {
   const ctx = useFinanceCtx()
   const [view, setView] = useState<ReportView>(initial)
   const [preset, setPreset] = useState<PresetId>("this_year")
+  const latestComplete = shiftMonth(todayIso().slice(0, 7), -1)
+  const [reviewMonth, setReviewMonth] = useState(latestComplete)
+  const selectedReviewMonth = reviewMonth > latestComplete ? latestComplete : reviewMonth
   const {from, to} = monthRange(preset, todayIso())
   const accounts = useQuery({queryKey: financeKeys.accounts(ctx.mode, ctx.space), queryFn: () => listAccounts(ctx)})
   const names = accounts.data?.data ?? []
@@ -63,8 +66,8 @@ export function ReportsView({view: initial = "dre"}: {view?: ReportView}) {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div role="tablist" aria-label={t("finance.reports.report")} className="flex max-w-full items-center gap-0.5 rounded-lg border border-border bg-surface p-0.5">
+      <div className="space-y-3">
+        <div role="tablist" aria-label={t("finance.reports.report")} className="flex w-max max-w-full min-w-0 items-center gap-0.5 overflow-x-auto whitespace-nowrap rounded-lg border border-border bg-surface p-0.5 [scrollbar-width:none]">
           {TABS.map(tab => (
             <button
               key={tab}
@@ -75,20 +78,29 @@ export function ReportsView({view: initial = "dre"}: {view?: ReportView}) {
               aria-selected={view === tab}
               aria-controls="report-panel"
               onClick={() => choose(tab)}
-              className={`${segmentHit} rounded-md px-3 py-1 text-sm transition-colors ${view === tab ? "bg-background font-medium text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+              className={`${segmentHit} shrink-0 rounded-md px-3 py-1 text-sm transition-colors ${view === tab ? "bg-background font-medium text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
             >
               {t(`finance.reports.tabs.${tab}`)}
             </button>
           ))}
         </div>
-        <Field label={t("finance.reports.period")} htmlFor="rp-period">
-          <Select {...selectCopy()} id="rp-period" aria-label={t("finance.reports.period")} value={preset} onValueChange={v => setPreset(v as PresetId)} className="w-48" options={PRESETS.map(p => ({value: p.value, label: t(`finance.presets.${p.value}`)}))}/>
-        </Field>
+        <div className="flex min-h-10 justify-end">
+          {view === "review" ? (
+            <Field label={t("finance.reports.review.month")} htmlFor="review-month">
+              <input id="review-month" type="month" lang={currentLocale()} max={latestComplete} value={selectedReviewMonth} onChange={event => setReviewMonth(event.target.value)} className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"/>
+            </Field>
+          ) : (
+            <Field label={t("finance.reports.period")} htmlFor="rp-period">
+              <Select {...selectCopy()} id="rp-period" aria-label={t("finance.reports.period")} value={preset} onValueChange={v => setPreset(v as PresetId)} className="w-48" options={PRESETS.map(p => ({value: p.value, label: t(`finance.presets.${p.value}`)}))}/>
+            </Field>
+          )}
+        </div>
       </div>
       <div role="tabpanel" id="report-panel" aria-labelledby={`tab-${view}`}>
         {view === "dre" ? <DRETable from={from} to={to} accounts={names}/>
           : view === "cash" ? <CashTable from={from} to={to} accounts={names}/>
-            : <CardSpendingView key={`${ctx.mode}-${ctx.space}`} from={from} to={to} accounts={names}/>}
+            : view === "cards" ? <CardSpendingView key={`${ctx.mode}-${ctx.space}`} from={from} to={to} accounts={names}/>
+              : <MonthlyReview month={selectedReviewMonth}/>}
       </div>
     </div>
   )
@@ -101,6 +113,45 @@ function Loading() {
 function Empty() {
   const {t} = useTranslation()
   return <p className="py-6 text-center text-sm text-muted-foreground">{t("finance.reports.empty")}</p>
+}
+
+function shiftMonth(month: string, offset: number): string {
+  const [year, number] = month.split("-").map(Number)
+  const index = year * 12 + number - 1 + offset
+  return `${Math.floor(index / 12)}-${String(index % 12 + 1).padStart(2, "0")}`
+}
+
+function MonthlyReview({month}: {month: string}) {
+  const {t} = useTranslation()
+  const ctx = useFinanceCtx()
+  const from = shiftMonth(month, -1)
+  const dre = useQuery({queryKey: financeKeys.dre(ctx.mode, ctx.space, from, month), queryFn: () => getDRE(ctx, from, month)})
+  const cash = useQuery({queryKey: financeKeys.cashFlow(ctx.mode, ctx.space, from, month), queryFn: () => getCashFlow(ctx, from, month)})
+  const cards = useQuery({queryKey: financeKeys.cardSpending(ctx.mode, ctx.space, from, month, ""), queryFn: () => getCardSpending(ctx, from, month)})
+  const failed = dre.error ?? cash.error ?? cards.error
+  const retry = () => { void dre.refetch(); void cash.refetch(); void cards.refetch() }
+  const resultAt = (key: string) => { const i = dre.data?.months.indexOf(key) ?? -1; return i < 0 ? 0 : dre.data?.result[i] ?? 0 }
+  const cashAt = (key: string) => cash.data?.months.find(row => row.month === key)
+  const cardAt = (key: string) => { const i = cards.data?.months.indexOf(key) ?? -1; return i < 0 ? 0 : cards.data?.by_month[i] ?? 0 }
+  const previous = from
+  const metrics = [
+    {key: "result", current: resultAt(month), prior: resultAt(previous)},
+    {key: "in", current: cashAt(month)?.in ?? 0, prior: cashAt(previous)?.in ?? 0},
+    {key: "out", current: cashAt(month)?.out ?? 0, prior: cashAt(previous)?.out ?? 0},
+    {key: "cards", current: cardAt(month), prior: cardAt(previous)},
+  ]
+  return <section className="space-y-4" aria-label={t("finance.reports.review.title")}>
+    <header className="space-y-1"><h2 className="text-base font-medium">{t("finance.reports.review.title")}</h2><p className="text-sm text-muted-foreground">{t("finance.reports.review.description")}</p></header>
+    {failed ? <ErrorBlock error={failed} onRetry={retry}/> : dre.isLoading || cash.isLoading || cards.isLoading ? <Loading/> : (
+      <div className="grid gap-3 sm:grid-cols-2">
+        {metrics.map(metric => <article key={metric.key} className="rounded-lg border border-border p-4">
+          <h3 className="text-sm text-muted-foreground">{t(`finance.reports.review.${metric.key}`)}</h3>
+          <p className="mt-2 text-lg font-semibold tabular-nums">{money(metric.current)}</p>
+          <p className="mt-1 text-xs text-muted-foreground">{t("finance.reports.review.previous", {month: monthShort(previous), amount: money(metric.prior), delta: signedMoney(metric.current - metric.prior)})}</p>
+        </article>)}
+      </div>
+    )}
+  </section>
 }
 
 /** Wide tables scroll inside their box on a phone; the label column stays put. */

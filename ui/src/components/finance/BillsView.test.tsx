@@ -345,4 +345,19 @@ describe("Agenda — a bill's secondary actions", () => {
     expect(await within(li).findByText(/Excluir “Compra do mês”\?/)).toBeInTheDocument()
     expect(sent.some(r => r.url.endsWith("/cancel"))).toBe(false)
   })
+
+  it("offers a short undo after canceling and restores the bill on demand", async () => {
+    serveFinanceMock()
+    const cancel = vi.spyOn(finance, "cancelBill").mockResolvedValue(bill({status: "canceled"}))
+    const restore = vi.spyOn(finance, "restoreCancelledBill").mockResolvedValue(bill({status: "forecast"}))
+    renderWithQuery(<BillsView/> )
+    const li = (await screen.findByText("Compra do mês")).closest("li")!
+    await userEvent.click(within(li).getByRole("button", {name: "Mais ações: Compra do mês"}))
+    await userEvent.click((await screen.findAllByRole("menuitem"))[1])
+    await userEvent.click(within(li).getAllByRole("button", {name: "Excluir"})[1])
+    await waitFor(() => expect(cancel).toHaveBeenCalledOnce())
+    const toastOptions = toast.success.mock.calls.at(-1)?.[1] as {action: {onClick: () => void}}
+    await act(async () => toastOptions.action.onClick())
+    await waitFor(() => expect(restore).toHaveBeenCalledWith(expect.anything(), "b-mercado", expect.any(String)))
+  })
 })

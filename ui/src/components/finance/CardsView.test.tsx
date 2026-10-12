@@ -74,6 +74,22 @@ describe("F5 — cartões", () => {
     const row = (await screen.findByText("Geladeira")).closest("li") as HTMLElement
     expect(within(row).getByText(/1\/3/)).toBeInTheDocument()
   })
+  it("loads recurring installment estimates with the statement and keeps them outside its total", async () => {
+    serve(ALL)
+    const forecast = vi.spyOn(finance, "getCardStatementForecast").mockResolvedValue({data: [
+      {recurrence_id: "r-food", description: "Mercado mensal", nominal: "2026-10-20", installment: 2, of: 3, amount: 10000},
+      {recurrence_id: "r-coffee", description: "Café", nominal: "2026-10-21", installment: 1, of: 1, amount: 2800, pending_confirmation: true},
+    ], has_more: false})
+    renderWithQuery(<CardsView/>)
+    const block = await screen.findByRole("region", {name: "Fatura Mar/26"})
+    await waitFor(() => expect(forecast).toHaveBeenCalledWith(expect.anything(), "visa", "2026-03"))
+    const forecastBlock = within(block).getByRole("region", {name: "Previsão de recorrências"})
+    expect(await within(forecastBlock).findByText(/Mercado mensal/)).toBeInTheDocument()
+    expect(within(forecastBlock).getByText(/Café.*aguardando confirmação/)).toBeInTheDocument()
+    expect(within(forecastBlock).getByText(/R\$\s*100,00/)).toBeInTheDocument()
+    expect(within(forecastBlock).getByText("Estimativas não fazem parte do total da fatura até serem lançadas.")).toBeInTheDocument()
+    expect(forecast).toHaveBeenCalledWith(expect.anything(), "visa", "2026-03")
+  })
   // Spec § 6.6.
   it("opens on the open statement with three before and three after, selected", async () => {
     serve(ALL)

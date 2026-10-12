@@ -8,6 +8,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 
+	"gopkg.aoctech.app/billing/api/internal/domain/billing"
 	"gopkg.aoctech.app/billing/api/internal/domain/finance"
 	"gopkg.aoctech.app/billing/api/internal/space"
 )
@@ -43,6 +44,39 @@ func (r *CardRepository) PostOccurrence(ctx context.Context, sp space.ResolvedSp
 		return false, Purchase{}, err
 	}
 	return true, p, nil
+}
+
+func (r *CardRepository) ConfirmExpectedOccurrence(ctx context.Context, sp space.ResolvedSpace, pending PendingOccurrence, amount billing.Cents, meta PostMeta, now time.Time) (bool, Purchase, error) {
+	if pending.CardID == "" || pending.State != "pending_confirmation" {
+		return false, Purchase{}, ErrOccurrenceAlreadyHandled
+	}
+	meta.IdempotencyKey = idempotentID(sp, "expected-confirmation", meta.IdempotencyKey)
+	ref := finance.OccurrenceRef(pending.RecurrenceID, pending.Nominal)
+	p := Purchase{Date: pending.Nominal, Description: pending.Description, CategoryID: pending.CategoryID, Total: amount, Installments: make([]finance.Installment, pending.Installments), RecurrenceID: pending.RecurrenceID, OriginRef: ref}
+	created := false
+	result, err := r.addPurchase(ctx, sp, pending.CardID, p, meta, now, func(p Purchase) ([]types.TransactWriteItem, error) {
+		lock, err := Encode(occurrenceLockRow{keys: newKeys(sp.PK(), OccurrenceSK(pending.RecurrenceID, pending.Nominal), RetentionPermanent, now), PurchaseID: p.ID, CardID: p.CardID, Statement: p.Installments[0].Statement.String(), Amount: int64(p.Total), ExpectedAmount: int64(pending.Expected)})
+		if err != nil {
+			return nil, err
+		}
+		return []types.TransactWriteItem{r.bills.bills.BuildPutTxItemIfAbsent(lock), r.bills.expectedRecurrenceUnchanged(sp, pending), pendingDeleteTxItem(r.bills.recs, sp, pending.RecurrenceID, pending.Nominal)}, nil
+	})
+	var failed errExtraFailed
+	if errors.As(err, &failed) {
+		switch failed.index {
+		case 0:
+			return false, Purchase{}, ErrOccurrenceAlreadyHandled
+		case 1:
+			return false, Purchase{}, ErrRecurrenceChanged
+		default:
+			return false, Purchase{}, ErrOccurrenceAlreadyHandled
+		}
+	}
+	if err != nil {
+		return false, Purchase{}, err
+	}
+	created = true
+	return created, result, nil
 }
 
 // cardRecurrenceUnchanged ties a card posting to the recurrence the job read:

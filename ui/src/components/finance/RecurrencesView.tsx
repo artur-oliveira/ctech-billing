@@ -39,7 +39,7 @@ const adjustOptions = (): {value: Adjust; label: string}[] => [
   {value: "roll_forward", label: t("bills.rec.adjust.roll_forward")},
   {value: "none", label: t("bills.rec.adjust.none")},
 ]
-const touched = (c: FinanceCtx) => [financeKeys.recurrences(c.mode, c.space), [...financeKeys.all(c.mode, c.space), "projection"]]
+const touched = (c: FinanceCtx) => [financeKeys.recurrences(c.mode, c.space), [...financeKeys.all(c.mode, c.space), "projection"], financeKeys.cardForecasts(c.mode, c.space)]
 // Ending and archiving also cancels bills and reverses their recognition (UX
 // batch 5): Agenda, balances, statements and reports all move, so the whole space.
 const touchedByEdit = (c: FinanceCtx, _: unknown, body: RecurrencePatch) =>
@@ -66,7 +66,10 @@ export function RecurrencesView({focus}: {focus?: string} = {}) {
   const shown = panel?.mode === "new" && !can("finance.write") ? null : panel
   const recs = useQuery({queryKey: financeKeys.recurrences(ctx.mode, ctx.space), queryFn: () => listRecurrences(ctx)})
   const accounts = useQuery({queryKey: financeKeys.accounts(ctx.mode, ctx.space), queryFn: () => listAccounts(ctx)})
-  const cards = useQuery({queryKey: financeKeys.cards(ctx.mode, ctx.space), queryFn: () => listCards(ctx)})
+  const cards = useQuery({
+    queryKey: financeKeys.cards(ctx.mode, ctx.space), queryFn: () => listCards(ctx),
+    enabled: panel !== null || (recs.data?.data ?? []).some(r => !!r.card_id),
+  })
   const cardList = cards.data?.data ?? []
   const names = new Map((accounts.data?.data ?? []).map(a => [a.id, accountName(a)]))
   const active = (recs.data?.data ?? []).filter(r => !r.archived)
@@ -138,7 +141,7 @@ function RecurrenceRow({rec, account, card, focused = false, onEdit}: {rec: Recu
       </>}
       aside={<span className="text-xs text-muted-foreground">{t(`bills.direction.${rec.direction}`)}</span>}
       asideOnPhone={false}
-      amount={<span data-numeric>{money(rec.amount)}</span>}
+      amount={<span data-numeric>{money(rec.amount)}{rec.amount_mode === "expected" ? ` · ${t("bills.rec.expectedShort")}` : ""}</span>}
       actions={
         <Button size="sm" variant="ghost" aria-expanded={open} aria-controls={detailId} onClick={() => setOpen(v => !v)}>
           {t("bills.rec.view")}
@@ -181,9 +184,12 @@ function RecurrenceDetail({id, rec}: {id: string; rec: Recurrence}) {
   const name = rec.description || t("bills.common.noDescription")
   const made = (o: NonNullable<typeof q.data>["history"][number]): TimelineEntry => ({
     key: o.bill_id ?? o.purchase_id ?? o.nominal, nominal: o.nominal, due: o.due, kind: o.state, amount: money(o.amount),
-    state: o.state === "posted" && o.statement_month ? t("bills.rec.state.posted", {month: monthShort(o.statement_month)})
+    state: o.state === "pending_confirmation" ? t("bills.rec.expectedPending")
+      : o.state === "posted" && o.statement_month ? t("bills.rec.state.posted", {month: monthShort(o.statement_month)})
       : o.state === "paid" && o.paid_date ? t("bills.rec.state.paidOn", {date: shortDate(o.paid_date)}) : t(`bills.rec.state.${o.state}`),
-    action: o.state === "overdue" && o.bill_id
+    action: o.state === "pending_confirmation"
+      ? <Link href="/finance/inbox" className="inline-flex items-center text-sm text-foreground underline underline-offset-4 hover:text-brand-700 touch-target">{t("bills.rec.confirmAmount")}</Link>
+      : o.state === "overdue" && o.bill_id
       ? <Link href={`/finance/bills?direction=${rec.direction}&bill=${encodeURIComponent(o.bill_id)}`} className="inline-flex items-center text-sm text-foreground underline underline-offset-4 hover:text-brand-700 touch-target">{t(`bills.rec.openBill.${rec.direction}`)}</Link>
       : undefined,
   })
@@ -234,12 +240,14 @@ function EndCancels({rec, end}: {rec: Recurrence; end: string}) {
   const q = useQuery({queryKey: financeKeys.recurrenceOccurrences(ctx.mode, ctx.space, rec.id), queryFn: () => getRecurrenceOccurrences(ctx, rec.id)})
   const after = (q.data?.history ?? []).filter(o => o.nominal > end)
   const canceled = after.filter(o => o.state === "forecast" || o.state === "overdue")
+  const pending = after.filter(o => o.state === "pending_confirmation")
   const paid = after.filter(o => o.state === "paid")
-  if (canceled.length === 0 && paid.length === 0) return null
+  if (canceled.length === 0 && pending.length === 0 && paid.length === 0) return null
   const list = (xs: typeof after) => new Intl.ListFormat(currentLocale(), {type: "conjunction"}).format(xs.map(o => dayMonth(o.due)))
   return (
     <div className="w-full space-y-1">
       {canceled.length > 0 && <p className="text-foreground">{t("bills.rec.endCancels", {count: canceled.length, dates: list(canceled)})}</p>}
+      {pending.length > 0 && <p className="text-foreground">{t("bills.rec.endCancelsPending", {count: pending.length, dates: list(pending)})}</p>}
       {paid.length > 0 && <p className="text-muted-foreground">{t("bills.rec.endKeepsPaid", {count: paid.length, dates: list(paid)})}</p>}
     </div>
   )
@@ -289,6 +297,7 @@ function RecurrencePanel({editing, accounts, cards, onDone}: {editing?: Recurren
   const [direction, setDirection] = useState<Direction>(editing?.direction ?? "payable")
   const [description, setDescription] = useState(editing?.description ?? "")
   const [amountText, setAmountText] = useState(editing ? formatMoneyInput(editing.amount) : "")
+  const [amountMode, setAmountMode] = useState<"fixed" | "expected">(editing?.amount_mode ?? "fixed")
   const [category, setCategory] = useState(editing?.category_id ?? "")
   // The account or the card it is paid with (spec D1): one select, both kinds.
   const [target, setTarget] = useState(editing?.card_id || editing?.account_id || "")
@@ -359,7 +368,7 @@ function RecurrencePanel({editing, accounts, cards, onDone}: {editing?: Recurren
   const pending = create.isPending || patch.isPending
   const ready = amount !== null && category !== "" && target !== "" && errors.length === 0 && !pending
   // A card's statement is what gets paid: no auto-settle on a card.
-  const showAuto = !isCard && (can("finance.settle") || (editing?.auto_settle ?? false))
+  const showAuto = amountMode === "fixed" && !isCard && (can("finance.settle") || (editing?.auto_settle ?? false))
 
   function submit(e: React.FormEvent) {
     e.preventDefault()
@@ -367,7 +376,7 @@ function RecurrencePanel({editing, accounts, cards, onDone}: {editing?: Recurren
     fe.reset()
     if (!editing) {
       create.mutate({
-        direction, amount: amount!, category_id: category, description: description || undefined,
+        direction, amount: amount!, amount_mode: amountMode, category_id: category, description: description || undefined,
         expression: toExpression(model), start, end: end || undefined, business_day_adjust: adjust,
         ...(isCard ? {card_id: target, installments} : {account_id: target, auto_settle: autoSettle || undefined}),
       })
@@ -429,7 +438,8 @@ function RecurrencePanel({editing, accounts, cards, onDone}: {editing?: Recurren
       <form className="space-y-4" onSubmit={submit}>
         <div className="grid items-start gap-x-4 gap-y-3 sm:grid-cols-2 [&>*]:min-w-0">
           <Field label={t("bills.common.description")} htmlFor="rc-desc" error={fe.of("description")} className="sm:col-span-2"><Input id="rc-desc" maxLength={limits.text.description} value={description} {...fe.props("description", "rc-desc")} onChange={e => { setDescription(e.target.value); fe.clear("description") }}/></Field>
-          <Field label={t("bills.common.amount")} htmlFor="rc-amount" required error={fe.of("amount")}><Input id="rc-amount" inputMode="decimal" placeholder={moneyPlaceholder()} value={amountText} {...fe.props("amount", "rc-amount")} onChange={e => { setAmountText(maskMoney(e.target.value)); fe.clear("amount") }}/></Field>
+          {!editing && <Segmented label={t("bills.rec.amountMode.label")} value={amountMode} onValueChange={v => setAmountMode(v as "fixed" | "expected")} options={(["fixed","expected"] as const).map(v => ({value:v,label:t(`bills.rec.amountMode.${v}`)}))}/>}
+          <Field label={t(amountMode === "expected" ? "bills.rec.expectedAmount" : "bills.common.amount")} htmlFor="rc-amount" required error={fe.of("amount")} hint={amountMode === "expected" ? t("bills.rec.expectedHint") : undefined}><Input id="rc-amount" inputMode="decimal" placeholder={moneyPlaceholder()} value={amountText} {...fe.props("amount", "rc-amount")} onChange={e => { setAmountText(maskMoney(e.target.value)); fe.clear("amount") }}/></Field>
           <Field label={t("bills.common.category")} htmlFor="rc-cat" required error={fe.of("category_id")} hint={cats.length === 0 ? t(`bills.noCategory.${direction === "payable" ? "expense" : "income"}`) : undefined}>
             <Select {...selectCopy()} id="rc-cat" value={category} {...fe.props("category_id", "rc-cat")} onValueChange={v => { setCategory(v); fe.clear("category_id") }} options={cats.map(a => ({value: a.id, label: accountName(a)}))}/>
           </Field>

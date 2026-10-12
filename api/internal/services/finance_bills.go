@@ -39,6 +39,12 @@ func (s *FinanceBills) Create(ctx context.Context, sp space.ResolvedSpace, b fin
 	return s.repo.Create(ctx, sp, b, m, now)
 }
 
+func (s *FinanceBills) ConfirmExpected(ctx context.Context, sp space.ResolvedSpace, pending repositories.PendingOccurrence, amount billing.Cents, actor, requestID, idempotencyKey string, now time.Time) (bool, finance.Bill, error) {
+	m := meta("recurrence_confirmation", actor, requestID)
+	m.IdempotencyKey = idempotencyKey
+	return s.repo.ConfirmExpectedOccurrence(ctx, sp, pending, amount, m, now)
+}
+
 func (s *FinanceBills) Get(ctx context.Context, sp space.ResolvedSpace, id string) (*finance.Bill, error) {
 	return s.repo.Get(ctx, sp, id)
 }
@@ -71,6 +77,11 @@ func (s *FinanceBills) Settle(ctx context.Context, sp space.ResolvedSpace, id st
 
 func (s *FinanceBills) Cancel(ctx context.Context, sp space.ResolvedSpace, id string, actor, requestID string, now time.Time) (finance.Bill, error) {
 	return s.repo.Cancel(ctx, sp, id, brcal.Date{}, meta("manual", actor, requestID), now)
+}
+
+// RestoreCancelled reverses a bill's cancellation without erasing its ledger history.
+func (s *FinanceBills) RestoreCancelled(ctx context.Context, sp space.ResolvedSpace, id string, actor, requestID string, now time.Time) (finance.Bill, error) {
+	return s.repo.RestoreCancelled(ctx, sp, id, brcal.Date{}, meta("restore_cancel", actor, requestID), now)
 }
 
 // Unsettle undoes a bill's payment, dated today, and returns it to the open list.
