@@ -1,6 +1,6 @@
 # Finance recurring expenses with amount confirmation
 
-Status: implementation plan. Daily and business-day schedules are implemented; pending confirmation is not yet implemented.
+Status: implemented for daily/business-day schedules and expected-amount occurrences. This document records the shipped contract and the remaining finance UX work.
 
 ## Goal
 
@@ -33,12 +33,12 @@ Support expected recurring expenses whose final amount varies. An occurrence is 
 
 The following requests share this PR and reuse the same finance-space, authorization, idempotency, and query-cache boundaries.
 
-1. **Action inbox (in progress).** The UI aggregates bounded open-bill previews, recurrence problems, and import summaries in one additional read; links lead to existing editors. Pending recurrence confirmations remain blocked on the occurrence API.
-2. **Variable recurrences (planned).** Persist `amount_mode=expected`; the scheduler writes a pending occurrence, never a bill or card purchase. Confirm/skip are atomic and idempotent; projection labels estimates separately from booked totals.
+1. **Action inbox (implemented).** The UI aggregates bounded open-bill previews, recurrence problems, import summaries, and expected-amount occurrences; links lead to existing editors and pending occurrences can be confirmed or skipped.
+2. **Variable recurrences (implemented).** Persist `amount_mode=expected`; the scheduler writes a pending occurrence, never a bill or card purchase. Confirm/skip are atomic and idempotent; projection and card forecast label estimates separately from booked totals. Ending or archiving a rule discards affected pending occurrences, and the job guards against materialising beyond the end date.
 3. **Card forecast (implemented in this PR).** A card-scoped server read computes recurrence estimates for a statement; the UI keeps estimates separate from actual items and loads them only when requested.
-4. **Quick entry (partially implemented).** Suggestions use already-loaded bill/purchase history, prefix matching is case-insensitive, and selection fills amount/category/account. Next: keyboard focus/submit shortcuts, preserving accessible form controls.
-5. **Configurable alerts (planned).** Persist per-space lead times and channels; job delivery is deduplicated by (space, event, date, channel). Start with in-app/email notifications; browser permission is strictly optional. Requires a trusted user-email source before enabling email delivery.
+4. **Quick entry (partially implemented).** The persistent create action opens the relevant bill or purchase form. Suggestions use already-loaded bill/purchase history, prefix matching is case-insensitive, and selection fills amount/category/account. Keyboard focus/submit shortcuts remain a possible follow-up.
+5. **Configurable alerts (not implemented).** The inbox provides in-app visibility but has no persisted alert preferences or email delivery. Before enabling email, add a trusted/verified recipient source and a bounded, deduplicated schedule path; do not accept arbitrary addresses or scan finance partitions.
 6. **Monthly review (implemented in this PR).** The focused summary compares the selected complete month with the prior complete month; by default it opens the latest closed month to avoid comparing partial periods.
-7. **Undo (partially implemented).** A successful bill settlement offers a 10-second undo using the existing unsettle route. Add transactional undo tokens for cancellations, refunds, and reversals before exposing those actions as reversible.
+7. **Undo (partially implemented).** A successful bill settlement offers a 10-second undo using the existing unsettle route. Cancellations, refunds, and reversals remain auditable compensating actions; undo affordances for them need explicit server-side transactional semantics.
 
-Do not claim the expanded set is complete until pending occurrences and card forecasts have backend tests, alerts are persisted and deduplicated, and every destructive undo has a server-side compensating action.
+The implemented recurrence workflow and card forecast have backend tests. Do not claim the expanded set is complete until configurable alerts are safely persisted/delivered and any additional destructive undo has server-side transactional semantics.
