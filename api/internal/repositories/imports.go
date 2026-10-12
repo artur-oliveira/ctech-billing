@@ -301,7 +301,7 @@ func (r *ImportRepository) Import(ctx context.Context, sp space.ResolvedSpace, a
 	if err := sp.Require(space.Import); err != nil {
 		return Import{}, err
 	}
-	if err := r.ledger.activeCash(ctx, sp, accountID); err != nil {
+	if err := r.ledger.activeManualCash(ctx, sp, accountID); err != nil {
 		return Import{}, err
 	}
 	imp := Import{ID: id.New(), AccountID: accountID, Format: format, CreatedAt: now.UTC(), RejectedCount: len(parsed.Rejected)}
@@ -1081,7 +1081,7 @@ func (r *ImportRepository) PutMapping(ctx context.Context, sp space.ResolvedSpac
 	if err := m.Validate(); err != nil {
 		return err
 	}
-	if err := r.ledger.activeCash(ctx, sp, accountID); err != nil {
+	if err := r.ledger.activeManualCash(ctx, sp, accountID); err != nil {
 		return err
 	}
 	item, err := Encode(mappingItem{

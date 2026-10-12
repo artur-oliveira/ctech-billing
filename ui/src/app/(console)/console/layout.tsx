@@ -84,6 +84,9 @@ export default function ConsoleLayout({children}: LayoutProps<"/console">) {
   // invitation, the apply form and the status band read it.
   const selection = selected && scope ? {scope, organization: selected} : null
   const onApply = pathname.startsWith("/console/apply")
+  // Bank connections need no tenant (BYOK spec § 3.1): an organization may
+  // connect for its statement before it bills through CTech.
+  const onConnections = pathname.startsWith("/console/connections")
   const reviewer = selected?.can_review_applications === true
 
   // Owner or admin of no organization: nothing here is theirs; Finanças is.
@@ -194,7 +197,9 @@ export default function ConsoleLayout({children}: LayoutProps<"/console">) {
           // No tenant in this mode is a beginning: the invitation, or where
           // the application stands. /console/apply runs without a tenant.
           <MerchantSelectionProvider value={selection}>
-            {onApply ? children : !active ? <MerchantInvitation/> : (
+            {onApply ? children : onConnections ? (
+              <ConsoleScopeProvider value={selection.scope}>{children}</ConsoleScopeProvider>
+            ) : !active ? <MerchantInvitation/> : (
               <ConsoleScopeProvider value={selection.scope}>{children}</ConsoleScopeProvider>
             )}
           </MerchantSelectionProvider>

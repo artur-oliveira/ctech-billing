@@ -168,6 +168,8 @@ locals {
     alerts_topic_arn = local.alerts_topic_arn
 
     invoice_documents_bucket = aws_s3_bucket.documents.bucket
+
+    byok_outbound_function = aws_lambda_function.byok_outbound.function_name
   }
 
   bootstrap_sh = var.os_family == "alpine" ? templatefile("${path.module}/../assets/bootstrap-alpine.sh.tftpl", local.bootstrap_vars) : templatefile("${path.module}/../assets/bootstrap.sh.tftpl", local.bootstrap_vars)

@@ -6,6 +6,7 @@ import {usePathname, useRouter} from "next/navigation"
 import {useTranslation} from "react-i18next"
 
 import {useSpace} from "@/lib/console/useSpace"
+import {useFinanceSpaces} from "@/lib/finance/useFinanceSpaces"
 import {selectCopy} from "@/lib/selectCopy"
 
 // "Resumo" (not "Visão geral") "Visão geral": the console's own nav already has a "Visão geral"
@@ -21,7 +22,19 @@ export const FINANCE_SECTIONS = [
   {href: "/finance/accounts", key: "accounts"},
   // The plan is the person's (plans spec D2): listed in Pessoal only.
   {href: "/finance/plans", key: "plan", personalOnly: true},
+  // Bank connections (BYOK spec 2026-10-11 § 11): an organization's, for
+  // whoever may configure its space (owner, admin).
+  {href: "/finance/settings/connections", key: "connections", organizationConfigure: true},
 ] as const
+
+/** The sections this person sees in this space. */
+export function visibleFinanceSections(personal: boolean, canConfigure: boolean) {
+  return FINANCE_SECTIONS.filter(s => {
+    if ("personalOnly" in s) return personal
+    if ("organizationConfigure" in s) return !personal && canConfigure
+    return true
+  })
+}
 
 /** The section a path belongs to; Resumo when none matches. */
 export function currentFinanceSection(pathname: string): string {
@@ -34,13 +47,13 @@ export function currentFinanceSection(pathname: string): string {
  * same menu twice), a picker on a tablet. On a phone neither: FinanceBottomNav
  * is the navigation there, and this renders nothing visible under `md`.
  */
-export function FinanceNav() {
+export function FinanceNav({canConfigure = false}: {canConfigure?: boolean}) {
   const {t} = useTranslation()
   const pathname = usePathname()
   const router = useRouter()
   const current = currentFinanceSection(pathname)
   const personal = useSpace().kind === "personal"
-  const sections = FINANCE_SECTIONS.filter(s => personal || !("personalOnly" in s))
+  const sections = visibleFinanceSections(personal, canConfigure)
   return (
     <>
       <div className="hidden md:block lg:hidden">
@@ -68,4 +81,10 @@ export function FinanceNav() {
       </nav>
     </>
   )
+}
+
+/** FinanceNav with the space's own verbs (the shell's: the spaces query is cached). */
+export function SpaceFinanceNav() {
+  const {can} = useFinanceSpaces()
+  return <FinanceNav canConfigure={can("finance.configure")}/>
 }

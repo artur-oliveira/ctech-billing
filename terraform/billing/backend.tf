@@ -6,6 +6,11 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 6.60"
     }
+    # Zips the BYOK Lambdas' placeholder (byok.tf); CI ships the real code.
+    archive = {
+      source  = "hashicorp/archive"
+      version = "~> 2.7"
+    }
   }
 
   # One Terraform workspace per environment (dev/stage/prod). The S3 backend

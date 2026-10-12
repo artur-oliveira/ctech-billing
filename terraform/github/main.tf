@@ -106,6 +106,14 @@ resource "aws_iam_role_policy_attachment" "infra_admin" {
 # ── api ──────────────────────────────────────────────────────────────────────
 # Upload the artifact, find the instances, tell them to run /opt/app/deploy.sh.
 data "aws_iam_policy_document" "api" {
+  # BYOK Lambdas (spec 2026-10-11): code only. Their configuration, role and
+  # environment are Terraform's and never CI's.
+  statement {
+    sid       = "ShipByokLambdaCode"
+    actions   = ["lambda:UpdateFunctionCode", "lambda:GetFunction"]
+    resources = [for env in var.environments : "arn:aws:lambda:${var.aws_region}:${var.aws_account}:function:${env}-ctech-billing-byok-*"]
+  }
+
   statement {
     sid       = "ReadDeploymentConfig"
     actions   = ["ssm:GetParameter", "ssm:GetParameters"]

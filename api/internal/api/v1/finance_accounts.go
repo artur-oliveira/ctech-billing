@@ -2,11 +2,13 @@ package v1
 
 import (
 	"strings"
+	"time"
 
 	"github.com/gofiber/fiber/v3"
 
 	"gopkg.aoctech.app/api-commons/patch"
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
+	"gopkg.aoctech.app/billing/api/internal/domain/brcal"
 	"gopkg.aoctech.app/billing/api/internal/domain/finance"
 	"gopkg.aoctech.app/billing/api/internal/domain/id"
 	"gopkg.aoctech.app/billing/api/internal/limits"
@@ -24,6 +26,21 @@ type accountDTO struct {
 	SystemKey string        `json:"system_key,omitempty"`
 	Archived  bool          `json:"archived"`
 	Balance   billing.Cents `json:"balance"`
+	// A bank-synced account (BYOK spec § 8.1, § 11.3): source "byok", its
+	// bank, the bank's own balance with its time, the sync state and how many
+	// lines still wait on "A classificar". Absent on every other account.
+	Source            string              `json:"source,omitempty"`
+	Provider          string              `json:"provider,omitempty"`
+	ProviderBalance   *providerBalanceDTO `json:"provider_balance,omitempty"`
+	SyncState         string              `json:"sync_state,omitempty"`
+	UnclassifiedCount *int                `json:"unclassified_count,omitempty"`
+}
+
+type providerBalanceDTO struct {
+	Available billing.Cents `json:"available"`
+	Blocked   billing.Cents `json:"blocked"`
+	At        brcal.Date    `json:"at"`
+	SyncedAt  time.Time     `json:"synced_at"`
 }
 
 func (h *financeHandlers) listAccounts(c fiber.Ctx) error {
@@ -32,11 +49,28 @@ func (h *financeHandlers) listAccounts(c fiber.Ctx) error {
 		return fail(c, err)
 	}
 	out := listResponse[accountDTO]{Data: make([]accountDTO, 0, len(rows))}
+	sp := middleware.GetSpace(c)
 	for _, r := range rows {
-		out.Data = append(out.Data, accountDTO{
+		dto := accountDTO{
 			ID: r.ID, Name: r.Name, Class: string(r.Class), DREGroup: string(r.Group),
 			System: r.System, SystemKey: r.SystemKey, Archived: r.Archived, Balance: r.Balance,
-		})
+			// AccountRow.Provider is the bank's balance; the bank's name is the
+			// embedded LedgerAccount's.
+			Source: r.Source, Provider: r.LedgerAccount.Provider, SyncState: r.SyncState,
+		}
+		if r.Source == finance.SourceBYOK {
+			if pb := r.Provider; pb != nil {
+				dto.ProviderBalance = &providerBalanceDTO{Available: pb.Available, Blocked: pb.Blocked, At: pb.At, SyncedAt: pb.SyncedAt}
+			}
+			// One read per synced account (at most one per bank).
+			lines, err := h.ledger.Unclassified(c.Context(), sp, r.ID)
+			if err != nil {
+				return fail(c, err)
+			}
+			n := len(lines)
+			dto.UnclassifiedCount = &n
+		}
+		out.Data = append(out.Data, dto)
 	}
 	return c.JSON(out)
 }

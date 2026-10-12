@@ -2,7 +2,7 @@
 
 import {BottomNav, type BottomNavAction, type RenderLink} from "@aoctech/ui"
 import {
-  ArrowLeftRight, BadgeCheck, ChartColumn, CreditCard, Ellipsis, House, Landmark, Plus, Receipt, Repeat, ScrollText, Upload,
+  ArrowLeftRight, BadgeCheck, Building2, ChartColumn, CreditCard, Ellipsis, House, Landmark, Plus, Receipt, Repeat, ScrollText, Upload,
 } from "lucide-react"
 import Link from "next/link"
 import {usePathname, useRouter} from "next/navigation"
@@ -126,6 +126,9 @@ export function FinanceBottomNav() {
             sheet(`${BASE}/accounts`, "accounts", <Landmark/>, manage),
             // The plan is the person's (plans spec D2): Pessoal only.
             ...(ctx.space.kind === "personal" ? [sheet(`${BASE}/plans`, "plan", <BadgeCheck/>, manage)] : []),
+            // Bank connections: an organization's, for owners and admins (BYOK § 11).
+            ...(ctx.space.kind === "organization" && can("finance.configure")
+              ? [sheet(`${BASE}/settings/connections`, "connections", <Building2/>, manage)] : []),
           ],
         },
       ]}

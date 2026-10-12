@@ -377,6 +377,25 @@
       "metadata": {
         "plan": "early_access"
       }
+    },
+    {
+      "id": "price_billing_unlimited_internal_monthly",
+      "product_id": "prod_billing",
+      "type": "fixed",
+      "unit_amount": 0,
+      "recurrence": {
+        "interval": "month",
+        "count": 1
+      },
+      "billing_timing": "advance",
+      "metadata": {
+        "plan": "unlimited",
+        "visibility": "internal",
+        "quota_charges_month": "-1",
+        "overage": "bill",
+        "quota_bank_connections": "-1",
+        "feature_api_access": "true"
+      }
     }
   ]
 }

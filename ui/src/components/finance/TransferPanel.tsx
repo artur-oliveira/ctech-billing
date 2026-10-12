@@ -24,7 +24,8 @@ export const wholeSpace = (c: FinanceCtx) => [financeKeys.all(c.mode, c.space)]
  */
 export function TransferPanel({accounts, from: initialFrom = "", onDone}: {accounts: Account[]; from?: string; onDone: () => void}) {
   const {t} = useTranslation()
-  const active = accounts.filter(a => a.class === "asset" && !a.system && !a.archived)
+  // A bank-synced account takes only its bank's lines (BYOK § 8.1): no manual transfer.
+  const active = accounts.filter(a => a.class === "asset" && !a.system && !a.archived && a.source !== "byok")
   const [from, setFrom] = useState(initialFrom)
   const [to, setTo] = useState("")
   const [amountText, setAmountText] = useState("")

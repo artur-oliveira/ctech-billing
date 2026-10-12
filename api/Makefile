@@ -6,7 +6,7 @@ GOOS        ?= linux
 GOARCH      ?= arm64
 CGO_ENABLED := 0
 
-.PHONY: build lint test test-integration vet cover clean
+.PHONY: build build-lambdas lint test test-integration vet cover clean
 
 # Every binary ships together. The jobs are one-shot processes, not services, but
 # they run the same domain code against the same tables — building one from a
@@ -24,6 +24,8 @@ build:
 		go build -ldflags="-s -w" -o $(BUILD_DIR)/dunning ./cmd/dunning
 	CGO_ENABLED=$(CGO_ENABLED) GOOS=$(GOOS) GOARCH=$(GOARCH) \
 		go build -ldflags="-s -w" -o $(BUILD_DIR)/finance ./cmd/finance
+	CGO_ENABLED=$(CGO_ENABLED) GOOS=$(GOOS) GOARCH=$(GOARCH) \
+		go build -ldflags="-s -w" -o $(BUILD_DIR)/byok ./cmd/byok
 	CGO_ENABLED=$(CGO_ENABLED) GOOS=$(GOOS) GOARCH=$(GOARCH) \
 		go build -ldflags="-s -w" -o $(BUILD_DIR)/seed ./cmd/seed
 	CGO_ENABLED=$(CGO_ENABLED) GOOS=$(GOOS) GOARCH=$(GOARCH) \
@@ -53,3 +55,11 @@ cover: test
 
 clean:
 	rm -rf $(BUILD_DIR) coverage.out
+
+# The BYOK Lambdas (spec 2026-10-11 § 4.1, § 6.3): provided.al2023, arm64,
+# the binary named bootstrap, one zip each.
+build-lambdas:
+	mkdir -p $(BUILD_DIR)/lambda/byok-outbound
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -tags lambda.norpc -ldflags="-s -w" \
+		-o $(BUILD_DIR)/lambda/byok-outbound/bootstrap ./cmd/byok-outbound
+	cd $(BUILD_DIR)/lambda/byok-outbound && zip -q -j ../byok-outbound.zip bootstrap

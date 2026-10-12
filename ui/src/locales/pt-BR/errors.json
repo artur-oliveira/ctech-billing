@@ -93,7 +93,21 @@
     "application_busy": "Outra pessoa está decidindo este pedido agora. Atualize a página.",
     "no_application": "Esta organização ainda não pediu acesso à cobrança.",
     "companies_unavailable": "Não foi possível carregar as empresas da organização agora. Tente de novo.",
-    "webhook_test_too_soon": "Esse endpoint acabou de ser testado. Espere meio minuto para testar de novo."
+    "webhook_test_too_soon": "Esse endpoint acabou de ser testado. Espere meio minuto para testar de novo.",
+    "byok_certificate_expired": "Este certificado já venceu. Renove no Internet Banking do Inter e envie o novo.",
+    "byok_certificate_invalid": "Não conseguimos ler o certificado ou a chave. Envie os arquivos baixados do Inter.",
+    "byok_key_mismatch": "A chave não corresponde ao certificado. Envie o par baixado da mesma integração.",
+    "byok_credentials_refused": "O Inter recusou estas credenciais. Confira o client_id, o client_secret e a conta.",
+    "byok_provider_unavailable": "O Inter não respondeu. Tente de novo em instantes.",
+    "byok_sandbox_busy": "O ambiente de testes do Inter está ocupado. Tente em instantes.",
+    "byok_sync_too_soon": "Sincronizado há pouco. Tente em alguns minutos.",
+    "byok_not_connected": "Esta organização ainda não conectou este banco.",
+    "byok_already_connected": "Esta organização já está conectada a este banco.",
+    "byok_sandbox_test_only": "O ambiente de testes do banco é só para o modo de teste.",
+    "byok_invalid_request": "Os dados da conexão não são válidos. Confira e tente de novo.",
+    "byok_connection_changed": "A conexão mudou enquanto você editava. Tente de novo.",
+    "line_already_classified": "Este lançamento já foi classificado.",
+    "account_is_synced": "Esta conta é sincronizada com o banco. Os lançamentos vêm do extrato."
   },
   "field": {
     "required": "Obrigatório.",

@@ -252,3 +252,7 @@ func decodeKey(key string) ([]byte, error) {
 	}
 	return nil, fmt.Errorf("%w: must decode to exactly 32 bytes as base64 or hex", ErrNoKey)
 }
+
+// IsSealed reports whether s carries the sealer's own `v<n>.` prefix (it says
+// nothing about whether it opens). Used to prove a cached value is not plain.
+func IsSealed(s string) bool { _, _, ok := splitGeneration(s); return ok }

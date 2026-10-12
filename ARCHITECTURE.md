@@ -68,6 +68,18 @@ mode.** A charge opened in billing's test mode would be a real PIX charge, so co
 live-only and billing refuses it before wallet is reached
 ([ADR 0004](docs/adr/0004-pix-on-invoice-via-wallet.md), second amendment).
 
+### BYOK: an organization's own bank account
+
+Besides the wallet rail, an organization may connect **its own** bank account (BYOK, [ADR 0029](docs/adr/0029-byok-phase-1.md),
+Banco Inter first). The money never passes through CTech and **no wallet** is involved: billing keeps what was
+charged, Finanças keeps what the bank holds (a `source: byok` ledger account fed by the statement, its balance the
+bank's). The only code that talks to a bank is the non-VPC arm64 Lambda `{env}-ctech-billing-byok-outbound`: it holds
+the credentials key (an SSM SecureString read once per cold start), seals and opens the merchant's credentials
+(`b1.`, AES-256-GCM bound to the connection), and dispatches each op to the provider (`api-commons/inter`). The api
+and the hourly `cmd/byok` reach it through `internal/byokrpc` (a `byok.Provider` over `lambda:InvokeFunction`) and
+own the token lifecycle in Valkey. Connections live in the `{env}_billing_byok` table. Operations:
+[`docs/runbooks/byok.md`](docs/runbooks/byok.md).
+
 ## 3. Wallet integration contract (implemented in both repositories)
 
 > **Superseded in scope by [`ADR 0004`](docs/adr/0004-pix-on-invoice-via-wallet.md), and shipped.**

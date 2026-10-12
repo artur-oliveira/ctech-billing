@@ -241,3 +241,27 @@ func TestPriceMeteringFieldsReachTheDomain(t *testing.T) {
 		t.Fatalf("entity = %+v", e)
 	}
 }
+
+// BYOK spec § 12.6: the pilot's price is prod_billing's own, R$ 0, unlimited
+// and internal (never in a public plan list).
+func TestTheInternalBillingPriceIsInTheCatalogueAndNotPublic(t *testing.T) {
+	f, err := os.Open("../../tenants/ctech.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	plan, err := Parse(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var p *Price
+	for i := range plan.Prices {
+		if plan.Prices[i].ID == "price_billing_unlimited_internal_monthly" {
+			p = &plan.Prices[i]
+		}
+	}
+	if p == nil || p.ProductID != "prod_billing" || p.UnitAmount != 0 || p.Metadata["visibility"] != "internal" ||
+		p.Metadata["quota_charges_month"] != "-1" || p.Metadata["overage"] != "bill" || p.Metadata["plan"] != "unlimited" {
+		t.Fatalf("%+v", p)
+	}
+}

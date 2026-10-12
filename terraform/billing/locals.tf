@@ -1,4 +1,17 @@
 locals {
+  byok_ssm_prefix          = "/ctech-billing/${var.environment}/byok"
+  byok_outbound_name       = "${var.environment}-ctech-billing-byok-outbound"
+  byok_credentials_key     = "${local.byok_ssm_prefix}/credentials-key"
+  byok_credentials_key_arn = "arn:aws:ssm:${var.aws_region}:${var.aws_account}:parameter${local.byok_ssm_prefix}/credentials-key"
+  # Test mode uses CTech's own Inter integration (the wallet's), against the
+  # sandbox host (spec amendment 2026-10-11). Granted by IAM, never copied.
+  byok_wallet_inter_params = {
+    client-id     = "/ctech-wallet/${var.environment}/inter/client-id"
+    client-secret = "/ctech-wallet/${var.environment}/inter/client-secret"
+    cert          = "/ctech-wallet/${var.environment}/inter/mtls-cert"
+    key           = "/ctech-wallet/${var.environment}/inter/mtls-key"
+  }
+
   name = "${var.environment}-ctech-billing"
 
   # {env}_billing_{table} is the company naming standard. The prefix the Go

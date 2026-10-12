@@ -45,7 +45,19 @@ type LedgerAccount struct {
 	// SystemKey is the stable English key of a default account or category, so a
 	// client can translate its name. Empty for what the person created.
 	SystemKey string
+	// Source is SourceBYOK for an account whose statement and balance are the
+	// bank's (BYOK spec § 8.1): every line posts from the sync, and manual
+	// movements into it are refused. Empty for every other account.
+	Source string
+	// Provider names the bank of a BYOK account ("inter").
+	Provider string
 }
+
+// Account sources (BYOK spec § 8.1).
+const (
+	SourceManual = ""
+	SourceBYOK   = "byok"
+)
 
 // Validate refuses an account the ledger could not report on.
 func (a LedgerAccount) Validate() error {
