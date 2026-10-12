@@ -185,3 +185,67 @@ func (h *financeHandlers) cashFlow(c fiber.Ctx) error {
 	}
 	return c.JSON(out)
 }
+
+type spendRowDTO struct {
+	CategoryID string          `json:"category_id,omitempty"`
+	CardID     string          `json:"card_id,omitempty"`
+	Amounts    []billing.Cents `json:"amounts"`
+	Total      billing.Cents   `json:"total"`
+}
+
+type cardSpendingDTO struct {
+	// Basis is what places a line in a month: "statement", the statement that
+	// bills it (an installment purchase spreads over its statements; the DRE
+	// holds the whole purchase in its own month instead).
+	Basis      string          `json:"basis"`
+	Months     []string        `json:"months"`
+	ByMonth    []billing.Cents `json:"by_month"`
+	Total      billing.Cents   `json:"total"`
+	Categories []spendRowDTO   `json:"categories"`
+	Cards      []spendRowDTO   `json:"cards"`
+}
+
+// cardSpending is what the cards billed per category and month: one range
+// Query per card on its own partition (card_id narrows it to one), never a
+// scan. Archived cards count: their history is real.
+func (h *financeHandlers) cardSpending(c fiber.Ctx) error {
+	from, to, err := parseMonthRange(c.Query("from"), c.Query("to"))
+	if err != nil {
+		return problem.Validation([]problem.FieldError{rangeFieldErr(err)}).Send(c)
+	}
+	sp := middleware.GetSpace(c)
+	var ids []string
+	if id := c.Query("card_id"); id != "" {
+		if _, err := h.cards.GetCard(c.Context(), sp, id); err != nil {
+			return fail(c, err)
+		}
+		ids = []string{id}
+	} else {
+		all, err := h.cards.CardIDs(c.Context(), sp)
+		if err != nil {
+			return fail(c, err)
+		}
+		ids = all
+	}
+	var lines []finance.SpendLine
+	for _, id := range ids {
+		ls, err := h.cards.SpendLines(c.Context(), sp, id, from, to)
+		if err != nil {
+			return fail(c, err)
+		}
+		lines = append(lines, ls...)
+	}
+	r := finance.CardSpending(lines, from, to)
+	out := cardSpendingDTO{Basis: "statement", Months: make([]string, len(r.Months)), ByMonth: r.ByMonth, Total: r.Total,
+		Categories: make([]spendRowDTO, len(r.Categories)), Cards: make([]spendRowDTO, len(r.Cards))}
+	for i, m := range r.Months {
+		out.Months[i] = m.String()
+	}
+	for i, x := range r.Categories {
+		out.Categories[i] = spendRowDTO{CategoryID: x.CategoryID, Amounts: x.Amounts, Total: x.Total}
+	}
+	for i, x := range r.Cards {
+		out.Cards[i] = spendRowDTO{CardID: x.CardID, Amounts: x.Amounts, Total: x.Total}
+	}
+	return c.JSON(out)
+}

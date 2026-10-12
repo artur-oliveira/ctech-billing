@@ -397,6 +397,23 @@ export interface StatementSummary {
   items_count: number
 }
 
+export interface SpendRow {
+  category_id?: string
+  card_id?: string
+  amounts: Cents[]
+  total: Cents
+}
+
+/** Card spending by statement month: an installment purchase spreads over the statements that bill it. */
+export interface CardSpending {
+  basis: "statement"
+  months: string[]
+  by_month: Cents[]
+  total: Cents
+  categories: SpendRow[]
+  cards: SpendRow[]
+}
+
 export interface StatementPage {
   data: StatementSummary[]
   has_more: boolean

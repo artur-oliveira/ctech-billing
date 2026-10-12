@@ -254,7 +254,8 @@
     "report": "Report",
     "tabs": {
       "dre": "DRE",
-      "cash": "Cash flow"
+      "cash": "Cash flow",
+      "cards": "Cards"
     },
     "period": "Period",
     "empty": "Nothing in this period.",
@@ -273,7 +274,19 @@
     "out": "Outflows",
     "openings": "Opening balances",
     "monthResult": "Month result",
-    "closingBalance": "Closing balance"
+    "closingBalance": "Closing balance",
+    "spending": {
+      "card": "Card",
+      "all": "All cards",
+      "share": "Share",
+      "basis": "By statement month: an installment purchase shows on each statement that bills it, and a refund lowers the statement it is credited on. The income statement holds the whole purchase in the month it was made.",
+      "byCard": "By card",
+      "archivedCard": "{{name}} (archived)",
+      "unknownCard": "Card",
+      "category": "Category",
+      "byCategoryList": "Spending by category",
+      "byCardList": "Spending by card"
+    }
   },
   "statement": {
     "receipt": "Receipt",

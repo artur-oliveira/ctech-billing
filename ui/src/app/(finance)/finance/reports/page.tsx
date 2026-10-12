@@ -8,7 +8,7 @@ import {useTranslation} from "react-i18next"
 import {ReportsView} from "@/components/finance/ReportsView"
 import {useDocumentTitle} from "@/lib/hooks/useDocumentTitle"
 
-/** F7 — DRE and cash flow. `?view=cash` opens on the cash flow. */
+/** F7 — DRE, cash flow and card spending. `?view=cash` or `?view=cards` opens on that report. */
 export default function FinanceReportsPage() {
   const {t} = useTranslation()
   useDocumentTitle(t("finance.nav.reports"))
@@ -20,6 +20,7 @@ export default function FinanceReportsPage() {
 }
 
 function Reports() {
-  const view = useSearchParams().get("view") === "cash" ? "cash" : "dre"
+  const asked = useSearchParams().get("view")
+  const view = asked === "cash" || asked === "cards" ? asked : "dre"
   return <ReportsView view={view}/>
 }

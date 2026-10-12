@@ -7,7 +7,7 @@ import {t} from "@/lib/i18n"
 import {apiClient, isSpaceNotFound} from "@/lib/api/client"
 import type {
   Account, AccountPatch, Bill, BillPatch, Card, CardPatch, CardStatement, CashFlow, CurrentSpace, Direction, DRE, FinanceSpaces, ListResponse, NewAccount, NewBill,
-  NewCard, NewPurchase, NewRecurrence, PurchasePatch, NewTransfer, Purchase, Occurrence, OpeningBalance, PreviewInput, ProjectionMonth, Recurrence, RecurrenceOccurrences, RecurrencePatch,
+  CardSpending, NewCard, NewPurchase, NewRecurrence, PurchasePatch, NewTransfer, Purchase, Occurrence, OpeningBalance, PreviewInput, ProjectionMonth, Recurrence, RecurrenceOccurrences, RecurrencePatch,
   StatementDirection, StatementPage,
   ChoosePlan, PlanState, Settings, Settlement, Statement, CsvMapping, ImportDetail, ImportSummary, LineResult, NewImport,
 } from "@/lib/api/financeTypes"
@@ -97,6 +97,8 @@ export const financeKeys = {
   settings: (mode: Mode, space: Space) => ["finance", mode, spaceHeader(space), "settings"] as const,
   statement: (mode: Mode, space: Space, accountId: string, from: string, to: string) =>
     ["finance", mode, spaceHeader(space), "statement", accountId, from, to] as const,
+  cardSpending: (mode: Mode, space: Space, from: string, to: string, cardId: string) =>
+    ["finance", mode, spaceHeader(space), "card-spending", from, to, cardId] as const,
   cashFlow: (mode: Mode, space: Space, from: string, to: string) => ["finance", mode, spaceHeader(space), "cash-flow", from, to] as const,
   dre: (mode: Mode, space: Space, from: string, to: string) => ["finance", mode, spaceHeader(space), "dre", from, to] as const,
   cards: (mode: Mode, space: Space) => ["finance", mode, spaceHeader(space), "cards"] as const,
@@ -194,6 +196,9 @@ export const createTransfer = (c: FinanceCtx, body: NewTransfer, idempotencyKey:
 /** Only transfers and opening balances; a payment is undone with unsettleBill. */
 export const reverseTransaction = (c: FinanceCtx, txId: string, idempotencyKey: string) =>
   write<{transaction_id: string}>(c, "POST", `/transactions/${encodeURIComponent(txId)}/reverse`, {}, idempotencyKey)
+/** What the cards billed per category and month, by statement month; `cardId` narrows it to one card. */
+export const getCardSpending = (c: FinanceCtx, from: string, to: string, cardId?: string) =>
+  read<CardSpending>(c, "/reports/card-spending", {from, to, ...(cardId ? {card_id: cardId} : {})})
 /** Months `YYYY-MM`, both inclusive. */
 export const getCashFlow = (c: FinanceCtx, from: string, to: string) => read<CashFlow>(c, "/reports/cash-flow", {from, to})
 export const getDRE = (c: FinanceCtx, from: string, to: string) => read<DRE>(c, "/reports/dre", {from, to})

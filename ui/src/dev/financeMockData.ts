@@ -916,6 +916,32 @@ function route(method: string, path: string, r: Req, s: SpaceState, can: (v: Ver
     }))
     return ok({account_id: a.id, from, to, opening, closing: bal, entries})
   }
+  if (path === "/reports/card-spending") {
+    // By statement month: the statement lines of the range, carried credits left out.
+    const from = String(r.params?.from), to = String(r.params?.to), only = r.params?.card_id ? String(r.params.card_id) : ""
+    if (only && !s.cards.some(c => c.id === only)) return problem(404, "about:blank", "Not Found", "recurso não encontrado", "resource_not_found")
+    const months: string[] = []
+    for (let [y, m] = parts(`${from}-01`); `${y}-${String(m).padStart(2, "0")}` <= to; m === 12 ? (y++, m = 1) : m++) {
+      months.push(`${y}-${String(m).padStart(2, "0")}`)
+    }
+    const cats = new Map<string, number[]>(), cards = new Map<string, number[]>()
+    const by_month = months.map(() => 0)
+    for (const i of s.items) {
+      if (i.kind === "carry" || (only && i.card !== only)) continue
+      const at = months.indexOf(i.month)
+      if (at < 0) continue
+      for (const [rows, key] of [[cats, i.category_id ?? ""], [cards, i.card]] as const) {
+        const v = rows.get(key) ?? months.map(() => 0)
+        v[at] += i.amount
+        rows.set(key, v)
+      }
+      by_month[at] += i.amount
+    }
+    const rows = (m: Map<string, number[]>, field: "category_id" | "card_id") => [...m.entries()]
+      .map(([id, amounts]) => ({[field]: id, amounts, total: amounts.reduce((a, b) => a + b, 0)}))
+      .filter(x => x.amounts.some(a => a !== 0)).sort((a, b) => b.total - a.total)
+    return ok({basis: "statement", months, by_month, total: by_month.reduce((a, b) => a + b, 0), categories: rows(cats, "category_id"), cards: rows(cards, "card_id")})
+  }
   if (path === "/reports/cash-flow" || path === "/reports/dre") {
     const from = String(r.params?.from), to = String(r.params?.to)
     const months: string[] = []
