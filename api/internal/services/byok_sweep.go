@@ -44,7 +44,11 @@ type ByokSweep struct {
 	conns     *ByokConnections
 	alerts    alerts.Publisher
 	mail      ByokMailer
+	usage     *ByokUsage
 }
+
+// WithUsage adds part C's usage step (spec § 5 step 6) to the job.
+func (s *ByokSweep) WithUsage(u *ByokUsage) *ByokSweep { s.usage = u; return s }
 
 func NewByokSweep(collector *ByokCollector, payments *repositories.PaymentRepository, orgs *repositories.OrganizationRepository,
 	setup *ByokCollectionSetup, repo *repositories.ByokRepository, conns *ByokConnections, p alerts.Publisher) *ByokSweep {
@@ -69,6 +73,18 @@ func (s *ByokSweep) Register(j *ByokJob) {
 	j.Register(StepSweep, s.Sweep)
 	j.Register(StepAudit, s.Audit)
 	j.WithFinally(s.collector.FollowRefunds)
+	if s.usage != nil {
+		// Once per run, after every connection; test-mode charges are never
+		// reported (they have no usage row).
+		j.WithFinally(func(ctx context.Context, livemode bool, now time.Time) []error {
+			if !livemode {
+				return nil
+			}
+			reported, skipped, errs := s.usage.Report(ctx, now)
+			slog.InfoContext(ctx, "byok usage", "reported", reported, "skipped", skipped, "errors", len(errs))
+			return errs
+		})
+	}
 	j.WithSandboxHook(s.Bootstrap)
 }
 

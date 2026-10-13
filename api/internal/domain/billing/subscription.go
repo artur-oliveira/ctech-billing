@@ -175,6 +175,31 @@ func (s *Subscription) CurrentPeriod() Period {
 	return s.Recurrence.PeriodAt(s.Anchor, s.PeriodIndex)
 }
 
+// PeriodContaining finds which of the subscription's periods a date falls in.
+//
+// It walks outward from the current period rather than computing an index,
+// because month lengths make the arithmetic inexact and a wrong index files
+// consumption against the wrong invoice. The walk is bounded: a report more than
+// a couple of years out of place is filed in the nearest period rather than
+// searched for forever.
+func (s *Subscription) PeriodContaining(d brcal.Date) Period {
+	current := s.CurrentPeriod()
+	if current.Contains(d) {
+		return current
+	}
+	for offset := 1; offset <= 24; offset++ {
+		for _, n := range []int{s.PeriodIndex - offset, s.PeriodIndex + offset} {
+			if n < 0 {
+				continue
+			}
+			if p := s.Recurrence.PeriodAt(s.Anchor, n); p.Contains(d) {
+				return p
+			}
+		}
+	}
+	return current
+}
+
 // NextPeriod returns the period after the current one.
 func (s *Subscription) NextPeriod() Period {
 	return s.Recurrence.PeriodAt(s.Anchor, s.PeriodIndex+1)

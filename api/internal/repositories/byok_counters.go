@@ -7,6 +7,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 
+	"gopkg.aoctech.app/billing/api/internal/domain/billing"
 	"gopkg.aoctech.app/billing/api/internal/domain/brcal"
 )
 
@@ -80,4 +81,53 @@ func (r *PaymentRepository) chargeCounterItem(tenantID, month string, delta, lim
 		values[":limit"] = numberValue(limit)
 	}
 	return r.byok.BuildRawUpdateTxItem(pk, &sk, "ADD #n :d SET #ttl = :ttl", cond, map[string]string{"#n": "n", "#ttl": "ttl"}, values)
+}
+
+// ByokUsagePK is the partition of the live BYOK charges created on one São
+// Paulo day that are not reported yet (spec § 5 step 6). A row is written in
+// the attempt's transaction and deleted once reported or skipped, so the job
+// reads only what is left, with one key-condition Query on the base table.
+func ByokUsagePK(day brcal.Date) string { return "live#BYOK_USAGE#" + day.String() }
+
+// ByokUsageRow points at one attempt to report.
+type ByokUsageRow struct {
+	TenantID      string    `dynamodbav:"tenant_id"`
+	InvoiceID     string    `dynamodbav:"invoice_id"`
+	AttemptID     string    `dynamodbav:"attempt_id"`
+	AttemptNumber int       `dynamodbav:"attempt_number"`
+	CreatedAt     time.Time `dynamodbav:"attempt_created_at"`
+}
+
+type byokUsageRow struct {
+	keys
+	ByokUsageRow
+}
+
+func (r *PaymentRepository) usageItem(a *billing.PaymentAttempt, now time.Time) (map[string]types.AttributeValue, error) {
+	// Ninety days: an unreported row outlives any catch-up, then goes.
+	return Encode(byokUsageRow{keys: newKeys(ByokUsagePK(brcal.FromTime(a.CreatedAt)), a.ID, RetentionNinetyDays, now), ByokUsageRow: ByokUsageRow{TenantID: a.OrganizationID, InvoiceID: a.InvoiceID,
+		AttemptID: a.ID, AttemptNumber: a.AttemptNumber, CreatedAt: a.CreatedAt.UTC()}})
+}
+
+// PendingUsage pages one day's unreported charges.
+func (r *ByokRepository) PendingUsage(ctx context.Context, day brcal.Date, startKey map[string]types.AttributeValue) (*Page[ByokUsageRow], error) {
+	res, err := r.base.Query(ctx, QueryOpts{PK: ByokUsagePK(day), Limit: 200, ScanIndexForward: true, ExclusiveStartKey: startKey})
+	if err != nil {
+		return nil, err
+	}
+	rows, err := DecodeItems[byokUsageRow](res.Items)
+	if err != nil {
+		return nil, err
+	}
+	out := &Page[ByokUsageRow]{LastEvaluatedKey: res.LastEvaluatedKey}
+	for _, row := range rows {
+		out.Items = append(out.Items, row.ByokUsageRow)
+	}
+	return out, nil
+}
+
+// UsageDone removes a reported (or skipped) charge from its day.
+func (r *ByokRepository) UsageDone(ctx context.Context, row ByokUsageRow) error {
+	_, err := r.base.DeleteItem(ctx, ByokUsagePK(brcal.FromTime(row.CreatedAt)), row.AttemptID)
+	return err
 }

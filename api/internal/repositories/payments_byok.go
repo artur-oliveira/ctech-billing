@@ -91,7 +91,14 @@ func (r *PaymentRepository) CreateByokAttempt(ctx context.Context, a *billing.Pa
 	}
 	writes := txItems(r.base.BuildPutTxItemIfAbsent(item), r.byok.BuildPutTxItemIfAbsent(ptr))
 	if a.Livemode {
-		writes = append(writes, r.chargeCounterItem(a.OrganizationID, ChargeMonth(a.CreatedAt), 1, limit, now))
+		// Part C: the month's counter (index 2, the quota) and the row the
+		// usage step reports (spec § 5 step 6). Test mode counts nothing.
+		usage, err := r.usageItem(a, now)
+		if err != nil {
+			return err
+		}
+		writes = append(writes, r.chargeCounterItem(a.OrganizationID, ChargeMonth(a.CreatedAt), 1, limit, now),
+			r.byok.BuildPutTxItemIfAbsent(usage))
 	}
 	err = r.base.TransactWrite(ctx, writes)
 	if codes := cancellationCodes(err); len(codes) > 2 && codes[2] == codeConditionFailed {

@@ -647,7 +647,9 @@ func BuildByokJob(ctx context.Context, cfg *config.Config) (*services.ByokConnec
 	webhooks := services.NewByokWebhooks(repo, payments, collector, c)
 	setup := services.NewByokCollectionSetup(conns, repo, orgs, payments, collector, webhooks, cfg.ByokHooksHost, cfg.PortalOrganizationID).
 		WithSubscriptions(newSubscriptions(db, cfg))
-	return conns, st, repo, c, services.NewByokSweep(collector, payments, orgs, setup, repo, conns, nil), nil
+	usage := services.NewByokUsage(repo, payments, orgs, newBillingPlans(db, cfg), newSubscriptions(db, cfg),
+		repositories.NewCatalogRepository(db, cfg), repositories.NewUsageRepository(db, cfg), cfg.PortalOrganizationID)
+	return conns, st, repo, c, services.NewByokSweep(collector, payments, orgs, setup, repo, conns, nil).WithUsage(usage), nil
 }
 
 // byokCounter counts the BYOK limiters in Valkey when the app has it, so every
