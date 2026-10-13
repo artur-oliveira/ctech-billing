@@ -1,210 +1,143 @@
 # Account Deletion — Billing as a Saga Participant Implementation Plan
 
-> **Amendment 2026-10-13 (supersedes the text below where they conflict).** Source: ctech-account
-> `docs/2026-10-13-account-deletion-plan-review.md`. This plan was written against billing at #43; `main` is now at #122.
+> **Rebaselined 2026-10-13.** The first version (2026-10-07) was written against billing at #43; `main` is at #122. This text
+> replaces it, folding in the review `ctech-account/docs/2026-10-13-account-deletion-plan-review.md` and the decisions taken that day.
+> Where the review says "billing", this file is the answer.
 >
-> **Decisions (2026-10-13):** a sole-member workspace that has a merchant tenant **blocks** deletion (`billing.merchant_tenant`);
-> audit rows of an erased workspace are **deleted**; the `sub` kept in audit actor fields and ledger of a surviving shared space is
-> **retained as an opaque id**; `usage` `LATEST` level rows for `USER_{sub}` / `ORG_{id}` are **deleted**; the message carries
-> `workspaces[{id,kind}]`.
->
-> **Corrections**
-> 1. **Task 1 (api-commons):** billing is already on `v1.18.0`. Do not run `go get ...@v1.13.1`. Replace the task with "confirm the
->    `erasure` package and `jwtverify.WithRevocation` are importable at the current version" and gate on the full suite.
-> 2. **Blocker `billing.tenant_owner` and `GetByOwner` are obsolete** (ADR 0028, #99). Replace with `billing.merchant_tenant`: any
->    workspace listed in `workspaces[]` for which `OrganizationRepository.GetByAccountOrganization(id, live)` finds a tenant (either
->    mode). Reported by eligibility only for workspaces where the user is the sole member (account supplies the list when asking; if
->    account cannot pass it at eligibility time, the purge re-check against `workspaces[]` is the authority).
-> 3. **Tables.** `financeTables` must cover every space-keyed table: `ledger_accounts`, `ledger_transactions`, `bills`, `recurrences`,
->    **`cards`** (also `S#CARD#{id}` partitions), **`imports`** (also `S#IMPORT#{id}` partitions, `FITID#` locks, `CSVMAP#`) and
->    **`byok`** (connection partition, `SEALED#`; plus the `HOOK#{id}` and `CHARGEREF#...` rows reachable from the connection).
->    `TestEveryTableIsClassifiedForThePurge` stays exhaustive; add integration tests that seed cards, imports and a byok connection.
-> 4. **Audit.** Delete the audit partition of every workspace in `workspaces[]` regardless of kind (drop the `sp.Personal()` branch;
->    `ForJob` cannot know the kind and must not be relied on for it). The personal default space `USER#{sub}` is deleted as planned.
-> 5. **Organization customers.** For each workspace in `workspaces[]`: find the `CUSTOMER_ORG#{id}` customer in tenant zero (both
->    modes), cancel its subscriptions immediately (includes the DF-e organization subscription), clear subscription metadata, anonymize
->    the customer (D12: CNPJ and name of an MEI are personal data), keep invoices. Open or written-off invoices of that customer block
->    like the person's (`billing.invoice_open`, `billing.invoice_uncollectible`, with `detail.organization_id`).
-> 6. **Customer reads.** Replace `AllByCustomer` partition scans with paginated `ListByCustomer` on `customer-index` / `lookup-index`.
->    Gate: the `cmd/backfill-invoice-lookup` and `cmd/backfill-subscription-lookup` backfills must be confirmed complete in each
->    environment before participating (a sparse-index miss would hide an open invoice). Add the check to Task 11's operator list.
-> 7. **Applications.** Tenant-zero `applications` rows of an erased applicant (`applied_by` = sub) or of an erased workspace
->    (`account_organization_id`): delete (they hold `company_tax_id`, `contact_email`, `description`, `website`).
-> 8. **`usage`.** Correct the classification: `usage` `LATEST` rows are permanent. Delete level rows (`LEVEL#`, `LATEST`) whose
->    `customer_ref` is `USER_{sub}` or `ORG_{id}` for erased workspaces; add them to the purge and its counts.
-> 9. **Async paths.** `byok-webhook`, `byok-outbound`, the BYOK sweeps, `cmd/finance`, the finance replay queue (`schedule-index` of
->    `invoices`) and the level reporter drop work for an erased workspace/sub (`Store.OrgErased` / `Blocked`). Best-effort delete the
->    webhook registered at the bank and revoke provider access before deleting `SEALED#`.
-> 10. **Credentials and webhooks** of a tenant are never purged here (the tenant blocks, see 2). Remove `TableCredentials`,
->     `TableWebhooks` justification text that implies "no person"; they hold `connected_by` and endpoint URLs and are covered by the
->     future tenant deletion flow.
-> 11. **Remove** "Organization customers: not built yet" from Out of scope. Pin no api-commons version in Global Constraints.
-> 12. Inventory §6 in ctech-account gains a BYOK row and the organization-customer rule (done in the same amendment set).
+> **Decisions (2026-10-13):**
+> 1. A sole-member workspace that has a billing (merchant) tenant **blocks** the deletion with `billing.merchant_tenant`.
+> 2. Audit rows of an erased workspace are **deleted**, whatever its kind.
+> 3. The `sub` left in audit actor fields and in the ledger of a surviving shared space is **retained as an opaque id**.
+> 4. `usage` level rows (`LEVEL#`, `LEVEL_LATEST#`) of `USER_{sub}` and `ORG_{id}` are **deleted**.
+> 5. `user.erase` carries `workspaces: [{id, kind}]` (api-commons ≥ v1.19.0, `Message.WorkspaceIDs()` / `KindOf`).
 
-
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
-**Goal:** Make ctech-billing a participant in ctech-account's LGPD erasure saga. It answers the eligibility question, refuses a locked person, cancels their CTech subscriptions, and anonymizes their customer record while keeping the fiscal documents. It also purges their personal finance spaces and the finance spaces of the single-member organizations erased with them, and acks the purge.
+**Goal:** Make ctech-billing a participant in ctech-account's LGPD erasure saga. It answers the eligibility question, refuses a locked person, cancels the CTech subscriptions of the person **and of every workspace erased with them**, and anonymizes their tenant-zero customers while keeping the fiscal documents. It purges their personal finance spaces and the finance spaces (every table) of the erased workspaces, disconnects their bank connections, and acks the purge. A workspace that has a merchant tenant is never erased silently: it blocks.
 
 **Architecture:**
-- The participant side comes from `api-commons/erasure` (v1.13.1): the `Store` over `{prefix}_erasure_state`, the SQS `Consumer` and the `AckClient`. Billing writes three things:
+- The participant side comes from `api-commons/erasure` (≥ v1.19.0): the `Store` over `{prefix}_erasure_state`, the SQS `Consumer` and the `AckClient`. Billing writes:
   - `services.Eraser`: `Blockers` for the eligibility route and the purge re-check, and `Purge` as the consumer's `PurgeFunc`.
-  - `repositories.SpacePurger`: deletes every row of one finance space, idempotent and resumable.
+  - `repositories.SpacePurger`: deletes every row of one finance space across **all** space-keyed tables, including the per-card and per-import partitions and the BYOK connection rows. Idempotent and resumable.
+  - `repositories.LevelRepository.EraseRef`: deletes the level rows of one `customer_ref`.
   - The lock: one check in `middleware.Verifier.Middleware`, which every route reached with a session token goes through.
 - The consumer runs inside the API process, wired from `cmd/server`. That is where `space.ForJob` may be called.
+- Every asynchronous path that can write into a space (the daily finance job, the card close, the BYOK sweeps and webhooks, the level reporter) drops work for a locked or erased owner.
 - Infra is Terraform: the state table comes from `schema.json`; the queue, the DLQ, the subscription, the alarm and the IAM go in a new `terraform/billing/erasure.tf`.
 - The userdata gets no new bytes. The queue URL, the ack URL and the revocation Valkey URL are all derived in Go.
 
-**Tech Stack:** Go 1.27 (module `gopkg.aoctech.app/billing/api`), Fiber v3, DynamoDB through `api-commons/dynamo`, SQS (`aws-sdk-go-v2/service/sqs`, already in the module graph through api-commons), Terraform `hashicorp/aws ~> 6.60`, standard `testing` only.
+**Tech Stack:** Go 1.27 (module `gopkg.aoctech.app/billing/api`), Fiber v3, DynamoDB through `api-commons/dynamo`, SQS (`aws-sdk-go-v2/service/sqs`), Terraform `hashicorp/aws ~> 6.60`, standard `testing` only.
 
 **Spec:**
-- ctech-account `docs/specs/2026-10-06-account-deletion-overview.md` (§ 5, § 11 D1–D14)
-- `…-data-inventory.md` § 2, § 6, § 8
-- `…-saga-protocol.md` § 3, § 4, § 5, § 7, § 9
-- Wire contract: ctech-account `docs/plans/2026-10-07-account-deletion-phase3-participants.md` (Global Constraints, R10)
-- This repo: [`docs/specs/2026-10-07-finance-erp-design.md`](../specs/2026-10-07-finance-erp-design.md) § 2, § 4, § 8, plus [ADR 0009](../adr/0009-retention-and-ttl.md) and [ADR 0026](../adr/0026-finance-retention-by-purge.md)
+- ctech-account `docs/specs/2026-10-06-account-deletion-overview.md` (§ 5, § 11 D1–D14), `…-data-inventory.md` § 2, § 6, § 8, `…-saga-protocol.md` § 3, § 4, § 5, § 7, § 9, and the review above.
+- Wire contract: ctech-account `docs/plans/2026-10-07-account-deletion-phase3-participants.md` (Global Constraints, R10, Task 3 for the `workspaces` query parameter).
+- This repo: [`docs/specs/2026-10-07-finance-erp-design.md`](../specs/2026-10-07-finance-erp-design.md) § 2, § 4, § 8; ADR [0009](../adr/0009-retention-and-ttl.md), [0025](../adr/0025-spaces-personal-and-organization.md), [0026](../adr/0026-finance-retention-by-purge.md), [0027](../adr/0027-personal-workspaces-in-account.md), [0028](../adr/0028-console-tenant-from-membership.md), [0029](../adr/0029-byok-phase-1.md); [`docs/specs/2026-10-09-shared-spaces-design.md`](../specs/2026-10-09-shared-spaces-design.md) § 6; [`docs/specs/2026-10-10-plans-design.md`](../specs/2026-10-10-plans-design.md) § 6.
 
 **Out of scope:**
-- `service`-scoped unlink: ctech-account has not built it (its phase 3 "Out of scope").
+- `service`-scoped unlink: ctech-account has not built it.
 - `Store.Clear` on re-consent: it belongs to service-scoped unlink.
-- Organization customers (`CUSTOMER_ORG#`): not built yet (ADR 0025 amendment).
-- The ctech-account side.
+- **Deleting a merchant tenant** (its credentials, webhook endpoints, customers, invoices, BYOK collection). It is a feature with its own deletion flow. Until it exists the tenant blocks (R3). When it ships it plugs into `Eraser.Purge`.
+- The ctech-account side, except the contract it must honor (eligibility `workspaces` parameter, `workspaces[]` on the message).
 
-## Rulings (made while writing this plan; each with its cost if wrong)
+## Rulings (each with its cost if wrong)
 
-- **R1 No payment-gateway erasure.** Billing never talks to a payment rail and never stores card data, PIX keys or gateway customers (ARCHITECTURE § 2, § 9). It asks ctech-wallet to collect a PIX charge. Inventory § 8's "payment gateway used by billing" is therefore *none*; the Asaas side is wallet's. *Cost if wrong:* a future card rail adds one step to `Eraser.Purge`.
-- **R2 No NFS-e here.** Billing issues none (`ctech-dfe` is the suggested issuer). What stays is the invoice aggregate: invoice, lines, payment attempts, checkout sessions, credit notes, the S3 PDF, the audit rows and the canceled subscription. None has a TTL or all have ADR 0009's. *Cost if wrong:* none. The retained set only shrinks if legal says so.
-- **R3 Three blockers:**
-  - `billing.invoice_open`: a live tenant-zero invoice that is `OPEN` with an amount due. Overdue is a count in `detail`, not a separate code. `action_url` is the portal's invoice list.
-  - `billing.invoice_uncollectible`: a live tenant-zero invoice written off as `UNCOLLECTIBLE` with an amount due. User decision 2026-10-08: a written-off debt still blocks. It gets a **separate code**, not a branch of `invoice_open`, because the remedy differs. The portal cannot collect it (`Invoice.Payable` needs `OPEN`), so the person settles it through support, and the blocker carries no `action_url`.
-  - `billing.tenant_owner`: the person owns a live billing tenant (`Organization.OwnerUserID`). Deleting them would orphan its console.
+- **R1 No payment-gateway erasure.** Billing never talks to a payment rail and never stores card data of a payment instrument, PIX keys of a payer or gateway customers (ARCHITECTURE § 2, § 9). The `cards` table is the person's own **expense-tracking** cards (brand, last digits), not a payment rail. It asks ctech-wallet to collect a PIX charge. *Cost if wrong:* a future card rail adds one step to `Eraser.Purge`.
+- **R2 No NFS-e here.** What stays is the invoice aggregate: invoice, lines, payment attempts, checkout sessions, credit notes, the S3 PDF, the audit rows and the canceled subscription. *Cost if wrong:* none; the retained set only shrinks if legal says so.
+- **R3 Four blockers**, live mode only (R15):
+  - `billing.invoice_open`: a live tenant-zero invoice that is `OPEN` with an amount due, of the person **or of a customer of an erased workspace**. Overdue is a count in `detail`. `action_url` is the portal's invoice list.
+  - `billing.invoice_uncollectible`: same scope, written off (`UNCOLLECTIBLE`) with an amount due. A written-off debt still blocks (user decision 2026-10-08). It has no `action_url`: the portal cannot collect it and support records the payment.
+  - `billing.merchant_tenant` (decision 2026-10-13): a workspace being erased has a billing tenant in either mode (`OrganizationRepository.GetByAccountOrganization`). `detail.workspace_ids` lists them. It replaces `billing.tenant_owner`, whose premise (the console's tenant is the person's `owner_user_id`) ended with ADR 0028.
+  - Not blockers: *subscriptions* (every live status has an immediate `CANCELED` edge under `CauseCustomer`; the purge cancels them, crediting nothing for the unused period), and *payment in dispute* (billing has no dispute state; a PIX MED is wallet's).
 
-  Not blockers:
-  - *Subscriptions:* every live status (`INCOMPLETE`, `TRIALING`, `ACTIVE`, `PAST_DUE`, `PAUSED`) has an immediate `CANCELED` edge under `CauseCustomer`, so "cannot be cancelled now" cannot happen; the purge cancels them. Cancellation is immediate and credits nothing for the unused period (user decision 2026-10-08).
-  - *Payment in dispute:* billing has no dispute state. A PIX MED/chargeback is wallet's blocker.
-
-  *Cost if wrong:* `invoice_uncollectible` clears only when support records the payment (`CauseManualPayment`), so a person who cannot pay through the portal stays blocked until support acts.
-- **R4 Only tenant zero is erased** (`PORTAL_ORGANIZATION_ID`, both modes). A customer in another tenant that carries a `user_id` is that merchant's record, and the merchant is the controller. It is reachable only through a per-tenant pointer: there is no cross-tenant index, and the IAM policy denies Scan. *Cost if wrong:* a `user_id` GSI and a loop over it.
-- **R5 Anonymize in place, keep the pointer.** `CustomerRepository.Anonymize` is the existing ADR 0009 path. The `CUSTOMER_USER#{sub}` pointer and `user_id` stay: the sub is opaque, and the pointer is what makes the portal answer "conta encerrada". *Cost if wrong:* service-scoped re-consent must clear them, which is that plan's job.
-- **R6 The lock is one choke point:** `Verifier.Middleware`, for every session token (non-empty `sid`).
-  - It refuses **every method**, not only writes.
-  - A failed state lookup is a 500 (fail closed).
-  - Service tokens are not checked, and neither are the public checkout and wallet's webhook: inbound money is accepted (saga § 4.2).
-
-  *Cost if wrong:* one consistent `GetItem` per user request.
-- **R7 No `VerifyClaimsStrict` route.** Billing moves no money out; the only money that moves is a customer paying. The revocation check fails open as the shared default. *Cost if wrong:* while Valkey is down, a revoked token can still pay a bill for up to 20 min.
-- **R8 The eligibility scope `internal:billing:erasure-eligibility` is not in `AllScopes` or `scope-manifest.json`.**
-  - No client can be granted it. ctech-account mints it for itself as the issuer.
-  - The route is not behind `ResolveTenant`.
-
-  *Cost if wrong:* if ctech-account ever validates minted scopes against the published manifest, add it there.
-- **R9 Zero new userdata bytes.** AL2023 is at ~15.9 KB of 16,384 (terraform/README). The values are derived instead:
-  - the queue name from `ENVIRONMENT` (`{env}-ctech-billing-erasure`, resolved with `GetQueueUrl`);
-  - the ack URL from `ACCOUNT_BASE_URL`;
-  - the revocation Valkey URL from `VALKEY_URL` without its DB path;
-  - the portal invoices URL from `CHECKOUT_BASE_URL`'s origin;
-  - the erasure client's id and secret (R16): the consumer reads them at start from SSM paths derived from `ENVIRONMENT`, unless `ERASURE_CLIENT_ID`/`ERASURE_CLIENT_SECRET` are set.
-
-  terraform/README says the next AL2023 template addition must first move the timer units to S3. Reading two parameters in Go avoids that migration.
-
-  *Cost if wrong:* a Go↔Terraform naming coupling, the same kind `TABLE_PREFIX` already has, plus one new SDK module (`service/ssm`).
-- **R10 The consumer runs in the API process.** Both processes on every instance run it; SQS hands each message to one.
-  - It starts only when ctech-account's URLs are configured and DynamoDB is not local.
-  - A missing queue, or an erasure client still holding Terraform's `SET-OUT-OF-BAND` placeholder, is logged, and the API keeps serving.
-
-  *Cost if wrong:* a misconfigured environment never acks, and ctech-account alarms after 48 h.
-- **R11 The purge is a new `SpacePurger`, not a `LedgerRepository` method.** `TestLedgerRepositoryHasNoEditPath` keeps meaning "no edit path". The space is built with `space.ForJob`, injected from `cmd/server`, so `TestForJobIsNotCalledFromInternal` stays untouched.
-- **R12 What the purge removes:**
-  - every row under the space key `S` in every finance table, plus `idempotency`;
-  - every `S#ACCOUNT#{id}` entry partition;
-  - the `audit` rows under `S` **for personal spaces only**.
-
-  ADR 0026 keeps organization finance audit rows on ADR 0009's five-year TTL.
-- **R13 Tombstones never expire** (`erasedTTL` 0). Billing keeps invoices with no TTL, so it may meet the sub forever.
-- **R14 Valkey: no per-user deletion.** Billing's DB 3 holds the JWKS, service tokens and 60 s membership cache entries, nothing personal beyond a sub inside a 60 s key. *Cost if wrong:* 60 s.
+  *Cost if wrong:* a person whose only member workspace ever opened the billing console (even a test tenant) cannot delete the account until support removes the tenant by hand. This is the accepted price of not hiding a tenant deletion inside the purge.
+- **R4 Tenant zero is erased; other tenants are untouched, except the tenant of an erased workspace, which blocks (R3).** A customer in a merchant's tenant that carries a `user_id` is that merchant's record, and the merchant is the controller.
+- **R5 Anonymize in place, keep the pointers.** `CustomerRepository.Anonymize` is the ADR 0009 path. `CUSTOMER_USER#{sub}` and `CUSTOMER_ORG#{id}` pointers and `user_id` stay: the ids are opaque, and the pointer is what makes the portal answer "conta encerrada". *Cost if wrong:* service-scoped re-consent must clear them, which is that plan's job.
+- **R6 The lock is one choke point:** `Verifier.Middleware`, for every session token (non-empty `sid`). It refuses every method; a failed state lookup is a 500 (fail closed). Service tokens, the public checkout, wallet's webhook and the BYOK webhook receivers are not checked: inbound money is accepted (saga § 4.2). *Cost if wrong:* one consistent `GetItem` per user request.
+- **R7 No `VerifyClaimsStrict` route.** Billing moves no money out. *Cost if wrong:* while Valkey is down, a revoked token can still pay a bill for up to 20 min.
+- **R8 The eligibility scope `internal:billing:erasure-eligibility` is not in `AllScopes` or `scope-manifest.json`.** No client can be granted it; ctech-account mints it for itself. The route is not behind `ResolveTenant`.
+- **R9 Zero new userdata bytes** (AL2023 is near its ceiling). Derive the queue name, ack URL, revocation Valkey URL and portal invoices URL in Go; read the erasure client from SSM at start.
+- **R10 The consumer runs in the API process.** It starts only when ctech-account's URLs are configured and DynamoDB is not local; a missing queue or a placeholder client is logged and the API keeps serving.
+- **R11 The purge is a new `SpacePurger`, not a `LedgerRepository` method.** `TestLedgerRepositoryHasNoEditPath` keeps meaning "no edit path". The space is built with `space.ForJob`, injected from `cmd/server`.
+- **R12 What the purge removes, per erased owner** (`USER#{sub}` and every id of `m.WorkspaceIDs()`), in both modes:
+  - every row under the space key `S` in `ledger_accounts`, `ledger_transactions`, `bills`, `recurrences`, `cards`, `imports`, `byok`, `idempotency` **and `audit`** (decision 2: audit for every workspace, personal or organization, because the whole workspace is gone);
+  - every `S#ACCOUNT#{id}` entry partition, every `S#CARD#{id}` partition, every `S#IMPORT#{id}` partition, and the `HOOK#{id}` rows the connections name;
+  - the level rows of `USER_{sub}` and `ORG_{id}` (R21);
+  - the customers, subscriptions and applications of R5, R19.
+- **R13 Tombstones never expire** (`erasedTTL` 0).
+- **R14 Valkey: no per-user deletion.** Billing's DB 3 holds the JWKS, service tokens and 60 s membership cache entries.
 - **R15 Blockers are live-mode only.** Test money is not owed. The purge still covers both modes.
-- **R16 The acks use a dedicated confidential client** (user decision 2026-10-08), not billing's membership client. Its only grant is `internal:account:erasure-ack`. A leaked membership credential therefore cannot ack an erasure, and this client cannot read memberships.
-  - Config: `ERASURE_CLIENT_ID`/`ERASURE_CLIENT_SECRET`, falling back to the SecureStrings `/ctech-billing/{env}/billing/erasure-client-id` and `…/erasure-client-secret`.
-  - Terraform declares both SecureStrings with a `SET-OUT-OF-BAND` placeholder and `ignore_changes`, like the collection secrets.
-  - The operator creates the client in ctech-account, grants it the scope, and writes both values with `aws ssm put-parameter --overwrite`.
-  - ctech-account matches acks on `azp`, so this client's id is the `client_id` in its `ERASURE_PARTICIPANTS`.
-  - The token URL is the existing `ACCOUNT_TOKEN_URL`.
-- **R17 Queue visibility timeout 900 s, `maxReceiveCount` 5, DLQ alarm > 0.** The slowest purge reads tenant zero's whole invoice range once (`AllByCustomer`). 900 s is far above twice that today.
+- **R16 The acks use a dedicated confidential client** (user decision 2026-10-08), not billing's membership client. Config: `ERASURE_CLIENT_ID`/`ERASURE_CLIENT_SECRET`, falling back to the SecureStrings `/ctech-billing/{env}/billing/erasure-client-{id,secret}`. The operator creates the client in ctech-account, grants it `internal:account:erasure-ack`, and writes both values with `aws ssm put-parameter --overwrite`. ctech-account matches acks on `azp`.
+- **R17 Queue visibility timeout 900 s, `maxReceiveCount` 5, DLQ alarm > 0.**
+- **R18 The `sub` stays opaque where a surviving space keeps it** (decision 3): the `actor` of audit rows and ledger rows of a **surviving** shared space, `applied_by`, `connected_by`, `authorized_by` of surviving organizations. The `sub` is already the key the tombstone keeps; the ledger is immutable. *Cost if wrong:* a later decision to anonymize needs a rewrite of history in surviving spaces.
+- **R19 Organization customers.** For each erased workspace the tenant-zero `ORG_{id}` customer (pointer `CUSTOMER_ORG#{id}`, `CustomerRepository.GetByOrganization`) gets the same treatment as the person's: subscriptions canceled now (this includes the DF-e organization subscription), metadata cleared, customer anonymized (D12: an MEI's CNPJ and name are personal data), invoices kept. Open or written-off invoices of that customer block like the person's. *Cost if wrong:* arrears metered usage of the current period (for example DF-e companies) is not billed after the immediate cancellation.
+- **R20 The eligibility call carries the workspaces.** ctech-account passes `?workspaces=id1,id2` (the workspaces where the person is the only member) on `GET /v1.0/internal/erasure/eligibility/:sub`; billing cannot compute it (ADR 0023: membership lives in ctech-account). Absent parameter: only the person is checked. The purge re-check uses the message's `WorkspaceIDs()`, which is authoritative. *Cost if wrong:* a `merchant_tenant` block is discovered at LOCKED instead of at request; the purge re-check still acks `blocked`, never a half purge.
+- **R21 Level rows (`usage` table).** Meter names are free-form (`ValidMeter`) and part of the partition key, so rows cannot be listed by `customer_ref`. The purge derives the candidate meters from tenant zero's own catalogue (`CatalogRepository.ListPrices`, prices with a `Meter`) in both modes and deletes `LEVEL#`, `LEVEL_LATEST#` partitions for `USER_{sub}` and `ORG_{id}`. `LEVEL_KEY#{key}` markers hold only a hash and expire in 13 months; they stay. *Cost if wrong:* a meter that is no longer in the catalogue leaves a latest-level row of an opaque ref until its history TTL; the reporter test (Task 8b) stops new ones.
+- **R22 Customer reads go through the indexes, behind a backfill gate.** `InvoiceRepository.ListByCustomer` (`customer-index`) and `SubscriptionRepository.ListByCustomer` (`lookup-index`) replace the old whole-partition scans. Both indexes are sparse and populated at create; rows written before the index need `cmd/backfill-invoice-lookup` and `cmd/backfill-subscription-lookup`. An unfilled index hides an open invoice, so each environment must be confirmed backfilled before billing joins `ERASURE_PARTICIPANTS` (Task 11 operator list). *Cost if wrong:* a missed open invoice lets a debtor delete the account.
+- **R23 BYOK.** Connections of an erased workspace are disconnected through the existing `ByokConnections.Disconnect` (drops cached tokens, deletes the connection) and the purger deletes what is left (`SEALED#`, `HOOK#`). Disconnect does not unregister the webhook at the bank; the receiver drops events for an unknown hook or an erased workspace. Unregistering at the bank is a BYOK decision, recorded as a limit. A BYOK *merchant* connection lives with a tenant, which blocks (R3). *Cost if wrong:* the bank keeps calling a dead webhook until its own retry policy gives up.
+- **R24 `ForJob` cannot know a workspace's kind and reports `organization`.** That is fine now: nothing in the purge depends on the kind (decision 2). The message's `KindOf` is for logs and counts only.
 
 ## Global Constraints
 
 - **Repo conventions:**
   - Code lives under `api/`, and every Go command runs from `api/`.
-  - Branch `feat/account-deletion-participant` from `main` after this plan merges.
-  - Conventional Commits, with **no `Co-Authored-By` or any Claude/Anthropic attribution**.
+  - Branch `feat/account-deletion-participant` from `main`. Conventional Commits, **no trailer** (`Co-Authored-By` or any attribution), authored by the repo's configured user.
   - `gofmt -l .` prints nothing, `go vet ./...` and `go vet -tags integration ./tests/...` are clean, and `go test ./... -race` passes before every commit.
   - Integration tests need `docker compose -f docker-compose.test.yml up -d`, then `make test-integration`.
-- **Versions:** `gopkg.aoctech.app/api-commons` at exactly **v1.13.1**.
+- **Versions:** `gopkg.aoctech.app/api-commons` at **v1.19.0 or later** (the first tag with `Message.Workspaces`). Never pin lower than the current `go.mod`.
 - **Wire contract:**
   - Participant id `billing`.
-  - Eligibility: `GET /v1.0/internal/erasure/eligibility/:sub`, scope `internal:billing:erasure-eligibility`. ctech-account's `ERASURE_PARTICIPANTS` `url` for billing ends in `/v1.0`.
+  - Eligibility: `GET /v1.0/internal/erasure/eligibility/:sub[?workspaces=a,b]`, scope `internal:billing:erasure-eligibility`. ctech-account's `ERASURE_PARTICIPANTS` `url` for billing ends in `/v1.0`.
   - Ack: `POST {ACCOUNT_BASE_URL}/v1.0/internal/erasure/ack`, scope `internal:account:erasure-ack`, body `erasure.Ack`.
   - SNS topic: `{env}-account-user-erasure`, ARN in SSM `/ctech/{env}/account/erasure-topic-arn`.
   - Subscription: `FilterPolicy {"services":["billing"]}`, `filter_policy_scope = "MessageAttributes"`, raw delivery on.
-- **State table:** `{prefix}_erasure_state`, partition key `pk` (S), TTL attribute `ttl`, declared in `schema.json` (so Terraform creates it).
-- **Blocker codes** are stable and translated by the account UI, so they are never renamed: `billing.invoice_open`, `billing.invoice_uncollectible`, `billing.tenant_owner`.
-- **Deployment check (user decision 2026-10-08):** ctech-account mints the eligibility token with `iss` = its issuer URL. That must equal billing's `CTECH_ISSUER_URL` (`/ctech-account/{env}/app-url`), and `aud` must equal billing's `SERVICE_AUDIENCE`. Verify both in dev before billing is added to `ERASURE_PARTICIPANTS` (Task 11, PLAN.md operator item).
+- **State table:** `{prefix}_erasure_state`, partition key `pk` (S), TTL attribute `ttl`, declared in `schema.json`.
+- **Blocker codes** are stable and translated by the account UI: `billing.invoice_open`, `billing.invoice_uncollectible`, `billing.merchant_tenant`.
+- **Deployment check (user decision 2026-10-08):** ctech-account mints the eligibility token with `iss` = its issuer URL, equal to billing's `CTECH_ISSUER_URL`, and `aud` equal to billing's `SERVICE_AUDIENCE`. Verify both in dev before billing is added to `ERASURE_PARTICIPANTS`.
 - **DynamoDB:** no `Scan` anywhere (the IAM policy denies it). Batch deletes are at most 25 keys per `BatchWriteItem`.
-- **Retained:** invoices and everything under `INVOICE#`, canceled subscriptions, audit rows (except personal-space finance audit), invoice PDFs. **Anonymized:** the tenant-zero customer. **Erased:** personal finance spaces and the finance spaces of `organizations[]`.
-- **Rollout gate:** legal validation of the inventory (overview § 9 step 1) comes before ctech-account adds `billing` to `ERASURE_PARTICIPANTS` in prod. This code ships dark until then: no message reaches billing's queue.
+- **Retained:** invoices and everything under `INVOICE#`, canceled subscriptions, audit rows of surviving spaces and tenants, invoice PDFs, tenant-zero customers (anonymized). **Erased:** personal finance spaces and the finance spaces of erased workspaces, with their cards, imports and BYOK connections; level rows of the erased refs.
+- **Every new table needs a purge classification** (Task 5's test). This is repository policy; see the README rule "every new feature ships its erasure path".
+- **Rollout gate:** legal validation of the inventory comes before ctech-account adds `billing` to `ERASURE_PARTICIPANTS` in prod. The code ships dark until then.
 
 ## Review Focus
 
-1. **A purge killed halfway, or run twice.** Expected: it ends in the same state, and the entry partitions are still found after the chart rows are gone. Tests:
-   - Task 5 `TestPurgeSpaceErasesEveryRowAndIsSafeToRepeat`
-   - Task 5 `TestPurgeFindsEntriesAfterTheChartIsGone`
-2. **An invoice issued during the grace period (the daily sweep runs while the account is locked).** Expected: the purge's own re-check acks `blocked` and changes nothing. Test: Task 6 `TestPurgeIsRefusedWhileAnInvoiceIsOpenAndChangesNothing`.
-3. **A locked person holding a token that has not expired yet.** Expected: refused on every session route, while service tokens keep working. Test: Task 3 `TestALockedPersonIsRefusedWithATokenThatIsStillValid`.
-4. **The daily finance job holding a work item for a space that is being purged.** Expected: it skips the item instead of resurrecting rows. Test: Task 8 `TestTheJobLeavesAnErasedSpaceAlone`.
-5. **An organization that survives, another customer's open invoice, an organization's audit rows.** Expected: all untouched. Test: Task 6 `TestPurgeErasesThePersonAndKeepsTheDocuments`.
+1. **A purge killed halfway, or run twice.** It ends in the same state; entry, card and import partitions are still found after their parents are gone. Tests: Task 5 `TestPurgeSpaceErasesEveryTableAndIsSafeToRepeat`, `TestPurgeFindsPartitionsAfterTheirParentsAreGone`.
+2. **An invoice issued during the grace period.** The purge's own re-check acks `blocked` and changes nothing. Test: Task 6 `TestPurgeIsRefusedWhileAnInvoiceIsOpenAndChangesNothing`.
+3. **A locked person holding a token that has not expired.** Refused on every session route; service tokens keep working. Test: Task 3 `TestALockedPersonIsRefusedWithATokenThatIsStillValid`.
+4. **Async work for a space being purged.** The finance job, the card close, the BYOK sweeps and the level reporter skip it instead of resurrecting rows. Tests: Task 8 and Task 8b.
+5. **A surviving organization, another customer's open invoice, a surviving space's audit rows, a surviving tenant.** All untouched. Test: Task 6 `TestPurgeErasesThePersonAndKeepsTheDocuments`.
+6. **An erased workspace with a merchant tenant, or with an unpaid organization invoice.** Blocks; nothing is touched. Tests: Task 6 `TestAWorkspaceWithAMerchantTenantBlocksErasure`, `TestAnOrganizationInvoiceBlocksErasure`.
+7. **A sparse index not backfilled.** The gate (Task 11) is the control; Task 4's test documents what a missing key hides.
 
 ---
 
-### Task 1: api-commons v1.8.0 → v1.13.1, gated by the whole suite
+### Task 1: api-commons ≥ v1.19.0, gated by the whole suite
 
-The jump crosses `dynamo.IsConditionFailed`'s change (v1.10.x, "classify cancelled transactions by reason"). A `TransactionConflict` or a throttled transaction is no longer reported as "condition failed". At billing's 19 call sites it now surfaces as an error (500, retried by the caller) instead of being read as "somebody else won". That is the correct behavior. This task changes **no** call site. If a test fails, stop and report it; do not adapt the code inside this task.
+Billing is on `v1.18.0` (the `erasure` package and `jwtverify.WithRevocation` are already importable). This task moves to the first tag that carries `erasure.Message.Workspaces` (`WorkspaceIDs`, `KindOf`). **Prerequisite:** ctech-go-common has tagged `v1.19.0` (or later). It changes **no** call site; if a test fails, stop and report it.
 
 **Files:**
 - Modify: `api/go.mod`, `api/go.sum`
 
 **Interfaces:**
-- Produces: `gopkg.aoctech.app/api-commons/erasure` and `jwtverify.(*Verifier).WithRevocation` become importable.
+- Produces: `erasure.Message.WorkspaceIDs()` and `erasure.Message.KindOf(id)`.
 
 - [ ] **Step 1: Bump**
 
-Run: `go get gopkg.aoctech.app/api-commons@v1.13.1 && go mod tidy`
-Expected: `grep api-commons go.mod` prints `gopkg.aoctech.app/api-commons v1.13.1`.
+Run: `go get gopkg.aoctech.app/api-commons@v1.19.0 && go mod tidy`
+Expected: `grep api-commons go.mod` prints `gopkg.aoctech.app/api-commons v1.19.0` (or the later tag you used). It must never print a version lower than before.
 
 - [ ] **Step 2: Build and vet**
 
 Run: `go build ./... && go vet ./... && go vet -tags integration ./tests/...`
 Expected: no output.
 
-- [ ] **Step 3: Unit suite**
+- [ ] **Step 3: Unit and integration suites**
 
-Run: `go test ./... -race -count=1`
-Expected: every package `ok`, none `FAIL`.
+Run: `go test ./... -race -count=1 && docker compose -f docker-compose.test.yml up -d && make test-integration`
+Expected: every package `ok`, then `PASS`.
 
-- [ ] **Step 4: Integration suite**
-
-Run: `docker compose -f docker-compose.test.yml up -d && make test-integration`
-Expected: `PASS` and `ok  	gopkg.aoctech.app/billing/api/tests/integration`.
-
-- [ ] **Step 5: Record the call sites reviewed**
-
-Run: `grep -rn 'IsConditionFailed' internal --include=*.go | grep -v _test | wc -l`
-Expected: `19`. Each one reads "my own condition failed", and none of them needs a conflict to be read that way.
-
-- [ ] **Step 6: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
 git add go.mod go.sum
-git commit -m "chore(api): api-commons v1.13.1 (erasure package, jwt revocation)"
+git commit -m "chore(api): api-commons v1.19.0 (erasure workspaces)"
 ```
 
 ---
@@ -318,7 +251,7 @@ git commit -m "feat(api): erasure_state table for the account-deletion saga"
 - Create: `api/tests/integration/erasure_test.go`
 
 **Interfaces:**
-- Consumes: `erasure.NewStore(db, prefix, 0)`, `(*erasure.Store).Blocked(ctx, sub) (bool, error)` (api-commons v1.13.1); `jwtverify.(*Verifier).WithRevocation(cache.Backend)`.
+- Consumes: `erasure.NewStore(db, prefix, 0)`, `(*erasure.Store).Blocked(ctx, sub) (bool, error)` (api-commons ≥ v1.13.0); `jwtverify.(*Verifier).WithRevocation(cache.Backend)`.
 - Produces:
   - `problem.TypeAccountLocked`
   - `middleware.RefuseLocked(blocked func(ctx context.Context, sub string) (bool, error)) fiber.Handler`
@@ -664,28 +597,23 @@ git commit -m "feat(api): refuse a person locked by account deletion; check the 
 
 ---
 
-### Task 4: Every invoice and subscription of one customer; clearing subscription metadata
+### Task 4: Every invoice and subscription of one customer, through the indexes; clearing subscription metadata
+
+`InvoiceRepository.ListByCustomer` (`customer-index`) and `SubscriptionRepository.ListByCustomer` (`lookup-index`) already exist (#88, #92). With `limit <= 0` they follow continuation keys to the end, which is what deletion needs. This task adds the one missing write, `ClearMetadata`, and tests the two reads for erasure's needs, including what an unfilled index hides (R22).
 
 **Files:**
-- Modify: `api/internal/repositories/ledger.go` (`queryPrefix` becomes a package function)
-- Modify: `api/internal/repositories/recurrences.go` (its one caller)
-- Modify: `api/internal/repositories/base.go` (`itemsWhere`)
-- Modify: `api/internal/repositories/invoices.go` (`AllByCustomer`)
-- Modify: `api/internal/repositories/subscriptions.go` (`AllByCustomer`, `ClearMetadata`)
+- Modify: `api/internal/repositories/subscriptions.go` (`ClearMetadata`)
 - Test: `api/tests/integration/erasure_test.go`
 
 **Interfaces:**
+- Consumes: `(*InvoiceRepository).ListByCustomer(ctx, organizationID, livemode, customerID, 0)`, `(*SubscriptionRepository).ListByCustomer(ctx, organizationID, livemode, customerID, 0)`.
 - Produces:
-  - `queryPrefix(ctx, b Base, pk, skPrefix string) ([]map[string]types.AttributeValue, error)`, package-level and unexported
-  - `itemsWhere(items []map[string]types.AttributeValue, attr, want string) []map[string]types.AttributeValue`
-  - `(*InvoiceRepository).AllByCustomer(ctx, organizationID string, livemode bool, customerID string) ([]billing.Invoice, error)`
-  - `(*SubscriptionRepository).AllByCustomer(ctx, organizationID string, livemode bool, customerID string) ([]billing.Subscription, error)`
   - `(*SubscriptionRepository).ClearMetadata(ctx, s *billing.Subscription, now time.Time) error`
   - the integration helper `newSubscriptionWithMetadata(t, org, customerID, priceID string) *billing.Subscription`
 
 - [ ] **Step 1: Write the failing test**
 
-Append to `tests/integration/erasure_test.go` and extend its imports with `"gopkg.aoctech.app/billing/api/internal/domain/billing"`, `"gopkg.aoctech.app/billing/api/internal/domain/brcal"` and `"gopkg.aoctech.app/billing/api/internal/repositories"`:
+Append to `tests/integration/erasure_test.go` (imports: `billing`, `brcal`, `repositories`, `id`):
 
 ```go
 func newSubscriptionWithMetadata(t *testing.T, org *billing.Organization, customerID, priceID string) *billing.Subscription {
@@ -709,7 +637,7 @@ func newSubscriptionWithMetadata(t *testing.T, org *billing.Organization, custom
 	return sub
 }
 
-func TestAllByCustomerReadsOneCustomerOnlyAndMetadataClears(t *testing.T) {
+func TestListByCustomerReadsOneCustomerOnlyAndMetadataClears(t *testing.T) {
 	ctx := ctxT(t)
 	e := newPortal(t)
 	other := &billing.Customer{
@@ -725,7 +653,7 @@ func TestAllByCustomerReadsOneCustomerOnlyAndMetadataClears(t *testing.T) {
 	newInvoiceFor(t, e.org, e.customer.ID)
 	newInvoiceFor(t, e.org, other.ID)
 
-	invoices, err := repositories.NewInvoiceRepository(testDB, testCfg).AllByCustomer(ctx, e.org.ID, true, e.customer.ID)
+	invoices, err := repositories.NewInvoiceRepository(testDB, testCfg).ListByCustomer(ctx, e.org.ID, true, e.customer.ID, 0)
 	if err != nil || len(invoices) != 2 {
 		t.Fatalf("invoices = %d, %v; want this customer's 2 and none of the other's", len(invoices), err)
 	}
@@ -736,7 +664,7 @@ func TestAllByCustomerReadsOneCustomerOnlyAndMetadataClears(t *testing.T) {
 	}
 
 	subs := repositories.NewSubscriptionRepository(testDB, testCfg)
-	got, err := subs.AllByCustomer(ctx, e.org.ID, true, e.customer.ID)
+	got, err := subs.ListByCustomer(ctx, e.org.ID, true, e.customer.ID, 0)
 	if err != nil || len(got) != 1 || got[0].ID != mine.ID || len(got[0].Metadata) == 0 {
 		t.Fatalf("subscriptions = %+v, %v; want only %s, with its metadata", got, err, mine.ID)
 	}
@@ -748,94 +676,36 @@ func TestAllByCustomerReadsOneCustomerOnlyAndMetadataClears(t *testing.T) {
 		t.Fatalf("metadata after clearing = %v, %v", after.Metadata, err)
 	}
 }
+
+// R22: the indexes are sparse. A row written before customer-index existed and
+// not backfilled is invisible to ListByCustomer, so an open invoice on it would
+// not block an erasure. This test pins that fact; the control is the backfill
+// gate in Task 11, not code.
+func TestAnInvoiceWithoutItsCustomerKeyIsInvisibleToTheIndex(t *testing.T) {
+	ctx := ctxT(t)
+	e := newPortal(t)
+	inv := newInvoiceFor(t, e.org, e.customer.ID)
+	removeAttr(t, "invoices", repositories.TenantPK(e.org.ID, true), repositories.InvoiceSK(inv.ID), "customer_pk")
+
+	got, err := repositories.NewInvoiceRepository(testDB, testCfg).ListByCustomer(ctx, e.org.ID, true, e.customer.ID, 0)
+	if err != nil || len(got) != 0 {
+		t.Fatalf("invoices = %d, %v; a row without customer_pk must not appear (that is what the backfill fixes)", len(got), err)
+	}
+}
 ```
+
+`removeAttr(t, logicalTable, pk, sk, attr)` is a small helper in the same file: an `UpdateItem ... REMOVE #a` on `repositories.TableName(testCfg, logicalTable)`.
 
 - [ ] **Step 2: Run it to verify it fails**
 
 Run: `go vet -tags integration ./tests/...`
-Expected: FAIL, `AllByCustomer undefined` and `ClearMetadata undefined`.
+Expected: FAIL, `ClearMetadata undefined`.
 
 - [ ] **Step 3: Implement**
-
-Make `queryPrefix` a package function and repoint its callers:
-
-```bash
-sed -i 's/^func (r \*LedgerRepository) queryPrefix(/func queryPrefix(/; s/r\.queryPrefix(/queryPrefix(/g' internal/repositories/ledger.go
-sed -i 's/r\.ledger\.queryPrefix(/queryPrefix(/' internal/repositories/recurrences.go
-```
-
-`base.go`: add the import `"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"` if it is not already there (it is, for `txItems`), and append:
-
-```go
-// itemsWhere keeps the raw items whose string attribute attr equals want. It
-// filters before decoding, so rows of another shape that share a key prefix
-// (an invoice's lines, a subscription's items) are dropped unread.
-func itemsWhere(items []map[string]types.AttributeValue, attr, want string) []map[string]types.AttributeValue {
-	out := make([]map[string]types.AttributeValue, 0, len(items))
-	for _, it := range items {
-		if v, ok := it[attr].(*types.AttributeValueMemberS); ok && v.Value == want {
-			out = append(out, it)
-		}
-	}
-	return out
-}
-```
-
-`invoices.go`, after `ListByCustomer`:
-
-```go
-// AllByCustomer returns every invoice addressed to customerID, following
-// continuation keys to the end. It serves account deletion, where missing one
-// open invoice means erasing a debtor. ListByCustomer stays capped for the
-// portal.
-//
-// ponytail: reads the tenant's whole INVOICE# range once per erasure; add a
-// customer index if tenant zero's range ever takes more than seconds to read.
-func (r *InvoiceRepository) AllByCustomer(ctx context.Context, organizationID string, livemode bool, customerID string) ([]billing.Invoice, error) {
-	items, err := queryPrefix(ctx, r.base, TenantPK(organizationID, livemode), skInvoice)
-	if err != nil {
-		return nil, err
-	}
-	rows, err := DecodeItems[invoiceRow](itemsWhere(items, "customer_id", customerID))
-	if err != nil {
-		return nil, err
-	}
-	out := make([]billing.Invoice, 0, len(rows))
-	for _, row := range rows {
-		if row.Invoice.Status == "" {
-			continue
-		}
-		out = append(out, row.Invoice)
-	}
-	return out, nil
-}
-```
 
 `subscriptions.go`, after `ListByCustomer`:
 
 ```go
-// AllByCustomer returns every subscription of customerID, following
-// continuation keys to the end. It serves account deletion, which must cancel
-// all of them, not the first page.
-func (r *SubscriptionRepository) AllByCustomer(ctx context.Context, organizationID string, livemode bool, customerID string) ([]billing.Subscription, error) {
-	items, err := queryPrefix(ctx, r.base, TenantPK(organizationID, livemode), skSubscription)
-	if err != nil {
-		return nil, err
-	}
-	rows, err := DecodeItems[subscriptionRow](itemsWhere(items, "customer_id", customerID))
-	if err != nil {
-		return nil, err
-	}
-	out := make([]billing.Subscription, 0, len(rows))
-	for _, row := range rows {
-		if row.Subscription.Status == "" {
-			continue
-		}
-		out = append(out, row.entity())
-	}
-	return out, nil
-}
-
 // ClearMetadata removes the subscription's metadata. Account deletion erases
 // what is not tied to an invoice (data inventory § 6). Metadata is free-form,
 // so it is the one place undeclared personal data can sit on a subscription
@@ -855,13 +725,13 @@ func (r *SubscriptionRepository) ClearMetadata(ctx context.Context, s *billing.S
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `go test ./internal/repositories/ -count=1 && make test-integration`
-Expected: `ok`, and `--- PASS: TestAllByCustomerReadsOneCustomerOnlyAndMetadataClears` among a passing suite (the ledger and recurrence tests still pass after the `queryPrefix` move).
+Expected: `ok`, and both new tests PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add internal/repositories tests/integration/erasure_test.go
-git commit -m "feat(api): read every invoice and subscription of a customer; clear subscription metadata"
+git commit -m "feat(api): clear a subscription's metadata; pin what the customer indexes hide"
 ```
 
 ---
@@ -869,18 +739,28 @@ git commit -m "feat(api): read every invoice and subscription of a customer; cle
 ### Task 5: `SpacePurger` — every row of one finance space, resumable
 
 **Files:**
+- Modify: `api/internal/repositories/ledger.go`, `api/internal/repositories/recurrences.go` (`queryPrefix` becomes a package function)
 - Create: `api/internal/repositories/finance_purge.go`
 - Create: `api/internal/repositories/finance_purge_test.go`
 - Test: `api/tests/integration/erasure_test.go`
 
 **Interfaces:**
-- Consumes: `queryPrefix`, `DecodeItems[txItem]`, `LedgerEntryPK(sp, account)` (Task 4 and existing code).
+- Consumes: `queryPrefix`, `DecodeItems[txItem]`, `LedgerEntryPK(sp, account)`, `CardPK(sp, id)`, `ImportPK(sp, id)`, `hookPK(id)`, `CardSK`, `ImportSK`.
 - Produces:
   - `repositories.NewSpacePurger(db *dynamodb.Client, cfg *config.Config) *SpacePurger`
   - `(*SpacePurger).PurgeSpace(ctx context.Context, sp space.ResolvedSpace) (map[string]int, error)`, which returns the rows deleted per logical table
   - the integration helpers `seedFinance(t, sp)`, `rowsUnder(t, logical, pk) int` and `assertSpaceGone(t, sp)`
 
-- [ ] **Step 1: Write the failing unit tests**
+- [ ] **Step 1: Make `queryPrefix` a package function**
+
+```bash
+sed -i 's/^func (r \*LedgerRepository) queryPrefix(/func queryPrefix(/; s/r\.queryPrefix(/queryPrefix(/g' internal/repositories/ledger.go
+sed -i 's/r\.ledger\.queryPrefix(/queryPrefix(/' internal/repositories/recurrences.go internal/repositories/cards.go internal/repositories/imports.go
+go build ./... 
+```
+Expected: builds. (`cards.go` and `imports.go` call it as `r.ledger.queryPrefix(ctx, r.cards, …)`; fix any other caller the compiler names the same way.)
+
+- [ ] **Step 2: Write the failing unit tests**
 
 `api/internal/repositories/finance_purge_test.go`:
 
@@ -899,20 +779,21 @@ import (
 // notSpaceScoped is every table that PurgeSpace does not clear as a finance
 // table, with the reason. ADR 0026: "a missing TTL or a missing purge path" is
 // a review failure, so a new table must land in exactly one of the two lists.
-// A table whose rows live in partitions other than S (cards: S#CARD#{id})
-// also needs its own step in PurgeSpace, as the S#ACCOUNT# entries have.
+// A table whose rows live in partitions other than S (cards: S#CARD#{id},
+// imports: S#IMPORT#{id}, byok: HOOK#{id}) also needs its own step in
+// PurgeSpace, as the S#ACCOUNT# entries have.
 var notSpaceScoped = map[string]string{
-	TableOrganizations: "a merchant tenant (ADR 0007); its owner is an eligibility blocker",
-	TableCredentials:   "integration credentials, no person",
-	TableCustomers:     "the tenant-zero customer is anonymized in place by services.Eraser (ADR 0009)",
+	TableOrganizations: "merchant tenants (ADR 0007) and applications; a workspace with a tenant blocks erasure (billing.merchant_tenant), so none is purged until a tenant deletion flow exists",
+	TableCredentials:   "belongs to a merchant tenant, which blocks erasure",
+	TableCustomers:     "tenant-zero customers are anonymized in place by services.Eraser (ADR 0009); merchants' customers are their controller's",
 	TableProducts:      "catalogue, no person",
 	TablePrices:        "catalogue, no person",
 	TableSubscriptions: "canceled by services.Eraser and retained: it explains invoices (ADR 0009)",
 	TableInvoices:      "fiscal documents, retained (ADR 0009)",
-	TableUsage:         "24-month TTL, no personal data",
-	TableWebhooks:      "90-day TTL; the payload is an id and a type",
+	TableUsage:         "level rows of USER_/ORG_ refs are deleted by LevelRepository.EraseRef; raw usage records expire in 24 months and carry no person",
+	TableWebhooks:      "tenant endpoints belong to a merchant tenant (blocks erasure); events and deliveries expire in 90 days",
 	TableErasureState:  "the saga's own state and tombstones",
-	TableAudit:         "purged under S for personal spaces only (ADR 0026); five-year TTL otherwise",
+	TableAudit:         "purged under S by PurgeSpace, outside financeTables; a surviving space's audit keeps ADR 0009's five-year TTL",
 	TableIdempotency:   "purged under S by PurgeSpace, outside financeTables",
 }
 
@@ -922,6 +803,11 @@ func TestEveryTableIsClassifiedForThePurge(t *testing.T) {
 		purged := slices.Contains(financeTables, name)
 		if other == purged {
 			t.Errorf("table %q must be in exactly one of financeTables (purged under the space) or notSpaceScoped (with the reason it is not)", name)
+		}
+	}
+	for _, name := range financeTables {
+		if !slices.Contains(TableNames(), name) {
+			t.Errorf("financeTables names %q, which is not a table", name)
 		}
 	}
 }
@@ -934,12 +820,12 @@ func TestPurgeSpaceRefusesTheZeroSpace(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run them to verify they fail**
+- [ ] **Step 3: Run them to verify they fail**
 
 Run: `go test ./internal/repositories/ -run 'TestEveryTableIsClassifiedForThePurge|TestPurgeSpaceRefusesTheZeroSpace'`
 Expected: FAIL, `undefined: financeTables`, `undefined: SpacePurger`.
 
-- [ ] **Step 3: Implement**
+- [ ] **Step 4: Implement**
 
 `api/internal/repositories/finance_purge.go`:
 
@@ -959,18 +845,25 @@ import (
 	"gopkg.aoctech.app/billing/api/internal/space"
 )
 
-// financeTables are the tables whose every row lives under a finance space key
-// S (spec § 4). PurgeSpace clears each one's S partition.
-// TestEveryTableIsClassifiedForThePurge makes a new table choose a side.
-var financeTables = []string{TableLedgerAccounts, TableLedgerTransactions, TableBills, TableRecurrences}
+// financeTables are the tables whose rows live under a finance space key S
+// (spec § 4, 6.5, 6.6, BYOK § 12.2). PurgeSpace clears each one's S partition,
+// and the child partitions below. TestEveryTableIsClassifiedForThePurge makes a
+// new table choose a side.
+var financeTables = []string{
+	TableLedgerAccounts, TableLedgerTransactions, TableBills, TableRecurrences,
+	TableCards, TableImports, TableByok,
+}
 
 // batchDeleteAttempts bounds the retries of a BatchWriteItem's unprocessed
 // keys. Running out is an error. The saga redelivers, and the purge restarts
 // from a fresh read.
 const batchDeleteAttempts = 5
 
+// attrHookID is the connection row's pointer to its HOOK#{id} partition.
+const attrHookID = "hook_id"
+
 // SpacePurger deletes a finance space (ADR 0026): a personal space when its
-// owner's CTech account is deleted, an organization space when the organization
+// owner's CTech account is deleted, any workspace's space when the workspace
 // is erased with its only member.
 //
 // It is not a LedgerRepository method on purpose. The ledger has no edit path
@@ -990,19 +883,27 @@ func NewSpacePurger(db *dynamodb.Client, cfg *config.Config) *SpacePurger {
 
 // PurgeSpace deletes every row of sp and returns how many it deleted per
 // logical table. Idempotent and resumable: every run re-reads from scratch.
-// Entry partitions are deleted before the chart and the transaction headers
-// that name their accounts, so a run that dies anywhere still finds what is
-// left.
+// Child partitions (entries, cards, imports, hooks) are deleted before the
+// rows that name them, so a run that dies anywhere still finds what is left.
+//
+// The space's audit rows go too, whatever the space's kind (decision
+// 2026-10-13): the workspace itself is gone, so the five-year trail that ADR
+// 0009 keeps for a surviving organization has nothing left to explain.
 func (p *SpacePurger) PurgeSpace(ctx context.Context, sp space.ResolvedSpace) (map[string]int, error) {
 	if sp.IsZero() {
 		return nil, space.ErrNoSpace
 	}
 	counts := map[string]int{}
 	s := sp.PK()
+	child := func(table, pk string) error {
+		n, err := p.deletePartition(ctx, table, pk)
+		counts[table] += n
+		return err
+	}
 
-	// 1. The per-account entry partitions S#ACCOUNT#{id}. The ids come from the
-	// chart and from every transaction's legs, so entries are found even after
-	// a previous run deleted the chart.
+	// 1. Ledger entries S#ACCOUNT#{id}. The ids come from the chart and from
+	// every transaction's legs, so entries are found even after a previous run
+	// deleted the chart.
 	accounts := map[string]bool{}
 	chart, err := queryPrefix(ctx, p.bases[TableLedgerAccounts], s, "ACCOUNT#")
 	if err != nil {
@@ -1027,28 +928,66 @@ func (p *SpacePurger) PurgeSpace(ctx context.Context, sp space.ResolvedSpace) (m
 		}
 	}
 	for account := range accounts {
-		n, err := p.deletePartition(ctx, TableLedgerTransactions, LedgerEntryPK(sp, account))
-		counts[TableLedgerTransactions] += n
-		if err != nil {
+		if err := child(TableLedgerTransactions, LedgerEntryPK(sp, account)); err != nil {
 			return counts, err
 		}
 	}
 
-	// 2. The space partition S in every table that keys by it. Audit rows go
-	// only with a personal space: an organization's finance audit rows keep
-	// ADR 0009's five years (ADR 0026, "Finance audit rows").
-	tables := append(append([]string(nil), financeTables...), TableIdempotency)
-	if sp.Personal() {
-		tables = append(tables, TableAudit)
+	// 2. Card partitions S#CARD#{id}: purchases, statements, statement items.
+	// The card ids are the S partition's CARD# rows.
+	if err := p.eachID(ctx, TableCards, s, "CARD#", func(id string) error {
+		return child(TableCards, CardPK(sp, id))
+	}); err != nil {
+		return counts, err
 	}
+
+	// 3. Import partitions S#IMPORT#{id}: the parsed lines. The FITID# locks and
+	// CSVMAP# rows are in S itself.
+	if err := p.eachID(ctx, TableImports, s, "IMPORT#", func(id string) error {
+		return child(TableImports, ImportPK(sp, id))
+	}); err != nil {
+		return counts, err
+	}
+
+	// 4. BYOK hooks HOOK#{id}, named by the connection rows' hook_id.
+	conns, err := queryPrefix(ctx, p.bases[TableByok], s, "")
+	if err != nil {
+		return counts, err
+	}
+	for _, it := range conns {
+		if v, ok := it[attrHookID].(*types.AttributeValueMemberS); ok && v.Value != "" {
+			if err := child(TableByok, hookPK(v.Value)); err != nil {
+				return counts, err
+			}
+		}
+	}
+
+	// 5. The space partition S in every table that keys by it, then audit and
+	// idempotency.
+	tables := append(append([]string(nil), financeTables...), TableIdempotency, TableAudit)
 	for _, t := range tables {
-		n, err := p.deletePartition(ctx, t, s)
-		counts[t] += n
-		if err != nil {
+		if err := child(t, s); err != nil {
 			return counts, err
 		}
 	}
 	return counts, nil
+}
+
+// eachID calls fn with the id of every row under pk whose sort key starts with
+// prefix (the sort key is prefix + id).
+func (p *SpacePurger) eachID(ctx context.Context, table, pk, prefix string, fn func(id string) error) error {
+	rows, err := queryPrefix(ctx, p.bases[table], pk, prefix)
+	if err != nil {
+		return err
+	}
+	for _, it := range rows {
+		if sk, ok := it["sk"].(*types.AttributeValueMemberS); ok {
+			if err := fn(strings.TrimPrefix(sk.Value, prefix)); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // deletePartition deletes every row under pk, 25 keys per BatchWriteItem,
@@ -1092,20 +1031,23 @@ func (p *SpacePurger) deletePartition(ctx context.Context, logical, pk string) (
 }
 ```
 
-- [ ] **Step 4: Run the unit tests to verify they pass**
+- [ ] **Step 5: Run the unit tests to verify they pass**
 
 Run: `go test ./internal/repositories/ -count=1`
 Expected: `ok`.
 
-- [ ] **Step 5: Write the integration tests**
+- [ ] **Step 6: Write the integration tests**
 
-Append to `tests/integration/erasure_test.go` and extend its imports with `"context"`, `"github.com/aws/aws-sdk-go-v2/aws"`, `"github.com/aws/aws-sdk-go-v2/service/dynamodb"`, `"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"`, `"gopkg.aoctech.app/billing/api/internal/domain/finance"` and `"gopkg.aoctech.app/billing/api/internal/space"`:
+Append to `tests/integration/erasure_test.go`:
 
 ```go
 var seedNow = time.Date(2026, 3, 20, 12, 0, 0, 0, time.UTC)
 
-// seedFinance writes a space as a person uses it: the chart, a transfer, a
-// recognised bill, a recurrence and a cached idempotent response.
+// seedFinance writes a space as a person uses it, across EVERY space-keyed
+// table: the chart, a transfer, a bill, a recurrence, a card with a purchase,
+// an import with its lines and locks, a BYOK connection with a hook, an audit
+// row and a cached idempotent response. A new space-keyed table must be added
+// here, which assertSpaceGone then checks.
 func seedFinance(t *testing.T, sp space.ResolvedSpace) {
 	t.Helper()
 	ctx := context.Background()
@@ -1138,133 +1080,176 @@ func seedFinance(t *testing.T, sp space.ResolvedSpace) {
 	}, repositories.PostMeta{}, seedNow); err != nil {
 		t.Fatal(err)
 	}
+	seedCardWithPurchase(t, sp)  // cards: S and S#CARD#{id}
+	seedImportWithLines(t, sp)   // imports: S (IMPORT#, FITID#, CSVMAP#) and S#IMPORT#{id}
+	seedByokConnectionWithHook(t, sp) // byok: S (CONNECTION#, SEALED#) and HOOK#{id}
 	if err := repositories.NewIdempotencyRepository(testDB, testCfg).Store(ctx, sp.Owner(), sp.Livemode(),
 		repositories.IdempotencyRecord{Key: "k-" + id.New(), RequestHash: "h", Status: 201, Response: "{}", Route: "/x"}, seedNow); err != nil {
 		t.Fatal(err)
 	}
 }
+```
 
-// rowsUnder counts the rows of one partition, read straight from the table.
-func rowsUnder(t *testing.T, logical, pk string) int {
-	t.Helper()
-	out, err := testDB.Query(ctxT(t), &dynamodb.QueryInput{
-		TableName:                 aws.String(repositories.PhysicalName(testCfg.TablePrefix, logical)),
-		KeyConditionExpression:    aws.String("pk = :pk"),
-		ExpressionAttributeValues: map[string]types.AttributeValue{":pk": &types.AttributeValueMemberS{Value: pk}},
-		Select:                    types.SelectCount,
-		ConsistentRead:            aws.Bool(true),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	return int(out.Count)
-}
+Each `seedX` helper uses the repository's own public constructor path (`CardRepository.CreateCard` and its purchase method, `ImportRepository` parse and stage, `ByokRepository.PutConnection`/`PutHook` or `ByokConnections.EnableSandbox` for the shared sandbox), so a change to those key layouts breaks the seed instead of silently desynchronizing it. `rowsUnder(t, logical, pk)` queries the table by partition key and returns the count; `assertSpaceGone(t, sp)` asserts zero rows under `sp.PK()` in every `financeTables` entry plus `idempotency` and `audit`, zero under each of the seeded `S#ACCOUNT#`, `S#CARD#`, `S#IMPORT#` and `HOOK#` partitions.
 
-// assertSpaceGone checks every partition seedFinance writes to, except audit,
-// which depends on the kind of space.
-func assertSpaceGone(t *testing.T, sp space.ResolvedSpace) {
-	t.Helper()
-	for _, table := range []string{repositories.TableLedgerAccounts, repositories.TableLedgerTransactions,
-		repositories.TableBills, repositories.TableRecurrences, repositories.TableIdempotency} {
-		if n := rowsUnder(t, table, sp.PK()); n != 0 {
-			t.Errorf("%s still holds %d rows under %s", table, n, sp.PK())
-		}
-	}
-	for _, account := range []string{"bank", "cash", "rent"} {
-		if n := rowsUnder(t, repositories.TableLedgerTransactions, sp.PK()+"#ACCOUNT#"+account); n != 0 {
-			t.Errorf("entries of %s survive: %d rows", account, n)
-		}
-	}
-}
-
-// Review Focus 1.
-func TestPurgeSpaceErasesEveryRowAndIsSafeToRepeat(t *testing.T) {
-	ctx := ctxT(t)
-	sp := jobSpace(t, "USER#usr_"+id.New(), true)
-	seedFinance(t, sp)
-	for _, table := range []string{repositories.TableLedgerAccounts, repositories.TableLedgerTransactions,
-		repositories.TableBills, repositories.TableRecurrences, repositories.TableAudit, repositories.TableIdempotency} {
-		if rowsUnder(t, table, sp.PK()) == 0 {
-			t.Fatalf("the seed wrote nothing to %s, so this test would prove nothing", table)
-		}
-	}
-
+```go
+func TestPurgeSpaceErasesEveryTableAndIsSafeToRepeat(t *testing.T) {
+	ctx := context.Background()
 	purger := repositories.NewSpacePurger(testDB, testCfg)
-	counts, err := purger.PurgeSpace(ctx, sp)
+	sp := jobSpace(t, "USER#"+id.New(), true)
+	other := jobSpace(t, "USER#"+id.New(), true)
+	seedFinance(t, sp)
+	seedFinance(t, other)
+
+	first, err := purger.PurgeSpace(ctx, sp)
 	if err != nil {
 		t.Fatal(err)
+	}
+	for _, table := range []string{"ledger_accounts", "ledger_transactions", "bills", "recurrences", "cards", "imports", "byok", "audit", "idempotency"} {
+		if first[table] == 0 {
+			t.Errorf("first run deleted nothing from %s; the seed or the purge skips it", table)
+		}
 	}
 	assertSpaceGone(t, sp)
-	if n := rowsUnder(t, repositories.TableAudit, sp.PK()); n != 0 {
-		t.Fatalf("a personal space's audit rows survive: %d (ADR 0026)", n)
-	}
-	if counts[repositories.TableLedgerTransactions] == 0 || counts[repositories.TableAudit] == 0 {
-		t.Fatalf("counts = %v", counts)
-	}
 
-	again, err := purger.PurgeSpace(ctx, sp)
+	second, err := purger.PurgeSpace(ctx, sp)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for table, n := range again {
+	for table, n := range second {
 		if n != 0 {
-			t.Errorf("second run deleted %d rows from %s; a finished purge has nothing left", n, table)
+			t.Errorf("second run deleted %d rows from %s; the purge is not idempotent", n, table)
 		}
 	}
+	assertSpaceUntouched(t, other) // a different person's space is exactly as seeded
 }
 
-// Review Focus 1: a run that died after deleting the chart still finds the
-// entries, through the legs of the transaction headers.
-func TestPurgeFindsEntriesAfterTheChartIsGone(t *testing.T) {
-	ctx := ctxT(t)
-	sp := jobSpace(t, "USER#usr_"+id.New(), true)
+// A run that died after deleting the parent rows must still find and delete the
+// child partitions. Here the chart, the card rows and the import rows are gone
+// first, as an interrupted earlier run would leave them.
+func TestPurgeFindsPartitionsAfterTheirParentsAreGone(t *testing.T) {
+	ctx := context.Background()
+	sp := jobSpace(t, "USER#"+id.New(), true)
 	seedFinance(t, sp)
-	out, err := testDB.Query(ctx, &dynamodb.QueryInput{
-		TableName:                 aws.String(repositories.PhysicalName(testCfg.TablePrefix, repositories.TableLedgerAccounts)),
-		KeyConditionExpression:    aws.String("pk = :pk"),
-		ExpressionAttributeValues: map[string]types.AttributeValue{":pk": &types.AttributeValueMemberS{Value: sp.PK()}},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, it := range out.Items {
-		if _, err := testDB.DeleteItem(ctx, &dynamodb.DeleteItemInput{
-			TableName: aws.String(repositories.PhysicalName(testCfg.TablePrefix, repositories.TableLedgerAccounts)),
-			Key:       map[string]types.AttributeValue{"pk": it["pk"], "sk": it["sk"]},
-		}); err != nil {
-			t.Fatal(err)
-		}
-	}
+	deleteRows(t, "ledger_accounts", sp.PK())
+	deleteRowsWithPrefix(t, "cards", sp.PK(), "CARD#")
+	deleteRowsWithPrefix(t, "imports", sp.PK(), "IMPORT#")
+	deleteRowsWithPrefix(t, "byok", sp.PK(), "SEALED#")
 
 	if _, err := repositories.NewSpacePurger(testDB, testCfg).PurgeSpace(ctx, sp); err != nil {
 		t.Fatal(err)
 	}
-	assertSpaceGone(t, sp)
+	assertSpaceGone(t, sp) // includes the S#ACCOUNT#, S#CARD#, S#IMPORT# and HOOK# partitions
 }
+```
 
-func TestAnOrganizationSpaceKeepsItsAuditRows(t *testing.T) {
-	sp := jobSpace(t, newSpaceOrgID(), true)
-	seedFinance(t, sp)
-	if _, err := repositories.NewSpacePurger(testDB, testCfg).PurgeSpace(ctxT(t), sp); err != nil {
-		t.Fatal(err)
+The connection row stays in this test on purpose: it is what names the `HOOK#{id}` partition, so the purge deletes hooks **before** the `S` partition (Step 4 order). Everything else a dead run could have removed first is removed.
+
+- [ ] **Step 7: Run all suites**
+
+Run: `go test ./internal/... -count=1 && make test-integration`
+Expected: `ok`, and PASS for both tests.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add internal/repositories tests/integration/erasure_test.go
+git commit -m "feat(api): SpacePurger deletes a finance space across every table, with its cards, imports and bank hooks"
+```
+
+---
+
+### Task 5b: Delete the level rows of one `customer_ref`
+
+Level reports (`usage` table) are keyed `{tenant}#LEVEL#{customer_ref}#{meter}` (history, 13 months) and `{tenant}#LEVEL_LATEST#{customer_ref}#{meter}` (newest, no TTL). Tenant zero's refs are `USER_{sub}` (Finanças plans) and `ORG_{id}` (DF-e companies). Meters are free-form, so they cannot be listed by ref (R21); the caller passes them.
+
+**Files:**
+- Modify: `api/internal/repositories/levels.go` (`EraseRef`)
+- Test: `api/tests/integration/erasure_test.go`
+
+**Interfaces:**
+- Consumes: `LevelPK`, `LevelLatestPK`, `queryPrefix` (Task 5), the batch delete of Task 5 (extract `deleteKeys(ctx, base, items)` from `SpacePurger.deletePartition` as a package function so both use it).
+- Produces: `(*LevelRepository).EraseRef(ctx, organizationID string, livemode bool, customerRef string, meters []string) (int, error)`: rows deleted; idempotent.
+
+- [ ] **Step 1: Write the failing test**
+
+```go
+func TestEraseRefDeletesHistoryAndLatestOfThatRefOnly(t *testing.T) {
+	ctx := ctxT(t)
+	e := newPortal(t)
+	levels := repositories.NewLevelRepository(testDB, testCfg)
+	mine, other := "USER_"+id.New(), "USER_"+id.New()
+	for _, ref := range []string{mine, other} {
+		for _, meter := range []string{"finance_spaces", "finance_people"} {
+			if err := levels.Append(ctx, &billing.LevelRecord{
+				OrganizationID: e.org.ID, Livemode: true, CustomerRef: ref, Meter: meter, Value: 2,
+				OccurredAt: seedNow, IdempotencyKey: "k-" + id.New(),
+			}, seedNow); err != nil {
+				t.Fatal(err)
+			}
+		}
 	}
-	assertSpaceGone(t, sp)
-	if rowsUnder(t, repositories.TableAudit, sp.PK()) == 0 {
-		t.Fatal("an organization's finance audit rows keep ADR 0009's five years (ADR 0026)")
+	n, err := levels.EraseRef(ctx, e.org.ID, true, mine, []string{"finance_spaces", "finance_people", "never_reported"})
+	if err != nil || n != 4 { // one history + one latest row per reported meter
+		t.Fatalf("EraseRef = %d, %v; want 4", n, err)
+	}
+	if l, err := levels.Latest(ctx, e.org.ID, true, mine, "finance_spaces"); err == nil && l != nil {
+		t.Fatalf("latest of the erased ref survives: %+v", l)
+	}
+	if l, err := levels.Latest(ctx, e.org.ID, true, other, "finance_spaces"); err != nil || l == nil {
+		t.Fatalf("another ref's latest was touched: %+v, %v", l, err)
+	}
+	if n, err := levels.EraseRef(ctx, e.org.ID, true, mine, []string{"finance_spaces"}); err != nil || n != 0 {
+		t.Fatalf("second run = %d, %v; want 0", n, err)
 	}
 }
 ```
 
-- [ ] **Step 6: Run the integration suite**
+- [ ] **Step 2: Run it to verify it fails**
 
-Run: `make test-integration`
-Expected: PASS for `TestPurgeSpaceErasesEveryRowAndIsSafeToRepeat`, `TestPurgeFindsEntriesAfterTheChartIsGone` and `TestAnOrganizationSpaceKeepsItsAuditRows`, among a passing suite.
+Run: `go vet -tags integration ./tests/...`
+Expected: FAIL, `EraseRef undefined`.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 3: Implement**
+
+In `finance_purge.go`, extract the batch loop of `deletePartition` into `deleteKeys(ctx context.Context, b Base, items []map[string]types.AttributeValue) (int, error)` and make `deletePartition` call it after `queryPrefix`. In `levels.go`:
+
+```go
+// EraseRef deletes the level history and the latest level of customerRef for
+// each meter (account deletion, R21). The LEVEL_KEY# idempotency markers hold a
+// hash only and expire with the 13-month TTL, so they stay.
+func (r *LevelRepository) EraseRef(ctx context.Context, organizationID string, livemode bool, customerRef string, meters []string) (int, error) {
+	total := 0
+	for _, meter := range meters {
+		for _, pk := range []string{
+			LevelPK(organizationID, livemode, customerRef, meter),
+			LevelLatestPK(organizationID, livemode, customerRef, meter),
+		} {
+			items, err := queryPrefix(ctx, r.base, pk, "")
+			if err != nil {
+				return total, err
+			}
+			n, err := deleteKeys(ctx, r.base, items)
+			total += n
+			if err != nil {
+				return total, err
+			}
+		}
+	}
+	return total, nil
+}
+```
+
+- [ ] **Step 4: Run the tests to verify they pass**
+
+Run: `go test ./internal/repositories/ -count=1 && make test-integration`
+Expected: `ok`, and `--- PASS: TestEraseRefDeletesHistoryAndLatestOfThatRefOnly`.
+
+- [ ] **Step 5: Commit**
 
 ```bash
-git add internal/repositories/finance_purge.go internal/repositories/finance_purge_test.go tests/integration/erasure_test.go
-git commit -m "feat(api): SpacePurger erases a finance space, resumable (ADR 0026)"
+git add internal/repositories tests/integration/erasure_test.go
+git commit -m "feat(api): delete the level rows of one customer ref"
 ```
 
 ---
@@ -1276,18 +1261,22 @@ git commit -m "feat(api): SpacePurger erases a finance space, resumable (ADR 002
 - Test: `api/tests/integration/erasure_test.go`
 
 **Interfaces:**
-- Consumes: the repository methods from Tasks 4–5, `CustomerRepository.GetByUser`/`Anonymize`, `OrganizationRepository.GetByOwner`, `SubscriptionRepository.Transition`, and `erasure.Blocker`/`Ack`/`Message`/`ResultDone`/`ResultBlocked`.
+- Consumes:
+  - Task 4 and 5/5b: `ListByCustomer(…, 0)`, `ClearMetadata`, `SpacePurger.PurgeSpace`, `LevelRepository.EraseRef`
+  - existing: `CustomerRepository.GetByUser`/`GetByOrganization`/`Anonymize`, `OrganizationRepository.GetByAccountOrganization`, `SubscriptionRepository.Transition`, `CatalogRepository.ListPrices`, `ByokConnections.List`/`Disconnect`
+  - `erasure.Blocker`/`Ack`/`Message`/`ResultDone`/`ResultBlocked`
 - Produces:
-  - `services.BlockerInvoiceOpen = "billing.invoice_open"`, `services.BlockerInvoiceUncollectible = "billing.invoice_uncollectible"` and `services.BlockerTenantOwner = "billing.tenant_owner"`
-  - `services.NewEraser(customers *repositories.CustomerRepository, subs *repositories.SubscriptionRepository, invoices *repositories.InvoiceRepository, orgs *repositories.OrganizationRepository, portalOrganizationID, invoicesURL string) *Eraser`
-  - `(*Eraser).WithPurge(p *repositories.SpacePurger, spaceFor func(owner string, livemode bool) (space.ResolvedSpace, error)) *Eraser`
-  - `(*Eraser).Blockers(ctx context.Context, sub string) ([]erasure.Blocker, error)`
+  - `services.BlockerInvoiceOpen = "billing.invoice_open"`, `services.BlockerInvoiceUncollectible = "billing.invoice_uncollectible"` and `services.BlockerMerchantTenant = "billing.merchant_tenant"`
+  - `services.NewEraser(customers, subs, invoices, orgs, catalog, levels, portalOrganizationID, invoicesURL) *Eraser`
+  - `(*Eraser).WithPurge(p *repositories.SpacePurger, spaceFor func(owner string, livemode bool) (space.ResolvedSpace, error), banks BankConnections) *Eraser`
+  - `services.BankConnections` (interface: `List(ctx, sp) ([]byokconn.Connection, error)` and `Disconnect(ctx, sp, provider, actor, requestID string, now time.Time) error`), satisfied by `*ByokConnections`
+  - `(*Eraser).Blockers(ctx context.Context, sub string, workspaces []string) ([]erasure.Blocker, error)`
   - `(*Eraser).Purge(ctx context.Context, m erasure.Message) (erasure.Ack, error)`, matching `erasure.PurgeFunc`
-  - Ack `Counts` keys: `customers_anonymized`, `subscriptions_canceled`, `invoices_retained`, `finance_{table}`
+  - Ack `Counts` keys: `customers_anonymized`, `subscriptions_canceled`, `invoices_retained`, `bank_connections_disconnected`, `level_rows`, `finance_{table}`
 
 - [ ] **Step 1: Write the failing integration tests**
 
-Append to `tests/integration/erasure_test.go` and extend its imports with `"strings"` and `"gopkg.aoctech.app/billing/api/internal/services"`:
+Append to `tests/integration/erasure_test.go` (imports: `strings`, `services`, `erasure`, `space`, `repositories`, `billing`, `brcal`, `id`):
 
 ```go
 func eraserFor(e *portalEnv) *services.Eraser {
@@ -1296,15 +1285,45 @@ func eraserFor(e *portalEnv) *services.Eraser {
 		repositories.NewSubscriptionRepository(testDB, testCfg),
 		repositories.NewInvoiceRepository(testDB, testCfg),
 		repositories.NewOrganizationRepository(testDB, testCfg),
+		repositories.NewCatalogRepository(testDB, testCfg),
+		repositories.NewLevelRepository(testDB, testCfg),
 		e.org.ID, "https://billing.test/invoices",
-	).WithPurge(repositories.NewSpacePurger(testDB, testCfg), space.ForJob)
+	).WithPurge(repositories.NewSpacePurger(testDB, testCfg), space.ForJob, noBanks{})
 }
 
-func eraseMessage(sub string, orgs ...string) erasure.Message {
-	return erasure.Message{
+// noBanks is a BankConnections with no connections; the BYOK path has its own
+// test (TestPurgeDisconnectsBankConnections).
+type noBanks struct{}
+
+func (noBanks) List(context.Context, space.ResolvedSpace) ([]byokconn.Connection, error) { return nil, nil }
+func (noBanks) Disconnect(context.Context, space.ResolvedSpace, string, string, string, time.Time) error {
+	return nil
+}
+
+func eraseMessage(sub string, workspaces ...string) erasure.Message {
+	m := erasure.Message{
 		Version: erasure.Version, Type: erasure.TypeErase, RequestID: "req_" + id.New(), Sub: sub,
-		Scope: erasure.ScopeAccount, Services: []string{"billing"}, Organizations: orgs, Attempt: 1, IssuedAt: time.Now(),
+		Scope: erasure.ScopeAccount, Services: []string{"billing"}, Attempt: 1, IssuedAt: time.Now(),
 	}
+	for _, w := range workspaces {
+		m.Workspaces = append(m.Workspaces, erasure.Workspace{ID: w, Kind: erasure.WorkspaceKindPersonal})
+	}
+	return m
+}
+
+// newOrgCustomer is the tenant-zero customer of a ctech-account workspace: the
+// ORG_{id} reference and its CUSTOMER_ORG# pointer (ADR 0025 amendment).
+func newOrgCustomer(t *testing.T, e *portalEnv, workspaceID string) *billing.Customer {
+	t.Helper()
+	c := &billing.Customer{
+		ID: id.NewWithPrefix(id.PrefixCustomer), OrganizationID: e.org.ID, Livemode: true,
+		Name: "Empresa MEI de Fulano", Email: "mei@example.com", TaxID: "12345678000199",
+		ExternalRef: repositories.OrgRefPrefix + workspaceID,
+	}
+	if err := repositories.NewCustomerRepository(testDB, testCfg).Create(ctxT(t), c, "test", "req_setup", now()); err != nil {
+		t.Fatal(err)
+	}
+	return c
 }
 
 func finalizeInvoice(t *testing.T, inv *billing.Invoice) {
@@ -1333,99 +1352,124 @@ func TestPurgeIsRefusedWhileAnInvoiceIsOpenAndChangesNothing(t *testing.T) {
 	if ack.Blockers[0].ActionURL != "https://billing.test/invoices" || ack.Blockers[0].Detail["overdue"] != 1 {
 		t.Fatalf("blocker = %+v", ack.Blockers[0])
 	}
-	c, err := repositories.NewCustomerRepository(testDB, testCfg).Get(ctx, e.org.ID, true, e.customer.ID)
-	if err != nil || c.Anonymized {
+	if c, err := repositories.NewCustomerRepository(testDB, testCfg).Get(ctx, e.org.ID, true, e.customer.ID); err != nil || c.Anonymized {
 		t.Fatalf("customer anonymized by a blocked purge: %+v, %v", c, err)
 	}
-	s, err := repositories.NewSubscriptionRepository(testDB, testCfg).Get(ctx, e.org.ID, true, sub.ID)
-	if err != nil || s.Status != billing.SubscriptionActive {
+	if s, err := repositories.NewSubscriptionRepository(testDB, testCfg).Get(ctx, e.org.ID, true, sub.ID); err != nil || s.Status != billing.SubscriptionActive {
 		t.Fatalf("subscription touched by a blocked purge: %+v, %v", s, err)
 	}
-	if rowsUnder(t, repositories.TableBills, personal.PK()) == 0 {
-		t.Fatal("the personal space was purged by a blocked purge")
-	}
+	assertSpaceUntouched(t, personal)
 }
 
-// Review Focus 5.
+// Review Focus 5: the person goes; the documents, another customer's debt and a
+// surviving organization's space stay.
 func TestPurgeErasesThePersonAndKeepsTheDocuments(t *testing.T) {
 	ctx := ctxT(t)
 	e := newPortal(t)
 	sub := newSubscriptionWithMetadata(t, e.org, e.customer.ID, e.priceID)
-	inv := newSubscriptionInvoice(t, e.org, sub) // a draft: issued to nobody yet, so not owed
-	// Somebody else's open invoice is not this person's debt.
-	other := &billing.Customer{ID: id.NewWithPrefix(id.PrefixCustomer), OrganizationID: e.org.ID, Livemode: true, Name: "Outra", Email: "o@example.com"}
-	customers := repositories.NewCustomerRepository(testDB, testCfg)
-	if err := customers.Create(ctx, other, "test", "req_setup", now()); err != nil {
-		t.Fatal(err)
-	}
-	finalizeInvoice(t, newInvoiceFor(t, e.org, other.ID))
-
+	inv := newSubscriptionInvoice(t, e.org, sub)
+	paid(t, inv) // a settled invoice does not block
 	personal := jobSpace(t, "USER#"+e.userID, true)
-	personalTest := jobSpace(t, "USER#"+e.userID, false)
-	erasedOrg := jobSpace(t, newSpaceOrgID(), true)
-	survivor := jobSpace(t, newSpaceOrgID(), true)
-	for _, sp := range []space.ResolvedSpace{personal, personalTest, erasedOrg, survivor} {
-		seedFinance(t, sp)
-	}
-	survivorRows := rowsUnder(t, repositories.TableLedgerAccounts, survivor.PK())
+	seedFinance(t, personal)
+	surviving := jobSpace(t, "org_"+id.New(), true)
+	seedFinance(t, surviving)
 
-	m := eraseMessage(e.userID, erasedOrg.OrganizationID())
-	eraser := eraserFor(e)
-	ack, err := eraser.Purge(ctx, m)
+	ack, err := eraserFor(e).Purge(ctx, eraseMessage(e.userID))
 	if err != nil || ack.Result != erasure.ResultDone {
 		t.Fatalf("ack = %+v, %v", ack, err)
 	}
-	if ack.Counts["customers_anonymized"] != 1 || ack.Counts["subscriptions_canceled"] != 1 || ack.Counts["invoices_retained"] != 1 {
+	if ack.Counts["subscriptions_canceled"] != 1 || ack.Counts["customers_anonymized"] != 1 || ack.Counts["invoices_retained"] != 1 {
 		t.Fatalf("counts = %v", ack.Counts)
 	}
+	c, _ := repositories.NewCustomerRepository(testDB, testCfg).Get(ctx, e.org.ID, true, e.customer.ID)
+	if !c.Anonymized || c.Email != "" || c.TaxID != "" {
+		t.Fatalf("customer = %+v; want anonymized", c)
+	}
+	s, _ := repositories.NewSubscriptionRepository(testDB, testCfg).Get(ctx, e.org.ID, true, sub.ID)
+	if s.Status != billing.SubscriptionCanceled || len(s.Metadata) != 0 {
+		t.Fatalf("subscription = %+v; want canceled, no metadata", s)
+	}
+	if got, _ := repositories.NewInvoiceRepository(testDB, testCfg).Get(ctx, e.org.ID, true, inv.ID); got == nil {
+		t.Fatal("the invoice is a document and must stay")
+	}
+	assertSpaceGone(t, personal)
+	assertSpaceUntouched(t, surviving)
 
-	c, err := customers.Get(ctx, e.org.ID, true, e.customer.ID)
-	if err != nil || !c.Anonymized || c.Email != "" || c.Name != "[anonimizado]" {
-		t.Fatalf("customer = %+v, %v; want anonymized in place", c, err)
-	}
-	s, err := repositories.NewSubscriptionRepository(testDB, testCfg).Get(ctx, e.org.ID, true, sub.ID)
-	if err != nil || s.Status != billing.SubscriptionCanceled || len(s.Metadata) != 0 {
-		t.Fatalf("subscription = %+v, %v; want canceled, metadata cleared, row kept", s, err)
-	}
-	if _, err := repositories.NewInvoiceRepository(testDB, testCfg).Get(ctx, e.org.ID, true, inv.ID); err != nil {
-		t.Fatalf("the invoice is a document and must survive: %v", err)
-	}
-	for _, sp := range []space.ResolvedSpace{personal, personalTest, erasedOrg} {
-		assertSpaceGone(t, sp)
-	}
-	if rowsUnder(t, repositories.TableAudit, personal.PK()) != 0 {
-		t.Fatal("personal-space audit rows survive (ADR 0026)")
-	}
-	if rowsUnder(t, repositories.TableAudit, erasedOrg.PK()) == 0 {
-		t.Fatal("the erased organization's finance audit rows must keep their five years (ADR 0026)")
-	}
-	if got := rowsUnder(t, repositories.TableLedgerAccounts, survivor.PK()); got != survivorRows {
-		t.Fatalf("an organization that survives lost rows: %d → %d", survivorRows, got)
-	}
-
-	again, err := eraser.Purge(ctx, m)
-	if err != nil || again.Result != erasure.ResultDone || again.Counts["customers_anonymized"] != 0 || again.Counts["subscriptions_canceled"] != 0 {
-		t.Fatalf("second purge = %+v, %v; want done with nothing left to do", again, err)
-	}
-	for k, v := range again.Counts {
-		if strings.HasPrefix(k, "finance_") && v != 0 {
-			t.Errorf("second purge deleted %d rows from %s", v, k)
-		}
+	again, err := eraserFor(e).Purge(ctx, eraseMessage(e.userID)) // idempotent
+	if err != nil || again.Result != erasure.ResultDone || again.Counts["subscriptions_canceled"] != 0 || again.Counts["customers_anonymized"] != 0 {
+		t.Fatalf("second purge = %+v, %v", again, err)
 	}
 }
 
-func TestOwningATenantBlocksErasure(t *testing.T) {
+// R19, R12: an erased workspace takes its organization customer, that
+// customer's DF-e subscription and its whole finance space with it.
+func TestPurgeErasesAnErasedWorkspaceCustomerSubscriptionAndSpace(t *testing.T) {
+	ctx := ctxT(t)
 	e := newPortal(t)
-	owner := e.org.OwnerUserID
-	blockers, err := eraserFor(e).Blockers(ctxT(t), owner)
-	if err != nil || len(blockers) != 1 || blockers[0].Code != services.BlockerTenantOwner || blockers[0].Detail["organization_id"] != e.org.ID {
-		t.Fatalf("blockers = %+v, %v; want %s for %s", blockers, err, services.BlockerTenantOwner, e.org.ID)
+	ws := "org_" + id.New()
+	c := newOrgCustomer(t, e, ws)
+	sub := newSubscriptionIn(t, e.org, c.ID, e.priceID, billing.SubscriptionActive)
+	space := jobSpace(t, ws, true)
+	seedFinance(t, space)
+
+	ack, err := eraserFor(e).Purge(ctx, eraseMessage(e.userID, ws))
+	if err != nil || ack.Result != erasure.ResultDone {
+		t.Fatalf("ack = %+v, %v", ack, err)
+	}
+	got, _ := repositories.NewCustomerRepository(testDB, testCfg).Get(ctx, e.org.ID, true, c.ID)
+	if !got.Anonymized || got.TaxID != "" || got.ExternalRef != "" {
+		t.Fatalf("organization customer = %+v; want anonymized", got)
+	}
+	if s, _ := repositories.NewSubscriptionRepository(testDB, testCfg).Get(ctx, e.org.ID, true, sub.ID); s.Status != billing.SubscriptionCanceled {
+		t.Fatalf("organization subscription = %s; want canceled", s.Status)
+	}
+	assertSpaceGone(t, space) // including its audit rows, whatever its kind (decision 2)
+}
+
+// R3, Review Focus 6: a workspace with a billing tenant is never erased
+// silently. Nothing is touched, in either mode.
+func TestAWorkspaceWithAMerchantTenantBlocksErasure(t *testing.T) {
+	ctx := ctxT(t)
+	e := newPortal(t)
+	ws := "org_" + id.New()
+	newLinkedOrg(t, false, ws) // a test-mode tenant is enough
+	space := jobSpace(t, ws, true)
+	seedFinance(t, space)
+
+	blockers, err := eraserFor(e).Blockers(ctx, e.userID, []string{ws})
+	if err != nil || len(blockers) != 1 || blockers[0].Code != services.BlockerMerchantTenant {
+		t.Fatalf("blockers = %+v, %v; want %s", blockers, err, services.BlockerMerchantTenant)
+	}
+	if ids, _ := blockers[0].Detail["workspace_ids"].([]string); len(ids) != 1 || ids[0] != ws {
+		t.Fatalf("detail = %v", blockers[0].Detail)
+	}
+	ack, err := eraserFor(e).Purge(ctx, eraseMessage(e.userID, ws))
+	if err != nil || ack.Result != erasure.ResultBlocked {
+		t.Fatalf("purge = %+v, %v; want blocked", ack, err)
+	}
+	assertSpaceUntouched(t, space)
+}
+
+// An unpaid invoice of an erased workspace's customer blocks like the person's.
+func TestAnOrganizationInvoiceBlocksErasure(t *testing.T) {
+	ctx := ctxT(t)
+	e := newPortal(t)
+	ws := "org_" + id.New()
+	c := newOrgCustomer(t, e, ws)
+	finalizeInvoice(t, newInvoiceFor(t, e.org, c.ID))
+
+	blockers, err := eraserFor(e).Blockers(ctx, e.userID, []string{ws})
+	if err != nil || len(blockers) != 1 || blockers[0].Code != services.BlockerInvoiceOpen ||
+		blockers[0].Detail["amount_cents"] != int64(4990) {
+		t.Fatalf("blockers = %+v, %v", blockers, err)
+	}
+	if got, _ := eraserFor(e).Blockers(ctx, e.userID, nil); len(got) != 0 {
+		t.Fatalf("without the workspace in the question the person is clear: %+v", got)
 	}
 }
 
-// A written-off CTech debt still blocks deletion (user decision 2026-10-08).
-// It gets its own code and no action_url, because the portal cannot collect
-// it. The purge's re-check refuses too, and changes nothing.
+// A written-off CTech debt still blocks (user decision 2026-10-08). It has its
+// own code and no action_url, because the portal cannot collect it.
 func TestAWrittenOffInvoiceBlocksErasure(t *testing.T) {
 	ctx := ctxT(t)
 	e := newPortal(t)
@@ -1435,22 +1479,51 @@ func TestAWrittenOffInvoiceBlocksErasure(t *testing.T) {
 		billing.CauseDunningExhausted, "test", "req_setup", now()); err != nil {
 		t.Fatal(err)
 	}
-
-	blockers, err := eraserFor(e).Blockers(ctx, e.userID)
+	blockers, err := eraserFor(e).Blockers(ctx, e.userID, nil)
 	if err != nil || len(blockers) != 1 || blockers[0].Code != services.BlockerInvoiceUncollectible ||
 		blockers[0].ActionURL != "" || blockers[0].Detail["amount_cents"] != int64(4990) || blockers[0].Detail["count"] != 1 {
 		t.Fatalf("blockers = %+v, %v; want one %s for 4990 with no action_url", blockers, err, services.BlockerInvoiceUncollectible)
 	}
-	ack, err := eraserFor(e).Purge(ctx, eraseMessage(e.userID))
-	if err != nil || ack.Result != erasure.ResultBlocked {
+	if ack, err := eraserFor(e).Purge(ctx, eraseMessage(e.userID)); err != nil || ack.Result != erasure.ResultBlocked {
 		t.Fatalf("purge = %+v, %v; want blocked", ack, err)
 	}
-	c, err := repositories.NewCustomerRepository(testDB, testCfg).Get(ctx, e.org.ID, true, e.customer.ID)
-	if err != nil || c.Anonymized {
-		t.Fatalf("a blocked purge anonymized the customer: %+v, %v", c, err)
+}
+
+// R21: the person's level rows go with them.
+func TestPurgeErasesTheLevelRowsOfTheErasedRefs(t *testing.T) {
+	ctx := ctxT(t)
+	e := newPortal(t)
+	levels := repositories.NewLevelRepository(testDB, testCfg)
+	ref := "USER_" + e.userID
+	addMeteredPrice(t, e.org, "finance_spaces")
+	if err := levels.Append(ctx, &billing.LevelRecord{OrganizationID: e.org.ID, Livemode: true, CustomerRef: ref,
+		Meter: "finance_spaces", Value: 3, OccurredAt: seedNow, IdempotencyKey: "k-" + id.New()}, seedNow); err != nil {
+		t.Fatal(err)
+	}
+	ack, err := eraserFor(e).Purge(ctx, eraseMessage(e.userID))
+	if err != nil || ack.Result != erasure.ResultDone || ack.Counts["level_rows"] != 2 {
+		t.Fatalf("ack = %+v, %v; want done with 2 level rows", ack, err)
+	}
+	if l, err := levels.Latest(ctx, e.org.ID, true, ref, "finance_spaces"); err == nil && l != nil {
+		t.Fatalf("latest level survives: %+v", l)
+	}
+}
+
+// R23: a workspace's bank connections are disconnected before its space goes.
+func TestPurgeDisconnectsBankConnections(t *testing.T) {
+	ctx := ctxT(t)
+	e := newPortal(t)
+	ws := "org_" + id.New()
+	banks := &recordingBanks{conns: map[string][]byokconn.Connection{ws + "#live": {{Provider: "inter", AccountOrganizationID: ws, Livemode: true}}}}
+	er := eraserFor(e).WithPurge(repositories.NewSpacePurger(testDB, testCfg), space.ForJob, banks)
+	ack, err := er.Purge(ctx, eraseMessage(e.userID, ws))
+	if err != nil || ack.Result != erasure.ResultDone || ack.Counts["bank_connections_disconnected"] != 1 || len(banks.disconnected) != 1 {
+		t.Fatalf("ack = %+v, %v, disconnected %v", ack, err, banks.disconnected)
 	}
 }
 ```
+
+`recordingBanks` implements `services.BankConnections`, returning `conns[sp.PK()]` and recording `Disconnect` calls. `paid`, `addMeteredPrice`, `assertSpaceUntouched` are small helpers beside `seedFinance`.
 
 - [ ] **Step 2: Run them to verify they fail**
 
@@ -1474,27 +1547,36 @@ import (
 
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
 	"gopkg.aoctech.app/billing/api/internal/domain/brcal"
+	"gopkg.aoctech.app/billing/api/internal/domain/byokconn"
 	"gopkg.aoctech.app/billing/api/internal/repositories"
 	"gopkg.aoctech.app/billing/api/internal/space"
 )
 
 // Blocker codes, stable and translated by ctech-account's UI. Never rename.
 const (
-	// BlockerInvoiceOpen is a live tenant-zero invoice still owed. The person
-	// pays it in the portal (action_url) and asks again.
+	// BlockerInvoiceOpen is a live tenant-zero invoice still owed by the person
+	// or by a customer of a workspace being erased. The person pays it in the
+	// portal (action_url) and asks again.
 	BlockerInvoiceOpen = "billing.invoice_open"
 	// BlockerInvoiceUncollectible is a live tenant-zero invoice that dunning
 	// wrote off with an amount still due. A written-off debt still blocks (user
 	// decision 2026-10-08). The portal cannot collect it, so support records the
 	// payment (CauseManualPayment), and the blocker has no action_url.
 	BlockerInvoiceUncollectible = "billing.invoice_uncollectible"
-	// BlockerTenantOwner is a person who owns a billing tenant. Erasing them
-	// would leave its console with nobody to reach it. Support moves the owner.
-	BlockerTenantOwner = "billing.tenant_owner"
+	// BlockerMerchantTenant is a workspace being erased that has a billing
+	// tenant (decision 2026-10-13). Deleting a tenant is its own flow, which does
+	// not exist yet, so the person asks support. detail.workspace_ids names them.
+	BlockerMerchantTenant = "billing.merchant_tenant"
 )
 
 // erasureActor names the saga in the audit trail of what it changes.
 const erasureActor = "account-erasure"
+
+// BankConnections is the BYOK surface the purge needs (R23).
+type BankConnections interface {
+	List(ctx context.Context, sp space.ResolvedSpace) ([]byokconn.Connection, error)
+	Disconnect(ctx context.Context, sp space.ResolvedSpace, provider, actor, requestID string, now time.Time) error
+}
 
 // Eraser is billing's side of the account-deletion saga (ctech-account
 // docs/specs/2026-10-06-account-deletion-saga-protocol.md § 4; data inventory
@@ -1502,69 +1584,67 @@ const erasureActor = "account-erasure"
 // PurgeFunc.
 //
 // What it keeps and why is ADR 0009 and ADR 0026: the invoice aggregate and the
-// canceled subscription are documents; the tenant-zero customer is anonymized
-// in place; the person's finance spaces, and those of the organizations erased
-// with them, are deleted.
+// canceled subscriptions are documents; tenant-zero customers are anonymized in
+// place; the finance spaces of the person and of the workspaces erased with
+// them are deleted.
 type Eraser struct {
 	customers   *repositories.CustomerRepository
 	subs        *repositories.SubscriptionRepository
 	invoices    *repositories.InvoiceRepository
 	orgs        *repositories.OrganizationRepository
+	catalog     *repositories.CatalogRepository
+	levels      *repositories.LevelRepository
 	portalOrg   string
 	invoicesURL string
 
 	purger   *repositories.SpacePurger
 	spaceFor func(owner string, livemode bool) (space.ResolvedSpace, error)
+	banks    BankConnections
 }
 
 // NewEraser builds the eligibility side. portalOrganizationID is tenant zero
-// (empty: there is no customer to look for). invoicesURL is the portal page a
+// (empty: there are no customers to look for). invoicesURL is the portal page a
 // blocker points the person at (empty: no action_url).
 func NewEraser(
 	customers *repositories.CustomerRepository,
 	subs *repositories.SubscriptionRepository,
 	invoices *repositories.InvoiceRepository,
 	orgs *repositories.OrganizationRepository,
+	catalog *repositories.CatalogRepository,
+	levels *repositories.LevelRepository,
 	portalOrganizationID, invoicesURL string,
 ) *Eraser {
-	return &Eraser{customers: customers, subs: subs, invoices: invoices, orgs: orgs,
+	return &Eraser{customers: customers, subs: subs, invoices: invoices, orgs: orgs, catalog: catalog, levels: levels,
 		portalOrg: portalOrganizationID, invoicesURL: invoicesURL}
 }
 
 // WithPurge adds what Purge needs. spaceFor is space.ForJob, passed in from a
 // cmd/ binary: ForJob is forbidden under internal/.
-func (e *Eraser) WithPurge(p *repositories.SpacePurger, spaceFor func(owner string, livemode bool) (space.ResolvedSpace, error)) *Eraser {
-	e.purger, e.spaceFor = p, spaceFor
+func (e *Eraser) WithPurge(p *repositories.SpacePurger, spaceFor func(owner string, livemode bool) (space.ResolvedSpace, error), banks BankConnections) *Eraser {
+	e.purger, e.spaceFor, e.banks = p, spaceFor, banks
 	return e
 }
 
-// Blockers reports why sub cannot be erased yet. An unknown sub has none.
-// Live mode only: test money is not owed (R15).
-func (e *Eraser) Blockers(ctx context.Context, sub string) ([]erasure.Blocker, error) {
-	var out []erasure.Blocker
-	org, err := e.orgs.GetByOwner(ctx, sub, true)
-	switch {
-	case err == nil:
-		out = append(out, erasure.Blocker{Code: BlockerTenantOwner, Detail: map[string]any{"organization_id": org.ID}})
-	case !errors.Is(err, repositories.ErrNotFound):
-		return nil, err
-	}
-	if e.portalOrg == "" {
-		return out, nil
-	}
-	customer, err := e.customers.GetByUser(ctx, e.portalOrg, true, sub)
-	if errors.Is(err, repositories.ErrNotFound) {
-		return out, nil
-	}
+// debt is what a customer still owes CTech, live mode.
+type debt struct {
+	open, overdue, writtenOff int
+	openDue, writtenOffDue    billing.Cents
+}
+
+func (d *debt) add(o debt) {
+	d.open += o.open
+	d.overdue += o.overdue
+	d.writtenOff += o.writtenOff
+	d.openDue += o.openDue
+	d.writtenOffDue += o.writtenOffDue
+}
+
+func (e *Eraser) debtOf(ctx context.Context, customerID string) (debt, error) {
+	var d debt
+	invoices, err := e.invoices.ListByCustomer(ctx, e.portalOrg, true, customerID, 0)
 	if err != nil {
-		return nil, err
+		return d, err
 	}
-	invoices, err := e.invoices.AllByCustomer(ctx, e.portalOrg, true, customer.ID)
-	if err != nil {
-		return nil, err
-	}
-	var open, overdue, writtenOff int
-	var openDue, writtenOffDue billing.Cents
 	today := brcal.Today()
 	for _, inv := range invoices {
 		if inv.AmountDue() <= 0 {
@@ -1572,42 +1652,117 @@ func (e *Eraser) Blockers(ctx context.Context, sub string) ([]erasure.Blocker, e
 		}
 		switch inv.Status {
 		case billing.InvoiceOpen:
-			open++
-			openDue += inv.AmountDue()
+			d.open++
+			d.openDue += inv.AmountDue()
 			if inv.IsOverdue(today) {
-				overdue++
+				d.overdue++
 			}
 		case billing.InvoiceUncollectible:
-			writtenOff++
-			writtenOffDue += inv.AmountDue()
+			d.writtenOff++
+			d.writtenOffDue += inv.AmountDue()
 		}
 	}
-	if open > 0 {
-		out = append(out, erasure.Blocker{
-			Code:      BlockerInvoiceOpen,
-			Detail:    map[string]any{"count": open, "overdue": overdue, "amount_cents": int64(openDue)},
-			ActionURL: e.invoicesURL,
-		})
+	return d, nil
+}
+
+// Blockers reports why sub, together with the workspaces erased with them,
+// cannot be erased yet. An unknown sub and no workspaces have none. Live mode
+// only: test money is not owed (R15).
+func (e *Eraser) Blockers(ctx context.Context, sub string, workspaces []string) ([]erasure.Blocker, error) {
+	var out []erasure.Blocker
+
+	var tenants []string
+	for _, ws := range workspaces {
+		has, err := e.hasTenant(ctx, ws)
+		if err != nil {
+			return nil, err
+		}
+		if has {
+			tenants = append(tenants, ws)
+		}
 	}
-	if writtenOff > 0 {
+	if len(tenants) > 0 {
+		out = append(out, erasure.Blocker{Code: BlockerMerchantTenant, Detail: map[string]any{"workspace_ids": tenants}})
+	}
+	if e.portalOrg == "" {
+		return out, nil
+	}
+
+	var total debt
+	var owing []string
+	if c, err := e.customers.GetByUser(ctx, e.portalOrg, true, sub); err == nil {
+		d, err := e.debtOf(ctx, c.ID)
+		if err != nil {
+			return nil, err
+		}
+		total.add(d)
+	} else if !errors.Is(err, repositories.ErrNotFound) {
+		return nil, err
+	}
+	for _, ws := range workspaces {
+		c, err := e.customers.GetByOrganization(ctx, e.portalOrg, true, ws)
+		if errors.Is(err, repositories.ErrNotFound) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		d, err := e.debtOf(ctx, c.ID)
+		if err != nil {
+			return nil, err
+		}
+		if d.open+d.writtenOff > 0 {
+			owing = append(owing, ws)
+		}
+		total.add(d)
+	}
+	if total.open > 0 {
+		detail := map[string]any{"count": total.open, "overdue": total.overdue, "amount_cents": int64(total.openDue)}
+		if len(owing) > 0 {
+			detail["workspace_ids"] = owing
+		}
+		out = append(out, erasure.Blocker{Code: BlockerInvoiceOpen, Detail: detail, ActionURL: e.invoicesURL})
+	}
+	if total.writtenOff > 0 {
 		// No action_url: the portal cannot collect a written-off invoice
 		// (Invoice.Payable needs OPEN). Support records the payment.
 		out = append(out, erasure.Blocker{
 			Code:   BlockerInvoiceUncollectible,
-			Detail: map[string]any{"count": writtenOff, "amount_cents": int64(writtenOffDue)},
+			Detail: map[string]any{"count": total.writtenOff, "amount_cents": int64(total.writtenOffDue)},
 		})
 	}
 	return out, nil
 }
 
-// Purge erases m.Sub's billing data and the finance spaces of
-// m.Organizations. It re-checks the blockers first and never half-purges.
+// hasTenant reports a billing tenant linked to the ctech-account workspace in
+// either mode (a test-mode tenant counts: R3).
+func (e *Eraser) hasTenant(ctx context.Context, workspaceID string) (bool, error) {
+	for _, live := range []bool{true, false} {
+		_, err := e.orgs.GetByAccountOrganization(ctx, workspaceID, live)
+		switch {
+		case err == nil:
+			return true, nil
+		case errors.Is(err, repositories.ErrNotFound):
+		default:
+			return false, err
+		}
+	}
+	return false, nil
+}
+
+// Purge erases m.Sub's billing data and the data of every workspace in
+// m.WorkspaceIDs(). It re-checks the blockers first and never half-purges.
 // Idempotent and resumable: every step re-reads and skips what is already done.
+//
+// Order matters. Customers are anonymized first, so the finance replay queue's
+// payer side skips them (payer_anonymized) instead of writing into a space
+// about to be deleted; levels and bank connections go next; the spaces last.
 func (e *Eraser) Purge(ctx context.Context, m erasure.Message) (erasure.Ack, error) {
-	if e.purger == nil || e.spaceFor == nil {
+	if e.purger == nil || e.spaceFor == nil || e.banks == nil {
 		return erasure.Ack{}, errors.New("eraser: purge is not configured")
 	}
-	blockers, err := e.Blockers(ctx, m.Sub)
+	workspaces := m.WorkspaceIDs()
+	blockers, err := e.Blockers(ctx, m.Sub, workspaces)
 	if err != nil {
 		return erasure.Ack{}, err
 	}
@@ -1619,17 +1774,39 @@ func (e *Eraser) Purge(ctx context.Context, m erasure.Message) (erasure.Ack, err
 	now := time.Now()
 	if e.portalOrg != "" {
 		for _, live := range []bool{true, false} {
-			if err := e.eraseCustomer(ctx, live, m, counts, now); err != nil {
+			if c, err := e.customers.GetByUser(ctx, e.portalOrg, live, m.Sub); err == nil {
+				if err := e.eraseCustomer(ctx, c, m, counts, now); err != nil {
+					return erasure.Ack{}, err
+				}
+			} else if !errors.Is(err, repositories.ErrNotFound) {
+				return erasure.Ack{}, err
+			}
+			for _, ws := range workspaces {
+				c, err := e.customers.GetByOrganization(ctx, e.portalOrg, live, ws)
+				if errors.Is(err, repositories.ErrNotFound) {
+					continue
+				}
+				if err != nil {
+					return erasure.Ack{}, err
+				}
+				if err := e.eraseCustomer(ctx, c, m, counts, now); err != nil {
+					return erasure.Ack{}, err
+				}
+			}
+			if err := e.eraseLevels(ctx, live, m.Sub, workspaces, counts); err != nil {
 				return erasure.Ack{}, err
 			}
 		}
 	}
-	for _, owner := range append([]string{"USER#" + m.Sub}, m.Organizations...) {
+	for _, owner := range append([]string{"USER#" + m.Sub}, workspaces...) {
 		for _, live := range []bool{true, false} {
 			sp, err := e.spaceFor(owner, live)
 			if err != nil {
-				// A sub or organization id that cannot name a space never had one.
+				// A sub or workspace id that cannot name a space never had one.
 				continue
+			}
+			if err := e.disconnectBanks(ctx, sp, m, counts, now); err != nil {
+				return erasure.Ack{}, err
 			}
 			n, err := e.purger.PurgeSpace(ctx, sp)
 			for table, c := range n {
@@ -1643,17 +1820,10 @@ func (e *Eraser) Purge(ctx context.Context, m erasure.Message) (erasure.Ack, err
 	return erasure.Ack{Result: erasure.ResultDone, Counts: counts}, nil
 }
 
-// eraseCustomer cancels the person's tenant-zero subscriptions, clears their
+// eraseCustomer cancels a tenant-zero customer's subscriptions, clears their
 // metadata, and anonymizes the customer. Invoices are counted, never touched.
-func (e *Eraser) eraseCustomer(ctx context.Context, live bool, m erasure.Message, counts map[string]int, now time.Time) error {
-	c, err := e.customers.GetByUser(ctx, e.portalOrg, live, m.Sub)
-	if errors.Is(err, repositories.ErrNotFound) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	subs, err := e.subs.AllByCustomer(ctx, e.portalOrg, live, c.ID)
+func (e *Eraser) eraseCustomer(ctx context.Context, c *billing.Customer, m erasure.Message, counts map[string]int, now time.Time) error {
+	subs, err := e.subs.ListByCustomer(ctx, e.portalOrg, c.Livemode, c.ID, 0)
 	if err != nil {
 		return err
 	}
@@ -1673,7 +1843,7 @@ func (e *Eraser) eraseCustomer(ctx context.Context, live bool, m erasure.Message
 			}
 		}
 	}
-	invoices, err := e.invoices.AllByCustomer(ctx, e.portalOrg, live, c.ID)
+	invoices, err := e.invoices.ListByCustomer(ctx, e.portalOrg, c.Livemode, c.ID, 0)
 	if err != nil {
 		return err
 	}
@@ -1686,12 +1856,56 @@ func (e *Eraser) eraseCustomer(ctx context.Context, live bool, m erasure.Message
 	}
 	return nil
 }
+
+// eraseLevels deletes the level rows of USER_{sub} and ORG_{id} for every meter
+// tenant zero's catalogue declares (R21).
+func (e *Eraser) eraseLevels(ctx context.Context, live bool, sub string, workspaces []string, counts map[string]int) error {
+	prices, err := e.catalog.ListPrices(ctx, e.portalOrg, live, 0)
+	if err != nil {
+		return err
+	}
+	seen := map[string]bool{}
+	var meters []string
+	for _, p := range prices {
+		if p.Meter != "" && !seen[p.Meter] {
+			seen[p.Meter] = true
+			meters = append(meters, p.Meter)
+		}
+	}
+	refs := []string{"USER_" + sub}
+	for _, ws := range workspaces {
+		refs = append(refs, repositories.OrgRefPrefix+ws)
+	}
+	for _, ref := range refs {
+		n, err := e.levels.EraseRef(ctx, e.portalOrg, live, ref, meters)
+		counts["level_rows"] += n
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// disconnectBanks disconnects every BYOK connection of the space (R23).
+func (e *Eraser) disconnectBanks(ctx context.Context, sp space.ResolvedSpace, m erasure.Message, counts map[string]int, now time.Time) error {
+	conns, err := e.banks.List(ctx, sp)
+	if err != nil {
+		return err
+	}
+	for _, c := range conns {
+		if err := e.banks.Disconnect(ctx, sp, c.Provider, erasureActor, m.RequestID, now); err != nil {
+			return fmt.Errorf("disconnecting %s in %s: %w", c.Provider, sp.PK(), err)
+		}
+		counts["bank_connections_disconnected"]++
+	}
+	return nil
+}
 ```
 
 - [ ] **Step 4: Run the suites**
 
 Run: `go vet ./... && go test ./internal/services/ -count=1 && make test-integration`
-Expected: `ok`, and PASS for `TestPurgeIsRefusedWhileAnInvoiceIsOpenAndChangesNothing`, `TestPurgeErasesThePersonAndKeepsTheDocuments`, `TestOwningATenantBlocksErasure` and `TestAWrittenOffInvoiceBlocksErasure`.
+Expected: `ok`, and PASS for every test in this task.
 
 - [ ] **Step 5: Commit**
 
@@ -1714,6 +1928,7 @@ git commit -m "feat(api): billing's erasure purge and blockers (data inventory �
 **Interfaces:**
 - Consumes: `services.NewEraser`, `(*Eraser).Blockers` (Task 6).
 - Produces:
+  - the optional query parameter `workspaces=id1,id2` (R20): the workspaces where the person is the only member, sent by ctech-account
   - `middleware.ScopeErasureEligibility = "internal:billing:erasure-eligibility"`
   - `v1.Deps.Eraser *services.Eraser`
   - `GET /v1.0/internal/erasure/eligibility/:sub`, which returns `erasure.Eligibility`
@@ -1764,6 +1979,14 @@ func TestEligibilityAnswersCtechAccountAboutOnePerson(t *testing.T) {
 		el.Blockers[0].Detail["amount_cents"] != float64(4990) {
 		t.Fatalf("with an open invoice: %d %+v", code, el)
 	}
+	ws := "org_" + id.New()
+	newLinkedOrg(t, true, ws)
+	if code, el := askAbout(e, e.userID, asAccount, ws); code != http.StatusOK || el.Eligible || el.Blockers[0].Code != services.BlockerMerchantTenant {
+		t.Fatalf("a workspace with a tenant: %d %+v; want %s", code, el, services.BlockerMerchantTenant)
+	}
+	if res := e.do(t, http.MethodGet, "/v1.0/internal/erasure/eligibility/"+e.userID+"?workspaces=not-a-workspace", asAccount, "", ""); res.status != http.StatusBadRequest {
+		t.Fatalf("a malformed workspace id: %d, want 400", res.status)
+	}
 	if code, el := ask("usr_"+id.New(), asAccount); code != http.StatusOK || !el.Eligible {
 		t.Fatalf("an unknown sub has nothing to delete: %d %+v", code, el)
 	}
@@ -1799,11 +2022,38 @@ const ScopeErasureEligibility = "internal:billing:erasure-eligibility"
 package v1
 
 import (
+	"fmt"
+	"strings"
+
 	"github.com/gofiber/fiber/v3"
 	"gopkg.aoctech.app/api-commons/erasure"
 
 	"gopkg.aoctech.app/billing/api/internal/middleware"
+	"gopkg.aoctech.app/billing/api/internal/problem"
+	"gopkg.aoctech.app/billing/api/internal/space"
 )
+
+// maxWorkspaces bounds the eligibility question; a person who is the only member
+// of more workspaces than this has a plan limit to explain first.
+const maxWorkspaces = 100
+
+// workspacesParam parses ?workspaces=a,b. Empty is no workspaces. An id that is
+// not shaped like a workspace is a 400, because it will become a partition key.
+func workspacesParam(raw string) ([]string, error) {
+	if raw == "" {
+		return nil, nil
+	}
+	ids := strings.Split(raw, ",")
+	if len(ids) > maxWorkspaces {
+		return nil, fmt.Errorf("at most %d workspaces", maxWorkspaces)
+	}
+	for _, id := range ids {
+		if !space.IsOrganizationID(id) {
+			return nil, fmt.Errorf("workspaces: %q is not a workspace id", id)
+		}
+	}
+	return ids, nil
+}
 
 // registerErasure mounts ctech-account's eligibility question (saga protocol
 // § 4.1).
@@ -1819,7 +2069,11 @@ func registerErasure(v1 fiber.Router, d Deps, auth fiber.Handler) {
 	v1.Get("/internal/erasure/eligibility/:sub", auth,
 		middleware.RequireM2MScope(middleware.ScopeErasureEligibility),
 		func(c fiber.Ctx) error {
-			blockers, err := d.Eraser.Blockers(c.Context(), c.Params("sub"))
+			workspaces, err := workspacesParam(c.Query("workspaces"))
+			if err != nil {
+				return problem.BadRequest(err.Error()).Send(c)
+			}
+			blockers, err := d.Eraser.Blockers(c.Context(), c.Params("sub"), workspaces)
 			if err != nil {
 				// Never "eligible": ctech-account reads any non-2xx as a transient blocker.
 				return fail(c, err)
@@ -1865,6 +2119,8 @@ func newEraser(db *dynamodb.Client, cfg *config.Config) *services.Eraser {
 		repositories.NewSubscriptionRepository(db, cfg),
 		repositories.NewInvoiceRepository(db, cfg),
 		repositories.NewOrganizationRepository(db, cfg),
+		repositories.NewCatalogRepository(db, cfg),
+		repositories.NewLevelRepository(db, cfg),
 		cfg.PortalOrganizationID,
 		portalInvoicesURL(cfg.CheckoutBaseURL),
 	)
@@ -1889,8 +2145,10 @@ git commit -m "feat(api): GET /v1.0/internal/erasure/eligibility/:sub for ctech-
 
 ### Task 8: The daily finance job leaves an erased space alone
 
+The job has three steps that write into a space from a work item read earlier: `Materialise` (recurrences), `AutoSettle` (bills) and `CloseStatements` (cards). Each skips an item whose space owner is locked or erased.
+
 **Files:**
-- Modify: `api/internal/services/finance_recurrences.go`
+- Modify: `api/internal/services/finance_recurrences.go`, `api/internal/services/finance_cards.go`
 - Modify: `api/internal/services/erasing.go` (`ErasedSpace`)
 - Modify: `api/internal/services/finance_test.go`
 - Modify: `api/internal/app/app.go` (`BuildFinanceJobs`)
@@ -1909,10 +2167,10 @@ Append to `internal/services/finance_test.go`:
 // Review Focus 4: a work item read before the purge must not write into the
 // space after it.
 func TestTheJobLeavesAnErasedSpaceAlone(t *testing.T) {
-	bills, recs := newFakeBills(), newFakeRecs(monthly("r1", 10))
+	bills, recs, cards := newFakeBills(), newFakeRecs(monthly("r1", 10)), newFakeCards(dueCard("c1"))
 	bills.autoDue = []repositories.DueBill{dueBill("b1", day(2026, time.March, 10))}
 	asked := 0
-	jobs := NewFinanceJobs(bills, recs).WithSpaceGuard(func(context.Context, space.ResolvedSpace) (bool, error) {
+	jobs := NewFinanceJobs(bills, recs).WithCards(cards).WithSpaceGuard(func(context.Context, space.ResolvedSpace) (bool, error) {
 		asked++
 		return true, nil
 	})
@@ -1920,13 +2178,17 @@ func TestTheJobLeavesAnErasedSpaceAlone(t *testing.T) {
 
 	m := jobs.Materialise(context.Background(), true, today, now)
 	a := jobs.AutoSettle(context.Background(), true, today, now)
+	c := jobs.CloseStatements(context.Background(), true, today, now)
 	if m.Done != 0 || m.Skipped != 1 || bills.created != 0 || recs.marks != 0 {
 		t.Fatalf("materialise = %+v, created %d, cursor moves %d; want the erased space skipped", m, bills.created, recs.marks)
 	}
 	if a.Done != 0 || a.Skipped != 1 || len(bills.settled) != 0 {
 		t.Fatalf("auto-settle = %+v, settled %v; want the erased space skipped", a, bills.settled)
 	}
-	if asked != 2 {
+	if c.Done != 0 || c.Skipped != 1 || cards.closed != 0 {
+		t.Fatalf("close = %+v, closed %d; want the erased space skipped", c, cards.closed)
+	}
+	if asked != 3 {
 		t.Fatalf("guard asked %d times, want once per item", asked)
 	}
 }
@@ -1943,6 +2205,8 @@ func TestAGuardErrorFailsTheItemNotTheRun(t *testing.T) {
 }
 ```
 
+`newFakeCards`, `dueCard` and the `closed` counter extend the existing card fake in the same file (`cardStore` already has a fake for `CloseStatements` tests; reuse it and add the counter if it lacks one).
+
 - [ ] **Step 2: Run them to verify they fail**
 
 Run: `go test ./internal/services/ -run 'TestTheJobLeavesAnErasedSpaceAlone|TestAGuardErrorFailsTheItemNotTheRun'`
@@ -1950,19 +2214,15 @@ Expected: FAIL, `jobs.WithSpaceGuard undefined`.
 
 - [ ] **Step 3: Implement**
 
-`finance_recurrences.go`. Replace the `FinanceJobs` struct with:
+`finance_recurrences.go`. Add the field to `FinanceJobs`:
 
 ```go
-type FinanceJobs struct {
-	bills billStore
-	recs  recurrenceStore
 	// gone reports a space whose owner the account-deletion saga has locked or
 	// erased. Nil means no guard (the console's projection read).
 	gone func(ctx context.Context, sp space.ResolvedSpace) (bool, error)
-}
 ```
 
-and add after `NewFinanceJobs`:
+and after `NewFinanceJobs`:
 
 ```go
 // WithSpaceGuard skips every work item in a space gone reports, so the daily
@@ -1990,46 +2250,36 @@ func (j *FinanceJobs) skip(ctx context.Context, sp space.ResolvedSpace, res *Job
 }
 ```
 
-In `Materialise`, replace
+In `Materialise`, directly after `rec := d.Recurrence` (before the `rec.IsCard()` branch):
 
 ```go
-		res.Examined++
-		rec := d.Recurrence
-```
-
-with
-
-```go
-		res.Examined++
-		rec := d.Recurrence
 		if j.skip(ctx, d.Space, &res, "recurrence "+rec.ID) {
 			continue
 		}
 ```
 
-In `AutoSettle`, replace
+In `AutoSettle`, directly after `res.Examined++`:
 
 ```go
-		res.Examined++
-		_, err := j.bills.Settle(
-```
-
-with
-
-```go
-		res.Examined++
 		if j.skip(ctx, d.Space, &res, "bill "+d.Bill.ID) {
 			continue
 		}
-		_, err := j.bills.Settle(
+```
+
+In `CloseStatements` (`finance_cards.go`), directly after `res.Examined++`:
+
+```go
+		if j.skip(ctx, d.Space, &res, "card "+d.CardID) {
+			continue
+		}
 ```
 
 `erasing.go`: add `"strings"` to the imports and append:
 
 ```go
 // ErasedSpace reports a space whose owner is locked or erased in the
-// account-deletion saga: a personal space by its user, an organization space
-// by the organization's tombstone. It is the daily job's guard.
+// account-deletion saga: a personal space by its user, a workspace's space by
+// the workspace's tombstone. It is the daily job's guard.
 func ErasedSpace(store *erasure.Store) func(context.Context, space.ResolvedSpace) (bool, error) {
 	return func(ctx context.Context, sp space.ResolvedSpace) (bool, error) {
 		if sp.Personal() {
@@ -2040,34 +2290,146 @@ func ErasedSpace(store *erasure.Store) func(context.Context, space.ResolvedSpace
 }
 ```
 
-`app.go`, in `BuildFinanceJobs`, replace
-
-```go
-	return services.NewFinanceJobs(
-		repositories.NewBillRepository(db, cfg),
-		repositories.NewRecurrenceRepository(db, cfg),
-	), nil
-```
-
-with
-
-```go
-	return services.NewFinanceJobs(
-		repositories.NewBillRepository(db, cfg),
-		repositories.NewRecurrenceRepository(db, cfg),
-	).WithSpaceGuard(services.ErasedSpace(erasure.NewStore(db, cfg.TablePrefix, 0))), nil
-```
+`app.go`, in `BuildFinanceJobs`, chain `.WithSpaceGuard(services.ErasedSpace(erasure.NewStore(db, cfg.TablePrefix, 0)))` after the existing `.WithCards(...)` wiring (keep whatever builders are already chained).
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `go test ./internal/... -count=1 && make test-integration`
-Expected: `ok` everywhere, including the two new tests and every existing `FinanceJobs` test (they build no guard).
+Expected: `ok` everywhere, including every existing `FinanceJobs` test (they build no guard).
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add internal/services internal/app/app.go
 git commit -m "feat(api): the finance job skips spaces locked or erased by account deletion"
+```
+
+---
+
+### Task 8b: BYOK and level reports leave an erased owner alone
+
+Two more asynchronous writers act on an owner the saga may have erased: the BYOK job (one connection → statement sync, sweeps, certificate mail) and the level reports ctech-account and ctech-dfe send for `USER_{sub}` / `ORG_{id}` refs. The BYOK webhook receiver and the finance replay queue are already safe by construction (below).
+
+**Safe by construction (pinned by tests, no code):**
+- The BYOK webhook receiver finds its connection through the `HOOK#{id}` row the purge deletes, so an event for a purged workspace is an unknown hook: dropped.
+- The finance replay queue (`schedule-index` of `invoices`) posts the payer side only for a non-anonymized customer (`payer_anonymized`), and the purge anonymizes before it deletes the space (Task 6 order).
+
+**Files:**
+- Modify: `api/internal/services/byok_job.go` (`runOne`), `api/internal/services/erasing.go` (`ErasedWorkspace`)
+- Modify: `api/internal/api/v1/levels.go`, `api/internal/api/v1/router.go` (`Deps`)
+- Test: `api/internal/services/byok_job_test.go`, `api/tests/integration/erasure_test.go`
+
+**Interfaces:**
+- Produces:
+  - `(*ByokJob).WithSpaceGuard(gone func(ctx context.Context, sp space.ResolvedSpace) (bool, error)) *ByokJob`
+  - `services.ErasedRef(store *erasure.Store) func(ctx context.Context, customerRef string) (bool, error)`: true for `USER_{sub}` when `Blocked(sub)` and for `ORG_{id}` when `OrgErased(id)`; false for any other ref
+  - `v1.Deps.ErasedRef func(ctx context.Context, customerRef string) (bool, error)`
+
+- [ ] **Step 1: Write the failing tests**
+
+`byok_job_test.go` (reuse the file's existing fakes):
+
+```go
+func TestTheByokJobLeavesAnErasedWorkspaceAlone(t *testing.T) {
+	steps := 0
+	job := newTestByokJob(t, oneConnection("org_gone")).WithSpaceGuard(func(context.Context, space.ResolvedSpace) (bool, error) { return true, nil })
+	job.Register(StepStatement, func(context.Context, space.ResolvedSpace, *byokconn.Connection, time.Time) error { steps++; return nil })
+	job.Run(context.Background(), true, time.Now())
+	if steps != 0 {
+		t.Fatalf("a step ran %d times for an erased workspace", steps)
+	}
+}
+```
+
+`tests/integration/erasure_test.go`:
+
+```go
+// A level report for an erased ref is accepted and dropped, so the reporter
+// stops retrying, and it writes nothing (R21).
+func TestALevelReportForAnErasedRefWritesNothing(t *testing.T) {
+	e := newPortal(t)
+	lockSubject(t, e.userID) // the Task 3 helper: Store.Apply(lock) for the sub
+	res := e.postLevel(t, "USER_"+e.userID, "finance_spaces", 3)
+	if res.status != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (accepted and dropped)", res.status)
+	}
+	if l, err := repositories.NewLevelRepository(testDB, testCfg).Latest(ctxT(t), e.org.ID, true, "USER_"+e.userID, "finance_spaces"); err == nil && l != nil {
+		t.Fatalf("a level was written for an erased ref: %+v", l)
+	}
+}
+```
+
+`e.postLevel` is a small helper over the existing levels route test helper (`levels_test.go`).
+
+- [ ] **Step 2: Run them to verify they fail**
+
+Run: `go test ./internal/services/ -run TestTheByokJobLeavesAnErasedWorkspaceAlone; go vet -tags integration ./tests/...`
+Expected: FAIL, `WithSpaceGuard undefined` / `postLevel` undefined.
+
+- [ ] **Step 3: Implement**
+
+`byok_job.go`: add a `gone` field like `FinanceJobs`, `WithSpaceGuard` identical in shape, and in `runOne`, right after `sp, err := j.spaceFor(conn)` succeeds:
+
+```go
+	if j.gone != nil {
+		gone, err := j.gone(ctx, sp)
+		if err != nil {
+			return fmt.Errorf("%s %s: erasure state: %w", conn.AccountOrganizationID, conn.Provider, err)
+		}
+		if gone {
+			return nil
+		}
+	}
+```
+
+Wire it where the job is built (`cmd/byok`, `cmd/byok-outbound` via `app`): `.WithSpaceGuard(services.ErasedSpace(erasure.NewStore(db, cfg.TablePrefix, 0)))`.
+
+`erasing.go`:
+
+```go
+// ErasedRef reports a level-report customer ref whose person or workspace the
+// saga has locked or erased: USER_{sub} by sub, ORG_{id} by workspace id.
+func ErasedRef(store *erasure.Store) func(context.Context, string) (bool, error) {
+	return func(ctx context.Context, ref string) (bool, error) {
+		switch {
+		case strings.HasPrefix(ref, "USER_"):
+			return store.Blocked(ctx, strings.TrimPrefix(ref, "USER_"))
+		case strings.HasPrefix(ref, repositories.OrgRefPrefix):
+			return store.OrgErased(ctx, strings.TrimPrefix(ref, repositories.OrgRefPrefix))
+		}
+		return false, nil
+	}
+}
+```
+
+`levels.go`, in the handler right before `rec := &billing.LevelRecord{`:
+
+```go
+	if h.erasedRef != nil && t.OrganizationID == h.tenantZero {
+		gone, err := h.erasedRef(c.Context(), req.CustomerRef)
+		if err != nil {
+			return fail(c, err) // unknown erasure state: never write
+		}
+		if gone {
+			// Accepted and dropped: the reporter must not retry forever for a
+			// person who no longer exists here.
+			return c.Status(fiber.StatusOK).JSON(fiber.Map{"recorded": false, "dropped": "account_erased"})
+		}
+	}
+```
+
+`router.go` `Deps` gains `ErasedRef`; `handlers` gains `erasedRef` and `tenantZero` from `Deps` (use the field the portal handlers already read for tenant zero); `app.go` sets `ErasedRef: services.ErasedRef(erasure.NewStore(db, cfg.TablePrefix, 0))`.
+
+- [ ] **Step 4: Run the tests to verify they pass**
+
+Run: `go test ./internal/... -count=1 && make test-integration`
+Expected: `ok`, and both new tests PASS.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add internal/services internal/api/v1 internal/app tests/integration/erasure_test.go
+git commit -m "feat(api): BYOK jobs and level reports leave erased owners alone"
 ```
 
 ---
@@ -2087,7 +2449,7 @@ git commit -m "feat(api): the finance job skips spaces locked or erased by accou
 - Consumes: `erasure.NewConsumer`, `erasure.NewAckClient`, `erasure.NewStore`, `oauth2client.New`, `newEraser` (Task 7), `(*Eraser).WithPurge`/`Purge` (Task 6), `repositories.NewSpacePurger` (Task 5).
 - Produces:
   - `config.Config.ErasureClientID` (`ERASURE_CLIENT_ID`) and `config.Config.ErasureClientSecret` (`ERASURE_CLIENT_SECRET`)
-  - `app.BuildErasureConsumer(ctx context.Context, cfg *config.Config, spaceFor func(owner string, livemode bool) (space.ResolvedSpace, error)) (*erasure.Consumer, error)`
+  - `app.BuildErasureConsumer(ctx context.Context, cfg *config.Config, spaceFor func(owner string, livemode bool) (space.ResolvedSpace, error), banks services.BankConnections) (*erasure.Consumer, error)`
   - `app.erasureQueueName(env string) string` = `{env}-ctech-billing-erasure`
   - `app.erasureClientParams(env string) (id, secret string)` = `/ctech-billing/{env}/billing/erasure-client-{id,secret}`
 
@@ -2122,7 +2484,7 @@ func TestNoConsumerWithoutCtechAccountOrAgainstALocalTable(t *testing.T) {
 		"no ctech-account": {Env: "dev"},
 		"local dynamodb":   func() config.Config { c := full; c.DynamoDBEndpoint = "http://localhost:8124"; return c }(),
 	} {
-		c, err := BuildErasureConsumer(context.Background(), &cfg, nil)
+		c, err := BuildErasureConsumer(context.Background(), &cfg, nil, nil)
 		if c != nil || err != nil {
 			t.Errorf("%s: consumer %v, err %v; want neither", name, c, err)
 		}
@@ -2255,7 +2617,7 @@ func erasureCredentials(ctx context.Context, awsConf aws.Config, cfg *config.Con
 // It returns (nil, nil) where there is nothing to consume for: no ctech-account
 // URLs (a laptop, the integration tests), or a local DynamoDB. It returns an
 // error, which the caller logs, for a missing queue or an unset erasure client.
-func BuildErasureConsumer(ctx context.Context, cfg *config.Config, spaceFor func(owner string, livemode bool) (space.ResolvedSpace, error)) (*erasure.Consumer, error) {
+func BuildErasureConsumer(ctx context.Context, cfg *config.Config, spaceFor func(owner string, livemode bool) (space.ResolvedSpace, error), banks services.BankConnections) (*erasure.Consumer, error) {
 	if cfg.AccountBaseURL == "" || cfg.AccountTokenURL == "" || cfg.DynamoDBEndpoint != "" {
 		slog.Warn("account erasure consumer not started: no ctech-account URLs, or a local DynamoDB")
 		return nil, nil
@@ -2282,7 +2644,7 @@ func BuildErasureConsumer(ctx context.Context, cfg *config.Config, spaceFor func
 	acks := erasure.NewAckClient(hc,
 		strings.TrimSuffix(cfg.AccountBaseURL, "/")+"/v1.0/internal/erasure/ack",
 		oauth2client.New(hc, newCache(cfg), cfg.AccountTokenURL, clientID, clientSecret, erasureAckScope))
-	eraser := newEraser(db, cfg).WithPurge(repositories.NewSpacePurger(db, cfg), spaceFor)
+	eraser := newEraser(db, cfg).WithPurge(repositories.NewSpacePurger(db, cfg), spaceFor, banks)
 	return erasure.NewConsumer(queues, aws.ToString(q.QueueUrl), erasureService,
 		erasure.NewStore(db, cfg.TablePrefix, 0), eraser.Purge, acks), nil
 }
@@ -2330,7 +2692,7 @@ func main() {
 	// every instance; SQS hands each message to one of them. A failure to start
 	// it is logged, never fatal: the API keeps serving, and ctech-account alarms
 	// on the missing ack after 48 h.
-	consumer, err := app.BuildErasureConsumer(shutdownCtx, cfg, space.ForJob)
+	consumer, err := app.BuildErasureConsumer(shutdownCtx, cfg, space.ForJob, built.ByokConnections())
 	switch {
 	case err != nil:
 		slog.Error("account erasure consumer not started", "error", err)
@@ -2374,6 +2736,8 @@ Expected: `ok` everywhere. The ForJob guard still passes, because the only new c
 git add go.mod go.sum internal/config/config.go internal/app/erasure.go internal/app/erasure_test.go cmd/server/main.go
 git commit -m "feat(api): run the account-erasure consumer beside the API, with a dedicated ack client"
 ```
+
+`built.ByokConnections()` is the `*services.ByokConnections` that `app.Build` already constructs for the console; expose it through an accessor on the Build result if it is not reachable from `cmd/server` yet. The consumer and the console then share one connection service, so a disconnect from the purge drops the same cached tokens the console would.
 
 ---
 
@@ -2558,15 +2922,15 @@ Billing is a participant in ctech-account's erasure saga
 | Piece | Where |
 |---|---|
 | Eligibility: `GET /v1.0/internal/erasure/eligibility/:sub`, scope `internal:billing:erasure-eligibility` (minted by ctech-account only; not in the scope manifest) | `internal/api/v1/erasure.go` |
-| Blockers: `billing.invoice_open` (a live tenant-zero invoice still owed, with `count`, `overdue` and `amount_cents`, and the portal's `/invoices` as `action_url`), `billing.invoice_uncollectible` (a written-off invoice still owed, with `count` and `amount_cents` and no `action_url`, because support records that payment), `billing.tenant_owner` (the person owns a billing tenant) | `services.Eraser.Blockers` |
+| Blockers: `billing.invoice_open` (a live tenant-zero invoice still owed, with `count`, `overdue` and `amount_cents`, and the portal's `/invoices` as `action_url`), `billing.invoice_uncollectible` (a written-off invoice still owed, with `count` and `amount_cents` and no `action_url`, because support records that payment), `billing.merchant_tenant` (a workspace being erased has a billing tenant; `detail.workspace_ids`) | `services.Eraser.Blockers` |
 | Lock: every session token of a locked or erased `sub` gets 403 `/problems/account-locked`, on every route | `middleware.RefuseLocked`, inside `Verifier.Middleware` |
 | Token cut-off: the jwtverify revocation list, read from Valkey **DB 0** (`VALKEY_URL` without its DB path) | `internal/app/erasure.go` |
-| Purge: re-checks the blockers; cancels the person's tenant-zero subscriptions now, clears their metadata, anonymizes the customer in place; deletes their personal finance spaces (live and test) and those of every organization in `organizations[]` | `services.Eraser.Purge`, `repositories.SpacePurger` |
+| Purge: re-checks the blockers; cancels the tenant-zero subscriptions of the person and of every erased workspace now, clears their metadata, anonymizes those customers in place; deletes the level rows of `USER_{sub}` / `ORG_{id}`; disconnects bank connections; deletes the personal finance space and those of every workspace in `workspaces[]`, across every space-keyed table (ledger, bills, recurrences, cards, imports, byok, idempotency, audit) | `services.Eraser.Purge`, `repositories.SpacePurger` |
 | Kept: invoices, lines, payment attempts, credit notes, invoice PDFs, the canceled subscriptions, audit rows (except a personal space's finance audit) | ADR 0009, ADR 0026 |
 | Consumer: SQS `{env}-ctech-billing-erasure` (+ `-dlq`), run in the API process, acks to `{ACCOUNT_BASE_URL}/v1.0/internal/erasure/ack` with a **dedicated** client holding only `internal:account:erasure-ack` (`ERASURE_CLIENT_ID`/`SECRET`, or the SecureStrings `/ctech-billing/{env}/billing/erasure-client-{id,secret}`) | `app.BuildErasureConsumer`, `terraform/billing/erasure.tf` |
 | State and tombstones: `{env}_billing_erasure_state` | `api-commons/erasure.Store` |
 
-The daily finance job skips any space whose owner is locked or erased (`services.ErasedSpace`).
+The daily finance job (recurrences, auto-settle, card close), the BYOK job and level reports skip any owner that is locked or erased (`services.ErasedSpace`, `ErasedRef`).
 No payment gateway is involved: billing stores no card, PIX key or gateway customer, and the PIX
 rail is ctech-wallet's.
 
@@ -2598,19 +2962,21 @@ Cross-repo: the personal-space purge trigger exists. Billing consumes ctech-acco
 ```markdown
 ## Account deletion (LGPD) — billing as a saga participant
 Plan: [`docs/plans/2026-10-07-account-deletion-participant.md`](docs/plans/2026-10-07-account-deletion-participant.md).
-- [x] api-commons v1.13.1; `erasure_state` table; lock on every session route; revocation list (DB 0)
-- [x] Eligibility route and blockers (`billing.invoice_open`, `billing.invoice_uncollectible`, `billing.tenant_owner`)
-- [x] Purge: subscriptions canceled, customer anonymized, personal and erased-organization finance
-      spaces deleted (`SpacePurger`, every table classified by a test); the finance job skips erased spaces
+- [x] api-commons ≥ v1.19.0; `erasure_state` table; lock on every session route; revocation list (DB 0)
+- [x] Eligibility route and blockers (`billing.invoice_open`, `billing.invoice_uncollectible`, `billing.merchant_tenant`), with the `workspaces` query parameter
+- [x] Purge: subscriptions canceled, customers (person and erased workspaces) anonymized, personal and erased-workspace
+      finance spaces deleted across every table (`SpacePurger`, every table classified by a test), level rows and bank
+      connections removed; the finance, BYOK and level paths skip erased owners
 - [x] Consumer in the API process; queue, DLQ, filtered subscription, alarm (`terraform/billing/erasure.tf`)
 - [ ] Operator:
   - create billing's dedicated erasure client in ctech-account with only `internal:account:erasure-ack`;
   - write its id and secret to `/ctech-billing/{env}/billing/erasure-client-{id,secret}` (`aws ssm put-parameter --overwrite`);
+  - confirm in each environment that `cmd/backfill-invoice-lookup` and `cmd/backfill-subscription-lookup` have run (R22: an unfilled customer index hides an open invoice);
   - check in dev that ctech-account's minted eligibility token has `iss` = billing's `CTECH_ISSUER_URL` and `aud` = `SERVICE_AUDIENCE`;
   - and add billing to
       ctech-account's `ERASURE_PARTICIPANTS`, **after** the legal validation of the data inventory
-- [ ] Later: organization customers (`CUSTOMER_ORG#`, ADR 0025 amendment) once they exist; service-scoped
-      unlink (`Store.Clear` on re-consent) once ctech-account builds it
+- [ ] Later: deleting a merchant tenant (credentials, webhook endpoints, customers, BYOK collection), which lifts `billing.merchant_tenant`;
+      service-scoped unlink (`Store.Clear` on re-consent) once ctech-account builds it
 ```
 
 - [ ] **Step 4: ADRs**
@@ -2620,13 +2986,15 @@ Plan: [`docs/plans/2026-10-07-account-deletion-participant.md`](docs/plans/2026-
 ## Amendment, 2026-10-07 — implemented
 
 The trigger is ctech-account's `user.erase`. `repositories.SpacePurger.PurgeSpace` deletes every row
-under the space key `S` in `ledger_accounts`, `ledger_transactions`, `bills`, `recurrences` and
-`idempotency`, plus every `S#ACCOUNT#{id}` entry partition, plus, for a personal space only, the
-`audit` rows under `S`. It runs for `USER#{sub}#live|test` and for every organization in the
-message's `organizations[]` (organizations erased with their only member). Entry partitions go
-first, so a run that dies anywhere is finished by the next. `TestEveryTableIsClassifiedForThePurge`
-is the "a test lists the tables" consequence: every table in `schema.json` is either purged under the
-space or listed with the reason it is not.
+under the space key `S` in `ledger_accounts`, `ledger_transactions`, `bills`, `recurrences`, `cards`,
+`imports`, `byok`, `idempotency` and `audit`, plus every `S#ACCOUNT#{id}`, `S#CARD#{id}` and
+`S#IMPORT#{id}` partition and the `HOOK#{id}` rows the connections name. Audit rows go for every space
+it purges, personal or workspace: the workspace itself is gone (decision 2026-10-13). It runs for
+`USER#{sub}#live|test` and for every workspace in the message's `workspaces[]` (erased with their only
+member). Child partitions go first, so a run that dies anywhere is finished by the next.
+`TestEveryTableIsClassifiedForThePurge` is the "a test lists the tables" consequence: every table in
+`schema.json` is either purged under the space or listed with the reason it is not. A workspace that
+has a billing tenant blocks the deletion (`billing.merchant_tenant`) until a tenant deletion flow exists.
 ```
 
 - `docs/adr/0009-retention-and-ttl.md`, append:
@@ -2684,15 +3052,13 @@ git commit -m "docs: billing as an account-deletion saga participant"
     - `audience`: billing's `SERVICE_AUDIENCE` (`https://billing[-env].aoctech.app`)
     - `client_id`: billing's **dedicated erasure client** (R16), created for this purpose
   - Grants that client `internal:account:erasure-ack` and nothing else. The operator writes its id and secret to billing's SSM placeholders.
-  - Its minted eligibility token's `iss` must equal billing's `CTECH_ISSUER_URL` (`/ctech-account/{env}/app-url`), the check its phase-3 plan already asks for.
-  - Its UI translates `billing.invoice_open`, `billing.invoice_uncollectible` and `billing.tenant_owner`.
-  - The data inventory § 6 / § 8 should record:
-    - no payment gateway in billing;
-    - the table list (`{env}_billing_*`, `schema.json`);
-    - the three blocker codes;
-    - no subscription or dispute blocker (R3).
+  - **Eligibility call:** adds `?workspaces=id1,id2` (R20) to `GET …/eligibility/:sub`, listing the workspaces where the person is the only member; its phase 3 plan (Task 3) and the saga protocol § 4.1 carry the change. Publishes `workspaces[{id,kind}]` on `user.locked`/`user.erase` (api-commons ≥ v1.19.0).
+  - Its minted eligibility token's `iss` must equal billing's `CTECH_ISSUER_URL` (`/ctech-account/{env}/app-url`).
+  - Its UI translates `billing.invoice_open`, `billing.invoice_uncollectible` and `billing.merchant_tenant` (a workspace with a billing account: contact support).
+  - Its level worker (plan limits) skips a tombstoned owner; billing also drops reports for erased refs (Task 8b), so a race is harmless.
   - Gated on the legal validation of the matrix.
-- **ctech-go-common:** none in code. Its `CLAUDE.md` consumer list should say `ctech-billing/api (v1.13.1)`.
-- **ctech-dfe:** receives `subscription.canceled` webhooks for erased users through the existing routing (ADR 0016). No change.
-- **ctech-wallet:** none. The PIX rail and Asaas are wallet's participant work.
+- **ctech-dfe:** the organization's DF-e subscription is an `ORG_{id}` customer in billing. Billing cancels it when the workspace is erased (R19); dfe's own purge erases its side (`account_billing` keyed by organization). Receives `subscription.canceled` through the existing routing (ADR 0016).
+- **ctech-wallet:** none. The PIX rail and its refunds are wallet's participant work.
+- **ctech-go-common:** `v1.19.0` carries `Message.Workspaces`. Its `CLAUDE.md` consumer list should say `ctech-billing/api (v1.19.0)`.
 - **ctech-cdk / ctech-lbalancer:** none. The topic exists, and the route already serves `/v1.0/internal/*`.
+- **Data inventory (ctech-account § 6):** carries the BYOK, cards/imports, organization-customer and level rows (added 2026-10-13); this plan implements them.
