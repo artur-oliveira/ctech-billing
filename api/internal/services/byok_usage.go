@@ -114,11 +114,18 @@ func (u *ByokUsage) reportOne(ctx context.Context, row repositories.ByokUsageRow
 	if current := t.sub.CurrentPeriod(); period.Start.Before(current.Start) {
 		period = current
 	}
-	err = u.usage.Append(ctx, rec, period.Start, now)
-	if err != nil && !errors.Is(err, repositories.ErrDuplicateUsage) {
+	// The record and the pending row's deletion are one transaction: a row
+	// already reported (another run, a retry after a crash) is never billed
+	// twice, even when the period moved on in between.
+	switch err := u.usage.AppendWith(ctx, rec, period.Start, now, u.repo.UsageDoneItem(row)); {
+	case errors.Is(err, repositories.ErrUsageExtraFailed):
+		return true, false, nil
+	case errors.Is(err, repositories.ErrDuplicateUsage):
+		return true, true, u.repo.UsageDone(ctx, row)
+	case err != nil:
 		return false, false, err
 	}
-	return true, true, u.repo.UsageDone(ctx, row)
+	return true, true, nil
 }
 
 // target is the tenant's billing_charges item, read once per run.

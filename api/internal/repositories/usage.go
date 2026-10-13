@@ -3,6 +3,7 @@ package repositories
 import (
 	"context"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
@@ -17,6 +18,10 @@ import (
 // used. Callers should treat it as success: the reporting product retried, and
 // the consumption is already counted.
 var ErrDuplicateUsage = fmt.Errorf("usage record already reported")
+
+// ErrUsageExtraFailed: an AppendWith companion write's condition failed (the
+// BYOK pending row was already reported); nothing was written.
+var ErrUsageExtraFailed = fmt.Errorf("usage record's companion write refused")
 
 // UsageRepository stores metered consumption.
 //
@@ -39,6 +44,13 @@ func NewUsageRepository(db *dynamodb.Client, cfg *config.Config) *UsageRepositor
 // the difference between an overcharge the customer finds and a retry that costs
 // nothing.
 func (r *UsageRepository) Append(ctx context.Context, u *billing.UsageRecord, periodStart brcal.Date, now time.Time) error {
+	return r.AppendWith(ctx, u, periodStart, now)
+}
+
+// AppendWith is Append with writes that succeed or fail with the record (the
+// BYOK usage step deletes its pending row in the same transaction, so a row
+// once reported can never be reported again, whatever period it would land in).
+func (r *UsageRepository) AppendWith(ctx context.Context, u *billing.UsageRecord, periodStart brcal.Date, now time.Time, extra ...types.TransactWriteItem) error {
 	if err := u.Validate(); err != nil {
 		return err
 	}
@@ -54,7 +66,10 @@ func (r *UsageRepository) Append(ctx context.Context, u *billing.UsageRecord, pe
 	if err != nil {
 		return err
 	}
-	err = r.base.TransactWrite(ctx, txItems(r.base.BuildPutTxItemIfAbsent(item)))
+	err = r.base.TransactWrite(ctx, append(txItems(r.base.BuildPutTxItemIfAbsent(item)), extra...))
+	if codes := cancellationCodes(err); len(codes) > 1 && codes[0] != codeConditionFailed && slices.Contains(codes[1:], codeConditionFailed) {
+		return fmt.Errorf("%w: %s", ErrUsageExtraFailed, u.IdempotencyKey)
+	}
 	if IsConditionFailed(err) {
 		return fmt.Errorf("%w: %s", ErrDuplicateUsage, u.IdempotencyKey)
 	}

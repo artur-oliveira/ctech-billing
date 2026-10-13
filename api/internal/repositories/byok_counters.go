@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
@@ -124,6 +125,17 @@ func (r *ByokRepository) PendingUsage(ctx context.Context, day brcal.Date, start
 		out.Items = append(out.Items, row.ByokUsageRow)
 	}
 	return out, nil
+}
+
+// UsageDoneItem deletes a pending row only if it is still there: written
+// with its usage record, it makes reporting exactly-once.
+func (r *ByokRepository) UsageDoneItem(row ByokUsageRow) types.TransactWriteItem {
+	sk := row.AttemptID
+	return types.TransactWriteItem{Delete: &types.Delete{
+		TableName:           aws.String(r.base.TableName),
+		Key:                 map[string]types.AttributeValue{"pk": str(ByokUsagePK(brcal.FromTime(row.CreatedAt))), "sk": str(sk)},
+		ConditionExpression: aws.String("attribute_exists(pk)"),
+	}}
 }
 
 // UsageDone removes a reported (or skipped) charge from its day.

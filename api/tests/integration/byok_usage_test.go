@@ -3,6 +3,7 @@
 package integration
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	"gopkg.aoctech.app/api-commons/alerts"
 
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
+	"gopkg.aoctech.app/billing/api/internal/domain/brcal"
 	"gopkg.aoctech.app/billing/api/internal/domain/byokconn"
 	"gopkg.aoctech.app/billing/api/internal/repositories"
 	"gopkg.aoctech.app/billing/api/internal/services"
@@ -201,5 +203,47 @@ func TestALateChargeIsBilledInTheOpenPeriod(t *testing.T) {
 	env.runUsage(t, now().Add(30*time.Hour))
 	if recs := env.usageRecords(t, sub); recs[env.attempt(t, inv).ID] != 1 {
 		t.Fatalf("not in the open period: %+v", recs)
+	}
+}
+
+// Exactly once: a pending row that another run already reported (deleted)
+// refuses the whole write, whatever period the record would land in.
+func TestAReportedRowIsNeverBilledAgain(t *testing.T) {
+	env := newCollectEnv(t, collectLive)
+	sub := env.subscribeMerchantTo(t, "basic")
+	inv := env.finalizeInvoice(t, 100)
+	page, err := env.repo.PendingUsage(ctxT(t), brcal.FromTime(now()), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var row repositories.ByokUsageRow
+	for _, r := range page.Items {
+		if r.AttemptID == env.attempt(t, inv).ID {
+			row = r
+		}
+	}
+	env.runUsage(t, now().Add(30*time.Hour)) // reported, row deleted
+	if _, err := env.merchant.subs.Transition(ctxT(t), sub, billing.SubscriptionActive, billing.CauseRenewal, "test", "", now()); err != nil {
+		t.Fatal(err)
+	}
+	items, err := env.merchant.subs.ListItems(ctxT(t), env.tz, true, sub.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var item string
+	for _, it := range items {
+		if it.PriceID == "price_billing_basic_charges" {
+			item = it.ID
+		}
+	}
+	// A stale run still holding the row tries to bill it in the new period.
+	err = repositories.NewUsageRepository(testDB, testCfg).AppendWith(ctxT(t), &billing.UsageRecord{ID: "usg_stale", OrganizationID: env.tz,
+		Livemode: true, SubscriptionItemID: item, Quantity: 1, OccurredAt: now(), IdempotencyKey: row.AttemptID},
+		sub.CurrentPeriod().Start, now(), env.repo.UsageDoneItem(row))
+	if !errors.Is(err, repositories.ErrUsageExtraFailed) {
+		t.Fatalf("%v", err)
+	}
+	if recs := env.usageRecords(t, sub); len(recs) != 0 {
+		t.Fatalf("billed again in the open period: %+v", recs)
 	}
 }
