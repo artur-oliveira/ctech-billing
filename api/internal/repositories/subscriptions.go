@@ -169,7 +169,7 @@ func (r *SubscriptionRepository) Create(ctx context.Context, s *billing.Subscrip
 	if o.count {
 		counterAt = len(writes)
 		pk, sk := SubscriptionCounterKey(s.OrganizationID)
-		writes = append(writes, counterItem(r.byok, pk, sk, 1, o.cap))
+		writes = append(writes, counterItem(r.byok, pk, sk, 1, o.cap, 0))
 	}
 
 	err = r.base.TransactWrite(ctx, writes)
@@ -218,7 +218,7 @@ func (r *SubscriptionRepository) byokUncount(ctx context.Context, s *billing.Sub
 		return nil, err
 	}
 	pk, sk := SubscriptionCounterKey(s.OrganizationID)
-	return txItems(counterItem(r.byok, pk, sk, -1, -1)), nil
+	return txItems(counterItem(r.byok, pk, sk, -1, -1, 0)), nil
 }
 
 // ListItems returns a subscription's items.

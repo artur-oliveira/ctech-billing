@@ -6,6 +6,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+
 	"gopkg.aoctech.app/api-commons/alerts"
 
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
@@ -160,5 +164,23 @@ func TestTheHourlyLiveRunReportsUsage(t *testing.T) {
 	job.Run(ctxT(t), true, now().Add(30*time.Hour))
 	if recs := env.usageRecords(t, sub); recs[env.attempt(t, inv).ID] != 1 {
 		t.Fatalf("%+v", recs)
+	}
+}
+
+// A charge of a tenant that no longer exists (account deletion) is dropped,
+// never retried forever.
+func TestUsageDropsAChargeOfAGoneTenant(t *testing.T) {
+	env := newCollectEnv(t, collectLive)
+	env.subscribeMerchantTo(t, "basic")
+	env.finalizeInvoice(t, 100)
+	if _, err := testDB.DeleteItem(ctxT(t), &dynamodb.DeleteItemInput{
+		TableName: aws.String(repositories.TableName(testCfg, repositories.TableOrganizations)),
+		Key: map[string]types.AttributeValue{"pk": &types.AttributeValueMemberS{Value: repositories.TenantPK(env.tenant.ID, true)},
+			"sk": &types.AttributeValueMemberS{Value: repositories.OrganizationSK()}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, errs := env.usageService().Report(ctxT(t), now().Add(30*time.Hour)); len(errs) != 0 {
+		t.Fatalf("%v", errs)
 	}
 }

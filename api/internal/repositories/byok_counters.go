@@ -58,29 +58,29 @@ func (r *ByokRepository) counter(ctx context.Context, pk, sk string) (int64, err
 	return strconv.ParseInt(n.Value, 10, 64)
 }
 
-// counterItem adds delta to a counter row; limit >= 0 keeps n below limit.
-func counterItem(b Base, pk, sk string, delta, limit int64) types.TransactWriteItem {
+// counterItem adds delta to a counter row; limit >= 0 keeps n below limit
+// (so the limit holds under concurrency); ttl > 0 sets the row's expiry.
+func counterItem(b Base, pk, sk string, delta, limit, ttl int64) types.TransactWriteItem {
+	update := "ADD #n :d"
+	names := map[string]string{"#n": "n"}
 	values := map[string]types.AttributeValue{":d": numberValue(delta)}
 	cond := ""
 	if limit >= 0 {
 		cond = "attribute_not_exists(#n) OR #n < :limit"
 		values[":limit"] = numberValue(limit)
 	}
-	return b.BuildRawUpdateTxItem(pk, &sk, "ADD #n :d", cond, map[string]string{"#n": "n"}, values)
+	if ttl > 0 {
+		update += " SET #ttl = :ttl"
+		names["#ttl"], values[":ttl"] = "ttl", numberValue(ttl)
+	}
+	return b.BuildRawUpdateTxItem(pk, &sk, update, cond, names, values)
 }
 
-// chargeCounterItem adds delta to a counter. limit >= 0 makes it conditional:
-// the row's n must stay below limit, so the limit holds under concurrency.
-// The row expires three months after its last write.
+// chargeCounterItem moves a month's charge counter; the row expires three
+// months after its last write.
 func (r *PaymentRepository) chargeCounterItem(tenantID, month string, delta, limit int64, now time.Time) types.TransactWriteItem {
 	pk, sk := ChargeCounterKey(tenantID, month)
-	values := map[string]types.AttributeValue{":d": numberValue(delta), ":ttl": numberValue(now.AddDate(0, 3, 0).Unix())}
-	cond := ""
-	if limit >= 0 {
-		cond = "attribute_not_exists(#n) OR #n < :limit"
-		values[":limit"] = numberValue(limit)
-	}
-	return r.byok.BuildRawUpdateTxItem(pk, &sk, "ADD #n :d SET #ttl = :ttl", cond, map[string]string{"#n": "n", "#ttl": "ttl"}, values)
+	return counterItem(r.byok, pk, sk, delta, limit, now.AddDate(0, 3, 0).Unix())
 }
 
 // ByokUsagePK is the partition of the live BYOK charges created on one São

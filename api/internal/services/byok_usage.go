@@ -117,6 +117,10 @@ func (u *ByokUsage) reportOne(ctx context.Context, row repositories.ByokUsageRow
 // target is the tenant's billing_charges item, read once per run.
 func (u *ByokUsage) target(ctx context.Context, tenantID string) (meteredTarget, error) {
 	org, err := u.orgs.Get(ctx, tenantID, true)
+	if errors.Is(err, repositories.ErrNotFound) {
+		// The tenant is gone (account deletion): nothing left to bill.
+		return meteredTarget{}, nil
+	}
 	if err != nil {
 		return meteredTarget{}, err
 	}
