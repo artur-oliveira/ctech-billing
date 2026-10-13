@@ -12,6 +12,8 @@ type consolePlanBody struct {
 	Current struct {
 		Plan           string `json:"plan"`
 		SubscriptionID string `json:"subscription_id"`
+		PendingPlan    string `json:"pending_plan"`
+		PendingAt      string `json:"pending_at"`
 	} `json:"current"`
 	Usage struct {
 		ChargesThisMonth     int64 `json:"charges_this_month"`
@@ -93,8 +95,9 @@ func TestChangingToGrowthSwapsBothPrices(t *testing.T) {
 	if r := env.consoleWrite(t, "POST", "/v1.0/console/plan", `{"plan":"free"}`); r.status != 200 {
 		t.Fatalf("a downgrade is allowed: %d %s", r.status, r.body)
 	}
-	if b := env.consolePlan(t, "live"); b.Current.Plan != "free" || b.Usage.Quota != 50 {
-		t.Fatalf("%+v", b)
+	// Growth is postpaid: the downgrade waits for its period to be billed.
+	if b := env.consolePlan(t, "live"); b.Current.Plan != "growth" || b.Current.PendingPlan != "free" {
+		t.Fatalf("%+v", b.Current)
 	}
 }
 
@@ -115,5 +118,31 @@ func TestTestModeReadsTheLivePlan(t *testing.T) {
 	}
 	if r := env.consoleWrite(t, "POST", "/v1.0/console/plan", `{"plan":"growth"}`); r.status != 404 || r.code() != "plan_live_only" {
 		t.Fatalf("%d %s", r.status, r.body)
+	}
+}
+
+// Leaving a postpaid plan waits for the period end: the period that is
+// ending is billed under the plan that served it (fee and overage), so a
+// switch on the last day cannot erase them. Choosing the current plan again
+// drops the scheduled change.
+func TestLeavingAPaidPlanWaitsForThePeriodEnd(t *testing.T) {
+	env := newCollectEnv(t, collectLive)
+	sub := env.subscribeMerchantTo(t, "basic")
+	if r := env.consoleWrite(t, "POST", "/v1.0/console/plan", `{"plan":"free"}`); r.status != 200 {
+		t.Fatalf("%d %s", r.status, r.body)
+	}
+	b := env.consolePlan(t, "live")
+	if b.Current.Plan != "basic" || b.Current.PendingPlan != "free" || b.Current.PendingAt != sub.CurrentPeriod().End.String() {
+		t.Fatalf("%+v", b.Current)
+	}
+	items, err := env.merchant.subs.ListItems(ctxT(t), env.tz, true, sub.ID)
+	if err != nil || len(items) != 2 {
+		t.Fatalf("the paid items stay until the period end: %v %v", items, err)
+	}
+	if r := env.consoleWrite(t, "POST", "/v1.0/console/plan", `{"plan":"basic"}`); r.status != 200 {
+		t.Fatalf("%d %s", r.status, r.body)
+	}
+	if b := env.consolePlan(t, "live"); b.Current.Plan != "basic" || b.Current.PendingPlan != "" {
+		t.Fatalf("%+v", b.Current)
 	}
 }

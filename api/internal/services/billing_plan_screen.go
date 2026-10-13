@@ -44,6 +44,10 @@ type BillingPlanState struct {
 	Current struct {
 		Plan           string `json:"plan"`
 		SubscriptionID string `json:"subscription_id"`
+		// PendingPlan starts at PendingAt (the period end): leaving a
+		// postpaid plan waits for its period to be billed.
+		PendingPlan string `json:"pending_plan,omitempty"`
+		PendingAt   string `json:"pending_at,omitempty"`
 	} `json:"current"`
 	Usage BillingPlanUsage    `json:"usage"`
 	Plans []BillingPlanOption `json:"plans"`
@@ -112,6 +116,11 @@ func (s *BillingPlanScreen) State(ctx context.Context, org *billing.Organization
 		return nil, err
 	}
 	st.Current.Plan, st.Current.SubscriptionID = limits.Plan, limits.SubscriptionID
+	if sub, err := s.plans.Subscription(ctx, org); err != nil {
+		return nil, err
+	} else if sub != nil && sub.PendingChange != nil {
+		st.Current.PendingPlan, st.Current.PendingAt = planOf(st.Plans, sub.PendingChange.PriceIDs), sub.PendingChange.At.String()
+	}
 	u := &st.Usage
 	u.Quota, u.SubscriptionsQuota, u.BankConnectionsQuota = limits.ChargesPerMonth, limits.ChargesPerMonth, limits.BankConnections
 	if u.ChargesThisMonth, err = s.byok.ChargesThisMonth(ctx, org.ID, repositories.ChargeMonth(now)); err != nil {
@@ -134,9 +143,23 @@ func (s *BillingPlanScreen) State(ctx context.Context, org *billing.Organization
 	return &st, nil
 }
 
+// planOf names the public plan a set of prices belongs to ("" when none).
+func planOf(options []BillingPlanOption, priceIDs []string) string {
+	for _, o := range options {
+		if slices.Contains(o.PriceIDs, priceIDs[0]) {
+			return o.Plan
+		}
+	}
+	return ""
+}
+
 // Change moves the tenant's prod_billing subscription onto a public plan's
-// prices (Subscriber.ChangePlan: proration as today). A downgrade below the
-// current use is allowed: caps apply to new creations only.
+// prices. From a R$ 0 advance plan (Grátis, early access) it is immediate
+// (Subscriber.ChangePlan). From a postpaid plan it is scheduled for the period
+// end: the swap would otherwise replace the items before the period is billed,
+// erasing its fee and overage. Choosing the current plan drops a scheduled
+// change. A downgrade below the current use is allowed: caps apply to new
+// creations only.
 func (s *BillingPlanScreen) Change(ctx context.Context, org *billing.Organization, plan, actor, requestID string, now time.Time) error {
 	options, err := s.Catalogue(ctx)
 	if err != nil {
@@ -154,13 +177,20 @@ func (s *BillingPlanScreen) Change(ctx context.Context, org *billing.Organizatio
 		return ErrNoBillingPlan
 	}
 	limits, _, err := s.plans.For(ctx, org)
-	if err != nil || limits.Plan == plan {
+	if err != nil {
 		return err
 	}
 	items := make([]SubscribeItem, len(options[i].PriceIDs))
 	for j, id := range options[i].PriceIDs {
 		items[j] = SubscribeItem{PriceID: id}
 	}
-	_, err = s.subscriber.ChangePlan(ctx, sub, ChangeInput{Items: items, Cause: billing.CauseCustomer, Actor: actor, RequestID: requestID}, now)
+	in := ChangeInput{Items: items, Cause: billing.CauseCustomer, Actor: actor, RequestID: requestID}
+	switch {
+	case limits.Plan == plan:
+		return s.subscriber.ClearPlanChange(ctx, sub, in, now)
+	case sub.Timing == billing.BillArrears:
+		return s.subscriber.SchedulePlanChange(ctx, sub, in, now)
+	}
+	_, err = s.subscriber.ChangePlan(ctx, sub, in, now)
 	return err
 }

@@ -408,7 +408,8 @@ export interface BillingPlanOption {
 
 /** Console → Plano: the organization's plan, this month's use and the catalogue. */
 export interface BillingPlanState {
-  current: {plan: string; subscription_id: string}
+  /** pending_plan starts at pending_at: leaving a postpaid plan waits for its period end. */
+  current: {plan: string; subscription_id: string; pending_plan?: string; pending_at?: string}
   usage: {
     charges_this_month: number
     quota: number

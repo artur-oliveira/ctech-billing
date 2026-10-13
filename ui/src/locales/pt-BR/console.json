@@ -552,10 +552,14 @@
    "title": "Mudar para {{plan}}?",
    "paid": "A mensalidade de {{amount}} e as cobranças adicionais vêm juntas na fatura do fim do período.",
    "free": "O plano Grátis não tem mensalidade.",
-   "below": "Você já emitiu {{used}} cobranças este mês e o plano {{plan}} inclui {{quota}}. Nada é cancelado: o limite vale só para novas cobranças e assinaturas."
+   "below": "Você já emitiu {{used}} cobranças este mês e o plano {{plan}} inclui {{quota}}. Nada é cancelado: o limite vale só para novas cobranças e assinaturas.",
+   "atPeriodEnd": "A mudança vale quando o período atual fechar: ele é cobrado pelo plano atual."
   },
   "changed": "Plano alterado para {{plan}}.",
   "liveOnly": "O plano é mudado no modo de produção. No modo de teste nada é cobrado nem contado.",
-  "see": "Ver planos"
+  "see": "Ver planos",
+  "changesOn": "Muda para {{plan}} em {{date}}",
+  "keep": "Manter {{plan}}",
+  "scheduled": "Muda para {{plan}} em {{date}}, depois de fechar o período atual."
  }
 }

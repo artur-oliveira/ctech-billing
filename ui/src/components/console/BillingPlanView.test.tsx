@@ -85,4 +85,22 @@ describe("BillingPlanView", () => {
     expect(screen.queryByRole("button", {name: /Mudar para/})).not.toBeInTheDocument()
     expect(screen.getByText(/O plano é mudado no modo de produção/)).toBeInTheDocument()
   })
+
+  it("shows a change scheduled for the period end and keeps the current plan", async () => {
+    const st = state("basic", 500)
+    st.current = {...st.current, pending_plan: "free", pending_at: "2026-11-10"}
+    vi.spyOn(api, "getBillingPlan").mockResolvedValue(st)
+    const change = vi.spyOn(api, "changeBillingPlan").mockResolvedValue(state("basic", 500))
+    render(wrap(<BillingPlanView/>))
+    expect(await screen.findByText(/Muda para Grátis em 10\/11\/2026/)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole("button", {name: "Manter Básico"}))
+    await waitFor(() => expect(change).toHaveBeenCalledWith({mode: "live", org: ORG}, "basic"))
+  })
+
+  it("says leaving a postpaid plan waits for the period end", async () => {
+    vi.spyOn(api, "getBillingPlan").mockResolvedValue(state("basic", 500))
+    render(wrap(<BillingPlanView/>))
+    await userEvent.click(await screen.findByRole("button", {name: "Mudar para Pro"}))
+    expect(await screen.findByText(/vale quando o período atual fechar/)).toBeInTheDocument()
+  })
 })

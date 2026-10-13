@@ -552,10 +552,14 @@
    "title": "Change to {{plan}}?",
    "paid": "The {{amount}} monthly fee and the extra charges come together on the invoice at the end of the period.",
    "free": "The Free plan has no monthly fee.",
-   "below": "You have already issued {{used}} charges this month and the {{plan}} plan includes {{quota}}. Nothing is cancelled: the limit only applies to new charges and subscriptions."
+   "below": "You have already issued {{used}} charges this month and the {{plan}} plan includes {{quota}}. Nothing is cancelled: the limit only applies to new charges and subscriptions.",
+   "atPeriodEnd": "The change applies when the current period closes: it is billed under the current plan."
   },
   "changed": "Plan changed to {{plan}}.",
   "liveOnly": "The plan is changed in live mode. In test mode nothing is billed or counted.",
-  "see": "See plans"
+  "see": "See plans",
+  "changesOn": "Changes to {{plan}} on {{date}}",
+  "keep": "Keep {{plan}}",
+  "scheduled": "Changes to {{plan}} on {{date}}, once the current period closes."
  }
 }

@@ -11,7 +11,7 @@ import {messageFor} from "@/lib/api/client"
 import {changeBillingPlan, consoleKeys, getBillingPlan} from "@/lib/api/console"
 import type {BillingPlanOption, BillingPlanState} from "@/lib/api/consoleTypes"
 import {useConsoleScope} from "@/lib/console/scope"
-import {money} from "@/lib/format"
+import {money, shortDate} from "@/lib/format"
 
 /** Desktop order is the catalogue's (cheapest first); literal classes so
  *  Tailwind keeps them. */
@@ -54,13 +54,19 @@ function PlanScreen({state, live}: {state: BillingPlanState; live: boolean}) {
     mutationFn: (plan: string) => changeBillingPlan(scope, plan),
     onSuccess: next => {
       queryClient.setQueryData(consoleKeys.plan(scope), next)
-      toast.success(t("console.plan.changed", {plan: name(next.current.plan)}))
+      toast.success(next.current.pending_plan && next.current.pending_at
+        ? t("console.plan.scheduled", {plan: name(next.current.pending_plan), date: shortDate(next.current.pending_at)})
+        : t("console.plan.changed", {plan: name(next.current.plan)}))
     },
     onError: (err: unknown) => toast.error(messageFor(err)),
     onSettled: () => setTarget(null),
   })
 
   const below = target && target.included >= 0 && state.usage.charges_this_month > target.included
+  // A postpaid plan (any priced one) changes at its period end, once billed.
+  const postpaid = (state.plans.find(p => p.plan === state.current.plan)?.fee ?? 0) > 0
+  const pending = state.current.pending_plan && state.current.pending_at
+    ? {plan: state.current.pending_plan, at: state.current.pending_at} : null
   return (
     <>
       {!live && <p className="-mt-6 text-sm text-muted-foreground">{t("console.plan.liveOnly")}</p>}
@@ -81,7 +87,17 @@ function PlanScreen({state, live}: {state: BillingPlanState; live: boolean}) {
                 {isCurrent && <Badge tone="neutral">{t("console.plan.current")}</Badge>}
               </div>
               <PlanFacts option={p}/>
-              {live && !isCurrent && (
+              {isCurrent && pending && (
+                <p className="text-sm text-muted-foreground">{t("console.plan.changesOn", {plan: name(pending.plan), date: shortDate(pending.at)})}</p>
+              )}
+              {live && isCurrent && pending && (
+                <div className="mt-auto pt-2">
+                  <Button variant="outline" className="w-full" onClick={() => change.mutate(p.plan)} disabled={change.isPending}>
+                    {t("console.plan.keep", {plan: name(p.plan)})}
+                  </Button>
+                </div>
+              )}
+              {live && !isCurrent && pending?.plan !== p.plan && (
                 <div className="mt-auto pt-2">
                   <Button variant="outline" className="w-full" onClick={() => setTarget(p)} disabled={change.isPending}>
                     {t("console.plan.changeTo", {plan: name(p.plan)})}
@@ -104,6 +120,7 @@ function PlanScreen({state, live}: {state: BillingPlanState; live: boolean}) {
         {target && (
           <div className="space-y-2 text-sm">
             <p>{target.fee > 0 ? t("console.plan.confirm.paid", {amount: money(target.fee)}) : t("console.plan.confirm.free")}</p>
+            {postpaid && <p>{t("console.plan.confirm.atPeriodEnd")}</p>}
             {below && (
               <p>{t("console.plan.confirm.below", {used: state.usage.charges_this_month, plan: name(target.plan), quota: target.included})}</p>
             )}
