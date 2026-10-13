@@ -135,7 +135,8 @@ func (e *collectEnv) wire(t *testing.T) {
 	_, ledger, st, conns := byokServices(t, e.byokAPI.fakeInvoker())
 	customers := repositories.NewCustomerRepository(testDB, testCfg)
 	subs := hookedSubs(e.tz)
-	e.gates = services.NewChargeGates(e.repo, services.MerchantEntitlement(customers, subs, e.tz))
+	e.gates = services.NewChargeGates(e.repo, services.NewBillingPlans(customers, subs,
+		repositories.NewCatalogRepository(testDB, testCfg), e.tz).Entitled)
 	finance := services.NewFinanceInvoices(repositories.NewBillRepository(testDB, testCfg), e.orgs, customers, e.invoices,
 		repositories.NewCreditNoteRepository(testDB, testCfg), e.tz).WithByok(services.ByokPostingFrom(e.payments, e.repo))
 	settler := services.NewCollector(e.invoices, e.payments, customers, e.orgs, subs, nil).WithFinance(finance).WithGates(e.gates)

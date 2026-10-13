@@ -727,6 +727,7 @@ func byokCollection(ctx context.Context, cfg *config.Config, db *dynamodb.Client
 // newChargeGates is the single charge gate's builder (BYOK spec § 7.1) with
 // the live entitlement read from tenant zero.
 func newChargeGates(db *dynamodb.Client, cfg *config.Config) *services.ChargeGates {
-	return services.NewChargeGates(repositories.NewByokRepository(db, cfg), services.MerchantEntitlement(
-		repositories.NewCustomerRepository(db, cfg), newSubscriptions(db, cfg), cfg.PortalOrganizationID))
+	plans := services.NewBillingPlans(repositories.NewCustomerRepository(db, cfg), newSubscriptions(db, cfg),
+		repositories.NewCatalogRepository(db, cfg), cfg.PortalOrganizationID)
+	return services.NewChargeGates(repositories.NewByokRepository(db, cfg), plans.Entitled)
 }
