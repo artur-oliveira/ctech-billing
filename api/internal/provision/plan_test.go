@@ -321,6 +321,11 @@ func TestTheBillingPlansMatchTheSpecTable(t *testing.T) {
 			}
 			continue
 		}
+		// ADR 0018: one subscription has one timing, so a paid plan's fee is
+		// billed in arrears with its overage, on one invoice.
+		if fixed.Timing != billing.BillArrears {
+			t.Fatalf("%s fee must be arrears like its overage", key)
+		}
 		if metered == nil || metered.Meter != "billing_charges" || metered.IncludedQuantity != w.included || int64(metered.UnitAmount) != w.overage || metered.Timing != billing.BillArrears {
 			t.Fatalf("%s overage: %+v", key, metered)
 		}

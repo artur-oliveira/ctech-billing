@@ -428,7 +428,7 @@
         "interval": "month",
         "count": 1
       },
-      "billing_timing": "advance",
+      "billing_timing": "arrears",
       "metadata": {
         "plan": "basic",
         "quota_charges_month": "500",
@@ -464,7 +464,7 @@
         "interval": "month",
         "count": 1
       },
-      "billing_timing": "advance",
+      "billing_timing": "arrears",
       "metadata": {
         "plan": "growth",
         "quota_charges_month": "2000",
@@ -500,7 +500,7 @@
         "interval": "month",
         "count": 1
       },
-      "billing_timing": "advance",
+      "billing_timing": "arrears",
       "metadata": {
         "plan": "pro",
         "quota_charges_month": "5000",
