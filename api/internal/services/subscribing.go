@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -16,6 +17,40 @@ type Subscriber struct {
 	subs     *repositories.SubscriptionRepository
 	catalog  *repositories.CatalogRepository
 	invoicer *Invoicer
+	// orgs and plans cap a live BYOK-rail tenant's subscriptions (part C).
+	orgs  *repositories.OrganizationRepository
+	plans *BillingPlans
+}
+
+// WithByokCaps caps a live BYOK-rail tenant's subscriptions at its plan's
+// charge quota (spec § 12.5).
+func (s *Subscriber) WithByokCaps(orgs *repositories.OrganizationRepository, plans *BillingPlans) *Subscriber {
+	s.orgs, s.plans = orgs, plans
+	return s
+}
+
+// byokCount is the counter option of a live BYOK-rail tenant: its plan's
+// charge quota as the cap, -1 when unlimited or not entitled.
+func (s *Subscriber) byokCount(ctx context.Context, tenantID string, livemode bool) ([]repositories.CreateOption, error) {
+	if s.orgs == nil || !livemode {
+		return nil, nil
+	}
+	org, err := s.orgs.Get(ctx, tenantID, true)
+	if errors.Is(err, repositories.ErrNotFound) {
+		return nil, nil
+	}
+	if err != nil || org.Rail() != billing.RailBYOK {
+		return nil, err
+	}
+	limits, ok, err := s.plans.For(ctx, org)
+	if err != nil {
+		return nil, err
+	}
+	limit := int64(-1)
+	if ok {
+		limit = limits.ChargesPerMonth
+	}
+	return []repositories.CreateOption{repositories.ByokCount(limit)}, nil
 }
 
 func NewSubscriber(
@@ -146,7 +181,11 @@ func (s *Subscriber) Subscribe(ctx context.Context, in SubscribeInput, now time.
 			Quantity:       quantity,
 		}
 	}
-	if err := s.subs.Create(ctx, sub, items, now); err != nil {
+	opts, err := s.byokCount(ctx, in.OrganizationID, in.Livemode)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := s.subs.Create(ctx, sub, items, now, opts...); err != nil {
 		return nil, nil, err
 	}
 

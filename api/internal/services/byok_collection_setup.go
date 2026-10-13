@@ -66,6 +66,7 @@ type ByokCollectionSetup struct {
 	host      string
 	tenant0   string
 	mail      ByokMailer
+	subs      *repositories.SubscriptionRepository
 }
 
 func NewByokCollectionSetup(conns *ByokConnections, repo *repositories.ByokRepository, orgs *repositories.OrganizationRepository,
@@ -75,6 +76,13 @@ func NewByokCollectionSetup(conns *ByokConnections, repo *repositories.ByokRepos
 }
 
 func (s *ByokCollectionSetup) WithMail(m ByokMailer) *ByokCollectionSetup { s.mail = m; return s }
+
+// WithSubscriptions lets the switch onto the BYOK rail count the tenant's
+// subscriptions (part C, scope decision 3).
+func (s *ByokCollectionSetup) WithSubscriptions(subs *repositories.SubscriptionRepository) *ByokCollectionSetup {
+	s.subs = subs
+	return s
+}
 
 func hookIDOf(conn *byokconn.Connection) string {
 	if conn.Kind == byokconn.KindSandboxShared {
@@ -186,6 +194,15 @@ func (s *ByokCollectionSetup) UseForCollection(ctx context.Context, sp space.Res
 	if tenant.Rail() != billing.RailBYOK || tenant.PayoutProvider != provider || tenant.PayoutStatus != billing.PayoutEnabled {
 		if err := s.orgs.SetPayoutRail(ctx, tenant, billing.RailBYOK, provider, billing.PayoutEnabled, actor, requestID, now); err != nil {
 			return err
+		}
+		if s.subs != nil && tenant.Livemode {
+			n, err := s.subs.CountOpen(ctx, tenant.ID, true)
+			if err != nil {
+				return err
+			}
+			if err := s.repo.InitSubscriptionCount(ctx, tenant.ID, n); err != nil {
+				return err
+			}
 		}
 	}
 	if conn.WebhookStatus != byokconn.WebhookRegistered {
