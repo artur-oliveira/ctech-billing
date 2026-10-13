@@ -1,5 +1,47 @@
 # Account Deletion — Billing as a Saga Participant Implementation Plan
 
+> **Amendment 2026-10-13 (supersedes the text below where they conflict).** Source: ctech-account
+> `docs/2026-10-13-account-deletion-plan-review.md`. This plan was written against billing at #43; `main` is now at #122.
+>
+> **Decisions (2026-10-13):** a sole-member workspace that has a merchant tenant **blocks** deletion (`billing.merchant_tenant`);
+> audit rows of an erased workspace are **deleted**; the `sub` kept in audit actor fields and ledger of a surviving shared space is
+> **retained as an opaque id**; `usage` `LATEST` level rows for `USER_{sub}` / `ORG_{id}` are **deleted**; the message carries
+> `workspaces[{id,kind}]`.
+>
+> **Corrections**
+> 1. **Task 1 (api-commons):** billing is already on `v1.18.0`. Do not run `go get ...@v1.13.1`. Replace the task with "confirm the
+>    `erasure` package and `jwtverify.WithRevocation` are importable at the current version" and gate on the full suite.
+> 2. **Blocker `billing.tenant_owner` and `GetByOwner` are obsolete** (ADR 0028, #99). Replace with `billing.merchant_tenant`: any
+>    workspace listed in `workspaces[]` for which `OrganizationRepository.GetByAccountOrganization(id, live)` finds a tenant (either
+>    mode). Reported by eligibility only for workspaces where the user is the sole member (account supplies the list when asking; if
+>    account cannot pass it at eligibility time, the purge re-check against `workspaces[]` is the authority).
+> 3. **Tables.** `financeTables` must cover every space-keyed table: `ledger_accounts`, `ledger_transactions`, `bills`, `recurrences`,
+>    **`cards`** (also `S#CARD#{id}` partitions), **`imports`** (also `S#IMPORT#{id}` partitions, `FITID#` locks, `CSVMAP#`) and
+>    **`byok`** (connection partition, `SEALED#`; plus the `HOOK#{id}` and `CHARGEREF#...` rows reachable from the connection).
+>    `TestEveryTableIsClassifiedForThePurge` stays exhaustive; add integration tests that seed cards, imports and a byok connection.
+> 4. **Audit.** Delete the audit partition of every workspace in `workspaces[]` regardless of kind (drop the `sp.Personal()` branch;
+>    `ForJob` cannot know the kind and must not be relied on for it). The personal default space `USER#{sub}` is deleted as planned.
+> 5. **Organization customers.** For each workspace in `workspaces[]`: find the `CUSTOMER_ORG#{id}` customer in tenant zero (both
+>    modes), cancel its subscriptions immediately (includes the DF-e organization subscription), clear subscription metadata, anonymize
+>    the customer (D12: CNPJ and name of an MEI are personal data), keep invoices. Open or written-off invoices of that customer block
+>    like the person's (`billing.invoice_open`, `billing.invoice_uncollectible`, with `detail.organization_id`).
+> 6. **Customer reads.** Replace `AllByCustomer` partition scans with paginated `ListByCustomer` on `customer-index` / `lookup-index`.
+>    Gate: the `cmd/backfill-invoice-lookup` and `cmd/backfill-subscription-lookup` backfills must be confirmed complete in each
+>    environment before participating (a sparse-index miss would hide an open invoice). Add the check to Task 11's operator list.
+> 7. **Applications.** Tenant-zero `applications` rows of an erased applicant (`applied_by` = sub) or of an erased workspace
+>    (`account_organization_id`): delete (they hold `company_tax_id`, `contact_email`, `description`, `website`).
+> 8. **`usage`.** Correct the classification: `usage` `LATEST` rows are permanent. Delete level rows (`LEVEL#`, `LATEST`) whose
+>    `customer_ref` is `USER_{sub}` or `ORG_{id}` for erased workspaces; add them to the purge and its counts.
+> 9. **Async paths.** `byok-webhook`, `byok-outbound`, the BYOK sweeps, `cmd/finance`, the finance replay queue (`schedule-index` of
+>    `invoices`) and the level reporter drop work for an erased workspace/sub (`Store.OrgErased` / `Blocked`). Best-effort delete the
+>    webhook registered at the bank and revoke provider access before deleting `SEALED#`.
+> 10. **Credentials and webhooks** of a tenant are never purged here (the tenant blocks, see 2). Remove `TableCredentials`,
+>     `TableWebhooks` justification text that implies "no person"; they hold `connected_by` and endpoint URLs and are covered by the
+>     future tenant deletion flow.
+> 11. **Remove** "Organization customers: not built yet" from Out of scope. Pin no api-commons version in Global Constraints.
+> 12. Inventory §6 in ctech-account gains a BYOK row and the organization-customer rule (done in the same amendment set).
+
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make ctech-billing a participant in ctech-account's LGPD erasure saga. It answers the eligibility question, refuses a locked person, cancels their CTech subscriptions, and anonymizes their customer record while keeping the fiscal documents. It also purges their personal finance spaces and the finance spaces of the single-member organizations erased with them, and acks the purge.
