@@ -23,6 +23,8 @@ type Deps struct {
 	ByokStatement   *services.ByokStatement
 	// ChargeGates builds the single charge gate's facts (BYOK spec § 7.1).
 	ChargeGates *services.ChargeGates
+	// BillingPlanScreen is the console's BYOK plan screen (part C).
+	BillingPlanScreen *services.BillingPlanScreen
 	// ByokCollector is the BYOK collection rail (spec § 7). Nil when BYOK is
 	// not configured: the collection routes are then not mounted.
 	ByokCollector *services.ByokCollector
@@ -301,6 +303,7 @@ func registerConsole(v1 fiber.Router, d Deps, h *handlers, auth fiber.Handler) {
 		byok:                 d.ByokCollector,
 		setup:                d.ByokSetup,
 		payments:             d.Payments,
+		planScreen:           d.BillingPlanScreen,
 	}
 	// Assigned only when set: a nil interface value in the field must stay nil.
 	if d.SpaceLister != nil {
@@ -362,6 +365,11 @@ func registerConsole(v1 fiber.Router, d Deps, h *handlers, auth fiber.Handler) {
 	// what happens to unpaid invoices — not what the organization is.
 	console.Get("/settings",
 		middleware.RequireUserScope(middleware.ScopeOrganizationRead), ch.settings)
+	// The BYOK plan (part C): what the organization is as a merchant.
+	if ch.planScreen != nil {
+		console.Get("/plan", middleware.RequireUserScope(middleware.ScopeOrganizationRead), ch.billingPlan)
+		console.Post("/plan", middleware.RequireUserScope(middleware.ScopeOrganizationWrite), ch.changeBillingPlan)
+	}
 	// The issuer block is what the invoice PDF is headed by, so changing it is
 	// behind the invoice write scope rather than an organization one: it edits
 	// what every future document says.

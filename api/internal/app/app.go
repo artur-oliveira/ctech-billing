@@ -198,25 +198,26 @@ func Build(ctx context.Context, cfg *config.Config, clock func() time.Time) (*fi
 		}
 	}
 	v1.Register(app, v1.Deps{
-		ByokConnections: byokConns,
-		ByokStatement:   byokStatement,
-		ChargeGates:     gates,
-		ByokCollector:   byokCollector,
-		ByokWebhooks:    byokWebhooks,
-		ByokSetup:       byokSetup,
-		Bills:           billRepo,
-		Applications:    applications,
-		Customers:       customers,
-		Subs:            subs,
-		Invoices:        invoices,
-		Usage:           usage,
-		Levels:          levels,
-		FinancePlan:     services.NewFinancePlan(customers, subs, invoices, catalog, levels, subscriber, cfg.PortalOrganizationID),
-		Catalog:         catalog,
-		Credentials:     creds,
-		Idempotency:     idem,
-		Connector:       services.NewCredentialConnector(clientReader, creds, machineScopes),
-		Webhooks:        repositories.NewWebhookRepository(db, cfg),
+		ByokConnections:   byokConns,
+		ByokStatement:     byokStatement,
+		ChargeGates:       gates,
+		BillingPlanScreen: billingPlanScreen(db, cfg, subscriber),
+		ByokCollector:     byokCollector,
+		ByokWebhooks:      byokWebhooks,
+		ByokSetup:         byokSetup,
+		Bills:             billRepo,
+		Applications:      applications,
+		Customers:         customers,
+		Subs:              subs,
+		Invoices:          invoices,
+		Usage:             usage,
+		Levels:            levels,
+		FinancePlan:       services.NewFinancePlan(customers, subs, invoices, catalog, levels, subscriber, cfg.PortalOrganizationID),
+		Catalog:           catalog,
+		Credentials:       creds,
+		Idempotency:       idem,
+		Connector:         services.NewCredentialConnector(clientReader, creds, machineScopes),
+		Webhooks:          repositories.NewWebhookRepository(db, cfg),
 
 		Organizations: orgs,
 		Audit:         audit,
@@ -732,6 +733,14 @@ func byokCollection(ctx context.Context, cfg *config.Config, db *dynamodb.Client
 // the live entitlement read from tenant zero.
 func newChargeGates(db *dynamodb.Client, cfg *config.Config) *services.ChargeGates {
 	return services.NewChargeGates(repositories.NewByokRepository(db, cfg), newBillingPlans(db, cfg))
+}
+
+// billingPlanScreen is the console's BYOK plan screen; nil without tenant zero.
+func billingPlanScreen(db *dynamodb.Client, cfg *config.Config, subscriber *services.Subscriber) *services.BillingPlanScreen {
+	if cfg.PortalOrganizationID == "" {
+		return nil
+	}
+	return services.NewBillingPlanScreen(newBillingPlans(db, cfg), repositories.NewByokRepository(db, cfg), subscriber)
 }
 
 // newBillingPlans resolves a merchant's BYOK plan in tenant zero (part C).

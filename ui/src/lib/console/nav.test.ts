@@ -22,6 +22,10 @@ describe("consoleNav", () => {
   it("lists the bank connections (BYOK) with the invoicing sections", () => {
     expect(consoleNav(true).map(i => i.href)).toContain("/console/connections")
   })
+  it("lists the BYOK plan after the bank connections", () => {
+    const hrefs = consoleNav(true).map(i => i.href)
+    expect(hrefs.indexOf("/console/plan")).toBe(hrefs.indexOf("/console/connections") + 1)
+  })
   it("lists the integration tools before the settings", () => {
     const labels = consoleNav(true).map(i => t(i.label))
     expect(labels.slice(-3)).toEqual(["Credenciais", "Webhooks", "Configurações"])

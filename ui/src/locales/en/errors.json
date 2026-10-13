@@ -121,7 +121,11 @@
     "refund_window_closed": "More than 90 days passed since the payment. Inter no longer accepts the refund.",
     "tenant_zero_rail": "CTech's own collection rail is changed by the CTech team.",
     "invalid_collection_settings": "Use a fine up to 20% and interest up to 10% a month.",
-    "byok_sandbox_webhook_shared": "The sandbox payment notices are managed by CTech."
+    "byok_sandbox_webhook_shared": "The sandbox payment notices are managed by CTech.",
+    "subscription_limit_reached": "Active subscriptions are at the plan's limit. Change plans to create more.",
+    "bank_connection_limit_reached": "Bank connections are at the plan's limit. Change plans to connect another bank.",
+    "plan_not_found": "This organization has no plan yet.",
+    "plan_live_only": "The plan is changed in live mode."
   },
   "field": {
     "required": "Required.",

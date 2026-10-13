@@ -224,6 +224,10 @@ func FromError(err error) *Problem {
 			p.Quota = &le.Quota
 		}
 		return p
+	case errors.Is(err, services.ErrUnknownPlan):
+		return Validation([]FieldError{Field("plan", "invalid", "choose one of the public plans")})
+	case errors.Is(err, services.ErrNoBillingPlan):
+		return Conflict("the organization has no plan to change").WithCode("plan_not_found")
 	case errors.Is(err, billing.ErrByokQuotaExceeded):
 		p := Conflict("the plan's charges are used up this month; upgrade to keep collecting").WithCode("byok_quota_exceeded")
 		p.UpgradePlan = true

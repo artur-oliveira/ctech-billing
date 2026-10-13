@@ -4,7 +4,7 @@ import {Button, Modal, Skeleton} from "@aoctech/ui"
 import {useMutation, useQuery, useQueryClient} from "@tanstack/react-query"
 import {ArrowLeft, Copy} from "lucide-react"
 import Link from "next/link"
-import {useSearchParams} from "next/navigation"
+import {useRouter, useSearchParams} from "next/navigation"
 import {Suspense, useState} from "react"
 import {useTranslation} from "react-i18next"
 import {toast} from "sonner"
@@ -28,6 +28,7 @@ import {
   voidInvoice,
 } from "@/lib/api/console"
 import type {ConsoleInvoiceDetail} from "@/lib/api/consoleTypes"
+import {toastError} from "@/lib/console/planLimit"
 import {useConsoleScope} from "@/lib/console/scope"
 import {longDate, money, period, shortDate} from "@/lib/format"
 import {useDocumentTitle} from "@/lib/hooks/useDocumentTitle"
@@ -59,6 +60,7 @@ function Detail() {
   const id = useSearchParams().get("id") ?? ""
   const scope = useConsoleScope()
   const queryClient = useQueryClient()
+  const router = useRouter()
   const [voiding, setVoiding] = useState(false)
   const [crediting, setCrediting] = useState(false)
 
@@ -79,7 +81,8 @@ function Detail() {
         void queryClient.invalidateQueries({queryKey: consoleKeys.invoices(scope)})
         toast.success(done)
       },
-      onError: (error: unknown) => toast.error(messageFor(error)),
+      // A plan limit (Grátis past its charges) links to the plan screen.
+      onError: (error: unknown) => toastError(error, href => router.push(href)),
     })
 
   const finalize = useMutation(write(invoiceId => finalizeInvoice(scope, invoiceId), t("console.invoice.finalized")))
