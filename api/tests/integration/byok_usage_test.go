@@ -184,3 +184,22 @@ func TestUsageDropsAChargeOfAGoneTenant(t *testing.T) {
 		t.Fatalf("%v", errs)
 	}
 }
+
+// A charge from the last day of a period is reported after that period's
+// arrears invoice closed: it is billed in the open period, never lost.
+func TestALateChargeIsBilledInTheOpenPeriod(t *testing.T) {
+	env := newCollectEnv(t, collectLive)
+	sub := env.subscribeMerchantTo(t, "basic")
+	inv := env.finalizeInvoice(t, 100)
+	// The sweep closes the period and renews the subscription.
+	if _, err := env.merchant.subs.Transition(ctxT(t), sub, billing.SubscriptionActive, billing.CauseRenewal, "test", "", now()); err != nil {
+		t.Fatal(err)
+	}
+	if sub.PeriodIndex != 1 {
+		t.Fatalf("renewal did not advance: %d", sub.PeriodIndex)
+	}
+	env.runUsage(t, now().Add(30*time.Hour))
+	if recs := env.usageRecords(t, sub); recs[env.attempt(t, inv).ID] != 1 {
+		t.Fatalf("not in the open period: %+v", recs)
+	}
+}

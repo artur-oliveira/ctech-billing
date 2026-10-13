@@ -107,7 +107,14 @@ func (u *ByokUsage) reportOne(ctx context.Context, row repositories.ByokUsageRow
 	}
 	rec := &billing.UsageRecord{ID: id.NewWithPrefix(id.PrefixUsageRecord), OrganizationID: u.tenantZero, Livemode: true,
 		SubscriptionItemID: t.item, Quantity: 1, OccurredAt: a.CreatedAt, IdempotencyKey: a.ID}
-	err = u.usage.Append(ctx, rec, t.sub.PeriodContaining(rec.Date()).Start, now)
+	// A charge from a period whose arrears invoice already closed (reported
+	// 24 hours later, after the boundary) is billed in the open period:
+	// filed under the closed one it would never be invoiced.
+	period := t.sub.PeriodContaining(rec.Date())
+	if current := t.sub.CurrentPeriod(); period.Start.Before(current.Start) {
+		period = current
+	}
+	err = u.usage.Append(ctx, rec, period.Start, now)
 	if err != nil && !errors.Is(err, repositories.ErrDuplicateUsage) {
 		return false, false, err
 	}
