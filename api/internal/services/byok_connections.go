@@ -17,6 +17,7 @@ import (
 	"gopkg.aoctech.app/api-commons/byok"
 
 	"gopkg.aoctech.app/billing/api/internal/byokrpc"
+	"gopkg.aoctech.app/billing/api/internal/domain/billing"
 	"gopkg.aoctech.app/billing/api/internal/domain/brcal"
 	"gopkg.aoctech.app/billing/api/internal/domain/byokconn"
 	"gopkg.aoctech.app/billing/api/internal/domain/id"
@@ -119,6 +120,61 @@ type ByokConnections struct {
 	tokens    *byokrpc.TokenManager
 	limits    *byokrpc.Limits
 	statement *ByokStatement
+	// connLimit is the organization's plan quota of bank connections (-1:
+	// none); nil in tests that do not wire plans.
+	connLimit func(ctx context.Context, accountOrgID string) (int64, error)
+}
+
+// WithConnectionLimit caps live connections by plan (part C, scope decision 4).
+func (s *ByokConnections) WithConnectionLimit(f func(ctx context.Context, accountOrgID string) (int64, error)) *ByokConnections {
+	s.connLimit = f
+	return s
+}
+
+// checkConnectionLimit counts the organization's live connections to other
+// providers (one per provider: reconnecting the same one is not a new one).
+func (s *ByokConnections) checkConnectionLimit(ctx context.Context, accountOrgID, provider string) error {
+	if s.connLimit == nil {
+		return nil
+	}
+	quota, err := s.connLimit(ctx, accountOrgID)
+	if err != nil || quota < 0 {
+		return err
+	}
+	list, err := s.repo.ListConnections(ctx, accountOrgID, true)
+	if err != nil {
+		return err
+	}
+	var n int64
+	for _, c := range list {
+		if c.Provider != provider && c.State != "" {
+			n++
+		}
+	}
+	if n >= quota {
+		return &billing.LimitError{Err: billing.ErrBankConnectionLimitReached, Quota: quota}
+	}
+	return nil
+}
+
+// BankConnectionLimit reads an organization's connection quota from its
+// billing tenant's plan; an organization without a tenant or a plan is not
+// capped (statement sync is not plan-gated, D16).
+func BankConnectionLimit(orgs *repositories.OrganizationRepository, plans *BillingPlans) func(context.Context, string) (int64, error) {
+	return func(ctx context.Context, accountOrgID string) (int64, error) {
+		org, err := orgs.GetByAccountOrganization(ctx, accountOrgID, true)
+		if errors.Is(err, repositories.ErrNotFound) {
+			return -1, nil
+		}
+		if err != nil {
+			return -1, err
+		}
+		limits, ok, err := plans.For(ctx, org)
+		if err != nil || !ok {
+			return -1, err
+		}
+		return limits.BankConnections, nil
+	}
 }
 
 func NewByokConnections(repo *repositories.ByokRepository, ledger *repositories.LedgerRepository, out *byokrpc.Outbound,
@@ -182,6 +238,9 @@ func (s *ByokConnections) Connect(ctx context.Context, sp space.ResolvedSpace, i
 		return nil, fmt.Errorf("%w: test mode uses the shared sandbox (PUT with an empty body)", byok.ErrInvalidRequest)
 	}
 	if err := checkPair(in.CertPEM, in.KeyPEM, now); err != nil {
+		return nil, err
+	}
+	if err := s.checkConnectionLimit(ctx, sp.OrganizationID(), in.Provider); err != nil {
 		return nil, err
 	}
 	conn := &byokconn.Connection{AccountOrganizationID: sp.OrganizationID(), Livemode: true, Provider: in.Provider,

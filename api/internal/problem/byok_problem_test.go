@@ -7,6 +7,7 @@ import (
 	"gopkg.aoctech.app/api-commons/byok"
 
 	"gopkg.aoctech.app/billing/api/internal/byokrpc"
+	"gopkg.aoctech.app/billing/api/internal/domain/billing"
 	"gopkg.aoctech.app/billing/api/internal/repositories"
 	"gopkg.aoctech.app/billing/api/internal/services"
 )
@@ -41,5 +42,26 @@ func TestByokErrorsHaveTheirOwnCodes(t *testing.T) {
 	}
 	if p := FromError(services.ErrByokSpaceKind); p.Status != 404 || p.Type != TypeSpaceNotFound {
 		t.Errorf("a personal space is the same 404 as an unknown space: %+v", p)
+	}
+}
+
+// BYOK part C: plan limits carry the upgrade link and, where known, the quota.
+func TestPlanLimitsSuggestAnUpgrade(t *testing.T) {
+	for _, c := range []struct {
+		err   error
+		code  string
+		quota int64
+	}{
+		{&billing.LimitError{Err: billing.ErrSubscriptionLimitReached, Quota: 50}, "subscription_limit_reached", 50},
+		{&billing.LimitError{Err: billing.ErrBankConnectionLimitReached, Quota: 1}, "bank_connection_limit_reached", 1},
+		{billing.ErrByokQuotaExceeded, "byok_quota_exceeded", -1},
+	} {
+		p := FromError(fmt.Errorf("wrapped: %w", c.err))
+		if p.Status != 409 || p.Code != c.code || !p.UpgradePlan {
+			t.Errorf("%v: %d %s %v", c.err, p.Status, p.Code, p.UpgradePlan)
+		}
+		if (c.quota < 0) != (p.Quota == nil) || (p.Quota != nil && *p.Quota != c.quota) {
+			t.Errorf("%v: quota %v", c.err, p.Quota)
+		}
 	}
 }

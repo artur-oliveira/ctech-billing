@@ -2,6 +2,7 @@ package provision
 
 import (
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -109,7 +110,8 @@ func TestTenantZeroPlanLinksCTechsAccountOrganization(t *testing.T) {
 	prices := map[string]Price{}
 	for _, pr := range p.Prices {
 		prices[pr.ID] = pr
-		if _, has := pr.Metadata["quota_users"]; has {
+		// BYOK spec § 12.5 gives prod_billing's plans a user quota of their own.
+		if _, has := pr.Metadata["quota_users"]; has && pr.ProductID != "prod_billing" {
 			t.Errorf("price %s still carries quota_users (DF-e spec O4)", pr.ID)
 		}
 	}
@@ -263,5 +265,78 @@ func TestTheInternalBillingPriceIsInTheCatalogueAndNotPublic(t *testing.T) {
 	if p == nil || p.ProductID != "prod_billing" || p.UnitAmount != 0 || p.Metadata["visibility"] != "internal" ||
 		p.Metadata["quota_charges_month"] != "-1" || p.Metadata["overage"] != "bill" || p.Metadata["plan"] != "unlimited" {
 		t.Fatalf("%+v", p)
+	}
+}
+
+func loadCTechPlan(t *testing.T) *Plan {
+	t.Helper()
+	f, err := os.Open("../../tenants/ctech.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	plan, err := Parse(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return plan
+}
+
+// billingPlanPrices splits prod_billing's prices of one plan into its fixed fee
+// and its metered overage.
+func billingPlanPrices(plan *Plan, key string) (fixed, metered *Price) {
+	for i := range plan.Prices {
+		p := &plan.Prices[i]
+		if p.ProductID != "prod_billing" || p.Metadata["plan"] != key {
+			continue
+		}
+		if p.Type == billing.PriceMetered {
+			metered = p
+		} else {
+			fixed = p
+		}
+	}
+	return fixed, metered
+}
+
+// BYOK part C: the catalogue is spec § 12.5's table, priced by cobrança emitida.
+func TestTheBillingPlansMatchTheSpecTable(t *testing.T) {
+	plan := loadCTechPlan(t)
+	type row struct {
+		fee, included, overage int64
+		refuse                 bool
+	}
+	want := map[string]row{"free": {0, 50, 0, true}, "basic": {9990, 500, 25, false}, "growth": {29990, 2000, 18, false}, "pro": {69990, 5000, 15, false}}
+	for key, w := range want {
+		fixed, metered := billingPlanPrices(plan, key)
+		if fixed == nil || int64(fixed.UnitAmount) != w.fee || fixed.Metadata["quota_charges_month"] != strconv.FormatInt(w.included, 10) {
+			t.Fatalf("%s fee: %+v", key, fixed)
+		}
+		if (fixed.Metadata["overage"] == "refuse") != w.refuse {
+			t.Fatalf("%s overage", key)
+		}
+		if w.refuse {
+			if metered != nil {
+				t.Fatalf("%s has no overage price", key)
+			}
+			continue
+		}
+		// ADR 0018: one subscription has one timing, so a paid plan's fee is
+		// billed in arrears with its overage, on one invoice.
+		if fixed.Timing != billing.BillArrears {
+			t.Fatalf("%s fee must be arrears like its overage", key)
+		}
+		if metered == nil || metered.Meter != "billing_charges" || metered.IncludedQuantity != w.included || int64(metered.UnitAmount) != w.overage || metered.Timing != billing.BillArrears {
+			t.Fatalf("%s overage: %+v", key, metered)
+		}
+	}
+	for _, p := range plan.Prices {
+		if p.ProductID == "prod_billing" && (p.Metadata["plan"] == "ondemand" || p.Metadata["plan"] == "enterprise") {
+			t.Fatalf("not in the catalogue: %s", p.ID)
+		}
+	}
+	early, _ := billingPlanPrices(plan, "early_access")
+	if early == nil || early.UnitAmount != 0 || early.Metadata["quota_charges_month"] != "-1" || early.Metadata["quota_bank_connections"] != "-1" {
+		t.Fatalf("early access stays free and unlimited: %+v", early)
 	}
 }

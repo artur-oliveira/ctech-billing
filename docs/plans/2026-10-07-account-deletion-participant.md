@@ -3062,3 +3062,18 @@ git commit -m "docs: billing as an account-deletion saga participant"
 - **ctech-go-common:** `v1.19.0` carries `Message.Workspaces`. Its `CLAUDE.md` consumer list should say `ctech-billing/api (v1.19.0)`.
 - **ctech-cdk / ctech-lbalancer:** none. The topic exists, and the route already serves `/v1.0/internal/*`.
 - **Data inventory (ctech-account § 6):** carries the BYOK, cards/imports, organization-customer and level rows (added 2026-10-13); this plan implements them.
+
+## Amendment, 2026-10-13 — BYOK part C rows
+
+BYOK part C (plans, quotas, usage) adds tenant-keyed rows to the `byok` table:
+
+- `BYOKCOUNT#{tenant}` / `{yyyy-mm}`: the month's live charge counter (TTL three months after the last write).
+- `BYOKSUBS#{tenant}` / `COUNT`: the BYOK-rail tenant's active subscription counter (no TTL).
+- `live#BYOK_USAGE#{day}` / `{attempt id}`: a charge waiting to be reported as usage, naming its tenant and invoice
+  (deleted once reported; TTL 90 days).
+
+All three belong to a merchant tenant, which blocks the erasure (R3, `billing.merchant_tenant`); the tenant-deletion
+feature erases the two counter partitions. The usage step drops a pending row whose tenant no longer exists or whose
+organization has no `prod_billing` subscription (R19 cancels it), so an erased workspace is never billed afterwards.
+The `billing_charges` usage records live in tenant zero under the organization's `ORG_` subscription: invoicing
+evidence, retained like the invoice (24 months, `RetentionUsageRecord`), anonymized with the `ORG_` customer.

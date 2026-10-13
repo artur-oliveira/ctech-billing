@@ -15,6 +15,7 @@
   "credentials": "Credenciais",
   "webhooks": "Webhooks",
   "settings": "Configurações",
+  "plan": "Plano",
   "applications": "Solicitações",
   "more": "Mais",
   "moreTitle": "Mais seções",
@@ -513,5 +514,52 @@
   "deleteTitle": "Excluir {{url}}?",
   "deleteBody": "Nenhum evento é enviado para ele depois disso, nem os que estão na fila.",
   "deleted": "Endpoint excluído."
+ },
+ "plan": {
+  "title": "Plano",
+  "description": "O plano da organização define quantas cobranças por conta bancária estão incluídas no mês.",
+  "names": {
+   "free": "Grátis",
+   "basic": "Básico",
+   "growth": "Crescimento",
+   "pro": "Pro",
+   "early_access": "Acesso antecipado",
+   "unlimited": "Interno (ilimitado)"
+  },
+  "free": "Grátis",
+  "perMonth": "{{amount}} por mês",
+  "included": "{{count}} cobranças incluídas",
+  "overage": "{{amount}} por cobrança adicional",
+  "refuse": "Acima do limite, novas cobranças são recusadas",
+  "connections_one": "{{count}} conexão bancária",
+  "connections_other": "{{count}} conexões bancárias",
+  "users_one": "{{count}} usuário",
+  "users_other": "{{count}} usuários",
+  "apiAccess": "Acesso à API",
+  "usage": {
+   "title": "Uso neste mês",
+   "charges": "{{used}} de {{quota}} cobranças este mês",
+   "chargesUnlimited": "{{used}} cobranças este mês",
+   "subscriptions": "{{used}} de {{quota}} assinaturas ativas",
+   "subscriptionsUnlimited": "{{used}} assinaturas ativas",
+   "connections": "{{used}} de {{quota}} conexões bancárias",
+   "connectionsUnlimited": "{{used}} conexões bancárias"
+  },
+  "current": "Plano atual",
+  "currentOther": "Seu plano atual é {{plan}}, fora da lista pública.",
+  "changeTo": "Mudar para {{plan}}",
+  "confirm": {
+   "title": "Mudar para {{plan}}?",
+   "paid": "A mensalidade de {{amount}} e as cobranças adicionais vêm juntas na fatura do fim do período.",
+   "free": "O plano Grátis não tem mensalidade.",
+   "below": "Você já emitiu {{used}} cobranças este mês e o plano {{plan}} inclui {{quota}}. Nada é cancelado: o limite vale só para novas cobranças e assinaturas.",
+   "atPeriodEnd": "A mudança vale quando o período atual fechar: ele é cobrado pelo plano atual."
+  },
+  "changed": "Plano alterado para {{plan}}.",
+  "liveOnly": "O plano é mudado no modo de produção. No modo de teste nada é cobrado nem contado.",
+  "see": "Ver planos",
+  "changesOn": "Muda para {{plan}} em {{date}}",
+  "keep": "Manter {{plan}}",
+  "scheduled": "Muda para {{plan}} em {{date}}, depois de fechar o período atual."
  }
 }

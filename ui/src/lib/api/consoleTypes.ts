@@ -393,3 +393,30 @@ export interface ConsoleWebhookEndpoint {id: string; url: string; events: string
 export interface ConsoleWebhookList {data: ConsoleWebhookEndpoint[]; event_types: string[]; max_endpoints: number}
 /** Only create and rotate answer with this; the secret is never shown again. */
 export interface ConsoleWebhookWithSecret extends ConsoleWebhookEndpoint {secret: string}
+
+/** One public BYOK plan (spec § 12.5); amounts in centavos, -1 is unlimited. */
+export interface BillingPlanOption {
+  plan: string
+  fee: number
+  included: number
+  overage_unit: number
+  refuse: boolean
+  bank_connections: number
+  users: number
+  api_access: boolean
+}
+
+/** Console → Plano: the organization's plan, this month's use and the catalogue. */
+export interface BillingPlanState {
+  /** pending_plan starts at pending_at: leaving a postpaid plan waits for its period end. */
+  current: {plan: string; subscription_id: string; pending_plan?: string; pending_at?: string}
+  usage: {
+    charges_this_month: number
+    quota: number
+    subscriptions_active: number
+    subscriptions_quota: number
+    bank_connections: number
+    bank_connections_quota: number
+  }
+  plans: BillingPlanOption[]
+}

@@ -1,4 +1,4 @@
-# Runbook: BYOK (bring your own key), phase 1 parts A and B
+# Runbook: BYOK (bring your own key), phase 1 parts A, B and C
 
 Spec: [`docs/specs/2026-10-11-byok-inter-phase-1.md`](../specs/2026-10-11-byok-inter-phase-1.md) (with its two
 2026-10-11 amendments: test mode uses the wallet's Inter integration; **no legal gate**). Decisions:
@@ -224,3 +224,35 @@ A paid BYOK invoice posts into the provider's synced account (cash leg), with la
 recebidos"; its statement line is linked to that posting, so one payment is one cash entry. Lines of an excess
 payment and of refunds post from the statement to "A classificar" (billing does not post them, so nothing is
 counted twice); a credit note on a BYOK-paid invoice moves no money in the synced account.
+
+# Part C: plans, quotas and usage
+
+## 17. Catalogue
+
+`api/cmd/seed/run.sh prod` writes the four public plans (Grátis, Básico, Crescimento, Pro) under `prod_billing`
+(spec § 12.5). The paid plans bill their fee **in arrears**, on the same invoice as their overage (ADR 0018: one
+subscription has one timing; spec amendment 2026-10-13). Early access stays R$ 0 and unlimited until the merchant
+chooses a plan in the console (Console, Plano, `/console/plan`). From Grátis or early access a change is immediate;
+leaving a paid plan is scheduled for its period end, so the period that ends is billed (fee and overage) under the
+plan that served it. Check after the seed: the pilot's
+`GET /v1.0/console/plan` answers `current.plan = unlimited`.
+
+## 18. Limits
+
+- **Grátis** refuses the 51st live charge of the São Paulo month (`byok_quota_exceeded`). A charge cancelled within 24
+  hours gives its unit back. Paid plans never refuse a charge; they bill `(n − included) × overage`.
+- **Active subscriptions** of a live BYOK-rail tenant are capped at the plan's charge quota
+  (`subscription_limit_reached`). The counter (`BYOKSUBS#{tenant}` in the `byok` table) is recounted when the tenant
+  moves onto the BYOK rail; to recount by hand, turn collection off and on again in the console.
+- **Bank connections** are capped by `quota_bank_connections` (`bank_connection_limit_reached`); an organization
+  without a billing plan (statement sync only, D16) is not capped.
+
+## 19. Usage
+
+`cmd/byok` reports, once per live run, every live charge that survived 24 hours as one unit of `billing_charges` on
+the organization's `ORG_` subscription in tenant zero (idempotency key: the attempt id). Pending rows sit in
+`live#BYOK_USAGE#{creation day}` in the `byok` table and are deleted once reported or skipped; the step reads the last
+seven days, so a missed run catches up by itself. The job log line `byok usage` carries the counts.
+
+Cost: two counter writes per charge or subscription and one usage row per charge (written and deleted), inside
+existing transactions; no new index, no new table.

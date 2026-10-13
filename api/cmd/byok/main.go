@@ -1,6 +1,6 @@
 // Command byok is the hourly BYOK job (spec 2026-10-11 § 5): for every bank
 // connection, statement sync and certificate warnings (part A); the charge
-// sweep, the daily webhook audit and usage come with parts B and C.
+// sweep, the daily webhook audit (part B) and usage, once per live run (part C).
 //
 // It is cross-organization by construction (ADR 0002), so it has no HTTP
 // surface, and every step is re-runnable: a line posts once (its FITID# lock),

@@ -19,7 +19,20 @@ var (
 	ErrByokCertificateExpired = errors.New("byok: the connection's certificate expired")
 	ErrByokScopesMissing      = errors.New("byok: the connection lacks the collection scopes")
 	ErrByokQuotaExceeded      = errors.New("byok: the plan's charge quota is used up")
+
+	// Plan limits (BYOK part C, spec § 12.5), returned inside a *LimitError.
+	ErrSubscriptionLimitReached   = errors.New("billing: the plan's active subscriptions are at the quota")
+	ErrBankConnectionLimitReached = errors.New("byok: the plan's bank connections are at the quota")
 )
+
+// LimitError is a plan limit reached, with the quota the console shows.
+type LimitError struct {
+	Err   error
+	Quota int64
+}
+
+func (e *LimitError) Error() string { return fmt.Sprintf("%v (quota %d)", e.Err, e.Quota) }
+func (e *LimitError) Unwrap() error { return e.Err }
 
 // ConnectionFacts is what the gate needs from the BYOK connection.
 type ConnectionFacts struct{ Found, Active, Expired, Collection bool }

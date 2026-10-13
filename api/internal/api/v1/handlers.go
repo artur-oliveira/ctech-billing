@@ -421,7 +421,7 @@ func (h *handlers) reportUsage(c fiber.Ctx) error {
 	// The record is filed under the period its own date falls in, not the
 	// subscription's current one: a report that arrives late still belongs to the
 	// period it happened in.
-	period := periodContaining(sub, record.Date())
+	period := sub.PeriodContaining(record.Date())
 
 	if err := h.usage.Append(c.Context(), record, period.Start, h.now()); err != nil {
 		if errors.Is(err, repositories.ErrDuplicateUsage) {
@@ -470,31 +470,6 @@ func usageItem(items []billing.SubscriptionItem, priceID string) (billing.Subscr
 		}
 	}
 	return billing.SubscriptionItem{}, &usageItemError{code: "not_found", msg: fmt.Sprintf("the subscription has no item for price %s", priceID)}
-}
-
-// periodContaining finds which of the subscription's periods a date falls in.
-//
-// It walks outward from the current period rather than computing an index,
-// because month lengths make the arithmetic inexact and a wrong index files
-// consumption against the wrong invoice. The walk is bounded: a report more than
-// a couple of years out of place is filed in the nearest period rather than
-// searched for forever.
-func periodContaining(sub *billing.Subscription, d brcal.Date) billing.Period {
-	current := sub.CurrentPeriod()
-	if current.Contains(d) {
-		return current
-	}
-	for offset := 1; offset <= 24; offset++ {
-		for _, n := range []int{sub.PeriodIndex - offset, sub.PeriodIndex + offset} {
-			if n < 0 {
-				continue
-			}
-			if p := sub.Recurrence.PeriodAt(sub.Anchor, n); p.Contains(d) {
-				return p
-			}
-		}
-	}
-	return current
 }
 
 func (h *handlers) getInvoice(c fiber.Ctx) error {

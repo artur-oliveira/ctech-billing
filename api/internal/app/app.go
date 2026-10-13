@@ -64,7 +64,7 @@ func Build(ctx context.Context, cfg *config.Config, clock func() time.Time) (*fi
 	payments := repositories.NewPaymentRepository(db, cfg)
 
 	invoicer := services.NewInvoicer(subs, invoices, catalog, usage).WithOrganizations(orgs).WithLevels(levels, customers)
-	subscriber := services.NewSubscriber(subs, catalog, invoicer)
+	subscriber := services.NewSubscriber(subs, catalog, invoicer).WithByokCaps(orgs, newBillingPlans(db, cfg))
 
 	cacheBackend := newCache(cfg)
 
@@ -186,7 +186,7 @@ func Build(ctx context.Context, cfg *config.Config, clock func() time.Time) (*fi
 	if byokCollector != nil {
 		byokWebhooks = services.NewByokWebhooks(repositories.NewByokRepository(db, cfg), payments, byokCollector, cacheBackend)
 		byokSetup = services.NewByokCollectionSetup(byokConns, repositories.NewByokRepository(db, cfg), orgs, payments, byokCollector,
-			byokWebhooks, cfg.ByokHooksHost, cfg.PortalOrganizationID)
+			byokWebhooks, cfg.ByokHooksHost, cfg.PortalOrganizationID).WithSubscriptions(subs)
 		if cfg.EmailFrom != "" {
 			if mail, err := email.New(ctx, cfg.AWSRegion, cfg.EmailFrom); err == nil {
 				byokSetup = byokSetup.WithMail(mail)
@@ -198,25 +198,26 @@ func Build(ctx context.Context, cfg *config.Config, clock func() time.Time) (*fi
 		}
 	}
 	v1.Register(app, v1.Deps{
-		ByokConnections: byokConns,
-		ByokStatement:   byokStatement,
-		ChargeGates:     gates,
-		ByokCollector:   byokCollector,
-		ByokWebhooks:    byokWebhooks,
-		ByokSetup:       byokSetup,
-		Bills:           billRepo,
-		Applications:    applications,
-		Customers:       customers,
-		Subs:            subs,
-		Invoices:        invoices,
-		Usage:           usage,
-		Levels:          levels,
-		FinancePlan:     services.NewFinancePlan(customers, subs, invoices, catalog, levels, subscriber, cfg.PortalOrganizationID),
-		Catalog:         catalog,
-		Credentials:     creds,
-		Idempotency:     idem,
-		Connector:       services.NewCredentialConnector(clientReader, creds, machineScopes),
-		Webhooks:        repositories.NewWebhookRepository(db, cfg),
+		ByokConnections:   byokConns,
+		ByokStatement:     byokStatement,
+		ChargeGates:       gates,
+		BillingPlanScreen: billingPlanScreen(db, cfg, subscriber),
+		ByokCollector:     byokCollector,
+		ByokWebhooks:      byokWebhooks,
+		ByokSetup:         byokSetup,
+		Bills:             billRepo,
+		Applications:      applications,
+		Customers:         customers,
+		Subs:              subs,
+		Invoices:          invoices,
+		Usage:             usage,
+		Levels:            levels,
+		FinancePlan:       services.NewFinancePlan(customers, subs, invoices, catalog, levels, subscriber, cfg.PortalOrganizationID),
+		Catalog:           catalog,
+		Credentials:       creds,
+		Idempotency:       idem,
+		Connector:         services.NewCredentialConnector(clientReader, creds, machineScopes),
+		Webhooks:          repositories.NewWebhookRepository(db, cfg),
 
 		Organizations: orgs,
 		Audit:         audit,
@@ -613,7 +614,8 @@ func BuildByok(ctx context.Context, cfg *config.Config, db *dynamodb.Client, c c
 		func(ctx context.Context, conn *byokconn.Connection, err error, now time.Time) {
 			conns.RecordOutcome(ctx, conn, err, now)
 		})
-	conns = services.NewByokConnections(repo, ledger, out, tokens, limits, statement)
+	conns = services.NewByokConnections(repo, ledger, out, tokens, limits, statement).
+		WithConnectionLimit(services.BankConnectionLimit(repositories.NewOrganizationRepository(db, cfg), newBillingPlans(db, cfg)))
 	return conns, statement, nil
 }
 
@@ -644,8 +646,11 @@ func BuildByokJob(ctx context.Context, cfg *config.Config) (*services.ByokConnec
 	repo := repositories.NewByokRepository(db, cfg)
 	payments := repositories.NewPaymentRepository(db, cfg)
 	webhooks := services.NewByokWebhooks(repo, payments, collector, c)
-	setup := services.NewByokCollectionSetup(conns, repo, orgs, payments, collector, webhooks, cfg.ByokHooksHost, cfg.PortalOrganizationID)
-	return conns, st, repo, c, services.NewByokSweep(collector, payments, orgs, setup, repo, conns, nil), nil
+	setup := services.NewByokCollectionSetup(conns, repo, orgs, payments, collector, webhooks, cfg.ByokHooksHost, cfg.PortalOrganizationID).
+		WithSubscriptions(newSubscriptions(db, cfg))
+	usage := services.NewByokUsage(repo, payments, orgs, newBillingPlans(db, cfg), newSubscriptions(db, cfg),
+		repositories.NewCatalogRepository(db, cfg), repositories.NewUsageRepository(db, cfg), cfg.PortalOrganizationID)
+	return conns, st, repo, c, services.NewByokSweep(collector, payments, orgs, setup, repo, conns, nil).WithUsage(usage), nil
 }
 
 // byokCounter counts the BYOK limiters in Valkey when the app has it, so every
@@ -727,6 +732,19 @@ func byokCollection(ctx context.Context, cfg *config.Config, db *dynamodb.Client
 // newChargeGates is the single charge gate's builder (BYOK spec § 7.1) with
 // the live entitlement read from tenant zero.
 func newChargeGates(db *dynamodb.Client, cfg *config.Config) *services.ChargeGates {
-	return services.NewChargeGates(repositories.NewByokRepository(db, cfg), services.MerchantEntitlement(
-		repositories.NewCustomerRepository(db, cfg), newSubscriptions(db, cfg), cfg.PortalOrganizationID))
+	return services.NewChargeGates(repositories.NewByokRepository(db, cfg), newBillingPlans(db, cfg))
+}
+
+// billingPlanScreen is the console's BYOK plan screen; nil without tenant zero.
+func billingPlanScreen(db *dynamodb.Client, cfg *config.Config, subscriber *services.Subscriber) *services.BillingPlanScreen {
+	if cfg.PortalOrganizationID == "" {
+		return nil
+	}
+	return services.NewBillingPlanScreen(newBillingPlans(db, cfg), repositories.NewByokRepository(db, cfg), subscriber)
+}
+
+// newBillingPlans resolves a merchant's BYOK plan in tenant zero (part C).
+func newBillingPlans(db *dynamodb.Client, cfg *config.Config) *services.BillingPlans {
+	return services.NewBillingPlans(repositories.NewCustomerRepository(db, cfg), newSubscriptions(db, cfg),
+		repositories.NewCatalogRepository(db, cfg), cfg.PortalOrganizationID)
 }

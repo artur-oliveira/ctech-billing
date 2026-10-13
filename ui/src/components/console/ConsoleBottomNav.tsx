@@ -1,7 +1,7 @@
 "use client"
 
 import {BottomNav, type RenderLink} from "@aoctech/ui"
-import {Building2, Ellipsis, FileText, House, Package, Users, Webhook, CreditCard, Settings, KeyRound, Landmark} from "lucide-react"
+import {Building2, Ellipsis, FileText, House, Package, Users, Webhook, CreditCard, Settings, KeyRound, Landmark, Gauge} from "lucide-react"
 import Link from "next/link"
 import {usePathname, useRouter} from "next/navigation"
 import {useTranslation} from "react-i18next"
@@ -20,6 +20,7 @@ export function ConsoleBottomNav({hasOrganization, reviewer}: {hasOrganization: 
     ["/console/customers", "customers", <Users key="customers"/>],
     ["/console/catalog", "catalog", <Package key="catalog"/>],
     ["/console/connections", "connections", <Landmark key="connections"/>],
+    ["/console/plan", "plan", <Gauge key="plan"/>],
     ["/console/credentials", "credentials", <KeyRound key="credentials"/>],
     ["/console/webhooks", "webhooks", <Webhook key="webhooks"/>],
     ["/console/settings", "settings", <Settings key="settings"/>],

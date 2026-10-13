@@ -61,7 +61,11 @@ type excessRow struct {
 // is ours, so a crash after the provider created the charge leaves a row the
 // retry completes). Both are create-only; a taken attempt number is
 // ErrAttemptExists.
-func (r *PaymentRepository) CreateByokAttempt(ctx context.Context, a *billing.PaymentAttempt, accountOrgID string, now time.Time) error {
+//
+// A live attempt also adds one to its tenant's charge counter of the month
+// (part C). limit >= 0 is the plan's refusing quota: past it the whole write
+// is refused with billing.ErrByokQuotaExceeded; limit < 0 only counts.
+func (r *PaymentRepository) CreateByokAttempt(ctx context.Context, a *billing.PaymentAttempt, accountOrgID string, limit int64, now time.Time) error {
 	if a.Method != billing.MethodBYOK || a.ChargeRef == "" || a.Provider == "" {
 		return fmt.Errorf("repositories: a BYOK attempt is recorded with its provider and charge reference")
 	}
@@ -85,7 +89,21 @@ func (r *PaymentRepository) CreateByokAttempt(ctx context.Context, a *billing.Pa
 	if err != nil {
 		return err
 	}
-	err = r.base.TransactWrite(ctx, txItems(r.base.BuildPutTxItemIfAbsent(item), r.byok.BuildPutTxItemIfAbsent(ptr)))
+	writes := txItems(r.base.BuildPutTxItemIfAbsent(item), r.byok.BuildPutTxItemIfAbsent(ptr))
+	if a.Livemode {
+		// Part C: the month's counter (index 2, the quota) and the row the
+		// usage step reports (spec § 5 step 6). Test mode counts nothing.
+		usage, err := r.usageItem(a, now)
+		if err != nil {
+			return err
+		}
+		writes = append(writes, r.chargeCounterItem(a.OrganizationID, ChargeMonth(a.CreatedAt), 1, limit, now),
+			r.byok.BuildPutTxItemIfAbsent(usage))
+	}
+	err = r.base.TransactWrite(ctx, writes)
+	if codes := cancellationCodes(err); len(codes) > 2 && codes[2] == codeConditionFailed {
+		return fmt.Errorf("%w: tenant %s", billing.ErrByokQuotaExceeded, a.OrganizationID)
+	}
 	if IsConditionFailed(err) {
 		return fmt.Errorf("%w: %s attempt %d", ErrAttemptExists, a.InvoiceID, a.AttemptNumber)
 	}

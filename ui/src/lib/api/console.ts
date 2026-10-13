@@ -4,6 +4,7 @@ import {apiClient, problemCode} from "@/lib/api/client"
 import {currentLocale} from "@/lib/i18n"
 import type {SupportedLocale} from "@/lib/locale"
 import type {
+  BillingPlanState,
   ApplicationStatus,
   ApplyRequest,
   ConsoleCredential,
@@ -54,6 +55,7 @@ export const consoleKeys = {
   overview: (s: ConsoleScope, year: number, month: number) =>
     ["console", s.org, s.mode, "overview", year, month] as const,
   settings: (s: ConsoleScope) => ["console", s.org, s.mode, "settings"] as const,
+  plan: (s: ConsoleScope) => ["console", s.org, s.mode, "plan"] as const,
   credentials: (s: ConsoleScope) => ["console", s.org, s.mode, "credentials"] as const,
   webhooks: (s: ConsoleScope) => ["console", s.org, s.mode, "webhooks"] as const,
   invoices: (s: ConsoleScope) => ["console", s.org, s.mode, "invoices"] as const,
@@ -414,6 +416,18 @@ export async function rotateWebhookSecret(scope: ConsoleScope, id: string): Prom
 export async function testWebhook(scope: ConsoleScope, id: string): Promise<{event_id: string}> {
   const {data} = await apiClient.post<{event_id: string}>(
     `/v1.0/console/webhooks/${encodeURIComponent(id)}/test`, {}, scopeHeaders(scope))
+  return data
+}
+
+/** The BYOK plan screen: test mode reads the live plan. */
+export async function getBillingPlan(scope: ConsoleScope): Promise<BillingPlanState> {
+  const {data} = await apiClient.get<BillingPlanState>("/v1.0/console/plan", scopeHeaders(scope))
+  return data
+}
+
+/** Moves the organization onto a public plan (live only); answers the new state. */
+export async function changeBillingPlan(scope: ConsoleScope, plan: string): Promise<BillingPlanState> {
+  const {data} = await apiClient.post<BillingPlanState>("/v1.0/console/plan", {plan}, scopeHeaders(scope))
   return data
 }
 

@@ -2,6 +2,7 @@ package repositories
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -23,6 +24,24 @@ type SubscriptionRepository struct {
 	// hook keeps the merchant suspension in step with tenant zero's
 	// prod_billing subscriptions (spec § 4.3). Nil in unit tests.
 	hook EntitlementHook
+	// byok and orgs keep a BYOK-rail tenant's subscription counter (part C).
+	byok Base
+	orgs *OrganizationRepository
+}
+
+// CreateOption adjusts Create.
+type CreateOption func(*createOptions)
+
+type createOptions struct {
+	count bool
+	cap   int64
+}
+
+// ByokCount counts the subscription on its tenant's BYOK counter, refused
+// past cap active ones (-1: count only). Subscriber passes it for a live
+// BYOK-rail tenant.
+func ByokCount(cap int64) CreateOption {
+	return func(o *createOptions) { o.count, o.cap = true, cap }
 }
 
 // WithEntitlementHook attaches the merchant suspension (app wires it in every
@@ -37,6 +56,8 @@ func NewSubscriptionRepository(db *dynamodb.Client, cfg *config.Config) *Subscri
 		base:   NewBase(db, cfg, TableSubscriptions),
 		audit:  NewBase(db, cfg, TableAudit),
 		events: NewBase(db, cfg, TableWebhooks),
+		byok:   NewBase(db, cfg, TableByok),
+		orgs:   NewOrganizationRepository(db, cfg),
 	}
 }
 
@@ -85,7 +106,11 @@ func subscriptionRowOf(s *billing.Subscription, now time.Time) subscriptionRow {
 // A subscription with no item cannot be billed, so writing them separately would
 // leave a window in which the sweep finds a subscription it cannot invoice — and
 // that window is a row that stays broken until someone notices.
-func (r *SubscriptionRepository) Create(ctx context.Context, s *billing.Subscription, items []billing.SubscriptionItem, now time.Time) error {
+func (r *SubscriptionRepository) Create(ctx context.Context, s *billing.Subscription, items []billing.SubscriptionItem, now time.Time, opts ...CreateOption) error {
+	var o createOptions
+	for _, opt := range opts {
+		opt(&o)
+	}
 	if err := s.Recurrence.Validate(); err != nil {
 		return err
 	}
@@ -140,11 +165,60 @@ func (r *SubscriptionRepository) Create(ctx context.Context, s *billing.Subscrip
 		writes = append(writes, extra...)
 	}
 
+	counterAt := -1
+	if o.count {
+		counterAt = len(writes)
+		pk, sk := SubscriptionCounterKey(s.OrganizationID)
+		writes = append(writes, counterItem(r.byok, pk, sk, 1, o.cap, 0))
+	}
+
 	err = r.base.TransactWrite(ctx, writes)
+	if codes := cancellationCodes(err); counterAt >= 0 && len(codes) > counterAt && codes[counterAt] == codeConditionFailed {
+		return &billing.LimitError{Err: billing.ErrSubscriptionLimitReached, Quota: o.cap}
+	}
 	if IsConditionFailed(err) {
 		return fmt.Errorf("subscription %s already exists", s.ID)
 	}
-	return err
+	return conflictErr(err)
+}
+
+// CountOpen counts a tenant's subscriptions that are not CANCELED, paging
+// its period index (only when a tenant moves onto the BYOK rail).
+func (r *SubscriptionRepository) CountOpen(ctx context.Context, organizationID string, livemode bool) (int64, error) {
+	var n int64
+	var start map[string]types.AttributeValue
+	for {
+		page, err := r.List(ctx, organizationID, livemode, 500, start)
+		if err != nil {
+			return 0, err
+		}
+		for _, s := range page.Items {
+			if s.Status != billing.SubscriptionCanceled {
+				n++
+			}
+		}
+		if page.LastEvaluatedKey == nil {
+			return n, nil
+		}
+		start = page.LastEvaluatedKey
+	}
+}
+
+// byokUncount gives a cancelled live subscription's slot back when its
+// tenant collects through BYOK (part C).
+func (r *SubscriptionRepository) byokUncount(ctx context.Context, s *billing.Subscription, to billing.SubscriptionStatus) ([]types.TransactWriteItem, error) {
+	if r.orgs == nil || !s.Livemode || to != billing.SubscriptionCanceled || s.Status == billing.SubscriptionCanceled {
+		return nil, nil
+	}
+	org, err := r.orgs.Get(ctx, s.OrganizationID, true)
+	if errors.Is(err, ErrNotFound) {
+		return nil, nil
+	}
+	if err != nil || org.Rail() != billing.RailBYOK {
+		return nil, err
+	}
+	pk, sk := SubscriptionCounterKey(s.OrganizationID)
+	return txItems(counterItem(r.byok, pk, sk, -1, -1, 0)), nil
 }
 
 // ListItems returns a subscription's items.
@@ -246,11 +320,16 @@ func (r *SubscriptionRepository) Transition(
 		Emit:    events,
 		Subject: subscriptionSubject(&updated),
 	}
-	var extra []types.TransactWriteItem
+	extra, err := r.byokUncount(ctx, s, to)
+	if err != nil {
+		return nil, err
+	}
 	if r.hook != nil && s.IsEntitled() != updated.IsEntitled() {
-		if extra, err = r.hook.EntitlementWrites(ctx, &updated, updated.IsEntitled(), cause, actor, requestID, now); err != nil {
+		hooked, err := r.hook.EntitlementWrites(ctx, &updated, updated.IsEntitled(), cause, actor, requestID, now)
+		if err != nil {
 			return nil, err
 		}
+		extra = append(extra, hooked...)
 	}
 	if err := commitWithExtraWrites(ctx, r.tables(), change, now, extra...); err != nil {
 		return nil, err

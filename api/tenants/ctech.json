@@ -375,7 +375,10 @@
       },
       "billing_timing": "advance",
       "metadata": {
-        "plan": "early_access"
+        "plan": "early_access",
+        "quota_charges_month": "-1",
+        "overage": "bill",
+        "quota_bank_connections": "-1"
       }
     },
     {
@@ -395,6 +398,133 @@
         "overage": "bill",
         "quota_bank_connections": "-1",
         "feature_api_access": "true"
+      }
+    },
+    {
+      "id": "price_billing_free_monthly",
+      "product_id": "prod_billing",
+      "type": "fixed",
+      "unit_amount": 0,
+      "recurrence": {
+        "interval": "month",
+        "count": 1
+      },
+      "billing_timing": "advance",
+      "metadata": {
+        "plan": "free",
+        "quota_charges_month": "50",
+        "overage": "refuse",
+        "quota_bank_connections": "1",
+        "quota_users": "1",
+        "feature_api_access": "false"
+      }
+    },
+    {
+      "id": "price_billing_basic_monthly",
+      "product_id": "prod_billing",
+      "type": "fixed",
+      "unit_amount": 9990,
+      "recurrence": {
+        "interval": "month",
+        "count": 1
+      },
+      "billing_timing": "arrears",
+      "metadata": {
+        "plan": "basic",
+        "quota_charges_month": "500",
+        "overage": "bill",
+        "quota_bank_connections": "1",
+        "quota_users": "3",
+        "feature_api_access": "false"
+      }
+    },
+    {
+      "id": "price_billing_basic_charges",
+      "product_id": "prod_billing",
+      "type": "metered",
+      "unit_amount": 25,
+      "aggregation": "sum",
+      "meter": "billing_charges",
+      "included_quantity": 500,
+      "recurrence": {
+        "interval": "month",
+        "count": 1
+      },
+      "billing_timing": "arrears",
+      "metadata": {
+        "plan": "basic"
+      }
+    },
+    {
+      "id": "price_billing_growth_monthly",
+      "product_id": "prod_billing",
+      "type": "fixed",
+      "unit_amount": 29990,
+      "recurrence": {
+        "interval": "month",
+        "count": 1
+      },
+      "billing_timing": "arrears",
+      "metadata": {
+        "plan": "growth",
+        "quota_charges_month": "2000",
+        "overage": "bill",
+        "quota_bank_connections": "2",
+        "quota_users": "10",
+        "feature_api_access": "true"
+      }
+    },
+    {
+      "id": "price_billing_growth_charges",
+      "product_id": "prod_billing",
+      "type": "metered",
+      "unit_amount": 18,
+      "aggregation": "sum",
+      "meter": "billing_charges",
+      "included_quantity": 2000,
+      "recurrence": {
+        "interval": "month",
+        "count": 1
+      },
+      "billing_timing": "arrears",
+      "metadata": {
+        "plan": "growth"
+      }
+    },
+    {
+      "id": "price_billing_pro_monthly",
+      "product_id": "prod_billing",
+      "type": "fixed",
+      "unit_amount": 69990,
+      "recurrence": {
+        "interval": "month",
+        "count": 1
+      },
+      "billing_timing": "arrears",
+      "metadata": {
+        "plan": "pro",
+        "quota_charges_month": "5000",
+        "overage": "bill",
+        "quota_bank_connections": "5",
+        "quota_users": "25",
+        "feature_api_access": "true"
+      }
+    },
+    {
+      "id": "price_billing_pro_charges",
+      "product_id": "prod_billing",
+      "type": "metered",
+      "unit_amount": 15,
+      "aggregation": "sum",
+      "meter": "billing_charges",
+      "included_quantity": 5000,
+      "recurrence": {
+        "interval": "month",
+        "count": 1
+      },
+      "billing_timing": "arrears",
+      "metadata": {
+        "plan": "pro"
       }
     }
   ]

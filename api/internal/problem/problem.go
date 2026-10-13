@@ -107,6 +107,10 @@ type Problem struct {
 	commonproblem.Problem
 	Code   string       `json:"code"`
 	Errors []FieldError `json:"errors,omitempty"`
+	// UpgradePlan and Quota go with a plan limit (BYOK part C): the console
+	// links to the plan screen.
+	UpgradePlan bool   `json:"upgrade_plan,omitempty"`
+	Quota       *int64 `json:"quota,omitempty"`
 }
 
 func wrap(p *commonproblem.Problem) *Problem {
@@ -209,8 +213,25 @@ func FromError(err error) *Problem {
 		return Conflict("the bank connection's certificate expired").WithCode("byok_certificate_expired")
 	case errors.Is(err, billing.ErrByokScopesMissing):
 		return Conflict("the bank integration lacks the collection scopes").WithCode("byok_collection_scopes_missing")
+	case errors.Is(err, billing.ErrSubscriptionLimitReached), errors.Is(err, billing.ErrBankConnectionLimitReached):
+		code, detail := "subscription_limit_reached", "the plan's active subscriptions are at its quota; upgrade to add more"
+		if errors.Is(err, billing.ErrBankConnectionLimitReached) {
+			code, detail = "bank_connection_limit_reached", "the plan's bank connections are at its quota; upgrade to add more"
+		}
+		p := Conflict(detail).WithCode(code)
+		p.UpgradePlan = true
+		if le := (*billing.LimitError)(nil); errors.As(err, &le) {
+			p.Quota = &le.Quota
+		}
+		return p
+	case errors.Is(err, services.ErrUnknownPlan):
+		return Validation([]FieldError{Field("plan", "invalid", "choose one of the public plans")})
+	case errors.Is(err, services.ErrNoBillingPlan):
+		return Conflict("the organization has no plan to change").WithCode("plan_not_found")
 	case errors.Is(err, billing.ErrByokQuotaExceeded):
-		return Conflict("the plan's charges are used up this month; upgrade to keep collecting").WithCode("byok_quota_exceeded")
+		p := Conflict("the plan's charges are used up this month; upgrade to keep collecting").WithCode("byok_quota_exceeded")
+		p.UpgradePlan = true
+		return p
 	case errors.Is(err, services.ErrByokSpaceKind):
 		return New(404, TypeSpaceNotFound, "Space not found", "space not found")
 	case errors.Is(err, services.ErrByokNotConnected):

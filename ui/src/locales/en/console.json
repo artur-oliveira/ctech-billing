@@ -15,6 +15,7 @@
   "credentials": "Credentials",
   "webhooks": "Webhooks",
   "settings": "Settings",
+  "plan": "Plan",
   "applications": "Applications",
   "more": "More",
   "moreTitle": "More sections",
@@ -513,5 +514,52 @@
   "deleteTitle": "Delete {{url}}?",
   "deleteBody": "No event is sent to it after this, including the ones already queued.",
   "deleted": "Endpoint deleted."
+ },
+ "plan": {
+  "title": "Plan",
+  "description": "The organization's plan sets how many bank-account charges are included each month.",
+  "names": {
+   "free": "Free",
+   "basic": "Basic",
+   "growth": "Growth",
+   "pro": "Pro",
+   "early_access": "Early access",
+   "unlimited": "Internal (unlimited)"
+  },
+  "free": "Free",
+  "perMonth": "{{amount}} per month",
+  "included": "{{count}} charges included",
+  "overage": "{{amount}} per extra charge",
+  "refuse": "Past the limit, new charges are refused",
+  "connections_one": "{{count}} bank connection",
+  "connections_other": "{{count}} bank connections",
+  "users_one": "{{count}} user",
+  "users_other": "{{count}} users",
+  "apiAccess": "API access",
+  "usage": {
+   "title": "Use this month",
+   "charges": "{{used}} of {{quota}} charges this month",
+   "chargesUnlimited": "{{used}} charges this month",
+   "subscriptions": "{{used}} of {{quota}} active subscriptions",
+   "subscriptionsUnlimited": "{{used}} active subscriptions",
+   "connections": "{{used}} of {{quota}} bank connections",
+   "connectionsUnlimited": "{{used}} bank connections"
+  },
+  "current": "Current plan",
+  "currentOther": "Your current plan is {{plan}}, outside the public list.",
+  "changeTo": "Change to {{plan}}",
+  "confirm": {
+   "title": "Change to {{plan}}?",
+   "paid": "The {{amount}} monthly fee and the extra charges come together on the invoice at the end of the period.",
+   "free": "The Free plan has no monthly fee.",
+   "below": "You have already issued {{used}} charges this month and the {{plan}} plan includes {{quota}}. Nothing is cancelled: the limit only applies to new charges and subscriptions.",
+   "atPeriodEnd": "The change applies when the current period closes: it is billed under the current plan."
+  },
+  "changed": "Plan changed to {{plan}}.",
+  "liveOnly": "The plan is changed in live mode. In test mode nothing is billed or counted.",
+  "see": "See plans",
+  "changesOn": "Changes to {{plan}} on {{date}}",
+  "keep": "Keep {{plan}}",
+  "scheduled": "Changes to {{plan}} on {{date}}, once the current period closes."
  }
 }

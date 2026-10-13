@@ -1053,3 +1053,11 @@ What this removes, everywhere in this spec:
 Implemented in part A's pull request (config, Terraform and the Lambda); part B's plan is adjusted in the same pull
 request. The owner also allowed loading the wallet's Inter SSM parameters into environment variables for scripts and
 tests (never printed or inspected).
+
+## Amendment 2026-10-13 — the paid plans' fee is billed in arrears
+
+§ 12.5 put each paid plan on one subscription with an **advance** fixed fee and an **arrears** metered overage. ADR 0018
+refuses that: one subscription has one billing timing. The paid plans (Básico, Crescimento, Pro) therefore bill their
+fixed fee **in arrears**, on the same invoice as the period's overage. A paid plan is active as soon as it is chosen,
+and the merchant pays fee and overage together at the end of the period; dunning applies as to any invoice. Grátis and
+early access (R$ 0) stay advance. No new invoicing feature; a mixed-timing subscription stays out of scope.

@@ -62,6 +62,8 @@ type consoleHandlers struct {
 	byok     *services.ByokCollector
 	setup    *services.ByokCollectionSetup
 	payments *repositories.PaymentRepository
+	// planScreen is the BYOK plan screen (part C); nil without tenant zero.
+	planScreen *services.BillingPlanScreen
 }
 
 // creditPoster is the slice of services.FinanceInvoices the credit-note route

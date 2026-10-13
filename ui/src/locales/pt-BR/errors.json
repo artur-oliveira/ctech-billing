@@ -121,7 +121,11 @@
     "refund_window_closed": "Passaram mais de 90 dias do pagamento. O Inter não aceita mais a devolução.",
     "tenant_zero_rail": "A forma de cobrança da CTech é alterada pela equipe da CTech.",
     "invalid_collection_settings": "Use multa de até 20% e juros de até 10% ao mês.",
-    "byok_sandbox_webhook_shared": "O aviso de pagamentos do ambiente de testes é configurado pela CTech."
+    "byok_sandbox_webhook_shared": "O aviso de pagamentos do ambiente de testes é configurado pela CTech.",
+    "subscription_limit_reached": "As assinaturas ativas chegaram ao limite do plano. Mude de plano para criar mais.",
+    "bank_connection_limit_reached": "As conexões bancárias chegaram ao limite do plano. Mude de plano para conectar outro banco.",
+    "plan_not_found": "Esta organização ainda não tem um plano.",
+    "plan_live_only": "O plano é mudado no modo de produção."
   },
   "field": {
     "required": "Obrigatório.",

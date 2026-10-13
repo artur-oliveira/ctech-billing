@@ -62,6 +62,7 @@ type collectEnv struct {
 	invoices  *repositories.InvoiceRepository
 	repo      *repositories.ByokRepository
 	webhooks  *services.ByokWebhooks
+	merchant  merchantFixture
 	hookID    string
 	secret    string
 	cfg       config.Config
@@ -105,12 +106,13 @@ func newCollectEnv(t *testing.T, mode collectMode) *collectEnv {
 	if err := orgs.Create(ctx, test, now()); err != nil {
 		t.Fatal(err)
 	}
-	withOrgCustomer(t, tz, e.accountOrg, e.org, test).entitle(t)
+	merchant := withOrgCustomer(t, tz, e.accountOrg, e.org, test)
+	merchant.entitle(t)
 	tenant := test
 	if live {
 		tenant = e.org
 	}
-	env := &collectEnv{byokAPI: e, tz: tz, livemode: live, tenant: tenant, orgs: orgs, cfg: cfg,
+	env := &collectEnv{byokAPI: e, tz: tz, livemode: live, tenant: tenant, orgs: orgs, cfg: cfg, merchant: merchant,
 		payments: repositories.NewPaymentRepository(testDB, testCfg), invoices: repositories.NewInvoiceRepository(testDB, testCfg),
 		repo: repositories.NewByokRepository(testDB, testCfg)}
 	env.wire(t)
@@ -135,7 +137,8 @@ func (e *collectEnv) wire(t *testing.T) {
 	_, ledger, st, conns := byokServices(t, e.byokAPI.fakeInvoker())
 	customers := repositories.NewCustomerRepository(testDB, testCfg)
 	subs := hookedSubs(e.tz)
-	e.gates = services.NewChargeGates(e.repo, services.MerchantEntitlement(customers, subs, e.tz))
+	e.gates = services.NewChargeGates(e.repo, services.NewBillingPlans(customers, subs,
+		repositories.NewCatalogRepository(testDB, testCfg), e.tz))
 	finance := services.NewFinanceInvoices(repositories.NewBillRepository(testDB, testCfg), e.orgs, customers, e.invoices,
 		repositories.NewCreditNoteRepository(testDB, testCfg), e.tz).WithByok(services.ByokPostingFrom(e.payments, e.repo))
 	settler := services.NewCollector(e.invoices, e.payments, customers, e.orgs, subs, nil).WithFinance(finance).WithGates(e.gates)
