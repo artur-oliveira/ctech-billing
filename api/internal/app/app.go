@@ -729,5 +729,5 @@ func byokCollection(ctx context.Context, cfg *config.Config, db *dynamodb.Client
 func newChargeGates(db *dynamodb.Client, cfg *config.Config) *services.ChargeGates {
 	plans := services.NewBillingPlans(repositories.NewCustomerRepository(db, cfg), newSubscriptions(db, cfg),
 		repositories.NewCatalogRepository(db, cfg), cfg.PortalOrganizationID)
-	return services.NewChargeGates(repositories.NewByokRepository(db, cfg), plans.Entitled)
+	return services.NewChargeGates(repositories.NewByokRepository(db, cfg), plans)
 }

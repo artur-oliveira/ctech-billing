@@ -245,7 +245,14 @@ func (r *PaymentRepository) TransitionAttempt(
 			RequestID: requestID,
 		},
 	}
-	if err := CommitStatusChange(ctx, r.tables(), change, now); err != nil {
+	var extra []types.TransactWriteItem
+	if a.Method == billing.MethodBYOK && a.Livemode && !updated.CancelledAt.IsZero() && !a.CreatedAt.IsZero() &&
+		updated.CancelledAt.Sub(a.CreatedAt) < 24*time.Hour {
+		// Part C: a charge cancelled within 24 hours of its creation gives
+		// its unit of the month back (spec § 12.5).
+		extra = append(extra, r.chargeCounterItem(a.OrganizationID, ChargeMonth(a.CreatedAt), -1, -1, now))
+	}
+	if err := commitWithExtraWrites(ctx, r.tables(), change, now, extra...); err != nil {
 		return nil, err
 	}
 	*a = updated

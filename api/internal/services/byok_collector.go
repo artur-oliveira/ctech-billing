@@ -192,7 +192,8 @@ func (c *ByokCollector) latest(ctx context.Context, inv *billing.Invoice) (*bill
 // open writes a new attempt and its pointer, then creates the charge: the row
 // first, because the reference is ours (plan scope decision 2).
 func (c *ByokCollector) open(ctx context.Context, org *billing.Organization, inv *billing.Invoice, number int, due brcal.Date, actor, requestID string, now time.Time) (*billing.PaymentAttempt, error) {
-	if err := c.gates.Authorize(ctx, org); err != nil {
+	limit, err := c.gates.AuthorizeWithLimit(ctx, org)
+	if err != nil {
 		return nil, err
 	}
 	customer, err := c.customers.Get(ctx, inv.OrganizationID, inv.Livemode, inv.CustomerID)
@@ -208,7 +209,7 @@ func (c *ByokCollector) open(ctx context.Context, org *billing.Organization, inv
 		Amount: inv.Collectable(), Provider: org.PayoutProvider, Product: billing.ProductPixDue, DueDate: due, CreatedAt: now.UTC(),
 	}
 	a.ChargeRef = billing.InterTxid(a.ID)
-	if err := c.payments.CreateByokAttempt(ctx, a, org.AccountOrganizationID, now); err != nil {
+	if err := c.payments.CreateByokAttempt(ctx, a, org.AccountOrganizationID, limit, now); err != nil {
 		if errors.Is(err, repositories.ErrAttemptExists) || errors.Is(err, repositories.ErrTransactionConflict) {
 			// Two presses (or finalization and a checkout) at once: the other
 			// one's attempt is this invoice's; complete it if it has to be.

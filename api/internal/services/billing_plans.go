@@ -67,12 +67,6 @@ func (p *BillingPlans) For(ctx context.Context, org *billing.Organization) (Plan
 	return PlanLimits{Plan: "unknown", ChargesPerMonth: -1, BankConnections: -1, Users: -1, SubscriptionID: sub.ID}, true, nil
 }
 
-// Entitled is the charge gate's live entitlement (ChargeGates).
-func (p *BillingPlans) Entitled(ctx context.Context, org *billing.Organization) (bool, error) {
-	_, ok, err := p.For(ctx, org)
-	return ok, err
-}
-
 // Subscription is the organization's entitling prod_billing subscription in
 // tenant zero, nil when it has none.
 func (p *BillingPlans) Subscription(ctx context.Context, org *billing.Organization) (*billing.Subscription, error) {

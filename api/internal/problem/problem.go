@@ -107,6 +107,10 @@ type Problem struct {
 	commonproblem.Problem
 	Code   string       `json:"code"`
 	Errors []FieldError `json:"errors,omitempty"`
+	// UpgradePlan and Quota go with a plan limit (BYOK part C): the console
+	// links to the plan screen.
+	UpgradePlan bool   `json:"upgrade_plan,omitempty"`
+	Quota       *int64 `json:"quota,omitempty"`
 }
 
 func wrap(p *commonproblem.Problem) *Problem {
@@ -210,7 +214,9 @@ func FromError(err error) *Problem {
 	case errors.Is(err, billing.ErrByokScopesMissing):
 		return Conflict("the bank integration lacks the collection scopes").WithCode("byok_collection_scopes_missing")
 	case errors.Is(err, billing.ErrByokQuotaExceeded):
-		return Conflict("the plan's charges are used up this month; upgrade to keep collecting").WithCode("byok_quota_exceeded")
+		p := Conflict("the plan's charges are used up this month; upgrade to keep collecting").WithCode("byok_quota_exceeded")
+		p.UpgradePlan = true
+		return p
 	case errors.Is(err, services.ErrByokSpaceKind):
 		return New(404, TypeSpaceNotFound, "Space not found", "space not found")
 	case errors.Is(err, services.ErrByokNotConnected):

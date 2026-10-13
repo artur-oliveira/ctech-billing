@@ -27,7 +27,7 @@ func TestABYOKAttemptAndItsPointerAreWrittenTogether(t *testing.T) {
 	payments := repositories.NewPaymentRepository(testDB, testCfg)
 	org := newOrg(t, false)
 	a := newByokAttempt(t, org)
-	if err := payments.CreateByokAttempt(ctx, a, "acct-org", now()); err != nil {
+	if err := payments.CreateByokAttempt(ctx, a, "acct-org", -1, now()); err != nil {
 		t.Fatal(err)
 	}
 	ref, err := payments.ChargeRef(ctx, "inter", a.Livemode, a.ChargeRef)
@@ -37,7 +37,7 @@ func TestABYOKAttemptAndItsPointerAreWrittenTogether(t *testing.T) {
 	if _, err := payments.ChargeRef(ctx, "inter", !a.Livemode, a.ChargeRef); !errors.Is(err, repositories.ErrNotFound) {
 		t.Fatalf("the pointer is per mode: %v", err)
 	}
-	if err := payments.CreateByokAttempt(ctx, a, "acct-org", now()); !errors.Is(err, repositories.ErrAttemptExists) {
+	if err := payments.CreateByokAttempt(ctx, a, "acct-org", -1, now()); !errors.Is(err, repositories.ErrAttemptExists) {
 		t.Fatalf("again: %v", err)
 	}
 	open, err := payments.OpenByok(ctx, org.ID, false, nil, 50)
