@@ -64,7 +64,7 @@ export interface GuideActivity {
 
 export interface GuidePermission {
   key: string
-  scopes: string[]
+  scopes?: string[]
 }
 
 export interface ConnectForm {

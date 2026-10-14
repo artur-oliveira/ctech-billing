@@ -37,9 +37,9 @@
       },
       "scopes": {
         "title": "Escopos.",
-        "body": "Em “Quais atividades pretende realizar?”, marque só as duas abaixo e, dentro de cada uma, apenas estas permissões:"
+        "body": "Em “Quais atividades pretende realizar?”, marque só as três abaixo e, dentro de cada uma, todas estas permissões (as de recorrência e as extras do Pix ainda não são usadas, mas evitam criar outra integração depois):"
       },
-      "noPayments": "Não marque Cobranças, Pagamentos, Recebimentos recorrentes nem Fórum Inter: a CTech não usa.",
+      "noPayments": "Não marque Cobranças nem Pagamentos nem Fórum Inter: a CTech não usa.",
       "terms": "Marque também “Li e concordo com todos os Termos e condições de uso das APIs”.",
       "questionnaire": {
         "title": "Perguntas do Inter.",
@@ -255,6 +255,10 @@
       "statement": {
         "title": "Saldo e Extrato",
         "hint": "Conferir saldo e movimentações."
+      },
+      "recurring": {
+        "title": "Recebimentos recorrentes",
+        "hint": "Cobranças recorrentes e Pix Automático."
       }
     },
     "permission": {
@@ -264,7 +268,25 @@
       "pix_read": "Consultar Pix recebidos e devoluções",
       "webhook_write": "Criar e editar webhooks",
       "webhook_read": "Consultar webhooks",
-      "statement_read": "Consultar extrato e saldo"
+      "statement_read": "Consultar extrato e saldo",
+      "charge_write": "Emitir e editar cobranças imediatas e retiradas(saque e troco)",
+      "charge_read": "Consultar cobranças imediatas",
+      "due_batch_write": "Permissão para alteração de lotes de cobranças com vencimento",
+      "due_batch_read": "Permissão para consulta de lotes de cobranças com vencimento",
+      "payload_write": "Criar e editar payloads",
+      "payload_read": "Consultar payloads",
+      "recurrence_read": "Consultar recorrências",
+      "recurrence_write": "Criar e editar recorrências",
+      "recurrence_request_read": "Consultar solicitações de recorrência",
+      "recurrence_request_write": "Criar e editar solicitações de recorrência",
+      "recurring_charge_read": "Consultar cobranças recorrentes",
+      "recurring_charge_write": "Emitir, editar e retentar cobranças recorrentes",
+      "recurrence_payload_read": "Consultar payloads de recorrência",
+      "recurrence_payload_write": "Criar e editar payloads de recorrência",
+      "recurrence_webhook_read": "Consultar webhooks de recorrências",
+      "recurrence_webhook_write": "Criar e editar webhooks de recorrências",
+      "recurring_charge_webhook_read": "Consultar webhooks de cobranças recorrentes",
+      "recurring_charge_webhook_write": "Criar e editar webhooks de cobranças recorrentes"
     }
   }
 }
