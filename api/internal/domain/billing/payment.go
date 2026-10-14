@@ -110,6 +110,12 @@ type PaymentAttempt struct {
 	CreatedAt     time.Time  `dynamodbav:"opened_at,omitempty"      json:"created_at,omitzero"`
 	CancelledAt   time.Time  `dynamodbav:"cancelled_at,omitempty"   json:"-"`
 	UsageReported bool       `dynamodbav:"usage_reported,omitempty" json:"-"`
+
+	// Payer is who paid, from the bank's statement line, written once (first
+	// write wins). PayerMatch is computed against the customer's tax id when it
+	// is written. Both are empty until the statement shows the payment.
+	Payer      *Payer     `dynamodbav:"payer,omitempty"       json:"payer,omitempty"`
+	PayerMatch PayerMatch `dynamodbav:"payer_match,omitempty" json:"payer_match,omitempty"`
 }
 
 // IdempotencyKey is the key sent to wallet when opening this attempt's charge.

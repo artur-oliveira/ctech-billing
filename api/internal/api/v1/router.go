@@ -133,6 +133,7 @@ func Register(app *fiber.App, d Deps) {
 		customers:  d.Customers,
 		subs:       d.Subs,
 		invoices:   d.Invoices,
+		payments:   d.Payments,
 		usage:      d.Usage,
 		levels:     d.Levels,
 		subscriber: d.Subscriber,

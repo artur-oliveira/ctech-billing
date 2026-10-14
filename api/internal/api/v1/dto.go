@@ -165,6 +165,27 @@ type invoiceLineResponse struct {
 	Proration   bool           `json:"proration"`
 }
 
+// invoicePayer is who paid, as the bank's statement named them. PayerMatch says
+// whether that is the customer; both are absent until the statement shows the
+// payment (normally within a minute of it), and absent on invoices paid by any
+// other means.
+type invoicePayer struct {
+	Name        string `json:"name,omitempty"`
+	Document    string `json:"document,omitempty"`
+	Institution string `json:"institution,omitempty"`
+}
+
+// payerOf is the payer on the attempt that settled an invoice, or nil.
+func payerOf(attempts []billing.PaymentAttempt) (*invoicePayer, billing.PayerMatch) {
+	for i := len(attempts) - 1; i >= 0; i-- {
+		a := attempts[i]
+		if a.Status == billing.AttemptSucceeded && a.Payer != nil {
+			return &invoicePayer{Name: a.Payer.Name, Document: a.Payer.Document, Institution: a.Payer.Institution}, a.PayerMatch
+		}
+	}
+	return nil, ""
+}
+
 type invoiceResponse struct {
 	ID             string                `json:"id"`
 	Number         int64                 `json:"number,omitempty"`
@@ -185,6 +206,8 @@ type invoiceResponse struct {
 	Attempts   int                   `json:"attempt_count"`
 	Lines      []invoiceLineResponse `json:"lines,omitempty"`
 	Metadata   billing.Metadata      `json:"metadata,omitempty"`
+	Payer      *invoicePayer         `json:"payer,omitempty"`
+	PayerMatch billing.PayerMatch    `json:"payer_match,omitempty"`
 	// CheckoutURL is where to send the customer to pay this invoice. It is the
 	// signed public link (services.PayLink) and not a portal URL, because the
 	// integration's customer has just finished signing in *there* — asking them

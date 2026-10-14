@@ -18,6 +18,7 @@ import (
 	"gopkg.aoctech.app/billing/api/internal/domain/byokconn"
 	"gopkg.aoctech.app/billing/api/internal/domain/id"
 	"gopkg.aoctech.app/billing/api/internal/repositories"
+	"gopkg.aoctech.app/billing/api/internal/space"
 )
 
 // SecretOverlap is how long a rotated webhook secret keeps working.
@@ -83,6 +84,53 @@ type ByokWebhooks struct {
 	payments  *repositories.PaymentRepository
 	collector *ByokCollector
 	guard     cache.Backend
+	// statement, when set, is pulled once for a connection right after a webhook
+	// settles one of its charges, so the payer is recorded within seconds instead
+	// of at the next hourly sync (spec 2026-10-14 § 6).
+	statement *ByokStatement
+}
+
+// WithStatement turns on the payer pull after a webhook settles a charge.
+func (w *ByokWebhooks) WithStatement(s *ByokStatement) *ByokWebhooks {
+	w.statement = s
+	return w
+}
+
+const payerPullEvery = time.Minute
+
+// pullPayer syncs the statement of the connection that was just paid, detached
+// from the webhook's answer (the provider waits for it) and at most once a
+// minute per connection. Failures are the hourly sync's to retry.
+func (w *ByokWebhooks) pullPayer(h *repositories.Hook, now time.Time) {
+	if w.statement == nil || h.ID == repositories.SandboxHookID || !h.Livemode {
+		return
+	}
+	key := "byok:payer-pull:" + h.ID
+	if w.guard != nil {
+		if _, seen, _ := w.guard.Get(context.Background(), key); seen {
+			return
+		}
+		_ = w.guard.Set(context.Background(), key, []byte("1"), int(payerPullEvery/time.Second))
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+		defer cancel()
+		conn, err := w.repo.GetConnection(ctx, h.AccountOrganizationID, h.Livemode, h.Provider)
+		if err == nil {
+			err = w.repo.LoadSealed(ctx, conn)
+		}
+		if err != nil {
+			slog.WarnContext(ctx, "byok payer pull: connection", "hook_id", h.ID, "error", err)
+			return
+		}
+		sp, err := space.ForJob(conn.AccountOrganizationID, conn.Livemode)
+		if err == nil {
+			_, err = w.statement.Sync(ctx, sp, conn, now)
+		}
+		if err != nil {
+			slog.WarnContext(ctx, "byok payer pull: sync", "hook_id", h.ID, "error", err)
+		}
+	}()
 }
 
 func NewByokWebhooks(repo *repositories.ByokRepository, payments *repositories.PaymentRepository, collector *ByokCollector, guard cache.Backend) *ByokWebhooks {
@@ -166,9 +214,12 @@ func (w *ByokWebhooks) Notify(ctx context.Context, in NotifyRequest, now time.Ti
 			status = http.StatusServiceUnavailable
 			continue
 		}
-		if _, err := w.collector.Confirm(ctx, *ptr, WakeWebhook, now); err != nil {
+		outcome, err := w.collector.Confirm(ctx, *ptr, WakeWebhook, now)
+		if err != nil {
 			slog.WarnContext(ctx, "byok webhook re-query failed", "hook_id", h.ID, "error", err)
 			status = http.StatusServiceUnavailable
+		} else if outcome == OutcomeSettled {
+			w.pullPayer(h, now)
 		}
 	}
 	slog.InfoContext(ctx, "byok webhook", "hook_id", h.ID, "refs", len(in.ChargeRefs), "ignored", ignored, "status", status)

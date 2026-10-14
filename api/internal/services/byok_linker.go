@@ -64,6 +64,7 @@ func (k *ByokLinker) Link(ctx context.Context, sp space.ResolvedSpace, conn *byo
 		}
 	}
 	if a.Status == billing.AttemptSucceeded && (l.PaymentID == "" || l.PaymentID == a.PaymentID) {
+		k.recordPayer(ctx, a, l)
 		bill, err := k.bills.Get(ctx, sp, repositories.InvoiceBillID(sp, ref.InvoiceID))
 		if err == nil && len(bill.TransactionIDs) > 1 {
 			// The invoice posted amount + late charges; anything the line
@@ -92,6 +93,24 @@ func (k *ByokLinker) Link(ctx context.Context, sp space.ResolvedSpace, conn *byo
 	}
 	slog.ErrorContext(ctx, "byok statement line unmatched after a day; posted to classify", "invoice_id", ref.InvoiceID, "line_id", l.LineID)
 	return false, nil
+}
+
+// recordPayer writes who paid on the attempt the line settled, once, with
+// whether that is the customer. It never blocks the link: a payer that cannot be
+// recorded now is recorded by the next sync, which re-reads this window.
+func (k *ByokLinker) recordPayer(ctx context.Context, a *billing.PaymentAttempt, l repositories.BankLine) {
+	if l.Payer == nil || a.Payer != nil {
+		return
+	}
+	taxID := ""
+	if inv, err := k.collector.invoices.Get(ctx, a.OrganizationID, a.Livemode, a.InvoiceID); err == nil {
+		if c, err := k.collector.customers.Get(ctx, a.OrganizationID, a.Livemode, inv.CustomerID); err == nil {
+			taxID = c.TaxID
+		}
+	}
+	if _, err := k.payments.SetPayerOnce(ctx, a, *l.Payer, billing.MatchPayer(taxID, *l.Payer), k.clock()); err != nil {
+		slog.WarnContext(ctx, "byok payer not recorded", "invoice_id", a.InvoiceID, "error", err)
+	}
 }
 
 // WithClock pins "today" (tests).

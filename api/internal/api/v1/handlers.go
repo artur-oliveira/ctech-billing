@@ -29,6 +29,7 @@ type handlers struct {
 	customers  *repositories.CustomerRepository
 	subs       *repositories.SubscriptionRepository
 	invoices   *repositories.InvoiceRepository
+	payments   *repositories.PaymentRepository
 	usage      *repositories.UsageRepository
 	levels     *repositories.LevelRepository
 	subscriber *services.Subscriber
@@ -517,7 +518,21 @@ func (h *handlers) getInvoice(c fiber.Ctx) error {
 	if err != nil {
 		return fail(c, err)
 	}
-	return c.JSON(newInvoiceResponse(inv, lines, h.today(), h.links))
+	return c.JSON(h.withPayer(c, newInvoiceResponse(inv, lines, h.today(), h.links), inv))
+}
+
+// withPayer adds who paid to a paid invoice's response. A failure to read the
+// attempts leaves the response without it: the payer is extra, not the invoice.
+func (h *handlers) withPayer(c fiber.Ctx, resp invoiceResponse, inv *billing.Invoice) invoiceResponse {
+	if h.payments == nil || inv.Status != billing.InvoicePaid {
+		return resp
+	}
+	attempts, err := h.payments.ListAttempts(c.Context(), inv.OrganizationID, inv.Livemode, inv.ID)
+	if err != nil {
+		return resp
+	}
+	resp.Payer, resp.PayerMatch = payerOf(attempts)
+	return resp
 }
 
 func (h *handlers) listInvoices(c fiber.Ctx) error {
