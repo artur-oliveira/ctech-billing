@@ -37,9 +37,9 @@
       },
       "scopes": {
         "title": "Escopos.",
-        "body": "Under “Quais atividades pretende realizar?”, tick only the three below and, inside each, all of these permissions (the recurrence and extra Pix ones are not used yet, but they save you a second integration later):"
+        "body": "Under “Quais atividades pretende realizar?”, tick only the five below and, inside each, all of these permissions (the recurrence, extra Pix and boleto ones are not used yet, but they save you a second integration later):"
       },
-      "noPayments": "Do not tick Cobranças, Pagamentos or Forum Inter: CTech does not use them.",
+      "noPayments": "Under Pagamentos, tick only the webhooks: do not tick Pix, bill or tax payments. Do not tick Forum Inter.",
       "terms": "Also tick “Li e concordo com todos os Termos e condições de uso das APIs”.",
       "questionnaire": {
         "title": "Inter's questions.",
@@ -259,6 +259,14 @@
       "recurring": {
         "title": "Recebimentos recorrentes",
         "hint": "Recurring charges and Pix Automático."
+      },
+      "collection": {
+        "title": "Cobranças",
+        "hint": "Issue boletos with or without Pix."
+      },
+      "payments": {
+        "title": "Pagamentos",
+        "hint": "Pay bills, suppliers and expenses."
       }
     },
     "permission": {
@@ -286,7 +294,11 @@
       "recurrence_webhook_read": "Consultar webhooks de recorrências",
       "recurrence_webhook_write": "Criar e editar webhooks de recorrências",
       "recurring_charge_webhook_read": "Consultar webhooks de cobranças recorrentes",
-      "recurring_charge_webhook_write": "Criar e editar webhooks de cobranças recorrentes"
+      "recurring_charge_webhook_write": "Criar e editar webhooks de cobranças recorrentes",
+      "boleto_read": "Consultar cobranças e exportar para PDF",
+      "boleto_write": "Emitir e cancelar cobrança",
+      "banking_webhook_write": "Criar e editar webhooks",
+      "banking_webhook_read": "Consultar webhooks"
     }
   }
 }
