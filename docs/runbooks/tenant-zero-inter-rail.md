@@ -21,6 +21,7 @@ All commands run on the Billing instance through `aws ssm send-command --profile
 | Re-test the stored credentials and record what they can do now | `byok -tenant-refresh -mode=live -operator=NAME` |
 | Issue a one-off invoice (prints the checkout link) | `byok -tenant-invoice=CUSTOMER_ID -mode=live -operator=NAME -invoice-amount-cents=10 -invoice-reference=REF "-invoice-description=TEXT"` |
 | Pay a Pix out to a CPF's key | `byok -tenant-payout=CPF -mode=live -operator=NAME -payout-amount-cents=10 -payout-reference=REF` (a dry run; add `-yes` to send) |
+| Record that an invoice's money was returned outside Billing (moves no money) | `byok -tenant-credit=INVOICE_ID -mode=live -operator=NAME -credit-amount-cents=10 "-credit-reason=TEXT" -credit-ref=BANK_REF` |
 
 A repeated `-invoice-reference` or `-payout-reference` returns the same invoice or payout; it never issues or pays twice.
 

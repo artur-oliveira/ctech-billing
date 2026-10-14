@@ -44,6 +44,10 @@ func main() {
 	invoiceCents := flag.Int64("invoice-amount-cents", 0, "with -tenant-invoice: the amount in centavos")
 	invoiceRef := flag.String("invoice-reference", "", "with -tenant-invoice: the caller's name for it; repeating it returns the same invoice")
 	invoiceText := flag.String("invoice-description", "", "with -tenant-invoice: the line the customer reads")
+	creditFor := flag.String("tenant-credit", "", "operator tool: record that money for this tenant-zero invoice was returned outside Billing (a credit note marked refunded externally; needs -mode=live, -operator, -credit-amount-cents, -credit-reason; -credit-ref optional)")
+	creditCents := flag.Int64("credit-amount-cents", 0, "with -tenant-credit: the amount in centavos")
+	creditReason := flag.String("credit-reason", "", "with -tenant-credit: why, written for whoever reads the invoice later")
+	creditRef := flag.String("credit-ref", "", "with -tenant-credit: the bank's reference for the return, when there is one")
 	refresh := flag.Bool("tenant-refresh", false, "operator tool: re-test tenant zero's stored bank credentials and record what they can do now (needs -mode=live, -operator)")
 	payoutCPF := flag.String("tenant-payout", "", "operator tool: pay a Pix out of tenant zero's account to this CPF's key (live proof of payouts; needs -mode=live, -operator, -payout-amount-cents, -payout-reference; sends only with -yes)")
 	payoutCents := flag.Int64("payout-amount-cents", 0, "with -tenant-payout: the amount in centavos")
@@ -64,6 +68,9 @@ func main() {
 	}
 	if *payoutCPF != "" {
 		os.Exit(tenantPayout(ctx, cfg, *modeFlag, *operator, *payoutCPF, *payoutRef, *payoutCents, *yes))
+	}
+	if *creditFor != "" {
+		os.Exit(tenantCredit(ctx, cfg, *modeFlag, *operator, *creditFor, *creditReason, *creditRef, *creditCents))
 	}
 	if *invoiceFor != "" {
 		os.Exit(tenantInvoice(ctx, cfg, *modeFlag, *operator, *invoiceFor, *invoiceText, *invoiceRef, *invoiceCents))

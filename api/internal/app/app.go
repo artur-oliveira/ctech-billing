@@ -382,6 +382,16 @@ func BuildSubscriptions(ctx context.Context, cfg *config.Config) (*repositories.
 	return newSubscriptions(db, cfg), nil
 }
 
+// BuildCreditNotes wires the repositories the operator's credit-note command
+// needs.
+func BuildCreditNotes(ctx context.Context, cfg *config.Config) (*repositories.CreditNoteRepository, *repositories.InvoiceRepository, error) {
+	db, err := newDynamoDB(ctx, cfg)
+	if err != nil {
+		return nil, nil, err
+	}
+	return repositories.NewCreditNoteRepository(db, cfg), repositories.NewInvoiceRepository(db, cfg), nil
+}
+
 // BuildInvoices wires the invoice repository for cmd/backfill-invoice-lookup.
 func BuildInvoices(ctx context.Context, cfg *config.Config) (*repositories.InvoiceRepository, error) {
 	db, err := newDynamoDB(ctx, cfg)
