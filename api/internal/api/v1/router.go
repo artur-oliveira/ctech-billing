@@ -48,10 +48,13 @@ type Deps struct {
 	Credentials *repositories.CredentialRepository
 	// Connector admits a merchant's own OAuth client from the console (spec
 	// § 5.1). Webhooks is the endpoint store the console manages (§ 5.2).
-	Connector     *services.CredentialConnector
-	Webhooks      *repositories.WebhookRepository
-	Idempotency   *repositories.IdempotencyRepository
-	Organizations *repositories.OrganizationRepository
+	Connector *services.CredentialConnector
+	Webhooks  *repositories.WebhookRepository
+	// WebhookVerifier proves a new endpoint answers its challenge before it is
+	// registered (hub.subscribe style).
+	WebhookVerifier WebhookVerifier
+	Idempotency     *repositories.IdempotencyRepository
+	Organizations   *repositories.OrganizationRepository
 	// Payouts pays Pix keys out of the tenant's connected bank account (CTech's own
 	// services; internal scopes). Nil unmounts the routes.
 	Payouts *services.Payouts
@@ -331,6 +334,7 @@ func registerConsole(v1 fiber.Router, d Deps, h *handlers, auth fiber.Handler) {
 		creds:                d.Credentials,
 		connector:            d.Connector,
 		hooks:                d.Webhooks,
+		verifier:             d.WebhookVerifier,
 		gates:                d.ChargeGates,
 		byok:                 d.ByokCollector,
 		setup:                d.ByokSetup,

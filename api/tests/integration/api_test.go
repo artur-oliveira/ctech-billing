@@ -4,6 +4,7 @@ package integration
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/base64"
@@ -39,13 +40,26 @@ const (
 // The JWKS server is real and the tokens are really signed and really verified.
 // A test that bypasses verification proves the handlers work for tokens the
 // service would never accept.
+// fakeVerifier stands in for the webhook challenge check, which the real
+// guarded client could not run against httptest servers. It accepts every URL
+// unless a test sets fn.
+type fakeVerifier struct{ fn func(url string) error }
+
+func (f *fakeVerifier) Verify(_ context.Context, url string) error {
+	if f.fn == nil {
+		return nil
+	}
+	return f.fn(url)
+}
+
 type apiEnv struct {
-	app     *fiber.App
-	key     *rsa.PrivateKey
-	jwksURL string
-	org     *billing.Organization
-	client  string
-	priceID string
+	verifier *fakeVerifier
+	app      *fiber.App
+	key      *rsa.PrivateKey
+	jwksURL  string
+	org      *billing.Organization
+	client   string
+	priceID  string
 	// account is the fake ctech-account this env's server asks, unless the
 	// configure func pointed AccountBaseURL elsewhere. accountOrg is the
 	// account organization e.org is linked to, with e.org.OwnerUserID as its
@@ -91,7 +105,8 @@ func newAPIWith(t *testing.T, configure func(*config.Config)) *apiEnv {
 	// March and fails in February.
 	clock := func() time.Time { return now() }
 
-	server, err := app.Build(ctx, &cfg, clock)
+	verifier := &fakeVerifier{}
+	server, err := app.Build(ctx, &cfg, clock, app.WithWebhookVerifier(verifier))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,7 +143,7 @@ func newAPIWith(t *testing.T, configure func(*config.Config)) *apiEnv {
 		t.Fatal(err)
 	}
 
-	return &apiEnv{app: server, key: key, jwksURL: jwks, org: org, client: clientID, priceID: price.ID, account: acct, accountOrg: accountOrg, accountURL: srv.URL}
+	return &apiEnv{verifier: verifier, app: server, key: key, jwksURL: jwks, org: org, client: clientID, priceID: price.ID, account: acct, accountOrg: accountOrg, accountURL: srv.URL}
 }
 
 // token mints an access token. sid empty means an M2M client_credentials token.

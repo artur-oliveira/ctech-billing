@@ -85,6 +85,7 @@
     "client_already_connected": "This client is already connected. Disconnect it where it is, or create another client.",
     "credential_provisioned": "This credential is managed by CTech and cannot be removed here.",
     "account_unavailable": "CTech Account could not confirm the client right now. Try again in a moment.",
+    "webhook_verification_failed": "The address did not confirm the registration: answer 200 with the hub.challenge value received in the GET.",
     "webhook_endpoint_limit": "This mode already has the maximum of 5 endpoints. Delete one to add another.",
     "webhook_endpoint_provisioned": "This endpoint is managed by CTech and cannot be changed here.",
     "webhook_endpoint_disabled": "This endpoint was disabled after repeated failures. Delete it and add it again to receive events.",

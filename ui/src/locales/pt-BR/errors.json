@@ -85,6 +85,7 @@
     "client_already_connected": "Esse cliente já está conectado. Desconecte-o de onde estiver ou crie outro cliente.",
     "credential_provisioned": "Essa credencial é gerenciada pela CTech e não pode ser removida aqui.",
     "account_unavailable": "Não foi possível confirmar o cliente com a CTech Account agora. Tente de novo em instantes.",
+    "webhook_verification_failed": "O endereço não confirmou o cadastro: responda 200 com o valor de hub.challenge recebido no GET.",
     "webhook_endpoint_limit": "Este modo já tem o máximo de 5 endpoints. Exclua um para adicionar outro.",
     "webhook_endpoint_provisioned": "Esse endpoint é gerenciado pela CTech e não pode ser alterado aqui.",
     "webhook_endpoint_disabled": "Esse endpoint foi desativado depois de falhas seguidas. Exclua e cadastre de novo para voltar a receber.",

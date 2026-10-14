@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -336,5 +337,42 @@ func TestTheTestCallIsRefusedWhileTheLastOneIsRecent(t *testing.T) {
 	res.decode(t, &p)
 	if res.status != http.StatusTooManyRequests || p.Code != "webhook_test_too_soon" {
 		t.Fatalf("second test: %d %+v", res.status, p)
+	}
+}
+
+// Registering an endpoint needs it to answer the challenge: a URL that does
+// not is refused and nothing is stored (so it does not use up a slot).
+func TestAWebhookEndpointMustAnswerItsChallengeToBeRegistered(t *testing.T) {
+	e := newAPI(t)
+	tok := e.writeToken(t)
+
+	var asked string
+	e.verifier.fn = func(url string) error {
+		asked = url
+		return errors.New("the endpoint did not return the hub.challenge value")
+	}
+	res := e.addHook(t, tok, "https://example.com/not-ours")
+	var p problemBody
+	res.decode(t, &p)
+	if res.status != http.StatusUnprocessableEntity || p.Code != "webhook_verification_failed" {
+		t.Fatalf("%d %s", res.status, res.body)
+	}
+	if asked != "https://example.com/not-ours" {
+		t.Fatalf("verified %q", asked)
+	}
+	list := e.console(t, hooksPath, tok, "live")
+	var page struct {
+		Data []endpointBody `json:"data"`
+	}
+	list.decode(t, &page)
+	for _, ep := range page.Data {
+		if ep.URL == "https://example.com/not-ours" {
+			t.Fatal("a refused endpoint was stored")
+		}
+	}
+
+	e.verifier.fn = nil
+	if res := e.addHook(t, tok, "https://example.com/ours"); res.status != http.StatusCreated {
+		t.Fatalf("after confirming: %d %s", res.status, res.body)
 	}
 }
