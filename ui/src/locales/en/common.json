@@ -1,1 +1,51 @@
-{"cancel":"Cancel","loading":"Loading…","tryAgain":"Try again","close":"Close","changeLanguage":"Switch language to {{language}}","periodRange":"{{start}} to {{end}}","account":{"portal":"Portal","console":"Console","fallbackName":"Your account","finance":"Finances"},"copyValue":"Copy {{value}}","copied":"Copied"}
+{
+  "cancel": "Cancel",
+  "loading": "Loading…",
+  "tryAgain": "Try again",
+  "close": "Close",
+  "changeLanguage": "Switch language to {{language}}",
+  "periodRange": "{{start}} to {{end}}",
+  "account": {
+    "portal": "Portal",
+    "console": "Console",
+    "fallbackName": "Your account",
+    "finance": "Finances"
+  },
+  "copyValue": "Copy {{value}}",
+  "copied": "Copied",
+  "search": {
+    "actions": {
+      "bill": "New bill",
+      "purchase": "New card purchase",
+      "recurrence": "New recurrence",
+      "transfer": "New transfer",
+      "account": "New account",
+      "product": "New product",
+      "webhook": "New webhook"
+    },
+    "keywords": {
+      "finance": {
+        "bills": "payables, receivables, invoices, entries",
+        "statement": "balance, transactions",
+        "cards": "credit card, statement, purchases",
+        "recurrences": "recurring, subscription, fixed",
+        "import": "ofx, csv, bank statement",
+        "reports": "charts"
+      },
+      "console": {
+        "invoices": "charges, pix",
+        "catalog": "products, prices, plans",
+        "webhooks": "events, endpoints, integration",
+        "credentials": "api key, token"
+      },
+      "portal": {
+        "invoices": "pay",
+        "subscriptions": "plans"
+      },
+      "action": {
+        "bill": "add, create",
+        "recurrence": "create recurring"
+      }
+    }
+  }
+}

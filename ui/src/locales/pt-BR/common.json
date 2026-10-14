@@ -1,1 +1,51 @@
-{"cancel":"Cancelar","loading":"Carregando…","tryAgain":"Tentar novamente","close":"Fechar","changeLanguage":"Mudar idioma para {{language}}","periodRange":"{{start}} a {{end}}","account":{"portal":"Portal","console":"Console","fallbackName":"Sua conta","finance":"Finanças"},"copyValue":"Copiar {{value}}","copied":"Copiado"}
+{
+  "cancel": "Cancelar",
+  "loading": "Carregando…",
+  "tryAgain": "Tentar novamente",
+  "close": "Fechar",
+  "changeLanguage": "Mudar idioma para {{language}}",
+  "periodRange": "{{start}} a {{end}}",
+  "account": {
+    "portal": "Portal",
+    "console": "Console",
+    "fallbackName": "Sua conta",
+    "finance": "Finanças"
+  },
+  "copyValue": "Copiar {{value}}",
+  "copied": "Copiado",
+  "search": {
+    "actions": {
+      "bill": "Novo lançamento",
+      "purchase": "Nova compra",
+      "recurrence": "Nova recorrência",
+      "transfer": "Nova transferência",
+      "account": "Nova conta",
+      "product": "Novo produto",
+      "webhook": "Novo webhook"
+    },
+    "keywords": {
+      "finance": {
+        "bills": "contas a pagar, contas a receber, boletos, lançamentos",
+        "statement": "saldo, movimentações",
+        "cards": "cartão, fatura, compras",
+        "recurrences": "recorrente, assinatura, fixo",
+        "import": "ofx, csv, extrato bancário",
+        "reports": "relatório, gráficos"
+      },
+      "console": {
+        "invoices": "cobranças, boletos, pix",
+        "catalog": "produtos, preços, planos",
+        "webhooks": "eventos, endpoints, integração",
+        "credentials": "api key, chave de api, token"
+      },
+      "portal": {
+        "invoices": "faturas, pagar",
+        "subscriptions": "assinaturas, planos"
+      },
+      "action": {
+        "bill": "adicionar, criar, nova conta",
+        "recurrence": "criar recorrente"
+      }
+    }
+  }
+}
