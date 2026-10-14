@@ -345,6 +345,20 @@ func TestConsoleSubscriptionsCarryTheCustomerAndPlanNames(t *testing.T) {
 		t.Fatalf("customer subscriptions = %+v, want the plan's name", detail.Subscriptions)
 	}
 
+	// C3 names the subscription an invoice bills by its plan, not sub_….
+	invoices, err := repositories.NewInvoiceRepository(testDB, testCfg).ListBySubscription(ctxT(t), e.org.ID, true, created.Subscription.ID, 10)
+	if err != nil || len(invoices) == 0 {
+		t.Fatalf("the subscription's invoice: %v %d", err, len(invoices))
+	}
+	res = e.console(t, "/v1.0/console/invoices/"+invoices[0].ID, e.sessionToken(t, middleware.ScopeInvoicesRead), "live")
+	var invoiceDetail struct {
+		SubscriptionName string `json:"subscription_name"`
+	}
+	res.decode(t, &invoiceDetail)
+	if res.status != http.StatusOK || invoiceDetail.SubscriptionName != "DF-e Basic" {
+		t.Fatalf("invoice detail: %d %s", res.status, res.body)
+	}
+
 	res = e.do(t, http.MethodGet, "/v1.0/subscriptions/"+created.Subscription.ID, m2m, "", "")
 	if res.status != http.StatusOK {
 		t.Fatalf("m2m get: %d %s", res.status, res.body)

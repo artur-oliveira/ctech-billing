@@ -360,6 +360,43 @@ name contains the visible text.
 held the account becomes **Pagamento** or **Recebimento**, with the date and the account it was
 paid from or received into.
 
+## The shell is a column (2026-10-14)
+
+Supersedes the header grammar below where they disagree. Decided by the owner after seeing a
+Full HD screen: `max-w-6xl` left about 384px of white on each side of every page.
+
+**One frame for the three areas,** `@aoctech/ui`'s `AppShell` (0.6.0), wrapped by
+`components/shell/BillingShell`. From `md` a 240px column pinned to the left edge, on `surface`
+with a hairline: the mark and **"CTech Billing • {área}"** (Portal, Console, Finanças; Finanças
+is part of Billing, not a product beside it), whose work (organization or space), the sections
+(`SidebarNav`, grouped, current = brand fill + weight + `aria-current`), and the person at the
+foot (`UserMenu trigger="row"`). The page takes the rest of the width up to 96rem: tables compare
+down a column, so a wide screen gives its width to them. A form or a detail keeps its own reading
+width inside the page; the portal keeps `max-w-2xl`, centred, because it reads one bill.
+
+**Under `md` the same column is the bar across the top** (mark, whose work, avatar) and the
+sections are the area's `BottomNav`. Every slot renders once; nothing is duplicated for a
+breakpoint.
+
+**The column is compact in every area.** The organization, space and account controls are the
+same 32px in the portal as in the console (the portal's 36px select was the inconsistency); the
+page below keeps its own density.
+
+**The mode moved into the account menu** ("Modo: Produção / Teste", console and Finanças only),
+with the language beside it. What made the header segment necessary still holds, so the answer
+stays on screen: in test mode a **Teste** badge sits beside whose work it is, and the warning band
+spans the top of the page. A screen in test mode is never mistaken for live.
+
+**No raised centre on the phone bars.** The console's and the portal's bars had "Visão geral" /
+"Início" in the central action slot, which read as a button, not a tab. Both are plain tabs now;
+the slot is Finanças' "create", where there is one thing to create.
+
+**List rows are compact.** Dates in a list are `dd/MM` (`dd/MM/yy` outside this year,
+`compactDate`), a period is `08/09 • 07/10`; the month above names the year. Names and plans
+are cut with an ellipsis and whole on hover; attempts are news from the second, as "2ª
+tentativa" beside the status, not a column. An external reference is the code face, cut, with
+a copy button (`CopyableValue`).
+
 ## Navigation and the shell (2026-10-09)
 
 **Finanças on a phone is a bottom bar.** Under `md`, `@aoctech/ui`'s `BottomNav`

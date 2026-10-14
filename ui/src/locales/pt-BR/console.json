@@ -19,7 +19,10 @@
   "applications": "Solicitações",
   "more": "Mais",
   "moreTitle": "Mais seções",
-  "groupMore": "Gerenciar"
+  "groupMore": "Gerenciar",
+  "groupCollection": "Cobrança",
+  "groupIntegrations": "Integrações",
+  "groupOrganization": "Organização"
  },
  "shell": {
   "testBanner": "Modo de teste. Nada aqui cobra de verdade."
@@ -142,12 +145,13 @@
   "status": "Status",
   "period": "Período",
   "due": "Vencimento",
-  "attempts": "Tent.",
   "total": "Total",
   "open": "Em aberto",
   "numbered": "nº {{number}}",
   "unnumbered": "sem número",
-  "hasMore": "O mês tem mais faturas do que as listadas."
+  "hasMore": "O mês tem mais faturas do que as listadas.",
+  "attemptN_one": "{{count}}ª tentativa",
+  "attemptN_other": "{{count}}ª tentativa"
  },
  "invoice": {
   "title": "Fatura nº {{number}}",
@@ -357,7 +361,22 @@
   "rejectedTitle": "Modo produção não aprovado",
   "rejectedBody": "O modo de teste continua disponível. Veja o motivo e peça de novo quando quiser.",
   "toTest": "Ir para o modo de teste",
-  "applyAgain": "Pedir de novo"
+  "applyAgain": "Pedir de novo",
+  "how": "Como funciona",
+  "steps": {
+   "send": {
+    "title": "Conte sobre o negócio",
+    "body": "Escolha a empresa que cobra e diga o que ela vende."
+   },
+   "test": {
+    "title": "Integre no modo de teste",
+    "body": "Fica pronto assim que você enviar o pedido."
+   },
+   "live": {
+    "title": "Cobre de verdade",
+    "body": "O modo produção abre depois da nossa análise."
+   }
+  }
  },
  "apply": {
   "title": "Pedir acesso à cobrança",

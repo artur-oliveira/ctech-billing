@@ -116,6 +116,9 @@ type invoiceDetailResponse struct {
 	// render it over a missing name would take the screen down for a defect it
 	// can survive.
 	CustomerName string `json:"customer_name,omitempty"`
+	// SubscriptionName is the plan the invoice's subscription bills (its
+	// lines' products), so the screen links "DF-e Basic", not sub_….
+	SubscriptionName string `json:"subscription_name,omitempty"`
 	// CreditNotes are the corrections issued against this invoice, oldest first,
 	// with the total they add up to. The total is published rather than left to
 	// the client: "is this fully credited" is a rule (billing.FullyCredited), and

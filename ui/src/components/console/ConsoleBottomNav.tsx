@@ -3,7 +3,7 @@
 import {BottomNav, type RenderLink} from "@aoctech/ui"
 import {Building2, Ellipsis, FileText, House, Package, Users, Webhook, CreditCard, Settings, KeyRound, Landmark, Gauge} from "lucide-react"
 import Link from "next/link"
-import {usePathname, useRouter} from "next/navigation"
+import {usePathname} from "next/navigation"
 import {useTranslation} from "react-i18next"
 
 import {consoleNav} from "@/lib/console/nav"
@@ -13,7 +13,6 @@ const renderLink: RenderLink = props => <Link {...props}/>
 export function ConsoleBottomNav({hasOrganization, reviewer}: {hasOrganization: boolean; reviewer: boolean}) {
   const {t, i18n} = useTranslation()
   const pathname = usePathname()
-  const router = useRouter()
   const nav = consoleNav(hasOrganization, reviewer)
   const current = (href: string) => pathname === href || (href !== "/console/overview" && pathname.startsWith(href))
   const moreItems = [
@@ -30,8 +29,11 @@ export function ConsoleBottomNav({hasOrganization, reviewer}: {hasOrganization: 
   return <BottomNav
     renderLink={renderLink}
     locale={i18n.language}
-    action={{label: t("console.nav.overview"), icon: <House/>, onClick: () => router.push("/console/overview")}}
+    // No central action: the console has no one thing to create from every
+    // screen, and a raised "Visão geral" in that slot read as a button, not a tab.
+    action={null}
     items={[
+      {label: t("console.nav.overview"), icon: <House/>, href: "/console/overview", active: current("/console/overview")},
       {label: t("console.nav.invoices"), icon: <FileText/>, href: "/console/invoices", active: current("/console/invoices")},
       {label: t("console.nav.subscriptions"), icon: <CreditCard/>, href: "/console/subscriptions", active: current("/console/subscriptions")},
       {

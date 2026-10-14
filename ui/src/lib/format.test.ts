@@ -1,6 +1,6 @@
 import {describe, expect, it} from "vitest"
 
-import {calendarDaysUntil, countdown, dayMonth, longDate, money, period, shortDate} from "./format"
+import {calendarDaysUntil, countdown, dayMonth, longDate, money, period, shortDate, compactDate, compactPeriod} from "./format"
 
 // Intl separates the symbol with a non-breaking space; normalise so the
 // assertion is about the number and not about which space Node chose.
@@ -56,5 +56,21 @@ describe("countdown", () => {
 
   it("never goes negative", () => {
     expect(countdown(-5)).toBe("0:00")
+  })
+})
+
+// Lists already carry the month or year they show (a filter, a heading), so a
+// row's date drops the year when it is this year's, and keeps two digits of it
+// when it is not.
+describe("compactDate", () => {
+  const today = "2026-10-14"
+  it("is day and month in this year", () => {
+    expect(compactDate("2026-09-08", today)).toBe("08/09")
+  })
+  it("adds a two-digit year in another year", () => {
+    expect(compactDate("2025-12-31", today)).toBe("31/12/25")
+  })
+  it("joins a period with a bullet", () => {
+    expect(compactPeriod("2026-09-08", "2026-10-07", today)).toBe("08/09 • 07/10")
   })
 })

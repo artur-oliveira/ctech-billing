@@ -1,20 +1,17 @@
 "use client"
 
-import {BottomNavSpacer, Skeleton} from "@aoctech/ui"
+import {BottomNavSpacer, SidebarNav, Skeleton} from "@aoctech/ui"
 import {useQuery} from "@tanstack/react-query"
-import Image from "next/image"
-import Link from "next/link"
-import {useRouter} from "next/navigation"
+import {FileText, House, Repeat} from "lucide-react"
+import {usePathname, useRouter} from "next/navigation"
 import {useEffect} from "react"
 import {useTranslation} from "react-i18next"
 
-import {LanguageSwitcher} from "@/components/LanguageSwitcher"
-import {AccountMenu} from "@/components/AccountMenu"
 import {NoBillingAccount} from "@/components/portal/NoBillingAccount"
 import {PortalSpaceScope} from "@/components/portal/PortalSpaceScope"
 import {PortalSpaceSwitch} from "@/components/portal/PortalSpaceSwitch"
 import {PortalBottomNav} from "@/components/portal/PortalBottomNav"
-import {SectionNav} from "@/components/navigation/SectionNav"
+import {BillingShell, renderLink} from "@/components/shell/BillingShell"
 import {TermsGate} from "@/components/portal/TermsGate"
 import {isNoBillingAccount} from "@/lib/api/client"
 import {getSession, portalKeys} from "@/lib/api/portal"
@@ -22,18 +19,17 @@ import {useAuth} from "@/lib/auth/AuthContext"
 import {usePortalSpace} from "@/lib/portal/space"
 
 const NAV = [
-  {href: "/dashboard", labelKey: "portal.nav.home"},
-  {href: "/invoices", labelKey: "portal.nav.invoices"},
-  {href: "/subscriptions", labelKey: "portal.nav.subscriptions"},
+  {href: "/dashboard", labelKey: "portal.nav.home", icon: <House/>},
+  {href: "/invoices", labelKey: "portal.nav.invoices", icon: <FileText/>},
+  {href: "/subscriptions", labelKey: "portal.nav.subscriptions", icon: <Repeat/>},
 ] as const
 
 /**
  * The consumer shell, and the gate in front of it.
  *
- * `data-density="comfortable"` is the whole of the portal/console difference
- * at the component level: every control from @aoctech/ui reads it and sizes
- * itself for a thumb. The console will set `compact` on its own shell and get
- * 32px controls from the identical components.
+ * The page is `comfortable` (every @aoctech/ui control sizes itself for a
+ * thumb); the frame's column is compact, the same as the console's, so the
+ * three areas share one shell.
  *
  * The guard waits for `loading` before deciding. Skipping that check sends a
  * signed-in reader to /login on every hard refresh, because the boot-time
@@ -73,74 +69,43 @@ export default function PortalLayout({children}: LayoutProps<"/">) {
     if (!loading && !authenticated) router.replace("/login")
   }, [loading, authenticated, router])
 
+  const pathname = usePathname()
+  const active = (href: string) => href === "/dashboard" ? pathname === href : pathname.startsWith(href)
+
   return (
-    <div data-density="comfortable" className="min-h-dvh">
-      <header className="border-b border-border">
-        <div className="mx-auto flex min-h-16 max-w-6xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2">
-          {/* The mark plus the wordmark, and the wordmark is the fourth place
-              the brand colour appears — after the primary button, the active
-              nav item and the selected row. A header that renders the company
-              name in body ink is a header that could belong to anybody. */}
-          <Link href="/dashboard" className="order-1 flex items-center gap-2.5 touch:min-h-11">
-            <Image
-              src="/android-chrome-192x192.png"
-              alt=""
-              width={28}
-              height={28}
-              priority
-              className="size-7 rounded-lg"
-            />
-            <span className="text-base font-semibold tracking-[-0.02em] text-brand-600">
-              CTech
-              <span className="ml-1.5 font-normal text-muted-foreground">Billing</span>
-            </span>
-          </Link>
-
-          {/* Also when there is no billing account: that reader has no name to
-              show, and "Sair" is the only thing they can do here. A screen with
-              no way out is how somebody signed into the wrong account gets
-              stuck. */}
-          {/* The person behind the avatar: the whole name and e-mail, the
-              switch to the console, and Sair. It holds three things now, so it
-              is a menu; it was plain text while Sair was its only entry. */}
-          {/* Whose bills, the console's way: beside the avatar on a desk, the
-              row under the mark on a phone. Renders nothing for a person with
-              no organization to pick; stays with no billing account, since an
-              admin with nothing of their own still has the organization's. */}
-          <PortalSpaceSwitch/>
-          <div className="order-2 ml-auto flex min-w-0 items-center gap-2 sm:order-3 sm:ml-0">
-            <LanguageSwitcher className="shrink-0"/>
-            {(session || noAccount) && <AccountMenu view="portal"/>}
-          </div>
-        </div>
-      </header>
-
-      <main className="mx-auto grid max-w-6xl gap-6 px-4 py-8 pb-20 lg:grid-cols-[11rem_minmax(0,1fr)] lg:gap-10">
-        {/* Four states, in this order. The empty account comes before the terms
-            gate because there is no session to read `terms_accepted` from when
-            it applies, and the gate comes before the children because it needs
-            the session to have answered — rendering it on `undefined` would ask
-            somebody who already agreed to agree again on every refresh. */}
-        {!noAccount && <aside className="max-md:hidden lg:sticky lg:top-6 lg:self-start">
-          <SectionNav items={NAV.map(item => ({href: item.href, label: item.labelKey, exact: item.href === "/dashboard"}))} label={t("portal.nav.label")} selectLabel={t("portal.nav.label")}/>
-        </aside>}
-        <div className="mx-auto min-w-0 w-full max-w-2xl">
-          <PortalSpaceScope>
-            {loading || !authenticated ? (
-              <GateSkeleton/>
-            ) : noAccount ? (
-              <NoBillingAccount/>
-            ) : session && !session.terms_accepted ? (
-              <TermsGate/>
-            ) : (
-              children
-            )}
-          </PortalSpaceScope>
-          {!noAccount && <BottomNavSpacer/>}
-        </div>
-        <PortalBottomNav hidden={noAccount}/>
-      </main>
-    </div>
+    <BillingShell
+      view="portal"
+      home="/dashboard"
+      density="comfortable"
+      nav={!noAccount && <SidebarNav label={t("portal.nav.label")} renderLink={renderLink}
+        groups={[{items: NAV.map(item => ({href: item.href, label: t(item.labelKey), icon: item.icon, active: active(item.href)}))}]}/>}
+      // Whose bills, for a person who also runs an organization; renders
+      // nothing for everybody else. Stays with no billing account, since an
+      // admin with nothing of their own still has the organization's.
+      context={<PortalSpaceSwitch/>}
+      bottomNav={<PortalBottomNav hidden={noAccount}/>}
+      // The portal reads one bill at a time: a reading width, centred in the
+      // page area, whatever the screen.
+      contentClassName="max-w-2xl"
+    >
+      {/* Four states, in this order. The empty account comes before the terms
+          gate because there is no session to read `terms_accepted` from when
+          it applies, and the gate comes before the children because it needs
+          the session to have answered — rendering it on `undefined` would ask
+          somebody who already agreed to agree again on every refresh. */}
+      <PortalSpaceScope>
+        {loading || !authenticated ? (
+          <GateSkeleton/>
+        ) : noAccount ? (
+          <NoBillingAccount/>
+        ) : session && !session.terms_accepted ? (
+          <TermsGate/>
+        ) : (
+          children
+        )}
+      </PortalSpaceScope>
+      {!noAccount && <BottomNavSpacer/>}
+    </BillingShell>
   )
 }
 

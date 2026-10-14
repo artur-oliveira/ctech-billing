@@ -212,6 +212,8 @@ export interface ConsoleInvoiceDetail {
   /** Absent when the customer row could not be read: a worse row, not a broken
    *  page. */
   customer_name?: string
+  /** The plan the subscription bills, from the invoice's lines; absent when unread. */
+  subscription_name?: string
   credit_notes?: CreditNote[]
   credited: Cents
   /** What the screen renders as "estornada". Not a status: an invoice that was

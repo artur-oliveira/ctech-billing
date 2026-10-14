@@ -7,6 +7,8 @@ import Link from "next/link"
 import {useSearchParams} from "next/navigation"
 import {Suspense, useState} from "react"
 import {useTranslation} from "react-i18next"
+
+import {CopyableValue} from "@/components/ui/CopyableValue"
 import {toast} from "sonner"
 
 import {SubscriptionStatusBadge} from "@/components/console/SubscriptionStatusBadge"
@@ -81,7 +83,10 @@ function Detail() {
       <dl className="grid gap-x-6 gap-y-4 border-y border-border py-4 text-sm sm:grid-cols-3">
         <Fact label={t("console.customer.email")} value={customer.email || "—"}/>
         <TaxID customerId={customer.id} masked={customer.tax_id_masked}/>
-        <Fact label={t("console.customer.externalRef")} value={customer.external_ref || "—"}/>
+        <div className="min-w-0 space-y-1">
+          <dt className="text-xs text-muted-foreground">{t("console.customer.externalRef")}</dt>
+          <dd className="text-foreground">{customer.external_ref ? <CopyableValue value={customer.external_ref}/> : "—"}</dd>
+        </div>
       </dl>
 
       <section aria-labelledby="assinaturas" className="space-y-3">

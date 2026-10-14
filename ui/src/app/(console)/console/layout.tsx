@@ -1,21 +1,18 @@
 "use client"
 
-import {BottomNavSpacer, Button, DensityScope, ErrorState, Skeleton} from "@aoctech/ui"
+import {BottomNavSpacer, Button, ErrorState, SidebarNav, Skeleton, type SidebarNavGroup} from "@aoctech/ui"
 import {useQuery} from "@tanstack/react-query"
-import Image from "next/image"
-import Link from "next/link"
+import {Building2, CreditCard, FileText, Gauge, House, KeyRound, Landmark, Package, Settings, Users, Webhook} from "lucide-react"
 import {usePathname, useRouter} from "next/navigation"
+import type {ReactNode} from "react"
 import {useEffect} from "react"
 import {useTranslation} from "react-i18next"
 
-import {AccountMenu} from "@/components/AccountMenu"
-import {LanguageSwitcher} from "@/components/LanguageSwitcher"
-import {ModeSwitch} from "@/components/console/ModeSwitch"
+import {BillingShell, renderLink, ShellContext, TestBanner} from "@/components/shell/BillingShell"
 import {MerchantInvitation} from "@/components/console/MerchantInvitation"
 import {MerchantStatusBand} from "@/components/console/MerchantStatusBand"
 import {OrganizationSwitch} from "@/components/console/OrganizationSwitch"
 import {ConsoleBottomNav} from "@/components/console/ConsoleBottomNav"
-import {SectionNav} from "@/components/navigation/SectionNav"
 import {statusOf} from "@/lib/api/client"
 import {consoleKeys, getConsoleSession} from "@/lib/api/console"
 import {useAuth} from "@/lib/auth/AuthContext"
@@ -100,91 +97,88 @@ export default function ConsoleLayout({children}: LayoutProps<"/console">) {
   }, [noOrganization, router])
 
   const nav = consoleNav(active, reviewer)
+  const isCurrent = (href: string) => href === "/console/overview" ? pathname === href : pathname.startsWith(href)
+  const groups: SidebarNavGroup[] = NAV_GROUPS
+    .map(group => ({
+      label: group.label && t(group.label),
+      items: group.items.filter(href => nav.some(item => item.href === href)).map(href => ({
+        href, label: t(nav.find(item => item.href === href)!.label), icon: NAV_ICONS[href], active: isCurrent(href),
+      })),
+    }))
+    .filter(group => group.items.length > 0)
 
   return (
-    <DensityScope density="compact" className="min-h-dvh">
-      <header className="border-b border-border">
-        <div className="mx-auto flex min-h-14 max-w-6xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2">
-          <div className="order-1 flex min-w-0 items-center gap-4">
-            <Link href="/console/overview" className="flex shrink-0 items-center gap-2.5 touch:min-h-11">
-              <Image
-                src="/android-chrome-192x192.png"
-                alt=""
-                width={24}
-                height={24}
-                className="size-6 rounded-md"
-              />
-              <span className="text-sm font-semibold tracking-[-0.02em] text-brand-600">
-                CTech
-                <span className="ml-1.5 font-normal text-muted-foreground">Billing</span>
-              </span>
-            </Link>
-          </div>
-
-          <div className="order-3 flex w-full min-w-0 items-center gap-x-3 gap-y-2 sm:order-2 sm:ml-auto sm:w-auto">
-            {/* Whose billing, then which world: "CTech · Teste" reads as one thing. */}
-            {selected && <OrganizationSwitch organizations={organizations} selected={selected}/>}
-            <ModeSwitch/>
-          </div>
-          {/* The person, the way to the portal, and Sair, all behind the
-              avatar: the same person holds both shells, and the switch
-              between them happens in one place. */}
-          <div className="order-2 ml-auto flex items-center gap-2 sm:order-3 sm:ml-0">
-            <LanguageSwitcher/>
-            <AccountMenu view="console"/>
-          </div>
-        </div>
-
-      </header>
-
-      {/* The test-mode band. Deliberately the loudest thing on the page after
-          the danger colour: every number below it is fake, and an operator who
-          forgets that voids a real invoice believing it is a sandbox one. */}
-      {mode === "test" && (
-        <p className="bg-warning/12 border-b border-warning/30 px-4 py-2 text-center text-xs text-foreground">
-          {t("console.shell.testBanner")}
-        </p>
+    <BillingShell
+      view="console"
+      home="/console/overview"
+      density="compact"
+      nav={groups.length > 0 && <SidebarNav label={t("console.nav.label")} groups={groups} renderLink={renderLink}/>}
+      // Whose billing, and the test mark beside it; the mode is switched in
+      // the account menu and announced by the band above the page.
+      context={selected && (
+        <ShellContext test={mode === "test"} testLabel={t("console.mode.test")}>
+          <OrganizationSwitch organizations={organizations} selected={selected}/>
+        </ShellContext>
       )}
-      {selection && !onApply && (
-        <MerchantSelectionProvider value={selection}><MerchantStatusBand/></MerchantSelectionProvider>
-      )}
-
-      <main className="mx-auto grid max-w-6xl gap-6 px-4 py-8 pb-20 lg:grid-cols-[11rem_minmax(0,1fr)] lg:gap-10">
-        {active && <aside className="max-md:hidden lg:sticky lg:top-6 lg:self-start">
-          <SectionNav items={nav.map(item => ({href: item.href, label: item.label, exact: item.href === "/console/overview"}))} label={t("console.nav.label")} selectLabel={t("console.nav.label")}/>
-        </aside>}
-        <div className="min-w-0">
-        {loading || !authenticated || noOrganization || (session === undefined && isPending) ? (
-          <ShellSkeleton/>
-        ) : unavailable || (error && !session) ? (
-          // ctech-account did not answer, or the session itself failed: the
-          // list is unknown, not empty, so nothing is chosen and nobody is
-          // sent away. One retry, in the console's words.
-          <ErrorState
-            status={unavailable ? 503 : 500}
-            locale={i18n.language}
-            description={t("console.organization.unavailable")}
-            action={<Button variant="outline" onClick={() => void refetch()}>{t("console.organization.retry")}</Button>}
-          />
-        ) : selection ? (
-          // No tenant in this mode is a beginning: the invitation, or where
-          // the application stands. /console/apply runs without a tenant.
-          <MerchantSelectionProvider value={selection}>
-            {onApply ? children : onConnections ? (
-              <ConsoleScopeProvider value={selection.scope}>{children}</ConsoleScopeProvider>
-            ) : !active ? <MerchantInvitation/> : (
-              <ConsoleScopeProvider value={selection.scope}>{children}</ConsoleScopeProvider>
-            )}
-          </MerchantSelectionProvider>
-        ) : (
-          <ShellSkeleton/>
+      banner={<>
+        {/* Deliberately the loudest thing on the page after the danger colour:
+            every number below it is fake, and an operator who forgets that
+            voids a real invoice believing it is a sandbox one. */}
+        {mode === "test" && <TestBanner>{t("console.shell.testBanner")}</TestBanner>}
+        {selection && !onApply && (
+          <MerchantSelectionProvider value={selection}><MerchantStatusBand/></MerchantSelectionProvider>
         )}
-          {active && <BottomNavSpacer/>}
-        </div>
-        {active && <ConsoleBottomNav hasOrganization={active} reviewer={reviewer}/>}
-      </main>
-    </DensityScope>
+      </>}
+      bottomNav={active && <ConsoleBottomNav hasOrganization={active} reviewer={reviewer}/>}
+    >
+      {loading || !authenticated || noOrganization || (session === undefined && isPending) ? (
+        <ShellSkeleton/>
+      ) : unavailable || (error && !session) ? (
+        // ctech-account did not answer, or the session itself failed: the
+        // list is unknown, not empty, so nothing is chosen and nobody is
+        // sent away. One retry, in the console's words.
+        <ErrorState
+          status={unavailable ? 503 : 500}
+          locale={i18n.language}
+          description={t("console.organization.unavailable")}
+          action={<Button variant="outline" onClick={() => void refetch()}>{t("console.organization.retry")}</Button>}
+        />
+      ) : selection ? (
+        // No tenant in this mode is a beginning: the invitation, or where
+        // the application stands. /console/apply runs without a tenant.
+        <MerchantSelectionProvider value={selection}>
+          {onApply ? children : onConnections || active ? (
+            <ConsoleScopeProvider value={selection.scope}>{children}</ConsoleScopeProvider>
+          ) : <MerchantInvitation/>}
+        </MerchantSelectionProvider>
+      ) : (
+        <ShellSkeleton/>
+      )}
+      {active && <BottomNavSpacer/>}
+    </BillingShell>
   )
+}
+
+/** The sections in the column, grouped by what an operator is doing. */
+const NAV_GROUPS: {label?: string; items: string[]}[] = [
+  {items: ["/console/overview", "/console/invoices", "/console/subscriptions", "/console/customers", "/console/catalog"]},
+  {label: "console.nav.groupCollection", items: ["/console/connections", "/console/plan"]},
+  {label: "console.nav.groupIntegrations", items: ["/console/credentials", "/console/webhooks"]},
+  {label: "console.nav.groupOrganization", items: ["/console/settings", "/console/applications"]},
+]
+
+const NAV_ICONS: Record<string, ReactNode> = {
+  "/console/overview": <House/>,
+  "/console/invoices": <FileText/>,
+  "/console/subscriptions": <CreditCard/>,
+  "/console/customers": <Users/>,
+  "/console/catalog": <Package/>,
+  "/console/connections": <Landmark/>,
+  "/console/plan": <Gauge/>,
+  "/console/credentials": <KeyRound/>,
+  "/console/webhooks": <Webhook/>,
+  "/console/settings": <Settings/>,
+  "/console/applications": <Building2/>,
 }
 
 function ShellSkeleton() {

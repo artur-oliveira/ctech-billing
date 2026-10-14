@@ -511,8 +511,33 @@ func (h *consoleHandlers) invoiceDetail(c fiber.Ctx, inv *billing.Invoice) error
 		name = customer.Name
 	}
 	resp := newInvoiceDetailResponse(inv, lines, notes, trail, name, h.today(), h.links)
+	if inv.SubscriptionID != "" {
+		resp.SubscriptionName = h.planOfLines(c, lines)
+	}
 	resp.Byok = h.byokBlock(c, inv)
 	return c.JSON(resp)
+}
+
+// planOfLines names what an invoice bills by its lines' products, best effort
+// like the customer's name: one read of each distinct price and product.
+func (h *consoleHandlers) planOfLines(c fiber.Ctx, lines []billing.InvoiceItem) string {
+	t := middleware.GetTenant(c)
+	seen := map[string]bool{}
+	var names []string
+	for _, l := range lines {
+		if l.PriceID == "" || seen[l.PriceID] {
+			continue
+		}
+		seen[l.PriceID] = true
+		price, err := h.cat.GetPrice(c.Context(), t.OrganizationID, t.Livemode, l.PriceID)
+		if err != nil {
+			continue
+		}
+		if product, err := h.cat.GetProduct(c.Context(), t.OrganizationID, t.Livemode, price.ProductID); err == nil {
+			names = append(names, product.Name)
+		}
+	}
+	return planName(names)
 }
 
 // createCustomer is C6's "novo cliente", on the shared implementation.

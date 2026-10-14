@@ -35,10 +35,10 @@ export function SpaceSwitch() {
   const manage = current?.manage_people && space.kind === "organization" ? space.organizationId : null
 
   return (
-    <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 max-sm:flex-1">
+    <div className="flex w-full min-w-0 flex-col gap-1">
       <Select {...selectCopy()}
         aria-label={t("finance.space.label")}
-        className="min-w-36 max-w-56 max-sm:max-w-none max-sm:flex-1"
+        className="w-full min-w-0"
         value={spaceHeader(space)}
         onValueChange={v => setSpace(parseSpace(v))}
         options={spaces.length === 0
@@ -49,7 +49,7 @@ export function SpaceSwitch() {
       {manage && (
         <a
           href={handoff.managePeopleURL(manage, window.location.origin)}
-          className="inline-flex items-center text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline touch-target"
+          className="inline-flex items-center px-1 text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline touch-target max-md:hidden"
         >
           {t("finance.space.managePeople")}
         </a>

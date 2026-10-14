@@ -5,6 +5,7 @@ import {Check} from "lucide-react"
 import Link from "next/link"
 import {useTranslation} from "react-i18next"
 
+import {ApplySteps} from "@/components/console/ApplySteps"
 import {setMode} from "@/lib/console/mode"
 import {useMerchantSelection} from "@/lib/console/selection"
 
@@ -44,24 +45,28 @@ export function MerchantInvitation() {
     )
   }
 
+  // Two columns from lg: the offer and its action, then what happens next;
+  // one column on a phone, the action before the steps.
   return (
-    <section className="max-w-xl space-y-4">
-      <h1 className="text-2xl font-semibold tracking-[-0.02em] text-foreground">{t("console.invitation.title")}</h1>
-      <p className="text-sm text-muted-foreground">{t("console.invitation.body", {name})}</p>
-      <ul className="space-y-2">
-        {(["subscriptions", "api", "test"] as const).map(p => (
-          <li key={p} className="flex items-start gap-2 text-sm text-foreground">
-            <Check aria-hidden className="mt-0.5 size-4 shrink-0 text-brand-600"/>
-            {t(`console.invitation.points.${p}`)}
-          </li>
-        ))}
-      </ul>
-      <div className="space-y-2 pt-2">
-        <Link href="/console/apply" className={buttonVariants({variant: "brand", className: "max-sm:w-full"})}>
-          {t("console.invitation.action")}
-        </Link>
-        <p className="text-xs text-muted-foreground">{t("console.invitation.review")}</p>
-      </div>
-    </section>
+    <div className="grid max-w-5xl gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:gap-16">
+      <section className="space-y-4">
+        <h1 className="text-2xl font-semibold tracking-[-0.02em] text-balance text-foreground">{t("console.invitation.title")}</h1>
+        <p className="max-w-prose text-sm text-muted-foreground">{t("console.invitation.body", {name})}</p>
+        <ul className="space-y-2">
+          {(["subscriptions", "api", "test"] as const).map(p => (
+            <li key={p} className="flex items-start gap-2 text-sm text-foreground">
+              <Check aria-hidden className="mt-0.5 size-4 shrink-0 text-brand-600"/>
+              {t(`console.invitation.points.${p}`)}
+            </li>
+          ))}
+        </ul>
+        <div className="pt-2">
+          <Link href="/console/apply" className={buttonVariants({variant: "brand", className: "max-sm:w-full"})}>
+            {t("console.invitation.action")}
+          </Link>
+        </div>
+      </section>
+      <ApplySteps/>
+    </div>
   )
 }

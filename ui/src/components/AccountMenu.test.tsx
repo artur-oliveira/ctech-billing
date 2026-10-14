@@ -18,6 +18,7 @@ import {AccountMenu} from "@/components/AccountMenu"
 import {renderWithQuery} from "@/components/finance/finance.test-utils"
 import * as consoleApi from "@/lib/api/console"
 import * as portal from "@/lib/api/portal"
+import {getMode, setMode} from "@/lib/console/mode"
 
 const FULL = "Ana Maria Ribeiro da Silva Albuquerque"
 const EMAIL = "ana.maria.ribeiro.albuquerque@exemplo.com.br"
@@ -150,5 +151,34 @@ describe("AccountMenu with no billing account", () => {
     expect(options).toHaveLength(1)
     expect(options[0].refetchOnWindowFocus).toBe(false)
     expect(options[0].staleTime).toBeGreaterThanOrEqual(5 * 60_000)
+  })
+})
+
+// The mode moved from a header segment into the menu (2026-10-14): it is
+// chosen here in the console and Finanças, and never offered in the portal.
+describe("AccountMenu mode", () => {
+  afterEach(() => setMode("live"))
+
+  it("offers Produção and Teste in the console, the current one marked", async () => {
+    person({operator: true})
+    renderWithQuery(<AccountMenu view="console"/>)
+    const menu = await open()
+    expect(within(menu).getByRole("menuitem", {name: "Produção"})).toHaveAttribute("aria-current", "true")
+    await userEvent.click(within(menu).getByRole("menuitem", {name: "Teste"}))
+    expect(getMode()).toBe("test")
+  })
+
+  it("has no mode in the portal", async () => {
+    person({operator: false})
+    renderWithQuery(<AccountMenu view="portal"/>)
+    const menu = await open()
+    expect(within(menu).queryByRole("menuitem", {name: "Teste"})).toBeNull()
+  })
+
+  it("switches the language from the menu", async () => {
+    person({operator: false})
+    renderWithQuery(<AccountMenu view="portal"/>)
+    const menu = await open()
+    expect(within(menu).getByRole("menuitem", {name: "English"})).toBeInTheDocument()
   })
 })

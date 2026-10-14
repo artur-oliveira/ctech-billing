@@ -11,7 +11,7 @@ import {InvoiceStatusBadge} from "@/components/console/InvoiceStatusBadge"
 import {ErrorBlock} from "@/components/portal/ErrorBlock"
 import {consoleKeys, listConsoleInvoices} from "@/lib/api/console"
 import {useConsoleScope} from "@/lib/console/scope"
-import {money, shortDate} from "@/lib/format"
+import {compactDate, compactPeriod, money, shortDate} from "@/lib/format"
 import {currentLocale} from "@/lib/i18n"
 
 /**
@@ -81,17 +81,18 @@ export default function ConsoleInvoicesPage() {
 
       {invoices.length > 0 && (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[46rem] border-collapse text-sm">
+          {/* The customer takes what is left and is cut there (whole on
+              hover); dates are day and month, the month above names the year. */}
+          <table className="w-full min-w-[40rem] table-fixed border-collapse text-sm">
             <thead>
               <tr className="border-b border-border text-left text-xs text-muted-foreground">
                 <th scope="col" className="w-28 py-2 pr-4 font-medium">{t("console.invoices.number")}</th>
                 <th scope="col" className="py-2 pr-4 font-medium">{t("console.invoices.customer")}</th>
-                <th scope="col" className="w-56 py-2 pr-4 font-medium">{t("console.invoices.status")}</th>
-                <th scope="col" className="w-52 py-2 pr-4 font-medium">{t("console.invoices.period")}</th>
-                <th scope="col" className="w-32 py-2 pr-4 font-medium">{t("console.invoices.due")}</th>
-                <th scope="col" className="w-20 py-2 pr-4 text-right font-medium">{t("console.invoices.attempts")}</th>
-                <th scope="col" className="w-32 py-2 pr-4 text-right font-medium">{t("console.invoices.total")}</th>
-                <th scope="col" className="w-32 py-2 text-right font-medium">{t("console.invoices.open")}</th>
+                <th scope="col" className="w-60 py-2 pr-4 font-medium">{t("console.invoices.status")}</th>
+                <th scope="col" className="w-32 py-2 pr-4 font-medium max-lg:hidden">{t("console.invoices.period")}</th>
+                <th scope="col" className="w-24 py-2 pr-4 font-medium">{t("console.invoices.due")}</th>
+                <th scope="col" className="w-28 py-2 pr-4 text-right font-medium">{t("console.invoices.total")}</th>
+                <th scope="col" className="w-28 py-2 text-right font-medium">{t("console.invoices.open")}</th>
               </tr>
             </thead>
             <tbody>
@@ -111,23 +112,27 @@ export default function ConsoleInvoicesPage() {
                       {invoice.number ? t("console.invoices.numbered", {number: invoice.number}) : t("console.invoices.unnumbered")}
                     </Link>
                   </td>
-                  <td className="max-w-0 truncate py-2 pr-4 text-foreground">
+                  <td className="truncate py-2 pr-4 text-foreground" title={invoice.customer_name || invoice.customer_id}>
                     {invoice.customer_name || (
                       <span className="text-muted-foreground">{invoice.customer_id}</span>
                     )}
                   </td>
-                  <td className="py-2 pr-4"><InvoiceStatusBadge invoice={invoice}/></td>
-                  <td data-numeric className="py-2 pr-4 text-muted-foreground">
-                    {shortDate(invoice.period.period_start)} – {shortDate(invoice.period.period_end)}
+                  <td className="py-2 pr-4">
+                    <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <InvoiceStatusBadge invoice={invoice}/>
+                      {/* "Já tentamos cobrar?" decides whether a bill is a
+                          collection problem or an integration one; it is
+                          news only from the second attempt on. */}
+                      {invoice.attempt_count > 1 && (
+                        <span className="text-xs text-muted-foreground">{t("console.invoices.attemptN", {count: invoice.attempt_count})}</span>
+                      )}
+                    </span>
                   </td>
-                  <td data-numeric className="py-2 pr-4 text-muted-foreground">
-                    {shortDate(invoice.due_date)}
+                  <td data-numeric className="truncate py-2 pr-4 text-muted-foreground max-lg:hidden">
+                    {compactPeriod(invoice.period.period_start, invoice.period.period_end)}
                   </td>
-                  {/* Attempts, because "já tentamos cobrar?" is the question
-                      that decides whether a bill is a collection problem or an
-                      integration one. */}
-                  <td data-numeric className="py-2 pr-4 text-right text-muted-foreground">
-                    {invoice.attempt_count > 0 ? invoice.attempt_count : "—"}
+                  <td data-numeric className="py-2 pr-4 text-muted-foreground" title={shortDate(invoice.due_date)}>
+                    {compactDate(invoice.due_date)}
                   </td>
                   <td data-numeric className="py-2 pr-4 text-right text-foreground">
                     {money(invoice.total, invoice.currency)}

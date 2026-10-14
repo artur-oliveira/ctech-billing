@@ -1,13 +1,14 @@
 "use client"
 
-import {Select} from "@aoctech/ui"
-import Link from "next/link"
-import {usePathname, useRouter} from "next/navigation"
+import {SidebarNav, type SidebarNavGroup} from "@aoctech/ui"
+import {CalendarDays, ChartColumn, CreditCard, Gauge, House, Inbox, Landmark, Repeat, ScrollText, Upload, Wallet} from "lucide-react"
+import type {ReactNode} from "react"
+import {usePathname} from "next/navigation"
 import {useTranslation} from "react-i18next"
 
 import {useSpace} from "@/lib/console/useSpace"
 import {useFinanceSpaces} from "@/lib/finance/useFinanceSpaces"
-import {selectCopy} from "@/lib/selectCopy"
+import {renderLink} from "@/components/shell/BillingShell"
 
 // "Resumo" (not "Visão geral") "Visão geral": the console's own nav already has a "Visão geral"
 // one row up, and two items with one name read as one menu printed twice.
@@ -43,49 +44,38 @@ export function currentFinanceSection(pathname: string): string {
 }
 
 /**
- * Finanças' own sections, one level under the console's nav: a column at the
- * left on a wide screen (a second row of tabs under the first looked like the
- * same menu twice), a picker on a tablet. On a phone neither: FinanceBottomNav
- * is the navigation there, and this renders nothing visible under `md`.
+ * Finanças' own sections, the shell's column, grouped like the phone's Mais
+ * sheet. On a phone the column is not shown: FinanceBottomNav is the
+ * navigation there.
  */
 export function FinanceNav({canConfigure = false}: {canConfigure?: boolean}) {
   const {t} = useTranslation()
   const pathname = usePathname()
-  const router = useRouter()
-  const current = currentFinanceSection(pathname)
   const personal = useSpace().kind === "personal"
-  const sections = visibleFinanceSections(personal, canConfigure)
-  return (
-    <>
-      <div className="hidden md:block lg:hidden">
-        <Select {...selectCopy()} aria-label={t("finance.nav.section")} value={current} onValueChange={href => router.push(href)} options={sections.map(s => ({value: s.href, label: t(`finance.nav.${s.key}`)}))}/>
-      </div>
-      <nav aria-label={t("finance.nav.label")} className="hidden lg:block">
-        <ul className="space-y-0.5 border-l border-border">
-          {sections.map(s => {
-            const active = s.href === current
-            return (
-              <li key={s.href}>
-                <Link
-                  href={s.href}
-                  aria-current={active ? "page" : undefined}
-                  className={`-ml-px flex h-8 items-center border-l-2 pl-3 text-sm transition-colors ${
-                    active ? "border-brand-600 font-medium text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  {t(`finance.nav.${s.key}`)}
-                </Link>
-              </li>
-            )
-          })}
-        </ul>
-      </nav>
-    </>
-  )
+  const current = currentFinanceSection(pathname)
+  const visible = visibleFinanceSections(personal, canConfigure)
+  const group = (keys: string[], label?: string): SidebarNavGroup => ({
+    label,
+    items: visible.filter(s => keys.includes(s.key)).map(s => ({
+      href: s.href, label: t(`finance.nav.${s.key}`), icon: FINANCE_ICONS[s.key], active: s.href === current,
+    })),
+  })
+  const groups = [
+    group(["overview", "inbox", "bills", "statement"]),
+    group(["recurrences", "cards", "import"], t("finance.nav.groupLaunch")),
+    group(["reports", "accounts", "plan", "connections"], t("finance.nav.groupManage")),
+  ].filter(g => g.items.length > 0)
+  return <SidebarNav label={t("finance.nav.label")} groups={groups} renderLink={renderLink}/>
 }
 
 /** FinanceNav with the space's own verbs (the shell's: the spaces query is cached). */
 export function SpaceFinanceNav() {
   const {can} = useFinanceSpaces()
   return <FinanceNav canConfigure={can("finance.configure")}/>
+}
+
+const FINANCE_ICONS: Record<string, ReactNode> = {
+  overview: <House/>, inbox: <Inbox/>, bills: <CalendarDays/>, statement: <ScrollText/>,
+  recurrences: <Repeat/>, cards: <CreditCard/>, import: <Upload/>,
+  reports: <ChartColumn/>, accounts: <Wallet/>, plan: <Gauge/>, connections: <Landmark/>,
 }
