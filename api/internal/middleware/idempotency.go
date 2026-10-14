@@ -1,9 +1,11 @@
 package middleware
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"log/slog"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
@@ -31,11 +33,10 @@ const maxKeyLength = 255
 // caller with a buggy key generator gets the previous request's response for an
 // operation that never ran, and believes it succeeded.
 //
-// What this does **not** do is serialize concurrent requests with the same key.
-// Two simultaneous retries both execute; only the first result is recorded.
-// Real mutual exclusion lives in the operations themselves — the invoice
-// generation key, the usage sort key — which is where it can actually be
-// enforced by the database rather than approximated here.
+// Concurrent requests with one key are serialized by a claim written before
+// the handler runs (one conditional write): the first runs, the others get
+// 409 idempotency_in_progress and, retried, the first one's answer. Many
+// processes behind the balancer share the claim through the table.
 func Idempotency(store *repositories.IdempotencyRepository, clock func() time.Time) fiber.Handler {
 	return idempotency(store, clock, credentialScope)
 }
@@ -47,6 +48,32 @@ func Idempotency(store *repositories.IdempotencyRepository, clock func() time.Ti
 // never collide, and a refused space never reaches the store.
 func SpaceIdempotency(store *repositories.IdempotencyRepository, clock func() time.Time) fiber.Handler {
 	return idempotency(store, clock, spaceScope)
+}
+
+// SessionIdempotency is Idempotency for a group of browser-session routes (the
+// merchant console, the portal): it guards every write in the group and lets
+// reads through. A key is scoped by the resolved space when there is one, else
+// by the person, so two people's keys never meet.
+func SessionIdempotency(store *repositories.IdempotencyRepository, clock func() time.Time) fiber.Handler {
+	h := idempotency(store, clock, sessionScope)
+	return func(c fiber.Ctx) error {
+		switch c.Method() {
+		case fiber.MethodGet, fiber.MethodHead, fiber.MethodOptions:
+			return c.Next()
+		}
+		return h(c)
+	}
+}
+
+func sessionScope(c fiber.Ctx) (string, bool, bool) {
+	if sp := GetSpace(c); !sp.IsZero() {
+		return sp.Owner(), sp.Livemode(), true
+	}
+	claims := GetClaims(c)
+	if claims == nil || claims.Sub == "" {
+		return "", false, false
+	}
+	return "USER#" + claims.Sub, true, true
 }
 
 // scopeFunc names the tenant a key belongs to: an owner (an organization id or
@@ -84,12 +111,19 @@ func idempotency(store *repositories.IdempotencyRepository, clock func() time.Ti
 		}
 
 		hash := hashRequest(c)
-		existing, err := store.Lookup(c.Context(), owner, livemode, key, hash)
+		route := c.Method() + " " + c.Route().Path
+		existing, err := store.Claim(c.Context(), owner, livemode, key, hash, route, clock())
 		switch {
 		case errors.Is(err, repositories.ErrIdempotencyConflict):
 			return problem.New(fiber.StatusConflict, problem.TypeIdempotencyConflict,
 				"Idempotency Conflict",
 				"this Idempotency-Key was already used with a different request body").Send(c)
+		case errors.Is(err, repositories.ErrIdempotencyInProgress):
+			c.Set(fiber.HeaderRetryAfter, "1")
+			return problem.New(fiber.StatusConflict, problem.TypeIdempotencyConflict,
+				"Request In Progress",
+				"a request with this Idempotency-Key is still running; retry to get its answer").
+				WithCode("idempotency_in_progress").Send(c)
 		case err != nil:
 			return problem.Internal("idempotency lookup failed").WithCode("idempotency_lookup_failed").Send(c)
 		case existing != nil:
@@ -101,30 +135,32 @@ func idempotency(store *repositories.IdempotencyRepository, clock func() time.Ti
 			return c.Status(existing.Status).SendString(existing.Response)
 		}
 
-		if err := c.Next(); err != nil {
-			return err
-		}
-
+		herr := c.Next()
+		status := c.Response().StatusCode()
 		// Only successful outcomes are recorded. Replaying a 5xx would make a
 		// transient failure permanent for 24 hours; replaying a 4xx would freeze
-		// a client's own mistake even after they fixed it.
-		status := c.Response().StatusCode()
-		if status < 200 || status >= 300 {
-			return nil
+		// a client's own mistake even after they fixed it. A failure (or a
+		// handler error, answered by the app's error handler afterwards) gives
+		// the claim back, so the fixed retry runs.
+		ctx := context.WithoutCancel(c.Context())
+		if herr != nil || status < 200 || status >= 300 {
+			if rerr := store.Release(ctx, owner, livemode, key); rerr != nil {
+				slog.WarnContext(ctx, "idempotency claim not released; it lapses with its lease", "reason", rerr.Error())
+			}
+			return herr
 		}
 		record := repositories.IdempotencyRecord{
 			Key:         key,
 			RequestHash: hash,
 			Status:      status,
 			Response:    string(c.Response().Body()),
-			Route:       c.Method() + " " + c.Route().Path,
+			Route:       route,
 		}
-		if err := store.Store(c.Context(), owner, livemode, record, clock()); err != nil {
+		if err := store.Complete(ctx, owner, livemode, record, clock()); err != nil {
 			// The operation already happened. Failing the response now would tell
-			// the caller it did not, and their retry would run it again — the exact
-			// harm this middleware exists to prevent. The lost record only costs a
-			// second execution attempt, which the operation's own key still guards.
-			return nil
+			// the caller it did not, and their retry would run it again. The claim
+			// stays until its lease ends, so a retry meanwhile is refused, not run.
+			slog.WarnContext(ctx, "idempotency answer not recorded", "reason", err.Error())
 		}
 		return nil
 	}

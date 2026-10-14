@@ -723,12 +723,24 @@ func TestConsoleCancellationIsAttributedToTheOperator(t *testing.T) {
 	sub := newActiveSubscription(t, e.org, e.customer.ID, e.priceID)
 	operator := e.token(t, e.org.OwnerUserID, "sess_"+id.New(), middleware.ScopeSubscriptionsWrite)
 
+	// A console write without a key is refused before it runs.
+	bare := httptest.NewRequest(http.MethodPost,
+		"/v1.0/console/subscriptions/"+sub.ID+"/cancel", strings.NewReader(`{"at_period_end":false}`))
+	bare.Header.Set("Content-Type", "application/json")
+	bare.Header.Set("Authorization", "Bearer "+operator)
+	bare.Header.Set(middleware.ModeHeader, "live")
+	bare.Header.Set(middleware.SpaceHeader, "org:"+e.accountOrg)
+	if resp, err := e.app.Test(bare, fiber.TestConfig{Timeout: 15 * time.Second}); err != nil || resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("no key: %v %v", resp.StatusCode, err)
+	}
+
 	req := httptest.NewRequest(http.MethodPost,
 		"/v1.0/console/subscriptions/"+sub.ID+"/cancel", strings.NewReader(`{"at_period_end":false}`))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+operator)
 	req.Header.Set(middleware.ModeHeader, "live")
 	req.Header.Set(middleware.SpaceHeader, "org:"+e.accountOrg)
+	req.Header.Set(middleware.IdempotencyHeader, id.New())
 	resp, err := e.app.Test(req, fiber.TestConfig{Timeout: 15 * time.Second})
 	if err != nil {
 		t.Fatal(err)

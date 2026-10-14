@@ -1,3 +1,4 @@
+import type {InternalAxiosRequestConfig} from "axios"
 import {describe, expect, it, vi} from "vitest"
 
 import {isNoBillingAccount} from "./client"
@@ -88,5 +89,54 @@ describe("the first request without a token", () => {
     const again = await handler({headers: {}})
     expect(again.headers.Authorization).toBeUndefined()
     expect(refresh).toHaveBeenCalledTimes(1)
+  })
+})
+
+// Every write carries an Idempotency-Key (the API refuses one without): a
+// screen that names its own intent key keeps it, any other gets a fresh one.
+describe("the Idempotency-Key rule", () => {
+  async function sent(method: string, headers: Record<string, string> = {}) {
+    const {apiClient} = await import("./client")
+    let seen: Record<string, unknown> = {}
+    await apiClient.request({method, url: "/x", headers, adapter: async config => {
+      seen = {...config.headers}
+      return {data: null, status: 200, statusText: "OK", headers: {}, config}
+    }})
+    return seen["Idempotency-Key"]
+  }
+
+  it("adds a key to a write that has none", async () => {
+    expect(await sent("post")).toEqual(expect.any(String))
+    expect(await sent("delete")).toEqual(expect.any(String))
+  })
+
+  it("keeps the intent key a screen passed", async () => {
+    expect(await sent("put", {"Idempotency-Key": "intent-1"})).toBe("intent-1")
+  })
+
+  it("adds none to a read", async () => {
+    expect(await sent("get")).toBeUndefined()
+  })
+})
+
+// The same key still running elsewhere (a double submit across tabs, a retry
+// racing the original): ask again with the same key, and get its answer.
+describe("a request still in progress", () => {
+  it("is asked again with the same key until it answers", async () => {
+    const {apiClient} = await import("./client")
+    const keys: unknown[] = []
+    const adapter = vi.fn(async (config: InternalAxiosRequestConfig) => {
+      keys.push(config.headers["Idempotency-Key"])
+      if (keys.length < 3) {
+        return Promise.reject(Object.assign(new Error("409"), {
+          config, isAxiosError: true,
+          response: {status: 409, data: {code: "idempotency_in_progress"}, headers: {"retry-after": "0"}, config},
+        }))
+      }
+      return {data: "done", status: 201, statusText: "Created", headers: {}, config}
+    })
+    const res = await apiClient.request({method: "post", url: "/x", adapter})
+    expect(res.data).toBe("done")
+    expect(new Set(keys).size).toBe(1)
   })
 })
