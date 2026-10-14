@@ -1,12 +1,12 @@
-"use client"
+"use client";
 
-import {useQuery} from "@tanstack/react-query"
-import Link from "next/link"
-import {useTranslation} from "react-i18next"
+import {useQuery} from "@tanstack/react-query";
+import Link from "next/link";
+import {useTranslation} from "react-i18next";
 
-import {consoleKeys, getMerchantApplication} from "@/lib/api/console"
-import {tenantInMode} from "@/lib/console/merchant"
-import {useMerchantSelection} from "@/lib/console/selection"
+import {consoleKeys, getMerchantApplication} from "@/lib/api/console";
+import {tenantInMode} from "@/lib/console/merchant";
+import {useMerchantSelection} from "@/lib/console/selection";
 
 /**
  * One line under the header for an organization whose billing is not simply
@@ -15,21 +15,21 @@ import {useMerchantSelection} from "@/lib/console/selection"
  * mode) and for a live merchant.
  */
 export function MerchantStatusBand() {
-  const {t} = useTranslation()
-  const {scope, organization} = useMerchantSelection()
-  const status = organization.merchant_status
+  const {t} = useTranslation();
+  const {scope, organization} = useMerchantSelection();
+  const status = organization.merchant_status;
   // Under review only with a pending application (a hand-provisioned test
   // tenant has none, and nobody is reviewing it).
-  const pending = status === "test" && organization.application_status === "pending"
-  const visible = status === "suspended" || ((pending || status === "rejected") && tenantInMode(status, scope.mode))
+  const pending = status === "test" && organization.application_status === "pending";
+  const visible = status === "suspended" || ((pending || status === "rejected") && tenantInMode(status, scope.mode));
   const {data: application} = useQuery({
     queryKey: consoleKeys.merchantApplication(scope),
     queryFn: () => getMerchantApplication(scope),
     enabled: visible && status === "rejected",
-  })
-  if (!visible) return null
+  });
+  if (!visible) return null;
 
-  const tone = status === "suspended" ? "bg-danger/10 border-danger/30" : "bg-surface border-border"
+  const tone = status === "suspended" ? "bg-danger/10 border-danger/30" : "bg-surface border-border";
   return (
     <div role={status === "suspended" ? "alert" : "status"} className={`border-b ${tone}`}>
       <div className="mx-auto flex max-w-6xl flex-col gap-1 px-4 py-2 text-sm text-foreground sm:flex-row sm:items-center sm:justify-between sm:gap-4">
@@ -45,5 +45,5 @@ export function MerchantStatusBand() {
         )}
       </div>
     </div>
-  )
+  );
 }

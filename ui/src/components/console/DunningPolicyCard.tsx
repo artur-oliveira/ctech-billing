@@ -1,16 +1,16 @@
-"use client"
+"use client";
 
-import {Button, Input, Modal} from "@aoctech/ui"
-import {useMutation} from "@tanstack/react-query"
-import {Plus, X} from "lucide-react"
-import {useState} from "react"
-import {useTranslation} from "react-i18next"
-import type {TFunction} from "i18next"
-import {toast} from "sonner"
+import {Button, Input, Modal} from "@aoctech/ui";
+import {useMutation} from "@tanstack/react-query";
+import {Plus, X} from "lucide-react";
+import {useState} from "react";
+import {useTranslation} from "react-i18next";
+import type {TFunction} from "i18next";
+import {toast} from "sonner";
 
-import {messageFor} from "@/lib/api/client"
-import {useFieldErrors} from "@/lib/useFieldErrors"
-import type {DunningAction, DunningPolicy, DunningStep} from "@/lib/api/consoleTypes"
+import {messageFor} from "@/lib/api/client";
+import {useFieldErrors} from "@/lib/useFieldErrors";
+import type {DunningAction, DunningPolicy, DunningStep} from "@/lib/api/consoleTypes";
 
 /**
  * The dunning schedule, read and edited.
@@ -25,7 +25,7 @@ import type {DunningAction, DunningPolicy, DunningStep} from "@/lib/api/consoleT
  * The schedule is copied onto an invoice when it is issued, so shortening the
  * policy has not just moved everybody's write-off date three weeks forward.
  */
-const ACTIONS: DunningAction[] = ["remind", "escalate", "abandon"]
+const ACTIONS: DunningAction[] = ["remind", "escalate", "abandon"];
 
 export function DunningPolicyCard({
   title,
@@ -43,8 +43,8 @@ export function DunningPolicyCard({
   inheritLabel: string
   onSave: (steps: DunningStep[]) => Promise<unknown>
 }) {
-  const {t} = useTranslation()
-  const [editing, setEditing] = useState(false)
+  const {t} = useTranslation();
+  const [editing, setEditing] = useState(false);
 
   return (
     <section aria-labelledby="dunning" className="space-y-3">
@@ -87,13 +87,13 @@ export function DunningPolicyCard({
         />
       )}
     </section>
-  )
+  );
 }
 
 function dayLabel(t: TFunction, offset: number): string {
-  if (offset === 0) return t("console.dunning.onDue")
-  if (offset < 0) return t("console.dunning.before", {count: -offset})
-  return t("console.dunning.after", {count: offset})
+  if (offset === 0) return t("console.dunning.onDue");
+  if (offset < 0) return t("console.dunning.before", {count: -offset});
+  return t("console.dunning.after", {count: offset});
 }
 
 function PolicyEditor({
@@ -107,21 +107,21 @@ function PolicyEditor({
   onClose: () => void
   onSave: (steps: DunningStep[]) => Promise<unknown>
 }) {
-  const {t} = useTranslation()
-  const [steps, setSteps] = useState<DunningStep[]>(policy.steps)
+  const {t} = useTranslation();
+  const [steps, setSteps] = useState<DunningStep[]>(policy.steps);
 
   // An error on "steps[2].offset" lands under the third row; one on "steps" as a whole is general.
-  const fe = useFieldErrors([...steps.map((_, i) => `steps[${i}]`), "steps"], {keepOthers: false})
+  const fe = useFieldErrors([...steps.map((_, i) => `steps[${i}]`), "steps"], {keepOthers: false});
   const save = useMutation({
     mutationFn: (next: DunningStep[]) => onSave(next),
     onSuccess: () => {
-      toast.success(t("console.dunning.saved"))
-      onClose()
+      toast.success(t("console.dunning.saved"));
+      onClose();
     },
     // The server re-validates: ordered days, at most one "dar por perdida" and
     // por último, nada de restringir acesso antes do vencimento.
-    onError: error => { if (!fe.set(error)) toast.error(messageFor(error)) },
-  })
+    onError: error => { if (!fe.set(error)) toast.error(messageFor(error)); },
+  });
 
   return (
     <Modal
@@ -132,7 +132,7 @@ function PolicyEditor({
       cancelLabel={t("common.cancel")}
       submitLabel={t("console.dunning.save")}
       loading={save.isPending}
-      onSubmit={() => { fe.reset(); save.mutate(steps) }}
+      onSubmit={() => { fe.reset(); save.mutate(steps); }}
       size="lg"
     >
       <div className="space-y-4">
@@ -147,8 +147,8 @@ function PolicyEditor({
                 {...fe.props(`steps[${i}]`, `dunning-step-${i}`)}
                 id={`dunning-step-${i}`}
                 onChange={event => {
-                  setSteps(replace(steps, i, {...step, offset: Number(event.target.value) || 0}))
-                  fe.clear(`steps[${i}]`)
+                  setSteps(replace(steps, i, {...step, offset: Number(event.target.value) || 0}));
+                  fe.clear(`steps[${i}]`);
                 }}
                 className="w-24"
               />
@@ -169,7 +169,7 @@ function PolicyEditor({
                 variant="ghost"
                 size="icon"
                 aria-label={t("console.dunning.stepRemove", {n: i + 1})}
-                onClick={() => { fe.reset(); setSteps(steps.filter((_, j) => j !== i)) }}
+                onClick={() => { fe.reset(); setSteps(steps.filter((_, j) => j !== i)); }}
               >
                 <X aria-hidden className="size-4"/>
               </Button>
@@ -194,7 +194,7 @@ function PolicyEditor({
           {/* Clearing is not "disable dunning" and must not read as it: an
               invoice that is never chased and never written off sits em aberto
               para sempre parecendo receita. */}
-          <Button variant="ghost" size="sm" onClick={() => { fe.reset(); setSteps([]) }}>
+          <Button variant="ghost" size="sm" onClick={() => { fe.reset(); setSteps([]); }}>
             {t("console.dunning.reset", {label: inheritLabel})}
           </Button>
         </div>
@@ -208,9 +208,9 @@ function PolicyEditor({
         )}
       </div>
     </Modal>
-  )
+  );
 }
 
 function replace(steps: DunningStep[], index: number, step: DunningStep): DunningStep[] {
-  return steps.map((current, i) => (i === index ? step : current))
+  return steps.map((current, i) => (i === index ? step : current));
 }

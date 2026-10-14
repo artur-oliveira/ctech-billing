@@ -20,7 +20,7 @@ import type {
   ConsoleSubscriptionRow,
   DunningPolicy,
   DunningStep,
-} from "@/lib/api/consoleTypes"
+} from "@/lib/api/consoleTypes";
 
 /**
  * Console fixtures.
@@ -36,37 +36,37 @@ import type {
  * changes nothing on screen is a control nobody trusts.
  */
 const day = (offset: number): string => {
-  const d = new Date()
-  d.setDate(d.getDate() + offset)
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
-}
+  const d = new Date();
+  d.setDate(d.getDate() + offset);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
 
 const iso = (offset: number): string => {
-  const d = new Date()
-  d.setDate(d.getDate() + offset)
-  return d.toISOString()
-}
+  const d = new Date();
+  d.setDate(d.getDate() + offset);
+  return d.toISOString();
+};
 
-export const MOCK_MERCHANT_ORG = "0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b"
-export const MOCK_NONE_ORG = "0190a1b2-c3d4-7e5f-8a9b-bbbbbbbbbbbb"
+export const MOCK_MERCHANT_ORG = "0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b";
+export const MOCK_NONE_ORG = "0190a1b2-c3d4-7e5f-8a9b-bbbbbbbbbbbb";
 
 export const MOCK_CONSOLE_TENANT: Record<"live" | "test", ConsoleTenant> = {
   live: {organization_id: "org_mock_ctech", display_name: "CTech Tecnologia", livemode: true, payout_status: "enabled", can_charge: true},
   test: {organization_id: "org_mock_ctech", display_name: "CTech Tecnologia", livemode: false, payout_status: "enabled", can_charge: true},
-}
+};
 
 /** The session per scenario: `sem_cobranca` administers one organization with no tenant;
  *  `pedido_em_analise` / `pedido_recusado` put Padaria's application in review or rejected;
  *  `cobranca_suspensa` suspends CTech's live tenant. CTech plays tenant zero (it reviews). */
 export function consoleSession(scenario: string | null): ConsoleSession {
-  const padariaStatus = scenario === "pedido_em_analise" ? "test" : scenario === "pedido_recusado" ? "rejected" : "none"
+  const padariaStatus = scenario === "pedido_em_analise" ? "test" : scenario === "pedido_recusado" ? "rejected" : "none";
   const none: MerchantOrganization = {
     organization_id: MOCK_NONE_ORG, selector: `org:${MOCK_NONE_ORG}`, display_name: "Padaria Bom Dia", role: "admin",
     merchant_status: padariaStatus,
     ...(scenario === "pedido_em_analise" ? {application_status: "pending" as const} : {}),
     ...(scenario === "pedido_recusado" ? {application_status: "rejected" as const} : {}),
-  }
-  if (scenario === "sem_cobranca") return {organizations: [none], organizations_unavailable: false}
+  };
+  if (scenario === "sem_cobranca") return {organizations: [none], organizations_unavailable: false};
   return {
     organizations: [
       {
@@ -76,12 +76,12 @@ export function consoleSession(scenario: string | null): ConsoleSession {
       none,
     ],
     organizations_unavailable: false,
-  }
+  };
 }
 
 export const MOCK_COMPANIES: MerchantCompany[] = [
   {company_id: "cmp_mock_padaria", legal_name: "Padaria Bom Dia LTDA", trade_name: "Padaria Bom Dia", tax_id: "12345678000190"},
-]
+];
 
 export function mockApplication(status: ApplicationStatus): MerchantApplication {
   return {
@@ -91,11 +91,11 @@ export function mockApplication(status: ApplicationStatus): MerchantApplication 
     website: "https://padaria.example", expected_monthly_volume: "up_to_10k", contact_email: "contato@padaria.example",
     applied_by: "usr_mock", applied_at: "2026-10-09T14:20:00Z",
     ...(status === "rejected" ? {decided_at: "2026-10-10T09:00:00Z", rejection_reason: "O site não abre. Envie de novo com o endereço certo."} : {}),
-  }
+  };
 }
 
 function invoice(over: Partial<ConsoleInvoiceRow> & Pick<ConsoleInvoice, "id" | "status">): ConsoleInvoiceRow {
-  const total = over.total ?? 11300
+  const total = over.total ?? 11300;
   return {
     number: 1042,
     customer_id: "cus_mock_ana",
@@ -131,7 +131,7 @@ function invoice(over: Partial<ConsoleInvoiceRow> & Pick<ConsoleInvoice, "id" | 
       },
     ],
     ...over,
-  }
+  };
 }
 
 const LIVE: ConsoleInvoiceRow[] = [
@@ -181,7 +181,7 @@ const LIVE: ConsoleInvoiceRow[] = [
       },
     ],
   }),
-]
+];
 
 const TEST: ConsoleInvoiceRow[] = [
   invoice({
@@ -204,7 +204,7 @@ const TEST: ConsoleInvoiceRow[] = [
       },
     ],
   }),
-]
+];
 
 function timelineFor(inv: ConsoleInvoice): AuditEntry[] {
   const trail: AuditEntry[] = [
@@ -216,7 +216,7 @@ function timelineFor(inv: ConsoleInvoice): AuditEntry[] {
       created_at: iso(-43),
       request_id: "req_mock_create",
     },
-  ]
+  ];
   if (inv.status !== "DRAFT") {
     trail.push({
       id: "aud_2",
@@ -227,7 +227,7 @@ function timelineFor(inv: ConsoleInvoice): AuditEntry[] {
       after: "OPEN",
       created_at: iso(-43),
       request_id: "req_mock_finalize",
-    })
+    });
   }
   if (inv.status === "PAID") {
     trail.push({
@@ -239,7 +239,7 @@ function timelineFor(inv: ConsoleInvoice): AuditEntry[] {
       after: "PAID",
       created_at: iso(-28),
       request_id: "req_mock_paid",
-    })
+    });
   }
   if (inv.status === "UNCOLLECTIBLE") {
     trail.push({
@@ -251,13 +251,13 @@ function timelineFor(inv: ConsoleInvoice): AuditEntry[] {
       after: "UNCOLLECTIBLE",
       created_at: iso(-18),
       request_id: "req_mock_uncollectible",
-    })
+    });
   }
-  return trail
+  return trail;
 }
 
 export function consoleInvoices(mode: "live" | "test"): ConsoleInvoiceRow[] {
-  return mode === "test" ? TEST : LIVE
+  return mode === "test" ? TEST : LIVE;
 }
 
 export function consoleInvoiceDetail(inv: ConsoleInvoiceRow): ConsoleInvoiceDetail {
@@ -276,8 +276,8 @@ export function consoleInvoiceDetail(inv: ConsoleInvoiceRow): ConsoleInvoiceDeta
             created_at: iso(-20),
           },
         ]
-      : []
-  const credited = notes.reduce((sum, note) => sum + note.amount, 0)
+      : [];
+  const credited = notes.reduce((sum, note) => sum + note.amount, 0);
   return {
     invoice: inv,
     customer_name: inv.customer_name,
@@ -285,7 +285,7 @@ export function consoleInvoiceDetail(inv: ConsoleInvoiceRow): ConsoleInvoiceDeta
     credited,
     fully_credited: inv.total > 0 && credited >= inv.total,
     timeline: timelineFor(inv),
-  }
+  };
 }
 
 
@@ -321,7 +321,7 @@ const CUSTOMERS: ConsoleCustomer[] = [
     anonymized: true,
     livemode: true,
   },
-]
+];
 
 const SUBSCRIPTIONS: ConsoleSubscriptionRow[] = [
   {
@@ -366,7 +366,7 @@ const SUBSCRIPTIONS: ConsoleSubscriptionRow[] = [
     cancel_at_period_end: false,
     livemode: true,
   },
-]
+];
 
 const PRICES: ConsolePrice[] = [
   {
@@ -399,7 +399,7 @@ const PRICES: ConsolePrice[] = [
     billing_timing: "arrears",
     archived: false,
   },
-]
+];
 
 // Declared before PRODUCTS because a product's inherited policy is the same
 // list the settings screen shows.
@@ -410,7 +410,7 @@ const DEFAULT_DUNNING_SEED: DunningStep[] = [
   {offset: 7, action: "remind"},
   {offset: 10, action: "escalate"},
   {offset: 30, action: "abandon"},
-]
+];
 
 const PRODUCTS: ConsoleProduct[] = [
   {
@@ -436,10 +436,10 @@ const PRODUCTS: ConsoleProduct[] = [
     },
     prices: PRICES.filter(price => price.product_id === "prod_mock_emissoes"),
   },
-]
+];
 
 export function consoleCustomers(mode: "live" | "test"): ConsoleCustomer[] {
-  return mode === "test" ? CUSTOMERS.slice(0, 1) : CUSTOMERS
+  return mode === "test" ? CUSTOMERS.slice(0, 1) : CUSTOMERS;
 }
 
 export function consoleCustomerDetail(customer: ConsoleCustomer): ConsoleCustomerDetail {
@@ -457,15 +457,15 @@ export function consoleCustomerDetail(customer: ConsoleCustomer): ConsoleCustome
         request_id: "req_mock_customer",
       },
     ],
-  }
+  };
 }
 
 export function consoleSubscriptions(mode: "live" | "test"): ConsoleSubscriptionRow[] {
-  return mode === "test" ? SUBSCRIPTIONS.slice(0, 1) : SUBSCRIPTIONS
+  return mode === "test" ? SUBSCRIPTIONS.slice(0, 1) : SUBSCRIPTIONS;
 }
 
 export function consoleSubscriptionDetail(sub: ConsoleSubscription): ConsoleSubscriptionDetail {
-  const price = sub.id === "sub_mock_padaria" ? PRICES[2] : PRICES[0]
+  const price = sub.id === "sub_mock_padaria" ? PRICES[2] : PRICES[0];
   return {
     subscription: sub,
     items: [{id: "si_mock_1", price_id: price.id, quantity: 1, price}],
@@ -479,35 +479,35 @@ export function consoleSubscriptionDetail(sub: ConsoleSubscription): ConsoleSubs
         request_id: "req_mock_sub",
       },
     ],
-  }
+  };
 }
 
 export function consoleProducts(): ConsoleProduct[] {
-  return PRODUCTS
+  return PRODUCTS;
 }
 
 export function consoleProduct(id: string): ConsoleProduct | undefined {
-  return PRODUCTS.find(product => product.id === id)
+  return PRODUCTS.find(product => product.id === id);
 }
 
 
 // ── Dunning, settings and the overview ───────────────────────────────────────
 
-const DEFAULT_DUNNING = DEFAULT_DUNNING_SEED
+const DEFAULT_DUNNING = DEFAULT_DUNNING_SEED;
 
 // Mutable, so the editor's save is visible without a reload — the half of that
 // flow a static fixture cannot show.
-let orgDunning: DunningStep[] | null = null
+let orgDunning: DunningStep[] | null = null;
 
 export function consoleDunning(): DunningPolicy {
   return orgDunning
     ? {steps: orgDunning, custom: true}
-    : {steps: DEFAULT_DUNNING, custom: false}
+    : {steps: DEFAULT_DUNNING, custom: false};
 }
 
 export function setConsoleDunning(steps: DunningStep[]): DunningPolicy {
-  orgDunning = steps.length > 0 ? steps : null
-  return consoleDunning()
+  orgDunning = steps.length > 0 ? steps : null;
+  return consoleDunning();
 }
 
 // Mutable for the same reason the policy is: the editor's save has to be
@@ -517,15 +517,15 @@ let issuer = {
   tax_id: "12.345.678/0001-90",
   address: "São Paulo/SP",
   email: "cobranca@aoctech.app",
-}
+};
 
 export function consoleIssuer() {
-  return issuer
+  return issuer;
 }
 
 export function setConsoleIssuer(next: typeof issuer) {
-  issuer = next
-  return issuer
+  issuer = next;
+  return issuer;
 }
 
 export function consoleSettings(mode: "live" | "test") {
@@ -536,40 +536,40 @@ export function consoleSettings(mode: "live" | "test") {
     documents_enabled: true,
     numbering: "sequential_per_year_gapless",
     retention: "invoices_credit_notes_permanent_audit_5y",
-  }
+  };
 }
 
 // Derived from the invoice fixtures rather than hardcoded: the overview and the
 // list must agree, and two hand-written sets of numbers are two sets that drift.
 export function consoleOverview(mode: "live" | "test", year: number, month: number) {
-  const invoices = consoleInvoices(mode)
-  const today = new Date()
-  let received = 0
-  let open = 0
-  let overdue = 0
-  let drafts = 0
-  let uncollectible = 0
-  let overdueCount = 0
+  const invoices = consoleInvoices(mode);
+  const today = new Date();
+  let received = 0;
+  let open = 0;
+  let overdue = 0;
+  let drafts = 0;
+  let uncollectible = 0;
+  let overdueCount = 0;
 
   for (const inv of invoices) {
     switch (inv.status) {
       case "PAID":
-        received += inv.amount_paid
-        break
+        received += inv.amount_paid;
+        break;
       case "DRAFT":
-        drafts++
-        break
+        drafts++;
+        break;
       case "UNCOLLECTIBLE":
-        uncollectible++
-        break
+        uncollectible++;
+        break;
       case "OPEN":
         if (new Date(inv.due_date) < today) {
-          overdue += inv.amount_due
-          overdueCount++
+          overdue += inv.amount_due;
+          overdueCount++;
         } else {
-          open += inv.amount_due
+          open += inv.amount_due;
         }
-        break
+        break;
     }
   }
 
@@ -584,14 +584,14 @@ export function consoleOverview(mode: "live" | "test", year: number, month: numb
     overdue_count: overdueCount,
     counted: invoices.length,
     complete: true,
-  }
+  };
 }
 
 export const MOCK_MACHINE_SCOPES = [
   "billing:customers:read", "billing:customers:write", "billing:entitlements:read", "billing:invoices:read",
   "billing:invoices:write", "billing:organization:read", "billing:products:read", "billing:products:write",
   "billing:subscriptions:read", "billing:subscriptions:write", "billing:usage:write",
-]
+];
 export const MOCK_EVENT_TYPES = [
   "checkout.session.canceled", "checkout.session.completed", "checkout.session.created", "checkout.session.expired",
   "credit_note.created", "invoice.created", "invoice.finalized", "invoice.paid", "invoice.payment_failed",
@@ -599,11 +599,11 @@ export const MOCK_EVENT_TYPES = [
   "payment.succeeded", "subscription.activated", "subscription.canceled", "subscription.created",
   "subscription.past_due", "subscription.paused", "subscription.recovered", "subscription.renewed",
   "subscription.resumed", "subscription.updated",
-]
+];
 /** Mutable per page load: the mock is a demo, not a store. */
 export const mockCredentials: ConsoleCredential[] = [
   {client_id: "dfe-billing", livemode: true, active: true, provisioned: true, connected_by_me: false, description: "CTech DF-e"},
-]
+];
 export const mockWebhooks: ConsoleWebhookEndpoint[] = [
   {id: "whe_dfe", url: "https://dfe.internal.aoctech.app/v1/internal/webhooks/billing", events: [], status: "active", failure_run: 0, provisioned: true, owner_key: "dfe"},
-]
+];

@@ -1,7 +1,7 @@
-import {OAuthClient, decodeIdToken as sdkDecodeIdToken} from "@aoctech/auth-client"
-import type {UnverifiedIdTokenClaims} from "@aoctech/auth-client"
+import {OAuthClient, decodeIdToken as sdkDecodeIdToken} from "@aoctech/auth-client";
+import type {UnverifiedIdTokenClaims} from "@aoctech/auth-client";
 
-import {OAUTH_SCOPE} from "./scopes"
+import {OAUTH_SCOPE} from "./scopes";
 
 /**
  * The OAuth client, configured once.
@@ -24,33 +24,33 @@ const client = new OAuthClient({
   // during the static export's prerender, where `window` does not exist.
   redirectUri: typeof window !== "undefined" ? `${window.location.origin}/callback` : "",
   scope: OAUTH_SCOPE,
-})
+});
 
-export type {UnverifiedIdTokenClaims}
+export type {UnverifiedIdTokenClaims};
 
 /** Display-only claims. The id_token's audience is this client, so reading the
  *  name from it avoids ctech-account's /userinfo audience block on the billing
  *  access token. No signature check — never authorize on this. */
-export const decodeIdToken = sdkDecodeIdToken
+export const decodeIdToken = sdkDecodeIdToken;
 
 export function startOAuthFlow(returnTo = "/dashboard"): Promise<void> {
-  return client.startOAuthFlow(returnTo)
+  return client.startOAuthFlow(returnTo);
 }
 
 export async function exchangeCode(code: string, state: string) {
-  const result = await client.exchangeCode(code, state)
+  const result = await client.exchangeCode(code, state);
   return {
     accessToken: result.accessToken,
     idToken: result.idToken ?? null,
     returnTo: result.returnTo,
-  }
+  };
 }
 
 /** Guarded and single-flight: safe to call from app boot and a 401 retry at the
  *  same instant, and it skips the network entirely without the hint cookie. */
 export async function doRefresh(): Promise<string | null> {
-  const result = await client.refresh()
-  return result ? result.accessToken : null
+  const result = await client.refresh();
+  return result ? result.accessToken : null;
 }
 
 /**
@@ -60,6 +60,6 @@ export async function doRefresh(): Promise<string | null> {
  * without ever being asked who they are.
  */
 export async function logout(): Promise<void> {
-  await client.revoke()
-  client.endSessionRedirect("/")
+  await client.revoke();
+  client.endSessionRedirect("/");
 }

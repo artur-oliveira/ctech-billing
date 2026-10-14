@@ -9,31 +9,31 @@
  * list contains it — and even then every request re-resolves it (ADR 0025).
  */
 
-const ACCOUNTS = process.env.NEXT_PUBLIC_CTECH_CLIENT_URL || "https://accounts.aoctech.app"
-const CLIENT_ID = process.env.NEXT_PUBLIC_CTECH_CLIENT_ID || "billing"
+const ACCOUNTS = process.env.NEXT_PUBLIC_CTECH_CLIENT_URL || "https://accounts.aoctech.app";
+const CLIENT_ID = process.env.NEXT_PUBLIC_CTECH_CLIENT_ID || "billing";
 
 /** Where ctech-account sends the browser back after "Novo espaço". */
-export const SPACE_CREATED_PATH = "/finance/spaces/created"
+export const SPACE_CREATED_PATH = "/finance/spaces/created";
 
 /** The state we sent, kept in sessionStorage for the return leg to check. */
-export const SPACE_HANDOFF_STATE_KEY = "billing:space-handoff-state"
+export const SPACE_HANDOFF_STATE_KEY = "billing:space-handoff-state";
 
 // The server's grammar for a workspace id (space.validOrganizationID).
-const WORKSPACE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+const WORKSPACE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 /** 128 random bits, hex. */
 export function newHandoffState(): string {
-  const b = new Uint8Array(16)
-  crypto.getRandomValues(b)
-  return Array.from(b, x => x.toString(16).padStart(2, "0")).join("")
+  const b = new Uint8Array(16);
+  crypto.getRandomValues(b);
+  return Array.from(b, x => x.toString(16).padStart(2, "0")).join("");
 }
 
 export function createSpaceURL(origin: string, state: string): string {
-  const u = new URL("/account/spaces/new", ACCOUNTS)
-  u.searchParams.set("client_id", CLIENT_ID)
-  u.searchParams.set("return_to", origin + SPACE_CREATED_PATH)
-  u.searchParams.set("state", state)
-  return u.toString()
+  const u = new URL("/account/spaces/new", ACCOUNTS);
+  u.searchParams.set("client_id", CLIENT_ID);
+  u.searchParams.set("return_to", origin + SPACE_CREATED_PATH);
+  u.searchParams.set("state", state);
+  return u.toString();
 }
 
 /**
@@ -45,14 +45,14 @@ export function startCreateSpace(
   go: (url: string) => void = url => window.location.replace(url),
   origin: string = window.location.origin,
 ): void {
-  const state = newHandoffState()
+  const state = newHandoffState();
   try {
-    window.sessionStorage.setItem(SPACE_HANDOFF_STATE_KEY, state)
+    window.sessionStorage.setItem(SPACE_HANDOFF_STATE_KEY, state);
   } catch {
     // Storage refused: the return is discarded (spec § 5.2), and the new space
     // simply shows up in the list, unselected.
   }
-  go(createSpaceURL(origin, state))
+  go(createSpaceURL(origin, state));
 }
 
 /**
@@ -61,11 +61,11 @@ export function startCreateSpace(
  * state: the return carries nothing billing acts on.
  */
 export function managePeopleURL(workspaceId: string, origin: string): string {
-  const u = new URL("/account/spaces/people", ACCOUNTS)
-  u.searchParams.set("id", workspaceId)
-  u.searchParams.set("client_id", CLIENT_ID)
-  u.searchParams.set("return_to", origin + "/finance")
-  return u.toString()
+  const u = new URL("/account/spaces/people", ACCOUNTS);
+  u.searchParams.set("id", workspaceId);
+  u.searchParams.set("client_id", CLIENT_ID);
+  u.searchParams.set("return_to", origin + "/finance");
+  return u.toString();
 }
 
 export type CreatedReturn = {kind: "created"; organizationId: string} | {kind: "cancelled"} | {kind: "discard"}
@@ -77,16 +77,16 @@ export type CreatedReturn = {kind: "created"; organizationId: string} | {kind: "
  * workspace id.
  */
 export function readCreatedReturn(params: URLSearchParams): CreatedReturn {
-  let expected: string | null = null
+  let expected: string | null = null;
   try {
-    expected = window.sessionStorage.getItem(SPACE_HANDOFF_STATE_KEY)
-    window.sessionStorage.removeItem(SPACE_HANDOFF_STATE_KEY)
+    expected = window.sessionStorage.getItem(SPACE_HANDOFF_STATE_KEY);
+    window.sessionStorage.removeItem(SPACE_HANDOFF_STATE_KEY);
   } catch {
     // No storage, no expected state: discarded below.
   }
-  const state = params.get("state")
-  if (!expected || !state || state !== expected) return {kind: "discard"}
-  if (params.get("cancelled") === "1") return {kind: "cancelled"}
-  const id = params.get("organization_id") ?? ""
-  return WORKSPACE_ID.test(id) ? {kind: "created", organizationId: id} : {kind: "discard"}
+  const state = params.get("state");
+  if (!expected || !state || state !== expected) return {kind: "discard"};
+  if (params.get("cancelled") === "1") return {kind: "cancelled"};
+  const id = params.get("organization_id") ?? "";
+  return WORKSPACE_ID.test(id) ? {kind: "created", organizationId: id} : {kind: "discard"};
 }

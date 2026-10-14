@@ -1,8 +1,8 @@
-"use client"
+"use client";
 
-import {useSyncExternalStore} from "react"
+import {useSyncExternalStore} from "react";
 
-import {getMode, onModeChange, type Mode} from "@/lib/console/mode"
+import {getMode, onModeChange, type Mode} from "@/lib/console/mode";
 
 /**
  * The current mode, as React state.
@@ -19,7 +19,7 @@ import {getMode, onModeChange, type Mode} from "@/lib/console/mode"
  * acting on live data believing it is a sandbox.
  */
 export function useMode(): Mode {
-  return useSyncExternalStore(onModeChange, getMode, serverSnapshot)
+  return useSyncExternalStore(onModeChange, getMode, serverSnapshot);
 }
 
-const serverSnapshot = (): Mode => "live"
+const serverSnapshot = (): Mode => "live";

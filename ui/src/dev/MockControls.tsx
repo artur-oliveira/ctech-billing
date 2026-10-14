@@ -1,10 +1,10 @@
-"use client"
+"use client";
 
-import {useQueryClient} from "@tanstack/react-query"
-import {useState, useSyncExternalStore} from "react"
+import {useQueryClient} from "@tanstack/react-query";
+import {useState, useSyncExternalStore} from "react";
 
-import {currentScenario, setScenario} from "@/dev/mockRuntime"
-import {DEFAULT_SCENARIO, MOCK_SCENARIOS, USE_MOCK, type MockScenario} from "@/lib/mockConfig"
+import {currentScenario, setScenario} from "@/dev/mockRuntime";
+import {DEFAULT_SCENARIO, MOCK_SCENARIOS, USE_MOCK, type MockScenario} from "@/lib/mockConfig";
 
 /**
  * The scenario lives in localStorage, which the server cannot see.
@@ -15,12 +15,12 @@ import {DEFAULT_SCENARIO, MOCK_SCENARIOS, USE_MOCK, type MockScenario} from "@/l
 function useScenario(): MockScenario {
   return useSyncExternalStore(
     onChange => {
-      window.addEventListener("ctech-mock-scenario", onChange)
-      return () => window.removeEventListener("ctech-mock-scenario", onChange)
+      window.addEventListener("ctech-mock-scenario", onChange);
+      return () => window.removeEventListener("ctech-mock-scenario", onChange);
     },
     currentScenario,
     () => DEFAULT_SCENARIO
-  )
+  );
 }
 
 /**
@@ -32,16 +32,16 @@ function useScenario(): MockScenario {
  * ones that are one click away.
  */
 export function MockControls() {
-  const queryClient = useQueryClient()
-  const scenario = useScenario()
-  const [open, setOpen] = useState(false)
+  const queryClient = useQueryClient();
+  const scenario = useScenario();
+  const [open, setOpen] = useState(false);
 
-  if (!USE_MOCK) return null
+  if (!USE_MOCK) return null;
 
   function choose(next: MockScenario) {
-    setScenario(next)
-    setOpen(false)
-    void queryClient.invalidateQueries()
+    setScenario(next);
+    setOpen(false);
+    void queryClient.invalidateQueries();
   }
 
   return (
@@ -74,5 +74,5 @@ export function MockControls() {
         mock · {scenario}
       </button>
     </div>
-  )
+  );
 }

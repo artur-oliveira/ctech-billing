@@ -1,15 +1,15 @@
-"use client"
+"use client";
 
-import {Skeleton} from "@aoctech/ui"
-import {useQuery} from "@tanstack/react-query"
-import Link from "next/link"
-import {useTranslation} from "react-i18next"
+import {Skeleton} from "@aoctech/ui";
+import {useQuery} from "@tanstack/react-query";
+import Link from "next/link";
+import {useTranslation} from "react-i18next";
 
-import {ErrorBlock} from "@/components/portal/ErrorBlock"
-import {consoleKeys, getConsoleOverview} from "@/lib/api/console"
-import {useConsoleScope} from "@/lib/console/scope"
-import {money} from "@/lib/format"
-import {currentLocale} from "@/lib/i18n"
+import {ErrorBlock} from "@/components/portal/ErrorBlock";
+import {consoleKeys, getConsoleOverview} from "@/lib/api/console";
+import {useConsoleScope} from "@/lib/console/scope";
+import {money} from "@/lib/format";
+import {currentLocale} from "@/lib/i18n";
 
 /**
  * C1 — "algo precisa de mim hoje?"
@@ -26,26 +26,26 @@ import {currentLocale} from "@/lib/i18n"
  * who opens the list.
  */
 export default function ConsoleOverviewPage() {
-  const {t} = useTranslation()
-  const scope = useConsoleScope()
-  const today = new Date()
-  const year = today.getFullYear()
-  const month = today.getMonth() + 1
+  const {t} = useTranslation();
+  const scope = useConsoleScope();
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = today.getMonth() + 1;
 
   const query = useQuery({
     queryKey: consoleKeys.overview(scope, year, month),
     queryFn: () => getConsoleOverview(scope, year, month),
-  })
+  });
 
   const label = new Intl.DateTimeFormat(currentLocale(), {month: "long", year: "numeric"})
-    .format(new Date(year, month - 1, 1))
+    .format(new Date(year, month - 1, 1));
 
-  if (query.isPending) return <OverviewSkeleton/>
-  if (query.isError) return <ErrorBlock error={query.error} onRetry={query.refetch}/>
+  if (query.isPending) return <OverviewSkeleton/>;
+  if (query.isError) return <ErrorBlock error={query.error} onRetry={query.refetch}/>;
 
-  const data = query.data
+  const data = query.data;
   const quiet =
-    data.overdue === 0 && data.drafts === 0 && data.open === 0
+    data.overdue === 0 && data.drafts === 0 && data.open === 0;
 
   return (
     <div className="space-y-8">
@@ -101,7 +101,7 @@ export default function ConsoleOverviewPage() {
         </p>
       )}
     </div>
-  )
+  );
 }
 
 function Amount({label, cents, urgent}: { label: string; cents: number; urgent?: boolean }) {
@@ -117,7 +117,7 @@ function Amount({label, cents, urgent}: { label: string; cents: number; urgent?:
         {money(cents)}
       </dd>
     </div>
-  )
+  );
 }
 
 function Item({href, title, detail}: { href: string; title: string; detail: string }) {
@@ -128,7 +128,7 @@ function Item({href, title, detail}: { href: string; title: string; detail: stri
         <p className="text-sm text-muted-foreground">{detail}</p>
       </Link>
     </li>
-  )
+  );
 }
 
 function OverviewSkeleton() {
@@ -138,5 +138,5 @@ function OverviewSkeleton() {
       <Skeleton className="h-24 w-full"/>
       <Skeleton className="h-20 w-full"/>
     </div>
-  )
+  );
 }

@@ -1,10 +1,10 @@
-"use client"
+"use client";
 
-import {Button} from "@aoctech/ui"
-import {useRouter} from "next/navigation"
-import {useTranslation} from "react-i18next"
+import {Button} from "@aoctech/ui";
+import {useRouter} from "next/navigation";
+import {useTranslation} from "react-i18next";
 
-import {useAuth} from "@/lib/auth/AuthContext"
+import {useAuth} from "@/lib/auth/AuthContext";
 
 /**
  * The one interactive thing on the landing page.
@@ -18,9 +18,9 @@ import {useAuth} from "@/lib/auth/AuthContext"
  * back here.
  */
 export function LandingCta() {
-  const {authenticated, loading, login} = useAuth()
-  const router = useRouter()
-  const {t} = useTranslation()
+  const {authenticated, loading, login} = useAuth();
+  const router = useRouter();
+  const {t} = useTranslation();
 
   return (
     <Button
@@ -31,5 +31,5 @@ export function LandingCta() {
     >
       {loading ? t("common.loading") : authenticated ? t("landing.openApp") : t("landing.signIn")}
     </Button>
-  )
+  );
 }

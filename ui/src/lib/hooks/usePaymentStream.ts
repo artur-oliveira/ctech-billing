@@ -1,10 +1,10 @@
-"use client"
+"use client";
 
-import {useEffect, useRef, useState} from "react"
+import {useEffect, useRef, useState} from "react";
 
-import {API_BASE_URL, getAccessToken} from "@/lib/api/client"
-import {portalSpaceHeaders} from "@/lib/api/portal"
-import {USE_MOCK} from "@/lib/mockConfig"
+import {API_BASE_URL, getAccessToken} from "@/lib/api/client";
+import {portalSpaceHeaders} from "@/lib/api/portal";
+import {USE_MOCK} from "@/lib/mockConfig";
 
 export type StreamStatus = "connecting" | "waiting" | "paid" | "lost"
 
@@ -27,50 +27,51 @@ export type StreamStatus = "connecting" | "waiting" | "paid" | "lost"
  * over Valkey would cut the reads, but it is an optimisation, not a fix.
  */
 export function usePaymentStream(invoiceId: string, enabled: boolean): StreamStatus {
-  const [status, setStatus] = useState<StreamStatus>("connecting")
+  const [status, setStatus] = useState<StreamStatus>("connecting");
   // Held in a ref so a re-render caused by the status change does not tear
   // down and re-open the very stream that produced it.
-  const idRef = useRef(invoiceId)
-  idRef.current = invoiceId
+  const idRef = useRef(invoiceId);
+  idRef.current = invoiceId;
 
   // Reset during render rather than in the effect. Setting it inside the effect
   // works but renders once with the previous invoice's status before correcting
   // itself — which for this hook means flashing "paid" onto a different bill.
-  const key = `${invoiceId}|${enabled}`
-  const [prevKey, setPrevKey] = useState(key)
+  const key = `${invoiceId}|${enabled}`;
+  const [prevKey, setPrevKey] = useState(key);
   if (prevKey !== key) {
-    setPrevKey(key)
-    setStatus("connecting")
+    setPrevKey(key);
+    setStatus("connecting");
   }
 
   useEffect(() => {
-    if (!enabled) return
+    if (!enabled) return undefined;
 
     if (USE_MOCK) {
-      let cancelled = false
-      let timer: ReturnType<typeof setTimeout> | undefined
+      let cancelled = false;
+      let timer: ReturnType<typeof setTimeout> | undefined;
       void (async () => {
-        const {settleAfterSeconds, settleInvoice} = await import("@/dev/mockRuntime")
-        if (cancelled) return
-        setStatus("waiting")
-        const after = settleAfterSeconds()
-        if (after === null) return
+        const {settleAfterSeconds, settleInvoice} = await import("@/dev/mockRuntime");
+        if (cancelled) return undefined;
+        setStatus("waiting");
+        const after = settleAfterSeconds();
+        if (after === null) return undefined;
         timer = setTimeout(() => {
-          settleInvoice(idRef.current)
-          setStatus("paid")
-        }, after * 1000)
-      })()
+          settleInvoice(idRef.current);
+          setStatus("paid");
+        }, after * 1000);
+        return undefined;
+      })();
       return () => {
-        cancelled = true
-        clearTimeout(timer)
-      }
+        cancelled = true;
+        clearTimeout(timer);
+      };
     }
 
-    const abort = new AbortController()
+    const abort = new AbortController();
 
     void (async () => {
       try {
-        const token = getAccessToken()
+        const token = getAccessToken();
         const response = await fetch(`${API_BASE_URL}/v1.0/portal/invoices/${invoiceId}/events`, {
           headers: {
             Accept: "text/event-stream",
@@ -79,56 +80,57 @@ export function usePaymentStream(invoiceId: string, enabled: boolean): StreamSta
             ...portalSpaceHeaders(),
           },
           signal: abort.signal,
-        })
+        });
         if (!response.ok || !response.body) {
-          setStatus("lost")
-          return
+          setStatus("lost");
+          return undefined;
         }
-        setStatus("waiting")
+        setStatus("waiting");
 
-        const reader = response.body.pipeThrough(new TextDecoderStream()).getReader()
-        let buffer = ""
+        const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+        let buffer = "";
         for (; ;) {
-          const {done, value} = await reader.read()
-          if (done) break
-          buffer += value
+          const {done, value} = await reader.read();
+          if (done) break;
+          buffer += value;
           // SSE frames are separated by a blank line; anything before the last
           // one is complete and anything after it is a partial frame that has
           // to survive until the next chunk arrives.
-          const frames = buffer.split("\n\n")
-          buffer = frames.pop() ?? ""
+          const frames = buffer.split("\n\n");
+          buffer = frames.pop() ?? "";
           for (const frame of frames) {
             const event = frame
               .split("\n")
               .find(line => line.startsWith("event:"))
               ?.slice(6)
-              .trim()
+              .trim();
             if (event === "paid") {
-              setStatus("paid")
-              abort.abort()
-              return
+              setStatus("paid");
+              abort.abort();
+              return undefined;
             }
             // `closed` (the invoice can no longer be paid) and `timeout` (the
             // server's cap on stream life) are both the server saying it has
             // nothing more to report. Acting on them beats waiting for the body
             // to end, which never happens if an intermediary holds the socket.
             if (event === "closed" || event === "timeout") {
-              setStatus("lost")
-              abort.abort()
-              return
+              setStatus("lost");
+              abort.abort();
+              return undefined;
             }
           }
         }
         // The server closed without saying "paid". Not an error the reader
         // can act on, but not a state to keep spinning in either.
-        setStatus(current => (current === "paid" ? current : "lost"))
+        setStatus(current => (current === "paid" ? current : "lost"));
       } catch (error) {
-        if ((error as Error).name !== "AbortError") setStatus("lost")
+        if ((error as Error).name !== "AbortError") setStatus("lost");
       }
-    })()
+      return undefined;
+    })();
 
-    return () => abort.abort()
-  }, [invoiceId, enabled])
+    return () => abort.abort();
+  }, [invoiceId, enabled]);
 
-  return status
+  return status;
 }

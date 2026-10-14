@@ -1,6 +1,6 @@
-import type {NextConfig} from "next"
+import type {NextConfig} from "next";
 
-const isProduction = process.env.NODE_ENV === "production"
+const isProduction = process.env.NODE_ENV === "production";
 
 const nextConfig: NextConfig = {
   devIndicators: false,
@@ -49,9 +49,9 @@ const nextConfig: NextConfig = {
               source: "/v1.0/:path*",
               destination: `${process.env.DEV_API_ORIGIN || "http://localhost:8004"}/v1.0/:path*`,
             },
-          ]
+          ];
         },
       }),
-}
+};
 
-export default nextConfig
+export default nextConfig;

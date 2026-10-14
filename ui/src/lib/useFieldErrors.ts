@@ -1,20 +1,20 @@
-"use client"
+"use client";
 
-import {useCallback, useMemo, useState} from "react"
+import {useCallback, useMemo, useState} from "react";
 
-import {fieldErrorsOf, messageFor, statusOf} from "@/lib/api/client"
+import {fieldErrorsOf, messageFor, statusOf} from "@/lib/api/client";
 
 interface State {
   byField: Record<string, string>
   general?: string
 }
 
-const EMPTY: State = {byField: {}}
+const EMPTY: State = {byField: {}};
 
 /** The control an API path belongs to: "items[0].quantity" belongs to "items" and to itself. */
 function controlFor(path: string, known: readonly string[]): string | undefined {
-  if (known.includes(path)) return path
-  return known.find(k => path.startsWith(`${k}.`) || path.startsWith(`${k}[`))
+  if (known.includes(path)) return path;
+  return known.find(k => path.startsWith(`${k}.`) || path.startsWith(`${k}[`));
 }
 
 /**
@@ -38,42 +38,42 @@ function controlFor(path: string, known: readonly string[]): string | undefined 
  * new submit.
  */
 export function useFieldErrors(known: readonly string[] = [], opts: {keepOthers?: boolean} = {}) {
-  const keepOthers = opts.keepOthers ?? true
-  const [state, setState] = useState<State>(EMPTY)
-  const knownKey = known.join("\u0000")
+  const keepOthers = opts.keepOthers ?? true;
+  const [state, setState] = useState<State>(EMPTY);
+  const knownKey = known.join("\u0000");
 
   /** Returns true when `error` was a validation failure (field errors), false for anything else. */
   const set = useCallback((error: unknown): boolean => {
-    const list = statusOf(error) === 422 ? fieldErrorsOf(error) : []
+    const list = statusOf(error) === 422 ? fieldErrorsOf(error) : [];
     if (list.length === 0) {
-      setState({byField: {}, general: keepOthers ? messageFor(error) : undefined})
-      return false
+      setState({byField: {}, general: keepOthers ? messageFor(error) : undefined});
+      return false;
     }
-    const keys = knownKey === "" ? [] : knownKey.split("\u0000")
-    const byField: Record<string, string> = {}
-    const rest: string[] = []
+    const keys = knownKey === "" ? [] : knownKey.split("\u0000");
+    const byField: Record<string, string> = {};
+    const rest: string[] = [];
     for (const {field, message} of list) {
-      const control = controlFor(field, keys)
+      const control = controlFor(field, keys);
       if (!control) {
-        if (!rest.includes(message)) rest.push(message)
+        if (!rest.includes(message)) rest.push(message);
       } else if (!(control in byField)) {
-        byField[control] = message
+        byField[control] = message;
       }
     }
-    setState({byField, general: rest.length ? rest.join(" ") : undefined})
-    return true
-  }, [knownKey, keepOthers])
+    setState({byField, general: rest.length ? rest.join(" ") : undefined});
+    return true;
+  }, [knownKey, keepOthers]);
 
   const clear = useCallback((field: string) => {
     setState(s => {
-      if (!(field in s.byField)) return s
-      const byField = {...s.byField}
-      delete byField[field]
-      return {...s, byField}
-    })
-  }, [])
+      if (!(field in s.byField)) return s;
+      const byField = {...s.byField};
+      delete byField[field];
+      return {...s, byField};
+    });
+  }, []);
 
-  const reset = useCallback(() => setState(EMPTY), [])
+  const reset = useCallback(() => setState(EMPTY), []);
 
   return useMemo(() => ({
     set,
@@ -87,5 +87,5 @@ export function useFieldErrors(known: readonly string[] = [], opts: {keepOthers?
       : {},
     /** Everything no control claimed, or a non-validation failure's message. */
     general: state.general,
-  }), [state, set, clear, reset])
+  }), [state, set, clear, reset]);
 }

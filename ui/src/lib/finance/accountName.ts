@@ -1,6 +1,6 @@
-import type {Account} from "@/lib/api/financeTypes"
+import type {Account} from "@/lib/api/financeTypes";
 
-import {t} from "@/lib/i18n"
+import {t} from "@/lib/i18n";
 
 /** The Portuguese names the server seeds default accounts with, by system_key. A stored name that still equals its default was never renamed, so it is shown translated. */
 const SEEDED_NAMES: Record<string, string> = {
@@ -33,18 +33,18 @@ const SEEDED_NAMES: Record<string, string> = {
   bank_fees: "Tarifas bancárias",
   subscriptions_revenue: "Assinaturas",
   ctech_subscriptions: "Assinaturas CTech",
-}
+};
 
-const norm = (s: string): string => s.trim().toLowerCase()
+const norm = (s: string): string => s.trim().toLowerCase();
 
 type Named = Pick<Account, "name"> & {system_key?: string}
 
 /** The display name of an account: translated for an untouched default, the stored name otherwise (renamed defaults and the person's own accounts). */
 export function accountName(a: Named): string {
-  const key = a.system_key
-  if (key && SEEDED_NAMES[key] && norm(a.name) === norm(SEEDED_NAMES[key])) return t(`finance.systemAccounts.${key}`)
-  return a.name
+  const key = a.system_key;
+  if (key && SEEDED_NAMES[key] && norm(a.name) === norm(SEEDED_NAMES[key])) return t(`finance.systemAccounts.${key}`);
+  return a.name;
 }
 
 /** Sort comparator by display name in the current locale. */
-export const byAccountName = (locale: string) => (a: Named, b: Named): number => accountName(a).localeCompare(accountName(b), locale)
+export const byAccountName = (locale: string) => (a: Named, b: Named): number => accountName(a).localeCompare(accountName(b), locale);

@@ -1,20 +1,20 @@
-import {describe, expect, it} from "vitest"
+import {describe, expect, it} from "vitest";
 
-import {safeReturn} from "./returnTo"
+import {safeReturn} from "./returnTo";
 
-const FALLBACK = "/dashboard"
+const FALLBACK = "/dashboard";
 
 describe("safeReturn", () => {
   it("keeps a same-site path, including its query", () => {
-    expect(safeReturn("/invoices", FALLBACK)).toBe("/invoices")
-    expect(safeReturn("/invoice?id=in_123", FALLBACK)).toBe("/invoice?id=in_123")
-  })
+    expect(safeReturn("/invoices", FALLBACK)).toBe("/invoices");
+    expect(safeReturn("/invoice?id=in_123", FALLBACK)).toBe("/invoice?id=in_123");
+  });
 
   it("falls back when there is nothing to return to", () => {
-    expect(safeReturn(null, FALLBACK)).toBe(FALLBACK)
-    expect(safeReturn(undefined, FALLBACK)).toBe(FALLBACK)
-    expect(safeReturn("", FALLBACK)).toBe(FALLBACK)
-  })
+    expect(safeReturn(null, FALLBACK)).toBe(FALLBACK);
+    expect(safeReturn(undefined, FALLBACK)).toBe(FALLBACK);
+    expect(safeReturn("", FALLBACK)).toBe(FALLBACK);
+  });
 
   // The whole reason this function exists. Every one of these is a URL a
   // browser would navigate off-site for, and the first two are the ones a
@@ -29,7 +29,7 @@ describe("safeReturn", () => {
       "data:text/html,<script>alert(1)</script>",
       "evil.example",
     ]) {
-      expect(safeReturn(hostile, FALLBACK)).toBe(FALLBACK)
+      expect(safeReturn(hostile, FALLBACK)).toBe(FALLBACK);
     }
-  })
-})
+  });
+});

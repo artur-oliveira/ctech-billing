@@ -1,39 +1,39 @@
-"use client"
+"use client";
 
-import {Badge, Button, Drawer, EmptyState, Field, Input, Select, Skeleton} from "@aoctech/ui"
-import {useQuery} from "@tanstack/react-query"
-import {CreditCard, Repeat} from "lucide-react"
-import Link from "next/link"
-import {useState} from "react"
-import {useTranslation} from "react-i18next"
+import {Badge, Button, Drawer, EmptyState, Field, Input, Select, Skeleton} from "@aoctech/ui";
+import {useQuery} from "@tanstack/react-query";
+import {CreditCard, Repeat} from "lucide-react";
+import Link from "next/link";
+import {useState} from "react";
+import {useTranslation} from "react-i18next";
 
-import {SettleForm} from "@/components/finance/BillsView"
-import {CardBrandMark, cardLabel, maskedLast4} from "@/components/finance/CardBrandMark"
-import {CardForm} from "@/components/finance/CardForm"
-import {LedgerRow} from "@/components/finance/LedgerRow"
-import {PurchasePanel} from "@/components/finance/PurchasePanel"
-import {StatementTimeline} from "@/components/finance/StatementTimeline"
-import {STATUS, statementState} from "@/components/finance/statementStatus"
-import {wholeSpace} from "@/components/finance/TransferPanel"
-import {ErrorBlock} from "@/components/portal/ErrorBlock"
-import {messageFor} from "@/lib/api/client"
+import {SettleForm} from "@/components/finance/BillsView";
+import {CardBrandMark, cardLabel, maskedLast4} from "@/components/finance/CardBrandMark";
+import {CardForm} from "@/components/finance/CardForm";
+import {LedgerRow} from "@/components/finance/LedgerRow";
+import {PurchasePanel} from "@/components/finance/PurchasePanel";
+import {StatementTimeline} from "@/components/finance/StatementTimeline";
+import {STATUS, statementState} from "@/components/finance/statementStatus";
+import {wholeSpace} from "@/components/finance/TransferPanel";
+import {ErrorBlock} from "@/components/portal/ErrorBlock";
+import {messageFor} from "@/lib/api/client";
 import {
   advancePurchase, closeStatement, type FinanceCtx, financeKeys, getBill, getCardStatement, getCardStatementForecast, listAccounts, listCards, listPurchases,
   patchPurchase, refundPurchase,
-} from "@/lib/api/finance"
-import type {Account, Card, CardStatement, Purchase, PurchasePatch, StatementItem} from "@/lib/api/financeTypes"
-import limits from "@/lib/limits.json"
-import {useFieldErrors} from "@/lib/useFieldErrors"
-import {currentLocale} from "@/lib/i18n"
-import {monthShort, todayIso} from "@/lib/finance/today"
-import {selectCopy} from "@/lib/selectCopy"
-import {useFinanceMutation} from "@/lib/finance/useFinanceMutation"
-import {useCreateRequest} from "@/lib/createRequest"
-import {useFinanceCtx, useFinanceSpaces} from "@/lib/finance/useFinanceSpaces"
-import {money, shortDate, signedMoney} from "@/lib/format"
-import {accountName} from "@/lib/finance/accountName"
+} from "@/lib/api/finance";
+import type {Account, Card, CardStatement, Purchase, PurchasePatch, StatementItem} from "@/lib/api/financeTypes";
+import limits from "@/lib/limits.json";
+import {useFieldErrors} from "@/lib/useFieldErrors";
+import {currentLocale} from "@/lib/i18n";
+import {monthShort, todayIso} from "@/lib/finance/today";
+import {selectCopy} from "@/lib/selectCopy";
+import {useFinanceMutation} from "@/lib/finance/useFinanceMutation";
+import {useCreateRequest} from "@/lib/createRequest";
+import {useFinanceCtx, useFinanceSpaces} from "@/lib/finance/useFinanceSpaces";
+import {money, shortDate, signedMoney} from "@/lib/format";
+import {accountName} from "@/lib/finance/accountName";
 
-export {statementState} from "@/components/finance/statementStatus"
+export {statementState} from "@/components/finance/statementStatus";
 
 type Panel = "new-card" | "edit-card" | "purchase" | null
 
@@ -44,47 +44,47 @@ type Panel = "new-card" | "edit-card" | "purchase" | null
  * installment is billed.
  */
 export function CardsView({card: initial = ""}: {card?: string}) {
-  const {t} = useTranslation()
-  const ctx = useFinanceCtx()
-  const {can, loading: verbsLoading} = useFinanceSpaces()
-  const [picked, setPicked] = useState(initial)
-  const [month, setMonth] = useState<string | null>(null)
-  const [chosen, setChosen] = useState<Panel>(null)
-  const [asked, setAsked] = useState(false)
-  const [loadPurchases, setLoadPurchases] = useState(false)
-  useCreateRequest("purchase", () => setAsked(true))
+  const {t} = useTranslation();
+  const ctx = useFinanceCtx();
+  const {can, loading: verbsLoading} = useFinanceSpaces();
+  const [picked, setPicked] = useState(initial);
+  const [month, setMonth] = useState<string | null>(null);
+  const [chosen, setChosen] = useState<Panel>(null);
+  const [asked, setAsked] = useState(false);
+  const [loadPurchases, setLoadPurchases] = useState(false);
+  useCreateRequest("purchase", () => setAsked(true));
 
-  const cards = useQuery({queryKey: financeKeys.cards(ctx.mode, ctx.space), queryFn: () => listCards(ctx)})
-  const accounts = useQuery({queryKey: financeKeys.accounts(ctx.mode, ctx.space), queryFn: () => listAccounts(ctx)})
-  const active = (cards.data?.data ?? []).filter(c => !c.archived).sort((a, b) => a.name.localeCompare(b.name, currentLocale()))
-  const card = active.find(c => c.id === picked) ?? active[0]
+  const cards = useQuery({queryKey: financeKeys.cards(ctx.mode, ctx.space), queryFn: () => listCards(ctx)});
+  const accounts = useQuery({queryKey: financeKeys.accounts(ctx.mode, ctx.space), queryFn: () => listAccounts(ctx)});
+  const active = (cards.data?.data ?? []).filter(c => !c.archived).sort((a, b) => a.name.localeCompare(b.name, currentLocale()));
+  const card = active.find(c => c.id === picked) ?? active[0];
   const purchases = useQuery({
     queryKey: financeKeys.purchases(ctx.mode, ctx.space, card?.id ?? ""),
     queryFn: () => listPurchases(ctx, card!.id),
     enabled: !!card && (chosen === "purchase" || (asked && !cards.isLoading && !accounts.isLoading && can("finance.write")) || loadPurchases),
-  })
-  const shown = month ?? card?.open_month ?? ""
-  const all = accounts.data?.data ?? []
+  });
+  const shown = month ?? card?.open_month ?? "";
+  const all = accounts.data?.data ?? [];
   // The central action on a phone: a purchase on the card on screen, or the
   // card itself when there is none to buy with yet.
-  const loaded = !cards.isLoading && !accounts.isLoading && !verbsLoading
+  const loaded = !cards.isLoading && !accounts.isLoading && !verbsLoading;
   const requested: Panel = asked && loaded
     ? (card ? (can("finance.write") ? "purchase" : null) : can("finance.configure") ? "new-card" : null)
-    : null
-  const panel = chosen ?? requested
-  const setPanel = (p: Panel) => { setChosen(p); setAsked(false) }
+    : null;
+  const panel = chosen ?? requested;
+  const setPanel = (p: Panel) => { setChosen(p); setAsked(false); };
 
   if (cards.isLoading || accounts.isLoading) {
-    return <div className="space-y-2" aria-busy><Skeleton className="h-8 w-64"/><Skeleton className="h-4 w-full"/></div>
+    return <div className="space-y-2" aria-busy><Skeleton className="h-8 w-64"/><Skeleton className="h-4 w-full"/></div>;
   }
   if (cards.error || accounts.error) {
-    return <ErrorBlock error={cards.error ?? accounts.error} onRetry={() => { void cards.refetch(); void accounts.refetch() }}/>
+    return <ErrorBlock error={cards.error ?? accounts.error} onRetry={() => { void cards.refetch(); void accounts.refetch(); }}/>;
   }
   if (!card) {
     return (
       <div className="space-y-4">
         <Drawer open={panel === "new-card"} onClose={() => setPanel(null)} title={t("finance.cards.new")}>
-          <CardForm accounts={all} onDone={id => { setPanel(null); if (id) setPicked(id) }}/>
+          <CardForm accounts={all} onDone={id => { setPanel(null); if (id) setPicked(id); }}/>
         </Drawer>
         {(
           <EmptyState
@@ -95,7 +95,7 @@ export function CardsView({card: initial = ""}: {card?: string}) {
           />
         )}
       </div>
-    )
+    );
   }
 
   return (
@@ -103,7 +103,7 @@ export function CardsView({card: initial = ""}: {card?: string}) {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <Field label={t("finance.cards.card")} htmlFor="cd-pick">
           <Select {...selectCopy()} id="cd-pick" aria-label={t("finance.cards.card")} value={card.id} className="w-56"
-            onValueChange={v => { setPicked(v); setMonth(null); setPanel(null) }}
+            onValueChange={v => { setPicked(v); setMonth(null); setPanel(null); }}
             options={active.map(c => ({value: c.id, label: cardLabel(c), icon: <CardBrandMark brand={c.brand ?? "other"}/>}))}/>
         </Field>
         <div className="flex flex-wrap gap-2">
@@ -124,7 +124,7 @@ export function CardsView({card: initial = ""}: {card?: string}) {
         <CardForm key={card.id} card={card} accounts={all} onDone={() => setPanel(null)}/>
       </Drawer>
       <Drawer open={panel === "new-card"} onClose={() => setPanel(null)} title={t("finance.cards.new")}>
-        <CardForm accounts={all} onDone={id => { setPanel(null); if (id) { setPicked(id); setMonth(null) } }}/>
+        <CardForm accounts={all} onDone={id => { setPanel(null); if (id) { setPicked(id); setMonth(null); } }}/>
       </Drawer>
 
       <CardHeader card={card}/>
@@ -135,13 +135,13 @@ export function CardsView({card: initial = ""}: {card?: string}) {
         purchases={purchases.data?.data ?? []} purchasesError={purchases.error} retryPurchases={() => void purchases.refetch()}
         onNeedPurchases={() => setLoadPurchases(true)}/>
     </div>
-  )
+  );
 }
 
 
 /** The card on screen: its mark, name and last digits, and when it closes and is due. */
 function CardHeader({card}: {card: Card}) {
-  const {t} = useTranslation()
+  const {t} = useTranslation();
   return (
     <div data-card-header className="flex items-center gap-3 border-b border-border pb-3">
       <CardBrandMark brand={card.brand ?? "other"} className="h-7 w-auto text-muted-foreground"/>
@@ -153,26 +153,26 @@ function CardHeader({card}: {card: Card}) {
         <p className="text-xs text-muted-foreground">{t("finance.cards.cycle", {closing: card.closing_day, due: card.due_day})}</p>
       </div>
     </div>
-  )
+  );
 }
 
 function StatementBlock({card, month, accounts, purchases, purchasesError, retryPurchases, onNeedPurchases}: {
   card: Card; month: string; accounts: Account[]; purchases: Purchase[]; purchasesError: unknown;
   retryPurchases: () => void; onNeedPurchases: () => void
 }) {
-  const {t} = useTranslation()
-  const ctx = useFinanceCtx()
-  const {can} = useFinanceSpaces()
-  const q = useQuery({queryKey: financeKeys.cardStatement(ctx.mode, ctx.space, card.id, month), queryFn: () => getCardStatement(ctx, card.id, month)})
-  const [action, setAction] = useState<"close" | "pay" | null>(null)
+  const {t} = useTranslation();
+  const ctx = useFinanceCtx();
+  const {can} = useFinanceSpaces();
+  const q = useQuery({queryKey: financeKeys.cardStatement(ctx.mode, ctx.space, card.id, month), queryFn: () => getCardStatement(ctx, card.id, month)});
+  const [action, setAction] = useState<"close" | "pay" | null>(null);
   const forecast = useQuery({
     queryKey: financeKeys.cardForecast(ctx.mode, ctx.space, card.id, month),
     queryFn: () => getCardStatementForecast(ctx, card.id, month),
-  })
-  const names = new Map(accounts.map(a => [a.id, accountName(a)]))
-  const byId = new Map(purchases.map(p => [p.id, p]))
-  const s = q.data
-  const forecastSum = (forecast.data?.data ?? []).reduce((sum, item) => sum + item.amount, 0)
+  });
+  const names = new Map(accounts.map(a => [a.id, accountName(a)]));
+  const byId = new Map(purchases.map(p => [p.id, p]));
+  const s = q.data;
+  const forecastSum = (forecast.data?.data ?? []).reduce((sum, item) => sum + item.amount, 0);
 
   return (
     <section aria-label={`${t("finance.cards.statement")} ${monthShort(month)}`} className="space-y-3">
@@ -235,14 +235,14 @@ function StatementBlock({card, month, accounts, purchases, purchasesError, retry
         </>
       )}
     </section>
-  )
+  );
 }
 
 function Summary({statement: s}: {statement: CardStatement}) {
-  const {t} = useTranslation()
-  const closed = s.status === "closed" || s.status === "paid"
-  const state = statementState(s, todayIso())
-  const {tone, icon: Icon} = STATUS[state]
+  const {t} = useTranslation();
+  const closed = s.status === "closed" || s.status === "paid";
+  const state = statementState(s, todayIso());
+  const {tone, icon: Icon} = STATUS[state];
   return (
     // On a phone the summary card above says all of this, one per screen.
     <div className="flex flex-wrap items-baseline justify-between gap-3 text-sm max-sm:hidden">
@@ -253,28 +253,28 @@ function Summary({statement: s}: {statement: CardStatement}) {
       </div>
       <span data-numeric className="text-base font-semibold tabular-nums">{signedMoney(s.total)}</span>
     </div>
-  )
+  );
 }
 
 function PayStatement({billId, accounts, onDone}: {billId: string; accounts: Account[]; onDone: () => void}) {
-  const ctx = useFinanceCtx()
-  const bill = useQuery({queryKey: financeKeys.bill(ctx.mode, ctx.space, billId), queryFn: () => getBill(ctx, billId)})
-  if (bill.isLoading) return <Skeleton className="h-16 w-full"/>
-  if (bill.error || !bill.data) return <ErrorBlock error={bill.error} onRetry={() => void bill.refetch()}/>
-  return <SettleForm bill={bill.data} accounts={accounts} onDone={onDone}/>
+  const ctx = useFinanceCtx();
+  const bill = useQuery({queryKey: financeKeys.bill(ctx.mode, ctx.space, billId), queryFn: () => getBill(ctx, billId)});
+  if (bill.isLoading) return <Skeleton className="h-16 w-full"/>;
+  if (bill.error || !bill.data) return <ErrorBlock error={bill.error} onRetry={() => void bill.refetch()}/>;
+  return <SettleForm bill={bill.data} accounts={accounts} onDone={onDone}/>;
 }
 
 function ItemRow({item, card, accounts, purchase, category, purchasesError, retryPurchases, onNeedPurchases}: {
   item: StatementItem; card: Card; accounts: Account[]; purchase?: Purchase; category?: string;
   purchasesError: unknown; retryPurchases: () => void; onNeedPurchases: () => void
 }) {
-  const {t} = useTranslation()
-  const {can} = useFinanceSpaces()
-  const [action, setAction] = useState<"edit" | "refund" | "advance" | null>(null)
+  const {t} = useTranslation();
+  const {can} = useFinanceSpaces();
+  const [action, setAction] = useState<"edit" | "refund" | "advance" | null>(null);
   // Its name and category can be corrected from any of its lines, an advance's too.
-  const editable = (item.kind === "installment" || item.kind === "advance") && !purchase?.refunded && can("finance.write")
-  const actionable = item.kind === "installment" && !purchase?.refunded && can("finance.write")
-  const canAdvance = actionable && (!purchase || purchase.installments.some(i => i.month > card.open_month))
+  const editable = (item.kind === "installment" || item.kind === "advance") && !purchase?.refunded && can("finance.write");
+  const actionable = item.kind === "installment" && !purchase?.refunded && can("finance.write");
+  const canAdvance = actionable && (!purchase || purchase.installments.some(i => i.month > card.open_month));
   return (
     // UX batch 4: a purchase's actions are a left swipe or "⋯" on a phone, each asking first.
     <LedgerRow
@@ -294,9 +294,9 @@ function ItemRow({item, card, accounts, purchase, category, purchasesError, retr
       </>}
       amount={<span data-numeric>{signedMoney(item.amount)}</span>}
       more={[
-        ...(editable ? [{key: "edit", label: t("finance.cards.editPurchase"), expanded: action === "edit", onSelect: () => { onNeedPurchases(); setAction("edit") }}] : []),
-        ...(canAdvance ? [{key: "advance", label: t("finance.cards.advance"), expanded: action === "advance", onSelect: () => { onNeedPurchases(); setAction("advance") }}] : []),
-        ...(actionable ? [{key: "refund", label: t("finance.cards.refund"), destructive: true, expanded: action === "refund", onSelect: () => { onNeedPurchases(); setAction("refund") }}] : []),
+        ...(editable ? [{key: "edit", label: t("finance.cards.editPurchase"), expanded: action === "edit", onSelect: () => { onNeedPurchases(); setAction("edit"); }}] : []),
+        ...(canAdvance ? [{key: "advance", label: t("finance.cards.advance"), expanded: action === "advance", onSelect: () => { onNeedPurchases(); setAction("advance"); }}] : []),
+        ...(actionable ? [{key: "refund", label: t("finance.cards.refund"), destructive: true, expanded: action === "refund", onSelect: () => { onNeedPurchases(); setAction("refund"); }}] : []),
       ]}
     >
       {action === "edit" && purchase && <PurchaseEditForm card={card} purchase={purchase} accounts={accounts} onDone={() => setAction(null)}/>}
@@ -316,7 +316,7 @@ function ItemRow({item, card, accounts, purchase, category, purchasesError, retr
         />
       )}
     </LedgerRow>
-  )
+  );
 }
 
 /**
@@ -326,39 +326,40 @@ function ItemRow({item, card, accounts, purchase, category, purchasesError, retr
  * is a refund and a new purchase.
  */
 function PurchaseEditForm({card, purchase, accounts, onDone}: {card: Card; purchase: Purchase; accounts: Account[]; onDone: () => void}) {
-  const {t} = useTranslation()
-  const [description, setDescription] = useState(purchase.description)
-  const [category, setCategory] = useState(purchase.category_id)
-  const fe = useFieldErrors(["description", "category_id"])
-  const edit = useFinanceMutation((c, body: PurchasePatch, key) => patchPurchase(c, card.id, purchase.id, body, key), wholeSpace, onDone, fe.set)
+  const {t} = useTranslation();
+  const [description, setDescription] = useState(purchase.description);
+  const [category, setCategory] = useState(purchase.category_id);
+  const fe = useFieldErrors(["description", "category_id"]);
+  const edit = useFinanceMutation((c, body: PurchasePatch, key) => patchPurchase(c, card.id, purchase.id, body, key), wholeSpace, onDone, fe.set);
   // Active expense categories, and the current one even if it was archived since.
   const cats = accounts.filter(a => a.class === "expense" && !a.system && (!a.archived || a.id === purchase.category_id))
-    .sort((a, b) => accountName(a).localeCompare(accountName(b), currentLocale()))
-  const id = `pe-${purchase.id}`
-  const moved = category !== purchase.category_id
+    .sort((a, b) => accountName(a).localeCompare(accountName(b), currentLocale()));
+  const id = `pe-${purchase.id}`;
+  const moved = category !== purchase.category_id;
   return (
     <form
       aria-label={t("finance.cards.editPurchase")}
       className="mt-3 grid items-start gap-3 rounded-lg bg-surface p-3 sm:grid-cols-2 motion-safe:animate-in motion-safe:fade-in [&>*]:min-w-0"
       onSubmit={e => {
-        e.preventDefault()
-        const body: PurchasePatch = {}
-        const name = description.trim()
-        if (name !== purchase.description) body.description = name
-        if (moved) body.category_id = category
-        if (Object.keys(body).length === 0) return onDone()
-        fe.reset()
-        edit.mutate(body)
+        e.preventDefault();
+        const body: PurchasePatch = {};
+        const name = description.trim();
+        if (name !== purchase.description) body.description = name;
+        if (moved) body.category_id = category;
+        if (Object.keys(body).length === 0) return onDone();
+        fe.reset();
+        edit.mutate(body);
+        return () => {};
       }}
     >
       <Field label={t("bills.common.description")} htmlFor={`${id}-d`} required error={fe.of("description")}>
         <Input id={`${id}-d`} maxLength={limits.text.description} value={description} {...fe.props("description", `${id}-d`)}
-          onChange={e => { setDescription(e.target.value); fe.clear("description") }} autoFocus/>
+          onChange={e => { setDescription(e.target.value); fe.clear("description"); }} autoFocus/>
       </Field>
       <Field label={t("bills.common.category")} htmlFor={`${id}-c`} required error={fe.of("category_id")}
         hint={moved ? t("finance.cards.recategorizeHint") : undefined}>
         <Select {...selectCopy()} id={`${id}-c`} aria-label={t("bills.common.category")} value={category} {...fe.props("category_id", `${id}-c`)}
-          onValueChange={v => { setCategory(v); fe.clear("category_id") }} options={cats.map(a => ({value: a.id, label: accountName(a)}))}/>
+          onValueChange={v => { setCategory(v); fe.clear("category_id"); }} options={cats.map(a => ({value: a.id, label: accountName(a)}))}/>
       </Field>
       <div className="flex flex-wrap items-center gap-2 sm:col-span-2">
         <Button type="submit" variant="brand" size="sm" disabled={description.trim() === "" || edit.isPending}>{t("bills.common.save")}</Button>
@@ -366,12 +367,12 @@ function PurchaseEditForm({card, purchase, accounts, onDone}: {card: Card; purch
         {fe.general ? <p role="alert" className="text-sm text-danger">{fe.general}</p> : null}
       </div>
     </form>
-  )
+  );
 }
 
 function Confirm({text, run, onDone}: {text: string; run: (c: FinanceCtx, key: string) => Promise<unknown>; onDone: () => void}) {
-  const {t} = useTranslation()
-  const m = useFinanceMutation((c, _: void, key) => run(c, key), wholeSpace, onDone)
+  const {t} = useTranslation();
+  const m = useFinanceMutation((c, _: void, key) => run(c, key), wholeSpace, onDone);
   return (
     <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg bg-surface p-3 text-sm motion-safe:animate-in motion-safe:fade-in">
       <p className="text-muted-foreground">{text}</p>
@@ -379,5 +380,5 @@ function Confirm({text, run, onDone}: {text: string; run: (c: FinanceCtx, key: s
       <Button size="sm" variant="brand" disabled={m.isPending} onClick={() => m.mutate()}>{t("finance.cards.confirm")}</Button>
       {m.error ? <p role="alert" className="w-full text-sm text-danger">{messageFor(m.error)}</p> : null}
     </div>
-  )
+  );
 }

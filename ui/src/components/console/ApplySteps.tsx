@@ -1,8 +1,8 @@
-"use client"
+"use client";
 
-import {useTranslation} from "react-i18next"
+import {useTranslation} from "react-i18next";
 
-const STEPS = ["send", "test", "live"] as const
+const STEPS = ["send", "test", "live"] as const;
 
 /**
  * What happens after "Quero cobrar meus clientes", in order: the order is the
@@ -10,7 +10,7 @@ const STEPS = ["send", "test", "live"] as const
  * numbered. A ruled list, not cards.
  */
 export function ApplySteps({className = ""}: {className?: string}) {
-  const {t} = useTranslation()
+  const {t} = useTranslation();
   return (
     <section aria-labelledby="apply-steps" className={className}>
       <h2 id="apply-steps" className="text-sm font-medium text-muted-foreground">{t("console.invitation.how")}</h2>
@@ -28,5 +28,5 @@ export function ApplySteps({className = ""}: {className?: string}) {
         ))}
       </ol>
     </section>
-  )
+  );
 }

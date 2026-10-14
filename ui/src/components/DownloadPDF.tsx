@@ -1,14 +1,14 @@
-"use client"
+"use client";
 
-import {Button} from "@aoctech/ui"
-import {useMutation} from "@tanstack/react-query"
-import {Download} from "lucide-react"
-import {useTranslation} from "react-i18next"
-import {toast} from "sonner"
+import {Button} from "@aoctech/ui";
+import {useMutation} from "@tanstack/react-query";
+import {Download} from "lucide-react";
+import {useTranslation} from "react-i18next";
+import {toast} from "sonner";
 
-import {messageFor} from "@/lib/api/client"
-import type {DocumentLink} from "@/lib/api/types"
-import {normalizeLocale, type SupportedLocale} from "@/lib/locale"
+import {messageFor} from "@/lib/api/client";
+import type {DocumentLink} from "@/lib/api/types";
+import {normalizeLocale, type SupportedLocale} from "@/lib/locale";
 
 /**
  * The invoice's PDF, on both shells.
@@ -39,17 +39,17 @@ export function DownloadPDF({
   size?: "sm" | "default"
   variant?: "outline" | "ghost"
 }) {
-  const {t, i18n} = useTranslation()
+  const {t, i18n} = useTranslation();
   const download = useMutation({
     mutationFn: () => fetchLink(normalizeLocale(i18n.language)),
     onSuccess: link => {
       // Opened in the same tab's navigation rather than a new one: a popup
       // blocker eats a `window.open` that is not in the click's own task, and
       // this one is not — it follows an await.
-      window.location.href = link.url
+      window.location.href = link.url;
     },
     onError: error => toast.error(messageFor(error)),
-  })
+  });
 
   return (
     <Button
@@ -61,5 +61,5 @@ export function DownloadPDF({
       <Download aria-hidden className="size-3.5"/>
       {download.isPending ? t("portal.pdf.generating") : (label ?? t("portal.pdf.download"))}
     </Button>
-  )
+  );
 }

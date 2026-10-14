@@ -1,18 +1,18 @@
-"use client"
+"use client";
 
-import {Button, EmptyState, Skeleton} from "@aoctech/ui"
-import {useQuery} from "@tanstack/react-query"
-import {ChevronLeft, ChevronRight, FileText} from "lucide-react"
-import Link from "next/link"
-import {useState} from "react"
-import {useTranslation} from "react-i18next"
+import {Button, EmptyState, Skeleton} from "@aoctech/ui";
+import {useQuery} from "@tanstack/react-query";
+import {ChevronLeft, ChevronRight, FileText} from "lucide-react";
+import Link from "next/link";
+import {useState} from "react";
+import {useTranslation} from "react-i18next";
 
-import {InvoiceStatusBadge} from "@/components/console/InvoiceStatusBadge"
-import {ErrorBlock} from "@/components/portal/ErrorBlock"
-import {consoleKeys, listConsoleInvoices} from "@/lib/api/console"
-import {useConsoleScope} from "@/lib/console/scope"
-import {compactDate, compactPeriod, money, shortDate} from "@/lib/format"
-import {currentLocale} from "@/lib/i18n"
+import {InvoiceStatusBadge} from "@/components/console/InvoiceStatusBadge";
+import {ErrorBlock} from "@/components/portal/ErrorBlock";
+import {consoleKeys, listConsoleInvoices} from "@/lib/api/console";
+import {useConsoleScope} from "@/lib/console/scope";
+import {compactDate, compactPeriod, money, shortDate} from "@/lib/format";
+import {currentLocale} from "@/lib/i18n";
 
 /**
  * C2 — the invoice list, and the screen an operator lives in.
@@ -27,25 +27,25 @@ import {currentLocale} from "@/lib/i18n"
  * still there for the tenant that outgrows one page.
  */
 export default function ConsoleInvoicesPage() {
-  const {t} = useTranslation()
-  const scope = useConsoleScope()
-  const today = new Date()
-  const [year, setYear] = useState(today.getFullYear())
-  const [month, setMonth] = useState(today.getMonth() + 1)
+  const {t} = useTranslation();
+  const scope = useConsoleScope();
+  const today = new Date();
+  const [year, setYear] = useState(today.getFullYear());
+  const [month, setMonth] = useState(today.getMonth() + 1);
 
   const query = useQuery({
     queryKey: consoleKeys.invoiceMonth(scope, year, month),
     queryFn: () => listConsoleInvoices(scope, year, month),
-  })
+  });
 
-  const invoices = query.data?.data ?? []
+  const invoices = query.data?.data ?? [];
   const label = new Intl.DateTimeFormat(currentLocale(), {month: "long", year: "numeric"})
-    .format(new Date(year, month - 1, 1))
+    .format(new Date(year, month - 1, 1));
 
   function shift(by: number) {
-    const d = new Date(year, month - 1 + by, 1)
-    setYear(d.getFullYear())
-    setMonth(d.getMonth() + 1)
+    const d = new Date(year, month - 1 + by, 1);
+    setYear(d.getFullYear());
+    setMonth(d.getMonth() + 1);
   }
 
   return (
@@ -158,7 +158,7 @@ export default function ConsoleInvoicesPage() {
         </p>
       )}
     </div>
-  )
+  );
 }
 
 function TableSkeleton() {
@@ -168,5 +168,5 @@ function TableSkeleton() {
         <Skeleton key={i} className="h-8 w-full"/>
       ))}
     </div>
-  )
+  );
 }

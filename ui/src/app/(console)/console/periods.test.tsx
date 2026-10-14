@@ -1,22 +1,22 @@
-import "@testing-library/jest-dom/vitest"
+import "@testing-library/jest-dom/vitest";
 
-import {QueryClient, QueryClientProvider} from "@tanstack/react-query"
-import {render, screen} from "@testing-library/react"
-import type {ReactNode} from "react"
-import {afterEach, describe, expect, it, vi} from "vitest"
+import {QueryClient, QueryClientProvider} from "@tanstack/react-query";
+import {render, screen} from "@testing-library/react";
+import type {ReactNode} from "react";
+import {afterEach, describe, expect, it, vi} from "vitest";
 
-import ConsoleInvoicesPage from "@/app/(console)/console/invoices/page"
-import ConsoleSubscriptionsPage from "@/app/(console)/console/subscriptions/page"
-import * as consoleApi from "@/lib/api/console"
-import {ConsoleScopeProvider} from "@/lib/console/scope"
+import ConsoleInvoicesPage from "@/app/(console)/console/invoices/page";
+import ConsoleSubscriptionsPage from "@/app/(console)/console/subscriptions/page";
+import * as consoleApi from "@/lib/api/console";
+import {ConsoleScopeProvider} from "@/lib/console/scope";
 
-const SCOPE = {mode: "live", org: "0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b"} as const
+const SCOPE = {mode: "live", org: "0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b"} as const;
 
-afterEach(() => vi.restoreAllMocks())
+afterEach(() => vi.restoreAllMocks());
 
 function wrap(ui: ReactNode) {
-  const client = new QueryClient({defaultOptions: {queries: {retry: false}}})
-  return render(<QueryClientProvider client={client}><ConsoleScopeProvider value={SCOPE}>{ui}</ConsoleScopeProvider></QueryClientProvider>)
+  const client = new QueryClient({defaultOptions: {queries: {retry: false}}});
+  return render(<QueryClientProvider client={client}><ConsoleScopeProvider value={SCOPE}>{ui}</ConsoleScopeProvider></QueryClientProvider>);
 }
 
 // The console's periods are the domain's (period_start/period_end), exactly as
@@ -31,11 +31,11 @@ describe("console periods", () => {
         customer_name: "A O CARVALHO TECH",
       }],
       has_more: false,
-    } as unknown as Awaited<ReturnType<typeof consoleApi.listConsoleInvoices>>)
-    wrap(<ConsoleInvoicesPage/>)
-    expect(await screen.findByText("A O CARVALHO TECH")).toBeInTheDocument()
-    expect(screen.getByText(/10\/10(\/26)? • 10\/11(\/26)?/)).toBeInTheDocument()
-  })
+    } as unknown as Awaited<ReturnType<typeof consoleApi.listConsoleInvoices>>);
+    wrap(<ConsoleInvoicesPage/>);
+    expect(await screen.findByText("A O CARVALHO TECH")).toBeInTheDocument();
+    expect(screen.getByText(/10\/10(\/26)? • 10\/11(\/26)?/)).toBeInTheDocument();
+  });
 
   it("lists a subscription with the API's current period", async () => {
     vi.spyOn(consoleApi, "listConsoleSubscriptions").mockResolvedValue({
@@ -46,9 +46,9 @@ describe("console periods", () => {
         cancel_at_period_end: false, livemode: true,
       }],
       has_more: false,
-    } as unknown as Awaited<ReturnType<typeof consoleApi.listConsoleSubscriptions>>)
-    wrap(<ConsoleSubscriptionsPage/>)
+    } as unknown as Awaited<ReturnType<typeof consoleApi.listConsoleSubscriptions>>);
+    wrap(<ConsoleSubscriptionsPage/>);
     // Twice: the table, and the list a phone gets instead.
-    expect(await screen.findAllByText(/10\/10(\/26)? • 10\/11(\/26)?/)).toHaveLength(2)
-  })
-})
+    expect(await screen.findAllByText(/10\/10(\/26)? • 10\/11(\/26)?/)).toHaveLength(2);
+  });
+});

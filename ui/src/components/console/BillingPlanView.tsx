@@ -1,21 +1,21 @@
-"use client"
+"use client";
 
-import {Badge, Button, Modal, PageHeader, Skeleton} from "@aoctech/ui"
-import {useMutation, useQuery, useQueryClient} from "@tanstack/react-query"
-import {useState} from "react"
-import {useTranslation} from "react-i18next"
-import {toast} from "sonner"
+import {Badge, Button, Modal, PageHeader, Skeleton} from "@aoctech/ui";
+import {useMutation, useQuery, useQueryClient} from "@tanstack/react-query";
+import {useState} from "react";
+import {useTranslation} from "react-i18next";
+import {toast} from "sonner";
 
-import {ErrorBlock} from "@/components/portal/ErrorBlock"
-import {messageFor} from "@/lib/api/client"
-import {changeBillingPlan, consoleKeys, getBillingPlan} from "@/lib/api/console"
-import type {BillingPlanOption, BillingPlanState} from "@/lib/api/consoleTypes"
-import {useConsoleScope} from "@/lib/console/scope"
-import {money, shortDate} from "@/lib/format"
+import {ErrorBlock} from "@/components/portal/ErrorBlock";
+import {messageFor} from "@/lib/api/client";
+import {changeBillingPlan, consoleKeys, getBillingPlan} from "@/lib/api/console";
+import type {BillingPlanOption, BillingPlanState} from "@/lib/api/consoleTypes";
+import {useConsoleScope} from "@/lib/console/scope";
+import {money, shortDate} from "@/lib/format";
 
 /** Desktop order is the catalogue's (cheapest first); literal classes so
  *  Tailwind keeps them. */
-const LG_ORDER = ["lg:order-1", "lg:order-2", "lg:order-3", "lg:order-4", "lg:order-5", "lg:order-6"]
+const LG_ORDER = ["lg:order-1", "lg:order-2", "lg:order-3", "lg:order-4", "lg:order-5", "lg:order-6"];
 
 /**
  * Console → Plano (BYOK part C): this month's use first, then the public
@@ -25,9 +25,9 @@ const LG_ORDER = ["lg:order-1", "lg:order-2", "lg:order-3", "lg:order-4", "lg:or
  * below this month's use is allowed and the confirmation says what it means.
  */
 export function BillingPlanView() {
-  const {t} = useTranslation()
-  const scope = useConsoleScope()
-  const {data, isPending, error, refetch} = useQuery({queryKey: consoleKeys.plan(scope), queryFn: () => getBillingPlan(scope)})
+  const {t} = useTranslation();
+  const scope = useConsoleScope();
+  const {data, isPending, error, refetch} = useQuery({queryKey: consoleKeys.plan(scope), queryFn: () => getBillingPlan(scope)});
   // The title stays while the plan loads or fails, like every other screen.
   return (
     <div className="space-y-8">
@@ -36,38 +36,38 @@ export function BillingPlanView() {
         <PlanScreen state={data} live={scope.mode === "live"}/>
       )}
     </div>
-  )
+  );
 }
 
 function PlanScreen({state, live}: {state: BillingPlanState; live: boolean}) {
-  const {t} = useTranslation()
-  const scope = useConsoleScope()
-  const queryClient = useQueryClient()
-  const [target, setTarget] = useState<BillingPlanOption | null>(null)
-  const name = (plan: string) => t(`console.plan.names.${plan}`, {defaultValue: plan})
-  const listed = state.plans.some(p => p.plan === state.current.plan)
+  const {t} = useTranslation();
+  const scope = useConsoleScope();
+  const queryClient = useQueryClient();
+  const [target, setTarget] = useState<BillingPlanOption | null>(null);
+  const name = (plan: string) => t(`console.plan.names.${plan}`, {defaultValue: plan});
+  const listed = state.plans.some(p => p.plan === state.current.plan);
   // The current plan first in the DOM (the phone's stacked list); lg:order-*
   // restores the catalogue order in the row.
   const cards = state.plans.map((p, i) => ({p, i}))
-    .sort((a, b) => Number(b.p.plan === state.current.plan) - Number(a.p.plan === state.current.plan))
+    .sort((a, b) => Number(b.p.plan === state.current.plan) - Number(a.p.plan === state.current.plan));
 
   const change = useMutation({
     mutationFn: (plan: string) => changeBillingPlan(scope, plan),
     onSuccess: next => {
-      queryClient.setQueryData(consoleKeys.plan(scope), next)
+      queryClient.setQueryData(consoleKeys.plan(scope), next);
       toast.success(next.current.pending_plan && next.current.pending_at
         ? t("console.plan.scheduled", {plan: name(next.current.pending_plan), date: shortDate(next.current.pending_at)})
-        : t("console.plan.changed", {plan: name(next.current.plan)}))
+        : t("console.plan.changed", {plan: name(next.current.plan)}));
     },
     onError: (err: unknown) => toast.error(messageFor(err)),
     onSettled: () => setTarget(null),
-  })
+  });
 
-  const below = target && target.included >= 0 && state.usage.charges_this_month > target.included
+  const below = target && target.included >= 0 && state.usage.charges_this_month > target.included;
   // A postpaid plan (any priced one) changes at its period end, once billed.
-  const postpaid = (state.plans.find(p => p.plan === state.current.plan)?.fee ?? 0) > 0
+  const postpaid = (state.plans.find(p => p.plan === state.current.plan)?.fee ?? 0) > 0;
   const pending = state.current.pending_plan && state.current.pending_at
-    ? {plan: state.current.pending_plan, at: state.current.pending_at} : null
+    ? {plan: state.current.pending_plan, at: state.current.pending_at} : null;
   return (
     <>
       {!live && <p className="-mt-6 text-sm text-muted-foreground">{t("console.plan.liveOnly")}</p>}
@@ -76,7 +76,7 @@ function PlanScreen({state, live}: {state: BillingPlanState; live: boolean}) {
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {cards.map(({p, i}) => {
-          const isCurrent = p.plan === state.current.plan
+          const isCurrent = p.plan === state.current.plan;
           return (
             <article
               key={p.plan}
@@ -106,7 +106,7 @@ function PlanScreen({state, live}: {state: BillingPlanState; live: boolean}) {
                 </div>
               )}
             </article>
-          )
+          );
         })}
       </div>
 
@@ -129,12 +129,12 @@ function PlanScreen({state, live}: {state: BillingPlanState; live: boolean}) {
         )}
       </Modal>
     </>
-  )
+  );
 }
 
 /** Price, what is included and what happens past it, then the features. */
 function PlanFacts({option}: {option: BillingPlanOption}) {
-  const {t} = useTranslation()
+  const {t} = useTranslation();
   return (
     <div className="space-y-2">
       <p className="text-xl font-semibold tabular-nums">
@@ -148,15 +148,15 @@ function PlanFacts({option}: {option: BillingPlanOption}) {
         {option.api_access && <li>{t("console.plan.apiAccess")}</li>}
       </ul>
     </div>
-  )
+  );
 }
 
 /** This month's use against the plan: plain figures, no colour beyond text. */
 function Usage({state}: {state: BillingPlanState}) {
-  const {t} = useTranslation()
-  const u = state.usage
+  const {t} = useTranslation();
+  const u = state.usage;
   const line = (key: string, used: number, quota: number) =>
-    quota < 0 ? t(`console.plan.usage.${key}Unlimited`, {used}) : t(`console.plan.usage.${key}`, {used, quota})
+    quota < 0 ? t(`console.plan.usage.${key}Unlimited`, {used}) : t(`console.plan.usage.${key}`, {used, quota});
   return (
     <section aria-labelledby="plan-usage" className="space-y-2">
       <h2 id="plan-usage" className="text-sm font-medium text-muted-foreground">{t("console.plan.usage.title")}</h2>
@@ -166,7 +166,7 @@ function Usage({state}: {state: BillingPlanState}) {
         <li>{line("connections", u.bank_connections, u.bank_connections_quota)}</li>
       </ul>
     </section>
-  )
+  );
 }
 
 function PlanSkeleton() {
@@ -177,5 +177,5 @@ function PlanSkeleton() {
         {[0, 1, 2, 3].map(i => <Skeleton key={i} className="h-44 w-full"/>)}
       </div>
     </div>
-  )
+  );
 }

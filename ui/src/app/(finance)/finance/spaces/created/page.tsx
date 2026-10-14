@@ -1,8 +1,8 @@
-"use client"
+"use client";
 
-import {Suspense} from "react"
+import {Suspense} from "react";
 
-import {SpaceCreatedReturn} from "@/components/finance/SpaceCreatedReturn"
+import {SpaceCreatedReturn} from "@/components/finance/SpaceCreatedReturn";
 
 /** Where ctech-account sends the browser back after "Novo espaço" (ADR 0027). */
 export default function SpaceCreatedPage() {
@@ -10,5 +10,5 @@ export default function SpaceCreatedPage() {
     <Suspense>
       <SpaceCreatedReturn/>
     </Suspense>
-  )
+  );
 }

@@ -1,24 +1,24 @@
-"use client"
+"use client";
 
-import {Button, Separator, Skeleton} from "@aoctech/ui"
-import {useMutation, useQuery, useQueryClient} from "@tanstack/react-query"
-import {ArrowLeft, Check} from "lucide-react"
-import Link from "next/link"
-import {useSearchParams} from "next/navigation"
-import {Suspense, useState} from "react"
-import {useTranslation} from "react-i18next"
-import {toast} from "sonner"
+import {Button, Separator, Skeleton} from "@aoctech/ui";
+import {useMutation, useQuery, useQueryClient} from "@tanstack/react-query";
+import {ArrowLeft, Check} from "lucide-react";
+import Link from "next/link";
+import {useSearchParams} from "next/navigation";
+import {Suspense, useState} from "react";
+import {useTranslation} from "react-i18next";
+import {toast} from "sonner";
 
-import {DownloadPDF} from "@/components/DownloadPDF"
-import {ErrorBlock} from "@/components/portal/ErrorBlock"
-import {Money} from "@/components/portal/Money"
-import {PixPanel} from "@/components/portal/PixPanel"
-import {StatusBadge} from "@/components/portal/StatusBadge"
-import {messageFor, statusOf} from "@/lib/api/client"
-import {getInvoice, getInvoicePDF, payInvoice, portalKeys} from "@/lib/api/portal"
-import type {Invoice, PixPayment} from "@/lib/api/types"
-import {longDate, money, period} from "@/lib/format"
-import {useDocumentTitle} from "@/lib/hooks/useDocumentTitle"
+import {DownloadPDF} from "@/components/DownloadPDF";
+import {ErrorBlock} from "@/components/portal/ErrorBlock";
+import {Money} from "@/components/portal/Money";
+import {PixPanel} from "@/components/portal/PixPanel";
+import {StatusBadge} from "@/components/portal/StatusBadge";
+import {messageFor, statusOf} from "@/lib/api/client";
+import {getInvoice, getInvoicePDF, payInvoice, portalKeys} from "@/lib/api/portal";
+import type {Invoice, PixPayment} from "@/lib/api/types";
+import {longDate, money, period} from "@/lib/format";
+import {useDocumentTitle} from "@/lib/hooks/useDocumentTitle";
 
 /**
  * P3 — a fatura. What it is, how much, when, and the button to pay it.
@@ -39,20 +39,20 @@ export default function InvoicePage() {
     <Suspense fallback={<DetailSkeleton/>}>
       <Invoice/>
     </Suspense>
-  )
+  );
 }
 
 function Invoice() {
-  const {t} = useTranslation()
-  const id = useSearchParams().get("id") ?? ""
-  const queryClient = useQueryClient()
-  const [payment, setPayment] = useState<PixPayment | null>(null)
+  const {t} = useTranslation();
+  const id = useSearchParams().get("id") ?? "";
+  const queryClient = useQueryClient();
+  const [payment, setPayment] = useState<PixPayment | null>(null);
 
   const query = useQuery({
     queryKey: portalKeys.invoice(id),
     queryFn: () => getInvoice(id),
     enabled: id !== "",
-  })
+  });
 
   const pay = useMutation({
     mutationFn: () => payInvoice(id),
@@ -60,21 +60,21 @@ function Invoice() {
       // The pay response carries the invoice as well as the charge, so the
       // screen re-renders from it instead of showing a stale amount for one
       // round trip.
-      queryClient.setQueryData(portalKeys.invoice(id), result.invoice)
-      setPayment(result.payment)
+      queryClient.setQueryData(portalKeys.invoice(id), result.invoice);
+      setPayment(result.payment);
     },
     onError: error => toast.error(messageFor(error)),
-  })
+  });
 
   // Named by its number once there is one. Somebody paying two bills has two
   // tabs open, and "Fatura · CTech Billing" twice tells them nothing.
-  useDocumentTitle(query.data?.number ? t("portal.invoice.numbered", {number: query.data.number}) : null)
+  useDocumentTitle(query.data?.number ? t("portal.invoice.numbered", {number: query.data.number}) : null);
 
   // A bare /invoice with no id is the same dead end as an invoice that does not
   // exist, and saying so beats a query that never fires under a spinner.
-  if (id === "" || (query.isError && statusOf(query.error) === 404)) return <NotFound/>
+  if (id === "" || (query.isError && statusOf(query.error) === 404)) return <NotFound/>;
 
-  if (query.isPending) return <DetailSkeleton/>
+  if (query.isPending) return <DetailSkeleton/>;
 
   if (query.isError) {
     return (
@@ -82,16 +82,16 @@ function Invoice() {
         <BackLink/>
         <ErrorBlock error={query.error} onRetry={query.refetch}/>
       </div>
-    )
+    );
   }
 
-  const invoice = query.data
+  const invoice = query.data;
   // The server's answer, not arithmetic on the amounts. `amount_due === 0 &&
   // amount_paid > 0` called a zero-total invoice unpaid — the Free plan, issued
   // and settled on the spot with nothing ever paid (ADR 0019) — and sent its
   // reader to the "not payable" block, which told them a bill marked *Paga* was
   // "ainda não aberta para pagamento".
-  const settled = invoice.settled
+  const settled = invoice.settled;
 
   return (
     <div className="space-y-10">
@@ -176,11 +176,11 @@ function Invoice() {
         />
       </div>
     </div>
-  )
+  );
 }
 
 function NotFound() {
-  const {t} = useTranslation()
+  const {t} = useTranslation();
   return (
     <div className="space-y-6">
       <BackLink/>
@@ -196,11 +196,11 @@ function NotFound() {
         {t("portal.invoice.notFound.action")}
       </Button>
     </div>
-  )
+  );
 }
 
 function BackLink() {
-  const {t} = useTranslation()
+  const {t} = useTranslation();
   return (
     <Link
       href="/invoices"
@@ -209,7 +209,7 @@ function BackLink() {
       <ArrowLeft aria-hidden className="size-3.5"/>
       {t("portal.invoice.back")}
     </Link>
-  )
+  );
 }
 
 /**
@@ -220,8 +220,8 @@ function BackLink() {
  * same sentence — so the screen says it instead of a person saying it later.
  */
 function Lines({invoice}: { invoice: Invoice }) {
-  const {t} = useTranslation()
-  if (!invoice.lines?.length) return null
+  const {t} = useTranslation();
+  if (!invoice.lines?.length) return null;
 
   return (
     <section aria-labelledby="linhas" className="space-y-4">
@@ -257,7 +257,7 @@ function Lines({invoice}: { invoice: Invoice }) {
         </div>
       )}
     </section>
-  )
+  );
 }
 
 /**
@@ -270,7 +270,7 @@ function Lines({invoice}: { invoice: Invoice }) {
  * reason they write in instead.
  */
 function Facts({invoice}: { invoice: Invoice }) {
-  const {t} = useTranslation()
+  const {t} = useTranslation();
   return (
     <section aria-labelledby="detalhes" className="space-y-4 border-t border-border pt-6">
       <h2 id="detalhes" className="text-sm font-medium text-muted-foreground">
@@ -292,7 +292,7 @@ function Facts({invoice}: { invoice: Invoice }) {
         )}
       </dl>
     </section>
-  )
+  );
 }
 
 function Fact({label, value, numeric}: { label: string; value: string; numeric?: boolean }) {
@@ -303,7 +303,7 @@ function Fact({label, value, numeric}: { label: string; value: string; numeric?:
         {value}
       </dd>
     </div>
-  )
+  );
 }
 
 /**
@@ -313,7 +313,7 @@ function Fact({label, value, numeric}: { label: string; value: string; numeric?:
  * not have to look twice to be sure it landed.
  */
 function Receipt({invoice}: { invoice: Invoice }) {
-  const {t} = useTranslation()
+  const {t} = useTranslation();
   return (
     <div className="flex items-start gap-3 rounded-xl bg-success px-5 py-4 text-background">
       <Check aria-hidden className="mt-0.5 size-5 shrink-0"/>
@@ -329,7 +329,7 @@ function Receipt({invoice}: { invoice: Invoice }) {
         </p>
       </div>
     </div>
-  )
+  );
 }
 
 /**
@@ -343,18 +343,18 @@ function Receipt({invoice}: { invoice: Invoice }) {
  * pagamento": the one reading that is both wrong and impossible to act on.
  */
 function NotPayable({invoice}: { invoice: Invoice }) {
-  const {t} = useTranslation()
+  const {t} = useTranslation();
   const message = invoice.state === "uncollectible"
     ? t("portal.invoice.notPayable.negotiation")
     : invoice.state === "void"
       ? t("portal.invoice.notPayable.cancelled")
-      : t("portal.invoice.notPayable.preparing")
+      : t("portal.invoice.notPayable.preparing");
 
   return (
     <div className="rounded-xl border border-border bg-surface px-5 py-4">
       <p className="text-pretty text-sm text-foreground">{message}</p>
     </div>
-  )
+  );
 }
 
 function DetailSkeleton() {
@@ -374,5 +374,5 @@ function DetailSkeleton() {
         <Skeleton className="h-4 w-5/6"/>
       </div>
     </div>
-  )
+  );
 }

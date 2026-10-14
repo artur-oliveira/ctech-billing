@@ -1,9 +1,9 @@
-import {Badge} from "@aoctech/ui"
-import {AlertTriangle, Ban, CheckCircle2, Circle, Clock, PauseCircle} from "lucide-react"
+import {Badge} from "@aoctech/ui";
+import {AlertTriangle, Ban, CheckCircle2, Circle, Clock, PauseCircle} from "lucide-react";
 
-import {useTranslation} from "react-i18next"
+import {useTranslation} from "react-i18next";
 
-import type {SubscriptionStatus} from "@/lib/api/consoleTypes"
+import type {SubscriptionStatus} from "@/lib/api/consoleTypes";
 
 /**
  * The subscription's internal status, spelled out — the console's vocabulary,
@@ -21,7 +21,7 @@ const TONE = {
   PAST_DUE: "urgent",
   PAUSED: "neutral",
   CANCELED: "neutral",
-} as const
+} as const;
 
 const GLYPH = {
   INCOMPLETE: Clock,
@@ -30,14 +30,14 @@ const GLYPH = {
   PAST_DUE: AlertTriangle,
   PAUSED: PauseCircle,
   CANCELED: Ban,
-} as const
+} as const;
 
 export function SubscriptionStatusBadge({
   status,
   endingAtPeriodEnd,
 }: { status: SubscriptionStatus; endingAtPeriodEnd?: boolean }) {
-  const {t} = useTranslation()
-  const Glyph = GLYPH[status] ?? Circle
+  const {t} = useTranslation();
+  const Glyph = GLYPH[status] ?? Circle;
   return (
     <span className="inline-flex items-center gap-1.5">
       <Badge tone={TONE[status]}>
@@ -54,5 +54,5 @@ export function SubscriptionStatusBadge({
         </Badge>
       )}
     </span>
-  )
+  );
 }

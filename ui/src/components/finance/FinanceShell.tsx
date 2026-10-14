@@ -1,17 +1,17 @@
-"use client"
+"use client";
 
-import {BottomNavSpacer, Skeleton} from "@aoctech/ui"
-import {useRouter} from "next/navigation"
-import {type ReactNode, useEffect} from "react"
-import {useTranslation} from "react-i18next"
+import {BottomNavSpacer, Skeleton} from "@aoctech/ui";
+import {useRouter} from "next/navigation";
+import {type ReactNode, useEffect} from "react";
+import {useTranslation} from "react-i18next";
 
-import {FinanceBottomNav} from "@/components/finance/FinanceBottomNav"
-import {SpaceFinanceNav} from "@/components/finance/FinanceNav"
-import {BillingShell, ShellContext, TestBanner} from "@/components/shell/BillingShell"
-import {SpaceSwitch} from "@/components/finance/SpaceSwitch"
-import {useAuth} from "@/lib/auth/AuthContext"
-import {useMode} from "@/lib/console/useMode"
-import {FINANCE_HREF} from "@/lib/finance/href"
+import {FinanceBottomNav} from "@/components/finance/FinanceBottomNav";
+import {SpaceFinanceNav} from "@/components/finance/FinanceNav";
+import {BillingShell, ShellContext, TestBanner} from "@/components/shell/BillingShell";
+import {SpaceSwitch} from "@/components/finance/SpaceSwitch";
+import {useAuth} from "@/lib/auth/AuthContext";
+import {useMode} from "@/lib/console/useMode";
+import {FINANCE_HREF} from "@/lib/finance/href";
 
 /**
  * Finanças, the third area beside the portal and the console. It was a section
@@ -26,14 +26,14 @@ import {FINANCE_HREF} from "@/lib/finance/href"
  * there is no "not yours" state to decide before rendering.
  */
 export function FinanceShell({children}: {children: ReactNode}) {
-  const {t} = useTranslation()
-  const router = useRouter()
-  const {authenticated, loading} = useAuth()
-  const mode = useMode()
+  const {t} = useTranslation();
+  const router = useRouter();
+  const {authenticated, loading} = useAuth();
+  const mode = useMode();
 
   useEffect(() => {
-    if (!loading && !authenticated) router.replace("/login")
-  }, [loading, authenticated, router])
+    if (!loading && !authenticated) router.replace("/login");
+  }, [loading, authenticated, router]);
 
   return (
     <BillingShell
@@ -58,5 +58,5 @@ export function FinanceShell({children}: {children: ReactNode}) {
         </>
       )}
     </BillingShell>
-  )
+  );
 }

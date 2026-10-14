@@ -1,18 +1,18 @@
-"use client"
+"use client";
 
-import {toast} from "sonner"
+import {toast} from "sonner";
 
-import {t} from "@/lib/i18n"
+import {t} from "@/lib/i18n";
 
-import {apiClient, isSpaceNotFound} from "@/lib/api/client"
+import {apiClient, isSpaceNotFound} from "@/lib/api/client";
 import type {
   Account, AccountPatch, Bill, BillPatch, Card, CardPatch, CardStatement, CardRecurringForecast, CashFlow, CurrentSpace, Direction, DRE, FinanceSpaces, ListResponse, NewAccount, NewBill,
   CardSpending, NewCard, NewPurchase, NewRecurrence, PurchasePatch, NewTransfer, Purchase, Occurrence, OpeningBalance, PreviewInput, ProjectionMonth, Recurrence, RecurrenceOccurrences, RecurrencePatch,
   StatementDirection, StatementPage, PendingOccurrence,
   ChoosePlan, PlanState, Settings, Settlement, Statement, CsvMapping, ImportDetail, ImportSummary, LineResult, NewImport,
-} from "@/lib/api/financeTypes"
-import {getSpace, PERSONAL, type Space, setSpace, spaceHeader} from "@/lib/console/space"
-import type {Mode} from "@/lib/console/mode"
+} from "@/lib/api/financeTypes";
+import {getSpace, PERSONAL, type Space, setSpace, spaceHeader} from "@/lib/console/space";
+import type {Mode} from "@/lib/console/mode";
 
 /**
  * The finance section's calls. Every one carries the mode AND the space, added
@@ -26,12 +26,12 @@ export interface FinanceCtx {
   space: Space
 }
 
-const BASE = "/v1.0/console/finance"
+const BASE = "/v1.0/console/finance";
 
 function headers(c: FinanceCtx, idempotencyKey?: string): Record<string, string> {
-  const h: Record<string, string> = {"X-Billing-Mode": c.mode, "X-Billing-Space": spaceHeader(c.space)}
-  if (idempotencyKey) h["Idempotency-Key"] = idempotencyKey
-  return h
+  const h: Record<string, string> = {"X-Billing-Mode": c.mode, "X-Billing-Space": spaceHeader(c.space)};
+  if (idempotencyKey) h["Idempotency-Key"] = idempotencyKey;
+  return h;
 }
 
 /**
@@ -44,18 +44,18 @@ function spaceGone(c: FinanceCtx, error: unknown): never {
   // person already left must not overwrite where they went. One toast id, so
   // the blocks failing together show one message.
   if (c.space.kind === "organization" && isSpaceNotFound(error) && spaceHeader(getSpace()) === spaceHeader(c.space)) {
-    setSpace(PERSONAL)
-    toast.info(t("auth.errors.spaceGone"), {id: "space-gone"})
+    setSpace(PERSONAL);
+    toast.info(t("auth.errors.spaceGone"), {id: "space-gone"});
   }
-  throw error
+  throw error;
 }
 
 async function read<T>(c: FinanceCtx, url: string, params?: Record<string, unknown>, signal?: AbortSignal): Promise<T> {
   try {
-    const {data} = await apiClient.request<T>({method: "GET", url: BASE + url, headers: headers(c), params, signal})
-    return data
+    const {data} = await apiClient.request<T>({method: "GET", url: BASE + url, headers: headers(c), params, signal});
+    return data;
   } catch (e) {
-    return spaceGone(c, e)
+    return spaceGone(c, e);
   }
 }
 
@@ -66,16 +66,16 @@ async function read<T>(c: FinanceCtx, url: string, params?: Record<string, unkno
  * "nothing", never null, and never drop an emptied field.
  */
 export function patchBody<B extends object>(body: B): {[K in keyof B]: B[K] | null} {
-  return Object.fromEntries(Object.entries(body).map(([k, v]) => [k, v === "" ? null : v])) as {[K in keyof B]: B[K] | null}
+  return Object.fromEntries(Object.entries(body).map(([k, v]) => [k, v === "" ? null : v])) as {[K in keyof B]: B[K] | null};
 }
 
 async function write<T>(c: FinanceCtx, method: "POST" | "PATCH" | "PUT", url: string, body: unknown, key: string): Promise<T> {
   try {
-    const payload = method === "PATCH" && body ? patchBody(body) : body ?? {}
-    const {data} = await apiClient.request<T>({method, url: BASE + url, headers: headers(c, key), data: payload})
-    return data
+    const payload = method === "PATCH" && body ? patchBody(body) : body ?? {};
+    const {data} = await apiClient.request<T>({method, url: BASE + url, headers: headers(c, key), data: payload});
+    return data;
   } catch (e) {
-    return spaceGone(c, e)
+    return spaceGone(c, e);
   }
 }
 
@@ -120,163 +120,163 @@ export const financeKeys = {
   importDetail: (mode: Mode, space: Space, id: string) => ["finance", mode, spaceHeader(space), "import", id] as const,
   csvMapping: (mode: Mode, space: Space, accountId: string) => ["finance", mode, spaceHeader(space), "csv-mapping", accountId] as const,
   spaces: () => ["finance", "spaces"] as const,
-}
+};
 
 // --- spaces -----------------------------------------------------------------
 
 /** The switcher's list. No space header: none is selected yet. */
 export async function getFinanceSpaces(): Promise<FinanceSpaces> {
-  const {data} = await apiClient.request<FinanceSpaces>({method: "GET", url: BASE + "/spaces", headers: {}})
-  return data
+  const {data} = await apiClient.request<FinanceSpaces>({method: "GET", url: BASE + "/spaces", headers: {}});
+  return data;
 }
 
-export const getCurrentSpace = (c: FinanceCtx) => read<CurrentSpace>(c, "/space")
+export const getCurrentSpace = (c: FinanceCtx) => read<CurrentSpace>(c, "/space");
 
 // --- bills --------------------------------------------------------------------
 
 export const listBills = (c: FinanceCtx, direction: Direction, cursor?: string, limit = 100) =>
-  read<ListResponse<Bill>>(c, "/bills", {direction, cursor, limit})
-export const getBill = (c: FinanceCtx, id: string) => read<Bill>(c, `/bills/${encodeURIComponent(id)}`)
+  read<ListResponse<Bill>>(c, "/bills", {direction, cursor, limit});
+export const getBill = (c: FinanceCtx, id: string) => read<Bill>(c, `/bills/${encodeURIComponent(id)}`);
 export const createBill = (c: FinanceCtx, body: NewBill, idempotencyKey: string) =>
-  write<Bill>(c, "POST", "/bills", body, idempotencyKey)
+  write<Bill>(c, "POST", "/bills", body, idempotencyKey);
 export const patchBill = (c: FinanceCtx, id: string, body: BillPatch, idempotencyKey: string) =>
-  write<Bill>(c, "PATCH", `/bills/${encodeURIComponent(id)}`, body, idempotencyKey)
+  write<Bill>(c, "PATCH", `/bills/${encodeURIComponent(id)}`, body, idempotencyKey);
 export const settleBill = (c: FinanceCtx, id: string, body: Settlement, idempotencyKey: string) =>
-  write<Bill>(c, "POST", `/bills/${encodeURIComponent(id)}/settle`, body, idempotencyKey)
+  write<Bill>(c, "POST", `/bills/${encodeURIComponent(id)}/settle`, body, idempotencyKey);
 export const cancelBill = (c: FinanceCtx, id: string, idempotencyKey: string) =>
-  write<Bill>(c, "POST", `/bills/${encodeURIComponent(id)}/cancel`, {}, idempotencyKey)
+  write<Bill>(c, "POST", `/bills/${encodeURIComponent(id)}/cancel`, {}, idempotencyKey);
 export const restoreCancelledBill = (c: FinanceCtx, id: string, idempotencyKey: string) =>
-  write<Bill>(c, "POST", `/bills/${encodeURIComponent(id)}/restore`, {}, idempotencyKey)
+  write<Bill>(c, "POST", `/bills/${encodeURIComponent(id)}/restore`, {}, idempotencyKey);
 /** Undoes a payment: the bill returns to the open list with auto-settle off. */
 export const unsettleBill = (c: FinanceCtx, id: string, idempotencyKey: string) =>
-  write<Bill>(c, "POST", `/bills/${encodeURIComponent(id)}/unsettle`, {}, idempotencyKey)
+  write<Bill>(c, "POST", `/bills/${encodeURIComponent(id)}/unsettle`, {}, idempotencyKey);
 
 // --- recurrences ----------------------------------------------------------------
 
-export const listRecurrences = (c: FinanceCtx) => read<ListResponse<Recurrence>>(c, "/recurrences")
-export const listPendingOccurrences = (c: FinanceCtx) => read<ListResponse<PendingOccurrence>>(c, "/pending-occurrences")
+export const listRecurrences = (c: FinanceCtx) => read<ListResponse<Recurrence>>(c, "/recurrences");
+export const listPendingOccurrences = (c: FinanceCtx) => read<ListResponse<PendingOccurrence>>(c, "/pending-occurrences");
 export const confirmExpectedOccurrence = (c: FinanceCtx, id: string, nominal: string, amount: number, key: string) =>
-  write<{state:string; amount:number; bill_id?:string; purchase_id?:string}>(c,"POST",`/recurrences/${encodeURIComponent(id)}/occurrences/${encodeURIComponent(nominal)}/confirm`,{amount},key)
+  write<{state:string; amount:number; bill_id?:string; purchase_id?:string}>(c,"POST",`/recurrences/${encodeURIComponent(id)}/occurrences/${encodeURIComponent(nominal)}/confirm`,{amount},key);
 export const skipExpectedOccurrence = (c: FinanceCtx, id: string, nominal: string, key: string) =>
-  write<{state:string}>(c,"POST",`/recurrences/${encodeURIComponent(id)}/occurrences/${encodeURIComponent(nominal)}/skip`,{},key)
+  write<{state:string}>(c,"POST",`/recurrences/${encodeURIComponent(id)}/occurrences/${encodeURIComponent(nominal)}/skip`,{},key);
 export const createRecurrence = (c: FinanceCtx, body: NewRecurrence, idempotencyKey: string) =>
-  write<Recurrence>(c, "POST", "/recurrences", body, idempotencyKey)
+  write<Recurrence>(c, "POST", "/recurrences", body, idempotencyKey);
 export const patchRecurrence = (c: FinanceCtx, id: string, body: RecurrencePatch, idempotencyKey: string) =>
-  write<Recurrence>(c, "PATCH", `/recurrences/${encodeURIComponent(id)}`, body, idempotencyKey)
+  write<Recurrence>(c, "PATCH", `/recurrences/${encodeURIComponent(id)}`, body, idempotencyKey);
 /** F4's detail: what the recurrence made (each with its state) and what it will make. */
 export const getRecurrenceOccurrences = (c: FinanceCtx, id: string) =>
-  read<RecurrenceOccurrences>(c, `/recurrences/${encodeURIComponent(id)}/occurrences`)
+  read<RecurrenceOccurrences>(c, `/recurrences/${encodeURIComponent(id)}/occurrences`);
 export const archiveRecurrence = (c: FinanceCtx, id: string, idempotencyKey: string) =>
-  write<void>(c, "POST", `/recurrences/${encodeURIComponent(id)}/archive`, {}, idempotencyKey)
+  write<void>(c, "POST", `/recurrences/${encodeURIComponent(id)}/archive`, {}, idempotencyKey);
 
 /** A read: nothing is stored, so no Idempotency-Key. */
 export async function previewRecurrence(c: FinanceCtx, body: PreviewInput, signal?: AbortSignal): Promise<ListResponse<Occurrence>> {
   const {data} = await apiClient.request<ListResponse<Occurrence>>({
     method: "POST", url: BASE + "/recurrences/preview", headers: headers(c), data: body, signal,
-  })
-  return data
+  });
+  return data;
 }
 
 export const getProjection = (c: FinanceCtx, months: number) =>
-  read<ListResponse<ProjectionMonth>>(c, "/projection", {months})
+  read<ListResponse<ProjectionMonth>>(c, "/projection", {months});
 
 // --- accounts and settings ------------------------------------------------------
 
-export const listAccounts = (c: FinanceCtx) => read<ListResponse<Account>>(c, "/accounts")
+export const listAccounts = (c: FinanceCtx) => read<ListResponse<Account>>(c, "/accounts");
 export const createAccount = (c: FinanceCtx, body: NewAccount, idempotencyKey: string) =>
-  write<Account>(c, "POST", "/accounts", body, idempotencyKey)
+  write<Account>(c, "POST", "/accounts", body, idempotencyKey);
 export const renameAccount = (c: FinanceCtx, id: string, body: AccountPatch, idempotencyKey: string) =>
-  write<Account>(c, "PATCH", `/accounts/${encodeURIComponent(id)}`, body, idempotencyKey)
+  write<Account>(c, "PATCH", `/accounts/${encodeURIComponent(id)}`, body, idempotencyKey);
 export const archiveAccount = (c: FinanceCtx, id: string, idempotencyKey: string) =>
-  write<void>(c, "POST", `/accounts/${encodeURIComponent(id)}/archive`, {}, idempotencyKey)
-export const getSettings = (c: FinanceCtx) => read<Settings>(c, "/settings")
+  write<void>(c, "POST", `/accounts/${encodeURIComponent(id)}/archive`, {}, idempotencyKey);
+export const getSettings = (c: FinanceCtx) => read<Settings>(c, "/settings");
 /** "" clears it: a paid CTech invoice then goes to the only bank or cash account, if one. */
 export const setDefaultReceivingAccount = (c: FinanceCtx, accountId: string, idempotencyKey: string) =>
-  write<Settings>(c, "PUT", "/settings/default-receiving-account", patchBody({default_receiving_account_id: accountId}), idempotencyKey)
+  write<Settings>(c, "PUT", "/settings/default-receiving-account", patchBody({default_receiving_account_id: accountId}), idempotencyKey);
 export const setPostCTechInvoices = (c: FinanceCtx, on: boolean, idempotencyKey: string) =>
-  write<Settings>(c, "PUT", "/settings/post-ctech-invoices", {post_ctech_invoices: on}, idempotencyKey)
+  write<Settings>(c, "PUT", "/settings/post-ctech-invoices", {post_ctech_invoices: on}, idempotencyKey);
 
 // --- statement, transfers, reports ------------------------------------------------
 
 /** `to` is exclusive. */
 export const getStatement = (c: FinanceCtx, accountId: string, from: string, to: string, signal?: AbortSignal) =>
-  read<Statement>(c, `/accounts/${encodeURIComponent(accountId)}/statement`, {from, to}, signal)
+  read<Statement>(c, `/accounts/${encodeURIComponent(accountId)}/statement`, {from, to}, signal);
 export const postOpeningBalance = (c: FinanceCtx, accountId: string, body: OpeningBalance, idempotencyKey: string) =>
-  write<{transaction_id: string}>(c, "POST", `/accounts/${encodeURIComponent(accountId)}/opening-balance`, body, idempotencyKey)
+  write<{transaction_id: string}>(c, "POST", `/accounts/${encodeURIComponent(accountId)}/opening-balance`, body, idempotencyKey);
 export const createTransfer = (c: FinanceCtx, body: NewTransfer, idempotencyKey: string) =>
-  write<{transaction_id: string}>(c, "POST", "/transfers", body, idempotencyKey)
+  write<{transaction_id: string}>(c, "POST", "/transfers", body, idempotencyKey);
 /** Only transfers and opening balances; a payment is undone with unsettleBill. */
 export const reverseTransaction = (c: FinanceCtx, txId: string, idempotencyKey: string) =>
-  write<{transaction_id: string}>(c, "POST", `/transactions/${encodeURIComponent(txId)}/reverse`, {}, idempotencyKey)
+  write<{transaction_id: string}>(c, "POST", `/transactions/${encodeURIComponent(txId)}/reverse`, {}, idempotencyKey);
 /** What the cards billed per category and month, by statement month; `cardId` narrows it to one card. */
 export const getCardSpending = (c: FinanceCtx, from: string, to: string, cardId?: string) =>
-  read<CardSpending>(c, "/reports/card-spending", {from, to, ...(cardId ? {card_id: cardId} : {})})
+  read<CardSpending>(c, "/reports/card-spending", {from, to, ...(cardId ? {card_id: cardId} : {})});
 /** Months `YYYY-MM`, both inclusive. */
-export const getCashFlow = (c: FinanceCtx, from: string, to: string) => read<CashFlow>(c, "/reports/cash-flow", {from, to})
-export const getDRE = (c: FinanceCtx, from: string, to: string) => read<DRE>(c, "/reports/dre", {from, to})
+export const getCashFlow = (c: FinanceCtx, from: string, to: string) => read<CashFlow>(c, "/reports/cash-flow", {from, to});
+export const getDRE = (c: FinanceCtx, from: string, to: string) => read<DRE>(c, "/reports/dre", {from, to});
 
 // --- cards --------------------------------------------------------------------------
 
-const card = (id: string) => `/cards/${encodeURIComponent(id)}`
+const card = (id: string) => `/cards/${encodeURIComponent(id)}`;
 
-export const listCards = (c: FinanceCtx) => read<ListResponse<Card>>(c, "/cards")
+export const listCards = (c: FinanceCtx) => read<ListResponse<Card>>(c, "/cards");
 export const createCard = (c: FinanceCtx, body: NewCard, idempotencyKey: string) =>
-  write<Card>(c, "POST", "/cards", body, idempotencyKey)
+  write<Card>(c, "POST", "/cards", body, idempotencyKey);
 export const patchCard = (c: FinanceCtx, id: string, body: CardPatch, idempotencyKey: string) =>
-  write<Card>(c, "PATCH", card(id), body, idempotencyKey)
+  write<Card>(c, "PATCH", card(id), body, idempotencyKey);
 /** `month` is `YYYY-MM`. */
 export const getCardStatement = (c: FinanceCtx, cardId: string, month: string) =>
-  read<CardStatement>(c, `${card(cardId)}/statements/${encodeURIComponent(month)}`)
+  read<CardStatement>(c, `${card(cardId)}/statements/${encodeURIComponent(month)}`);
 export const getCardStatementForecast = (c: FinanceCtx, cardId: string, month: string) =>
-  read<ListResponse<CardRecurringForecast>>(c, `${card(cardId)}/statements/${encodeURIComponent(month)}/forecast`)
+  read<ListResponse<CardRecurringForecast>>(c, `${card(cardId)}/statements/${encodeURIComponent(month)}/forecast`);
 /** Statement summaries from `from` (`YYYY-MM`, inclusive), `count` 1..12, in `direction`. */
 export const listCardStatements = (c: FinanceCtx, cardId: string, from: string, count: number, direction: StatementDirection) =>
-  read<StatementPage>(c, `${card(cardId)}/statements`, {from, count, direction})
-export const listPurchases = (c: FinanceCtx, cardId: string) => read<ListResponse<Purchase>>(c, `${card(cardId)}/purchases`)
+  read<StatementPage>(c, `${card(cardId)}/statements`, {from, count, direction});
+export const listPurchases = (c: FinanceCtx, cardId: string) => read<ListResponse<Purchase>>(c, `${card(cardId)}/purchases`);
 export const createPurchase = (c: FinanceCtx, cardId: string, body: NewPurchase, idempotencyKey: string) =>
-  write<Purchase>(c, "POST", `${card(cardId)}/purchases`, body, idempotencyKey)
+  write<Purchase>(c, "POST", `${card(cardId)}/purchases`, body, idempotencyKey);
 /** Renames or recategorises a purchase; amounts, dates and installments never change. */
 export const patchPurchase = (c: FinanceCtx, cardId: string, purchaseId: string, body: PurchasePatch, idempotencyKey: string) =>
-  write<Purchase>(c, "PATCH", `${card(cardId)}/purchases/${encodeURIComponent(purchaseId)}`, body, idempotencyKey)
+  write<Purchase>(c, "PATCH", `${card(cardId)}/purchases/${encodeURIComponent(purchaseId)}`, body, idempotencyKey);
 export const refundPurchase = (c: FinanceCtx, cardId: string, purchaseId: string, idempotencyKey: string) =>
-  write<Purchase>(c, "POST", `${card(cardId)}/purchases/${encodeURIComponent(purchaseId)}/refund`, {}, idempotencyKey)
+  write<Purchase>(c, "POST", `${card(cardId)}/purchases/${encodeURIComponent(purchaseId)}/refund`, {}, idempotencyKey);
 export const advancePurchase = (c: FinanceCtx, cardId: string, purchaseId: string, idempotencyKey: string) =>
-  write<Purchase>(c, "POST", `${card(cardId)}/purchases/${encodeURIComponent(purchaseId)}/advance`, {}, idempotencyKey)
+  write<Purchase>(c, "POST", `${card(cardId)}/purchases/${encodeURIComponent(purchaseId)}/advance`, {}, idempotencyKey);
 /** Closes the open statement (`month`, `YYYY-MM`) now, before its closing day. A month
  *  that is not the open one is refused, so a repeated click cannot close the next. */
 export const closeStatement = (c: FinanceCtx, cardId: string, month: string, idempotencyKey: string) =>
-  write<CardStatement>(c, "POST", `${card(cardId)}/close`, {month}, idempotencyKey)
+  write<CardStatement>(c, "POST", `${card(cardId)}/close`, {month}, idempotencyKey);
 
 // --- import and reconciliation (F6) ------------------------------------------------
 
-const line = (importId: string, n: number) => `/imports/${encodeURIComponent(importId)}/lines/${n}`
+const line = (importId: string, n: number) => `/imports/${encodeURIComponent(importId)}/lines/${n}`;
 
-export const listImports = (c: FinanceCtx, accountId: string) => read<ListResponse<ImportSummary>>(c, "/imports", {account_id: accountId})
-export const getImport = (c: FinanceCtx, id: string) => read<ImportDetail>(c, `/imports/${encodeURIComponent(id)}`)
+export const listImports = (c: FinanceCtx, accountId: string) => read<ListResponse<ImportSummary>>(c, "/imports", {account_id: accountId});
+export const getImport = (c: FinanceCtx, id: string) => read<ImportDetail>(c, `/imports/${encodeURIComponent(id)}`);
 /** 201 with an id when lines were added; 200 with no id when the file held nothing new. */
 export const uploadImport = (c: FinanceCtx, body: NewImport, idempotencyKey: string) =>
-  write<ImportSummary>(c, "POST", "/imports", body, idempotencyKey)
+  write<ImportSummary>(c, "POST", "/imports", body, idempotencyKey);
 /** Posts the import's `opening_proposal` as its account's opening balance (UX batch 5).
  *  No body: the amount and date are the server's, computed from the file. 409
  *  `opening_balance_exists` / `account_has_entries` when the account can no longer take it. */
 export const postImportOpening = (c: FinanceCtx, importId: string, idempotencyKey: string) =>
-  write<{transaction_id: string}>(c, "POST", `/imports/${encodeURIComponent(importId)}/opening-balance`, {}, idempotencyKey)
+  write<{transaction_id: string}>(c, "POST", `/imports/${encodeURIComponent(importId)}/opening-balance`, {}, idempotencyKey);
 /** Settles the bill with the line's date and amount. */
 export const matchLine = (c: FinanceCtx, importId: string, n: number, body: {bill_id: string; difference_category_id?: string}, idempotencyKey: string) =>
-  write<LineResult>(c, "POST", `${line(importId, n)}/match`, body, idempotencyKey)
+  write<LineResult>(c, "POST", `${line(importId, n)}/match`, body, idempotencyKey);
 /** Creates a bill from the line and settles it at once. */
 export const newFromLine = (c: FinanceCtx, importId: string, n: number, body: {category_id: string; description?: string}, idempotencyKey: string) =>
-  write<LineResult>(c, "POST", `${line(importId, n)}/new`, body, idempotencyKey)
+  write<LineResult>(c, "POST", `${line(importId, n)}/new`, body, idempotencyKey);
 /** Ties a pending line to a bill auto-settle already paid: nothing is posted. */
 export const linkLine = (c: FinanceCtx, importId: string, n: number, body: {bill_id: string}, idempotencyKey: string) =>
-  write<LineResult>(c, "POST", `${line(importId, n)}/link`, body, idempotencyKey)
+  write<LineResult>(c, "POST", `${line(importId, n)}/link`, body, idempotencyKey);
 export const ignoreLine = (c: FinanceCtx, importId: string, n: number, idempotencyKey: string) =>
-  write<LineResult>(c, "POST", `${line(importId, n)}/ignore`, {}, idempotencyKey)
+  write<LineResult>(c, "POST", `${line(importId, n)}/ignore`, {}, idempotencyKey);
 export const reopenLine = (c: FinanceCtx, importId: string, n: number, idempotencyKey: string) =>
-  write<LineResult>(c, "POST", `${line(importId, n)}/reopen`, {}, idempotencyKey)
-export const getCsvMapping = (c: FinanceCtx, accountId: string) => read<CsvMapping>(c, `/accounts/${encodeURIComponent(accountId)}/csv-mapping`)
+  write<LineResult>(c, "POST", `${line(importId, n)}/reopen`, {}, idempotencyKey);
+export const getCsvMapping = (c: FinanceCtx, accountId: string) => read<CsvMapping>(c, `/accounts/${encodeURIComponent(accountId)}/csv-mapping`);
 export const putCsvMapping = (c: FinanceCtx, accountId: string, body: CsvMapping, idempotencyKey: string) =>
-  write<CsvMapping>(c, "PUT", `/accounts/${encodeURIComponent(accountId)}/csv-mapping`, body, idempotencyKey)
+  write<CsvMapping>(c, "PUT", `/accounts/${encodeURIComponent(accountId)}/csv-mapping`, body, idempotencyKey);
 
 /**
  * A file's bytes as base64. The bytes are never decoded as text here: a bank's
@@ -284,22 +284,22 @@ export const putCsvMapping = (c: FinanceCtx, accountId: string, body: CsvMapping
  * could tell which charset it is.
  */
 export async function fileToBase64(file: Blob): Promise<string> {
-  const bytes = new Uint8Array(await file.arrayBuffer())
-  let binary = ""
-  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
-  return btoa(binary)
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(binary);
 }
 
 // --- plan (Pessoal only; always tenant zero, live) ---------------------------------
 
-export const getPlan = (c: FinanceCtx) => read<PlanState>(c, "/plan")
+export const getPlan = (c: FinanceCtx) => read<PlanState>(c, "/plan");
 export const choosePlan = (c: FinanceCtx, body: ChoosePlan, idempotencyKey: string) =>
-  write<PlanState>(c, "POST", "/plan", body, idempotencyKey)
+  write<PlanState>(c, "POST", "/plan", body, idempotencyKey);
 export const cancelPlan = (c: FinanceCtx, idempotencyKey: string) =>
-  write<PlanState>(c, "POST", "/plan/cancel", {}, idempotencyKey)
+  write<PlanState>(c, "POST", "/plan/cancel", {}, idempotencyKey);
 
 /** The 409 that says "pay the first invoice before changing plan". */
 export function isPlanPaymentPending(e: unknown): {invoice_id?: string; checkout_url?: string} | null {
-  const data = (e as {response?: {status?: number; data?: Record<string, string>}})?.response
-  return data?.status === 409 && data.data?.code === "plan_payment_pending" ? data.data : null
+  const data = (e as {response?: {status?: number; data?: Record<string, string>}})?.response;
+  return data?.status === 409 && data.data?.code === "plan_payment_pending" ? data.data : null;
 }

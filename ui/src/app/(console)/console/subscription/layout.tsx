@@ -1,7 +1,7 @@
-import type {Metadata} from "next"
+import type {Metadata} from "next";
 
-export const metadata: Metadata = {title: "Assinatura · Console"}
+export const metadata: Metadata = {title: "Assinatura · Console"};
 
 export default function Layout({children}: LayoutProps<"/console/subscription">) {
-  return children
+  return children;
 }

@@ -1,14 +1,14 @@
-"use client"
+"use client";
 
-import {Select} from "@aoctech/ui"
-import {Plus} from "lucide-react"
-import {useTranslation} from "react-i18next"
+import {Select} from "@aoctech/ui";
+import {Plus} from "lucide-react";
+import {useTranslation} from "react-i18next";
 
-import {selectCopy} from "@/lib/selectCopy"
-import {spaceHeader, parseSpace, setSpace} from "@/lib/console/space"
-import {useSpace} from "@/lib/console/useSpace"
-import * as handoff from "@/lib/finance/spaceHandoff"
-import {useFinanceSpaces} from "@/lib/finance/useFinanceSpaces"
+import {selectCopy} from "@/lib/selectCopy";
+import {spaceHeader, parseSpace, setSpace} from "@/lib/console/space";
+import {useSpace} from "@/lib/console/useSpace";
+import * as handoff from "@/lib/finance/spaceHandoff";
+import {useFinanceSpaces} from "@/lib/finance/useFinanceSpaces";
 
 /**
  * Which space the finance section is looking at.
@@ -27,12 +27,12 @@ import {useFinanceSpaces} from "@/lib/finance/useFinanceSpaces"
  * current space as it was.
  */
 export function SpaceSwitch() {
-  const {t} = useTranslation()
-  const space = useSpace()
-  const {spaces, current, unavailable, spaceOf, labelOf} = useFinanceSpaces()
+  const {t} = useTranslation();
+  const space = useSpace();
+  const {spaces, current, unavailable, spaceOf, labelOf} = useFinanceSpaces();
   // Only the owner of a personal workspace manages its people, and only in
   // ctech-account: billing keeps no member list (ADR 0027).
-  const manage = current?.manage_people && space.kind === "organization" ? space.organizationId : null
+  const manage = current?.manage_people && space.kind === "organization" ? space.organizationId : null;
 
   return (
     <div className="flex w-full min-w-0 flex-col gap-1">
@@ -56,5 +56,5 @@ export function SpaceSwitch() {
       )}
       {unavailable && <span className="text-xs text-muted-foreground">{t("finance.space.orgsUnavailable")}</span>}
     </div>
-  )
+  );
 }

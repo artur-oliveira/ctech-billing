@@ -1,23 +1,23 @@
-"use client"
+"use client";
 
-import {Badge, Button, Checkbox, EmptyState, Field, Input, Modal, PageHeader, RowMenu, Skeleton, SwipeRow, Switch} from "@aoctech/ui"
-import {useMutation, useQuery, useQueryClient} from "@tanstack/react-query"
-import {useState} from "react"
-import {useTranslation} from "react-i18next"
-import {toast} from "sonner"
+import {Badge, Button, Checkbox, EmptyState, Field, Input, Modal, PageHeader, RowMenu, Skeleton, SwipeRow, Switch} from "@aoctech/ui";
+import {useMutation, useQuery, useQueryClient} from "@tanstack/react-query";
+import {useState} from "react";
+import {useTranslation} from "react-i18next";
+import {toast} from "sonner";
 
-import {SecretReveal} from "@/components/console/SecretReveal"
-import {ErrorBlock} from "@/components/portal/ErrorBlock"
-import {messageFor} from "@/lib/api/client"
-import {consoleKeys, createWebhook, deleteWebhook, listConsoleWebhooks, rotateWebhookSecret, testWebhook} from "@/lib/api/console"
-import type {ConsoleWebhookEndpoint} from "@/lib/api/consoleTypes"
-import {useAddsRefused} from "@/lib/console/addsRefused"
-import {useConsoleScope} from "@/lib/console/scope"
-import {instantShortDate} from "@/lib/format"
-import {useDocumentTitle} from "@/lib/hooks/useDocumentTitle"
-import {useCreateRequest} from "@/lib/createRequest"
-import limits from "@/lib/limits.json"
-import {useFieldErrors} from "@/lib/useFieldErrors"
+import {SecretReveal} from "@/components/console/SecretReveal";
+import {ErrorBlock} from "@/components/portal/ErrorBlock";
+import {messageFor} from "@/lib/api/client";
+import {consoleKeys, createWebhook, deleteWebhook, listConsoleWebhooks, rotateWebhookSecret, testWebhook} from "@/lib/api/console";
+import type {ConsoleWebhookEndpoint} from "@/lib/api/consoleTypes";
+import {useAddsRefused} from "@/lib/console/addsRefused";
+import {useConsoleScope} from "@/lib/console/scope";
+import {instantShortDate} from "@/lib/format";
+import {useDocumentTitle} from "@/lib/hooks/useDocumentTitle";
+import {useCreateRequest} from "@/lib/createRequest";
+import limits from "@/lib/limits.json";
+import {useFieldErrors} from "@/lib/useFieldErrors";
 
 type Pending = {kind: "rotate" | "delete"; endpoint: ConsoleWebhookEndpoint} | null
 
@@ -28,49 +28,49 @@ type Pending = {kind: "rotate" | "delete"; endpoint: ConsoleWebhookEndpoint} | n
  * tenant may rotate and delete, never add or test (plan scope decision 1).
  */
 export default function ConsoleWebhooksPage() {
-  const {t, i18n} = useTranslation()
-  const scope = useConsoleScope()
-  useDocumentTitle(t("console.webhooks.title"))
-  const queryClient = useQueryClient()
-  const addsRefused = useAddsRefused()
-  const query = useQuery({queryKey: consoleKeys.webhooks(scope), queryFn: () => listConsoleWebhooks(scope)})
-  const [creating, setCreating] = useState(false)
-  const [asked, setAsked] = useState(false)
-  useCreateRequest("webhook", () => setAsked(true))
-  const [pending, setPending] = useState<Pending>(null)
-  const [secret, setSecret] = useState<string | null>(null)
-  const refresh = () => queryClient.invalidateQueries({queryKey: consoleKeys.webhooks(scope)})
+  const {t, i18n} = useTranslation();
+  const scope = useConsoleScope();
+  useDocumentTitle(t("console.webhooks.title"));
+  const queryClient = useQueryClient();
+  const addsRefused = useAddsRefused();
+  const query = useQuery({queryKey: consoleKeys.webhooks(scope), queryFn: () => listConsoleWebhooks(scope)});
+  const [creating, setCreating] = useState(false);
+  const [asked, setAsked] = useState(false);
+  useCreateRequest("webhook", () => setAsked(true));
+  const [pending, setPending] = useState<Pending>(null);
+  const [secret, setSecret] = useState<string | null>(null);
+  const refresh = () => queryClient.invalidateQueries({queryKey: consoleKeys.webhooks(scope)});
 
-  const endpoints = query.data?.data ?? []
-  const max = query.data?.max_endpoints ?? limits.maxWebhookEndpoints
-  const atLimit = endpoints.length >= max
-  const canAdd = query.isSuccess && !addsRefused && !atLimit
+  const endpoints = query.data?.data ?? [];
+  const max = query.data?.max_endpoints ?? limits.maxWebhookEndpoints;
+  const atLimit = endpoints.length >= max;
+  const canAdd = query.isSuccess && !addsRefused && !atLimit;
   // The search can ask for the form before the list is known. The ask is
   // answered once, when the list settles: opened where the button itself
   // could be pressed, dropped where it could not, so freeing a slot later
   // never opens a form nobody is asking for now.
-  const settled = query.isSuccess || query.isError
+  const settled = query.isSuccess || query.isError;
   if (asked && settled) {
-    setAsked(false)
-    if (canAdd) setCreating(true)
+    setAsked(false);
+    if (canAdd) setCreating(true);
   }
 
   const test = useMutation({
     mutationFn: (id: string) => testWebhook(scope, id),
     onSuccess: () => toast.success(t("console.webhooks.tested")),
     onError: e => toast.error(messageFor(e)),
-  })
+  });
   const act = useMutation({
     mutationFn: async (p: NonNullable<Pending>) =>
       p.kind === "rotate" ? (await rotateWebhookSecret(scope, p.endpoint.id)).secret : (await deleteWebhook(scope, p.endpoint.id), null),
     onSuccess: (newSecret, p) => {
-      setPending(null)
-      void refresh()
-      if (p.kind === "rotate") setSecret(newSecret)
-      else toast.success(t("console.webhooks.deleted"))
+      setPending(null);
+      void refresh();
+      if (p.kind === "rotate") setSecret(newSecret);
+      else toast.success(t("console.webhooks.deleted"));
     },
     onError: e => toast.error(messageFor(e)),
-  })
+  });
 
   return (
     <div className="space-y-6">
@@ -116,20 +116,20 @@ export default function ConsoleWebhooksPage() {
 
       <NewEndpointDialog
         open={creating} eventTypes={query.data?.event_types ?? []} onClose={() => setCreating(false)}
-        onCreated={s => { setCreating(false); setSecret(s); void refresh() }}
+        onCreated={s => { setCreating(false); setSecret(s); void refresh(); }}
       />
       <Modal
         open={pending !== null} onClose={() => setPending(null)} danger locale={i18n.language}
         title={pending ? t(pending.kind === "rotate" ? "console.webhooks.rotateTitle" : "console.webhooks.deleteTitle", {url: pending.endpoint.url}) : ""}
         submitLabel={t(pending?.kind === "rotate" ? "console.webhooks.rotate" : "console.webhooks.delete")}
         cancelLabel={t("console.webhooks.back")} loading={act.isPending}
-        onSubmit={() => { if (pending) act.mutate(pending) }}
+        onSubmit={() => { if (pending) act.mutate(pending); }}
       >
         <p className="text-sm">{t(pending?.kind === "rotate" ? "console.webhooks.rotateBody" : "console.webhooks.deleteBody")}</p>
       </Modal>
       <SecretReveal secret={secret} onDone={() => setSecret(null)}/>
     </div>
-  )
+  );
 }
 
 /**
@@ -140,17 +140,17 @@ export default function ConsoleWebhooksPage() {
 function EndpointRow({endpoint: e, canTest, testing, onTest, onRotate, onDelete}: {
   endpoint: ConsoleWebhookEndpoint; canTest: boolean; testing: boolean; onTest: () => void; onRotate: () => void; onDelete: () => void
 }) {
-  const {t, i18n} = useTranslation()
-  const testable = canTest && !e.provisioned && e.status === "active"
+  const {t, i18n} = useTranslation();
+  const testable = canTest && !e.provisioned && e.status === "active";
   const more = e.provisioned ? [] : [
     {key: "rotate", label: t("console.webhooks.rotate"), onSelect: onRotate},
     {key: "delete", label: t("console.webhooks.delete"), onSelect: onDelete, destructive: true},
-  ]
+  ];
   const meta = [
     e.events.length === 0 ? t("console.webhooks.allEvents") : t("console.webhooks.someEvents", {count: e.events.length}),
     e.provisioned ? t("console.webhooks.provisioned") : e.added_at ? t("console.webhooks.addedOn", {date: instantShortDate(e.added_at)}) : null,
-  ].filter((m): m is string => m !== null)
-  const active = e.status === "active"
+  ].filter((m): m is string => m !== null);
+  const active = e.status === "active";
 
   return (
     <li>
@@ -188,41 +188,41 @@ function EndpointRow({endpoint: e, canTest, testing, onTest, onRotate, onDelete}
         </div>
       </SwipeRow>
     </li>
-  )
+  );
 }
 
 /** Groups "invoice.paid" under "invoice", keeping the catalogue's order. */
 function groupEvents(types: string[]): [string, string[]][] {
-  const groups = new Map<string, string[]>()
+  const groups = new Map<string, string[]>();
   for (const ev of types) {
-    const g = ev.split(".")[0]
-    groups.set(g, [...(groups.get(g) ?? []), ev])
+    const g = ev.split(".")[0];
+    groups.set(g, [...(groups.get(g) ?? []), ev]);
   }
-  return [...groups]
+  return [...groups];
 }
 
 function NewEndpointDialog({open, eventTypes, onClose, onCreated}: {
   open: boolean; eventTypes: string[]; onClose: () => void; onCreated: (secret: string) => void
 }) {
-  const {t, i18n} = useTranslation()
-  const scope = useConsoleScope()
-  const [url, setUrl] = useState("")
-  const [all, setAll] = useState(true)
-  const [chosen, setChosen] = useState<string[]>([])
-  const fe = useFieldErrors(["url", "events"])
+  const {t, i18n} = useTranslation();
+  const scope = useConsoleScope();
+  const [url, setUrl] = useState("");
+  const [all, setAll] = useState(true);
+  const [chosen, setChosen] = useState<string[]>([]);
+  const fe = useFieldErrors(["url", "events"]);
   const create = useMutation({
     mutationFn: () => createWebhook(scope, {url: url.trim(), events: all ? [] : chosen}),
-    onSuccess: res => { setUrl(""); setAll(true); setChosen([]); onCreated(res.secret) },
-    onError: e => { fe.set(e) },
-  })
-  const close = () => { fe.reset(); create.reset(); onClose() }
+    onSuccess: res => { setUrl(""); setAll(true); setChosen([]); onCreated(res.secret); },
+    onError: e => { fe.set(e); },
+  });
+  const close = () => { fe.reset(); create.reset(); onClose(); };
 
   return (
     <Modal
       open={open} onClose={close} locale={i18n.language} title={t("console.webhooks.form.title")}
       submitLabel={t("console.webhooks.form.submit")} cancelLabel={t("console.webhooks.back")}
       submitDisabled={url.trim() === "" || (!all && chosen.length === 0)} loading={create.isPending}
-      onSubmit={() => { fe.reset(); create.mutate() }}
+      onSubmit={() => { fe.reset(); create.mutate(); }}
     >
       <div className="space-y-5">
         <Field label={t("console.webhooks.form.url")} htmlFor="hook-url" hint={t("console.webhooks.form.urlHint")} error={fe.of("url")}>
@@ -230,7 +230,7 @@ function NewEndpointDialog({open, eventTypes, onClose, onCreated}: {
             id="hook-url" type="url" inputMode="url" autoComplete="off" spellCheck={false} maxLength={limits.text.webhookURL}
             value={url} placeholder={t("console.webhooks.form.urlPlaceholder")} className="font-mono"
             {...fe.props("url", "hook-url")}
-            onChange={e => { setUrl(e.target.value); fe.clear("url") }}
+            onChange={e => { setUrl(e.target.value); fe.clear("url"); }}
           />
         </Field>
         <label className="flex min-h-11 items-center gap-3 text-sm text-foreground sm:min-h-8">
@@ -262,5 +262,5 @@ function NewEndpointDialog({open, eventTypes, onClose, onCreated}: {
         )}
       </div>
     </Modal>
-  )
+  );
 }

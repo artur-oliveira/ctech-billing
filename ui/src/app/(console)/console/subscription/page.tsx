@@ -1,21 +1,21 @@
-"use client"
+"use client";
 
-import {Button, Modal, Skeleton} from "@aoctech/ui"
-import {useMutation, useQuery, useQueryClient} from "@tanstack/react-query"
-import {ArrowLeft} from "lucide-react"
-import Link from "next/link"
-import {useSearchParams} from "next/navigation"
-import {Suspense, useState} from "react"
-import {useTranslation} from "react-i18next"
-import {toast} from "sonner"
+import {Button, Modal, Skeleton} from "@aoctech/ui";
+import {useMutation, useQuery, useQueryClient} from "@tanstack/react-query";
+import {ArrowLeft} from "lucide-react";
+import Link from "next/link";
+import {useSearchParams} from "next/navigation";
+import {Suspense, useState} from "react";
+import {useTranslation} from "react-i18next";
+import {toast} from "sonner";
 
-import {SubscriptionStatusBadge} from "@/components/console/SubscriptionStatusBadge"
-import {Timeline} from "@/components/console/Timeline"
-import {ErrorBlock} from "@/components/portal/ErrorBlock"
-import {messageFor, statusOf} from "@/lib/api/client"
-import {cancelConsoleSubscription, consoleKeys, getConsoleSubscription} from "@/lib/api/console"
-import {useConsoleScope} from "@/lib/console/scope"
-import {longDate, money} from "@/lib/format"
+import {SubscriptionStatusBadge} from "@/components/console/SubscriptionStatusBadge";
+import {Timeline} from "@/components/console/Timeline";
+import {ErrorBlock} from "@/components/portal/ErrorBlock";
+import {messageFor, statusOf} from "@/lib/api/client";
+import {cancelConsoleSubscription, consoleKeys, getConsoleSubscription} from "@/lib/api/console";
+import {useConsoleScope} from "@/lib/console/scope";
+import {longDate, money} from "@/lib/format";
 
 /**
  * C5 — one subscription.
@@ -32,46 +32,46 @@ export default function ConsoleSubscriptionPage() {
     <Suspense fallback={<DetailSkeleton/>}>
       <Detail/>
     </Suspense>
-  )
+  );
 }
 
 function Detail() {
-  const {t} = useTranslation()
-  const id = useSearchParams().get("id") ?? ""
-  const scope = useConsoleScope()
-  const queryClient = useQueryClient()
-  const [ending, setEnding] = useState<"now" | "period-end" | null>(null)
+  const {t} = useTranslation();
+  const id = useSearchParams().get("id") ?? "";
+  const scope = useConsoleScope();
+  const queryClient = useQueryClient();
+  const [ending, setEnding] = useState<"now" | "period-end" | null>(null);
 
   const query = useQuery({
     queryKey: consoleKeys.subscription(scope, id),
     queryFn: () => getConsoleSubscription(scope, id),
     enabled: id !== "",
-  })
+  });
 
   const cancel = useMutation({
     mutationFn: (atPeriodEnd: boolean) => cancelConsoleSubscription(scope, id, atPeriodEnd),
     onSuccess: () => {
-      toast.success(t("console.subscription.done"))
-      void queryClient.invalidateQueries({queryKey: consoleKeys.subscription(scope, id)})
-      void queryClient.invalidateQueries({queryKey: consoleKeys.subscriptions(scope)})
+      toast.success(t("console.subscription.done"));
+      void queryClient.invalidateQueries({queryKey: consoleKeys.subscription(scope, id)});
+      void queryClient.invalidateQueries({queryKey: consoleKeys.subscriptions(scope)});
     },
     onError: error => toast.error(messageFor(error)),
     onSettled: () => setEnding(null),
-  })
+  });
 
-  if (id === "" || (query.isError && statusOf(query.error) === 404)) return <NotFound/>
-  if (query.isPending) return <DetailSkeleton/>
+  if (id === "" || (query.isError && statusOf(query.error) === 404)) return <NotFound/>;
+  if (query.isPending) return <DetailSkeleton/>;
   if (query.isError) {
     return (
       <div className="space-y-6">
         <BackLink/>
         <ErrorBlock error={query.error} onRetry={query.refetch}/>
       </div>
-    )
+    );
   }
 
-  const {subscription: sub, items, timeline} = query.data
-  const live = sub.status !== "CANCELED"
+  const {subscription: sub, items, timeline} = query.data;
+  const live = sub.status !== "CANCELED";
 
   return (
     <div className="space-y-8">
@@ -156,7 +156,7 @@ function Detail() {
         onSubmit={() => cancel.mutate(ending === "period-end")}
       />
     </div>
-  )
+  );
 }
 
 function Fact({label, value, href}: { label: string; value: string; href?: string }) {
@@ -173,11 +173,11 @@ function Fact({label, value, href}: { label: string; value: string; href?: strin
         )}
       </dd>
     </div>
-  )
+  );
 }
 
 function NotFound() {
-  const {t} = useTranslation()
+  const {t} = useTranslation();
   return (
     <div className="space-y-6">
       <BackLink/>
@@ -190,11 +190,11 @@ function NotFound() {
         </p>
       </div>
     </div>
-  )
+  );
 }
 
 function BackLink() {
-  const {t} = useTranslation()
+  const {t} = useTranslation();
   return (
     <Link
       href="/console/subscriptions"
@@ -203,7 +203,7 @@ function BackLink() {
       <ArrowLeft aria-hidden className="size-3.5"/>
       {t("console.subscription.back")}
     </Link>
-  )
+  );
 }
 
 function DetailSkeleton() {
@@ -213,5 +213,5 @@ function DetailSkeleton() {
       <Skeleton className="h-16 w-full"/>
       <Skeleton className="h-24 w-full"/>
     </div>
-  )
+  );
 }

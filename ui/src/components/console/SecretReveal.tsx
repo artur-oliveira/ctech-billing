@@ -1,9 +1,9 @@
-"use client"
+"use client";
 
-import {Button, Modal} from "@aoctech/ui"
-import {Copy} from "lucide-react"
-import {useTranslation} from "react-i18next"
-import {toast} from "sonner"
+import {Button, Modal} from "@aoctech/ui";
+import {Copy} from "lucide-react";
+import {useTranslation} from "react-i18next";
+import {toast} from "sonner";
 
 /**
  * The webhook signing secret, shown exactly once (spec § 5.2). The parent
@@ -12,14 +12,14 @@ import {toast} from "sonner"
  * person did ("Já copiei"); the close button and Escape do the same.
  */
 export function SecretReveal({secret, onDone}: {secret: string | null; onDone: () => void}) {
-  const {t, i18n} = useTranslation()
+  const {t, i18n} = useTranslation();
   async function copy() {
-    if (!secret) return
+    if (!secret) return;
     try {
-      await navigator.clipboard.writeText(secret)
-      toast.success(t("console.webhooks.secret.copied"))
+      await navigator.clipboard.writeText(secret);
+      toast.success(t("console.webhooks.secret.copied"));
     } catch {
-      toast.error(t("console.webhooks.secret.copyFailed"))
+      toast.error(t("console.webhooks.secret.copyFailed"));
     }
   }
   return (
@@ -42,5 +42,5 @@ export function SecretReveal({secret, onDone}: {secret: string | null; onDone: (
         </Button>
       </div>
     </Modal>
-  )
+  );
 }

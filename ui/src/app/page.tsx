@@ -1,6 +1,6 @@
-import type {Metadata} from "next"
+import type {Metadata} from "next";
 
-import {LandingContent} from "@/components/LandingContent"
+import {LandingContent} from "@/components/LandingContent";
 
 /**
  * The one indexable route in this app, overriding the root layout's `noindex`.
@@ -15,9 +15,9 @@ export const metadata: Metadata = {
     "Faturas, assinaturas e finanças.",
   robots: {index: true, follow: true},
   alternates: {canonical: "/"},
-}
+};
 
 /** The public front door: a name, one line and a sign-in button. */
 export default function Landing() {
-  return <LandingContent/>
+  return <LandingContent/>;
 }

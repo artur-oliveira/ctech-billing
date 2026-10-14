@@ -1,14 +1,14 @@
-import type {Metadata, Viewport} from "next"
-import {IBM_Plex_Sans} from "next/font/google"
+import type {Metadata, Viewport} from "next";
+import {IBM_Plex_Sans} from "next/font/google";
 
-import {Providers} from "@/app/providers"
-import "./globals.css"
+import {Providers} from "@/app/providers";
+import "./globals.css";
 
-const sans = IBM_Plex_Sans({variable: "--font-sans", subsets: ["latin"], display: "swap"})
+const sans = IBM_Plex_Sans({variable: "--font-sans", subsets: ["latin"], display: "swap"});
 
 /** Where a relative OG image resolves from. Without it Next warns at build and
  *  every social preview points at localhost. */
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://billing.aoctech.app"
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://billing.aoctech.app";
 
 /**
  * Metadata for a portal that must not be indexed.
@@ -50,7 +50,7 @@ export const metadata: Metadata = {
   },
   twitter: {card: "summary", title: "CTech Billing"},
   formatDetection: {telephone: false, email: false, address: false},
-}
+};
 
 export const viewport: Viewport = {
   // The brand, not white: this is the colour of the Android task-switcher bar
@@ -67,7 +67,7 @@ export const viewport: Viewport = {
   // of it. Without it the inset reads 0 and the bar's labels sit under the
   // indicator.
   viewportFit: "cover",
-}
+};
 
 export default function RootLayout({children}: LayoutProps<"/">) {
   return (
@@ -76,5 +76,5 @@ export default function RootLayout({children}: LayoutProps<"/">) {
     <Providers>{children}</Providers>
     </body>
     </html>
-  )
+  );
 }

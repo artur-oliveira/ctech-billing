@@ -1,30 +1,30 @@
-"use client"
+"use client";
 
-import {Button, Field, Input, Modal, Skeleton} from "@aoctech/ui"
-import {useMutation, useQuery, useQueryClient} from "@tanstack/react-query"
-import {ArrowLeft} from "lucide-react"
-import Link from "next/link"
-import {useSearchParams} from "next/navigation"
-import {Suspense, useState} from "react"
-import {useTranslation} from "react-i18next"
-import {toast} from "sonner"
+import {Button, Field, Input, Modal, Skeleton} from "@aoctech/ui";
+import {useMutation, useQuery, useQueryClient} from "@tanstack/react-query";
+import {ArrowLeft} from "lucide-react";
+import Link from "next/link";
+import {useSearchParams} from "next/navigation";
+import {Suspense, useState} from "react";
+import {useTranslation} from "react-i18next";
+import {toast} from "sonner";
 
-import {DunningPolicyCard} from "@/components/console/DunningPolicyCard"
-import {ErrorBlock} from "@/components/portal/ErrorBlock"
-import {messageFor, statusOf} from "@/lib/api/client"
-import {useFieldErrors} from "@/lib/useFieldErrors"
+import {DunningPolicyCard} from "@/components/console/DunningPolicyCard";
+import {ErrorBlock} from "@/components/portal/ErrorBlock";
+import {messageFor, statusOf} from "@/lib/api/client";
+import {useFieldErrors} from "@/lib/useFieldErrors";
 import {
   archivePrice,
   consoleKeys,
   createPrice,
   getConsoleProduct,
   setProductDunningPolicy,
-} from "@/lib/api/console"
-import type {ConsolePrice, DunningStep} from "@/lib/api/consoleTypes"
-import {useConsoleScope} from "@/lib/console/scope"
-import {money} from "@/lib/format"
-import {maskMoney, moneyPlaceholder, parseMoney} from "@/lib/money"
-import {useDocumentTitle} from "@/lib/hooks/useDocumentTitle"
+} from "@/lib/api/console";
+import type {ConsolePrice, DunningStep} from "@/lib/api/consoleTypes";
+import {useConsoleScope} from "@/lib/console/scope";
+import {money} from "@/lib/format";
+import {maskMoney, moneyPlaceholder, parseMoney} from "@/lib/money";
+import {useDocumentTitle} from "@/lib/hooks/useDocumentTitle";
 
 /**
  * C9 — a product and its prices.
@@ -45,58 +45,58 @@ export default function ConsoleProductPage() {
     <Suspense fallback={<DetailSkeleton/>}>
       <Detail/>
     </Suspense>
-  )
+  );
 }
 
 function Detail() {
-  const {t} = useTranslation()
-  const id = useSearchParams().get("id") ?? ""
-  const scope = useConsoleScope()
-  const queryClient = useQueryClient()
-  const [pricing, setPricing] = useState(false)
-  const [archiving, setArchiving] = useState<ConsolePrice | null>(null)
+  const {t} = useTranslation();
+  const id = useSearchParams().get("id") ?? "";
+  const scope = useConsoleScope();
+  const queryClient = useQueryClient();
+  const [pricing, setPricing] = useState(false);
+  const [archiving, setArchiving] = useState<ConsolePrice | null>(null);
 
   const query = useQuery({
     queryKey: consoleKeys.product(scope, id),
     queryFn: () => getConsoleProduct(scope, id),
     enabled: id !== "",
-  })
+  });
 
   const refresh = () => {
-    void queryClient.invalidateQueries({queryKey: consoleKeys.product(scope, id)})
-    void queryClient.invalidateQueries({queryKey: consoleKeys.products(scope)})
-  }
+    void queryClient.invalidateQueries({queryKey: consoleKeys.product(scope, id)});
+    void queryClient.invalidateQueries({queryKey: consoleKeys.products(scope)});
+  };
 
   const savePolicy = useMutation({
     mutationFn: (steps: DunningStep[]) => setProductDunningPolicy(scope, id, steps),
     onSuccess: refresh,
-  })
+  });
 
   const archive = useMutation({
     mutationFn: (priceId: string) => archivePrice(scope, priceId),
     onSuccess: () => {
-      toast.success(t("console.product.archivedDone"))
-      refresh()
+      toast.success(t("console.product.archivedDone"));
+      refresh();
     },
     onError: error => toast.error(messageFor(error)),
     onSettled: () => setArchiving(null),
-  })
+  });
 
-  useDocumentTitle(query.data?.name ?? null)
+  useDocumentTitle(query.data?.name ?? null);
 
-  if (id === "" || (query.isError && statusOf(query.error) === 404)) return <NotFound/>
-  if (query.isPending) return <DetailSkeleton/>
+  if (id === "" || (query.isError && statusOf(query.error) === 404)) return <NotFound/>;
+  if (query.isPending) return <DetailSkeleton/>;
   if (query.isError) {
     return (
       <div className="space-y-6">
         <BackLink/>
         <ErrorBlock error={query.error} onRetry={query.refetch}/>
       </div>
-    )
+    );
   }
 
-  const product = query.data
-  const prices = product.prices ?? []
+  const product = query.data;
+  const prices = product.prices ?? [];
 
   return (
     <div className="space-y-8">
@@ -188,8 +188,8 @@ function Detail() {
         productId={product.id}
         onClose={() => setPricing(false)}
         onCreated={() => {
-          refresh()
-          setPricing(false)
+          refresh();
+          setPricing(false);
         }}
       />
 
@@ -204,7 +204,7 @@ function Detail() {
         onSubmit={() => archiving && archive.mutate(archiving.id)}
       />
     </div>
-  )
+  );
 }
 
 function NewPriceDialog({
@@ -213,17 +213,17 @@ function NewPriceDialog({
   onClose,
   onCreated,
 }: { open: boolean; productId: string; onClose: () => void; onCreated: () => void }) {
-  const {t} = useTranslation()
-  const scope = useConsoleScope()
-  const [amount, setAmount] = useState("")
-  const [type, setType] = useState<"fixed" | "metered">("fixed")
+  const {t} = useTranslation();
+  const scope = useConsoleScope();
+  const [amount, setAmount] = useState("");
+  const [type, setType] = useState<"fixed" | "metered">("fixed");
 
   // A price may be zero (free); anything else goes through the same locale-aware parse
   // as every money field, never through a float.
-  const cents = /^0+([.,]0{0,2})?$/.test(amount.trim()) ? 0 : (parseMoney(amount) ?? -1)
-  const valid = cents >= 0 && amount.trim() !== ""
+  const cents = /^0+([.,]0{0,2})?$/.test(amount.trim()) ? 0 : (parseMoney(amount) ?? -1);
+  const valid = cents >= 0 && amount.trim() !== "";
 
-  const fe = useFieldErrors(["unit_amount"], {keepOthers: false})
+  const fe = useFieldErrors(["unit_amount"], {keepOthers: false});
   const create = useMutation({
     mutationFn: () =>
       createPrice(scope, {
@@ -237,12 +237,12 @@ function NewPriceDialog({
           billing_timing: type === "metered" ? "arrears" : "advance",
         }),
     onSuccess: () => {
-      toast.success(t("console.product.createdDone"))
-      setAmount("")
-      onCreated()
+      toast.success(t("console.product.createdDone"));
+      setAmount("");
+      onCreated();
     },
-    onError: error => { if (!fe.set(error)) toast.error(messageFor(error)) },
-  })
+    onError: error => { if (!fe.set(error)) toast.error(messageFor(error)); },
+  });
 
   return (
     <Modal
@@ -254,7 +254,7 @@ function NewPriceDialog({
       submitLabel={t("console.product.create")}
       submitDisabled={!valid}
       loading={create.isPending}
-      onSubmit={() => { fe.reset(); create.mutate() }}
+      onSubmit={() => { fe.reset(); create.mutate(); }}
     >
       <div className="space-y-4">
         <fieldset className="space-y-2">
@@ -290,18 +290,18 @@ function NewPriceDialog({
             inputMode="decimal"
             value={amount}
             {...fe.props("unit_amount", "price-amount")}
-            onChange={event => { setAmount(maskMoney(event.target.value)); fe.clear("unit_amount") }}
+            onChange={event => { setAmount(maskMoney(event.target.value)); fe.clear("unit_amount"); }}
             placeholder={moneyPlaceholder()}
           />
         </Field>
         {fe.general && <p role="alert" className="text-sm text-danger">{fe.general}</p>}
       </div>
     </Modal>
-  )
+  );
 }
 
 function NotFound() {
-  const {t} = useTranslation()
+  const {t} = useTranslation();
   return (
     <div className="space-y-6">
       <BackLink/>
@@ -314,11 +314,11 @@ function NotFound() {
         </p>
       </div>
     </div>
-  )
+  );
 }
 
 function BackLink() {
-  const {t} = useTranslation()
+  const {t} = useTranslation();
   return (
     <Link
       href="/console/catalog"
@@ -327,7 +327,7 @@ function BackLink() {
       <ArrowLeft aria-hidden className="size-3.5"/>
       {t("console.product.back")}
     </Link>
-  )
+  );
 }
 
 function DetailSkeleton() {
@@ -336,5 +336,5 @@ function DetailSkeleton() {
       <Skeleton className="h-6 w-48"/>
       <Skeleton className="h-24 w-full"/>
     </div>
-  )
+  );
 }

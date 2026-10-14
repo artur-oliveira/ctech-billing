@@ -1,19 +1,19 @@
-"use client"
+"use client";
 
-import limits from "@/lib/limits.json"
-import {Checkbox, Field, Input, Modal} from "@aoctech/ui"
-import {useMutation} from "@tanstack/react-query"
-import {useState} from "react"
-import {useTranslation} from "react-i18next"
-import {toast} from "sonner"
+import limits from "@/lib/limits.json";
+import {Checkbox, Field, Input, Modal} from "@aoctech/ui";
+import {useMutation} from "@tanstack/react-query";
+import {useState} from "react";
+import {useTranslation} from "react-i18next";
+import {toast} from "sonner";
 
-import {messageFor} from "@/lib/api/client"
-import {useFieldErrors} from "@/lib/useFieldErrors"
-import {creditInvoice} from "@/lib/api/console"
-import type {ConsoleInvoice} from "@/lib/api/consoleTypes"
-import {useConsoleScope} from "@/lib/console/scope"
-import {money} from "@/lib/format"
-import {maskMoney, moneyPlaceholder, parseMoney} from "@/lib/money"
+import {messageFor} from "@/lib/api/client";
+import {useFieldErrors} from "@/lib/useFieldErrors";
+import {creditInvoice} from "@/lib/api/console";
+import type {ConsoleInvoice} from "@/lib/api/consoleTypes";
+import {useConsoleScope} from "@/lib/console/scope";
+import {money} from "@/lib/format";
+import {maskMoney, moneyPlaceholder, parseMoney} from "@/lib/money";
 
 /**
  * "Emitir nota de crédito", and the screen where immutability is taught rather
@@ -43,34 +43,34 @@ export function CreditNoteDialog({
   onClose: () => void
   onIssued: () => void
 }) {
-  const {t} = useTranslation()
-  const scope = useConsoleScope()
-  const remaining = Math.max(0, invoice.total - credited)
-  const [amount, setAmount] = useState("")
-  const [reason, setReason] = useState("")
-  const [refunded, setRefunded] = useState(false)
-  const [viaPix, setViaPix] = useState(false)
+  const {t} = useTranslation();
+  const scope = useConsoleScope();
+  const remaining = Math.max(0, invoice.total - credited);
+  const [amount, setAmount] = useState("");
+  const [reason, setReason] = useState("");
+  const [refunded, setRefunded] = useState(false);
+  const [viaPix, setViaPix] = useState(false);
 
-  const cents = parseMoney(amount) ?? 0
-  const valid = cents > 0 && cents <= remaining && reason.trim() !== ""
+  const cents = parseMoney(amount) ?? 0;
+  const valid = cents > 0 && cents <= remaining && reason.trim() !== "";
 
-  const fe = useFieldErrors(["amount", "reason"], {keepOthers: false})
+  const fe = useFieldErrors(["amount", "reason"], {keepOthers: false});
   const issue = useMutation({
     mutationFn: () =>
       creditInvoice(scope, invoice.id, {amount: cents, reason: reason.trim(), refunded_externally: refunded && !viaPix,
         ...(viaPix ? {refund_via_pix: true} : {})}),
     onSuccess: () => {
-      toast.success(t("console.credit.done"))
-      setAmount("")
-      setReason("")
-      setRefunded(false)
-      onIssued()
+      toast.success(t("console.credit.done"));
+      setAmount("");
+      setReason("");
+      setRefunded(false);
+      onIssued();
     },
     // The server re-checks the ceiling against freshly read totals, so this is
     // the message that arrives when another operator credited the same invoice
     // between this dialog opening and being submitted.
-    onError: error => { if (!fe.set(error)) toast.error(messageFor(error)) },
-  })
+    onError: error => { if (!fe.set(error)) toast.error(messageFor(error)); },
+  });
 
   return (
     <Modal
@@ -82,7 +82,7 @@ export function CreditNoteDialog({
       submitLabel={t("console.credit.submit")}
       submitDisabled={!valid}
       loading={issue.isPending}
-      onSubmit={() => { fe.reset(); issue.mutate() }}
+      onSubmit={() => { fe.reset(); issue.mutate(); }}
     >
       <div className="space-y-4">
         <Field label={t("console.credit.amount")} htmlFor="credit-amount" error={fe.of("amount")} hint={t("console.credit.max", {amount: money(remaining, invoice.currency)})}>
@@ -92,7 +92,7 @@ export function CreditNoteDialog({
             placeholder={moneyPlaceholder()}
             value={amount}
             {...fe.props("amount", "credit-amount")}
-            onChange={event => { setAmount(maskMoney(event.target.value)); fe.clear("amount") }}
+            onChange={event => { setAmount(maskMoney(event.target.value)); fe.clear("amount"); }}
           />
         </Field>
 
@@ -107,7 +107,7 @@ export function CreditNoteDialog({
             maxLength={limits.text.reason}
             value={reason}
             {...fe.props("reason", "credit-reason")}
-            onChange={event => { setReason(event.target.value); fe.clear("reason") }}
+            onChange={event => { setReason(event.target.value); fe.clear("reason"); }}
             placeholder={t("console.credit.reasonPlaceholder")}
           />
         </Field>
@@ -142,5 +142,5 @@ export function CreditNoteDialog({
         </label>}
       </div>
     </Modal>
-  )
+  );
 }

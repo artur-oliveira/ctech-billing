@@ -1,13 +1,13 @@
-"use client"
+"use client";
 
-import type {AxiosRequestConfig} from "axios"
-import {toast} from "sonner"
+import type {AxiosRequestConfig} from "axios";
+import {toast} from "sonner";
 
-import {apiClient, isSpaceNotFound} from "@/lib/api/client"
-import {spaceHeader, PERSONAL, type Space} from "@/lib/console/space"
-import {currentLocale, t} from "@/lib/i18n"
-import {getPortalSpace, setPortalSpace} from "@/lib/portal/space"
-import type {SupportedLocale} from "@/lib/locale"
+import {apiClient, isSpaceNotFound} from "@/lib/api/client";
+import {spaceHeader, PERSONAL, type Space} from "@/lib/console/space";
+import {currentLocale, t} from "@/lib/i18n";
+import {getPortalSpace, setPortalSpace} from "@/lib/portal/space";
+import type {SupportedLocale} from "@/lib/locale";
 import type {
   DocumentLink,
   Invoice,
@@ -15,7 +15,7 @@ import type {
   PaymentResult,
   Session,
   Subscription,
-} from "@/lib/api/types"
+} from "@/lib/api/types";
 
 /**
  * Query keys, in one place. A key spelled two ways is a cache that never
@@ -30,32 +30,32 @@ import type {
  * leaf; `invoices` is a prefix and nothing else.
  */
 export const portalKeys = {
-  get session() { return [...scope(), "session"] as const },
+  get session() { return [...scope(), "session"] as const; },
   /** Prefix only — never a query's own key. Invalidating it catches every
    *  list shape and every detail below it. */
-  get invoices() { return [...scope(), "invoices"] as const },
+  get invoices() { return [...scope(), "invoices"] as const; },
   /** One page, for composing the home screen. */
-  get invoiceList() { return [...scope(), "invoices", "list"] as const },
+  get invoiceList() { return [...scope(), "invoices", "list"] as const; },
   /** Cursor pages, for the list screen. */
-  get invoicePages() { return [...scope(), "invoices", "pages"] as const },
+  get invoicePages() { return [...scope(), "invoices", "pages"] as const; },
   invoice: (id: string) => [...scope(), "invoices", "detail", id] as const,
-  get subscriptions() { return [...scope(), "subscriptions"] as const },
+  get subscriptions() { return [...scope(), "subscriptions"] as const; },
   subscription: (id: string) => [...scope(), "subscriptions", "detail", id] as const,
   /** Not keyed by the space: it is the list the switch is drawn from, the same
    *  whichever space is selected. */
   spaces: ["portal-spaces"] as const,
-}
+};
 
 /** Every portal key starts with the selection it was read for, like
  *  financeKeys: two spaces are two caches, so a change of selection from
  *  anywhere can never serve one space's bills under the other's name. */
 function scope() {
-  return ["portal", spaceHeader(getPortalSpace())] as const
+  return ["portal", spaceHeader(getPortalSpace())] as const;
 }
 
 /** The portal's selector header, read at call time (ADR 0025). */
 export function portalSpaceHeaders(space: Space = getPortalSpace()): Record<string, string> {
-  return {"X-Billing-Space": spaceHeader(space)}
+  return {"X-Billing-Space": spaceHeader(space)};
 }
 
 /**
@@ -66,19 +66,19 @@ export function portalSpaceHeaders(space: Space = getPortalSpace()): Record<stri
  * person back. One toast id, so the calls failing together say it once.
  */
 async function portal<T>(config: AxiosRequestConfig): Promise<T> {
-  const space = getPortalSpace()
+  const space = getPortalSpace();
   try {
     const {data} = await apiClient.request<T>({
       ...config,
       headers: {...(config.headers as Record<string, string> | undefined), ...portalSpaceHeaders(space)},
-    })
-    return data
+    });
+    return data;
   } catch (error) {
     if (space.kind === "organization" && isSpaceNotFound(error) && spaceHeader(getPortalSpace()) === spaceHeader(space)) {
-      setPortalSpace(PERSONAL)
-      toast.info(t("portal.space.lost"), {id: "portal-space-lost"})
+      setPortalSpace(PERSONAL);
+      toast.info(t("portal.space.lost"), {id: "portal-space-lost"});
     }
-    throw error
+    throw error;
   }
 }
 
@@ -96,8 +96,8 @@ export interface PortalSpaces {
 /** Pessoal, then the organizations this person owns or administers. Information
  *  only: every other call is re-authorized against the selection it carries. */
 export async function listPortalSpaces(): Promise<PortalSpaces> {
-  const {data} = await apiClient.get<PortalSpaces>("/v1.0/portal/spaces")
-  return data
+  const {data} = await apiClient.get<PortalSpaces>("/v1.0/portal/spaces");
+  return data;
 }
 
 /**
@@ -119,16 +119,16 @@ export async function getHealth(): Promise<true> {
   //   - This is polled, by every browser sitting on that page. The report costs
   //     a DescribeTable, a Valkey PING and two /proc reads per call; liveness
   //     costs a clock read.
-  await apiClient.get("/v1.0/health")
+  await apiClient.get("/v1.0/health");
   // Not `void`. TanStack Query rejects an `undefined` result outright — the
   // query lands in an error state with "Query data cannot be undefined" and
   // never reports success, which for the one caller here means a maintenance
   // screen that probes correctly and never lets anybody off it.
-  return true
+  return true;
 }
 
 export async function getSession(): Promise<Session> {
-  return portal<Session>({method: "GET", url: "/v1.0/portal/session"})
+  return portal<Session>({method: "GET", url: "/v1.0/portal/session"});
 }
 
 /**
@@ -143,7 +143,7 @@ export async function getSession(): Promise<Session> {
  * that visibly hesitates.
  */
 export async function acceptTerms(): Promise<Session> {
-  return portal<Session>({method: "POST", url: "/v1.0/portal/terms/accept"})
+  return portal<Session>({method: "POST", url: "/v1.0/portal/terms/accept"});
 }
 
 export async function listInvoices(cursor?: string): Promise<ListResponse<Invoice>> {
@@ -151,11 +151,11 @@ export async function listInvoices(cursor?: string): Promise<ListResponse<Invoic
     method: "GET",
     url: "/v1.0/portal/invoices",
     params: cursor ? {cursor} : undefined,
-  })
+  });
 }
 
 export async function getInvoice(id: string): Promise<Invoice> {
-  return portal<Invoice>({method: "GET", url: `/v1.0/portal/invoices/${id}`})
+  return portal<Invoice>({method: "GET", url: `/v1.0/portal/invoices/${id}`});
 }
 
 /**
@@ -167,24 +167,24 @@ export async function getInvoice(id: string): Promise<Invoice> {
  * everybody who looks would be work nobody asked for.
  */
 export async function getInvoicePDF(id: string, lang: SupportedLocale = currentLocale()): Promise<DocumentLink> {
-  return portal<DocumentLink>({method: "GET", url: `/v1.0/portal/invoices/${id}/pdf`, params: {lang}})
+  return portal<DocumentLink>({method: "GET", url: `/v1.0/portal/invoices/${id}/pdf`, params: {lang}});
 }
 
 /** Opens (or re-opens) the PIX charge. The body is empty by design — the
  *  server decides everything from the session and the invoice. */
 export async function payInvoice(id: string): Promise<PaymentResult> {
-  return portal<PaymentResult>({method: "POST", url: `/v1.0/portal/invoices/${id}/pay`})
+  return portal<PaymentResult>({method: "POST", url: `/v1.0/portal/invoices/${id}/pay`});
 }
 
 export async function listSubscriptions(): Promise<ListResponse<Subscription>> {
-  return portal<ListResponse<Subscription>>({method: "GET", url: "/v1.0/portal/subscriptions"})
+  return portal<ListResponse<Subscription>>({method: "GET", url: "/v1.0/portal/subscriptions"});
 }
 
 /** The detail, which is the list row plus the plan's own invoice history. */
 export async function getSubscription(id: string): Promise<Subscription> {
-  return portal<Subscription>({method: "GET", url: `/v1.0/portal/subscriptions/${id}`})
+  return portal<Subscription>({method: "GET", url: `/v1.0/portal/subscriptions/${id}`});
 }
 
 export async function cancelSubscription(id: string): Promise<Subscription> {
-  return portal<Subscription>({method: "POST", url: `/v1.0/portal/subscriptions/${id}/cancel`})
+  return portal<Subscription>({method: "POST", url: `/v1.0/portal/subscriptions/${id}/cancel`});
 }

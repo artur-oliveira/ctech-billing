@@ -1,10 +1,10 @@
-"use client"
+"use client";
 
-import axios, {type AxiosError, type InternalAxiosRequestConfig} from "axios"
+import axios, {type AxiosError, type InternalAxiosRequestConfig} from "axios";
 
-import {codeMessage, fieldErrorMessage, type FieldError} from "@/lib/errors"
-import {t} from "@/lib/i18n"
-import {USE_MOCK} from "@/lib/mockConfig"
+import {codeMessage, fieldErrorMessage, type FieldError} from "@/lib/errors";
+import {t} from "@/lib/i18n";
+import {USE_MOCK} from "@/lib/mockConfig";
 
 /**
  * RFC 7807, as ctech-go-common/problem emits it. `title`, `detail` and every
@@ -20,11 +20,11 @@ export interface Problem {
   errors?: FieldError[]
 }
 
-let accessToken: string | null = null
+let accessToken: string | null = null;
 export const setAccessToken = (t: string | null) => {
-  accessToken = t
-}
-export const getAccessToken = () => accessToken
+  accessToken = t;
+};
+export const getAccessToken = () => accessToken;
 
 /**
  * Where the API lives.
@@ -41,7 +41,7 @@ export const getAccessToken = () => accessToken
  * Exported because `fetch` cannot read axios' baseURL, and the settlement
  * stream is a `fetch` — EventSource cannot send an Authorization header.
  */
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || ""
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "";
 
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
@@ -53,7 +53,7 @@ export const apiClient = axios.create({
   adapter: USE_MOCK
     ? async config => (await import("@/dev/mockRuntime")).mockAdapter(config)
     : undefined,
-})
+});
 
 /**
  * The first request made without a token waits for the session to be resumed.
@@ -63,41 +63,41 @@ export const apiClient = axios.create({
  * asked once, not on every request (the refresh itself is single-flight in
  * @aoctech/auth-client, so the boot refresh and this one are one network call).
  */
-let sessionCheck: Promise<unknown> | null = null
+let sessionCheck: Promise<unknown> | null = null;
 
 apiClient.interceptors.request.use(async config => {
   if (!accessToken && refresh) {
-    sessionCheck ??= refresh().catch(() => null)
-    await sessionCheck
+    sessionCheck ??= refresh().catch(() => null);
+    await sessionCheck;
   }
-  if (accessToken) config.headers.Authorization = `Bearer ${accessToken}`
+  if (accessToken) config.headers.Authorization = `Bearer ${accessToken}`;
   // Every write carries an Idempotency-Key: the API refuses one without. A
   // screen that names its intent (useIntent) keeps its key across the reader's
   // retries; any other write gets one here, which still covers the silent 401
   // retry and the in-progress retry below (both resend this same config).
   if (!SAFE_METHODS.has((config.method ?? "get").toLowerCase()) && !config.headers["Idempotency-Key"]) {
-    config.headers["Idempotency-Key"] = crypto.randomUUID()
+    config.headers["Idempotency-Key"] = crypto.randomUUID();
   }
-  return config
-})
+  return config;
+});
 
-const SAFE_METHODS = new Set(["get", "head", "options"])
+const SAFE_METHODS = new Set(["get", "head", "options"]);
 
 /** How many times a write still running elsewhere is asked again. */
-const IN_PROGRESS_RETRIES = 5
+const IN_PROGRESS_RETRIES = 5;
 
-const MAINTENANCE_PATH = "/maintenance"
-const LOGIN_PATH = "/login"
+const MAINTENANCE_PATH = "/maintenance";
+const LOGIN_PATH = "/login";
 
 /**
  * How to get a fresh access token. Registered by AuthProvider rather than
  * imported, so this module stays the bottom of the dependency graph — an axios
  * client that imports React context is a client no test can construct.
  */
-let refresh: (() => Promise<string | null>) | null = null
+let refresh: (() => Promise<string | null>) | null = null;
 export const registerRefresh = (fn: () => Promise<string | null>) => {
-  refresh = fn
-}
+  refresh = fn;
+};
 
 /** Marks a request that has already been retried once, so a 401 answered by a
  *  refreshed token that is *also* rejected ends instead of looping. */
@@ -126,28 +126,28 @@ type Retriable = InternalAxiosRequestConfig & { _retried?: boolean; _inProgress?
  * bounces here again.
  */
 apiClient.interceptors.response.use(undefined, async (error: AxiosError) => {
-  const status = error.response?.status
-  const config = error.config as Retriable | undefined
+  const status = error.response?.status;
+  const config = error.config as Retriable | undefined;
   const onPage = (path: string) =>
-    typeof window !== "undefined" && window.location.pathname === path
+    typeof window !== "undefined" && window.location.pathname === path;
 
   // The same key is still running (a double submit, a retry racing the
   // original, maybe on another server): ask again with the same key and the
   // API answers with that request's result once it has one.
   if (status === 409 && config && (error.response?.data as Problem | undefined)?.code === "idempotency_in_progress"
     && (config._inProgress ?? 0) < IN_PROGRESS_RETRIES) {
-    config._inProgress = (config._inProgress ?? 0) + 1
-    const after = Number(error.response?.headers?.["retry-after"] ?? 1)
-    await new Promise(resolve => setTimeout(resolve, (Number.isFinite(after) ? after : 1) * 1000))
-    return apiClient(config)
+    config._inProgress = (config._inProgress ?? 0) + 1;
+    const after = Number(error.response?.headers?.["retry-after"] ?? 1);
+    await new Promise(resolve => setTimeout(resolve, (Number.isFinite(after) ? after : 1) * 1000));
+    return apiClient(config);
   }
 
   if (status === 401 && config && !config._retried && refresh) {
-    config._retried = true
-    const token = await refresh()
-    if (token) return apiClient(config)
+    config._retried = true;
+    const token = await refresh();
+    if (token) return apiClient(config);
     if (typeof window !== "undefined" && !onPage(LOGIN_PATH)) {
-      window.location.replace(LOGIN_PATH)
+      window.location.replace(LOGIN_PATH);
     }
   }
 
@@ -155,12 +155,12 @@ apiClient.interceptors.response.use(undefined, async (error: AxiosError) => {
   // cannot be reached, while the personal space keeps working. Redirecting the
   // whole app would take the working half down; the screen says so instead.
   if (status === 503 && !isSpaceUnavailable(error) && typeof window !== "undefined" && !onPage(MAINTENANCE_PATH)) {
-    const from = window.location.pathname + window.location.search
-    window.location.replace(`${MAINTENANCE_PATH}?from=${encodeURIComponent(from)}`)
+    const from = window.location.pathname + window.location.search;
+    window.location.replace(`${MAINTENANCE_PATH}?from=${encodeURIComponent(from)}`);
   }
 
-  return Promise.reject(error)
-})
+  return Promise.reject(error);
+});
 
 /**
  * The message to show a person, from whatever the failure actually was.
@@ -172,28 +172,28 @@ apiClient.interceptors.response.use(undefined, async (error: AxiosError) => {
  * are English fallbacks and are never shown.
  */
 export function messageFor(error: unknown): string {
-  const e = error as AxiosError<Problem>
+  const e = error as AxiosError<Problem>;
   if (e?.code === "ERR_NETWORK" || e?.code === "ECONNABORTED") {
-    return t("auth.errors.network")
+    return t("auth.errors.network");
   }
-  const problem = e?.response?.data
-  const first = problem?.errors?.[0]
-  if (first?.code) return fieldErrorMessage(first)
-  return codeMessage(problem?.code, e?.response?.status)
+  const problem = e?.response?.data;
+  const first = problem?.errors?.[0];
+  if (first?.code) return fieldErrorMessage(first);
+  return codeMessage(problem?.code, e?.response?.status);
 }
 
 /** The field-level failures of a validation problem, already in reader text. */
 export function fieldErrorsOf(error: unknown): { field: string; message: string }[] {
-  const list = (error as AxiosError<Problem>)?.response?.data?.errors ?? []
-  return list.map(err => ({field: err.field, message: fieldErrorMessage(err)}))
+  const list = (error as AxiosError<Problem>)?.response?.data?.errors ?? [];
+  return list.map(err => ({field: err.field, message: fieldErrorMessage(err)}));
 }
 
 export function statusOf(error: unknown): number | undefined {
-  return (error as AxiosError)?.response?.status
+  return (error as AxiosError)?.response?.status;
 }
 
 /** A signed-in person with no customer record in tenant zero. */
-const NO_BILLING_ACCOUNT = "/problems/no-billing-account"
+const NO_BILLING_ACCOUNT = "/problems/no-billing-account";
 
 /**
  * Not every refusal is a failure.
@@ -210,29 +210,29 @@ const NO_BILLING_ACCOUNT = "/problems/no-billing-account"
  * gets rewritten.
  */
 export function isNoBillingAccount(error: unknown): boolean {
-  return (error as AxiosError<Problem>)?.response?.data?.type === NO_BILLING_ACCOUNT
+  return (error as AxiosError<Problem>)?.response?.data?.type === NO_BILLING_ACCOUNT;
 }
 
-const SPACE_UNAVAILABLE = "/problems/space-unavailable"
-const SPACE_NOT_FOUND = "/problems/space-not-found"
+const SPACE_UNAVAILABLE = "/problems/space-unavailable";
+const SPACE_NOT_FOUND = "/problems/space-not-found";
 
 /** ctech-account could not verify the organization space; personal still works. */
 export function isSpaceUnavailable(error: unknown): boolean {
-  return (error as AxiosError<Problem>)?.response?.data?.type === SPACE_UNAVAILABLE
+  return (error as AxiosError<Problem>)?.response?.data?.type === SPACE_UNAVAILABLE;
 }
 
 /** The selected organization space is not (or no longer) the reader's. */
 /** The problem's stable code, for a screen that reacts to one refusal in particular. */
 export function problemCode(error: unknown): string | undefined {
-  return (error as AxiosError<Problem>)?.response?.data?.code
+  return (error as AxiosError<Problem>)?.response?.data?.code;
 }
 
 export function isSpaceNotFound(error: unknown): boolean {
-  return (error as AxiosError<Problem>)?.response?.data?.type === SPACE_NOT_FOUND
+  return (error as AxiosError<Problem>)?.response?.data?.type === SPACE_NOT_FOUND;
 }
 
 /** The selected organization does not bill through CTech Billing in this mode
  *  (spec § 3): the console renders its empty state, not a failure. */
 export function isNoMerchant(error: unknown): boolean {
-  return problemCode(error) === "no_merchant"
+  return problemCode(error) === "no_merchant";
 }

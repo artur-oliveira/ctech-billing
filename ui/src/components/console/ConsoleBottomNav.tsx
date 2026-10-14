@@ -1,20 +1,20 @@
-"use client"
+"use client";
 
-import {BottomNav, type RenderLink} from "@aoctech/ui"
-import {Building2, Ellipsis, FileText, House, Package, Users, Webhook, CreditCard, Settings, KeyRound, Landmark, Gauge} from "lucide-react"
-import Link from "next/link"
-import {usePathname} from "next/navigation"
-import {useTranslation} from "react-i18next"
+import {BottomNav, type RenderLink} from "@aoctech/ui";
+import {Building2, Ellipsis, FileText, House, Package, Users, Webhook, CreditCard, Settings, KeyRound, Landmark, Gauge} from "lucide-react";
+import Link from "next/link";
+import {usePathname} from "next/navigation";
+import {useTranslation} from "react-i18next";
 
-import {consoleNav} from "@/lib/console/nav"
+import {consoleNav} from "@/lib/console/nav";
 
-const renderLink: RenderLink = props => <Link {...props}/>
+const renderLink: RenderLink = props => <Link {...props}/>;
 
 export function ConsoleBottomNav({hasOrganization, reviewer}: {hasOrganization: boolean; reviewer: boolean}) {
-  const {t, i18n} = useTranslation()
-  const pathname = usePathname()
-  const nav = consoleNav(hasOrganization, reviewer)
-  const current = (href: string) => pathname === href || (href !== "/console/overview" && pathname.startsWith(href))
+  const {t, i18n} = useTranslation();
+  const pathname = usePathname();
+  const nav = consoleNav(hasOrganization, reviewer);
+  const current = (href: string) => pathname === href || (href !== "/console/overview" && pathname.startsWith(href));
   const moreItems = [
     ["/console/customers", "customers", <Users key="customers"/>],
     ["/console/catalog", "catalog", <Package key="catalog"/>],
@@ -24,7 +24,7 @@ export function ConsoleBottomNav({hasOrganization, reviewer}: {hasOrganization: 
     ["/console/webhooks", "webhooks", <Webhook key="webhooks"/>],
     ["/console/settings", "settings", <Settings key="settings"/>],
     ["/console/applications", "applications", <Building2 key="applications"/>],
-  ] as const
+  ] as const;
 
   return <BottomNav
     renderLink={renderLink}
@@ -46,5 +46,5 @@ export function ConsoleBottomNav({hasOrganization, reviewer}: {hasOrganization: 
         })),
       },
     ]}
-  />
+  />;
 }

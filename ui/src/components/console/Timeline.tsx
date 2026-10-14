@@ -1,7 +1,7 @@
-import {useTranslation} from "react-i18next"
+import {useTranslation} from "react-i18next";
 
-import type {AuditEntry} from "@/lib/api/consoleTypes"
-import {currentLocale} from "@/lib/i18n"
+import type {AuditEntry} from "@/lib/api/consoleTypes";
+import {currentLocale} from "@/lib/i18n";
 
 /**
  * The audit trail, as the screen an operator actually reads during an incident.
@@ -20,11 +20,11 @@ const stamp = () =>
   year: "numeric",
   hour: "2-digit",
   minute: "2-digit",
-})
+});
 
 export function Timeline({entries}: { entries: AuditEntry[] }) {
-  const {t} = useTranslation()
-  if (entries.length === 0) return null
+  const {t} = useTranslation();
+  if (entries.length === 0) return null;
 
   return (
     <section aria-labelledby="historico" className="space-y-3">
@@ -62,5 +62,5 @@ export function Timeline({entries}: { entries: AuditEntry[] }) {
         ))}
       </ul>
     </section>
-  )
+  );
 }

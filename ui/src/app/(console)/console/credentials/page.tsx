@@ -1,22 +1,22 @@
-"use client"
+"use client";
 
-import {Badge, Button, buttonVariants, cn, EmptyState, Field, Input, Modal, PageHeader, Skeleton} from "@aoctech/ui"
-import {useMutation, useQuery, useQueryClient} from "@tanstack/react-query"
-import {ExternalLink} from "lucide-react"
-import {useState} from "react"
-import {useTranslation} from "react-i18next"
-import {toast} from "sonner"
+import {Badge, Button, buttonVariants, cn, EmptyState, Field, Input, Modal, PageHeader, Skeleton} from "@aoctech/ui";
+import {useMutation, useQuery, useQueryClient} from "@tanstack/react-query";
+import {ExternalLink} from "lucide-react";
+import {useState} from "react";
+import {useTranslation} from "react-i18next";
+import {toast} from "sonner";
 
-import {ErrorBlock} from "@/components/portal/ErrorBlock"
-import {messageFor} from "@/lib/api/client"
-import {connectCredential, consoleKeys, disconnectCredential, listConsoleCredentials} from "@/lib/api/console"
-import type {ConsoleCredential} from "@/lib/api/consoleTypes"
-import {useAddsRefused} from "@/lib/console/addsRefused"
-import {developerClientURL} from "@/lib/console/developerLink"
-import {useConsoleScope} from "@/lib/console/scope"
-import {instantShortDate} from "@/lib/format"
-import {useDocumentTitle} from "@/lib/hooks/useDocumentTitle"
-import limits from "@/lib/limits.json"
+import {ErrorBlock} from "@/components/portal/ErrorBlock";
+import {messageFor} from "@/lib/api/client";
+import {connectCredential, consoleKeys, disconnectCredential, listConsoleCredentials} from "@/lib/api/console";
+import type {ConsoleCredential} from "@/lib/api/consoleTypes";
+import {useAddsRefused} from "@/lib/console/addsRefused";
+import {developerClientURL} from "@/lib/console/developerLink";
+import {useConsoleScope} from "@/lib/console/scope";
+import {instantShortDate} from "@/lib/format";
+import {useDocumentTitle} from "@/lib/hooks/useDocumentTitle";
+import limits from "@/lib/limits.json";
 
 /**
  * The merchant's API credentials (spec § 5.1). A credential is the merchant's
@@ -25,13 +25,13 @@ import limits from "@/lib/limits.json"
  * removable. A suspended live tenant may disconnect, never connect.
  */
 export default function ConsoleCredentialsPage() {
-  const {t} = useTranslation()
-  const scope = useConsoleScope()
-  useDocumentTitle(t("console.credentials.title"))
-  const addsRefused = useAddsRefused()
-  const query = useQuery({queryKey: consoleKeys.credentials(scope), queryFn: () => listConsoleCredentials(scope)})
-  const [leaving, setLeaving] = useState<ConsoleCredential | null>(null)
-  const creds = query.data?.data ?? []
+  const {t} = useTranslation();
+  const scope = useConsoleScope();
+  useDocumentTitle(t("console.credentials.title"));
+  const addsRefused = useAddsRefused();
+  const query = useQuery({queryKey: consoleKeys.credentials(scope), queryFn: () => listConsoleCredentials(scope)});
+  const [leaving, setLeaving] = useState<ConsoleCredential | null>(null);
+  const creds = query.data?.data ?? [];
 
   return (
     <div className="space-y-8">
@@ -59,15 +59,15 @@ export default function ConsoleCredentialsPage() {
 
       <DisconnectDialog credential={leaving} onClose={() => setLeaving(null)}/>
     </div>
-  )
+  );
 }
 
 function CredentialRow({credential: c, onDisconnect}: {credential: ConsoleCredential; onDisconnect: () => void}) {
-  const {t} = useTranslation()
-  const date = c.connected_at ? instantShortDate(c.connected_at) : "—"
+  const {t} = useTranslation();
+  const date = c.connected_at ? instantShortDate(c.connected_at) : "—";
   const meta = c.provisioned
     ? t("console.credentials.provisioned")
-    : t(c.connected_by_me ? "console.credentials.byMe" : "console.credentials.byOther", {date})
+    : t(c.connected_by_me ? "console.credentials.byMe" : "console.credentials.byOther", {date});
   return (
     <li className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:gap-4">
       <div className="min-w-0 flex-1 space-y-1">
@@ -84,24 +84,24 @@ function CredentialRow({credential: c, onDisconnect}: {credential: ConsoleCreden
         </Button>
       )}
     </li>
-  )
+  );
 }
 
 /** The two steps: create the client at CTech Account, then paste its id here. */
 function ConnectBox({scopes, ready}: {scopes: string[]; ready: boolean}) {
-  const {t} = useTranslation()
-  const scope = useConsoleScope()
-  const queryClient = useQueryClient()
-  const [clientId, setClientId] = useState("")
+  const {t} = useTranslation();
+  const scope = useConsoleScope();
+  const queryClient = useQueryClient();
+  const [clientId, setClientId] = useState("");
   const connect = useMutation({
     mutationFn: (id: string) => connectCredential(scope, id),
     onSuccess: () => {
-      toast.success(t("console.credentials.connected"))
-      setClientId("")
-      void queryClient.invalidateQueries({queryKey: consoleKeys.credentials(scope)})
+      toast.success(t("console.credentials.connected"));
+      setClientId("");
+      void queryClient.invalidateQueries({queryKey: consoleKeys.credentials(scope)});
     },
-  })
-  const trimmed = clientId.trim()
+  });
+  const trimmed = clientId.trim();
 
   return (
     <section aria-labelledby="connect-title" className="space-y-4 rounded-lg bg-surface p-4 sm:p-5">
@@ -134,7 +134,7 @@ function ConnectBox({scopes, ready}: {scopes: string[]; ready: boolean}) {
             <p className="text-sm text-foreground">{t("console.credentials.step2")}</p>
             <form
               className="flex flex-col gap-2 sm:flex-row sm:items-start"
-              onSubmit={e => { e.preventDefault(); if (trimmed) connect.mutate(trimmed) }}
+              onSubmit={e => { e.preventDefault(); if (trimmed) connect.mutate(trimmed); }}
             >
               <Field
                 label={t("console.credentials.clientId")} htmlFor="client-id" className="min-w-0 flex-1"
@@ -145,7 +145,7 @@ function ConnectBox({scopes, ready}: {scopes: string[]; ready: boolean}) {
                   autoCapitalize="off" className="font-mono"
                   aria-invalid={connect.isError || undefined}
                   aria-describedby={connect.isError ? "client-id-error" : undefined}
-                  onChange={e => { setClientId(e.target.value); connect.reset() }}
+                  onChange={e => { setClientId(e.target.value); connect.reset(); }}
                 />
               </Field>
               <Button type="submit" variant="brand" className="w-full sm:mt-6 sm:w-auto" disabled={!trimmed || connect.isPending}>
@@ -156,7 +156,7 @@ function ConnectBox({scopes, ready}: {scopes: string[]; ready: boolean}) {
         </li>
       </ol>
     </section>
-  )
+  );
 }
 
 /** The step's number: the order is the instruction (create first, then paste). */
@@ -165,31 +165,31 @@ function Step({n}: {n: number}) {
     <span aria-hidden className="mt-px flex size-6 shrink-0 items-center justify-center rounded-full border border-border bg-background text-xs font-semibold tabular-nums text-foreground">
       {n}
     </span>
-  )
+  );
 }
 
 function DisconnectDialog({credential, onClose}: {credential: ConsoleCredential | null; onClose: () => void}) {
-  const {t, i18n} = useTranslation()
-  const scope = useConsoleScope()
-  const queryClient = useQueryClient()
+  const {t, i18n} = useTranslation();
+  const scope = useConsoleScope();
+  const queryClient = useQueryClient();
   const disconnect = useMutation({
     mutationFn: (id: string) => disconnectCredential(scope, id),
     onSuccess: () => {
-      toast.success(t("console.credentials.disconnected"))
-      void queryClient.invalidateQueries({queryKey: consoleKeys.credentials(scope)})
-      onClose()
+      toast.success(t("console.credentials.disconnected"));
+      void queryClient.invalidateQueries({queryKey: consoleKeys.credentials(scope)});
+      onClose();
     },
     onError: e => toast.error(messageFor(e)),
-  })
+  });
   return (
     <Modal
       open={credential !== null} onClose={onClose} danger locale={i18n.language}
       title={t("console.credentials.disconnectTitle")}
       submitLabel={t("console.credentials.disconnect")} cancelLabel={t("console.credentials.back")}
       loading={disconnect.isPending}
-      onSubmit={() => { if (credential) disconnect.mutate(credential.client_id) }}
+      onSubmit={() => { if (credential) disconnect.mutate(credential.client_id); }}
     >
       <p className="text-sm [overflow-wrap:anywhere]">{t("console.credentials.disconnectBody", {id: credential?.client_id ?? ""})}</p>
     </Modal>
-  )
+  );
 }

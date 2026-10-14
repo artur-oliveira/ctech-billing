@@ -1,53 +1,53 @@
-"use client"
+"use client";
 
-import limits from "@/lib/limits.json"
-import {Badge, Button, Drawer, EmptyState, Field, Input, Segmented, Select, Skeleton, Switch} from "@aoctech/ui"
-import {useQuery} from "@tanstack/react-query"
-import {AlertCircle, ChevronDown, Repeat} from "lucide-react"
-import Link from "next/link"
-import {useEffect, useId, useRef, useState} from "react"
-import {useTranslation} from "react-i18next"
+import limits from "@/lib/limits.json";
+import {Badge, Button, Drawer, EmptyState, Field, Input, Segmented, Select, Skeleton, Switch} from "@aoctech/ui";
+import {useQuery} from "@tanstack/react-query";
+import {AlertCircle, ChevronDown, Repeat} from "lucide-react";
+import Link from "next/link";
+import React, {useEffect, useId, useRef, useState} from "react";
+import {useTranslation} from "react-i18next";
 
-import {CardBrandMark, cardLabel} from "@/components/finance/CardBrandMark"
-import {ExceptionsFields, PatternFields} from "@/components/finance/ExpressionEditor"
-import {LedgerRow} from "@/components/finance/LedgerRow"
-import {OccurrenceTimeline, type TimelineEntry} from "@/components/finance/OccurrenceTimeline"
-import {installmentOptions, installmentsPreview} from "@/components/finance/PurchasePanel"
-import {ErrorBlock} from "@/components/portal/ErrorBlock"
-import {DateField} from "@/components/ui/DateField"
-import {messageFor, problemCode} from "@/lib/api/client"
+import {CardBrandMark, cardLabel} from "@/components/finance/CardBrandMark";
+import {ExceptionsFields, PatternFields} from "@/components/finance/ExpressionEditor";
+import {LedgerRow} from "@/components/finance/LedgerRow";
+import {OccurrenceTimeline, type TimelineEntry} from "@/components/finance/OccurrenceTimeline";
+import {installmentOptions, installmentsPreview} from "@/components/finance/PurchasePanel";
+import {ErrorBlock} from "@/components/portal/ErrorBlock";
+import {DateField} from "@/components/ui/DateField";
+import {messageFor, problemCode} from "@/lib/api/client";
 import {
   archiveRecurrence, createRecurrence, type FinanceCtx, financeKeys, getRecurrenceOccurrences, listAccounts, listCards, listRecurrences,
   patchRecurrence, previewRecurrence,
-} from "@/lib/api/finance"
-import type {Account, Adjust, Card, Direction, ExpressionJSON, NewRecurrence, Occurrence, Recurrence, RecurrencePatch} from "@/lib/api/financeTypes"
-import {defaultModel, describeModel, type EditorModel, fromExpression, toExpression, validate} from "@/lib/finance/expression"
-import {currentLocale, t} from "@/lib/i18n"
-import {addYearsIso, monthShort, todayIso} from "@/lib/finance/today"
-import {selectCopy} from "@/lib/selectCopy"
-import {useFinanceMutation} from "@/lib/finance/useFinanceMutation"
-import {useCreateRequest} from "@/lib/createRequest"
-import {useFinanceCtx, useFinanceSpaces} from "@/lib/finance/useFinanceSpaces"
-import {dayMonth, money, shortDate} from "@/lib/format"
-import {useFieldErrors} from "@/lib/useFieldErrors"
-import {formatMoneyInput, maskMoney, moneyPlaceholder, parseMoney} from "@/lib/money"
-import {accountName} from "@/lib/finance/accountName"
+} from "@/lib/api/finance";
+import type {Account, Adjust, Card, Direction, ExpressionJSON, NewRecurrence, Occurrence, Recurrence, RecurrencePatch} from "@/lib/api/financeTypes";
+import {defaultModel, describeModel, type EditorModel, fromExpression, toExpression, validate} from "@/lib/finance/expression";
+import {currentLocale, t} from "@/lib/i18n";
+import {addYearsIso, monthShort, todayIso} from "@/lib/finance/today";
+import {selectCopy} from "@/lib/selectCopy";
+import {useFinanceMutation} from "@/lib/finance/useFinanceMutation";
+import {useCreateRequest} from "@/lib/createRequest";
+import {useFinanceCtx, useFinanceSpaces} from "@/lib/finance/useFinanceSpaces";
+import {dayMonth, money, shortDate} from "@/lib/format";
+import {useFieldErrors} from "@/lib/useFieldErrors";
+import {formatMoneyInput, maskMoney, moneyPlaceholder, parseMoney} from "@/lib/money";
+import {accountName} from "@/lib/finance/accountName";
 
-const PREVIEW_COUNT = 6
-const DEBOUNCE_MS = 300
+const PREVIEW_COUNT = 6;
+const DEBOUNCE_MS = 300;
 const adjustOptions = (): {value: Adjust; label: string}[] => [
   {value: "roll_forward", label: t("bills.rec.adjust.roll_forward")},
   {value: "none", label: t("bills.rec.adjust.none")},
-]
-const touched = (c: FinanceCtx) => [financeKeys.recurrences(c.mode, c.space), [...financeKeys.all(c.mode, c.space), "projection"], financeKeys.cardForecasts(c.mode, c.space)]
+];
+const touched = (c: FinanceCtx) => [financeKeys.recurrences(c.mode, c.space), [...financeKeys.all(c.mode, c.space), "projection"], financeKeys.cardForecasts(c.mode, c.space)];
 // Ending and archiving also cancels bills and reverses their recognition (UX
 // batch 5): Agenda, balances, statements and reports all move, so the whole space.
 const touchedByEdit = (c: FinanceCtx, _: unknown, body: RecurrencePatch) =>
-  body.archive || body.cancel_after_end ? [financeKeys.all(c.mode, c.space)] : touched(c)
+  body.archive || body.cancel_after_end ? [financeKeys.all(c.mode, c.space)] : touched(c);
 
 function ruleOf(r: Recurrence): string {
-  const model = fromExpression(r.expression)
-  return model ? describeModel(model) : t("bills.rec.customRule")
+  const model = fromExpression(r.expression);
+  return model ? describeModel(model) : t("bills.rec.customRule");
 }
 
 /**
@@ -56,23 +56,23 @@ function ruleOf(r: Recurrence): string {
  * confirmation, before anything is saved.
  */
 export function RecurrencesView({focus}: {focus?: string} = {}) {
-  const {t} = useTranslation()
-  const ctx = useFinanceCtx()
-  const {can, loading} = useFinanceSpaces()
-  const [panel, setPanel] = useState<{mode: "new"} | {mode: "edit"; rec: Recurrence} | null>(null)
+  const {t} = useTranslation();
+  const ctx = useFinanceCtx();
+  const {can, loading} = useFinanceSpaces();
+  const [panel, setPanel] = useState<{mode: "new"} | {mode: "edit"; rec: Recurrence} | null>(null);
   // The bar's request is a wish, not a permission: a role that may not create
   // never sees the drawer, whenever the space's verbs arrive.
-  useCreateRequest("recurrence", () => { if (loading || can("finance.write")) setPanel({mode: "new"}) })
-  const shown = panel?.mode === "new" && !can("finance.write") ? null : panel
-  const recs = useQuery({queryKey: financeKeys.recurrences(ctx.mode, ctx.space), queryFn: () => listRecurrences(ctx)})
-  const accounts = useQuery({queryKey: financeKeys.accounts(ctx.mode, ctx.space), queryFn: () => listAccounts(ctx)})
+  useCreateRequest("recurrence", () => { if (loading || can("finance.write")) setPanel({mode: "new"}); });
+  const shown = panel?.mode === "new" && !can("finance.write") ? null : panel;
+  const recs = useQuery({queryKey: financeKeys.recurrences(ctx.mode, ctx.space), queryFn: () => listRecurrences(ctx)});
+  const accounts = useQuery({queryKey: financeKeys.accounts(ctx.mode, ctx.space), queryFn: () => listAccounts(ctx)});
   const cards = useQuery({
     queryKey: financeKeys.cards(ctx.mode, ctx.space), queryFn: () => listCards(ctx),
     enabled: panel !== null || (recs.data?.data ?? []).some(r => !!r.card_id),
-  })
-  const cardList = cards.data?.data ?? []
-  const names = new Map((accounts.data?.data ?? []).map(a => [a.id, accountName(a)]))
-  const active = (recs.data?.data ?? []).filter(r => !r.archived)
+  });
+  const cardList = cards.data?.data ?? [];
+  const names = new Map((accounts.data?.data ?? []).map(a => [a.id, accountName(a)]));
+  const active = (recs.data?.data ?? []).filter(r => !r.archived);
 
   return (
     <div className="space-y-6">
@@ -115,22 +115,22 @@ export function RecurrencesView({focus}: {focus?: string} = {}) {
         </ul>
       )}
     </div>
-  )
+  );
 }
 
 function RecurrenceRow({rec, account, card, focused = false, onEdit}: {rec: Recurrence; account?: string; card?: Card; focused?: boolean; onEdit: () => void}) {
-  const {t} = useTranslation()
-  const {can} = useFinanceSpaces()
-  const [confirming, setConfirming] = useState(false)
+  const {t} = useTranslation();
+  const {can} = useFinanceSpaces();
+  const [confirming, setConfirming] = useState(false);
   // A disclosure: the detail opens in place under the row and the focus stays
   // on the button, which says whether it is open (aria-expanded). A link from a
   // statement item (?recurrence=) opens it and brings it on screen.
-  const [open, setOpen] = useState(focused)
-  const detailId = useId()
-  const anchor = useRef<HTMLSpanElement>(null)
-  useEffect(() => { if (focused) anchor.current?.scrollIntoView?.({block: "center"}) }, [focused])
-  const target = account ?? (card ? cardLabel(card) : "")
-  const archive = useFinanceMutation((c, _: void, key) => archiveRecurrence(c, rec.id, key), touched, () => setConfirming(false))
+  const [open, setOpen] = useState(focused);
+  const detailId = useId();
+  const anchor = useRef<HTMLSpanElement>(null);
+  useEffect(() => { if (focused) anchor.current?.scrollIntoView?.({block: "center"}); }, [focused]);
+  const target = account ?? (card ? cardLabel(card) : "");
+  const archive = useFinanceMutation((c, _: void, key) => archiveRecurrence(c, rec.id, key), touched, () => setConfirming(false));
   return (
     <LedgerRow
       title={rec.description || t("bills.common.noDescription")}
@@ -169,7 +169,7 @@ function RecurrenceRow({rec, account, card, focused = false, onEdit}: {rec: Recu
         </div>
       )}
     </LedgerRow>
-  )
+  );
 }
 
 /**
@@ -178,10 +178,10 @@ function RecurrenceRow({rec, account, card, focused = false, onEdit}: {rec: Recu
  * happened (paid, overdue with a way to it, skipped), most recent first.
  */
 function RecurrenceDetail({id, rec}: {id: string; rec: Recurrence}) {
-  const {t} = useTranslation()
-  const ctx = useFinanceCtx()
-  const q = useQuery({queryKey: financeKeys.recurrenceOccurrences(ctx.mode, ctx.space, rec.id), queryFn: () => getRecurrenceOccurrences(ctx, rec.id)})
-  const name = rec.description || t("bills.common.noDescription")
+  const {t} = useTranslation();
+  const ctx = useFinanceCtx();
+  const q = useQuery({queryKey: financeKeys.recurrenceOccurrences(ctx.mode, ctx.space, rec.id), queryFn: () => getRecurrenceOccurrences(ctx, rec.id)});
+  const name = rec.description || t("bills.common.noDescription");
   const made = (o: NonNullable<typeof q.data>["history"][number]): TimelineEntry => ({
     key: o.bill_id ?? o.purchase_id ?? o.nominal, nominal: o.nominal, due: o.due, kind: o.state, amount: money(o.amount),
     state: o.state === "pending_confirmation" ? t("bills.rec.expectedPending")
@@ -192,14 +192,14 @@ function RecurrenceDetail({id, rec}: {id: string; rec: Recurrence}) {
       : o.state === "overdue" && o.bill_id
       ? <Link href={`/finance/bills?direction=${rec.direction}&bill=${encodeURIComponent(o.bill_id)}`} className="inline-flex items-center text-sm text-foreground underline underline-offset-4 hover:text-brand-700 touch-target">{t(`bills.rec.openBill.${rec.direction}`)}</Link>
       : undefined,
-  })
+  });
   const next: TimelineEntry[] = [
     ...(q.data?.history ?? []).filter(o => o.state === "forecast").map(made),
     ...(q.data?.upcoming ?? []).map(o => ({key: `u-${o.nominal}`, nominal: o.nominal, due: o.due, kind: "upcoming" as const,
       state: o.statement_month ? `${t("bills.rec.state.upcoming")} • ${t("bills.rec.onStatement", {month: monthShort(o.statement_month)})}` : t("bills.rec.state.upcoming"),
       amount: money(rec.amount)})),
-  ]
-  const past = (q.data?.history ?? []).filter(o => o.state !== "forecast").reverse().map(made)
+  ];
+  const past = (q.data?.history ?? []).filter(o => o.state !== "forecast").reverse().map(made);
   return (
     <section id={id} aria-label={t("bills.rec.detail", {name})}
       className="mt-3 grid gap-5 rounded-lg bg-surface p-3 sm:grid-cols-2 sm:gap-6 sm:p-4 motion-safe:animate-in motion-safe:fade-in">
@@ -224,7 +224,7 @@ function RecurrenceDetail({id, rec}: {id: string; rec: Recurrence}) {
         </>
       )}
     </section>
-  )
+  );
 }
 
 /**
@@ -235,22 +235,22 @@ function RecurrenceDetail({id, rec}: {id: string; rec: Recurrence}) {
  * it made, which are the ones after any end).
  */
 function EndCancels({rec, end}: {rec: Recurrence; end: string}) {
-  const {t} = useTranslation()
-  const ctx = useFinanceCtx()
-  const q = useQuery({queryKey: financeKeys.recurrenceOccurrences(ctx.mode, ctx.space, rec.id), queryFn: () => getRecurrenceOccurrences(ctx, rec.id)})
-  const after = (q.data?.history ?? []).filter(o => o.nominal > end)
-  const canceled = after.filter(o => o.state === "forecast" || o.state === "overdue")
-  const pending = after.filter(o => o.state === "pending_confirmation")
-  const paid = after.filter(o => o.state === "paid")
-  if (canceled.length === 0 && pending.length === 0 && paid.length === 0) return null
-  const list = (xs: typeof after) => new Intl.ListFormat(currentLocale(), {type: "conjunction"}).format(xs.map(o => dayMonth(o.due)))
+  const {t} = useTranslation();
+  const ctx = useFinanceCtx();
+  const q = useQuery({queryKey: financeKeys.recurrenceOccurrences(ctx.mode, ctx.space, rec.id), queryFn: () => getRecurrenceOccurrences(ctx, rec.id)});
+  const after = (q.data?.history ?? []).filter(o => o.nominal > end);
+  const canceled = after.filter(o => o.state === "forecast" || o.state === "overdue");
+  const pending = after.filter(o => o.state === "pending_confirmation");
+  const paid = after.filter(o => o.state === "paid");
+  if (canceled.length === 0 && pending.length === 0 && paid.length === 0) return null;
+  const list = (xs: typeof after) => new Intl.ListFormat(currentLocale(), {type: "conjunction"}).format(xs.map(o => dayMonth(o.due)));
   return (
     <div className="w-full space-y-1">
       {canceled.length > 0 && <p className="text-foreground">{t("bills.rec.endCancels", {count: canceled.length, dates: list(canceled)})}</p>}
       {pending.length > 0 && <p className="text-foreground">{t("bills.rec.endCancelsPending", {count: pending.length, dates: list(pending)})}</p>}
       {paid.length > 0 && <p className="text-muted-foreground">{t("bills.rec.endKeepsPaid", {count: paid.length, dates: list(paid)})}</p>}
     </div>
-  )
+  );
 }
 
 /**
@@ -258,152 +258,154 @@ function EndCancels({rec, end}: {rec: Recurrence; end: string}) {
  * slow reply to an older edit never overwrites the preview of a newer one.
  */
 function usePreview(ctx: FinanceCtx, expression: ExpressionJSON, start: string, end: string, adjust: Adjust, from: string, valid: boolean) {
-  const [state, setState] = useState<{occ: Occurrence[]; loading: boolean; error: unknown; done: boolean}>({occ: [], loading: false, error: null, done: false})
-  const seq = useRef(0)
-  const body = JSON.stringify({expression, start, end, adjust, from})
+  const [state, setState] = useState<{occ: Occurrence[]; loading: boolean; error: unknown; done: boolean}>({occ: [], loading: false, error: null, done: false});
+  const seq = useRef(0);
+  const body = JSON.stringify({expression, start, end, adjust, from});
   useEffect(() => {
-    if (!valid || !start) return
-    const mine = ++seq.current
-    const abort = new AbortController()
+    if (!valid || !start) return undefined;
+    const mine = ++seq.current;
+    const abort = new AbortController();
     const t = setTimeout(() => {
-      setState(s => ({...s, loading: true}))
-      const parsed = JSON.parse(body) as {expression: ExpressionJSON; start: string; end: string; adjust: Adjust; from: string}
+      setState(s => ({...s, loading: true}));
+      const parsed = JSON.parse(body) as {expression: ExpressionJSON; start: string; end: string; adjust: Adjust; from: string};
       previewRecurrence(ctx, {
         expression: parsed.expression, start: parsed.start, end: parsed.end || undefined,
         business_day_adjust: parsed.adjust, from: parsed.from > parsed.start ? parsed.from : parsed.start, count: PREVIEW_COUNT,
       }, abort.signal)
-        .then(r => { if (mine === seq.current) setState({occ: r.data, loading: false, error: null, done: true}) })
-        .catch(e => { if (mine === seq.current && !abort.signal.aborted) setState({occ: [], loading: false, error: e, done: true}) })
-    }, DEBOUNCE_MS)
+        .then(r => { if (mine === seq.current) setState({occ: r.data, loading: false, error: null, done: true}); })
+        .catch(e => { if (mine === seq.current && !abort.signal.aborted) setState({occ: [], loading: false, error: e, done: true}); });
+    }, DEBOUNCE_MS);
     return () => {
-      clearTimeout(t)
-      abort.abort()
-    }
-  }, [ctx, body, valid, start])
-  return state
+      clearTimeout(t);
+      abort.abort();
+    };
+  }, [ctx, body, valid, start]);
+  return state;
 }
 
 /** The day after a civil date. */
 function nextDay(iso: string): string {
-  const [y, m, d] = iso.split("-").map(Number)
-  const next = new Date(y, m - 1, d + 1, 12)
-  return `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}-${String(next.getDate()).padStart(2, "0")}`
+  const [y, m, d] = iso.split("-").map(Number);
+  const next = new Date(y, m - 1, d + 1, 12);
+  return `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}-${String(next.getDate()).padStart(2, "0")}`;
 }
 
 function RecurrencePanel({editing, accounts, cards, onDone}: {editing?: Recurrence; accounts: Account[]; cards: Card[]; onDone: () => void}) {
-  const {t} = useTranslation()
-  const ctx = useFinanceCtx()
-  const {can} = useFinanceSpaces()
-  const [direction, setDirection] = useState<Direction>(editing?.direction ?? "payable")
-  const [description, setDescription] = useState(editing?.description ?? "")
-  const [amountText, setAmountText] = useState(editing ? formatMoneyInput(editing.amount) : "")
-  const [amountMode, setAmountMode] = useState<"fixed" | "expected">(editing?.amount_mode ?? "fixed")
-  const [category, setCategory] = useState(editing?.category_id ?? "")
+  const {t} = useTranslation();
+  const ctx = useFinanceCtx();
+  const {can} = useFinanceSpaces();
+  const [direction, setDirection] = useState<Direction>(editing?.direction ?? "payable");
+  const [description, setDescription] = useState(editing?.description ?? "");
+  const [amountText, setAmountText] = useState(editing ? formatMoneyInput(editing.amount) : "");
+  const [amountMode, setAmountMode] = useState<"fixed" | "expected">(editing?.amount_mode ?? "fixed");
+  const [category, setCategory] = useState(editing?.category_id ?? "");
   // The account or the card it is paid with (spec D1): one select, both kinds.
-  const [target, setTarget] = useState(editing?.card_id || editing?.account_id || "")
-  const [installments, setInstallments] = useState(editing?.installments ?? 1)
-  const [start, setStart] = useState(editing?.start ?? todayIso())
-  const [end, setEnd] = useState(editing?.end ?? "")
-  const [adjust, setAdjust] = useState<Adjust>(editing?.business_day_adjust ?? "roll_forward")
-  const [autoSettle, setAutoSettle] = useState(editing?.auto_settle ?? false)
-  const [model, setModel] = useState<EditorModel>(() => (editing && fromExpression(editing.expression)) || defaultModel(todayIso()))
+  const [target, setTarget] = useState(editing?.card_id || editing?.account_id || "");
+  const [installments, setInstallments] = useState(editing?.installments ?? 1);
+  const [start, setStart] = useState(editing?.start ?? todayIso());
+  const [end, setEnd] = useState(editing?.end ?? "");
+  const [adjust, setAdjust] = useState<Adjust>(editing?.business_day_adjust ?? "roll_forward");
+  const [autoSettle, setAutoSettle] = useState(editing?.auto_settle ?? false);
+  const [model, setModel] = useState<EditorModel>(() => (editing && fromExpression(editing.expression)) || defaultModel(todayIso()));
 
-  const errors = editing ? [] : validate(model)
+  const errors = editing ? [] : validate(model);
   // Creating: the dates from today. Editing: the rule is fixed, so the preview
   // shows what is left after today under the end being edited, which is what
   // tells the person that an end will close the recurrence.
   const preview = usePreview(ctx, editing ? editing.expression : toExpression(model), start, end,
-    editing ? editing.business_day_adjust : adjust, editing ? nextDay(todayIso()) : todayIso(), errors.length === 0)
+    editing ? editing.business_day_adjust : adjust, editing ? nextDay(todayIso()) : todayIso(), errors.length === 0);
   // An end the server asked about — it cancels open bills after it (422
   // end_cancels_bills, UX batch 5 review) or leaves nothing to come (422
   // recurrence_would_end): saving it again asks first instead of repeating the
   // request. `archive` is whether the confirmed request must also archive.
-  const [asked, setAsked] = useState<{end: string; archive: boolean} | null>(null)
-  const [confirming, setConfirming] = useState(false)
+  const [asked, setAsked] = useState<{end: string; archive: boolean} | null>(null);
+  const [confirming, setConfirming] = useState(false);
   // A confirmed end whose cancellations did not all happen (409
   // recurrence_end_incomplete): the end is saved; the same request finishes it.
-  const [incomplete, setIncomplete] = useState<RecurrencePatch | null>(null)
-  const lastPatch = useRef<RecurrencePatch>({})
-  const sent = useRef<RecurrencePatch>({})
+  const [incomplete, setIncomplete] = useState<RecurrencePatch | null>(null);
+  const lastPatch = useRef<RecurrencePatch>({});
+  const sent = useRef<RecurrencePatch>({});
   // The preview of an edit lists the dates left after today: none means this
   // end also ends the rule, so the one confirmation archives it too.
-  const endsByPreview = !!editing && preview.done && !preview.loading && !preview.error && preview.occ.length === 0
-  const amount = parseMoney(amountText)
-  const cats = accounts.filter(a => a.class === (direction === "payable" ? "expense" : "income") && !a.archived && !a.system)
-  const assets = accounts.filter(a => a.class === "asset" && !a.archived && !a.system)
+  const endsByPreview = !!editing && preview.done && !preview.loading && !preview.error && preview.occ.length === 0;
+  const amount = parseMoney(amountText);
+  const cats = accounts.filter(a => a.class === (direction === "payable" ? "expense" : "income") && !a.archived && !a.system);
+  const assets = accounts.filter(a => a.class === "asset" && !a.archived && !a.system);
   // A card pays expenses only; an archived one is never offered (the one a
   // recurrence still names shows by its id until the person picks another).
-  const payCards = direction === "payable" ? cards.filter(c => !c.archived) : []
-  const isCard = cards.some(c => c.id === target) || (!!editing?.card_id && target === editing.card_id)
+  const payCards = direction === "payable" ? cards.filter(c => !c.archived) : [];
+  const isCard = cards.some(c => c.id === target) || (!!editing?.card_id && target === editing.card_id);
   const targetOptions = [
     ...assets.map(a => ({value: a.id, label: accountName(a)})),
     ...payCards.map(c => ({value: c.id, label: cardLabel(c), icon: <CardBrandMark brand={c.brand ?? "other"}/>})),
-  ]
+  ];
 
-  const [more, setMore] = useState(false)
+  const [more, setMore] = useState(false);
   // "end" only has a control on screen when editing or when more options is open;
   // otherwise its error is shown as the general message.
-  const fe = useFieldErrors(["description", "amount", "category_id", "account_id", "card_id", "installments", ...(editing ? [] : ["start"]), ...(editing || more ? ["end"] : [])])
-  const create = useFinanceMutation((c, body: NewRecurrence, key) => createRecurrence(c, body, key), touched, onDone, fe.set)
+  const fe = useFieldErrors(["description", "amount", "category_id", "account_id", "card_id", "installments", ...(editing ? [] : ["start"]), ...(editing || more ? ["end"] : [])]);
+  const create = useFinanceMutation((c, body: NewRecurrence, key) => createRecurrence(c, body, key), touched, onDone, fe.set);
   const patch = useFinanceMutation((c, body: RecurrencePatch, key) => patchRecurrence(c, editing!.id, body, key), touchedByEdit, onDone, e => {
-    const code = problemCode(e)
-    const end = lastPatch.current.end
+    const code = problemCode(e);
+    const end = lastPatch.current.end;
     if ((code === "recurrence_would_end" || code === "end_cancels_bills") && end) {
-      setAsked(a => ({end, archive: code === "recurrence_would_end" || endsByPreview || (a?.end === end && a.archive)}))
-      setConfirming(true)
-      return
+      setAsked(a => ({end, archive: code === "recurrence_would_end" || endsByPreview || (a?.end === end && a.archive)}));
+      setConfirming(true);
+      return;
     }
     if (code === "recurrence_end_incomplete") {
-      setIncomplete(sent.current)
-      return
+      setIncomplete(sent.current);
+      return;
     }
-    fe.set(e)
-  }, {invalidateOnError: true}) // a half-done end moved bills: show what is true now
+    fe.set(e);
+  }, {invalidateOnError: true}); // a half-done end moved bills: show what is true now
   const send = (body: RecurrencePatch) => {
-    sent.current = body
-    setIncomplete(null)
-    setConfirming(false)
-    patch.mutate(body)
-  }
-  const pending = create.isPending || patch.isPending
-  const ready = amount !== null && category !== "" && target !== "" && errors.length === 0 && !pending
+    sent.current = body;
+    setIncomplete(null);
+    setConfirming(false);
+    patch.mutate(body);
+  };
+  const pending = create.isPending || patch.isPending;
+  const ready = amount !== null && category !== "" && target !== "" && errors.length === 0 && !pending;
   // A card's statement is what gets paid: no auto-settle on a card.
-  const showAuto = amountMode === "fixed" && !isCard && (can("finance.settle") || (editing?.auto_settle ?? false))
+  const showAuto = amountMode === "fixed" && !isCard && (can("finance.settle") || (editing?.auto_settle ?? false));
 
-  function submit(e: React.FormEvent) {
-    e.preventDefault()
-    if (!ready) return
-    fe.reset()
+  function submit(e: React.SyntheticEvent) {
+    e.preventDefault();
+    if (!ready) return;
+    fe.reset();
     if (!editing) {
       create.mutate({
         direction, amount: amount!, amount_mode: amountMode, category_id: category, description: description || undefined,
         expression: toExpression(model), start, end: end || undefined, business_day_adjust: adjust,
         ...(isCard ? {card_id: target, installments} : {account_id: target, auto_settle: autoSettle || undefined}),
-      })
-      return
+      });
+      return;
     }
-    const body: RecurrencePatch = {}
-    if (amount !== editing.amount) body.amount = amount!
-    if (category !== editing.category_id) body.category_id = category
+    const body: RecurrencePatch = {};
+    if (amount !== editing.amount) body.amount = amount!;
+    if (category !== editing.category_id) body.category_id = category;
     if (target !== (editing.card_id || editing.account_id)) {
-      if (isCard) body.card_id = target
-      else body.account_id = target
+      if (isCard) body.card_id = target;
+      else body.account_id = target;
     }
-    if (isCard && installments !== (editing.installments ?? 1)) body.installments = installments
-    if (description !== (editing.description ?? "")) body.description = description
-    if (!isCard && autoSettle !== editing.auto_settle) body.auto_settle = autoSettle
+    if (isCard && installments !== (editing.installments ?? 1)) body.installments = installments;
+    if (description !== (editing.description ?? "")) body.description = description;
+    if (!isCard && autoSettle !== editing.auto_settle) body.auto_settle = autoSettle;
     // Emptied is sent as "": the API layer turns it into null, which removes the end.
-    if (end !== (editing.end ?? "")) body.end = end
-    if (Object.keys(body).length === 0) return onDone()
-    lastPatch.current = body
-    if (body.end && body.end === asked?.end) {
-      setConfirming(true)
-      return
+    if (end !== (editing.end ?? "")) body.end = end;
+    if (Object.keys(body).length === 0) {
+      onDone();
+      return;
     }
-    send(body)
+    lastPatch.current = body;
+    if (body.end && body.end === asked?.end) {
+      setConfirming(true);
+    }
+    send(body);
   }
 
-  const nextDates = preview.occ.slice(0, PREVIEW_COUNT)
+  const nextDates = preview.occ.slice(0, PREVIEW_COUNT);
   const previewList = (
     <div className="space-y-2" aria-live="polite">
       <h3 id="rc-next" className="text-sm font-medium text-foreground">{t("bills.rec.next")}</h3>
@@ -420,7 +422,7 @@ function RecurrencePanel({editing, accounts, cards, onDone}: {editing?: Recurren
         <p className="text-sm text-muted-foreground">{t("bills.rec.calculating")}</p>
       )}
     </div>
-  )
+  );
 
   return (
     <div className="space-y-4">
@@ -430,27 +432,27 @@ function RecurrencePanel({editing, accounts, cards, onDone}: {editing?: Recurren
           <Segmented
             label={t("bills.direction.label")}
             value={direction}
-            onValueChange={d => { setDirection(d); setCategory(""); if (isCard) setTarget("") }}
+            onValueChange={d => { setDirection(d); setCategory(""); if (isCard) setTarget(""); }}
             options={(["payable", "receivable"] as Direction[]).map(d => ({value: d, label: t(`bills.direction.${d}`)}))}
           />
         )}
       </div>
       <form className="space-y-4" onSubmit={submit}>
         <div className="grid items-start gap-x-4 gap-y-3 sm:grid-cols-2 [&>*]:min-w-0">
-          <Field label={t("bills.common.description")} htmlFor="rc-desc" error={fe.of("description")} className="sm:col-span-2"><Input id="rc-desc" maxLength={limits.text.description} value={description} {...fe.props("description", "rc-desc")} onChange={e => { setDescription(e.target.value); fe.clear("description") }}/></Field>
+          <Field label={t("bills.common.description")} htmlFor="rc-desc" error={fe.of("description")} className="sm:col-span-2"><Input id="rc-desc" maxLength={limits.text.description} value={description} {...fe.props("description", "rc-desc")} onChange={e => { setDescription(e.target.value); fe.clear("description"); }}/></Field>
           {!editing && <AmountModeField value={amountMode} onChange={setAmountMode}/>}
-          <Field label={t(amountMode === "expected" ? "bills.rec.expectedAmount" : "bills.common.amount")} htmlFor="rc-amount" required error={fe.of("amount")}><Input id="rc-amount" inputMode="decimal" placeholder={moneyPlaceholder()} value={amountText} {...fe.props("amount", "rc-amount")} onChange={e => { setAmountText(maskMoney(e.target.value)); fe.clear("amount") }}/></Field>
+          <Field label={t(amountMode === "expected" ? "bills.rec.expectedAmount" : "bills.common.amount")} htmlFor="rc-amount" required error={fe.of("amount")}><Input id="rc-amount" inputMode="decimal" placeholder={moneyPlaceholder()} value={amountText} {...fe.props("amount", "rc-amount")} onChange={e => { setAmountText(maskMoney(e.target.value)); fe.clear("amount"); }}/></Field>
           <Field label={t("bills.common.category")} htmlFor="rc-cat" required error={fe.of("category_id")} hint={cats.length === 0 ? t(`bills.noCategory.${direction === "payable" ? "expense" : "income"}`) : undefined}>
-            <Select {...selectCopy()} id="rc-cat" value={category} {...fe.props("category_id", "rc-cat")} onValueChange={v => { setCategory(v); fe.clear("category_id") }} options={cats.map(a => ({value: a.id, label: accountName(a)}))}/>
+            <Select {...selectCopy()} id="rc-cat" value={category} {...fe.props("category_id", "rc-cat")} onValueChange={v => { setCategory(v); fe.clear("category_id"); }} options={cats.map(a => ({value: a.id, label: accountName(a)}))}/>
           </Field>
           <Field label={t(`bills.common.payWith.${direction}`)} htmlFor="rc-acct" required error={fe.of("account_id") ?? fe.of("card_id")} hint={targetOptions.length === 0 ? t("bills.noAccount") : undefined}>
-            <Select {...selectCopy()} id="rc-acct" value={target} {...fe.props("account_id", "rc-acct")} onValueChange={v => { setTarget(v); fe.clear("account_id"); fe.clear("card_id") }} options={targetOptions}/>
+            <Select {...selectCopy()} id="rc-acct" value={target} {...fe.props("account_id", "rc-acct")} onValueChange={v => { setTarget(v); fe.clear("account_id"); fe.clear("card_id"); }} options={targetOptions}/>
           </Field>
           {isCard && (
             <>
               <Field label={t("bills.rec.installments")} htmlFor="rc-inst" error={fe.of("installments")}
                 hint={amount ? installmentsPreview(amount, installments) : undefined}>
-                <Select {...selectCopy()} id="rc-inst" value={String(installments)} onValueChange={v => { setInstallments(Number(v)); fe.clear("installments") }} options={installmentOptions()}/>
+                <Select {...selectCopy()} id="rc-inst" value={String(installments)} onValueChange={v => { setInstallments(Number(v)); fe.clear("installments"); }} options={installmentOptions()}/>
               </Field>
               <p className="text-sm text-muted-foreground sm:col-span-2">{t("bills.rec.cardNote")}</p>
             </>
@@ -458,11 +460,11 @@ function RecurrencePanel({editing, accounts, cards, onDone}: {editing?: Recurren
           {!editing && (
             <>
               <PatternFields model={model} start={start} errors={errors} onChange={setModel}/>
-              <Field label={t("bills.rec.startsOn")} htmlFor="rc-start" error={fe.of("start")}><DateField id="rc-start" min={limits.minDate} max={addYearsIso(todayIso(), limits.maxFutureYears)} value={start} invalid={!!fe.of("start")} onValueChange={v => { setStart(v); fe.clear("start") }}/></Field>
+              <Field label={t("bills.rec.startsOn")} htmlFor="rc-start" error={fe.of("start")}><DateField id="rc-start" min={limits.minDate} max={addYearsIso(todayIso(), limits.maxFutureYears)} value={start} invalid={!!fe.of("start")} onValueChange={v => { setStart(v); fe.clear("start"); }}/></Field>
             </>
           )}
           {editing && (
-            <Field label={t("bills.rec.endsOn")} htmlFor="rc-end-edit" error={fe.of("end")}><DateField id="rc-end-edit" min={start || limits.minDate} max={addYearsIso(start || todayIso(), limits.maxRecurrenceYears)} value={end} invalid={!!fe.of("end")} onValueChange={v => { setEnd(v); fe.clear("end") }} placeholder={t("bills.rec.noEnd")} clearLabel={t("bills.rec.clearEnd")}/></Field>
+            <Field label={t("bills.rec.endsOn")} htmlFor="rc-end-edit" error={fe.of("end")}><DateField id="rc-end-edit" min={start || limits.minDate} max={addYearsIso(start || todayIso(), limits.maxRecurrenceYears)} value={end} invalid={!!fe.of("end")} onValueChange={v => { setEnd(v); fe.clear("end"); }} placeholder={t("bills.rec.noEnd")} clearLabel={t("bills.rec.clearEnd")}/></Field>
           )}
         </div>
 
@@ -489,7 +491,7 @@ function RecurrencePanel({editing, accounts, cards, onDone}: {editing?: Recurren
               </button>
               {more && (
                 <div className="mt-3 grid items-start gap-4 border-t border-border pt-4 sm:grid-cols-2">
-                  <Field label={t("bills.rec.endsOn")} htmlFor="rc-end" error={fe.of("end")}><DateField id="rc-end" min={start || limits.minDate} max={addYearsIso(start || todayIso(), limits.maxRecurrenceYears)} value={end} invalid={!!fe.of("end")} onValueChange={v => { setEnd(v); fe.clear("end") }} placeholder={t("bills.rec.noEnd")} clearLabel={t("bills.rec.clearEnd")}/></Field>
+                  <Field label={t("bills.rec.endsOn")} htmlFor="rc-end" error={fe.of("end")}><DateField id="rc-end" min={start || limits.minDate} max={addYearsIso(start || todayIso(), limits.maxRecurrenceYears)} value={end} invalid={!!fe.of("end")} onValueChange={v => { setEnd(v); fe.clear("end"); }} placeholder={t("bills.rec.noEnd")} clearLabel={t("bills.rec.clearEnd")}/></Field>
                   <Field label={t("bills.rec.weekend")} htmlFor="rc-adjust">
                     <Select {...selectCopy()} id="rc-adjust" value={adjust} onValueChange={v => setAdjust(v as Adjust)} options={adjustOptions()}/>
                   </Field>
@@ -533,7 +535,7 @@ function RecurrencePanel({editing, accounts, cards, onDone}: {editing?: Recurren
         {fe.general && <p role="alert" className="text-sm text-danger">{fe.general}</p>}
       </form>
     </div>
-  )
+  );
 }
 
 
@@ -543,7 +545,7 @@ function RecurrencePanel({editing, accounts, cards, onDone}: {editing?: Recurren
  * toggle in a grid cell, which put it beside the amount with no label to align to.
  */
 function AmountModeField({value, onChange}: {value: "fixed" | "expected"; onChange: (mode: "fixed" | "expected") => void}) {
-  const {t} = useTranslation()
+  const {t} = useTranslation();
   return (
     <div data-slot="mode-field" className="grid gap-1.5 sm:col-span-2">
       <span className="text-sm font-medium text-foreground">{t("bills.rec.amountMode.label")}</span>
@@ -551,5 +553,5 @@ function AmountModeField({value, onChange}: {value: "fixed" | "expected"; onChan
         options={(["fixed", "expected"] as const).map(v => ({value: v, label: t(`bills.rec.amountMode.${v}`)}))}/>
       <p className="text-sm text-muted-foreground">{t(`bills.rec.amountMode.${value}Hint`)}</p>
     </div>
-  )
+  );
 }

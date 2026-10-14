@@ -1,14 +1,14 @@
-"use client"
+"use client";
 
-import {createContext, useCallback, useContext, useEffect, useState} from "react"
-import type {ReactNode} from "react"
+import {createContext, useCallback, useContext, useEffect, useState} from "react";
+import type {ReactNode} from "react";
 
-import {registerRefresh, setAccessToken} from "@/lib/api/client"
-import {MOCK_CUSTOMER, USE_MOCK} from "@/lib/mockConfig"
+import {registerRefresh, setAccessToken} from "@/lib/api/client";
+import {MOCK_CUSTOMER, USE_MOCK} from "@/lib/mockConfig";
 
-import {decodeIdToken, doRefresh, logout as endSession, startOAuthFlow} from "./oauth"
-import {safeReturnTo} from "./returnTo"
-import {missingScopes, shouldUpgradeScopes} from "./scopes"
+import {decodeIdToken, doRefresh, logout as endSession, startOAuthFlow} from "./oauth";
+import {safeReturnTo} from "./returnTo";
+import {missingScopes, shouldUpgradeScopes} from "./scopes";
 
 interface Auth {
   /** The signed-in person's display name, or null. Never authorize on this — it
@@ -24,10 +24,10 @@ interface Auth {
   onCallback: (accessToken: string, idToken: string | null) => void
 }
 
-const AuthContext = createContext<Auth | undefined>(undefined)
+const AuthContext = createContext<Auth | undefined>(undefined);
 
-const NAME_KEY = "ctech-billing-name"
-const UPGRADE_KEY = "ctech-billing-scope-upgrade"
+const NAME_KEY = "ctech-billing-name";
+const UPGRADE_KEY = "ctech-billing-scope-upgrade";
 
 /**
  * A session that signed in before this app asked for a scope keeps refreshing
@@ -36,24 +36,24 @@ const UPGRADE_KEY = "ctech-billing-scope-upgrade"
  * the scopes the client now holds. Returns true when the browser is leaving.
  */
 function upgradeScopes(token: string): boolean {
-  let last: number | null = null
+  let last: number | null = null;
   try {
-    const raw = window.sessionStorage.getItem(UPGRADE_KEY)
-    last = raw ? Number(raw) : null
+    const raw = window.sessionStorage.getItem(UPGRADE_KEY);
+    last = raw ? Number(raw) : null;
   } catch { /* storage blocked: still try once per page load */ }
-  const now = Date.now()
-  if (!shouldUpgradeScopes(missingScopes(token), last, now)) return false
+  const now = Date.now();
+  if (!shouldUpgradeScopes(missingScopes(token), last, now)) return false;
   try {
-    window.sessionStorage.setItem(UPGRADE_KEY, String(now))
+    window.sessionStorage.setItem(UPGRADE_KEY, String(now));
   } catch { /* see above */ }
-  void startOAuthFlow(safeReturnTo(window.location.pathname + window.location.search))
-  return true
+  void startOAuthFlow(safeReturnTo(window.location.pathname + window.location.search));
+  return true;
 }
 
 export function useAuth(): Auth {
-  const ctx = useContext(AuthContext)
-  if (!ctx) throw new Error("useAuth precisa de AuthProvider acima")
-  return ctx
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error("useAuth precisa de AuthProvider acima");
+  return ctx;
 }
 
 export function AuthProvider({children}: { children: ReactNode }) {
@@ -62,97 +62,97 @@ export function AuthProvider({children}: { children: ReactNode }) {
   // writing it from an effect would paint the empty frame first — which is the
   // flash it exists to prevent. It is a label, never a permission.
   const [name, setName] = useState<string | null>(() => {
-    if (USE_MOCK) return MOCK_CUSTOMER.name
-    if (typeof window === "undefined") return null
-    return window.localStorage.getItem(NAME_KEY)
-  })
-  const [authenticated, setAuthenticated] = useState(USE_MOCK)
-  const [loading, setLoading] = useState(!USE_MOCK)
+    if (USE_MOCK) return MOCK_CUSTOMER.name;
+    if (typeof window === "undefined") return null;
+    return window.localStorage.getItem(NAME_KEY);
+  });
+  const [authenticated, setAuthenticated] = useState(USE_MOCK);
+  const [loading, setLoading] = useState(!USE_MOCK);
 
   const adopt = useCallback((accessToken: string) => {
-    setAccessToken(accessToken)
-    setAuthenticated(true)
-  }, [])
+    setAccessToken(accessToken);
+    setAuthenticated(true);
+  }, []);
 
   const refresh = useCallback(async (): Promise<string | null> => {
-    if (USE_MOCK) return "mock"
-    const token = await doRefresh()
+    if (USE_MOCK) return "mock";
+    const token = await doRefresh();
     if (!token) {
-      setAccessToken(null)
-      setAuthenticated(false)
-      return null
+      setAccessToken(null);
+      setAuthenticated(false);
+      return null;
     }
-    adopt(token)
-    return token
-  }, [adopt])
+    adopt(token);
+    return token;
+  }, [adopt]);
 
   // The axios client owns the 401 retry, but the token it needs is this
   // provider's to fetch. Registering the function rather than importing the
   // provider keeps the dependency pointing one way.
   useEffect(() => {
-    registerRefresh(refresh)
-  }, [refresh])
+    registerRefresh(refresh);
+  }, [refresh]);
 
   // The boot-time silent refresh. It answers the one question every guard is
   // waiting on: is there a session to resume? Until it does, `loading` is true
   // and nothing redirects anybody anywhere.
   useEffect(() => {
     if (USE_MOCK) {
-      setAccessToken("mock")
-      return
+      setAccessToken("mock");
+      return undefined;
     }
-    let cancelled = false
+    let cancelled = false;
     void (async () => {
       try {
-        const token = await refresh()
-        if (token && upgradeScopes(token)) return
+        const token = await refresh();
+        if (token && upgradeScopes(token)) return;
       } catch {
         // An unavailable IdP is not a logout. Leave cached display identity
         // intact and let the next authenticated operation retry.
       } finally {
-        if (!cancelled) setLoading(false)
+        if (!cancelled) setLoading(false);
       }
-    })()
+    })();
     return () => {
-      cancelled = true
-    }
-  }, [refresh])
+      cancelled = true;
+    };
+  }, [refresh]);
 
   const login = useCallback((returnTo = "/dashboard") => {
     if (USE_MOCK) {
-      setAuthenticated(true)
-      return
+      setAuthenticated(true);
+      return;
     }
-    void startOAuthFlow(returnTo)
-  }, [])
+    void startOAuthFlow(returnTo);
+  }, []);
 
   const logout = useCallback(() => {
-    window.localStorage.removeItem(NAME_KEY)
-    setAccessToken(null)
-    setAuthenticated(false)
-    setName(null)
-    if (USE_MOCK) return
+    window.localStorage.removeItem(NAME_KEY);
+    setAccessToken(null);
+    setAuthenticated(false);
+    setName(null);
+    if (USE_MOCK) return;
     // Awaited before the redirect: revoke has to land, or the refresh chain
     // outlives the logout.
-    void endSession()
-  }, [])
+    void endSession();
+  }, []);
 
   const onCallback = useCallback(
     (accessToken: string, idToken: string | null) => {
-      adopt(accessToken)
+      adopt(accessToken);
       // The whole name: the account menu shows it uncut, and "Ana" alone is
       // not enough to tell two accounts apart. `username` is the last resort,
       // a login handle rather than a name.
-      const claims = idToken ? decodeIdToken(idToken) : null
-      const full = [claims?.first_name, claims?.last_name].filter(Boolean).join(" ")
-      const display = full || claims?.username || null
+      const claims = idToken ? decodeIdToken(idToken) : null;
+      const full = [claims?.first_name, claims?.last_name].filter(Boolean).join(" ");
+      const display = full || claims?.username || null;
       if (display) {
-        setName(display)
-        window.localStorage.setItem(NAME_KEY, display)
+        setName(display);
+        window.localStorage.setItem(NAME_KEY, display);
       }
     },
     [adopt]
-  )
+  );
 
   return (
     <AuthContext.Provider
@@ -160,5 +160,5 @@ export function AuthProvider({children}: { children: ReactNode }) {
     >
       {children}
     </AuthContext.Provider>
-  )
+  );
 }

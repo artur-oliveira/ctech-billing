@@ -6,7 +6,7 @@
  */
 export function safeReturnTo(path: string | null | undefined): string {
   if (!path || !path.startsWith("/") || path[1] === "/" || path[1] === "\\" || /[\u0000-\u001f]/.test(path)) {
-    return "/dashboard"
+    return "/dashboard";
   }
-  return path
+  return path;
 }

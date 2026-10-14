@@ -1,5 +1,5 @@
-import {fileURLToPath} from "url"
-import {defineConfig} from "vitest/config"
+import {fileURLToPath} from "url";
+import {defineConfig} from "vitest/config";
 
 export default defineConfig({
   resolve: {alias: {"@": fileURLToPath(new URL("./src", import.meta.url))}},
@@ -14,4 +14,4 @@ export default defineConfig({
     // resolver refuses; inlining lets Vite resolve them like the app build does.
     server: {deps: {inline: ["@aoctech/ui"]}},
   },
-})
+});

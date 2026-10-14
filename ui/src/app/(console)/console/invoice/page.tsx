@@ -1,22 +1,22 @@
-"use client"
+"use client";
 
-import {Button, Modal, Skeleton} from "@aoctech/ui"
-import {useMutation, useQuery, useQueryClient} from "@tanstack/react-query"
-import {ArrowLeft, Copy} from "lucide-react"
-import Link from "next/link"
-import {useRouter, useSearchParams} from "next/navigation"
-import {Suspense, useState} from "react"
-import {useTranslation} from "react-i18next"
-import {toast} from "sonner"
+import {Button, Modal, Skeleton} from "@aoctech/ui";
+import {useMutation, useQuery, useQueryClient} from "@tanstack/react-query";
+import {ArrowLeft, Copy} from "lucide-react";
+import Link from "next/link";
+import {useRouter, useSearchParams} from "next/navigation";
+import {Suspense, useState} from "react";
+import {useTranslation} from "react-i18next";
+import {toast} from "sonner";
 
-import {ExcessPayments} from "@/components/collection/ExcessPayments"
-import {InvoicePix} from "@/components/collection/InvoicePix"
-import {CreditNoteDialog} from "@/components/console/CreditNoteDialog"
-import {DownloadPDF} from "@/components/DownloadPDF"
-import {InvoiceStatusBadge} from "@/components/console/InvoiceStatusBadge"
-import {Timeline} from "@/components/console/Timeline"
-import {ErrorBlock} from "@/components/portal/ErrorBlock"
-import {messageFor, statusOf} from "@/lib/api/client"
+import {ExcessPayments} from "@/components/collection/ExcessPayments";
+import {InvoicePix} from "@/components/collection/InvoicePix";
+import {CreditNoteDialog} from "@/components/console/CreditNoteDialog";
+import {DownloadPDF} from "@/components/DownloadPDF";
+import {InvoiceStatusBadge} from "@/components/console/InvoiceStatusBadge";
+import {Timeline} from "@/components/console/Timeline";
+import {ErrorBlock} from "@/components/portal/ErrorBlock";
+import {messageFor, statusOf} from "@/lib/api/client";
 import {
   consoleKeys,
   finalizeInvoice,
@@ -26,12 +26,12 @@ import {
   refundExcessPayment,
   simulateInvoicePayment,
   voidInvoice,
-} from "@/lib/api/console"
-import type {ConsoleInvoiceDetail} from "@/lib/api/consoleTypes"
-import {toastError} from "@/lib/console/planLimit"
-import {useConsoleScope} from "@/lib/console/scope"
-import {longDate, money, period, shortDate} from "@/lib/format"
-import {useDocumentTitle} from "@/lib/hooks/useDocumentTitle"
+} from "@/lib/api/console";
+import type {ConsoleInvoiceDetail} from "@/lib/api/consoleTypes";
+import {toastError} from "@/lib/console/planLimit";
+import {useConsoleScope} from "@/lib/console/scope";
+import {longDate, money, period, shortDate} from "@/lib/format";
+import {useDocumentTitle} from "@/lib/hooks/useDocumentTitle";
 
 /**
  * C3 — the invoice, and the most important screen in the product.
@@ -52,23 +52,23 @@ export default function ConsoleInvoicePage() {
     <Suspense fallback={<DetailSkeleton/>}>
       <Detail/>
     </Suspense>
-  )
+  );
 }
 
 function Detail() {
-  const {t} = useTranslation()
-  const id = useSearchParams().get("id") ?? ""
-  const scope = useConsoleScope()
-  const queryClient = useQueryClient()
-  const router = useRouter()
-  const [voiding, setVoiding] = useState(false)
-  const [crediting, setCrediting] = useState(false)
+  const {t} = useTranslation();
+  const id = useSearchParams().get("id") ?? "";
+  const scope = useConsoleScope();
+  const queryClient = useQueryClient();
+  const router = useRouter();
+  const [voiding, setVoiding] = useState(false);
+  const [crediting, setCrediting] = useState(false);
 
   const query = useQuery({
     queryKey: consoleKeys.invoice(scope, id),
     queryFn: () => getConsoleInvoice(scope, id),
     enabled: id !== "",
-  })
+  });
 
   // Both writes answer with the whole detail, so the screen re-renders from the
   // response instead of refetching — and the list behind it is invalidated,
@@ -77,43 +77,43 @@ function Detail() {
     ({
       mutationFn: () => fn(id),
       onSuccess: (fresh: ConsoleInvoiceDetail) => {
-        queryClient.setQueryData(consoleKeys.invoice(scope, id), fresh)
-        void queryClient.invalidateQueries({queryKey: consoleKeys.invoices(scope)})
-        toast.success(done)
+        queryClient.setQueryData(consoleKeys.invoice(scope, id), fresh);
+        void queryClient.invalidateQueries({queryKey: consoleKeys.invoices(scope)});
+        toast.success(done);
       },
       // A plan limit (Grátis past its charges) links to the plan screen.
       onError: (error: unknown) => toastError(error, href => router.push(href)),
-    })
+    });
 
-  const finalize = useMutation(write(invoiceId => finalizeInvoice(scope, invoiceId), t("console.invoice.finalized")))
+  const finalize = useMutation(write(invoiceId => finalizeInvoice(scope, invoiceId), t("console.invoice.finalized")));
   const cancel = useMutation({
     ...write(invoiceId => voidInvoice(scope, invoiceId), t("console.invoice.voided")),
     onSettled: () => setVoiding(false),
-  })
+  });
 
   // BYOK (spec § 11.3): a new Pix answers with the detail; the sandbox
   // payment is confirmed through the real path, so the screen refetches.
-  const newPix = useMutation(write(invoiceId => newInvoicePix(scope, invoiceId), t("connections.pix.created")))
+  const newPix = useMutation(write(invoiceId => newInvoicePix(scope, invoiceId), t("connections.pix.created")));
   const simulate = useMutation({
     mutationFn: () => simulateInvoicePayment(scope, id),
     onSuccess: () => {
-      toast.success(t("connections.pix.simulated"))
-      window.setTimeout(() => void queryClient.invalidateQueries({queryKey: consoleKeys.invoice(scope, id)}), 2500)
+      toast.success(t("connections.pix.simulated"));
+      window.setTimeout(() => void queryClient.invalidateQueries({queryKey: consoleKeys.invoice(scope, id)}), 2500);
     },
     onError: (error: unknown) => toast.error(messageFor(error)),
-  })
+  });
 
-  useDocumentTitle(query.data?.invoice.number ? t("console.invoice.title", {number: query.data.invoice.number}) : null)
+  useDocumentTitle(query.data?.invoice.number ? t("console.invoice.title", {number: query.data.invoice.number}) : null);
 
-  if (id === "" || (query.isError && statusOf(query.error) === 404)) return <NotFound/>
-  if (query.isPending) return <DetailSkeleton/>
+  if (id === "" || (query.isError && statusOf(query.error) === 404)) return <NotFound/>;
+  if (query.isPending) return <DetailSkeleton/>;
   if (query.isError) {
     return (
       <div className="space-y-6">
         <BackLink/>
         <ErrorBlock error={query.error} onRetry={query.refetch}/>
       </div>
-    )
+    );
   }
 
   const {
@@ -122,10 +122,10 @@ function Detail() {
     credit_notes: notes = [],
     credited,
     fully_credited: fullyCredited,
-  } = query.data
-  const canFinalize = invoice.status === "DRAFT"
-  const canVoid = invoice.status === "DRAFT" || invoice.status === "OPEN"
-  const canCredit = ["OPEN", "PAID", "UNCOLLECTIBLE"].includes(invoice.status)
+  } = query.data;
+  const canFinalize = invoice.status === "DRAFT";
+  const canVoid = invoice.status === "DRAFT" || invoice.status === "OPEN";
+  const canCredit = ["OPEN", "PAID", "UNCOLLECTIBLE"].includes(invoice.status);
 
   return (
     <div className="space-y-8">
@@ -212,9 +212,9 @@ function Detail() {
       {query.data.byok && (
         <ExcessPayments rows={query.data.byok.excess_payments} currency={invoice.currency}
           onRefund={async excessId => {
-            const next = await refundExcessPayment(scope, excessId)
-            void queryClient.invalidateQueries({queryKey: consoleKeys.invoice(scope, id)})
-            return next
+            const next = await refundExcessPayment(scope, excessId);
+            void queryClient.invalidateQueries({queryKey: consoleKeys.invoice(scope, id)});
+            return next;
           }}/>
       )}
 
@@ -313,12 +313,12 @@ function Detail() {
         refundViaPix={query.data.byok?.attempt_status === "SUCCEEDED"}
         onClose={() => setCrediting(false)}
         onIssued={() => {
-          void queryClient.invalidateQueries({queryKey: consoleKeys.invoice(scope, id)})
-          setCrediting(false)
+          void queryClient.invalidateQueries({queryKey: consoleKeys.invoice(scope, id)});
+          setCrediting(false);
         }}
       />
     </div>
-  )
+  );
 }
 
 function Amount({
@@ -337,7 +337,7 @@ function Amount({
         {money(cents, currency)}
       </dd>
     </div>
-  )
+  );
 }
 
 function Fact({label, value, href}: { label: string; value: string; href?: string }) {
@@ -354,7 +354,7 @@ function Fact({label, value, href}: { label: string; value: string; href?: strin
         )}
       </dd>
     </div>
-  )
+  );
 }
 
 /**
@@ -366,30 +366,30 @@ function Fact({label, value, href}: { label: string; value: string; href?: strin
  * assembled it would be one invoice state away from sending somebody a 404.
  */
 function CopyLink({url}: { url: string }) {
-  const {t} = useTranslation()
+  const {t} = useTranslation();
   return (
     <Button
       variant="outline"
       size="sm"
       onClick={async () => {
         try {
-          await navigator.clipboard.writeText(url)
-          toast.success(t("console.invoice.linkCopied"))
+          await navigator.clipboard.writeText(url);
+          toast.success(t("console.invoice.linkCopied"));
         } catch {
           // Clipboard access can be refused (an insecure origin, a permission
           // policy). Saying so beats a button that silently does nothing.
-          toast.error(t("console.invoice.copyFailed"))
+          toast.error(t("console.invoice.copyFailed"));
         }
       }}
     >
       <Copy aria-hidden className="size-3.5"/>
       {t("console.invoice.copyLink")}
     </Button>
-  )
+  );
 }
 
 function NotFound() {
-  const {t} = useTranslation()
+  const {t} = useTranslation();
   return (
     <div className="space-y-6">
       <BackLink/>
@@ -402,11 +402,11 @@ function NotFound() {
         </p>
       </div>
     </div>
-  )
+  );
 }
 
 function BackLink() {
-  const {t} = useTranslation()
+  const {t} = useTranslation();
   return (
     <Link
       href="/console/invoices"
@@ -415,7 +415,7 @@ function BackLink() {
       <ArrowLeft aria-hidden className="size-3.5"/>
       {t("console.invoice.back")}
     </Link>
-  )
+  );
 }
 
 function DetailSkeleton() {
@@ -429,5 +429,5 @@ function DetailSkeleton() {
       <Skeleton className="h-20 w-full"/>
       <Skeleton className="h-32 w-full"/>
     </div>
-  )
+  );
 }

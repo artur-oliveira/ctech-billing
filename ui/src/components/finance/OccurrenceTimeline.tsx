@@ -1,9 +1,9 @@
-"use client"
+"use client";
 
-import type {ReactNode} from "react"
-import {useTranslation} from "react-i18next"
+import type {ReactNode} from "react";
+import {useTranslation} from "react-i18next";
 
-import {shortDate, weekdayShort} from "@/lib/format"
+import {shortDate, weekdayShort} from "@/lib/format";
 
 /**
  * paid, forecast, overdue and skipped are bills a recurrence made; `upcoming`
@@ -34,7 +34,7 @@ const MARKER: Record<TimelineKind, string> = {
   skipped: "border-border bg-border",
   posted: "border-foreground bg-foreground",
   pending_confirmation: "border-brand-600 bg-brand-600",
-}
+};
 
 const STATE: Record<TimelineKind, string> = {
   paid: "text-success",
@@ -44,7 +44,7 @@ const STATE: Record<TimelineKind, string> = {
   skipped: "text-muted-foreground",
   posted: "text-foreground",
   pending_confirmation: "font-medium text-brand-700",
-}
+};
 
 /**
  * A recurrence's dates on a hairline rail: F4's inline detail and the editor's
@@ -54,7 +54,7 @@ const STATE: Record<TimelineKind, string> = {
  * dia útil"), since both dates matter (DESIGN.md, F4).
  */
 export function OccurrenceTimeline({label, entries}: {label: string; entries: TimelineEntry[]}) {
-  const {t} = useTranslation()
+  const {t} = useTranslation();
   return (
     <ol aria-label={label} className="ml-1.5 space-y-2.5 border-l border-border pl-4">
       {entries.map(e => (
@@ -79,5 +79,5 @@ export function OccurrenceTimeline({label, entries}: {label: string; entries: Ti
         </li>
       ))}
     </ol>
-  )
+  );
 }

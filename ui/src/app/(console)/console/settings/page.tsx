@@ -1,25 +1,25 @@
-"use client"
+"use client";
 
-import limits from "@/lib/limits.json"
-import {Alert, Button, Field, Input, Modal, Skeleton} from "@aoctech/ui"
-import {useMutation, useQuery, useQueryClient} from "@tanstack/react-query"
-import {useState} from "react"
-import {useTranslation} from "react-i18next"
-import {toast} from "sonner"
+import limits from "@/lib/limits.json";
+import {Alert, Button, Field, Input, Modal, Skeleton} from "@aoctech/ui";
+import {useMutation, useQuery, useQueryClient} from "@tanstack/react-query";
+import {useState} from "react";
+import {useTranslation} from "react-i18next";
+import {toast} from "sonner";
 
-import {DunningPolicyCard} from "@/components/console/DunningPolicyCard"
-import {ErrorBlock} from "@/components/portal/ErrorBlock"
-import {messageFor} from "@/lib/api/client"
-import {useFieldErrors} from "@/lib/useFieldErrors"
+import {DunningPolicyCard} from "@/components/console/DunningPolicyCard";
+import {ErrorBlock} from "@/components/portal/ErrorBlock";
+import {messageFor} from "@/lib/api/client";
+import {useFieldErrors} from "@/lib/useFieldErrors";
 import {
   consoleKeys,
   getConsoleSettings,
   setDunningPolicy,
   setIssuer,
   type IssuerInput,
-} from "@/lib/api/console"
-import type {DunningStep, Issuer} from "@/lib/api/consoleTypes"
-import {useConsoleScope} from "@/lib/console/scope"
+} from "@/lib/api/console";
+import type {DunningStep, Issuer} from "@/lib/api/consoleTypes";
+import {useConsoleScope} from "@/lib/console/scope";
 
 /**
  * C17 — configurações.
@@ -30,28 +30,28 @@ import {useConsoleScope} from "@/lib/console/scope"
  * settings screen lying about what it controls.
  */
 export default function ConsoleSettingsPage() {
-  const {t} = useTranslation()
-  const scope = useConsoleScope()
-  const queryClient = useQueryClient()
+  const {t} = useTranslation();
+  const scope = useConsoleScope();
+  const queryClient = useQueryClient();
 
   const query = useQuery({
     queryKey: consoleKeys.settings(scope),
     queryFn: () => getConsoleSettings(scope),
-  })
+  });
 
   const save = useMutation({
     mutationFn: (steps: DunningStep[]) => setDunningPolicy(scope, steps),
     onSuccess: () => queryClient.invalidateQueries({queryKey: consoleKeys.settings(scope)}),
-  })
+  });
 
   /** An enum code from the API, translated; an unknown one shows as itself. */
   const settingValue = (group: "numberingValue" | "retentionValue", code: string) =>
-    t(`console.settings.${group}.${code}`, {defaultValue: code})
+    t(`console.settings.${group}.${code}`, {defaultValue: code});
 
-  if (query.isPending) return <SettingsSkeleton/>
-  if (query.isError) return <ErrorBlock error={query.error} onRetry={query.refetch}/>
+  if (query.isPending) return <SettingsSkeleton/>;
+  if (query.isError) return <ErrorBlock error={query.error} onRetry={query.refetch}/>;
 
-  const settings = query.data
+  const settings = query.data;
 
   return (
     <div className="space-y-8">
@@ -80,7 +80,7 @@ export default function ConsoleSettingsPage() {
         onSave={steps => save.mutateAsync(steps)}
       />
     </div>
-  )
+  );
 }
 
 /**
@@ -96,10 +96,10 @@ export default function ConsoleSettingsPage() {
  * wrong would be worse than printing what it was told.
  */
 function IssuerCard({issuer}: { issuer: Issuer }) {
-  const {t} = useTranslation()
-  const scope = useConsoleScope()
-  const queryClient = useQueryClient()
-  const [editing, setEditing] = useState(false)
+  const {t} = useTranslation();
+  const scope = useConsoleScope();
+  const queryClient = useQueryClient();
+  const [editing, setEditing] = useState(false);
 
   return (
     <section aria-labelledby="emissor" className="space-y-3">
@@ -131,13 +131,13 @@ function IssuerCard({issuer}: { issuer: Issuer }) {
           issuer={issuer}
           onClose={() => setEditing(false)}
           onSaved={() => {
-            void queryClient.invalidateQueries({queryKey: consoleKeys.settings(scope)})
-            setEditing(false)
+            void queryClient.invalidateQueries({queryKey: consoleKeys.settings(scope)});
+            setEditing(false);
           }}
         />
       )}
     </section>
-  )
+  );
 }
 
 function IssuerEditor({
@@ -149,33 +149,33 @@ function IssuerEditor({
   onClose: () => void
   onSaved: () => void
 }) {
-  const {t} = useTranslation()
-  const scope = useConsoleScope()
+  const {t} = useTranslation();
+  const scope = useConsoleScope();
   const [form, setForm] = useState<IssuerInput>({
     legal_name: issuer.legal_name ?? "",
     tax_id: issuer.tax_id ?? "",
     address: issuer.address ?? "",
     email: issuer.email ?? "",
-  })
+  });
 
-  const fe = useFieldErrors(["legal_name", "tax_id", "address", "email"], {keepOthers: false})
+  const fe = useFieldErrors(["legal_name", "tax_id", "address", "email"], {keepOthers: false});
   const save = useMutation({
     mutationFn: () => setIssuer(scope, form),
     onSuccess: () => {
-      toast.success(t("console.settings.saved"))
-      onSaved()
+      toast.success(t("console.settings.saved"));
+      onSaved();
     },
-    onError: error => { if (!fe.set(error)) toast.error(messageFor(error)) },
-  })
+    onError: error => { if (!fe.set(error)) toast.error(messageFor(error)); },
+  });
 
   const field = (key: keyof IssuerInput, id: string) => ({
     value: form[key],
     onChange: (event: React.ChangeEvent<HTMLInputElement>) => {
-      setForm({...form, [key]: event.target.value})
-      fe.clear(key)
+      setForm({...form, [key]: event.target.value});
+      fe.clear(key);
     },
     ...fe.props(key, id),
-  })
+  });
 
   return (
     <Modal
@@ -186,7 +186,7 @@ function IssuerEditor({
       cancelLabel={t("common.cancel")}
       submitLabel={t("console.settings.save")}
       loading={save.isPending}
-      onSubmit={() => { fe.reset(); save.mutate() }}
+      onSubmit={() => { fe.reset(); save.mutate(); }}
     >
       <div className="space-y-4">
         <Field label={t("console.settings.legalName")} htmlFor="issuer-legal-name" error={fe.of("legal_name")}>
@@ -209,7 +209,7 @@ function IssuerEditor({
         {fe.general && <p role="alert" className="text-sm text-danger">{fe.general}</p>}
       </div>
     </Modal>
-  )
+  );
 }
 
 function Fact({label, value}: { label: string; value: string }) {
@@ -218,7 +218,7 @@ function Fact({label, value}: { label: string; value: string }) {
       <dt className="text-xs text-muted-foreground">{label}</dt>
       <dd className="text-foreground">{value}</dd>
     </div>
-  )
+  );
 }
 
 function SettingsSkeleton() {
@@ -228,5 +228,5 @@ function SettingsSkeleton() {
       <Skeleton className="h-20 w-full"/>
       <Skeleton className="h-32 w-full"/>
     </div>
-  )
+  );
 }

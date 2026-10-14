@@ -1,15 +1,15 @@
-"use client"
+"use client";
 
-import {Badge, Button, Modal} from "@aoctech/ui"
-import {useState} from "react"
-import {useTranslation} from "react-i18next"
-import {toast} from "sonner"
+import {Badge, Button, Modal} from "@aoctech/ui";
+import {useState} from "react";
+import {useTranslation} from "react-i18next";
+import {toast} from "sonner";
 
-import {messageFor} from "@/lib/api/client"
-import type {ExcessPayment} from "@/lib/api/consoleTypes"
-import {instantShortDate, money} from "@/lib/format"
+import {messageFor} from "@/lib/api/client";
+import type {ExcessPayment} from "@/lib/api/consoleTypes";
+import {instantShortDate, money} from "@/lib/format";
 
-const TONE = {open: "attention", refunding: "neutral", refunded: "positive", refund_failed: "urgent"} as const
+const TONE = {open: "attention", refunding: "neutral", refunded: "positive", refund_failed: "urgent"} as const;
 
 /**
  * Money above what an invoice owed (D19): it is in the merchant's account and
@@ -20,25 +20,25 @@ export function ExcessPayments({rows, currency, onRefund}: {
   currency: string
   onRefund: (id: string) => Promise<ExcessPayment>
 }) {
-  const {t, i18n} = useTranslation()
-  const [local, setLocal] = useState<Record<string, ExcessPayment>>({})
-  const [asking, setAsking] = useState<ExcessPayment | null>(null)
-  const [busy, setBusy] = useState(false)
-  if (rows.length === 0) return null
-  const list = rows.map(r => local[r.id] ?? r)
+  const {t, i18n} = useTranslation();
+  const [local, setLocal] = useState<Record<string, ExcessPayment>>({});
+  const [asking, setAsking] = useState<ExcessPayment | null>(null);
+  const [busy, setBusy] = useState(false);
+  if (rows.length === 0) return null;
+  const list = rows.map(r => local[r.id] ?? r);
 
   async function refund() {
-    if (!asking) return
-    setBusy(true)
+    if (!asking) return;
+    setBusy(true);
     try {
-      const next = await onRefund(asking.id)
-      setLocal(m => ({...m, [next.id]: next}))
-      toast.success(t("connections.pix.refundStarted"))
-      setAsking(null)
+      const next = await onRefund(asking.id);
+      setLocal(m => ({...m, [next.id]: next}));
+      toast.success(t("connections.pix.refundStarted"));
+      setAsking(null);
     } catch (e) {
-      toast.error(messageFor(e))
+      toast.error(messageFor(e));
     } finally {
-      setBusy(false)
+      setBusy(false);
     }
   }
 
@@ -68,5 +68,5 @@ export function ExcessPayments({rows, currency, onRefund}: {
         description={t("connections.pix.refundBody")} danger loading={busy}
         submitLabel={t("connections.pix.refundConfirm")} cancelLabel={t("connections.pix.refundKeep")} onSubmit={() => void refund()}/>
     </section>
-  )
+  );
 }

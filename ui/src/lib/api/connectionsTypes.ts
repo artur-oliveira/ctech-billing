@@ -5,7 +5,7 @@ export type ConnectionStatus = "onboarding" | "active" | "degraded" | "expired" 
 export type OnboardingStep = "requirements" | "create_integration" | "validation" | "download" | "upload" | "webhook"
 export type Capability = "statement" | "collection" | "immediate_charge" | "due_batch" | "boleto" | "recurring" | "payout"
 
-export const ONBOARDING_STEPS: OnboardingStep[] = ["requirements", "create_integration", "validation", "download", "upload", "webhook"]
+export const ONBOARDING_STEPS: OnboardingStep[] = ["requirements", "create_integration", "validation", "download", "upload", "webhook"];
 
 export interface Connection {
   provider: "inter"

@@ -1,7 +1,7 @@
-import {cn} from "@aoctech/ui"
+import {cn} from "@aoctech/ui";
 
-import type {Cents} from "@/lib/api/types"
-import {money} from "@/lib/format"
+import type {Cents} from "@/lib/api/types";
+import {money} from "@/lib/format";
 
 /**
  * `data-numeric` switches on tabular figures (see globals.css). Proportional
@@ -37,5 +37,5 @@ export function Money({
     >
       {money(cents, currency)}
     </span>
-  )
+  );
 }

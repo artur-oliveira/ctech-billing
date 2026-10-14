@@ -1,8 +1,8 @@
-import Image from "next/image"
-import Link from "next/link"
-import type {ReactNode} from "react"
+import Image from "next/image";
+import Link from "next/link";
+import type {ReactNode} from "react";
 
-import {LanguageSwitcher} from "@/components/LanguageSwitcher"
+import {LanguageSwitcher} from "@/components/LanguageSwitcher";
 
 /**
  * The whole-page states: not found, broken, under maintenance.
@@ -45,5 +45,5 @@ export function StatusScreen({
       {action && <div className="mt-2">{action}</div>}
     </main>
     </>
-  )
+  );
 }

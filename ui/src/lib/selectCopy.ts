@@ -1,4 +1,4 @@
-import {currentLocale, t} from "@/lib/i18n"
+import {currentLocale, t} from "@/lib/i18n";
 
 /**
  * Billing's own copy for @aoctech/ui's `Select` (UX batch 5): the console's
@@ -8,5 +8,5 @@ import {currentLocale, t} from "@/lib/i18n"
  * `<Select {...selectCopy()} …/>`. Read at render, like the rest of the copy.
  */
 export function selectCopy(): {locale: string; placeholder: string} {
-  return {locale: currentLocale(), placeholder: t("auth.select.placeholder")}
+  return {locale: currentLocale(), placeholder: t("auth.select.placeholder")};
 }

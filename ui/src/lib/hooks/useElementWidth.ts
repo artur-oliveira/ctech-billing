@@ -1,6 +1,6 @@
-"use client"
+"use client";
 
-import {type RefObject, useEffect, useState} from "react"
+import {type RefObject, useEffect, useState} from "react";
 
 /**
  * The element's content width in CSS pixels, kept current as it resizes; 0
@@ -10,13 +10,13 @@ import {type RefObject, useEffect, useState} from "react"
  * width keeps the type at its size.
  */
 export function useElementWidth(ref: RefObject<HTMLElement | null>): number {
-  const [width, setWidth] = useState(0)
+  const [width, setWidth] = useState(0);
   useEffect(() => {
-    const el = ref.current
-    if (!el || typeof ResizeObserver === "undefined") return
-    const observer = new ResizeObserver(([entry]) => setWidth(Math.round(entry.contentRect.width)))
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [ref])
-  return width
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === "undefined") return undefined;
+    const observer = new ResizeObserver(([entry]) => setWidth(Math.round(entry.contentRect.width)));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [ref]);
+  return width;
 }

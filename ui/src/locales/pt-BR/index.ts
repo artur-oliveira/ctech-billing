@@ -1,13 +1,13 @@
-import common from "./common.json"
-import landing from "./landing.json"
-import auth from "./auth.json"
-import portal from "./portal.json"
-import checkout from "./checkout.json"
-import console from "./console.json"
-import finance from "./finance.json"
-import bills from "./bills.json"
-import errors from "./errors.json"
-import connections from "./connections.json"
+import common from "./common.json";
+import landing from "./landing.json";
+import auth from "./auth.json";
+import portal from "./portal.json";
+import checkout from "./checkout.json";
+import console from "./console.json";
+import finance from "./finance.json";
+import bills from "./bills.json";
+import errors from "./errors.json";
+import connections from "./connections.json";
 
 const catalog = {
   common,
@@ -20,6 +20,6 @@ const catalog = {
   bills,
   errors,
   connections,
-}
+};
 
-export default catalog
+export default catalog;

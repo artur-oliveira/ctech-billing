@@ -1,10 +1,10 @@
-"use client"
+"use client";
 
-import {Button} from "@aoctech/ui"
-import {useEffect} from "react"
-import {useTranslation} from "react-i18next"
+import {Button} from "@aoctech/ui";
+import {useEffect} from "react";
+import {useTranslation} from "react-i18next";
 
-import {StatusScreen} from "@/components/StatusScreen"
+import {StatusScreen} from "@/components/StatusScreen";
 
 /**
  * The boundary for anything a screen throws while rendering.
@@ -26,12 +26,12 @@ export default function Error({
   error: Error & { digest?: string }
   reset: () => void
 }) {
-  const {t} = useTranslation()
+  const {t} = useTranslation();
   useEffect(() => {
     // ponytail: console only. Wire to whatever the family settles on for
     // browser error reporting; nothing in ctech-* collects it today.
-    console.error(error)
-  }, [error])
+    console.error(error);
+  }, [error]);
 
   return (
     <StatusScreen
@@ -46,5 +46,5 @@ export default function Error({
         </div>
       }
     />
-  )
+  );
 }

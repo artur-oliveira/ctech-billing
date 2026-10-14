@@ -1,7 +1,7 @@
-"use client"
+"use client";
 
-import {useRouter} from "next/navigation"
-import {useEffect} from "react"
+import {useRouter} from "next/navigation";
+import {useEffect} from "react";
 
 /**
  * Finanças lived at /console/finance/* until it became its own area. A
@@ -10,14 +10,14 @@ import {useEffect} from "react"
  * query (a card, a bill, the handoff's state) intact.
  */
 export function legacyFinanceTarget(pathname: string, search: string): string {
-  const rest = pathname.replace(/^\/console\/finance/, "").replace(/\/$/, "")
-  return "/finance" + rest + search
+  const rest = pathname.replace(/^\/console\/finance/, "").replace(/\/$/, "");
+  return "/finance" + rest + search;
 }
 
 export function LegacyFinanceRedirect() {
-  const router = useRouter()
+  const router = useRouter();
   useEffect(() => {
-    router.replace(legacyFinanceTarget(window.location.pathname, window.location.search))
-  }, [router])
-  return null
+    router.replace(legacyFinanceTarget(window.location.pathname, window.location.search));
+  }, [router]);
+  return null;
 }

@@ -1,8 +1,8 @@
-"use client"
+"use client";
 
-import {Button, cn, RowMenu, SwipeRow} from "@aoctech/ui"
-import {type ReactNode, useEffect, useRef} from "react"
-import {useTranslation} from "react-i18next"
+import {Button, cn, RowMenu, SwipeRow} from "@aoctech/ui";
+import {type ReactNode, useEffect, useRef} from "react";
+import {useTranslation} from "react-i18next";
 
 /** A row's secondary or destructive action: inline on a laptop; on a phone behind a swipe and in "⋯". */
 export interface RowAction {
@@ -63,12 +63,12 @@ interface LedgerRowProps {
 export function LedgerRow({
   title, leading, meta, amount, balance, balanceLabel, aside, asideOnPhone = true, actions, more = [], muted = false, children, current = false,
 }: LedgerRowProps) {
-  const {t} = useTranslation()
-  const ref = useRef<HTMLLIElement>(null)
+  const {t} = useTranslation();
+  const ref = useRef<HTMLLIElement>(null);
   useEffect(() => {
-    if (current) ref.current?.scrollIntoView?.({block: "center"})
-  }, [current])
-  const hasMore = more.length > 0
+    if (current) ref.current?.scrollIntoView?.({block: "center"});
+  }, [current]);
+  const hasMore = more.length > 0;
   return (
     // The pointed-at row takes the selected-row tint (brand-50), the brand's one
     // home in a list.
@@ -119,5 +119,5 @@ export function LedgerRow({
       {/* What opens under the row keeps the row's bottom rhythm; nothing open, nothing drawn. */}
       <div className="pb-2.5 empty:hidden">{children}</div>
     </li>
-  )
+  );
 }

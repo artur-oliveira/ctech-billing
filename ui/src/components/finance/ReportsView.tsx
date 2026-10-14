@@ -1,43 +1,43 @@
-"use client"
+"use client";
 
-import {Field, Select, Skeleton} from "@aoctech/ui"
-import {useQuery} from "@tanstack/react-query"
-import {useState} from "react"
-import {useTranslation} from "react-i18next"
+import {Field, Select, Skeleton} from "@aoctech/ui";
+import {useQuery} from "@tanstack/react-query";
+import {useState} from "react";
+import {useTranslation} from "react-i18next";
 
-import {ErrorBlock} from "@/components/portal/ErrorBlock"
-import {segmentHit} from "@/components/ui/segmentHit"
-import {financeKeys, getCardSpending, getCashFlow, getDRE, listAccounts, listCards} from "@/lib/api/finance"
-import type {Account, Card, CardSpending, CashFlow, DRE, DREGroup, SpendRow} from "@/lib/api/financeTypes"
-import {dreGroupLabel} from "@/lib/finance/labels"
-import {monthRange, type PresetId, PRESETS} from "@/lib/finance/periods"
-import {monthShort, todayIso} from "@/lib/finance/today"
-import {selectCopy} from "@/lib/selectCopy"
-import {useFinanceCtx} from "@/lib/finance/useFinanceSpaces"
-import {money, signedMoney} from "@/lib/format"
-import {currentLocale, t as tr} from "@/lib/i18n"
-import {accountName} from "@/lib/finance/accountName"
+import {ErrorBlock} from "@/components/portal/ErrorBlock";
+import {segmentHit} from "@/components/ui/segmentHit";
+import {financeKeys, getCardSpending, getCashFlow, getDRE, listAccounts, listCards} from "@/lib/api/finance";
+import type {Account, Card, CardSpending, CashFlow, DRE, DREGroup, SpendRow} from "@/lib/api/financeTypes";
+import {dreGroupLabel} from "@/lib/finance/labels";
+import {monthRange, type PresetId, PRESETS} from "@/lib/finance/periods";
+import {monthShort, todayIso} from "@/lib/finance/today";
+import {selectCopy} from "@/lib/selectCopy";
+import {useFinanceCtx} from "@/lib/finance/useFinanceSpaces";
+import {money, signedMoney} from "@/lib/format";
+import {currentLocale, t as tr} from "@/lib/i18n";
+import {accountName} from "@/lib/finance/accountName";
 
 export type ReportView = "dre" | "cash" | "cards" | "review"
 
-const TABS: ReportView[] = ["dre", "cash", "cards", "review"]
+const TABS: ReportView[] = ["dre", "cash", "cards", "review"];
 
 /** The subtotal a DRE reader expects after each of these groups, cumulative. */
 const SUBTOTAL_AFTER: Partial<Record<DREGroup, "netRevenue" | "grossProfit" | "operatingResult">> = {
   deductions: "netRevenue",
   costs: "grossProfit",
   operating_expenses: "operatingResult",
-}
+};
 
-const sum = (xs: number[]) => xs.reduce((acc, x) => acc + x, 0)
+const sum = (xs: number[]) => xs.reduce((acc, x) => acc + x, 0);
 
 function nameOf(accounts: Account[], id: string): string {
-  if (id === "") return tr("finance.reports.uncategorized")
+  if (id === "") return tr("finance.reports.uncategorized");
   // Paying a card's statement: one cash-flow line per card (6.5).
-  if (id.startsWith("card:")) return tr("finance.reports.statementOf", {name: (() => {const c = accounts.find(a => a.id === id.slice(5)); return c ? accountName(c) : undefined})() ?? tr("finance.reports.theCard")})
-  const a = accounts.find(x => x.id === id)
-  if (!a) return tr("finance.reports.removed")
-  return a.archived ? tr("finance.reports.archivedName", {name: accountName(a)}) : accountName(a)
+  if (id.startsWith("card:")) return tr("finance.reports.statementOf", {name: (() => {const c = accounts.find(a => a.id === id.slice(5)); return c ? accountName(c) : undefined;})() ?? tr("finance.reports.theCard")});
+  const a = accounts.find(x => x.id === id);
+  if (!a) return tr("finance.reports.removed");
+  return a.archived ? tr("finance.reports.archivedName", {name: accountName(a)}) : accountName(a);
 }
 
 /**
@@ -47,22 +47,22 @@ function nameOf(accounts: Account[], id: string): string {
  * the two is the first question anybody asks.
  */
 export function ReportsView({view: initial = "dre"}: {view?: ReportView}) {
-  const {t} = useTranslation()
-  const ctx = useFinanceCtx()
-  const [view, setView] = useState<ReportView>(initial)
-  const [preset, setPreset] = useState<PresetId>("this_year")
-  const latestComplete = shiftMonth(todayIso().slice(0, 7), -1)
-  const [reviewMonth, setReviewMonth] = useState(latestComplete)
-  const selectedReviewMonth = reviewMonth > latestComplete ? latestComplete : reviewMonth
-  const {from, to} = monthRange(preset, todayIso())
-  const accounts = useQuery({queryKey: financeKeys.accounts(ctx.mode, ctx.space), queryFn: () => listAccounts(ctx)})
-  const names = accounts.data?.data ?? []
+  const {t} = useTranslation();
+  const ctx = useFinanceCtx();
+  const [view, setView] = useState<ReportView>(initial);
+  const [preset, setPreset] = useState<PresetId>("this_year");
+  const latestComplete = shiftMonth(todayIso().slice(0, 7), -1);
+  const [reviewMonth, setReviewMonth] = useState(latestComplete);
+  const selectedReviewMonth = reviewMonth > latestComplete ? latestComplete : reviewMonth;
+  const {from, to} = monthRange(preset, todayIso());
+  const accounts = useQuery({queryKey: financeKeys.accounts(ctx.mode, ctx.space), queryFn: () => listAccounts(ctx)});
+  const names = accounts.data?.data ?? [];
 
   const choose = (v: ReportView) => {
-    setView(v)
+    setView(v);
     // A link to this page opens the same tab; no navigation, no refetch.
-    window.history.replaceState(null, "", `?view=${v}`)
-  }
+    window.history.replaceState(null, "", `?view=${v}`);
+  };
 
   return (
     <div className="space-y-4">
@@ -103,43 +103,43 @@ export function ReportsView({view: initial = "dre"}: {view?: ReportView}) {
               : <MonthlyReview month={selectedReviewMonth}/>}
       </div>
     </div>
-  )
+  );
 }
 
 function Loading() {
-  return <div className="space-y-2" aria-busy><Skeleton className="h-5 w-48"/><Skeleton className="h-4 w-full"/><Skeleton className="h-4 w-4/5"/></div>
+  return <div className="space-y-2" aria-busy><Skeleton className="h-5 w-48"/><Skeleton className="h-4 w-full"/><Skeleton className="h-4 w-4/5"/></div>;
 }
 
 function Empty() {
-  const {t} = useTranslation()
-  return <p className="py-6 text-center text-sm text-muted-foreground">{t("finance.reports.empty")}</p>
+  const {t} = useTranslation();
+  return <p className="py-6 text-center text-sm text-muted-foreground">{t("finance.reports.empty")}</p>;
 }
 
 function shiftMonth(month: string, offset: number): string {
-  const [year, number] = month.split("-").map(Number)
-  const index = year * 12 + number - 1 + offset
-  return `${Math.floor(index / 12)}-${String(index % 12 + 1).padStart(2, "0")}`
+  const [year, number] = month.split("-").map(Number);
+  const index = year * 12 + number - 1 + offset;
+  return `${Math.floor(index / 12)}-${String(index % 12 + 1).padStart(2, "0")}`;
 }
 
 function MonthlyReview({month}: {month: string}) {
-  const {t} = useTranslation()
-  const ctx = useFinanceCtx()
-  const from = shiftMonth(month, -1)
-  const dre = useQuery({queryKey: financeKeys.dre(ctx.mode, ctx.space, from, month), queryFn: () => getDRE(ctx, from, month)})
-  const cash = useQuery({queryKey: financeKeys.cashFlow(ctx.mode, ctx.space, from, month), queryFn: () => getCashFlow(ctx, from, month)})
-  const cards = useQuery({queryKey: financeKeys.cardSpending(ctx.mode, ctx.space, from, month, ""), queryFn: () => getCardSpending(ctx, from, month)})
-  const failed = dre.error ?? cash.error ?? cards.error
-  const retry = () => { void dre.refetch(); void cash.refetch(); void cards.refetch() }
-  const resultAt = (key: string) => { const i = dre.data?.months.indexOf(key) ?? -1; return i < 0 ? 0 : dre.data?.result[i] ?? 0 }
-  const cashAt = (key: string) => cash.data?.months.find(row => row.month === key)
-  const cardAt = (key: string) => { const i = cards.data?.months.indexOf(key) ?? -1; return i < 0 ? 0 : cards.data?.by_month[i] ?? 0 }
-  const previous = from
+  const {t} = useTranslation();
+  const ctx = useFinanceCtx();
+  const from = shiftMonth(month, -1);
+  const dre = useQuery({queryKey: financeKeys.dre(ctx.mode, ctx.space, from, month), queryFn: () => getDRE(ctx, from, month)});
+  const cash = useQuery({queryKey: financeKeys.cashFlow(ctx.mode, ctx.space, from, month), queryFn: () => getCashFlow(ctx, from, month)});
+  const cards = useQuery({queryKey: financeKeys.cardSpending(ctx.mode, ctx.space, from, month, ""), queryFn: () => getCardSpending(ctx, from, month)});
+  const failed = dre.error ?? cash.error ?? cards.error;
+  const retry = () => { void dre.refetch(); void cash.refetch(); void cards.refetch(); };
+  const resultAt = (key: string) => { const i = dre.data?.months.indexOf(key) ?? -1; return i < 0 ? 0 : dre.data?.result[i] ?? 0; };
+  const cashAt = (key: string) => cash.data?.months.find(row => row.month === key);
+  const cardAt = (key: string) => { const i = cards.data?.months.indexOf(key) ?? -1; return i < 0 ? 0 : cards.data?.by_month[i] ?? 0; };
+  const previous = from;
   const metrics = [
     {key: "result", current: resultAt(month), prior: resultAt(previous)},
     {key: "in", current: cashAt(month)?.in ?? 0, prior: cashAt(previous)?.in ?? 0},
     {key: "out", current: cashAt(month)?.out ?? 0, prior: cashAt(previous)?.out ?? 0},
     {key: "cards", current: cardAt(month), prior: cardAt(previous)},
-  ]
+  ];
   return <section className="space-y-4" aria-label={t("finance.reports.review.title")}>
     <header className="space-y-1"><h2 className="text-base font-medium">{t("finance.reports.review.title")}</h2><p className="text-sm text-muted-foreground">{t("finance.reports.review.description")}</p></header>
     {failed ? <ErrorBlock error={failed} onRetry={retry}/> : dre.isLoading || cash.isLoading || cards.isLoading ? <Loading/> : (
@@ -151,12 +151,12 @@ function MonthlyReview({month}: {month: string}) {
         </article>)}
       </div>
     )}
-  </section>
+  </section>;
 }
 
 /** Wide tables scroll inside their box on a phone; the label column stays put. */
 function Table({months, children}: {months: string[]; children: React.ReactNode}) {
-  const {t} = useTranslation()
+  const {t} = useTranslation();
   return (
     <div className="overflow-x-auto">
       <table className="w-full min-w-max text-sm tabular-nums">
@@ -170,7 +170,7 @@ function Table({months, children}: {months: string[]; children: React.ReactNode}
         <tbody>{children}</tbody>
       </table>
     </div>
-  )
+  );
 }
 
 type RowKind = "group" | "item" | "subtotal" | "result"
@@ -181,64 +181,64 @@ function Row({label, amounts, total, kind, show = signedMoney}: {label: string; 
     item: "pl-4 text-muted-foreground font-normal",
     subtotal: "font-medium text-foreground italic",
     result: "font-semibold text-foreground",
-  }[kind]
-  const line = kind === "subtotal" || kind === "result" ? "border-t border-border" : ""
+  }[kind];
+  const line = kind === "subtotal" || kind === "result" ? "border-t border-border" : "";
   return (
     <tr className={line}>
       <th scope="row" className={`sticky left-0 bg-background py-1.5 pr-4 text-left ${head}`}>{label}</th>
       {amounts.map((a, i) => <td key={i} className={`py-1.5 pl-4 text-right ${kind === "item" ? "text-muted-foreground" : "text-foreground"} ${kind === "result" ? "font-semibold" : ""}`}>{show(a)}</td>)}
       <td className={`py-1.5 pl-4 text-right text-foreground ${kind === "result" ? "font-semibold" : "font-medium"}`}>{show(total)}</td>
     </tr>
-  )
+  );
 }
 
 function DRETable({from, to, accounts}: {from: string; to: string; accounts: Account[]}) {
-  const {t} = useTranslation()
-  const ctx = useFinanceCtx()
-  const q = useQuery({queryKey: financeKeys.dre(ctx.mode, ctx.space, from, to), queryFn: () => getDRE(ctx, from, to)})
-  if (q.isLoading) return <Loading/>
-  if (q.error || !q.data) return <ErrorBlock error={q.error} onRetry={() => void q.refetch()}/>
-  const r: DRE = q.data
-  if (r.groups.length === 0) return <Empty/>
-  const running = r.months.map(() => 0)
-  const rows: React.ReactNode[] = []
+  const {t} = useTranslation();
+  const ctx = useFinanceCtx();
+  const q = useQuery({queryKey: financeKeys.dre(ctx.mode, ctx.space, from, to), queryFn: () => getDRE(ctx, from, to)});
+  if (q.isLoading) return <Loading/>;
+  if (q.error || !q.data) return <ErrorBlock error={q.error} onRetry={() => void q.refetch()}/>;
+  const r: DRE = q.data;
+  if (r.groups.length === 0) return <Empty/>;
+  const running = r.months.map(() => 0);
+  const rows: React.ReactNode[] = [];
   for (const g of r.groups) {
-    g.amounts.forEach((a, i) => { running[i] += a })
-    rows.push(<Row key={g.group} label={dreGroupLabel(g.group)} amounts={g.amounts} total={g.total} kind="group"/>)
+    g.amounts.forEach((a, i) => { running[i] += a; });
+    rows.push(<Row key={g.group} label={dreGroupLabel(g.group)} amounts={g.amounts} total={g.total} kind="group"/>);
     for (const c of g.categories) {
-      rows.push(<Row key={`${g.group}-${c.category_id}`} label={nameOf(accounts, c.category_id)} amounts={c.amounts} total={c.total} kind="item"/>)
+      rows.push(<Row key={`${g.group}-${c.category_id}`} label={nameOf(accounts, c.category_id)} amounts={c.amounts} total={c.total} kind="item"/>);
     }
-    const subtotal = SUBTOTAL_AFTER[g.group]
-    if (subtotal) rows.push(<Row key={`sub-${g.group}`} label={t(`finance.reports.${subtotal}`)} amounts={[...running]} total={sum(running)} kind="subtotal"/>)
+    const subtotal = SUBTOTAL_AFTER[g.group];
+    if (subtotal) rows.push(<Row key={`sub-${g.group}`} label={t(`finance.reports.${subtotal}`)} amounts={[...running]} total={sum(running)} kind="subtotal"/>);
   }
-  rows.push(<Row key="result" label={t("finance.reports.result")} amounts={r.result} total={r.total} kind="result"/>)
-  return <Table months={r.months}>{rows}</Table>
+  rows.push(<Row key="result" label={t("finance.reports.result")} amounts={r.result} total={r.total} kind="result"/>);
+  return <Table months={r.months}>{rows}</Table>;
 }
 
 function CashTable({from, to, accounts}: {from: string; to: string; accounts: Account[]}) {
-  const {t} = useTranslation()
-  const ctx = useFinanceCtx()
-  const q = useQuery({queryKey: financeKeys.cashFlow(ctx.mode, ctx.space, from, to), queryFn: () => getCashFlow(ctx, from, to)})
-  if (q.isLoading) return <Loading/>
-  if (q.error || !q.data) return <ErrorBlock error={q.error} onRetry={() => void q.refetch()}/>
-  const r: CashFlow = q.data
-  const months = r.months.map(m => m.month)
+  const {t} = useTranslation();
+  const ctx = useFinanceCtx();
+  const q = useQuery({queryKey: financeKeys.cashFlow(ctx.mode, ctx.space, from, to), queryFn: () => getCashFlow(ctx, from, to)});
+  if (q.isLoading) return <Loading/>;
+  if (q.error || !q.data) return <ErrorBlock error={q.error} onRetry={() => void q.refetch()}/>;
+  const r: CashFlow = q.data;
+  const months = r.months.map(m => m.month);
   if (r.months.every(m => m.in === 0 && m.out === 0 && m.openings === 0)) {
-    return <><Figure label={t("finance.reports.openingBalance")} amount={r.opening_cash}/><Empty/></>
+    return <><Figure label={t("finance.reports.openingBalance")} amount={r.opening_cash}/><Empty/></>;
   }
   // A category's net in a month sits under Entradas when positive and under
   // Saídas when negative; a category can be on both sides in different months.
   const ids = [...new Set(r.months.flatMap(m => m.lines.map(l => l.category_id)))]
-    .sort((a, b) => nameOf(accounts, a).localeCompare(nameOf(accounts, b), currentLocale()))
+    .sort((a, b) => nameOf(accounts, a).localeCompare(nameOf(accounts, b), currentLocale()));
   const side = (sign: 1 | -1) => ids.flatMap(id => {
     const amounts = r.months.map(m => {
-      const a = m.lines.find(l => l.category_id === id)?.amount ?? 0
-      return Math.sign(a) === sign ? Math.abs(a) : 0
-    })
-    return sum(amounts) === 0 ? [] : [<Row key={`${sign}-${id || "none"}`} label={nameOf(accounts, id)} amounts={amounts} total={sum(amounts)} kind="item" show={money}/>]
-  })
-  const ins = r.months.map(m => m.in), outs = r.months.map(m => m.out), openings = r.months.map(m => m.openings)
-  const result = r.months.map(m => m.in - m.out)
+      const a = m.lines.find(l => l.category_id === id)?.amount ?? 0;
+      return Math.sign(a) === sign ? Math.abs(a) : 0;
+    });
+    return sum(amounts) === 0 ? [] : [<Row key={`${sign}-${id || "none"}`} label={nameOf(accounts, id)} amounts={amounts} total={sum(amounts)} kind="item" show={money}/>];
+  });
+  const ins = r.months.map(m => m.in), outs = r.months.map(m => m.out), openings = r.months.map(m => m.openings);
+  const result = r.months.map(m => m.in - m.out);
   return (
     <div className="space-y-3">
       <Figure label={t("finance.reports.openingBalance")} amount={r.opening_cash}/>
@@ -252,7 +252,7 @@ function CashTable({from, to, accounts}: {from: string; to: string; accounts: Ac
       </Table>
       <Figure label={t("finance.reports.closingBalance")} amount={r.closing_cash}/>
     </div>
-  )
+  );
 }
 
 function Figure({label, amount}: {label: string; amount: number}) {
@@ -261,15 +261,15 @@ function Figure({label, amount}: {label: string; amount: number}) {
       <span className="text-muted-foreground">{label}</span>
       <span data-numeric className="font-medium tabular-nums text-foreground">{signedMoney(amount)}</span>
     </div>
-  )
+  );
 }
 
-const ALL_CARDS = "all"
+const ALL_CARDS = "all";
 
 function cardName(cards: Card[], id: string): string {
-  const c = cards.find(x => x.id === id)
-  if (!c) return tr("finance.reports.spending.unknownCard")
-  return c.archived ? tr("finance.reports.spending.archivedCard", {name: c.name}) : c.name
+  const c = cards.find(x => x.id === id);
+  if (!c) return tr("finance.reports.spending.unknownCard");
+  return c.archived ? tr("finance.reports.spending.archivedCard", {name: c.name}) : c.name;
 }
 
 /**
@@ -278,17 +278,17 @@ function cardName(cards: Card[], id: string): string {
  * accrual the DRE shows. All cards or one; each row's share of the total.
  */
 function CardSpendingView({from, to, accounts}: {from: string; to: string; accounts: Account[]}) {
-  const {t} = useTranslation()
-  const ctx = useFinanceCtx()
-  const [card, setCard] = useState(ALL_CARDS)
-  const cardId = card === ALL_CARDS ? undefined : card
-  const cards = useQuery({queryKey: financeKeys.cards(ctx.mode, ctx.space), queryFn: () => listCards(ctx)})
+  const {t} = useTranslation();
+  const ctx = useFinanceCtx();
+  const [card, setCard] = useState(ALL_CARDS);
+  const cardId = card === ALL_CARDS ? undefined : card;
+  const cards = useQuery({queryKey: financeKeys.cards(ctx.mode, ctx.space), queryFn: () => listCards(ctx)});
   const q = useQuery({
     queryKey: financeKeys.cardSpending(ctx.mode, ctx.space, from, to, card),
     queryFn: () => getCardSpending(ctx, from, to, cardId),
-  })
-  const list = [...(cards.data?.data ?? [])].sort((a, b) => Number(a.archived) - Number(b.archived) || a.name.localeCompare(b.name, currentLocale()))
-  const r: CardSpending | undefined = q.data
+  });
+  const list = [...(cards.data?.data ?? [])].sort((a, b) => Number(a.archived) - Number(b.archived) || a.name.localeCompare(b.name, currentLocale()));
+  const r: CardSpending | undefined = q.data;
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -312,15 +312,15 @@ function CardSpendingView({from, to, accounts}: {from: string; to: string; accou
         </>
       )}
     </div>
-  )
+  );
 }
 
 function SpendTable({months, rows, label, byMonth, total, head, listLabel}: {
   months: string[]; rows: SpendRow[]; label: (r: SpendRow) => string; byMonth: number[]; total: number; head: string; listLabel: string
 }) {
-  const {t} = useTranslation()
-  const pct = new Intl.NumberFormat(currentLocale(), {style: "percent", maximumFractionDigits: 0})
-  const share = (n: number) => (total > 0 ? pct.format(n / total) : "")
+  const {t} = useTranslation();
+  const pct = new Intl.NumberFormat(currentLocale(), {style: "percent", maximumFractionDigits: 0});
+  const share = (n: number) => (total > 0 ? pct.format(n / total) : "");
   return (
     <>
     {/* A phone reads the ranking first: each row's total and share, then the months below. */}
@@ -366,5 +366,5 @@ function SpendTable({months, rows, label, byMonth, total, head, listLabel}: {
       </table>
     </div>
     </>
-  )
+  );
 }

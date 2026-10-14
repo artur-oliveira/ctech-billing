@@ -1,15 +1,15 @@
-"use client"
+"use client";
 
-import {AppShell, Badge, DensityScope} from "@aoctech/ui"
-import Image from "next/image"
-import Link from "next/link"
-import type {ReactNode} from "react"
-import {useTranslation} from "react-i18next"
+import {AppShell, Badge, DensityScope} from "@aoctech/ui";
+import Image from "next/image";
+import Link from "next/link";
+import type {ReactNode} from "react";
+import {useTranslation} from "react-i18next";
 
-import {AccountMenu} from "@/components/AccountMenu"
-import {LanguageSwitcher} from "@/components/LanguageSwitcher"
-import {GlobalSearch} from "@/components/shell/GlobalSearch"
-import type {ShellView} from "@/components/shell/renderLink"
+import {AccountMenu} from "@/components/AccountMenu";
+import {LanguageSwitcher} from "@/components/LanguageSwitcher";
+import {GlobalSearch} from "@/components/shell/GlobalSearch";
+import type {ShellView} from "@/components/shell/renderLink";
 
 
 /**
@@ -49,7 +49,7 @@ export function BillingShell({
   contentClassName?: string
   children: ReactNode
 }) {
-  const {t, i18n} = useTranslation()
+  const {t, i18n} = useTranslation();
   return (
     <DensityScope density="compact">
       <AppShell
@@ -66,7 +66,7 @@ export function BillingShell({
         <DensityScope density={density}>{children}</DensityScope>
       </AppShell>
     </DensityScope>
-  )
+  );
 }
 
 /** The mark, "CTech Billing" and the area. On a phone the mark alone: the bar needs the room. */
@@ -80,7 +80,7 @@ function Wordmark({href, area}: {href: string; area: string}) {
         <span className="text-muted-foreground">{area}</span>
       </span>
     </Link>
-  )
+  );
 }
 
 /** The test-mode band, the loudest thing on the page after the danger colour. */
@@ -89,7 +89,7 @@ export function TestBanner({children}: {children: ReactNode}) {
     <p className="z-20 border-b border-warning/30 bg-[color-mix(in_oklab,var(--color-warning)_12%,var(--color-background))] px-4 py-2 text-center text-xs text-foreground md:sticky md:top-0">
       {children}
     </p>
-  )
+  );
 }
 
 /**
@@ -103,5 +103,5 @@ export function ShellContext({children, test, testLabel}: {children: ReactNode; 
       <div className="min-w-0 flex-1">{children}</div>
       {test && <Badge tone="attention" className="shrink-0">{testLabel}</Badge>}
     </div>
-  )
+  );
 }

@@ -1,11 +1,11 @@
-import {ChevronRight} from "lucide-react"
-import Link from "next/link"
+import {ChevronRight} from "lucide-react";
+import Link from "next/link";
 
-import {Money} from "@/components/portal/Money"
-import {StatusBadge} from "@/components/portal/StatusBadge"
-import type {Invoice} from "@/lib/api/types"
-import {invoiceTitle} from "@/lib/invoice"
-import {shortDate} from "@/lib/format"
+import {Money} from "@/components/portal/Money";
+import {StatusBadge} from "@/components/portal/StatusBadge";
+import type {Invoice} from "@/lib/api/types";
+import {invoiceTitle} from "@/lib/invoice";
+import {shortDate} from "@/lib/format";
 
 /**
  * One invoice in a list. The whole row is the link, so the tap target is the
@@ -16,7 +16,7 @@ import {shortDate} from "@/lib/format"
  * to pay and is not what anybody means by "how much was this".
  */
 export function InvoiceRow({invoice}: { invoice: Invoice }) {
-  const amount = invoice.amount_due > 0 ? invoice.amount_due : invoice.total
+  const amount = invoice.amount_due > 0 ? invoice.amount_due : invoice.total;
 
   return (
     <li>
@@ -40,5 +40,5 @@ export function InvoiceRow({invoice}: { invoice: Invoice }) {
         />
       </Link>
     </li>
-  )
+  );
 }

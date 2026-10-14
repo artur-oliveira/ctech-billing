@@ -1,8 +1,8 @@
-"use client"
+"use client";
 
-import {useSyncExternalStore} from "react"
+import {useSyncExternalStore} from "react";
 
-import {parseSpace, PERSONAL, type Space, spaceHeader} from "@/lib/console/space"
+import {parseSpace, PERSONAL, type Space, spaceHeader} from "@/lib/console/space";
 
 /**
  * Whose bills the portal is showing (ADR 0025, 2026-10-07 amendment): the
@@ -15,46 +15,46 @@ import {parseSpace, PERSONAL, type Space, spaceHeader} from "@/lib/console/space
  * invoice and keeping your own budget are two questions; answering one must
  * never move the other.
  */
-const KEY = "ctech-billing-portal-space"
-const EVENT = "ctech-portal-space"
+const KEY = "ctech-billing-portal-space";
+const EVENT = "ctech-portal-space";
 
-let cached: {raw: string | null; space: Space} = {raw: null, space: PERSONAL}
+let cached: {raw: string | null; space: Space} = {raw: null, space: PERSONAL};
 
 export function getPortalSpace(): Space {
-  if (typeof window === "undefined") return PERSONAL
-  let raw: string | null = null
+  if (typeof window === "undefined") return PERSONAL;
+  let raw: string | null = null;
   try {
-    raw = window.localStorage.getItem(KEY)
+    raw = window.localStorage.getItem(KEY);
   } catch {
     // Site data blocked: the portal still works, it just forgets the choice.
   }
   // useSyncExternalStore needs a stable snapshot: same raw value, same object.
-  if (raw !== cached.raw) cached = {raw, space: parseSpace(raw)}
-  return cached.space
+  if (raw !== cached.raw) cached = {raw, space: parseSpace(raw)};
+  return cached.space;
 }
 
 export function setPortalSpace(s: Space) {
   try {
-    window.localStorage.setItem(KEY, spaceHeader(s))
+    window.localStorage.setItem(KEY, spaceHeader(s));
   } catch {
     // Ignored for the reason above: the switch must still work.
   }
-  window.dispatchEvent(new CustomEvent(EVENT))
+  window.dispatchEvent(new CustomEvent(EVENT));
 }
 
 /** Subscribes to changes, including the ones another tab makes. */
 export function onPortalSpaceChange(fn: () => void): () => void {
-  window.addEventListener(EVENT, fn)
-  window.addEventListener("storage", fn)
+  window.addEventListener(EVENT, fn);
+  window.addEventListener("storage", fn);
   return () => {
-    window.removeEventListener(EVENT, fn)
-    window.removeEventListener("storage", fn)
-  }
+    window.removeEventListener(EVENT, fn);
+    window.removeEventListener("storage", fn);
+  };
 }
 
-const serverSnapshot = (): Space => PERSONAL
+const serverSnapshot = (): Space => PERSONAL;
 
 /** The portal selection as React state. Personal before storage is read. */
 export function usePortalSpace(): Space {
-  return useSyncExternalStore(onPortalSpaceChange, getPortalSpace, serverSnapshot)
+  return useSyncExternalStore(onPortalSpaceChange, getPortalSpace, serverSnapshot);
 }

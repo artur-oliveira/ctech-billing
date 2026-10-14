@@ -1,21 +1,21 @@
-"use client"
+"use client";
 
-import {useQuery} from "@tanstack/react-query"
-import {useEffect, useMemo} from "react"
-import {toast} from "sonner"
+import {useQuery} from "@tanstack/react-query";
+import {useEffect, useMemo} from "react";
+import {toast} from "sonner";
 
-import {type FinanceCtx, financeKeys, getFinanceSpaces} from "@/lib/api/finance"
-import type {FinanceSpaceEntry, Verb} from "@/lib/api/financeTypes"
-import {parseSpace, PERSONAL, sameSpace, setSpace, type Space} from "@/lib/console/space"
-import {t} from "@/lib/i18n"
-import {useMode} from "@/lib/console/useMode"
-import {useSpace} from "@/lib/console/useSpace"
+import {type FinanceCtx, financeKeys, getFinanceSpaces} from "@/lib/api/finance";
+import type {FinanceSpaceEntry, Verb} from "@/lib/api/financeTypes";
+import {parseSpace, PERSONAL, sameSpace, setSpace, type Space} from "@/lib/console/space";
+import {t} from "@/lib/i18n";
+import {useMode} from "@/lib/console/useMode";
+import {useSpace} from "@/lib/console/useSpace";
 
 /** The (mode, space) every finance call and query key is made with. */
 export function useFinanceCtx(): FinanceCtx {
-  const mode = useMode()
-  const space = useSpace()
-  return useMemo(() => ({mode, space}), [mode, space])
+  const mode = useMode();
+  const space = useSpace();
+  return useMemo(() => ({mode, space}), [mode, space]);
 }
 
 /**
@@ -24,12 +24,12 @@ export function useFinanceCtx(): FinanceCtx {
  * an `org:` selector like an organization; its kind is on the entry.
  */
 function entrySpace(e: FinanceSpaceEntry): Space {
-  return parseSpace(e.selector)
+  return parseSpace(e.selector);
 }
 
 /** "Pessoal" in the reader's language; every other space by its own name. */
 function labelOf(e: FinanceSpaceEntry): string {
-  return e.kind === "personal_default" ? t("finance.space.personal") : e.display_name
+  return e.kind === "personal_default" ? t("finance.space.personal") : e.display_name;
 }
 
 /**
@@ -42,19 +42,19 @@ function labelOf(e: FinanceSpaceEntry): string {
  * (its requests will say the space is unavailable) rather than silently dropped.
  */
 export function useFinanceSpaces() {
-  const space = useSpace()
-  const q = useQuery({queryKey: financeKeys.spaces(), queryFn: getFinanceSpaces, staleTime: 60_000})
-  const spaces = q.data?.spaces ?? []
-  const unavailable = q.data?.organizations_unavailable ?? false
-  const current = spaces.find(e => sameSpace(entrySpace(e), space))
+  const space = useSpace();
+  const q = useQuery({queryKey: financeKeys.spaces(), queryFn: getFinanceSpaces, staleTime: 60_000});
+  const spaces = q.data?.spaces ?? [];
+  const unavailable = q.data?.organizations_unavailable ?? false;
+  const current = spaces.find(e => sameSpace(entrySpace(e), space));
 
   useEffect(() => {
-    if (!q.data || unavailable || current || space.kind === "personal") return
-    setSpace(PERSONAL)
-    toast.info(t("bills.spaces.lost"))
-  }, [q.data, unavailable, current, space])
+    if (!q.data || unavailable || current || space.kind === "personal") return;
+    setSpace(PERSONAL);
+    toast.info(t("bills.spaces.lost"));
+  }, [q.data, unavailable, current, space]);
 
-  const verbs = new Set<Verb>(current?.verbs ?? [])
+  const verbs = new Set<Verb>(current?.verbs ?? []);
   return {
     spaces,
     current,
@@ -64,7 +64,7 @@ export function useFinanceSpaces() {
     can: (verb: Verb) => verbs.has(verb),
     spaceOf: entrySpace,
     labelOf,
-  }
+  };
 }
 
 /**
@@ -73,9 +73,9 @@ export function useFinanceSpaces() {
  * toast belong to Finanças' screens, not to a search opened in the portal).
  */
 export function useSpaceVerbs() {
-  const space = useSpace()
-  const q = useQuery({queryKey: financeKeys.spaces(), queryFn: getFinanceSpaces, staleTime: 60_000})
-  const current = (q.data?.spaces ?? []).find(e => sameSpace(entrySpace(e), space))
-  const verbs = new Set<Verb>(current?.verbs ?? [])
-  return {personal: space.kind === "personal", can: (verb: Verb) => verbs.has(verb)}
+  const space = useSpace();
+  const q = useQuery({queryKey: financeKeys.spaces(), queryFn: getFinanceSpaces, staleTime: 60_000});
+  const current = (q.data?.spaces ?? []).find(e => sameSpace(entrySpace(e), space));
+  const verbs = new Set<Verb>(current?.verbs ?? []);
+  return {personal: space.kind === "personal", can: (verb: Verb) => verbs.has(verb)};
 }

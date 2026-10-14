@@ -1,10 +1,10 @@
-"use client"
+"use client";
 
-import {type QueryKey, useMutation, useQueryClient} from "@tanstack/react-query"
+import {type QueryKey, useMutation, useQueryClient} from "@tanstack/react-query";
 
-import {type FinanceCtx} from "@/lib/api/finance"
-import {useIntent} from "@/lib/api/idempotency"
-import {useFinanceCtx} from "@/lib/finance/useFinanceSpaces"
+import {type FinanceCtx} from "@/lib/api/finance";
+import {useIntent} from "@/lib/api/idempotency";
+import {useFinanceCtx} from "@/lib/finance/useFinanceSpaces";
 
 /**
  * Every finance write goes through here, so no dialog re-implements:
@@ -31,22 +31,22 @@ export function useFinanceMutation<V, R>(
     invalidateOnError?: boolean
   } = {},
 ) {
-  const ctx = useFinanceCtx()
-  const client = useQueryClient()
-  const intent = useIntent()
+  const ctx = useFinanceCtx();
+  const client = useQueryClient();
+  const intent = useIntent();
   const mutation = useMutation({
     mutationFn: (vars: V) => run(ctx, vars, intent.key()),
     onSuccess: (result, vars) => {
-      intent.done()
-      for (const key of invalidate(ctx, result, vars)) void client.invalidateQueries({queryKey: key})
-      onSuccess?.(result, vars)
+      intent.done();
+      for (const key of invalidate(ctx, result, vars)) void client.invalidateQueries({queryKey: key});
+      onSuccess?.(result, vars);
     },
     onError: (error, vars) => {
-      if (options.invalidateOnError) for (const key of invalidate(ctx, undefined, vars)) void client.invalidateQueries({queryKey: key})
-      onError?.(error)
+      if (options.invalidateOnError) for (const key of invalidate(ctx, undefined, vars)) void client.invalidateQueries({queryKey: key});
+      onError?.(error);
     },
-  })
+  });
   // newIntent: the person changed WHAT they are submitting (another file), so a
   // failed attempt's key must not be reused for it.
-  return Object.assign(mutation, {newIntent: intent.done})
+  return Object.assign(mutation, {newIntent: intent.done});
 }

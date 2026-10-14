@@ -1,24 +1,24 @@
-"use client"
+"use client";
 
-import {Button, Skeleton} from "@aoctech/ui"
-import {useMutation, useQuery, useQueryClient} from "@tanstack/react-query"
-import {ArrowLeft, Eye} from "lucide-react"
-import Link from "next/link"
-import {useSearchParams} from "next/navigation"
-import {Suspense, useState} from "react"
-import {useTranslation} from "react-i18next"
+import {Button, Skeleton} from "@aoctech/ui";
+import {useMutation, useQuery, useQueryClient} from "@tanstack/react-query";
+import {ArrowLeft, Eye} from "lucide-react";
+import Link from "next/link";
+import {useSearchParams} from "next/navigation";
+import {Suspense, useState} from "react";
+import {useTranslation} from "react-i18next";
 
-import {CopyableValue} from "@/components/ui/CopyableValue"
-import {toast} from "sonner"
+import {CopyableValue} from "@/components/ui/CopyableValue";
+import {toast} from "sonner";
 
-import {SubscriptionStatusBadge} from "@/components/console/SubscriptionStatusBadge"
-import {Timeline} from "@/components/console/Timeline"
-import {ErrorBlock} from "@/components/portal/ErrorBlock"
-import {messageFor, statusOf} from "@/lib/api/client"
-import {consoleKeys, getConsoleCustomer, revealTaxID} from "@/lib/api/console"
-import {useConsoleScope} from "@/lib/console/scope"
-import {shortDate} from "@/lib/format"
-import {useDocumentTitle} from "@/lib/hooks/useDocumentTitle"
+import {SubscriptionStatusBadge} from "@/components/console/SubscriptionStatusBadge";
+import {Timeline} from "@/components/console/Timeline";
+import {ErrorBlock} from "@/components/portal/ErrorBlock";
+import {messageFor, statusOf} from "@/lib/api/client";
+import {consoleKeys, getConsoleCustomer, revealTaxID} from "@/lib/api/console";
+import {useConsoleScope} from "@/lib/console/scope";
+import {shortDate} from "@/lib/format";
+import {useDocumentTitle} from "@/lib/hooks/useDocumentTitle";
 
 /**
  * C7 — one customer: who they are, what they are on, and what has been done to
@@ -39,34 +39,34 @@ export default function ConsoleCustomerPage() {
     <Suspense fallback={<DetailSkeleton/>}>
       <Detail/>
     </Suspense>
-  )
+  );
 }
 
 function Detail() {
-  const {t} = useTranslation()
-  const id = useSearchParams().get("id") ?? ""
-  const scope = useConsoleScope()
+  const {t} = useTranslation();
+  const id = useSearchParams().get("id") ?? "";
+  const scope = useConsoleScope();
 
   const query = useQuery({
     queryKey: consoleKeys.customer(scope, id),
     queryFn: () => getConsoleCustomer(scope, id),
     enabled: id !== "",
-  })
+  });
 
-  useDocumentTitle(query.data?.customer.name ?? null)
+  useDocumentTitle(query.data?.customer.name ?? null);
 
-  if (id === "" || (query.isError && statusOf(query.error) === 404)) return <NotFound/>
-  if (query.isPending) return <DetailSkeleton/>
+  if (id === "" || (query.isError && statusOf(query.error) === 404)) return <NotFound/>;
+  if (query.isPending) return <DetailSkeleton/>;
   if (query.isError) {
     return (
       <div className="space-y-6">
         <BackLink/>
         <ErrorBlock error={query.error} onRetry={query.refetch}/>
       </div>
-    )
+    );
   }
 
-  const {customer, subscriptions, timeline} = query.data
+  const {customer, subscriptions, timeline} = query.data;
 
   return (
     <div className="space-y-8">
@@ -124,7 +124,7 @@ function Detail() {
 
       <Timeline entries={timeline}/>
     </div>
-  )
+  );
 }
 
 /**
@@ -135,23 +135,23 @@ function Detail() {
  * otherwise.
  */
 function TaxID({customerId, masked}: { customerId: string; masked?: string }) {
-  const {t} = useTranslation()
-  const scope = useConsoleScope()
-  const queryClient = useQueryClient()
-  const [full, setFull] = useState<string | null>(null)
+  const {t} = useTranslation();
+  const scope = useConsoleScope();
+  const queryClient = useQueryClient();
+  const [full, setFull] = useState<string | null>(null);
 
   const reveal = useMutation({
     mutationFn: () => revealTaxID(scope, customerId),
     onSuccess: value => {
-      setFull(value)
+      setFull(value);
       // The timeline below now has a row it did not have a moment ago, and the
       // operator should see their own name in it.
-      void queryClient.invalidateQueries({queryKey: consoleKeys.customer(scope, customerId)})
+      void queryClient.invalidateQueries({queryKey: consoleKeys.customer(scope, customerId)});
     },
     onError: error => toast.error(messageFor(error)),
-  })
+  });
 
-  if (!masked) return <Fact label={t("console.customer.taxId")} value="—"/>
+  if (!masked) return <Fact label={t("console.customer.taxId")} value="—"/>;
 
   return (
     <div className="space-y-1">
@@ -174,7 +174,7 @@ function TaxID({customerId, masked}: { customerId: string; masked?: string }) {
         <p className="text-xs text-muted-foreground">{t("console.customer.revealNote")}</p>
       )}
     </div>
-  )
+  );
 }
 
 function Fact({label, value, numeric}: { label: string; value: string; numeric?: boolean }) {
@@ -183,11 +183,11 @@ function Fact({label, value, numeric}: { label: string; value: string; numeric?:
       <dt className="text-xs text-muted-foreground">{label}</dt>
       <dd data-numeric={numeric ? "" : undefined} className="truncate text-foreground">{value}</dd>
     </div>
-  )
+  );
 }
 
 function NotFound() {
-  const {t} = useTranslation()
+  const {t} = useTranslation();
   return (
     <div className="space-y-6">
       <BackLink/>
@@ -200,11 +200,11 @@ function NotFound() {
         </p>
       </div>
     </div>
-  )
+  );
 }
 
 function BackLink() {
-  const {t} = useTranslation()
+  const {t} = useTranslation();
   return (
     <Link
       href="/console/customers"
@@ -213,7 +213,7 @@ function BackLink() {
       <ArrowLeft aria-hidden className="size-3.5"/>
       {t("console.customer.back")}
     </Link>
-  )
+  );
 }
 
 function DetailSkeleton() {
@@ -223,5 +223,5 @@ function DetailSkeleton() {
       <Skeleton className="h-16 w-full"/>
       <Skeleton className="h-24 w-full"/>
     </div>
-  )
+  );
 }

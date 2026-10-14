@@ -13,10 +13,10 @@
  * hardcode it; this costs nothing and is right in three environments instead of
  * one.
  */
-const ACCOUNTS = process.env.NEXT_PUBLIC_CTECH_CLIENT_URL || "https://accounts.aoctech.app"
+const ACCOUNTS = process.env.NEXT_PUBLIC_CTECH_CLIENT_URL || "https://accounts.aoctech.app";
 
 /** The index of every policy, for a footer. */
-export const ACCOUNTS_LEGAL_URL = `${ACCOUNTS}/legal`
+export const ACCOUNTS_LEGAL_URL = `${ACCOUNTS}/legal`;
 
 /**
  * The billing-specific terms addendum — what the gate asks about.
@@ -26,6 +26,6 @@ export const ACCOUNTS_LEGAL_URL = `${ACCOUNTS}/legal`
  * product somebody had not opened yet, which is the entire reason the gate
  * exists.
  */
-export const BILLING_TERMS_URL = `${ACCOUNTS}/products/billing`
+export const BILLING_TERMS_URL = `${ACCOUNTS}/products/billing`;
 
-export const PRIVACY_POLICY_URL = `${ACCOUNTS}/privacy`
+export const PRIVACY_POLICY_URL = `${ACCOUNTS}/privacy`;

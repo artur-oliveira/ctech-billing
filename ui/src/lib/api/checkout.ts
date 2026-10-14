@@ -1,7 +1,7 @@
-"use client"
+"use client";
 
-import {apiClient} from "@/lib/api/client"
-import type {Checkout} from "@/lib/api/types"
+import {apiClient} from "@/lib/api/client";
+import type {Checkout} from "@/lib/api/types";
 
 /**
  * The payment link, screen X1. Two routes, no session.
@@ -15,16 +15,16 @@ import type {Checkout} from "@/lib/api/types"
  */
 export const checkoutKeys = {
   view: (token: string) => ["checkout", token] as const,
-}
+};
 
 export async function getCheckout(token: string): Promise<Checkout> {
-  const {data} = await apiClient.get<Checkout>(`/v1.0/checkout/${encodeURIComponent(token)}`)
-  return data
+  const {data} = await apiClient.get<Checkout>(`/v1.0/checkout/${encodeURIComponent(token)}`);
+  return data;
 }
 
 export async function payCheckout(token: string): Promise<Checkout> {
   const {data} = await apiClient.post<Checkout>(
     `/v1.0/checkout/${encodeURIComponent(token)}/pay`
-  )
-  return data
+  );
+  return data;
 }

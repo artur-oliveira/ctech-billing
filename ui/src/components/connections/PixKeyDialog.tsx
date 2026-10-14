@@ -1,8 +1,8 @@
-"use client"
+"use client";
 
-import {Field, Input, Modal} from "@aoctech/ui"
-import {useState} from "react"
-import {useTranslation} from "react-i18next"
+import {Field, Input, Modal} from "@aoctech/ui";
+import {useState} from "react";
+import {useTranslation} from "react-i18next";
 
 /**
  * "Alterar chave Pix": the key the collection charges are issued on. It is not
@@ -18,14 +18,14 @@ export function PixKeyDialog({open, onClose, onSubmit, loading, current, error}:
   current?: string
   error?: string
 }) {
-  const {t, i18n} = useTranslation()
-  const [value, setValue] = useState("")
-  const next = value.trim()
-  const unchanged = next === "" || next === current
+  const {t, i18n} = useTranslation();
+  const [value, setValue] = useState("");
+  const next = value.trim();
+  const unchanged = next === "" || next === current;
   return (
     <Modal open={open} onClose={onClose} title={t("connections.pixKey.title")} description={t("connections.pixKey.body")}
       locale={i18n.language} submitLabel={t("connections.pixKey.submit")} submitDisabled={unchanged} loading={loading}
-      onSubmit={() => { if (!unchanged) onSubmit(next) }}>
+      onSubmit={() => { if (!unchanged) onSubmit(next); }}>
       <div className="grid gap-4">
         <Field label={t("connections.pixKey.label")} htmlFor="pix-key-new" hint={current ? t("connections.pixKey.current", {key: current}) : undefined}>
           <Input id="pix-key-new" value={value} onChange={e => setValue(e.target.value)} autoComplete="off" spellCheck={false}/>
@@ -33,5 +33,5 @@ export function PixKeyDialog({open, onClose, onSubmit, loading, current, error}:
         {error && <p role="alert" className="text-sm text-danger">{error}</p>}
       </div>
     </Modal>
-  )
+  );
 }

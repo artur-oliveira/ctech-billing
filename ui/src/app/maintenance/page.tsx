@@ -1,14 +1,14 @@
-"use client"
+"use client";
 
-import {Button} from "@aoctech/ui"
-import {useQuery} from "@tanstack/react-query"
-import {useRouter, useSearchParams} from "next/navigation"
-import {Suspense, useEffect} from "react"
-import {useTranslation} from "react-i18next"
+import {Button} from "@aoctech/ui";
+import {useQuery} from "@tanstack/react-query";
+import {useRouter, useSearchParams} from "next/navigation";
+import {Suspense, useEffect} from "react";
+import {useTranslation} from "react-i18next";
 
-import {StatusScreen} from "@/components/StatusScreen"
-import {getHealth} from "@/lib/api/portal"
-import {safeReturn} from "@/lib/returnTo"
+import {StatusScreen} from "@/components/StatusScreen";
+import {getHealth} from "@/lib/api/portal";
+import {safeReturn} from "@/lib/returnTo";
 
 /**
  * Where a 503 sends the reader. The API is saying it is deliberately down, so
@@ -25,15 +25,15 @@ export default function Maintenance() {
     <Suspense fallback={<Screen/>}>
       <MaintenanceScreen/>
     </Suspense>
-  )
+  );
 }
 
 function MaintenanceScreen() {
-  const router = useRouter()
-  const {t} = useTranslation()
+  const router = useRouter();
+  const {t} = useTranslation();
   // `?from` is attacker-controlled — a link to /maintenance?from=… is a link
   // anybody can send. safeReturn is what keeps it same-site; see its test.
-  const back = safeReturn(useSearchParams().get("from"), "/dashboard")
+  const back = safeReturn(useSearchParams().get("from"), "/dashboard");
 
   const probe = useQuery({
     queryKey: ["maintenance-probe"],
@@ -45,11 +45,11 @@ function MaintenanceScreen() {
     refetchInterval: 15_000,
     refetchOnWindowFocus: true,
     gcTime: 0,
-  })
+  });
 
   useEffect(() => {
-    if (probe.isSuccess) router.replace(back)
-  }, [probe.isSuccess, router, back])
+    if (probe.isSuccess) router.replace(back);
+  }, [probe.isSuccess, router, back]);
 
   return (
     <Screen
@@ -59,16 +59,16 @@ function MaintenanceScreen() {
         </Button>
       }
     />
-  )
+  );
 }
 
 function Screen({action}: { action?: React.ReactNode }) {
-  const {t} = useTranslation()
+  const {t} = useTranslation();
   return (
     <StatusScreen
       title={t("auth.maintenance.title")}
       description={t("auth.maintenance.description")}
       action={action}
     />
-  )
+  );
 }

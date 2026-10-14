@@ -1,6 +1,6 @@
-import {AlertCircle, CircleCheck, CircleDot, Clock, Lock} from "lucide-react"
+import {AlertCircle, CircleCheck, CircleDot, Clock, Lock} from "lucide-react";
 
-import type {CardStatement, CardStatementStatus} from "@/lib/api/financeTypes"
+import type {CardStatement, CardStatementStatus} from "@/lib/api/financeTypes";
 
 export type StatementState = CardStatementStatus | "overdue"
 
@@ -16,7 +16,7 @@ export const STATUS: Record<StatementState, {tone: "neutral" | "positive" | "urg
   closed: {tone: "neutral", icon: Lock},
   paid: {tone: "neutral", icon: CircleCheck},
   overdue: {tone: "urgent", icon: AlertCircle},
-}
+};
 
 /**
  * "Vencida" is not a server status: a closed statement past its due date that
@@ -25,5 +25,5 @@ export const STATUS: Record<StatementState, {tone: "neutral" | "positive" | "urg
  * A paid statement's bill makes the server say "paid".
  */
 export function statementState(s: Pick<CardStatement, "status" | "due_date" | "bill_id" | "total">, today: string): StatementState {
-  return s.status === "closed" && !!s.bill_id && s.total > 0 && s.due_date < today ? "overdue" : s.status
+  return s.status === "closed" && !!s.bill_id && s.total > 0 && s.due_date < today ? "overdue" : s.status;
 }

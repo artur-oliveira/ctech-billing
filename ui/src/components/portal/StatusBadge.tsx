@@ -1,10 +1,10 @@
-import {Badge} from "@aoctech/ui"
-import {AlertTriangle, CheckCircle2, Circle, Clock} from "lucide-react"
+import {Badge} from "@aoctech/ui";
+import {AlertTriangle, CheckCircle2, Circle, Clock} from "lucide-react";
 
-import {useTranslation} from "react-i18next"
+import {useTranslation} from "react-i18next";
 
-import type {Tone} from "@/lib/api/types"
-import {shortDate} from "@/lib/format"
+import type {Tone} from "@/lib/api/types";
+import {shortDate} from "@/lib/format";
 
 /**
  * A status badge carries a glyph as well as a colour, always.
@@ -19,7 +19,7 @@ const GLYPH = {
   positive: CheckCircle2,
   attention: Clock,
   urgent: AlertTriangle,
-} as const
+} as const;
 
 /**
  * `state` is an enum code from the API ("overdue", "due_soon", "active"...);
@@ -32,8 +32,8 @@ export function StatusBadge({state, tone, days, dueDate}: {
   days?: number
   dueDate?: string
 }) {
-  const {t} = useTranslation()
-  const Glyph = GLYPH[tone] ?? Circle
+  const {t} = useTranslation();
+  const Glyph = GLYPH[tone] ?? Circle;
   return (
     <Badge tone={tone}>
       <Glyph aria-hidden/>
@@ -43,5 +43,5 @@ export function StatusBadge({state, tone, days, dueDate}: {
         defaultValue: state,
       })}
     </Badge>
-  )
+  );
 }

@@ -1,7 +1,7 @@
-"use client"
+"use client";
 
-import type {ConnectionsScope} from "@/lib/api/connectionsTypes"
-import {useFinanceCtx} from "@/lib/finance/useFinanceSpaces"
+import type {ConnectionsScope} from "@/lib/api/connectionsTypes";
+import {useFinanceCtx} from "@/lib/finance/useFinanceSpaces";
 
 /**
  * Finanças' connections scope: the selected space, when it is an
@@ -10,6 +10,6 @@ import {useFinanceCtx} from "@/lib/finance/useFinanceSpaces"
  * own `useConsoleScope()`, already `{mode, org}`.
  */
 export function useFinanceConnectionsScope(): ConnectionsScope | null {
-  const {mode, space} = useFinanceCtx()
-  return space.kind === "organization" ? {org: space.organizationId, mode} : null
+  const {mode, space} = useFinanceCtx();
+  return space.kind === "organization" ? {org: space.organizationId, mode} : null;
 }

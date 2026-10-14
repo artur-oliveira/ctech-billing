@@ -1,37 +1,37 @@
-"use client"
+"use client";
 
-import limits from "@/lib/limits.json"
-import {Button, buttonVariants, Drawer, EmptyState, Field, Input, Select, Skeleton, Switch} from "@aoctech/ui"
-import {useQuery} from "@tanstack/react-query"
-import {CircleCheck, FileUp, Landmark} from "lucide-react"
-import Link from "next/link"
-import {useState} from "react"
-import {useTranslation} from "react-i18next"
+import limits from "@/lib/limits.json";
+import {Button, buttonVariants, Drawer, EmptyState, Field, Input, Select, Skeleton, Switch} from "@aoctech/ui";
+import {useQuery} from "@tanstack/react-query";
+import {CircleCheck, FileUp, Landmark} from "lucide-react";
+import Link from "next/link";
+import {useState} from "react";
+import {useTranslation} from "react-i18next";
 
-import {CardBrandMark, maskedLast4} from "@/components/finance/CardBrandMark"
-import {LedgerRow} from "@/components/finance/LedgerRow"
-import {ErrorBlock} from "@/components/portal/ErrorBlock"
-import {DateField} from "@/components/ui/DateField"
-import {messageFor} from "@/lib/api/client"
-import {archiveAccount, createAccount, financeKeys, getSettings, listAccounts, listCards, listRecurrences, postOpeningBalance, renameAccount, setDefaultReceivingAccount, setPostCTechInvoices} from "@/lib/api/finance"
-import type {Account, AccountClass, AccountPatch, Card, DREGroup, OpeningBalance} from "@/lib/api/financeTypes"
-import {classLabel, dreGroupLabel, groupsForClass} from "@/lib/finance/labels"
-import {selectCopy} from "@/lib/selectCopy"
-import {useFinanceMutation} from "@/lib/finance/useFinanceMutation"
-import {useCreateRequest} from "@/lib/createRequest"
-import {useFinanceCtx, useFinanceSpaces} from "@/lib/finance/useFinanceSpaces"
-import {money} from "@/lib/format"
-import {todayIso} from "@/lib/finance/today"
-import {useFieldErrors} from "@/lib/useFieldErrors"
-import {maskMoney, moneyPlaceholder, parseSignedMoney} from "@/lib/money"
-import {accountName} from "@/lib/finance/accountName"
+import {CardBrandMark, maskedLast4} from "@/components/finance/CardBrandMark";
+import {LedgerRow} from "@/components/finance/LedgerRow";
+import {ErrorBlock} from "@/components/portal/ErrorBlock";
+import {DateField} from "@/components/ui/DateField";
+import {messageFor} from "@/lib/api/client";
+import {archiveAccount, createAccount, financeKeys, getSettings, listAccounts, listCards, listRecurrences, postOpeningBalance, renameAccount, setDefaultReceivingAccount, setPostCTechInvoices} from "@/lib/api/finance";
+import type {Account, AccountClass, AccountPatch, Card, DREGroup, OpeningBalance} from "@/lib/api/financeTypes";
+import {classLabel, dreGroupLabel, groupsForClass} from "@/lib/finance/labels";
+import {selectCopy} from "@/lib/selectCopy";
+import {useFinanceMutation} from "@/lib/finance/useFinanceMutation";
+import {useCreateRequest} from "@/lib/createRequest";
+import {useFinanceCtx, useFinanceSpaces} from "@/lib/finance/useFinanceSpaces";
+import {money} from "@/lib/format";
+import {todayIso} from "@/lib/finance/today";
+import {useFieldErrors} from "@/lib/useFieldErrors";
+import {maskMoney, moneyPlaceholder, parseSignedMoney} from "@/lib/money";
+import {accountName} from "@/lib/finance/accountName";
 
 const SECTIONS: {key: "accounts" | "income" | "expense" | "cards"; classes: AccountClass[]}[] = [
   {key: "accounts", classes: ["asset"]},
   {key: "income", classes: ["income"]},
   {key: "expense", classes: ["expense"]},
   {key: "cards", classes: ["liability"]},
-]
+];
 
 /**
  * F8 — accounts, categories and the default receiving account.
@@ -41,25 +41,25 @@ const SECTIONS: {key: "accounts" | "income" | "expense" | "cards"; classes: Acco
  * archiving hides an account from new activity and keeps its history.
  */
 export function AccountsView() {
-  const {t} = useTranslation()
-  const ctx = useFinanceCtx()
-  const {can, current, loading} = useFinanceSpaces()
-  const configure = can("finance.configure")
-  const [showArchived, setShowArchived] = useState(false)
-  const [creating, setCreating] = useState(false)
+  const {t} = useTranslation();
+  const ctx = useFinanceCtx();
+  const {can, current, loading} = useFinanceSpaces();
+  const configure = can("finance.configure");
+  const [showArchived, setShowArchived] = useState(false);
+  const [creating, setCreating] = useState(false);
   // The bar's request is a wish, not a permission: a role that may not create
   // never sees the drawer, whenever the space's verbs arrive.
-  useCreateRequest("account", () => { if (loading || configure) setCreating(true) })
+  useCreateRequest("account", () => { if (loading || configure) setCreating(true); });
 
-  const q = useQuery({queryKey: financeKeys.accounts(ctx.mode, ctx.space), queryFn: () => listAccounts(ctx)})
-  const accounts = (q.data?.data ?? []).filter(a => !a.system)
-  const visible = accounts.filter(a => showArchived || !a.archived)
-  const hasArchived = accounts.some(a => a.archived)
+  const q = useQuery({queryKey: financeKeys.accounts(ctx.mode, ctx.space), queryFn: () => listAccounts(ctx)});
+  const accounts = (q.data?.data ?? []).filter(a => !a.system);
+  const visible = accounts.filter(a => showArchived || !a.archived);
+  const hasArchived = accounts.some(a => a.archived);
   // A card's brand and last digits live on the card, not the account: read only
   // when there is a card to show them on.
-  const hasCards = accounts.some(a => a.class === "liability")
-  const cards = useQuery({queryKey: financeKeys.cards(ctx.mode, ctx.space), queryFn: () => listCards(ctx), enabled: hasCards})
-  const cardOf = new Map((cards.data?.data ?? []).map(c => [c.id, c]))
+  const hasCards = accounts.some(a => a.class === "liability");
+  const cards = useQuery({queryKey: financeKeys.cards(ctx.mode, ctx.space), queryFn: () => listCards(ctx), enabled: hasCards});
+  const cardOf = new Map((cards.data?.data ?? []).map(c => [c.id, c]));
 
   return (
     <div className="space-y-6">
@@ -86,8 +86,8 @@ export function AccountsView() {
       ) : (
         <>
           {SECTIONS.map(section => {
-            const rows = visible.filter(a => section.classes.includes(a.class))
-            if (rows.length === 0) return null
+            const rows = visible.filter(a => section.classes.includes(a.class));
+            if (rows.length === 0) return null;
             return (
               <section key={section.key} className="space-y-2" aria-labelledby={`sec-${section.key}`}>
                 <h2 id={`sec-${section.key}`} className="text-sm font-medium text-foreground">{t(`finance.accounts.sections.${section.key}`)}</h2>
@@ -95,7 +95,7 @@ export function AccountsView() {
                   {rows.map(a => <AccountRow key={a.id} account={a} card={cardOf.get(a.id)} configure={configure}/>)}
                 </ul>
               </section>
-            )
+            );
           })}
           {hasArchived && (
             <Button variant="ghost" size="sm" onClick={() => setShowArchived(v => !v)}>
@@ -109,31 +109,31 @@ export function AccountsView() {
         </>
       )}
     </div>
-  )
+  );
 }
 
 function AccountRow({account, card, configure}: {account: Account; card?: Card; configure: boolean}) {
-  const {t} = useTranslation()
-  const [confirming, setConfirming] = useState(false)
-  const [opening, setOpening] = useState(false)
-  const [renaming, setRenaming] = useState(false)
+  const {t} = useTranslation();
+  const [confirming, setConfirming] = useState(false);
+  const [opening, setOpening] = useState(false);
+  const [renaming, setRenaming] = useState(false);
   const archive = useFinanceMutation(
     (c, id: string, key) => archiveAccount(c, id, key),
     c => [financeKeys.accounts(c.mode, c.space)],
     () => setConfirming(false),
-  )
-  const isCard = account.class === "liability"
+  );
+  const isCard = account.class === "liability";
   // Archiving a card stops the recurrences it pays (the job flags them): say how many first.
-  const ctx = useFinanceCtx()
-  const recs = useQuery({queryKey: financeKeys.recurrences(ctx.mode, ctx.space), queryFn: () => listRecurrences(ctx), enabled: confirming && isCard})
-  const paidByCard = (recs.data?.data ?? []).filter(r => r.card_id === account.id && !r.archived).length
-  const synced = account.source === "byok"
+  const ctx = useFinanceCtx();
+  const recs = useQuery({queryKey: financeKeys.recurrences(ctx.mode, ctx.space), queryFn: () => listRecurrences(ctx), enabled: confirming && isCard});
+  const paidByCard = (recs.data?.data ?? []).filter(r => r.card_id === account.id && !r.archived).length;
+  const synced = account.source === "byok";
   const meta = [
     synced ? t("connections.unclassified.synced") : "",
     account.dre_group ? dreGroupLabel(account.dre_group) : "",
     card?.last4 ? maskedLast4(card.last4) : "",
     account.archived ? t("finance.accounts.archived") : "",
-  ].filter(Boolean)
+  ].filter(Boolean);
   return (
     // A ledger row (UX batch 4): on a phone the name wraps beside its balance
     // instead of being cut to "Conta co…", and Saldo inicial and Arquivar are a
@@ -171,7 +171,7 @@ function AccountRow({account, card, configure}: {account: Account; card?: Card; 
       )}
       {opening && <OpeningForm account={account} onDone={() => setOpening(false)}/>}
     </LedgerRow>
-  )
+  );
 }
 
 /**
@@ -181,35 +181,35 @@ function AccountRow({account, card, configure}: {account: Account; card?: Card; 
  * On a phone the field takes the row's width and the buttons sit under it.
  */
 function RenameForm({account, onDone}: {account: Account; onDone: () => void}) {
-  const {t} = useTranslation()
-  const shown = accountName(account)
-  const [name, setName] = useState(shown)
-  const fe = useFieldErrors(["name"])
+  const {t} = useTranslation();
+  const shown = accountName(account);
+  const [name, setName] = useState(shown);
+  const fe = useFieldErrors(["name"]);
   // A card's name shows on Cartões, a category's on every bill: the whole space.
   const save = useFinanceMutation(
     (c, body: AccountPatch, key) => renameAccount(c, account.id, body, key),
     c => [financeKeys.all(c.mode, c.space)],
     onDone,
     fe.set,
-  )
-  const next = name.trim()
-  const ready = next !== "" && next !== shown && !save.isPending
-  const id = `rn-${account.id}`
+  );
+  const next = name.trim();
+  const ready = next !== "" && next !== shown && !save.isPending;
+  const id = `rn-${account.id}`;
   return (
     <form
       aria-label={t("finance.accounts.renameNamed", {name: shown})}
       className="mt-2 grid items-start gap-3 rounded-lg bg-surface p-3 sm:grid-cols-[minmax(0,24rem)_auto] motion-safe:animate-in motion-safe:fade-in"
       onSubmit={e => {
-        e.preventDefault()
-        if (!ready) return
-        fe.reset()
-        save.mutate({name: next})
+        e.preventDefault();
+        if (!ready) return;
+        fe.reset();
+        save.mutate({name: next});
       }}
-      onKeyDown={e => { if (e.key === "Escape") onDone() }}
+      onKeyDown={e => { if (e.key === "Escape") onDone(); }}
     >
       <Field label={t("finance.accounts.newName")} htmlFor={id} error={fe.of("name")}>
         <Input id={id} maxLength={limits.text.accountName} autoComplete="off" value={name} {...fe.props("name", id)}
-          onChange={e => { setName(e.target.value); fe.clear("name") }} onFocus={e => e.currentTarget.select()} autoFocus/>
+          onChange={e => { setName(e.target.value); fe.clear("name"); }} onFocus={e => e.currentTarget.select()} autoFocus/>
       </Field>
       <div className="flex gap-2 sm:pt-6">
         <Button type="button" variant="outline" size="sm" onClick={onDone}>{t("finance.accounts.cancel")}</Button>
@@ -217,7 +217,7 @@ function RenameForm({account, onDone}: {account: Account; onDone: () => void}) {
       </div>
       {fe.general ? <p role="alert" className="text-sm text-danger sm:col-span-2">{fe.general}</p> : null}
     </form>
-  )
+  );
 }
 
 /**
@@ -226,32 +226,32 @@ function RenameForm({account, onDone}: {account: Account; onDone: () => void}) {
  * refused by the server, which says how to correct it.
  */
 function OpeningForm({account, onDone}: {account: Account; onDone: () => void}) {
-  const {t} = useTranslation()
-  const [text, setText] = useState("")
-  const [date, setDate] = useState(todayIso())
-  const fe = useFieldErrors(["amount", "date"])
+  const {t} = useTranslation();
+  const [text, setText] = useState("");
+  const [date, setDate] = useState(todayIso());
+  const fe = useFieldErrors(["amount", "date"]);
   const post = useFinanceMutation(
     (c, body: OpeningBalance, key) => postOpeningBalance(c, account.id, body, key),
     c => [financeKeys.all(c.mode, c.space)],
     onDone,
     fe.set,
-  )
-  const amount = parseSignedMoney(text)
+  );
+  const amount = parseSignedMoney(text);
   return (
     <form
       className="mt-2 grid items-start gap-3 rounded-lg bg-surface p-3 sm:grid-cols-[1fr_1fr_auto] motion-safe:animate-in motion-safe:fade-in"
       onSubmit={e => {
-        e.preventDefault()
-        if (amount === null) return
-        fe.reset()
-        post.mutate({amount, date})
+        e.preventDefault();
+        if (amount === null) return;
+        fe.reset();
+        post.mutate({amount, date});
       }}
     >
       <Field label={t("finance.accounts.amount")} htmlFor={`ob-${account.id}`} error={fe.of("amount")}>
-        <Input id={`ob-${account.id}`} inputMode="decimal" placeholder={moneyPlaceholder()} value={text} {...fe.props("amount", `ob-${account.id}`)} onChange={e => { setText(maskMoney(e.target.value, {signed: true})); fe.clear("amount") }} autoFocus/>
+        <Input id={`ob-${account.id}`} inputMode="decimal" placeholder={moneyPlaceholder()} value={text} {...fe.props("amount", `ob-${account.id}`)} onChange={e => { setText(maskMoney(e.target.value, {signed: true})); fe.clear("amount"); }} autoFocus/>
       </Field>
       <Field label={t("finance.accounts.on")} htmlFor={`obd-${account.id}`} error={fe.of("date")}>
-        <DateField id={`obd-${account.id}`} min={limits.minDate} max={todayIso()} value={date} invalid={!!fe.of("date")} onValueChange={v => { setDate(v); fe.clear("date") }}/>
+        <DateField id={`obd-${account.id}`} min={limits.minDate} max={todayIso()} value={date} invalid={!!fe.of("date")} onValueChange={v => { setDate(v); fe.clear("date"); }}/>
       </Field>
       <div className="flex gap-2 sm:pt-6">
         <Button type="button" variant="outline" size="sm" onClick={onDone}>{t("finance.accounts.close")}</Button>
@@ -259,7 +259,7 @@ function OpeningForm({account, onDone}: {account: Account; onDone: () => void}) 
       </div>
       {fe.general ? <p role="alert" className="text-sm text-danger sm:col-span-3">{fe.general}</p> : null}
     </form>
-  )
+  );
 }
 
 /**
@@ -269,18 +269,18 @@ function OpeningForm({account, onDone}: {account: Account; onDone: () => void}) 
  * of its own on Importar, never a field of this form.
  */
 function AccountForm({onDone, offerImport}: {onDone: () => void; offerImport: boolean}) {
-  const {t} = useTranslation()
-  const [name, setName] = useState("")
-  const [cls, setCls] = useState<AccountClass>("asset")
-  const groups = groupsForClass(cls)
-  const [group, setGroup] = useState<DREGroup | "">("")
-  const [openingText, setOpeningText] = useState("")
-  const [openingDate, setOpeningDate] = useState(todayIso())
-  const [made, setMade] = useState<Account | null>(null)
-  const asset = cls === "asset"
-  const openingAmount = asset ? parseSignedMoney(openingText) : null
-  const openingInvalid = asset && openingText.trim() !== "" && openingAmount === null
-  const finish = (account: Account) => (offerImport && account.class === "asset" ? setMade(account) : onDone())
+  const {t} = useTranslation();
+  const [name, setName] = useState("");
+  const [cls, setCls] = useState<AccountClass>("asset");
+  const groups = groupsForClass(cls);
+  const [group, setGroup] = useState<DREGroup | "">("");
+  const [openingText, setOpeningText] = useState("");
+  const [openingDate, setOpeningDate] = useState(todayIso());
+  const [made, setMade] = useState<Account | null>(null);
+  const asset = cls === "asset";
+  const openingAmount = asset ? parseSignedMoney(openingText) : null;
+  const openingInvalid = asset && openingText.trim() !== "" && openingAmount === null;
+  const finish = (account: Account) => (offerImport && account.class === "asset" ? setMade(account) : onDone());
   // The opening balance is its own fact with its own intent: when only it fails,
   // the account exists and a retry must not create a second one. Its failure
   // still refreshes, so the account it was for shows in the list.
@@ -290,8 +290,8 @@ function AccountForm({onDone, offerImport}: {onDone: () => void; offerImport: bo
     (_, v) => finish(v.account),
     undefined,
     {invalidateOnError: true},
-  )
-  const fe = useFieldErrors(["name", "class", "dre_group"])
+  );
+  const fe = useFieldErrors(["name", "class", "dre_group"]);
   // Value-aware: when an opening balance follows, the list is refreshed once,
   // after it lands. Refreshing between the two halves painted the new account at
   // R$ 0,00, a balance the person never entered.
@@ -300,28 +300,28 @@ function AccountForm({onDone, offerImport}: {onDone: () => void; offerImport: bo
     (c, _created, body) => (body.class === "asset" && openingAmount ? [] : [financeKeys.accounts(c.mode, c.space)]),
     created => (openingAmount ? opening.mutate({account: created, body: {amount: openingAmount, date: openingDate}}) : finish(created)),
     fe.set,
-  )
-  if (made) return <ImportOffer account={made} onDone={onDone}/>
-  const chosenGroup = groups.includes(group as DREGroup) ? (group as DREGroup) : groups[0]
+  );
+  if (made) return <ImportOffer account={made} onDone={onDone}/>;
+  const chosenGroup = groups.includes(group as DREGroup) ? (group as DREGroup) : groups[0];
   return (
     <form
       className="grid items-start gap-x-4 gap-y-3 sm:grid-cols-2 [&>*]:min-w-0"
       onSubmit={e => {
-        e.preventDefault()
-        if (!name.trim() || openingInvalid) return
-        fe.reset()
-        create.mutate({name: name.trim(), class: cls, ...(chosenGroup ? {dre_group: chosenGroup} : {})})
+        e.preventDefault();
+        if (!name.trim() || openingInvalid) return;
+        fe.reset();
+        create.mutate({name: name.trim(), class: cls, ...(chosenGroup ? {dre_group: chosenGroup} : {})});
       }}
     >
       <Field label={t("finance.accounts.name")} htmlFor="acc-name" required error={fe.of("name")}>
-        <Input id="acc-name" maxLength={limits.text.accountName} value={name} {...fe.props("name", "acc-name")} onChange={e => { setName(e.target.value); fe.clear("name") }} autoFocus/>
+        <Input id="acc-name" maxLength={limits.text.accountName} value={name} {...fe.props("name", "acc-name")} onChange={e => { setName(e.target.value); fe.clear("name"); }} autoFocus/>
       </Field>
       <Field label={t("finance.accounts.type")} htmlFor="acc-class" error={fe.of("class")}>
-        <Select {...selectCopy()} id="acc-class" value={cls} {...fe.props("class", "acc-class")} onValueChange={v => { setCls(v as AccountClass); fe.clear("class") }} options={(["asset", "income", "expense"] as AccountClass[]).map(c => ({value: c, label: classLabel(c)}))}/>
+        <Select {...selectCopy()} id="acc-class" value={cls} {...fe.props("class", "acc-class")} onValueChange={v => { setCls(v as AccountClass); fe.clear("class"); }} options={(["asset", "income", "expense"] as AccountClass[]).map(c => ({value: c, label: classLabel(c)}))}/>
       </Field>
       {groups.length > 0 ? (
         <Field label={t("finance.accounts.dreGroup")} htmlFor="acc-group" error={fe.of("dre_group")}>
-          <Select {...selectCopy()} id="acc-group" value={chosenGroup} {...fe.props("dre_group", "acc-group")} onValueChange={v => { setGroup(v as DREGroup); fe.clear("dre_group") }} options={groups.map(g => ({value: g, label: dreGroupLabel(g)}))}/>
+          <Select {...selectCopy()} id="acc-group" value={chosenGroup} {...fe.props("dre_group", "acc-group")} onValueChange={v => { setGroup(v as DREGroup); fe.clear("dre_group"); }} options={groups.map(g => ({value: g, label: dreGroupLabel(g)}))}/>
         </Field>
       ) : asset ? (
         <>
@@ -348,12 +348,12 @@ function AccountForm({onDone, offerImport}: {onDone: () => void; offerImport: bo
         </div>
       )}
     </form>
-  )
+  );
 }
 
 /** "Conta criada. Importar um extrato agora?": Importar, with this account chosen. */
 function ImportOffer({account, onDone}: {account: Account; onDone: () => void}) {
-  const {t} = useTranslation()
+  const {t} = useTranslation();
   return (
     <div className="space-y-4 motion-safe:animate-in motion-safe:fade-in">
       <div className="flex items-start gap-3">
@@ -372,18 +372,18 @@ function ImportOffer({account, onDone}: {account: Account; onDone: () => void}) 
         <Button variant="outline" size="sm" onClick={onDone}>{t("finance.accounts.created.later")}</Button>
       </div>
     </div>
-  )
+  );
 }
 
 function DefaultReceiving({accounts}: {accounts: Account[]}) {
-  const {t} = useTranslation()
-  const ctx = useFinanceCtx()
-  const settings = useQuery({queryKey: financeKeys.settings(ctx.mode, ctx.space), queryFn: () => getSettings(ctx)})
+  const {t} = useTranslation();
+  const ctx = useFinanceCtx();
+  const settings = useQuery({queryKey: financeKeys.settings(ctx.mode, ctx.space), queryFn: () => getSettings(ctx)});
   const save = useFinanceMutation(
     (c, id: string, key) => setDefaultReceivingAccount(c, id, key),
     c => [financeKeys.settings(c.mode, c.space)],
-  )
-  const options = accounts.filter(a => a.class === "asset" && !a.archived)
+  );
+  const options = accounts.filter(a => a.class === "asset" && !a.archived);
   return (
     <section className="space-y-2 border-t border-border pt-4">
       <Field label={t("finance.accounts.defaultReceiving")} htmlFor="default-receiving">
@@ -402,19 +402,19 @@ function DefaultReceiving({accounts}: {accounts: Account[]}) {
       </Field>
       {save.error && <p role="alert" className="text-sm text-danger">{messageFor(save.error)}</p>}
     </section>
-  )
+  );
 }
 
 /** "Lançar minhas faturas da CTech automaticamente neste espaço": on unless turned off. */
 function PostCTechInvoices() {
-  const {t} = useTranslation()
-  const ctx = useFinanceCtx()
-  const settings = useQuery({queryKey: financeKeys.settings(ctx.mode, ctx.space), queryFn: () => getSettings(ctx)})
+  const {t} = useTranslation();
+  const ctx = useFinanceCtx();
+  const settings = useQuery({queryKey: financeKeys.settings(ctx.mode, ctx.space), queryFn: () => getSettings(ctx)});
   const save = useFinanceMutation(
     (c, on: boolean, key) => setPostCTechInvoices(c, on, key),
     c => [financeKeys.settings(c.mode, c.space)],
-  )
-  const on = save.isPending ? save.variables : settings.data?.post_ctech_invoices !== false
+  );
+  const on = save.isPending ? save.variables : settings.data?.post_ctech_invoices !== false;
   return (
     <section className="space-y-1 border-t border-border pt-4">
       <div className="flex items-center gap-3">
@@ -431,12 +431,12 @@ function PostCTechInvoices() {
       <p id="post-ctech-invoices-help" className="text-sm text-muted-foreground">{t("finance.accounts.postCTechInvoicesHelp")}</p>
       {save.error && <p role="alert" className="text-sm text-danger">{messageFor(save.error)}</p>}
     </section>
-  )
+  );
 }
 
 /** "14:05" in São Paulo, the clock the person reads. */
 const hhmm = (instant: string) =>
-  new Intl.DateTimeFormat("pt-BR", {hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo"}).format(new Date(instant))
+  new Intl.DateTimeFormat("pt-BR", {hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo"}).format(new Date(instant));
 
 /**
  * Under a bank-synced account (BYOK spec § 8.1, § 11.3): whose balance this
@@ -445,10 +445,10 @@ const hhmm = (instant: string) =>
  * parser could not read, never something the person did).
  */
 function SyncedFacts({account}: {account: Account}) {
-  const {t} = useTranslation()
-  const pb = account.provider_balance
-  const count = account.unclassified_count ?? 0
-  const diff = pb ? account.balance - pb.available : 0
+  const {t} = useTranslation();
+  const pb = account.provider_balance;
+  const count = account.unclassified_count ?? 0;
+  const diff = pb ? account.balance - pb.available : 0;
   return (
     <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
       {pb && <span className="text-muted-foreground">{t("connections.unclassified.updatedAt", {time: hhmm(pb.synced_at)})}</span>}
@@ -459,5 +459,5 @@ function SyncedFacts({account}: {account: Account}) {
       )}
       {diff !== 0 && <span role="status" className="w-full text-warning">{t("connections.unclassified.difference", {amount: money(Math.abs(diff))})}</span>}
     </div>
-  )
+  );
 }

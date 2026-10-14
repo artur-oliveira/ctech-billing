@@ -11,7 +11,7 @@ const INVOICING_NAV = [
   {href: "/console/credentials", label: "console.nav.credentials"},
   {href: "/console/webhooks", label: "console.nav.webhooks"},
   {href: "/console/settings", label: "console.nav.settings"},
-] as const
+] as const;
 
 /**
  * The console's sections: invoicing only. Finanças is its own area (/finance).
@@ -21,9 +21,9 @@ const INVOICING_NAV = [
  * organization whose tenant is tenant zero (the server decides; this is display).
  */
 /** Tenant zero's review of merchant applications (spec § 4.2). */
-const REVIEW_ITEM = {href: "/console/applications", label: "console.nav.applications"} as const
+const REVIEW_ITEM = {href: "/console/applications", label: "console.nav.applications"} as const;
 
 export function consoleNav(hasOrganization: boolean, reviewer = false): {href: string; label: string}[] {
-  if (!hasOrganization) return []
-  return reviewer ? [...INVOICING_NAV, REVIEW_ITEM] : [...INVOICING_NAV]
+  if (!hasOrganization) return [];
+  return reviewer ? [...INVOICING_NAV, REVIEW_ITEM] : [...INVOICING_NAV];
 }

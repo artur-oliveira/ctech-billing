@@ -1,5 +1,5 @@
-import {cn} from "@aoctech/ui"
-import type {TextareaHTMLAttributes} from "react"
+import {cn} from "@aoctech/ui";
+import type {TextareaHTMLAttributes} from "react";
 
 /** A multi-line Input: the same border, focus ring, invalid state and density. */
 export function Textarea({className, ...props}: TextareaHTMLAttributes<HTMLTextAreaElement>) {
@@ -15,5 +15,5 @@ export function Textarea({className, ...props}: TextareaHTMLAttributes<HTMLTextA
       )}
       {...props}
     />
-  )
+  );
 }

@@ -8,9 +8,9 @@
  * two payloads, and the console must never render the portal's phrasing back at
  * somebody who needs the enum (PRODUCT.md).
  */
-import type {Cents, DocumentLink, IsoDate} from "@/lib/api/types"
+import type {Cents, DocumentLink, IsoDate} from "@/lib/api/types";
 
-export type {DocumentLink}
+export type {DocumentLink};
 
 export type InvoiceStatus = "DRAFT" | "OPEN" | "PAID" | "VOID" | "UNCOLLECTIBLE"
 

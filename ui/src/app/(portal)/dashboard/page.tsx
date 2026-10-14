@@ -1,19 +1,19 @@
-"use client"
+"use client";
 
-import {Button, EmptyState, Skeleton} from "@aoctech/ui"
-import {useQuery} from "@tanstack/react-query"
-import {ArrowRight, Receipt} from "lucide-react"
-import Link from "next/link"
-import {useTranslation} from "react-i18next"
+import {Button, EmptyState, Skeleton} from "@aoctech/ui";
+import {useQuery} from "@tanstack/react-query";
+import {ArrowRight, Receipt} from "lucide-react";
+import Link from "next/link";
+import {useTranslation} from "react-i18next";
 
-import {ErrorBlock} from "@/components/portal/ErrorBlock"
-import {Money} from "@/components/portal/Money"
-import {StatusBadge} from "@/components/portal/StatusBadge"
-import {listInvoices, listSubscriptions, portalKeys} from "@/lib/api/portal"
-import type {Invoice, Subscription} from "@/lib/api/types"
-import {longDate, money} from "@/lib/format"
-import {invoiceTitle} from "@/lib/invoice"
-import {useDocumentTitle} from "@/lib/hooks/useDocumentTitle"
+import {ErrorBlock} from "@/components/portal/ErrorBlock";
+import {Money} from "@/components/portal/Money";
+import {StatusBadge} from "@/components/portal/StatusBadge";
+import {listInvoices, listSubscriptions, portalKeys} from "@/lib/api/portal";
+import type {Invoice, Subscription} from "@/lib/api/types";
+import {longDate, money} from "@/lib/format";
+import {invoiceTitle} from "@/lib/invoice";
+import {useDocumentTitle} from "@/lib/hooks/useDocumentTitle";
 
 /**
  * P1 — Início. One screen, no chart.
@@ -33,28 +33,28 @@ import {useDocumentTitle} from "@/lib/hooks/useDocumentTitle"
  * anything can be loud.
  */
 export default function HomePage() {
-  const {t} = useTranslation()
-  useDocumentTitle(t("portal.nav.home"))
-  const invoices = useQuery({queryKey: portalKeys.invoiceList, queryFn: () => listInvoices()})
+  const {t} = useTranslation();
+  useDocumentTitle(t("portal.nav.home"));
+  const invoices = useQuery({queryKey: portalKeys.invoiceList, queryFn: () => listInvoices()});
   const subscriptions = useQuery({
     queryKey: portalKeys.subscriptions,
     queryFn: listSubscriptions,
-  })
+  });
 
-  const owed = (invoices.data?.data ?? []).filter(i => i.payable)
-  const active = (subscriptions.data?.data ?? []).filter(s => s.cancelable)
-  const next = nextCharge(active)
+  const owed = (invoices.data?.data ?? []).filter(i => i.payable);
+  const active = (subscriptions.data?.data ?? []).filter(s => s.cancelable);
+  const next = nextCharge(active);
 
-  const loading = invoices.isPending || subscriptions.isPending
-  const bothFailed = invoices.isError && subscriptions.isError
+  const loading = invoices.isPending || subscriptions.isPending;
+  const bothFailed = invoices.isError && subscriptions.isError;
   const empty =
     !loading &&
     !invoices.isError &&
     !subscriptions.isError &&
     owed.length === 0 &&
-    active.length === 0
+    active.length === 0;
 
-  if (loading) return <HomeSkeleton/>
+  if (loading) return <HomeSkeleton/>;
 
   return (
     <div className="space-y-12">
@@ -75,8 +75,8 @@ export default function HomePage() {
         <ErrorBlock
           error={invoices.error}
           onRetry={() => {
-            void invoices.refetch()
-            void subscriptions.refetch()
+            void invoices.refetch();
+            void subscriptions.refetch();
           }}
         />
       ) : (
@@ -97,14 +97,14 @@ export default function HomePage() {
 
       {active.length > 0 && <ActiveList subscriptions={active}/>}
     </div>
-  )
+  );
 }
 
 /** The soonest renewal among subscriptions that still have one. */
 function nextCharge(subscriptions: Subscription[]): Subscription | undefined {
   return subscriptions
     .filter(s => s.renews_on)
-    .sort((a, b) => a.renews_on!.localeCompare(b.renews_on!))[0]
+    .sort((a, b) => a.renews_on!.localeCompare(b.renews_on!))[0];
 }
 
 /**
@@ -112,9 +112,9 @@ function nextCharge(subscriptions: Subscription[]): Subscription | undefined {
  * screen exists to answer "do I owe anything and how much".
  */
 function Pendencia({invoices}: { invoices: Invoice[] }) {
-  const {t} = useTranslation()
-  const [first, ...rest] = invoices
-  const total = invoices.reduce((sum, i) => sum + i.amount_due, 0)
+  const {t} = useTranslation();
+  const [first, ...rest] = invoices;
+  const total = invoices.reduce((sum, i) => sum + i.amount_due, 0);
 
   return (
     <section className="space-y-6">
@@ -143,7 +143,7 @@ function Pendencia({invoices}: { invoices: Invoice[] }) {
         )}
       </div>
     </section>
-  )
+  );
 }
 
 /**
@@ -154,7 +154,7 @@ function Pendencia({invoices}: { invoices: Invoice[] }) {
  * confident zero.
  */
 function EmDia({subscription}: { subscription?: Subscription }) {
-  const {t} = useTranslation()
+  const {t} = useTranslation();
   return (
     <section className="space-y-3">
       <h1 className="text-3xl font-semibold tracking-[-0.02em] text-foreground">{t("portal.dashboard.upToDate")}</h1>
@@ -172,11 +172,11 @@ function EmDia({subscription}: { subscription?: Subscription }) {
         <p className="text-sm text-muted-foreground">{t("portal.dashboard.nothingOpen")}</p>
       )}
     </section>
-  )
+  );
 }
 
 function ActiveList({subscriptions}: { subscriptions: Subscription[] }) {
-  const {t} = useTranslation()
+  const {t} = useTranslation();
   return (
     <section aria-labelledby="assinaturas" className="space-y-4">
       <div className="flex items-center justify-between">
@@ -211,7 +211,7 @@ function ActiveList({subscriptions}: { subscriptions: Subscription[] }) {
         ))}
       </ul>
     </section>
-  )
+  );
 }
 
 function HomeSkeleton() {
@@ -234,5 +234,5 @@ function HomeSkeleton() {
         </div>
       </div>
     </div>
-  )
+  );
 }

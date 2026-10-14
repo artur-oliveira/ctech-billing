@@ -1,14 +1,14 @@
-"use client"
+"use client";
 
-import {Button} from "@aoctech/ui"
-import {QRCodeSVG} from "qrcode.react"
-import {Copy, FlaskConical, RefreshCw} from "lucide-react"
-import {useTranslation} from "react-i18next"
-import {toast} from "sonner"
+import {Button} from "@aoctech/ui";
+import {QRCodeSVG} from "qrcode.react";
+import {Copy, FlaskConical, RefreshCw} from "lucide-react";
+import {useTranslation} from "react-i18next";
+import {toast} from "sonner";
 
-import type {InvoiceByok} from "@/lib/api/consoleTypes"
-import {codeMessage} from "@/lib/errors"
-import {money, shortDate} from "@/lib/format"
+import type {InvoiceByok} from "@/lib/api/consoleTypes";
+import {codeMessage} from "@/lib/errors";
+import {money, shortDate} from "@/lib/format";
 
 /**
  * The invoice's Pix with due date (BYOK spec § 7.2, § 11.3): the QR and the
@@ -23,8 +23,8 @@ export function InvoicePix({byok, currency, onSimulate, onNewPix, busy}: {
   onNewPix: () => void
   busy: boolean
 }) {
-  const {t} = useTranslation()
-  const bank = t(`connections.providers.${byok.provider ?? "inter"}`)
+  const {t} = useTranslation();
+  const bank = t(`connections.providers.${byok.provider ?? "inter"}`);
 
   if (byok.attempt_status === "SUCCEEDED") {
     return (
@@ -32,7 +32,7 @@ export function InvoicePix({byok, currency, onSimulate, onNewPix, busy}: {
         {t("connections.pix.paid", {bank})}
         {byok.late_charges ? <span className="text-muted-foreground"> {t("connections.pix.lateCharges", {amount: money(byok.late_charges, currency)})}</span> : null}
       </p>
-    )
+    );
   }
 
   if (!byok.payable) {
@@ -47,10 +47,10 @@ export function InvoicePix({byok, currency, onSimulate, onNewPix, busy}: {
           </Button>
         )}
       </div>
-    )
+    );
   }
 
-  const code = byok.payable
+  const code = byok.payable;
   return (
     <div className="flex flex-col items-center gap-5 sm:flex-row sm:items-start">
       <QRCodeSVG value={code} size={200} level="M" marginSize={2} bgColor="#ffffff" fgColor="#211816"
@@ -64,10 +64,10 @@ export function InvoicePix({byok, currency, onSimulate, onNewPix, busy}: {
         <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
           <Button variant="outline" size="sm" onClick={async () => {
             try {
-              await navigator.clipboard.writeText(code)
-              toast.success(t("connections.pix.copied"))
+              await navigator.clipboard.writeText(code);
+              toast.success(t("connections.pix.copied"));
             } catch {
-              toast.error(t("connections.pix.copyFailed"))
+              toast.error(t("connections.pix.copyFailed"));
             }
           }}>
             <Copy aria-hidden className="size-3.5"/>{t("connections.pix.copy")}
@@ -80,5 +80,5 @@ export function InvoicePix({byok, currency, onSimulate, onNewPix, busy}: {
         </div>
       </div>
     </div>
-  )
+  );
 }

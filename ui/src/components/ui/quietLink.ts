@@ -5,4 +5,4 @@
  * should stay inline.
  */
 export const quietLink =
-  "text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline touch:inline-flex touch:min-h-11 touch:items-center"
+  "text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline touch:inline-flex touch:min-h-11 touch:items-center";

@@ -1,25 +1,25 @@
-import type {AxiosRequestConfig} from "axios"
-import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
+import type {AxiosRequestConfig} from "axios";
+import {afterEach, beforeEach, describe, expect, it, vi} from "vitest";
 
-import {apiClient} from "@/lib/api/client"
-import * as finance from "@/lib/api/finance"
-import {financeKeys} from "@/lib/api/finance"
-import type {Space} from "@/lib/console/space"
+import {apiClient} from "@/lib/api/client";
+import * as finance from "@/lib/api/finance";
+import {financeKeys} from "@/lib/api/finance";
+import type {Space} from "@/lib/console/space";
 
-const personal: Space = {kind: "personal"}
-const org: Space = {kind: "organization", organizationId: "0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b"}
+const personal: Space = {kind: "personal"};
+const org: Space = {kind: "organization", organizationId: "0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b"};
 
-let seen: AxiosRequestConfig[] = []
+let seen: AxiosRequestConfig[] = [];
 beforeEach(() => {
-  seen = []
+  seen = [];
   vi.spyOn(apiClient, "request").mockImplementation(async (config: AxiosRequestConfig) => {
-    seen.push(config)
-    return {data: {data: [], spaces: []}, status: 200, statusText: "OK", headers: {}, config} as never
-  })
-})
-afterEach(() => vi.restoreAllMocks())
+    seen.push(config);
+    return {data: {data: [], spaces: []}, status: 200, statusText: "OK", headers: {}, config} as never;
+  });
+});
+afterEach(() => vi.restoreAllMocks());
 
-const ctx = {mode: "test" as const, space: org}
+const ctx = {mode: "test" as const, space: org};
 
 // Review Focus 1: every call carries both headers, and writes carry the key.
 describe("every finance call", () => {
@@ -41,7 +41,7 @@ describe("every finance call", () => {
     ["listImports", () => finance.listImports(ctx, "a1")],
     ["getImport", () => finance.getImport(ctx, "i1")],
     ["getCsvMapping", () => finance.getCsvMapping(ctx, "a1")],
-  ]
+  ];
   const writes: [string, () => Promise<unknown>][] = [
     ["createBill", () => finance.createBill(ctx, {direction: "payable", amount: 100, account_id: "a", category_id: "c", due_date: "2026-03-10"}, "K")],
     ["patchBill", () => finance.patchBill(ctx, "b1", {description: "x"}, "K")],
@@ -70,30 +70,30 @@ describe("every finance call", () => {
     ["ignoreLine", () => finance.ignoreLine(ctx, "i1", 1, "K")],
     ["reopenLine", () => finance.reopenLine(ctx, "i1", 1, "K")],
     ["putCsvMapping", () => finance.putCsvMapping(ctx, "a1", {delimiter: ";", decimal: ",", date_format: "dd/mm/yyyy", skip_rows: 1, date_column: 1, description_column: 2, amount_column: 3, debit_column: 0}, "K")],
-  ]
+  ];
 
   it.each([...reads, ...writes])("%s sends the mode and the space", async (_name, call) => {
-    await call()
-    const h = seen[0].headers as Record<string, string>
-    expect(h["X-Billing-Mode"]).toBe("test")
-    expect(h["X-Billing-Space"]).toBe("org:0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b")
-  })
+    await call();
+    const h = seen[0].headers as Record<string, string>;
+    expect(h["X-Billing-Mode"]).toBe("test");
+    expect(h["X-Billing-Space"]).toBe("org:0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b");
+  });
 
   it.each(writes)("%s sends the Idempotency-Key", async (_name, call) => {
-    await call()
-    expect((seen[0].headers as Record<string, string>)["Idempotency-Key"]).toBe("K")
-  })
+    await call();
+    expect((seen[0].headers as Record<string, string>)["Idempotency-Key"]).toBe("K");
+  });
 
   it.each(reads)("%s sends no Idempotency-Key", async (_name, call) => {
-    await call()
-    expect((seen[0].headers as Record<string, string>)["Idempotency-Key"]).toBeUndefined()
-  })
+    await call();
+    expect((seen[0].headers as Record<string, string>)["Idempotency-Key"]).toBeUndefined();
+  });
 
   it("lists spaces without a space header (there is none yet)", async () => {
-    await finance.getFinanceSpaces()
-    expect((seen[0].headers as Record<string, string> | undefined)?.["X-Billing-Space"]).toBeUndefined()
-  })
-})
+    await finance.getFinanceSpaces();
+    expect((seen[0].headers as Record<string, string> | undefined)?.["X-Billing-Space"]).toBeUndefined();
+  });
+});
 
 describe("financeKeys", () => {
   it("carry the mode and the space, so two spaces or modes never share a cache entry", () => {
@@ -101,144 +101,144 @@ describe("financeKeys", () => {
       financeKeys.bills("live", personal, "payable"),
       financeKeys.bills("live", org, "payable"),
       financeKeys.bills("test", personal, "payable"),
-    ]
-    expect(keys[0].slice(0, 3)).toEqual(["finance", "live", "personal"])
-    expect(new Set(keys.map(k => JSON.stringify(k))).size).toBe(3)
+    ];
+    expect(keys[0].slice(0, 3)).toEqual(["finance", "live", "personal"]);
+    expect(new Set(keys.map(k => JSON.stringify(k))).size).toBe(3);
     for (const make of [financeKeys.accounts, financeKeys.recurrences, financeKeys.settings, financeKeys.space]) {
-      expect(JSON.stringify(make("live", personal))).not.toBe(JSON.stringify(make("live", org)))
-      expect(JSON.stringify(make("live", personal))).not.toBe(JSON.stringify(make("test", personal)))
+      expect(JSON.stringify(make("live", personal))).not.toBe(JSON.stringify(make("live", org)));
+      expect(JSON.stringify(make("live", personal))).not.toBe(JSON.stringify(make("test", personal)));
     }
-  })
-})
+  });
+});
 
 // A write without a key is a compile error, not a runtime surprise.
 // @ts-expect-error — createBill requires an idempotency key
-void (() => finance.createBill(ctx, {direction: "payable", amount: 1, account_id: "a", category_id: "c", due_date: "2026-03-10"}))
+void (() => finance.createBill(ctx, {direction: "payable", amount: 1, account_id: "a", category_id: "c", due_date: "2026-03-10"}));
 
 // @ts-expect-error — a purchase requires an idempotency key
-void (() => finance.createPurchase(ctx, "c1", {date: "2026-03-01", description: "TV", category_id: "c", total: 100, installments: 1}))
+void (() => finance.createPurchase(ctx, "c1", {date: "2026-03-01", description: "TV", category_id: "c", total: 100, installments: 1}));
 
 // @ts-expect-error — a transfer requires an idempotency key
-void (() => finance.createTransfer(ctx, {from_account_id: "a", to_account_id: "b", amount: 1, date: "2026-03-01"}))
+void (() => finance.createTransfer(ctx, {from_account_id: "a", to_account_id: "b", amount: 1, date: "2026-03-01"}));
 
 describe("the statement upload", () => {
   it("posts the file as base64 with the account and the format in the body", async () => {
-    await finance.uploadImport(ctx, {account_id: "a1", format: "csv", content: "YQ=="}, "K")
-    expect(seen[0].method).toBe("POST")
-    expect(seen[0].url).toBe("/v1.0/console/finance/imports")
-    expect(seen[0].data).toEqual({account_id: "a1", format: "csv", content: "YQ=="})
-  })
+    await finance.uploadImport(ctx, {account_id: "a1", format: "csv", content: "YQ=="}, "K");
+    expect(seen[0].method).toBe("POST");
+    expect(seen[0].url).toBe("/v1.0/console/finance/imports");
+    expect(seen[0].data).toEqual({account_id: "a1", format: "csv", content: "YQ=="});
+  });
 
   it("links a line to a paid bill on its own route", async () => {
-    await finance.linkLine(ctx, "i1", 2, {bill_id: "b1"}, "K")
-    expect(seen[0].method).toBe("POST")
-    expect(seen[0].url).toBe("/v1.0/console/finance/imports/i1/lines/2/link")
-    expect(seen[0].data).toEqual({bill_id: "b1"})
-  })
+    await finance.linkLine(ctx, "i1", 2, {bill_id: "b1"}, "K");
+    expect(seen[0].method).toBe("POST");
+    expect(seen[0].url).toBe("/v1.0/console/finance/imports/i1/lines/2/link");
+    expect(seen[0].data).toEqual({bill_id: "b1"});
+  });
 
   it("reads a file's bytes as base64 without decoding them as text", async () => {
     // "café" in Windows-1252: 0xE9 is not UTF-8, and must arrive unchanged.
-    const bytes = new Uint8Array([0x63, 0x61, 0x66, 0xe9])
-    expect(await finance.fileToBase64(new Blob([bytes]))).toBe("Y2Fm6Q==")
-  })
+    const bytes = new Uint8Array([0x63, 0x61, 0x66, 0xe9]);
+    expect(await finance.fileToBase64(new Blob([bytes]))).toBe("Y2Fm6Q==");
+  });
 
   it("keys the imports under the space, so a write's invalidation refreshes them", () => {
-    const all = JSON.stringify(financeKeys.all("live", org)).slice(0, -1)
+    const all = JSON.stringify(financeKeys.all("live", org)).slice(0, -1);
     for (const k of [financeKeys.imports("live", org, "a1"), financeKeys.importDetail("live", org, "i1"), financeKeys.csvMapping("live", org, "a1")]) {
-      expect(JSON.stringify(k).startsWith(all)).toBe(true)
+      expect(JSON.stringify(k).startsWith(all)).toBe(true);
     }
-  })
-})
+  });
+});
 
 describe("report keys", () => {
   it("live under the space's key, so any write's invalidation refreshes them", () => {
-    const all = JSON.stringify(financeKeys.all("live", org)).slice(0, -1)
+    const all = JSON.stringify(financeKeys.all("live", org)).slice(0, -1);
     for (const k of [
       financeKeys.statement("live", org, "a1", "2026-03-01", "2026-04-01"),
       financeKeys.cashFlow("live", org, "2026-01", "2026-03"),
       financeKeys.dre("live", org, "2026-01", "2026-03"),
-    ]) expect(JSON.stringify(k).startsWith(all)).toBe(true)
-  })
-})
+    ]) expect(JSON.stringify(k).startsWith(all)).toBe(true);
+  });
+});
 
 // UX batch 4: an emptied optional field is sent as null (the API clears it);
 // an absent one is not sent (the API keeps it). Mapped here, once, for every
 // edit: no screen converts it itself.
 describe("an edit that empties a field", () => {
-  const sent = () => seen.at(-1)!.data as Record<string, unknown>
+  const sent = () => seen.at(-1)!.data as Record<string, unknown>;
 
   it("sends null for an emptied recurrence end and description, and leaves absent fields out", async () => {
-    await finance.patchRecurrence(ctx, "r1", {end: "", description: ""}, "K")
-    expect(sent()).toEqual({end: null, description: null})
-    await finance.patchRecurrence(ctx, "r1", {amount: 5}, "K")
-    expect(sent()).toEqual({amount: 5})
-  })
+    await finance.patchRecurrence(ctx, "r1", {end: "", description: ""}, "K");
+    expect(sent()).toEqual({end: null, description: null});
+    await finance.patchRecurrence(ctx, "r1", {amount: 5}, "K");
+    expect(sent()).toEqual({amount: 5});
+  });
 
   it("sends null for an emptied bill description and card brand and digits", async () => {
-    await finance.patchBill(ctx, "b1", {description: ""}, "K")
-    expect(sent()).toEqual({description: null})
-    await finance.patchCard(ctx, "c1", {brand: "", last4: "", due_day: 10}, "K")
-    expect(sent()).toEqual({brand: null, last4: null, due_day: 10})
-  })
+    await finance.patchBill(ctx, "b1", {description: ""}, "K");
+    expect(sent()).toEqual({description: null});
+    await finance.patchCard(ctx, "c1", {brand: "", last4: "", due_day: 10}, "K");
+    expect(sent()).toEqual({brand: null, last4: null, due_day: 10});
+  });
 
   it("clears the default receiving account with null", async () => {
-    await finance.setDefaultReceivingAccount(ctx, "", "K")
-    expect(sent()).toEqual({default_receiving_account_id: null})
-    await finance.setDefaultReceivingAccount(ctx, "a1", "K")
-    expect(sent()).toEqual({default_receiving_account_id: "a1"})
-  })
+    await finance.setDefaultReceivingAccount(ctx, "", "K");
+    expect(sent()).toEqual({default_receiving_account_id: null});
+    await finance.setDefaultReceivingAccount(ctx, "a1", "K");
+    expect(sent()).toEqual({default_receiving_account_id: "a1"});
+  });
 
   it("leaves a create alone: an empty field there is just not sent by the form", async () => {
-    await finance.createAccount(ctx, {name: "Banco", class: "asset"}, "K")
-    expect(sent()).toEqual({name: "Banco", class: "asset"})
-  })
-})
+    await finance.createAccount(ctx, {name: "Banco", class: "asset"}, "K");
+    expect(sent()).toEqual({name: "Banco", class: "asset"});
+  });
+});
 
 describe("a space that is no longer the reader's", () => {
   it("falls back to personal when any finance call answers 404 space-not-found", async () => {
-    const {getSpace, setSpace} = await import("@/lib/console/space")
-    setSpace(org)
-    vi.mocked(apiClient.request).mockRejectedValueOnce({response: {status: 404, data: {type: "/problems/space-not-found"}}})
-    await expect(finance.listAccounts(ctx)).rejects.toBeTruthy()
-    expect(getSpace()).toEqual({kind: "personal"})
-    window.localStorage.clear()
-  })
+    const {getSpace, setSpace} = await import("@/lib/console/space");
+    setSpace(org);
+    vi.mocked(apiClient.request).mockRejectedValueOnce({response: {status: 404, data: {type: "/problems/space-not-found"}}});
+    await expect(finance.listAccounts(ctx)).rejects.toBeTruthy();
+    expect(getSpace()).toEqual({kind: "personal"});
+    window.localStorage.clear();
+  });
 
   it("leaves the selection alone when the 404 is from a space already left", async () => {
-    const {getSpace, setSpace} = await import("@/lib/console/space")
-    const other: Space = {kind: "organization", organizationId: "0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5c"}
-    setSpace(other)
-    vi.mocked(apiClient.request).mockRejectedValueOnce({response: {status: 404, data: {type: "/problems/space-not-found"}}})
-    await expect(finance.listAccounts(ctx)).rejects.toBeTruthy()
-    expect(getSpace()).toEqual(other)
-    window.localStorage.clear()
-  })
-})
+    const {getSpace, setSpace} = await import("@/lib/console/space");
+    const other: Space = {kind: "organization", organizationId: "0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5c"};
+    setSpace(other);
+    vi.mocked(apiClient.request).mockRejectedValueOnce({response: {status: 404, data: {type: "/problems/space-not-found"}}});
+    await expect(finance.listAccounts(ctx)).rejects.toBeTruthy();
+    expect(getSpace()).toEqual(other);
+    window.localStorage.clear();
+  });
+});
 
 describe("the plan calls", () => {
-  const pessoal = {mode: "live" as const, space: personal}
+  const pessoal = {mode: "live" as const, space: personal};
 
   it("reads the plan with both headers", async () => {
-    await finance.getPlan(pessoal)
-    expect(seen[0].url).toBe("/v1.0/console/finance/plan")
-    expect(seen[0].headers).toMatchObject({"X-Billing-Mode": "live", "X-Billing-Space": "personal"})
-  })
+    await finance.getPlan(pessoal);
+    expect(seen[0].url).toBe("/v1.0/console/finance/plan");
+    expect(seen[0].headers).toMatchObject({"X-Billing-Mode": "live", "X-Billing-Space": "personal"});
+  });
 
   it("chooses with an Idempotency-Key and the body as given", async () => {
-    await finance.choosePlan(pessoal, {price_ids: ["price_finance_basic_monthly"], name: "Ana"}, "K1")
-    expect(seen[0]).toMatchObject({method: "POST", url: "/v1.0/console/finance/plan", data: {price_ids: ["price_finance_basic_monthly"], name: "Ana"}})
-    expect(seen[0].headers).toMatchObject({"Idempotency-Key": "K1"})
-  })
+    await finance.choosePlan(pessoal, {price_ids: ["price_finance_basic_monthly"], name: "Ana"}, "K1");
+    expect(seen[0]).toMatchObject({method: "POST", url: "/v1.0/console/finance/plan", data: {price_ids: ["price_finance_basic_monthly"], name: "Ana"}});
+    expect(seen[0].headers).toMatchObject({"Idempotency-Key": "K1"});
+  });
 
   it("goes back to Free through /plan/cancel", async () => {
-    await finance.cancelPlan(pessoal, "K2")
-    expect(seen[0]).toMatchObject({method: "POST", url: "/v1.0/console/finance/plan/cancel"})
-  })
+    await finance.cancelPlan(pessoal, "K2");
+    expect(seen[0]).toMatchObject({method: "POST", url: "/v1.0/console/finance/plan/cancel"});
+  });
 
   it("recognises the pending first invoice and nothing else", () => {
-    const pending = {response: {status: 409, data: {code: "plan_payment_pending", checkout_url: "https://pay/x", invoice_id: "in_1"}}}
-    expect(finance.isPlanPaymentPending(pending)).toMatchObject({checkout_url: "https://pay/x", invoice_id: "in_1"})
-    expect(finance.isPlanPaymentPending({response: {status: 409, data: {code: "concurrent_update"}}})).toBeNull()
-    expect(finance.isPlanPaymentPending(new Error("x"))).toBeNull()
-  })
-})
+    const pending = {response: {status: 409, data: {code: "plan_payment_pending", checkout_url: "https://pay/x", invoice_id: "in_1"}}};
+    expect(finance.isPlanPaymentPending(pending)).toMatchObject({checkout_url: "https://pay/x", invoice_id: "in_1"});
+    expect(finance.isPlanPaymentPending({response: {status: 409, data: {code: "concurrent_update"}}})).toBeNull();
+    expect(finance.isPlanPaymentPending(new Error("x"))).toBeNull();
+  });
+});

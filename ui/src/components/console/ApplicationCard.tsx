@@ -1,17 +1,17 @@
-"use client"
+"use client";
 
-import {Button, Modal} from "@aoctech/ui"
-import {useMutation, useQueryClient} from "@tanstack/react-query"
-import {useState} from "react"
-import {useTranslation} from "react-i18next"
-import {toast} from "sonner"
+import {Button, Modal} from "@aoctech/ui";
+import {useMutation, useQueryClient} from "@tanstack/react-query";
+import {useState} from "react";
+import {useTranslation} from "react-i18next";
+import {toast} from "sonner";
 
-import {RejectDialog} from "@/components/console/RejectDialog"
-import {messageFor} from "@/lib/api/client"
-import {approveApplication} from "@/lib/api/console"
-import type {MerchantApplication} from "@/lib/api/consoleTypes"
-import {useConsoleScope} from "@/lib/console/scope"
-import {instantDate} from "@/lib/format"
+import {RejectDialog} from "@/components/console/RejectDialog";
+import {messageFor} from "@/lib/api/client";
+import {approveApplication} from "@/lib/api/console";
+import type {MerchantApplication} from "@/lib/api/consoleTypes";
+import {useConsoleScope} from "@/lib/console/scope";
+import {instantDate} from "@/lib/format";
 
 /**
  * One application, as tenant zero's reviewers decide on it (spec § 7.3). A
@@ -20,28 +20,28 @@ import {instantDate} from "@/lib/format"
  * share a full-width row at the bottom on a phone and sit in the header from sm.
  */
 export function ApplicationCard({application: a}: {application: MerchantApplication}) {
-  const {t} = useTranslation()
-  const scope = useConsoleScope()
-  const queryClient = useQueryClient()
-  const [confirming, setConfirming] = useState(false)
-  const [rejecting, setRejecting] = useState(false)
+  const {t} = useTranslation();
+  const scope = useConsoleScope();
+  const queryClient = useQueryClient();
+  const [confirming, setConfirming] = useState(false);
+  const [rejecting, setRejecting] = useState(false);
   const approve = useMutation({
     mutationFn: () => approveApplication(scope, a.id),
     onSuccess: () => {
-      toast.success(t("console.applications.approved", {name: a.organization_name}))
-      void queryClient.invalidateQueries({queryKey: ["console", scope.org, scope.mode, "applications"]})
-      setConfirming(false)
+      toast.success(t("console.applications.approved", {name: a.organization_name}));
+      void queryClient.invalidateQueries({queryKey: ["console", scope.org, scope.mode, "applications"]});
+      setConfirming(false);
     },
     onError: e => toast.error(messageFor(e)),
-  })
-  const pending = a.status === "pending"
+  });
+  const pending = a.status === "pending";
 
   const actions = pending && (
     <>
       <Button variant="outline" onClick={() => setRejecting(true)}>{t("console.applications.reject")}</Button>
       <Button variant="brand" onClick={() => setConfirming(true)}>{t("console.applications.approve")}</Button>
     </>
-  )
+  );
 
   return (
     // One column on a phone with the actions last (a full-width row); from sm a
@@ -105,5 +105,5 @@ export function ApplicationCard({application: a}: {application: MerchantApplicat
       />
       <RejectDialog application={a} open={rejecting} onClose={() => setRejecting(false)}/>
     </article>
-  )
+  );
 }

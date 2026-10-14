@@ -1,9 +1,9 @@
-"use client"
+"use client";
 
-import {Fragment, type ReactNode} from "react"
+import {Fragment, type ReactNode} from "react";
 
-import {spaceHeader} from "@/lib/console/space"
-import {usePortalSpace} from "@/lib/portal/space"
+import {spaceHeader} from "@/lib/console/space";
+import {usePortalSpace} from "@/lib/portal/space";
 
 /**
  * Remounts the portal's screens whenever the selection changes — from the
@@ -13,6 +13,6 @@ import {usePortalSpace} from "@/lib/portal/space"
  * one render.
  */
 export function PortalSpaceScope({children}: {children: ReactNode}) {
-  const space = usePortalSpace()
-  return <Fragment key={spaceHeader(space)}>{children}</Fragment>
+  const space = usePortalSpace();
+  return <Fragment key={spaceHeader(space)}>{children}</Fragment>;
 }

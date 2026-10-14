@@ -1,17 +1,17 @@
-"use client"
+"use client";
 
-import {PageHeader} from "@aoctech/ui"
-import {useSearchParams} from "next/navigation"
-import {Suspense} from "react"
-import {useTranslation} from "react-i18next"
+import {PageHeader} from "@aoctech/ui";
+import {useSearchParams} from "next/navigation";
+import {Suspense} from "react";
+import {useTranslation} from "react-i18next";
 
-import {ReportsView} from "@/components/finance/ReportsView"
-import {useDocumentTitle} from "@/lib/hooks/useDocumentTitle"
+import {ReportsView} from "@/components/finance/ReportsView";
+import {useDocumentTitle} from "@/lib/hooks/useDocumentTitle";
 
 /** F7 — DRE, cash flow and card spending. `?view=cash` or `?view=cards` opens on that report. */
 export default function FinanceReportsPage() {
-  const {t} = useTranslation()
-  useDocumentTitle(t("finance.nav.reports"))
+  const {t} = useTranslation();
+  useDocumentTitle(t("finance.nav.reports"));
   return (
     <div className="space-y-6">
       <PageHeader title={t("finance.nav.reports")}/>
@@ -19,11 +19,11 @@ export default function FinanceReportsPage() {
         <Reports/>
       </Suspense>
     </div>
-  )
+  );
 }
 
 function Reports() {
-  const asked = useSearchParams().get("view")
-  const view = asked === "cash" || asked === "cards" || asked === "review" ? asked : "dre"
-  return <ReportsView view={view}/>
+  const asked = useSearchParams().get("view");
+  const view = asked === "cash" || asked === "cards" || asked === "review" ? asked : "dre";
+  return <ReportsView view={view}/>;
 }

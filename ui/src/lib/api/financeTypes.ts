@@ -2,7 +2,7 @@
  * The finance wire contract, mirroring api/internal/api/v1/finance_*.go.
  * Money is integer centavos; dates are civil `YYYY-MM-DD` strings in São Paulo.
  */
-import type {Cents, IsoDate} from "@/lib/api/types"
+import type {Cents, IsoDate} from "@/lib/api/types";
 
 export type Direction = "payable" | "receivable"
 export type Bucket = "overdue" | "today" | "upcoming"

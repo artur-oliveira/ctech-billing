@@ -1,40 +1,40 @@
-"use client"
+"use client";
 
-import limits from "@/lib/limits.json"
-import {Badge, Button, Drawer, EmptyState, Field, Input, Segmented, Select, Skeleton, Switch} from "@aoctech/ui"
-import {useQuery, useQueryClient} from "@tanstack/react-query"
-import {AlertCircle, CalendarClock, Clock, Receipt} from "lucide-react"
-import Link from "next/link"
-import {useEffect, useState} from "react"
-import {useTranslation} from "react-i18next"
-import {toast} from "sonner"
+import limits from "@/lib/limits.json";
+import {Badge, Button, Drawer, EmptyState, Field, Input, Segmented, Select, Skeleton, Switch} from "@aoctech/ui";
+import {useQuery, useQueryClient} from "@tanstack/react-query";
+import {AlertCircle, CalendarClock, Clock, Receipt} from "lucide-react";
+import Link from "next/link";
+import {useEffect, useState} from "react";
+import {useTranslation} from "react-i18next";
+import {toast} from "sonner";
 
-import {LedgerRow} from "@/components/finance/LedgerRow"
-import {type HistoryEntry, SuggestingInput} from "@/components/finance/HistorySuggestions"
-import {ErrorBlock} from "@/components/portal/ErrorBlock"
-import {DateField} from "@/components/ui/DateField"
-import {messageFor, statusOf} from "@/lib/api/client"
-import {cancelBill, createBill, financeKeys, listAccounts, listBills, patchBill, restoreCancelledBill, settleBill, unsettleBill} from "@/lib/api/finance"
-import type {Account, Bill, BillPatch, Bucket, Direction, NewBill, Settlement} from "@/lib/api/financeTypes"
-import {bucketLabel} from "@/lib/finance/labels"
-import {addYearsIso, monthLabel, todayIso} from "@/lib/finance/today"
-import {selectCopy} from "@/lib/selectCopy"
-import {useFinanceMutation} from "@/lib/finance/useFinanceMutation"
-import {type FinanceCtx} from "@/lib/api/finance"
-import {useCreateRequest} from "@/lib/createRequest"
-import {useFinanceCtx, useFinanceSpaces} from "@/lib/finance/useFinanceSpaces"
-import {money, shortDate} from "@/lib/format"
-import {useFieldErrors} from "@/lib/useFieldErrors"
-import {formatMoneyInput, maskMoney, moneyPlaceholder, parseMoney} from "@/lib/money"
-import {accountName} from "@/lib/finance/accountName"
+import {LedgerRow} from "@/components/finance/LedgerRow";
+import {type HistoryEntry, SuggestingInput} from "@/components/finance/HistorySuggestions";
+import {ErrorBlock} from "@/components/portal/ErrorBlock";
+import {DateField} from "@/components/ui/DateField";
+import {messageFor, statusOf} from "@/lib/api/client";
+import {cancelBill, createBill, financeKeys, listAccounts, listBills, patchBill, restoreCancelledBill, settleBill, unsettleBill} from "@/lib/api/finance";
+import type {Account, Bill, BillPatch, Bucket, Direction, NewBill, Settlement} from "@/lib/api/financeTypes";
+import {bucketLabel} from "@/lib/finance/labels";
+import {addYearsIso, monthLabel, todayIso} from "@/lib/finance/today";
+import {selectCopy} from "@/lib/selectCopy";
+import {useFinanceMutation} from "@/lib/finance/useFinanceMutation";
+import {type FinanceCtx} from "@/lib/api/finance";
+import {useCreateRequest} from "@/lib/createRequest";
+import {useFinanceCtx, useFinanceSpaces} from "@/lib/finance/useFinanceSpaces";
+import {money, shortDate} from "@/lib/format";
+import {useFieldErrors} from "@/lib/useFieldErrors";
+import {formatMoneyInput, maskMoney, moneyPlaceholder, parseMoney} from "@/lib/money";
+import {accountName} from "@/lib/finance/accountName";
 
-const GROUPS: Bucket[] = ["overdue", "today", "upcoming"]
+const GROUPS: Bucket[] = ["overdue", "today", "upcoming"];
 
 const BADGE: Record<Bucket, {tone: "urgent" | "attention" | "neutral"; icon: typeof Clock}> = {
   overdue: {tone: "urgent", icon: AlertCircle},
   today: {tone: "attention", icon: Clock},
   upcoming: {tone: "neutral", icon: CalendarClock},
-}
+};
 
 /** Everything a write here changes: the list, the balances it moves, the projection. */
 const touched = (c: FinanceCtx) => [
@@ -42,7 +42,7 @@ const touched = (c: FinanceCtx) => [
   financeKeys.bills(c.mode, c.space, "receivable"),
   financeKeys.accounts(c.mode, c.space),
   ["finance", c.mode, ...financeKeys.all(c.mode, c.space).slice(2), "projection"],
-]
+];
 
 /**
  * F2 — a pagar e a receber.
@@ -52,21 +52,21 @@ const touched = (c: FinanceCtx) => [
  * actions open in place; the list never disappears behind a modal.
  */
 export function BillsView({direction: initial = "payable", focus}: {direction?: Direction; focus?: string} = {}) {
-  const {t} = useTranslation()
-  const ctx = useFinanceCtx()
-  const {can, loading} = useFinanceSpaces()
+  const {t} = useTranslation();
+  const ctx = useFinanceCtx();
+  const {can, loading} = useFinanceSpaces();
   // `?direction=&bill=` (a recurrence's overdue occurrence links here): open on
   // that side and mark that bill.
-  const [direction, setDirection] = useState<Direction>(initial)
-  const [creating, setCreating] = useState(false)
+  const [direction, setDirection] = useState<Direction>(initial);
+  const [creating, setCreating] = useState(false);
   // The bar's request is a wish, not a permission: a role that may not create
   // never sees the drawer, whenever the space's verbs arrive.
-  useCreateRequest("bill", () => { if (loading || can("finance.write")) setCreating(true) })
+  useCreateRequest("bill", () => { if (loading || can("finance.write")) setCreating(true); });
 
-  const bills = useQuery({queryKey: financeKeys.bills(ctx.mode, ctx.space, direction), queryFn: () => listBills(ctx, direction)})
-  const accounts = useQuery({queryKey: financeKeys.accounts(ctx.mode, ctx.space), queryFn: () => listAccounts(ctx)})
-  const rows = bills.data?.data ?? []
-  const names = new Map((accounts.data?.data ?? []).map(a => [a.id, accountName(a)]))
+  const bills = useQuery({queryKey: financeKeys.bills(ctx.mode, ctx.space, direction), queryFn: () => listBills(ctx, direction)});
+  const accounts = useQuery({queryKey: financeKeys.accounts(ctx.mode, ctx.space), queryFn: () => listAccounts(ctx)});
+  const rows = bills.data?.data ?? [];
+  const names = new Map((accounts.data?.data ?? []).map(a => [a.id, accountName(a)]));
 
   return (
     <div className="space-y-6">
@@ -95,9 +95,9 @@ export function BillsView({direction: initial = "payable", focus}: {direction?: 
             />
           ) : (
             GROUPS.map(g => {
-              const group = rows.filter(b => (b.bucket ?? "upcoming") === g)
-              if (group.length === 0) return null
-              const total = group.reduce((sum, b) => sum + b.amount, 0)
+              const group = rows.filter(b => (b.bucket ?? "upcoming") === g);
+              if (group.length === 0) return null;
+              const total = group.reduce((sum, b) => sum + b.amount, 0);
               return (
                 <section key={g} aria-labelledby={`grp-${g}`} className="space-y-2">
                   <div className="flex items-baseline justify-between">
@@ -110,7 +110,7 @@ export function BillsView({direction: initial = "payable", focus}: {direction?: 
                     ))}
                   </ul>
                 </section>
-              )
+              );
             })
           )}
         </div>
@@ -120,18 +120,18 @@ export function BillsView({direction: initial = "payable", focus}: {direction?: 
         <NewBillPanel direction={direction} accounts={accounts.data?.data ?? []} history={rows} onDone={() => setCreating(false)}/>
       </Drawer>
     </div>
-  )
+  );
 }
 
 type Panel = "settle" | "edit" | "cancel" | null
 
 function BillRow({bill, current, accountName, accounts}: {bill: Bill; current?: boolean; accountName?: string; accounts: Account[]}) {
-  const {t} = useTranslation()
-  const {can} = useFinanceSpaces()
-  const [panel, setPanel] = useState<Panel>(null)
-  const statement = bill.origin === "card_statement"
-  const bucket = bill.bucket ?? "upcoming"
-  const Icon = BADGE[bucket].icon
+  const {t} = useTranslation();
+  const {can} = useFinanceSpaces();
+  const [panel, setPanel] = useState<Panel>(null);
+  const statement = bill.origin === "card_statement";
+  const bucket = bill.bucket ?? "upcoming";
+  const Icon = BADGE[bucket].icon;
   return (
     <LedgerRow
       current={current}
@@ -159,95 +159,95 @@ function BillRow({bill, current, accountName, accounts}: {bill: Bill; current?: 
       {panel === "edit" && <EditForm bill={bill} accounts={accounts} onDone={() => setPanel(null)}/>}
       {panel === "cancel" && <CancelConfirm bill={bill} onDone={() => setPanel(null)}/>}
     </LedgerRow>
-  )
+  );
 }
 
 function useConflictReload(error: unknown) {
-  const client = useQueryClient()
-  const ctx = useFinanceCtx()
-  const conflict = statusOf(error) === 409
+  const client = useQueryClient();
+  const ctx = useFinanceCtx();
+  const conflict = statusOf(error) === 409;
   useEffect(() => {
-    if (conflict) for (const key of touched(ctx)) void client.invalidateQueries({queryKey: key})
-  }, [conflict, client, ctx])
-  return conflict
+    if (conflict) for (const key of touched(ctx)) void client.invalidateQueries({queryKey: key});
+  }, [conflict, client, ctx]);
+  return conflict;
 }
 
 /** `fe` carries the validation messages the form did not place on a control. */
 function FormError({error, fe}: {error: unknown; fe?: {general?: string}}) {
-  const {t} = useTranslation()
-  const conflict = useConflictReload(error)
-  if (!error) return null
-  const text = conflict ? t("bills.conflict") : fe ? fe.general : messageFor(error)
-  if (!text) return null
+  const {t} = useTranslation();
+  const conflict = useConflictReload(error);
+  if (!error) return null;
+  const text = conflict ? t("bills.conflict") : fe ? fe.general : messageFor(error);
+  if (!text) return null;
   return (
     <p role="alert" className="w-full text-sm text-danger">
       {text}
     </p>
-  )
+  );
 }
 
 // items-start: each Field is itself a grid; stretched to the row's height, the
 // spare space goes to its label row and pushes the input down out of line with
 // the field beside it (the one with a hint is taller).
-const inPanel = "mt-3 grid items-start gap-3 rounded-lg bg-surface p-3 sm:grid-cols-2 motion-safe:animate-in motion-safe:fade-in"
+const inPanel = "mt-3 grid items-start gap-3 rounded-lg bg-surface p-3 sm:grid-cols-2 motion-safe:animate-in motion-safe:fade-in";
 
 export function SettleForm({bill, accounts, onDone}: {bill: Bill; accounts: Account[]; onDone: () => void}) {
-  const {t} = useTranslation()
-  const ctx = useFinanceCtx()
-  const queryClient = useQueryClient()
-  const [amountText, setAmountText] = useState(formatMoneyInput(bill.amount))
-  const [date, setDate] = useState(todayIso())
-  const [category, setCategory] = useState("")
-  const fe = useFieldErrors(["paid_date", "paid_amount", "difference_category_id"])
+  const {t} = useTranslation();
+  const ctx = useFinanceCtx();
+  const queryClient = useQueryClient();
+  const [amountText, setAmountText] = useState(formatMoneyInput(bill.amount));
+  const [date, setDate] = useState(todayIso());
+  const [category, setCategory] = useState("");
+  const fe = useFieldErrors(["paid_date", "paid_amount", "difference_category_id"]);
   const settle = useFinanceMutation((c, body: Settlement, key) => settleBill(c, bill.id, body, key), touched, () => {
-    onDone()
+    onDone();
     toast.success(t("bills.settle.undoAvailable"), {
       duration: 10000,
       action: {
         label: t("bills.settle.undoAction"),
         onClick: () => {
           void unsettleBill(ctx, bill.id, crypto.randomUUID()).then(async () => {
-            await Promise.all(touched(ctx).map(queryKey => queryClient.invalidateQueries({queryKey})))
-            toast.success(t("bills.settle.undone"))
-          }).catch(() => toast.error(t("bills.settle.undoFailed")))
+            await Promise.all(touched(ctx).map(queryKey => queryClient.invalidateQueries({queryKey})));
+            toast.success(t("bills.settle.undone"));
+          }).catch(() => toast.error(t("bills.settle.undoFailed")));
         },
       },
-    })
-  }, fe.set)
+    });
+  }, fe.set);
 
   // The amount is always visible and starts at the bill's own: paying exactly
   // what was owed is the common case, and a different amount is just an edit
   // of the same field — no extra toggle to find.
-  const paid = parseMoney(amountText)
-  const gap = paid === null ? 0 : paid - bill.amount
-  const categories = accounts.filter(a => (a.class === "income" || a.class === "expense") && !a.system && !a.archived)
-  const ready = paid !== null && (gap === 0 || category !== "") && !settle.isPending
+  const paid = parseMoney(amountText);
+  const gap = paid === null ? 0 : paid - bill.amount;
+  const categories = accounts.filter(a => (a.class === "income" || a.class === "expense") && !a.system && !a.archived);
+  const ready = paid !== null && (gap === 0 || category !== "") && !settle.isPending;
 
   return (
     <form
       className={inPanel}
       onSubmit={e => {
-        e.preventDefault()
-        if (!ready) return
-        fe.reset()
-        const body: Settlement = {paid_date: date}
+        e.preventDefault();
+        if (!ready) return;
+        fe.reset();
+        const body: Settlement = {paid_date: date};
         if (gap !== 0) {
-          body.paid_amount = paid!
-          body.difference_category_id = category
+          body.paid_amount = paid!;
+          body.difference_category_id = category;
         }
-        settle.mutate(body)
+        settle.mutate(body);
       }}
     >
       <Field label={t(`bills.settle.date.${bill.direction}`)} htmlFor={`d-${bill.id}`} error={fe.of("paid_date")}>
-        <DateField id={`d-${bill.id}`} min={limits.minDate} max={todayIso()} value={date} invalid={!!fe.of("paid_date")} onValueChange={v => { setDate(v); fe.clear("paid_date") }}/>
+        <DateField id={`d-${bill.id}`} min={limits.minDate} max={todayIso()} value={date} invalid={!!fe.of("paid_date")} onValueChange={v => { setDate(v); fe.clear("paid_date"); }}/>
       </Field>
       <Field label={t(`bills.settle.amount.${bill.direction}`)} htmlFor={`v-${bill.id}`} error={fe.of("paid_amount")}>
-        <Input id={`v-${bill.id}`} inputMode="decimal" value={amountText} aria-invalid={paid === null || !!fe.of("paid_amount")} aria-describedby={fe.of("paid_amount") ? `v-${bill.id}-error` : undefined} onChange={e => { setAmountText(maskMoney(e.target.value)); fe.clear("paid_amount") }}/>
+        <Input id={`v-${bill.id}`} inputMode="decimal" value={amountText} aria-invalid={paid === null || !!fe.of("paid_amount")} aria-describedby={fe.of("paid_amount") ? `v-${bill.id}-error` : undefined} onChange={e => { setAmountText(maskMoney(e.target.value)); fe.clear("paid_amount"); }}/>
       </Field>
       {gap !== 0 && (
         <>
           <Field label={t("bills.settle.diffCategory")} htmlFor={`c-${bill.id}`} error={fe.of("difference_category_id")}>
-            <Select {...selectCopy()} id={`c-${bill.id}`} value={category} {...fe.props("difference_category_id", `c-${bill.id}`)} onValueChange={v => { setCategory(v); fe.clear("difference_category_id") }} options={categories.map(a => ({value: a.id, label: accountName(a)}))}/>
+            <Select {...selectCopy()} id={`c-${bill.id}`} value={category} {...fe.props("difference_category_id", `c-${bill.id}`)} onValueChange={v => { setCategory(v); fe.clear("difference_category_id"); }} options={categories.map(a => ({value: a.id, label: accountName(a)}))}/>
           </Field>
           <p className="text-sm text-muted-foreground sm:pt-7">
             {t(gap > 0 ? "bills.settle.more" : "bills.settle.less", {amount: money(Math.abs(gap)), bill: money(bill.amount)})}
@@ -260,56 +260,57 @@ export function SettleForm({bill, accounts, onDone}: {bill: Bill; accounts: Acco
         <FormError error={settle.error} fe={fe}/>
       </div>
     </form>
-  )
+  );
 }
 
 function EditForm({bill, accounts, onDone}: {bill: Bill; accounts: Account[]; onDone: () => void}) {
-  const {t} = useTranslation()
-  const {can} = useFinanceSpaces()
-  const [description, setDescription] = useState(bill.description ?? "")
-  const [amountText, setAmountText] = useState(formatMoneyInput(bill.amount))
-  const [due, setDue] = useState(bill.due_date)
-  const [category, setCategory] = useState(bill.category_id)
-  const [account, setAccount] = useState(bill.account_id)
-  const [autoSettle, setAutoSettle] = useState(bill.auto_settle)
-  const fe = useFieldErrors(["description", "amount", "due_date", "category_id", "account_id", "auto_settle"])
-  const edit = useFinanceMutation((c, body: BillPatch, key) => patchBill(c, bill.id, body, key), touched, onDone, fe.set)
+  const {t} = useTranslation();
+  const {can} = useFinanceSpaces();
+  const [description, setDescription] = useState(bill.description ?? "");
+  const [amountText, setAmountText] = useState(formatMoneyInput(bill.amount));
+  const [due, setDue] = useState(bill.due_date);
+  const [category, setCategory] = useState(bill.category_id);
+  const [account, setAccount] = useState(bill.account_id);
+  const [autoSettle, setAutoSettle] = useState(bill.auto_settle);
+  const fe = useFieldErrors(["description", "amount", "due_date", "category_id", "account_id", "auto_settle"]);
+  const edit = useFinanceMutation((c, body: BillPatch, key) => patchBill(c, bill.id, body, key), touched, onDone, fe.set);
   // A card statement's amount is its purchases' and its "category" is the card.
-  const statement = bill.origin === "card_statement"
-  const amount = parseMoney(amountText)
-  const cats = accounts.filter(a => a.class === (bill.direction === "payable" ? "expense" : "income") && !a.archived && !a.system)
-  const assets = accounts.filter(a => a.class === "asset" && !a.archived && !a.system)
+  const statement = bill.origin === "card_statement";
+  const amount = parseMoney(amountText);
+  const cats = accounts.filter(a => a.class === (bill.direction === "payable" ? "expense" : "income") && !a.archived && !a.system);
+  const assets = accounts.filter(a => a.class === "asset" && !a.archived && !a.system);
   // Turning auto-settle ON is settling; turning it off only removes power.
-  const showAuto = can("finance.settle") || bill.auto_settle
+  const showAuto = can("finance.settle") || bill.auto_settle;
 
   return (
     <form
       className={inPanel}
       onSubmit={e => {
-        e.preventDefault()
-        if (amount === null) return
-        const body: BillPatch = {}
-        if (description !== (bill.description ?? "")) body.description = description
-        if (amount !== bill.amount) body.amount = amount
-        if (due !== bill.due_date) body.due_date = due
-        if (category !== bill.category_id) body.category_id = category
-        if (account !== bill.account_id) body.account_id = account
-        if (autoSettle !== bill.auto_settle) body.auto_settle = autoSettle
-        if (Object.keys(body).length === 0) return onDone()
-        fe.reset()
-        edit.mutate(body)
+        e.preventDefault();
+        if (amount === null) return () => {};
+        const body: BillPatch = {};
+        if (description !== (bill.description ?? "")) body.description = description;
+        if (amount !== bill.amount) body.amount = amount;
+        if (due !== bill.due_date) body.due_date = due;
+        if (category !== bill.category_id) body.category_id = category;
+        if (account !== bill.account_id) body.account_id = account;
+        if (autoSettle !== bill.auto_settle) body.auto_settle = autoSettle;
+        if (Object.keys(body).length === 0) return onDone();
+        fe.reset();
+        edit.mutate(body);
+        return () => {};
       }}
     >
-      <Field label={t("bills.common.description")} htmlFor={`ed-${bill.id}`} error={fe.of("description")}><Input id={`ed-${bill.id}`} maxLength={limits.text.description} value={description} {...fe.props("description", `ed-${bill.id}`)} onChange={e => { setDescription(e.target.value); fe.clear("description") }}/></Field>
-      {!statement && <Field label={t("bills.common.amount")} htmlFor={`ev-${bill.id}`} error={fe.of("amount")}><Input id={`ev-${bill.id}`} inputMode="decimal" value={amountText} aria-invalid={amount === null || !!fe.of("amount")} aria-describedby={fe.of("amount") ? `ev-${bill.id}-error` : undefined} onChange={e => { setAmountText(maskMoney(e.target.value)); fe.clear("amount") }}/></Field>}
-      <Field label={t("bills.common.due")} htmlFor={`eu-${bill.id}`} error={fe.of("due_date")}><DateField id={`eu-${bill.id}`} min={limits.minDate} max={addYearsIso(todayIso(), limits.maxFutureYears)} value={due} invalid={!!fe.of("due_date")} onValueChange={v => { setDue(v); fe.clear("due_date") }}/></Field>
+      <Field label={t("bills.common.description")} htmlFor={`ed-${bill.id}`} error={fe.of("description")}><Input id={`ed-${bill.id}`} maxLength={limits.text.description} value={description} {...fe.props("description", `ed-${bill.id}`)} onChange={e => { setDescription(e.target.value); fe.clear("description"); }}/></Field>
+      {!statement && <Field label={t("bills.common.amount")} htmlFor={`ev-${bill.id}`} error={fe.of("amount")}><Input id={`ev-${bill.id}`} inputMode="decimal" value={amountText} aria-invalid={amount === null || !!fe.of("amount")} aria-describedby={fe.of("amount") ? `ev-${bill.id}-error` : undefined} onChange={e => { setAmountText(maskMoney(e.target.value)); fe.clear("amount"); }}/></Field>}
+      <Field label={t("bills.common.due")} htmlFor={`eu-${bill.id}`} error={fe.of("due_date")}><DateField id={`eu-${bill.id}`} min={limits.minDate} max={addYearsIso(todayIso(), limits.maxFutureYears)} value={due} invalid={!!fe.of("due_date")} onValueChange={v => { setDue(v); fe.clear("due_date"); }}/></Field>
       {!statement && (
         <Field label={t("bills.common.category")} htmlFor={`ec-${bill.id}`} error={fe.of("category_id")}>
-          <Select {...selectCopy()} id={`ec-${bill.id}`} value={category} {...fe.props("category_id", `ec-${bill.id}`)} onValueChange={v => { setCategory(v); fe.clear("category_id") }} options={cats.map(a => ({value: a.id, label: accountName(a)}))}/>
+          <Select {...selectCopy()} id={`ec-${bill.id}`} value={category} {...fe.props("category_id", `ec-${bill.id}`)} onValueChange={v => { setCategory(v); fe.clear("category_id"); }} options={cats.map(a => ({value: a.id, label: accountName(a)}))}/>
         </Field>
       )}
       <Field label={t(`bills.common.payWith.${bill.direction}`)} htmlFor={`ea-${bill.id}`} error={fe.of("account_id")}>
-        <Select {...selectCopy()} id={`ea-${bill.id}`} value={account} {...fe.props("account_id", `ea-${bill.id}`)} onValueChange={v => { setAccount(v); fe.clear("account_id") }} options={assets.map(a => ({value: a.id, label: accountName(a)}))}/>
+        <Select {...selectCopy()} id={`ea-${bill.id}`} value={account} {...fe.props("account_id", `ea-${bill.id}`)} onValueChange={v => { setAccount(v); fe.clear("account_id"); }} options={assets.map(a => ({value: a.id, label: accountName(a)}))}/>
       </Field>
       {showAuto && (
         <label className="flex items-center gap-2 self-end text-sm">
@@ -323,28 +324,28 @@ function EditForm({bill, accounts, onDone}: {bill: Bill; accounts: Account[]; on
         <FormError error={edit.error} fe={fe}/>
       </div>
     </form>
-  )
+  );
 }
 
 function CancelConfirm({bill, onDone}: {bill: Bill; onDone: () => void}) {
-  const {t} = useTranslation()
-  const ctx = useFinanceCtx()
-  const queryClient = useQueryClient()
+  const {t} = useTranslation();
+  const ctx = useFinanceCtx();
+  const queryClient = useQueryClient();
   const cancel = useFinanceMutation((c, _: void, key) => cancelBill(c, bill.id, key), touched, () => {
-    onDone()
+    onDone();
     toast.success(t("bills.delete.undoAvailable"), {
       duration: 10000,
       action: {
         label: t("bills.settle.undoAction"),
         onClick: () => {
           void restoreCancelledBill(ctx, bill.id, crypto.randomUUID()).then(async () => {
-            await Promise.all(touched(ctx).map(queryKey => queryClient.invalidateQueries({queryKey})))
-            toast.success(t("bills.delete.undone"))
-          }).catch(() => toast.error(t("bills.delete.undoFailed")))
+            await Promise.all(touched(ctx).map(queryKey => queryClient.invalidateQueries({queryKey})));
+            toast.success(t("bills.delete.undone"));
+          }).catch(() => toast.error(t("bills.delete.undoFailed")));
         },
       },
-    })
-  })
+    });
+  });
   return (
     <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg bg-surface p-3 text-sm motion-safe:animate-in motion-safe:fade-in">
       <p className="text-muted-foreground">
@@ -354,26 +355,26 @@ function CancelConfirm({bill, onDone}: {bill: Bill; onDone: () => void}) {
       <Button size="sm" variant="danger" disabled={cancel.isPending} onClick={() => cancel.mutate()}>{t("bills.row.delete")}</Button>
       <FormError error={cancel.error}/>
     </div>
-  )
+  );
 }
 
 function NewBillPanel({direction, accounts, history, onDone}: {direction: Direction; accounts: Account[]; history: Bill[]; onDone: () => void}) {
-  const {t} = useTranslation()
-  const {can} = useFinanceSpaces()
-  const [description, setDescription] = useState("")
-  const [amountText, setAmountText] = useState("")
-  const [due, setDue] = useState(todayIso())
-  const [competence, setCompetence] = useState("")
-  const cats = accounts.filter(a => a.class === (direction === "payable" ? "expense" : "income") && !a.archived && !a.system)
-  const assets = accounts.filter(a => a.class === "asset" && !a.archived && !a.system)
-  const [category, setCategory] = useState("")
-  const [account, setAccount] = useState("")
-  const [autoSettle, setAutoSettle] = useState(false)
+  const {t} = useTranslation();
+  const {can} = useFinanceSpaces();
+  const [description, setDescription] = useState("");
+  const [amountText, setAmountText] = useState("");
+  const [due, setDue] = useState(todayIso());
+  const [competence, setCompetence] = useState("");
+  const cats = accounts.filter(a => a.class === (direction === "payable" ? "expense" : "income") && !a.archived && !a.system);
+  const assets = accounts.filter(a => a.class === "asset" && !a.archived && !a.system);
+  const [category, setCategory] = useState("");
+  const [account, setAccount] = useState("");
+  const [autoSettle, setAutoSettle] = useState(false);
   // Paid already (cash received at the counter, a bill paid on the spot): the
   // bill is created and settled right after, each with its own intent; if only
   // the second fails, the bill exists and the form offers to retry the payment.
-  const [paidNow, setPaidNow] = useState(false)
-  const [paidOn, setPaidOn] = useState(todayIso())
+  const [paidNow, setPaidNow] = useState(false);
+  const [paidOn, setPaidOn] = useState(todayIso());
   //
   // The list is refreshed once, after the LAST step: a create that a settle
   // follows invalidates nothing, or the refetch in between shows the bill open
@@ -383,55 +384,55 @@ function NewBillPanel({direction, accounts, history, onDone}: {direction: Direct
   // closed, and they would believe the bill was paid.
   const settle = useFinanceMutation(
     (c, v: {id: string; body: Settlement}, key) => settleBill(c, v.id, v.body, key), touched,
-    () => { toast.success(t(`bills.new.settled.${direction}`)); onDone() },
-    () => { toast.error(t(`bills.new.settleError.${direction}`)) },
+    () => { toast.success(t(`bills.new.settled.${direction}`)); onDone(); },
+    () => { toast.error(t(`bills.new.settleError.${direction}`)); },
     {invalidateOnError: true},
-  )
-  const fe = useFieldErrors(["description", "amount", "due_date", "competence_date", "category_id", "account_id"])
+  );
+  const fe = useFieldErrors(["description", "amount", "due_date", "competence_date", "category_id", "account_id"]);
   const create = useFinanceMutation(
     (c, v: {body: NewBill; paidOn?: string}, key) => createBill(c, v.body, key),
     (c, _created, v) => (v.paidOn ? [] : touched(c)),
     (created, v) => (v.paidOn ? settle.mutate({id: created.id, body: {paid_date: v.paidOn}}) : onDone()),
     fe.set,
-  )
-  const amount = parseMoney(amountText)
-  const ready = amount !== null && category !== "" && account !== "" && due !== "" && !create.isPending && !create.isSuccess
-  const suggestions: HistoryEntry[] = history.map(b => ({description: b.description ?? "", amount: b.amount, categoryId: b.category_id, accountId: b.account_id}))
+  );
+  const amount = parseMoney(amountText);
+  const ready = amount !== null && category !== "" && account !== "" && due !== "" && !create.isPending && !create.isSuccess;
+  const suggestions: HistoryEntry[] = history.map(b => ({description: b.description ?? "", amount: b.amount, categoryId: b.category_id, accountId: b.account_id}));
 
   return (
     <div className="space-y-3">
       <form
         className="space-y-3"
         onSubmit={e => {
-          e.preventDefault()
-          if (!ready) return
-          fe.reset()
+          e.preventDefault();
+          if (!ready) return;
+          fe.reset();
           create.mutate({
             body: {
               direction, amount: amount!, category_id: category, account_id: account, description: description || undefined,
               due_date: due, competence_date: competence || undefined, auto_settle: (autoSettle && !paidNow) || undefined,
             },
             paidOn: paidNow ? paidOn : undefined,
-          })
+          });
         }}
       >
         <Field label={t("bills.common.description")} htmlFor="nb-desc" error={fe.of("description")}>
-          <SuggestingInput id="nb-desc" maxLength={limits.text.description} value={description} {...fe.props("description", "nb-desc")} onValueChange={v => { setDescription(v); fe.clear("description") }} autoFocus
+          <SuggestingInput id="nb-desc" maxLength={limits.text.description} value={description} {...fe.props("description", "nb-desc")} onValueChange={v => { setDescription(v); fe.clear("description"); }} autoFocus
             entries={suggestions}
             onSelect={entry => {
-              setDescription(entry.description)
-              setAmountText(formatMoneyInput(entry.amount))
-              if (cats.some(a => a.id === entry.categoryId)) setCategory(entry.categoryId)
-              if (assets.some(a => a.id === entry.accountId)) setAccount(entry.accountId!)
+              setDescription(entry.description);
+              setAmountText(formatMoneyInput(entry.amount));
+              if (cats.some(a => a.id === entry.categoryId)) setCategory(entry.categoryId);
+              if (assets.some(a => a.id === entry.accountId)) setAccount(entry.accountId!);
             }}/>
         </Field>
-        <Field label={t("bills.common.amount")} htmlFor="nb-amount" required error={fe.of("amount")}><Input id="nb-amount" inputMode="decimal" placeholder={moneyPlaceholder()} value={amountText} {...fe.props("amount", "nb-amount")} onChange={e => { setAmountText(maskMoney(e.target.value)); fe.clear("amount") }}/></Field>
-        <Field label={t("bills.common.due")} htmlFor="nb-due" required error={fe.of("due_date")}><DateField id="nb-due" min={limits.minDate} max={addYearsIso(todayIso(), limits.maxFutureYears)} value={due} invalid={!!fe.of("due_date")} onValueChange={v => { setDue(v); fe.clear("due_date") }}/></Field>
+        <Field label={t("bills.common.amount")} htmlFor="nb-amount" required error={fe.of("amount")}><Input id="nb-amount" inputMode="decimal" placeholder={moneyPlaceholder()} value={amountText} {...fe.props("amount", "nb-amount")} onChange={e => { setAmountText(maskMoney(e.target.value)); fe.clear("amount"); }}/></Field>
+        <Field label={t("bills.common.due")} htmlFor="nb-due" required error={fe.of("due_date")}><DateField id="nb-due" min={limits.minDate} max={addYearsIso(todayIso(), limits.maxFutureYears)} value={due} invalid={!!fe.of("due_date")} onValueChange={v => { setDue(v); fe.clear("due_date"); }}/></Field>
         <Field label={t("bills.new.competence")} htmlFor="nb-comp" error={fe.of("competence_date")}>
-          <DateField id="nb-comp" min={limits.minDate} max={addYearsIso(todayIso(), limits.maxFutureYears)} value={competence} invalid={!!fe.of("competence_date")} onValueChange={v => { setCompetence(v); fe.clear("competence_date") }} placeholder={t("bills.new.competencePlaceholder")} clearLabel={t("bills.new.clearCompetence")}/>
+          <DateField id="nb-comp" min={limits.minDate} max={addYearsIso(todayIso(), limits.maxFutureYears)} value={competence} invalid={!!fe.of("competence_date")} onValueChange={v => { setCompetence(v); fe.clear("competence_date"); }} placeholder={t("bills.new.competencePlaceholder")} clearLabel={t("bills.new.clearCompetence")}/>
         </Field>
         <Field label={t("bills.common.category")} htmlFor="nb-cat" required error={fe.of("category_id")} hint={cats.length === 0 ? t(`bills.noCategory.${direction === "payable" ? "expense" : "income"}`) : undefined}>
-          <Select {...selectCopy()} id="nb-cat" value={category} {...fe.props("category_id", "nb-cat")} onValueChange={v => { setCategory(v); fe.clear("category_id") }} options={cats.map(a => ({value: a.id, label: accountName(a)}))}/>
+          <Select {...selectCopy()} id="nb-cat" value={category} {...fe.props("category_id", "nb-cat")} onValueChange={v => { setCategory(v); fe.clear("category_id"); }} options={cats.map(a => ({value: a.id, label: accountName(a)}))}/>
         </Field>
         {can("finance.settle") && (
           <label className="flex min-h-11 items-center gap-2 text-sm">
@@ -456,7 +457,7 @@ function NewBillPanel({direction, accounts, history, onDone}: {direction: Direct
             </Field>
           )}
           <Field label={t(paidNow ? `bills.new.paidWith.${direction}` : `bills.common.payWith.${direction}`)} htmlFor="nb-acct" required error={fe.of("account_id")} hint={assets.length === 0 ? t("bills.noAccount") : undefined}>
-            <Select {...selectCopy()} id="nb-acct" value={account} {...fe.props("account_id", "nb-acct")} onValueChange={v => { setAccount(v); fe.clear("account_id") }} options={assets.map(a => ({value: a.id, label: accountName(a)}))}/>
+            <Select {...selectCopy()} id="nb-acct" value={account} {...fe.props("account_id", "nb-acct")} onValueChange={v => { setAccount(v); fe.clear("account_id"); }} options={assets.map(a => ({value: a.id, label: accountName(a)}))}/>
           </Field>
           {can("finance.settle") && !paidNow && (
             <label className="flex min-h-11 items-center gap-2 text-sm">
@@ -480,5 +481,5 @@ function NewBillPanel({direction, accounts, history, onDone}: {direction: Direct
         ) : null}
       </form>
     </div>
-  )
+  );
 }

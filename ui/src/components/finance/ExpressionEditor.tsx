@@ -1,43 +1,44 @@
-"use client"
+"use client";
 
-import {addYearsIso, todayIso} from "@/lib/finance/today"
-import limits from "@/lib/limits.json"
-import {Button, Field, Input, Select} from "@aoctech/ui"
-import {X} from "lucide-react"
-import {useState} from "react"
-import {useTranslation} from "react-i18next"
+import {addYearsIso, todayIso} from "@/lib/finance/today";
+import limits from "@/lib/limits.json";
+import {Button, Field, Input, Select} from "@aoctech/ui";
+import {X} from "lucide-react";
+import {useState} from "react";
+import {useTranslation} from "react-i18next";
 
-import {DateField} from "@/components/ui/DateField"
+import {DateField} from "@/components/ui/DateField";
 import {
   defaultAnchor, type EditorModel, type ModelError, monthName, ordinal, type Pattern,
-} from "@/lib/finance/expression"
-import {selectCopy} from "@/lib/selectCopy"
-import {weekdayLabel} from "@/lib/finance/labels"
-import {shortDate} from "@/lib/format"
-import {t} from "@/lib/i18n"
+} from "@/lib/finance/expression";
+import {selectCopy} from "@/lib/selectCopy";
+import {weekdayLabel} from "@/lib/finance/labels";
+import {shortDate} from "@/lib/format";
+import {t} from "@/lib/i18n";
 
 // Option lists are built at render, never at import: the language can change.
 const kindOptions = (): {value: Pattern["kind"]; label: string}[] =>
   (["daily", "business_days", "day_of_month", "workday_of_month", "nth_weekday_of_month", "weekly", "yearly"] as const)
-    .map(value => ({value, label: t(`bills.editor.kind.${value}`)}))
-const weekdayOptions = () => [0, 1, 2, 3, 4, 5, 6].map(i => ({value: String(i), label: weekdayLabel(i) ?? ""}))
-const monthOptions = () => Array.from({length: 12}, (_, i) => ({value: String(i + 1), label: monthName(i + 1)}))
+    .map(value => ({value, label: t(`bills.editor.kind.${value}`)}));
+const weekdayOptions = () => [0, 1, 2, 3, 4, 5, 6].map(i => ({value: String(i), label: weekdayLabel(i) ?? ""}));
+const monthOptions = () => Array.from({length: 12}, (_, i) => ({value: String(i + 1), label: monthName(i + 1)}));
 const workdayOptions = () => [
   ...Array.from({length: 23}, (_, i) => ({value: String(i + 1), label: t("bills.editor.nthWorkday", {ord: ordinal(i + 1)})})),
   {value: "-1", label: t("bills.editor.lastWorkday")},
-]
-const nthOptions = () => [...[1, 2, 3, 4].map(n => ({value: String(n), label: ordinal(n, true)})), {value: "-1", label: t("bills.editor.last")}]
+];
+const nthOptions = () => [...[1, 2, 3, 4].map(n => ({value: String(n), label: ordinal(n, true)})), {value: "-1", label: t("bills.editor.last")}];
 
 function patternFor(kind: Pattern["kind"], start: string, prev: Pattern): Pattern {
-  const day = Number(start.split("-")[2]) || 10
+  const day = Number(start.split("-")[2]) || 10;
   switch (kind) {
-    case "daily": return {kind}
-    case "business_days": return {kind}
-    case "day_of_month": return {kind, day: "day" in prev ? prev.day : day}
-    case "workday_of_month": return {kind, n: 5}
-    case "nth_weekday_of_month": return {kind, weekday: 1, n: 1}
-    case "weekly": return {kind, weekday: 5, every: 1, anchor: defaultAnchor(5, start)}
-    case "yearly": return {kind, month: Number(start.split("-")[1]) || 1, day}
+    case "daily": return {kind};
+    case "business_days": return {kind};
+    case "day_of_month": return {kind, day: "day" in prev ? prev.day : day};
+    case "workday_of_month": return {kind, n: 5};
+    case "nth_weekday_of_month": return {kind, weekday: 1, n: 1};
+    case "weekly": return {kind, weekday: 5, every: 1, anchor: defaultAnchor(5, start)};
+    case "yearly": return {kind, month: Number(start.split("-")[1]) || 1, day};
+    default: throw new Error(`unknown kind ${kind} with start ${start} and prev ${prev}`);
   }
 }
 
@@ -54,10 +55,10 @@ interface EditorProps {
  * back to the last day; the preview shows it, so no hint is needed here.
  */
 export function PatternFields({model, start, errors, onChange}: EditorProps) {
-  const {t} = useTranslation()
-  const p = model.pattern
-  const err = (field: string) => errors.find(e => e.field === field)?.message
-  const setPattern = (next: Pattern) => onChange({...model, pattern: next})
+  const {t} = useTranslation();
+  const p = model.pattern;
+  const err = (field: string) => errors.find(e => e.field === field)?.message;
+  const setPattern = (next: Pattern) => onChange({...model, pattern: next});
   return (
     <>
       <Field label={t("bills.editor.repeat")} htmlFor="rx-kind">
@@ -119,22 +120,22 @@ export function PatternFields({model, start, errors, onChange}: EditorProps) {
         </>
       )}
     </>
-  )
+  );
 }
 
 /** The exceptions (whole months, single dates), shown under "Mais opções". */
 export function ExceptionsFields({model, errors, onChange}: Omit<EditorProps, "start">) {
-  const {t} = useTranslation()
-  const err = (field: string) => errors.find(e => e.field === field)?.message
-  const [newDate, setNewDate] = useState("")
+  const {t} = useTranslation();
+  const err = (field: string) => errors.find(e => e.field === field)?.message;
+  const [newDate, setNewDate] = useState("");
   return (
     <div className="space-y-3">
       <fieldset className="space-y-2">
         <legend className="text-sm font-medium text-foreground">{t("bills.editor.exceptMonths")}</legend>
         <div className="flex flex-wrap gap-1">
           {monthOptions().map(({label}, i) => {
-            const month = i + 1
-            const on = model.exceptions.months.includes(month)
+            const month = i + 1;
+            const on = model.exceptions.months.includes(month);
             return (
               <button
                 key={month}
@@ -145,7 +146,7 @@ export function ExceptionsFields({model, errors, onChange}: Omit<EditorProps, "s
               >
                 {label.slice(0, 3)}
               </button>
-            )
+            );
           })}
         </div>
         {err("months") && <p role="alert" className="text-sm text-danger">{err("months")}</p>}
@@ -161,8 +162,8 @@ export function ExceptionsFields({model, errors, onChange}: Omit<EditorProps, "s
               size="sm"
               disabled={!newDate || model.exceptions.dates.includes(newDate)}
               onClick={() => {
-                onChange({...model, exceptions: {...model.exceptions, dates: [...model.exceptions.dates, newDate]}})
-                setNewDate("")
+                onChange({...model, exceptions: {...model.exceptions, dates: [...model.exceptions.dates, newDate]}});
+                setNewDate("");
               }}
             >
               {t("bills.editor.add")}
@@ -189,5 +190,5 @@ export function ExceptionsFields({model, errors, onChange}: Omit<EditorProps, "s
         {err("dates") && <p role="alert" className="text-sm text-danger">{err("dates")}</p>}
       </div>
     </div>
-  )
+  );
 }

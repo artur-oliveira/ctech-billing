@@ -5,7 +5,7 @@
  * so the fixtures are not merely disabled but absent.
  */
 export const USE_MOCK =
-  process.env.NODE_ENV !== "production" && process.env.NEXT_PUBLIC_MOCK_API === "true"
+  process.env.NODE_ENV !== "production" && process.env.NEXT_PUBLIC_MOCK_API === "true";
 
 export const MOCK_CUSTOMER = {
   customer_id: "cus_mock_ana",
@@ -14,12 +14,12 @@ export const MOCK_CUSTOMER = {
   // Already accepted, so the fixtures below render the screens they exist to
   // render. The gate itself has its own scenario — see `termos_pendentes`.
   terms_accepted: true,
-}
+};
 
 /** The same person before they have agreed to the terms addendum. It is a
  *  separate constant rather than a flag because the gate replaces the whole
  *  portal, so it is a state every fixture would otherwise have to opt out of. */
-export const MOCK_CUSTOMER_PENDING_TERMS = {...MOCK_CUSTOMER, terms_accepted: false}
+export const MOCK_CUSTOMER_PENDING_TERMS = {...MOCK_CUSTOMER, terms_accepted: false};
 
 /**
  * The states the portal has to render correctly, as named fixtures.
@@ -71,6 +71,6 @@ export const MOCK_SCENARIOS: { id: MockScenario; label: string }[] = [
   {id: "termos_pendentes", label: "Termos pendentes"},
   {id: "erro_de_rede", label: "Erro de rede"},
   {id: "manutencao", label: "Manutenção (503)"},
-]
+];
 
-export const DEFAULT_SCENARIO: MockScenario = "vence_em_3_dias"
+export const DEFAULT_SCENARIO: MockScenario = "vence_em_3_dias";

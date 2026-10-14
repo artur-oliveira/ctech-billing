@@ -7,4 +7,4 @@
  * finger's target (UX batch 5). Keep such a group on one line: wrapped rows
  * 2px apart would share their targets.
  */
-export const segmentHit = "relative after:absolute after:inset-x-0 after:top-1/2 after:h-11 after:min-h-full after:-translate-y-1/2 after:content-['']"
+export const segmentHit = "relative after:absolute after:inset-x-0 after:top-1/2 after:h-11 after:min-h-full after:-translate-y-1/2 after:content-['']";

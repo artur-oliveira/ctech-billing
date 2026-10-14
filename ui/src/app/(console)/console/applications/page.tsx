@@ -1,34 +1,34 @@
-"use client"
+"use client";
 
-import {Button, EmptyState, ErrorState, PageHeader, Segmented, Skeleton} from "@aoctech/ui"
-import {useInfiniteQuery} from "@tanstack/react-query"
-import {useState} from "react"
-import {useTranslation} from "react-i18next"
+import {Button, EmptyState, ErrorState, PageHeader, Segmented, Skeleton} from "@aoctech/ui";
+import {useInfiniteQuery} from "@tanstack/react-query";
+import {useState} from "react";
+import {useTranslation} from "react-i18next";
 
-import {ApplicationCard} from "@/components/console/ApplicationCard"
-import {statusOf} from "@/lib/api/client"
-import {consoleKeys, listApplications} from "@/lib/api/console"
-import type {ApplicationStatus} from "@/lib/api/consoleTypes"
-import {useConsoleScope} from "@/lib/console/scope"
-import {NARROW, useMediaQuery} from "@/lib/hooks/useMediaQuery"
-import {useDocumentTitle} from "@/lib/hooks/useDocumentTitle"
+import {ApplicationCard} from "@/components/console/ApplicationCard";
+import {statusOf} from "@/lib/api/client";
+import {consoleKeys, listApplications} from "@/lib/api/console";
+import type {ApplicationStatus} from "@/lib/api/consoleTypes";
+import {useConsoleScope} from "@/lib/console/scope";
+import {NARROW, useMediaQuery} from "@/lib/hooks/useMediaQuery";
+import {useDocumentTitle} from "@/lib/hooks/useDocumentTitle";
 
-const STATUSES: ApplicationStatus[] = ["pending", "approved", "rejected"]
+const STATUSES: ApplicationStatus[] = ["pending", "approved", "rejected"];
 
 /** Solicitações: tenant zero only; any other tenant gets the server's 404. */
 export default function ApplicationsPage() {
-  const {t, i18n} = useTranslation()
-  const scope = useConsoleScope()
-  useDocumentTitle(t("console.applications.title"))
-  const phone = useMediaQuery(NARROW)
-  const [status, setStatus] = useState<ApplicationStatus>("pending")
+  const {t, i18n} = useTranslation();
+  const scope = useConsoleScope();
+  useDocumentTitle(t("console.applications.title"));
+  const phone = useMediaQuery(NARROW);
+  const [status, setStatus] = useState<ApplicationStatus>("pending");
   const q = useInfiniteQuery({
     queryKey: consoleKeys.applications(scope, status),
     queryFn: ({pageParam}) => listApplications(scope, status, pageParam),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: last => (last.has_more ? last.cursor : undefined),
-  })
-  const items = q.data?.pages.flatMap(p => p.data) ?? []
+  });
+  const items = q.data?.pages.flatMap(p => p.data) ?? [];
 
   return (
     <div className="space-y-6">
@@ -61,5 +61,5 @@ export default function ApplicationsPage() {
         </div>
       )}
     </div>
-  )
+  );
 }

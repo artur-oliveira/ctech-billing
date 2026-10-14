@@ -15,11 +15,11 @@
  * not the check it looks like.
  */
 export function safeReturn(from: string | null | undefined, fallback: string): string {
-  if (!from) return fallback
-  if (!from.startsWith("/")) return fallback
-  if (from.startsWith("//")) return fallback
+  if (!from) return fallback;
+  if (!from.startsWith("/")) return fallback;
+  if (from.startsWith("//")) return fallback;
   // A backslash is a forward slash to some URL parsers and not to others, which
   // is exactly the disagreement a bypass lives in.
-  if (from.startsWith("/\\")) return fallback
-  return from
+  if (from.startsWith("/\\")) return fallback;
+  return from;
 }

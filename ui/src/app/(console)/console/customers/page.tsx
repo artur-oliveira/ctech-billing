@@ -1,14 +1,14 @@
-"use client"
+"use client";
 
-import {EmptyState, Skeleton} from "@aoctech/ui"
-import {useQuery} from "@tanstack/react-query"
-import {Users} from "lucide-react"
-import Link from "next/link"
-import {useTranslation} from "react-i18next"
+import {EmptyState, Skeleton} from "@aoctech/ui";
+import {useQuery} from "@tanstack/react-query";
+import {Users} from "lucide-react";
+import Link from "next/link";
+import {useTranslation} from "react-i18next";
 
-import {ErrorBlock} from "@/components/portal/ErrorBlock"
-import {consoleKeys, listConsoleCustomers} from "@/lib/api/console"
-import {useConsoleScope} from "@/lib/console/scope"
+import {ErrorBlock} from "@/components/portal/ErrorBlock";
+import {consoleKeys, listConsoleCustomers} from "@/lib/api/console";
+import {useConsoleScope} from "@/lib/console/scope";
 
 /**
  * C6 — the customers.
@@ -19,14 +19,14 @@ import {useConsoleScope} from "@/lib/console/scope"
  * screen an operator leaves open all day.
  */
 export default function ConsoleCustomersPage() {
-  const {t} = useTranslation()
-  const scope = useConsoleScope()
+  const {t} = useTranslation();
+  const scope = useConsoleScope();
   const query = useQuery({
     queryKey: consoleKeys.customers(scope),
     queryFn: () => listConsoleCustomers(scope),
-  })
+  });
 
-  const customers = query.data?.data ?? []
+  const customers = query.data?.data ?? [];
 
   return (
     <div className="space-y-6">
@@ -82,7 +82,7 @@ export default function ConsoleCustomersPage() {
         </div>
       )}
     </div>
-  )
+  );
 }
 
 function RowsSkeleton() {
@@ -90,5 +90,5 @@ function RowsSkeleton() {
     <div className="space-y-2" aria-busy>
       {[0, 1, 2].map(i => <Skeleton key={i} className="h-8 w-full"/>)}
     </div>
-  )
+  );
 }

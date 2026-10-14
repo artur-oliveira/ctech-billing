@@ -1,26 +1,26 @@
-"use client"
+"use client";
 
-import {Button, Separator, Skeleton} from "@aoctech/ui"
-import {useMutation, useQuery} from "@tanstack/react-query"
-import Image from "next/image"
-import {useSearchParams} from "next/navigation"
-import {Suspense, useState} from "react"
-import {Trans, useTranslation} from "react-i18next"
-import {toast} from "sonner"
+import {Button, Separator, Skeleton} from "@aoctech/ui";
+import {useMutation, useQuery} from "@tanstack/react-query";
+import Image from "next/image";
+import {useSearchParams} from "next/navigation";
+import {Suspense, useState} from "react";
+import {Trans, useTranslation} from "react-i18next";
+import {toast} from "sonner";
 
-import {LanguageSwitcher} from "@/components/LanguageSwitcher"
-import {StatusScreen} from "@/components/StatusScreen"
-import {ErrorBlock} from "@/components/portal/ErrorBlock"
-import {Money} from "@/components/portal/Money"
-import {PixPanel} from "@/components/portal/PixPanel"
-import {StatusBadge} from "@/components/portal/StatusBadge"
-import {checkoutKeys, getCheckout, payCheckout} from "@/lib/api/checkout"
-import {messageFor, statusOf} from "@/lib/api/client"
-import type {PixPayment} from "@/lib/api/types"
-import {longDate, money} from "@/lib/format"
-import {useDocumentTitle} from "@/lib/hooks/useDocumentTitle"
-import {invoiceTitle} from "@/lib/invoice"
-import {BILLING_TERMS_URL, PRIVACY_POLICY_URL} from "@/lib/legal"
+import {LanguageSwitcher} from "@/components/LanguageSwitcher";
+import {StatusScreen} from "@/components/StatusScreen";
+import {ErrorBlock} from "@/components/portal/ErrorBlock";
+import {Money} from "@/components/portal/Money";
+import {PixPanel} from "@/components/portal/PixPanel";
+import {StatusBadge} from "@/components/portal/StatusBadge";
+import {checkoutKeys, getCheckout, payCheckout} from "@/lib/api/checkout";
+import {messageFor, statusOf} from "@/lib/api/client";
+import type {PixPayment} from "@/lib/api/types";
+import {longDate, money} from "@/lib/format";
+import {useDocumentTitle} from "@/lib/hooks/useDocumentTitle";
+import {invoiceTitle} from "@/lib/invoice";
+import {BILLING_TERMS_URL, PRIVACY_POLICY_URL} from "@/lib/legal";
 
 /**
  * X1 — the payment link. The only screen here a stranger can pay from.
@@ -42,26 +42,26 @@ export default function CheckoutPage() {
     <Suspense fallback={<CheckoutSkeleton/>}>
       <CheckoutScreen/>
     </Suspense>
-  )
+  );
 }
 
 /** How often the page asks whether the charge landed, while one is open.
  *  There is no stream on the public routes — see PixPanel. Four seconds is
  *  fast enough that the confirmation feels immediate and slow enough that a
  *  thirty-minute window is 450 requests rather than 1800. */
-const POLL_MS = 4_000
+const POLL_MS = 4_000;
 
 function CheckoutScreen() {
-  const {t} = useTranslation()
-  useDocumentTitle(t("checkout.title"))
-  const token = useSearchParams().get("token") ?? ""
+  const {t} = useTranslation();
+  useDocumentTitle(t("checkout.title"));
+  const token = useSearchParams().get("token") ?? "";
 
   // The open charge is component state, not query data, and that distinction is
   // load-bearing: `GET /checkout/:token` answers without a `payment`, because
   // opening a link must never open a charge. Caching the pay response under the
   // view's key would therefore have the first poll — four seconds later — wipe
   // the PIX code off the screen of somebody in the middle of scanning it.
-  const [payment, setPayment] = useState<PixPayment | null>(null)
+  const [payment, setPayment] = useState<PixPayment | null>(null);
 
   const query = useQuery({
     queryKey: checkoutKeys.view(token),
@@ -73,26 +73,26 @@ function CheckoutScreen() {
     // somebody stares at the page deciding whether to pay.
     refetchInterval: q =>
       payment && (q.state.data?.invoice.amount_due ?? 0) > 0 ? POLL_MS : false,
-  })
+  });
 
   const pay = useMutation({
     mutationFn: () => payCheckout(token),
     onSuccess: result => setPayment(result.payment ?? null),
     onError: error => toast.error(messageFor(error)),
-  })
+  });
 
-  if (token === "" || (query.isError && statusOf(query.error) === 404)) return <Invalid/>
-  if (query.isPending) return <CheckoutSkeleton/>
+  if (token === "" || (query.isError && statusOf(query.error) === 404)) return <Invalid/>;
+  if (query.isPending) return <CheckoutSkeleton/>;
   if (query.isError) {
     return (
       <Shell merchant="">
         <ErrorBlock error={query.error} onRetry={query.refetch}/>
       </Shell>
-    )
+    );
   }
 
-  const {merchant, invoice} = query.data
-  const settled = invoice.amount_due === 0
+  const {merchant, invoice} = query.data;
+  const settled = invoice.amount_due === 0;
 
   return (
     <Shell merchant={merchant}>
@@ -168,7 +168,7 @@ function CheckoutScreen() {
         </section>
       )}
     </Shell>
-  )
+  );
 }
 
 /**
@@ -178,7 +178,7 @@ function CheckoutScreen() {
  * facts and the page says both.
  */
 function Shell({merchant, children}: { merchant: string; children: React.ReactNode }) {
-  const {t} = useTranslation()
+  const {t} = useTranslation();
   return (
     <div data-density="comfortable" className="min-h-dvh">
       <header className="border-b border-border">
@@ -241,7 +241,7 @@ function Shell({merchant, children}: { merchant: string; children: React.ReactNo
         </footer>
       </main>
     </div>
-  )
+  );
 }
 
 /**
@@ -250,13 +250,13 @@ function Shell({merchant, children}: { merchant: string; children: React.ReactNo
  * be an oracle telling somebody guessing tokens when they had guessed right.
  */
 function Invalid() {
-  const {t} = useTranslation()
+  const {t} = useTranslation();
   return (
     <StatusScreen
       title={t("checkout.invalid.title")}
       description={t("checkout.invalid.description")}
     />
-  )
+  );
 }
 
 function CheckoutSkeleton() {
@@ -272,5 +272,5 @@ function CheckoutSkeleton() {
         <Skeleton className="h-11 w-full rounded-lg"/>
       </div>
     </Shell>
-  )
+  );
 }

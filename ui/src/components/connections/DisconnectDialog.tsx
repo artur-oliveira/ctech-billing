@@ -1,9 +1,9 @@
-"use client"
+"use client";
 
-import {Modal} from "@aoctech/ui"
-import {useTranslation} from "react-i18next"
+import {Modal} from "@aoctech/ui";
+import {useTranslation} from "react-i18next";
 
-import type {DisconnectReport} from "@/lib/api/connections"
+import type {DisconnectReport} from "@/lib/api/connections";
 
 /**
  * Disconnect, confirmed (BYOK spec § 3.6): CTech deletes the credentials and
@@ -21,9 +21,9 @@ export function DisconnectDialog({open, onClose, onConfirm, loading, openCharges
   unreachable?: boolean
   report?: DisconnectReport | null
 }) {
-  const {t, i18n} = useTranslation()
+  const {t, i18n} = useTranslation();
   const submit = report ? undefined : unreachable ? t("connections.disconnect.anyway")
-    : openCharges ? t("connections.disconnect.cancelAndLeave") : t("connections.disconnect.confirm")
+    : openCharges ? t("connections.disconnect.cancelAndLeave") : t("connections.disconnect.confirm");
   return (
     <Modal open={open} onClose={onClose} title={t("connections.disconnect.title")} danger locale={i18n.language}
       submitLabel={submit} cancelLabel={t("connections.disconnect.cancel")} onSubmit={report ? undefined : onConfirm} loading={loading}>
@@ -46,5 +46,5 @@ export function DisconnectDialog({open, onClose, onConfirm, loading, openCharges
         <p className="text-pretty text-muted-foreground">{t("connections.disconnect.onlyYou")}</p>
       </div>
     </Modal>
-  )
+  );
 }

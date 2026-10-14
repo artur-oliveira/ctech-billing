@@ -15,18 +15,18 @@ export const FINANCE_SECTIONS = [
   // Bank connections (BYOK spec 2026-10-11 § 11): an organization's, for
   // whoever may configure its space (owner, admin).
   {href: "/finance/settings/connections", key: "connections", organizationConfigure: true},
-] as const
+] as const;
 
 /** The sections this person sees in this space. */
 export function visibleFinanceSections(personal: boolean, canConfigure: boolean) {
   return FINANCE_SECTIONS.filter(s => {
-    if ("personalOnly" in s) return personal
-    if ("organizationConfigure" in s) return !personal && canConfigure
-    return true
-  })
+    if ("personalOnly" in s) return personal;
+    if ("organizationConfigure" in s) return !personal && canConfigure;
+    return true;
+  });
 }
 
 /** The section a path belongs to; Resumo when none matches. */
 export function currentFinanceSection(pathname: string): string {
-  return FINANCE_SECTIONS.find(s => ("exact" in s ? pathname === s.href : pathname.startsWith(s.href)))?.href ?? FINANCE_SECTIONS[0].href
+  return FINANCE_SECTIONS.find(s => ("exact" in s ? pathname === s.href : pathname.startsWith(s.href)))?.href ?? FINANCE_SECTIONS[0].href;
 }

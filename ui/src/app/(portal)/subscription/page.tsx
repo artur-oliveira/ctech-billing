@@ -1,22 +1,22 @@
-"use client"
+"use client";
 
-import {Button, Modal, Skeleton} from "@aoctech/ui"
-import {useMutation, useQuery, useQueryClient} from "@tanstack/react-query"
-import {ArrowLeft} from "lucide-react"
-import Link from "next/link"
-import {useSearchParams} from "next/navigation"
-import {Suspense, useState} from "react"
-import {useTranslation} from "react-i18next"
-import {toast} from "sonner"
+import {Button, Modal, Skeleton} from "@aoctech/ui";
+import {useMutation, useQuery, useQueryClient} from "@tanstack/react-query";
+import {ArrowLeft} from "lucide-react";
+import Link from "next/link";
+import {useSearchParams} from "next/navigation";
+import {Suspense, useState} from "react";
+import {useTranslation} from "react-i18next";
+import {toast} from "sonner";
 
-import {ErrorBlock} from "@/components/portal/ErrorBlock"
-import {InvoiceRow} from "@/components/portal/InvoiceRow"
-import {Money} from "@/components/portal/Money"
-import {StatusBadge} from "@/components/portal/StatusBadge"
-import {messageFor, statusOf} from "@/lib/api/client"
-import {cancelSubscription, getSubscription, portalKeys} from "@/lib/api/portal"
-import {longDate, period} from "@/lib/format"
-import {useDocumentTitle} from "@/lib/hooks/useDocumentTitle"
+import {ErrorBlock} from "@/components/portal/ErrorBlock";
+import {InvoiceRow} from "@/components/portal/InvoiceRow";
+import {Money} from "@/components/portal/Money";
+import {StatusBadge} from "@/components/portal/StatusBadge";
+import {messageFor, statusOf} from "@/lib/api/client";
+import {cancelSubscription, getSubscription, portalKeys} from "@/lib/api/portal";
+import {longDate, period} from "@/lib/format";
+import {useDocumentTitle} from "@/lib/hooks/useDocumentTitle";
 
 /**
  * P5 — one subscription: what it is, what it costs, when it renews, what it has
@@ -37,20 +37,20 @@ export default function SubscriptionPage() {
     <Suspense fallback={<DetailSkeleton/>}>
       <Detail/>
     </Suspense>
-  )
+  );
 }
 
 function Detail() {
-  const {t} = useTranslation()
-  const id = useSearchParams().get("id") ?? ""
-  const queryClient = useQueryClient()
-  const [confirming, setConfirming] = useState(false)
+  const {t} = useTranslation();
+  const id = useSearchParams().get("id") ?? "";
+  const queryClient = useQueryClient();
+  const [confirming, setConfirming] = useState(false);
 
   const query = useQuery({
     queryKey: portalKeys.subscription(id),
     queryFn: () => getSubscription(id),
     enabled: id !== "",
-  })
+  });
 
   const cancel = useMutation({
     mutationFn: () => cancelSubscription(id),
@@ -58,29 +58,29 @@ function Detail() {
       // The response is the subscription, so the screen re-renders from it
       // instead of showing the old renewal date for one round trip. The list
       // behind it is invalidated because the row there says the same thing.
-      queryClient.setQueryData(portalKeys.subscription(id), fresh)
-      void queryClient.invalidateQueries({queryKey: portalKeys.subscriptions})
-      setConfirming(false)
-      toast.success(t("portal.subscription.cancelled"))
+      queryClient.setQueryData(portalKeys.subscription(id), fresh);
+      void queryClient.invalidateQueries({queryKey: portalKeys.subscriptions});
+      setConfirming(false);
+      toast.success(t("portal.subscription.cancelled"));
     },
     onError: error => toast.error(messageFor(error)),
-  })
+  });
 
-  useDocumentTitle(query.data?.description ?? null)
+  useDocumentTitle(query.data?.description ?? null);
 
-  if (id === "" || (query.isError && statusOf(query.error) === 404)) return <NotFound/>
-  if (query.isPending) return <DetailSkeleton/>
+  if (id === "" || (query.isError && statusOf(query.error) === 404)) return <NotFound/>;
+  if (query.isPending) return <DetailSkeleton/>;
   if (query.isError) {
     return (
       <div className="space-y-6">
         <BackLink/>
         <ErrorBlock error={query.error} onRetry={query.refetch}/>
       </div>
-    )
+    );
   }
 
-  const sub = query.data
-  const invoices = sub.recent_invoices ?? []
+  const sub = query.data;
+  const invoices = sub.recent_invoices ?? [];
 
   return (
     <div className="space-y-10">
@@ -190,7 +190,7 @@ function Detail() {
         onSubmit={() => cancel.mutate()}
       />
     </div>
-  )
+  );
 }
 
 function Fact({label, value}: { label: string; value: string }) {
@@ -199,11 +199,11 @@ function Fact({label, value}: { label: string; value: string }) {
       <dt className="text-xs text-muted-foreground">{label}</dt>
       <dd className="text-sm text-foreground">{value}</dd>
     </div>
-  )
+  );
 }
 
 function NotFound() {
-  const {t} = useTranslation()
+  const {t} = useTranslation();
   return (
     <div className="space-y-6">
       <BackLink/>
@@ -219,11 +219,11 @@ function NotFound() {
         {t("portal.subscription.notFound.action")}
       </Button>
     </div>
-  )
+  );
 }
 
 function BackLink() {
-  const {t} = useTranslation()
+  const {t} = useTranslation();
   return (
     <Link
       href="/subscriptions"
@@ -232,7 +232,7 @@ function BackLink() {
       <ArrowLeft aria-hidden className="size-3.5"/>
       {t("portal.subscription.back")}
     </Link>
-  )
+  );
 }
 
 function DetailSkeleton() {
@@ -254,5 +254,5 @@ function DetailSkeleton() {
         <Skeleton className="h-12 w-full"/>
       </div>
     </div>
-  )
+  );
 }

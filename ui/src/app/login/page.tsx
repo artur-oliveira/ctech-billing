@@ -1,11 +1,11 @@
-"use client"
+"use client";
 
-import {Button} from "@aoctech/ui"
-import {useEffect} from "react"
-import {useTranslation} from "react-i18next"
+import {Button} from "@aoctech/ui";
+import {useEffect} from "react";
+import {useTranslation} from "react-i18next";
 
-import {StatusScreen} from "@/components/StatusScreen"
-import {useAuth} from "@/lib/auth/AuthContext"
+import {StatusScreen} from "@/components/StatusScreen";
+import {useAuth} from "@/lib/auth/AuthContext";
 
 /**
  * Where an expired session lands.
@@ -20,12 +20,12 @@ import {useAuth} from "@/lib/auth/AuthContext"
  * that would bounce them straight back.
  */
 export default function LoginPage() {
-  const {authenticated, loading, login} = useAuth()
-  const {t} = useTranslation()
+  const {authenticated, loading, login} = useAuth();
+  const {t} = useTranslation();
 
   useEffect(() => {
-    if (!loading && authenticated) window.location.replace("/dashboard")
-  }, [loading, authenticated])
+    if (!loading && authenticated) window.location.replace("/dashboard");
+  }, [loading, authenticated]);
 
   return (
     <StatusScreen
@@ -37,5 +37,5 @@ export default function LoginPage() {
         </Button>
       }
     />
-  )
+  );
 }

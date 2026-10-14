@@ -1,41 +1,41 @@
-"use client"
+"use client";
 
-import {Button, EmptyState, Modal, PageHeader, Skeleton} from "@aoctech/ui"
-import {useMutation, useQuery, useQueryClient} from "@tanstack/react-query"
-import {ChevronRight, Repeat} from "lucide-react"
-import Link from "next/link"
-import {useState} from "react"
-import {useTranslation} from "react-i18next"
-import {toast} from "sonner"
+import {Button, EmptyState, Modal, PageHeader, Skeleton} from "@aoctech/ui";
+import {useMutation, useQuery, useQueryClient} from "@tanstack/react-query";
+import {ChevronRight, Repeat} from "lucide-react";
+import Link from "next/link";
+import {useState} from "react";
+import {useTranslation} from "react-i18next";
+import {toast} from "sonner";
 
-import {ErrorBlock} from "@/components/portal/ErrorBlock"
-import {Money} from "@/components/portal/Money"
-import {StatusBadge} from "@/components/portal/StatusBadge"
-import {messageFor} from "@/lib/api/client"
-import {cancelSubscription, listSubscriptions, portalKeys} from "@/lib/api/portal"
-import type {Subscription} from "@/lib/api/types"
-import {longDate} from "@/lib/format"
-import {useDocumentTitle} from "@/lib/hooks/useDocumentTitle"
+import {ErrorBlock} from "@/components/portal/ErrorBlock";
+import {Money} from "@/components/portal/Money";
+import {StatusBadge} from "@/components/portal/StatusBadge";
+import {messageFor} from "@/lib/api/client";
+import {cancelSubscription, listSubscriptions, portalKeys} from "@/lib/api/portal";
+import type {Subscription} from "@/lib/api/types";
+import {longDate} from "@/lib/format";
+import {useDocumentTitle} from "@/lib/hooks/useDocumentTitle";
 
 export default function SubscriptionsPage() {
-  const {t} = useTranslation()
-  useDocumentTitle(t("portal.subscriptions.title"))
-  const queryClient = useQueryClient()
-  const [cancelling, setCancelling] = useState<Subscription | null>(null)
+  const {t} = useTranslation();
+  useDocumentTitle(t("portal.subscriptions.title"));
+  const queryClient = useQueryClient();
+  const [cancelling, setCancelling] = useState<Subscription | null>(null);
 
-  const query = useQuery({queryKey: portalKeys.subscriptions, queryFn: listSubscriptions})
+  const query = useQuery({queryKey: portalKeys.subscriptions, queryFn: listSubscriptions});
 
   const cancel = useMutation({
     mutationFn: (id: string) => cancelSubscription(id),
     onSuccess: () => {
-      void queryClient.invalidateQueries({queryKey: portalKeys.subscriptions})
-      setCancelling(null)
-      toast.success(t("portal.subscription.cancelled"))
+      void queryClient.invalidateQueries({queryKey: portalKeys.subscriptions});
+      setCancelling(null);
+      toast.success(t("portal.subscription.cancelled"));
     },
     onError: error => toast.error(messageFor(error)),
-  })
+  });
 
-  const subscriptions = query.data?.data ?? []
+  const subscriptions = query.data?.data ?? [];
 
   return (
     <div className="space-y-8">
@@ -137,7 +137,7 @@ export default function SubscriptionsPage() {
         onSubmit={() => cancelling && cancel.mutate(cancelling.id)}
       />
     </div>
-  )
+  );
 }
 
 function SubscriptionsSkeleton() {
@@ -156,5 +156,5 @@ function SubscriptionsSkeleton() {
         </li>
       ))}
     </ul>
-  )
+  );
 }

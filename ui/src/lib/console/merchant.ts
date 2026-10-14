@@ -1,7 +1,7 @@
-"use client"
+"use client";
 
-import type {MerchantOrganization, MerchantStatus} from "@/lib/api/consoleTypes"
-import type {Mode} from "@/lib/console/mode"
+import type {MerchantOrganization, MerchantStatus} from "@/lib/api/consoleTypes";
+import type {Mode} from "@/lib/console/mode";
 
 /**
  * The organization the billing half of the console acts for (ADR 0028): an
@@ -11,37 +11,37 @@ import type {Mode} from "@/lib/console/mode"
  */
 export type ConsoleScope = {mode: Mode; org: string}
 
-const KEY = "ctech-billing-console-organization"
-const EVENT = "ctech-console-organization"
-const ORG_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+const KEY = "ctech-billing-console-organization";
+const EVENT = "ctech-console-organization";
+const ORG_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 export function getMerchantOrg(): string | null {
-  if (typeof window === "undefined") return null
+  if (typeof window === "undefined") return null;
   try {
-    const raw = window.localStorage.getItem(KEY)
-    return raw && ORG_ID.test(raw) ? raw : null
+    const raw = window.localStorage.getItem(KEY);
+    return raw && ORG_ID.test(raw) ? raw : null;
   } catch {
-    return null
+    return null;
   }
 }
 
 export function setMerchantOrg(id: string) {
   try {
-    window.localStorage.setItem(KEY, id)
+    window.localStorage.setItem(KEY, id);
   } catch {
     // Site data blocked: the switch still works for this page.
   }
-  window.dispatchEvent(new CustomEvent(EVENT))
+  window.dispatchEvent(new CustomEvent(EVENT));
 }
 
 /** Subscribes to changes, including another tab's. */
 export function onMerchantOrgChange(fn: () => void): () => void {
-  window.addEventListener(EVENT, fn)
-  window.addEventListener("storage", fn)
+  window.addEventListener(EVENT, fn);
+  window.addEventListener("storage", fn);
   return () => {
-    window.removeEventListener(EVENT, fn)
-    window.removeEventListener("storage", fn)
-  }
+    window.removeEventListener(EVENT, fn);
+    window.removeEventListener("storage", fn);
+  };
 }
 
 /** Whether the organization has a tenant in this mode. Rejected keeps its test
@@ -50,12 +50,12 @@ export function tenantInMode(status: MerchantStatus, mode: Mode): boolean {
   switch (status) {
     case "live":
     case "suspended":
-      return true
+      return true;
     case "test":
     case "rejected":
-      return mode === "test"
+      return mode === "test";
     default:
-      return false
+      return false;
   }
 }
 
@@ -65,5 +65,5 @@ export function pickMerchantOrg(orgs: MerchantOrganization[], stored: string | n
   return orgs.find(o => o.organization_id === stored)
     ?? orgs.find(o => tenantInMode(o.merchant_status, mode))
     ?? orgs[0]
-    ?? null
+    ?? null;
 }

@@ -1,21 +1,21 @@
-"use client"
+"use client";
 
-import limits from "@/lib/limits.json"
-import {Button, EmptyState, Field, Input, Modal, Skeleton} from "@aoctech/ui"
-import {useMutation, useQuery, useQueryClient} from "@tanstack/react-query"
-import {Package} from "lucide-react"
-import Link from "next/link"
-import {useState} from "react"
-import {useTranslation} from "react-i18next"
-import {toast} from "sonner"
+import limits from "@/lib/limits.json";
+import {Button, EmptyState, Field, Input, Modal, Skeleton} from "@aoctech/ui";
+import {useMutation, useQuery, useQueryClient} from "@tanstack/react-query";
+import {Package} from "lucide-react";
+import Link from "next/link";
+import {useState} from "react";
+import {useTranslation} from "react-i18next";
+import {toast} from "sonner";
 
-import {ErrorBlock} from "@/components/portal/ErrorBlock"
-import {messageFor} from "@/lib/api/client"
-import {useFieldErrors} from "@/lib/useFieldErrors"
-import {consoleKeys, createProduct, listConsoleProducts} from "@/lib/api/console"
-import {useConsoleScope} from "@/lib/console/scope"
-import {useCreateRequest} from "@/lib/createRequest"
-import {money} from "@/lib/format"
+import {ErrorBlock} from "@/components/portal/ErrorBlock";
+import {messageFor} from "@/lib/api/client";
+import {useFieldErrors} from "@/lib/useFieldErrors";
+import {consoleKeys, createProduct, listConsoleProducts} from "@/lib/api/console";
+import {useConsoleScope} from "@/lib/console/scope";
+import {useCreateRequest} from "@/lib/createRequest";
+import {money} from "@/lib/format";
 
 /**
  * C8 — the catalogue.
@@ -25,18 +25,18 @@ import {money} from "@/lib/format"
  * list of names answers half of it.
  */
 export default function ConsoleCatalogPage() {
-  const {t} = useTranslation()
-  const scope = useConsoleScope()
-  const queryClient = useQueryClient()
-  const [creating, setCreating] = useState(false)
-  useCreateRequest("product", () => setCreating(true))
+  const {t} = useTranslation();
+  const scope = useConsoleScope();
+  const queryClient = useQueryClient();
+  const [creating, setCreating] = useState(false);
+  useCreateRequest("product", () => setCreating(true));
 
   const query = useQuery({
     queryKey: consoleKeys.products(scope),
     queryFn: () => listConsoleProducts(scope),
-  })
+  });
 
-  const products = query.data?.data ?? []
+  const products = query.data?.data ?? [];
 
   return (
     <div className="space-y-6">
@@ -69,11 +69,11 @@ export default function ConsoleCatalogPage() {
             </thead>
             <tbody>
               {products.map(product => {
-                const active = (product.prices ?? []).filter(price => !price.archived)
+                const active = (product.prices ?? []).filter(price => !price.archived);
                 const cheapest = active.reduce<number | null>(
                   (min, price) => (min === null || price.unit_amount < min ? price.unit_amount : min),
                   null,
-                )
+                );
                 return (
                   <tr
                     key={product.id}
@@ -100,7 +100,7 @@ export default function ConsoleCatalogPage() {
                       {cheapest === null ? "—" : money(cheapest)}
                     </td>
                   </tr>
-                )
+                );
               })}
             </tbody>
           </table>
@@ -111,12 +111,12 @@ export default function ConsoleCatalogPage() {
         open={creating}
         onClose={() => setCreating(false)}
         onCreated={() => {
-          void queryClient.invalidateQueries({queryKey: consoleKeys.products(scope)})
-          setCreating(false)
+          void queryClient.invalidateQueries({queryKey: consoleKeys.products(scope)});
+          setCreating(false);
         }}
       />
     </div>
-  )
+  );
 }
 
 function NewProductDialog({
@@ -124,22 +124,22 @@ function NewProductDialog({
   onClose,
   onCreated,
 }: { open: boolean; onClose: () => void; onCreated: () => void }) {
-  const {t} = useTranslation()
-  const scope = useConsoleScope()
-  const [name, setName] = useState("")
-  const [ownerKey, setOwnerKey] = useState("")
+  const {t} = useTranslation();
+  const scope = useConsoleScope();
+  const [name, setName] = useState("");
+  const [ownerKey, setOwnerKey] = useState("");
 
-  const fe = useFieldErrors(["name", "owner_key"], {keepOthers: false})
+  const fe = useFieldErrors(["name", "owner_key"], {keepOthers: false});
   const create = useMutation({
     mutationFn: () => createProduct(scope, {name: name.trim(), owner_key: ownerKey.trim()}),
     onSuccess: () => {
-      toast.success(t("console.catalog.created"))
-      setName("")
-      setOwnerKey("")
-      onCreated()
+      toast.success(t("console.catalog.created"));
+      setName("");
+      setOwnerKey("");
+      onCreated();
     },
-    onError: error => { if (!fe.set(error)) toast.error(messageFor(error)) },
-  })
+    onError: error => { if (!fe.set(error)) toast.error(messageFor(error)); },
+  });
 
   return (
     <Modal
@@ -150,7 +150,7 @@ function NewProductDialog({
       submitLabel={t("console.catalog.create")}
       submitDisabled={name.trim() === ""}
       loading={create.isPending}
-      onSubmit={() => { fe.reset(); create.mutate() }}
+      onSubmit={() => { fe.reset(); create.mutate(); }}
     >
       <div className="space-y-4">
         <Field label={t("console.catalog.name")} htmlFor="product-name" error={fe.of("name")}>
@@ -159,7 +159,7 @@ function NewProductDialog({
             maxLength={limits.text.productName}
             value={name}
             {...fe.props("name", "product-name")}
-            onChange={event => { setName(event.target.value); fe.clear("name") }}
+            onChange={event => { setName(event.target.value); fe.clear("name"); }}
             placeholder="DF-e Avançado"
           />
         </Field>
@@ -174,14 +174,14 @@ function NewProductDialog({
             maxLength={limits.text.ownerKey}
             value={ownerKey}
             {...fe.props("owner_key", "product-owner")}
-            onChange={event => { setOwnerKey(event.target.value); fe.clear("owner_key") }}
+            onChange={event => { setOwnerKey(event.target.value); fe.clear("owner_key"); }}
             placeholder="dfe"
           />
         </Field>
         {fe.general && <p role="alert" className="text-sm text-danger">{fe.general}</p>}
       </div>
     </Modal>
-  )
+  );
 }
 
 function RowsSkeleton() {
@@ -189,5 +189,5 @@ function RowsSkeleton() {
     <div className="space-y-2" aria-busy>
       {[0, 1, 2].map(i => <Skeleton key={i} className="h-8 w-full"/>)}
     </div>
-  )
+  );
 }

@@ -1,7 +1,7 @@
-import type {Metadata} from "next"
+import type {Metadata} from "next";
 
-export const metadata: Metadata = {title: "Cartões"}
+export const metadata: Metadata = {title: "Cartões"};
 
 export default function Layout({children}: LayoutProps<"/finance/cards">) {
-  return children
+  return children;
 }

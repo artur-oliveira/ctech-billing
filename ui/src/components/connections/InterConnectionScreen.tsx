@@ -1,21 +1,21 @@
-"use client"
+"use client";
 
-import {Alert, Button, EmptyState, PageHeader, Skeleton} from "@aoctech/ui"
-import {useMutation, useQuery, useQueryClient} from "@tanstack/react-query"
-import {ChevronLeft, FlaskConical} from "lucide-react"
-import Link from "next/link"
-import {useTranslation} from "react-i18next"
-import {toast} from "sonner"
+import {Alert, Button, EmptyState, PageHeader, Skeleton} from "@aoctech/ui";
+import {useMutation, useQuery, useQueryClient} from "@tanstack/react-query";
+import {ChevronLeft, FlaskConical} from "lucide-react";
+import Link from "next/link";
+import {useTranslation} from "react-i18next";
+import {toast} from "sonner";
 
-import {ErrorBlock} from "@/components/portal/ErrorBlock"
-import {connect, connectionKeys, listConnections} from "@/lib/api/connections"
-import {messageFor, problemCode} from "@/lib/api/client"
-import type {Connection, ConnectionsScope} from "@/lib/api/connectionsTypes"
-import {codeMessage} from "@/lib/errors"
-import {useIntent} from "@/lib/api/idempotency"
+import {ErrorBlock} from "@/components/portal/ErrorBlock";
+import {connect, connectionKeys, listConnections} from "@/lib/api/connections";
+import {messageFor, problemCode} from "@/lib/api/client";
+import type {Connection, ConnectionsScope} from "@/lib/api/connectionsTypes";
+import {codeMessage} from "@/lib/errors";
+import {useIntent} from "@/lib/api/idempotency";
 
-import {ConnectionHealth} from "./ConnectionHealth"
-import {InterOnboarding} from "./InterOnboarding"
+import {ConnectionHealth} from "./ConnectionHealth";
+import {InterOnboarding} from "./InterOnboarding";
 
 /**
  * The one Inter screen, for both areas (BYOK spec § 11): the console's
@@ -31,10 +31,10 @@ export function InterConnectionScreen({scope, backHref, statementHref, extra}: {
   /** Rendered under the health for a connected bank (the console's collection). */
   extra?: (c: Connection) => React.ReactNode
 }) {
-  const {t} = useTranslation()
-  const q = useQuery({queryKey: connectionKeys.list(scope), queryFn: () => listConnections(scope)})
-  const conn = q.data?.data.find(c => c.provider === "inter") ?? null
-  const connected = conn !== null && conn.state !== "onboarding"
+  const {t} = useTranslation();
+  const q = useQuery({queryKey: connectionKeys.list(scope), queryFn: () => listConnections(scope)});
+  const conn = q.data?.data.find(c => c.provider === "inter") ?? null;
+  const connected = conn !== null && conn.state !== "onboarding";
 
   return (
     <div className="space-y-8">
@@ -56,24 +56,24 @@ export function InterConnectionScreen({scope, backHref, statementHref, extra}: {
         <InterOnboarding scope={scope} connection={conn} providers={q.data?.providers ?? []}/>
       )}
     </div>
-  )
+  );
 }
 
 function SandboxBlock({scope}: {scope: ConnectionsScope}) {
-  const {t} = useTranslation()
-  const qc = useQueryClient()
-  const intent = useIntent()
+  const {t} = useTranslation();
+  const qc = useQueryClient();
+  const intent = useIntent();
   const enable = useMutation({
     mutationFn: () => connect(scope, "inter", null, intent.key()),
     onSuccess: c => {
-      intent.done()
-      qc.setQueryData(connectionKeys.one(scope, "inter"), c)
-      void qc.invalidateQueries({queryKey: connectionKeys.list(scope)})
-      void qc.invalidateQueries({queryKey: ["finance"]})
-      toast.success(t("connections.sandbox.enabled"))
+      intent.done();
+      qc.setQueryData(connectionKeys.one(scope, "inter"), c);
+      void qc.invalidateQueries({queryKey: connectionKeys.list(scope)});
+      void qc.invalidateQueries({queryKey: ["finance"]});
+      toast.success(t("connections.sandbox.enabled"));
     },
-  })
-  const code = problemCode(enable.error)
+  });
+  const code = problemCode(enable.error);
   return (
     <div className="max-w-xl space-y-4">
       <EmptyState
@@ -86,5 +86,5 @@ function SandboxBlock({scope}: {scope: ConnectionsScope}) {
         <Alert tone="danger" title={t("connections.sandbox.title")}>{code?.startsWith("byok_") ? codeMessage(code) : messageFor(enable.error)}</Alert>
       )}
     </div>
-  )
+  );
 }

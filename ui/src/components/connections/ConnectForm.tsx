@@ -1,22 +1,22 @@
-"use client"
+"use client";
 
-import {Button, Checkbox, Field, FileDrop, Input, Select} from "@aoctech/ui"
-import {useState, type FormEvent} from "react"
-import {useTranslation} from "react-i18next"
+import {Button, Checkbox, Field, FileDrop, Input, Select} from "@aoctech/ui";
+import {useState, type FormEvent} from "react";
+import {useTranslation} from "react-i18next";
 
-import {codeMessage} from "@/lib/errors"
-import {messageFor, problemCode} from "@/lib/api/client"
-import type {ConnectForm as ConnectFormValues} from "@/lib/api/connectionsTypes"
-import {selectCopy} from "@/lib/selectCopy"
+import {codeMessage} from "@/lib/errors";
+import {messageFor, problemCode} from "@/lib/api/client";
+import type {ConnectForm as ConnectFormValues} from "@/lib/api/connectionsTypes";
+import {selectCopy} from "@/lib/selectCopy";
 
-const MAX_PEM = 16 * 1024
-const MONTHS = [3, 6, 9, 12]
-const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const MAX_PEM = 16 * 1024;
+const MONTHS = [3, 6, 9, 12];
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 type Text = "client_id" | "client_secret" | "account" | "pix_key" | "notify_email"
 type Errors = Partial<Record<Text | "cert" | "key" | "authorized", string>>
 
-const EMPTY = {client_id: "", client_secret: "", account: "", pix_key: "", notify_email: ""}
+const EMPTY = {client_id: "", client_secret: "", account: "", pix_key: "", notify_email: ""};
 
 /**
  * Step 5 of the onboarding: the integration's credentials, sent once to be
@@ -27,63 +27,63 @@ const EMPTY = {client_id: "", client_secret: "", account: "", pix_key: "", notif
  * secret is a password field the browser does not offer to save.
  */
 export function ConnectForm({onSubmit, defaultEmail}: {onSubmit: (v: ConnectFormValues) => Promise<void>; defaultEmail?: string}) {
-  const {t} = useTranslation()
-  const [v, setV] = useState({...EMPTY, notify_email: defaultEmail ?? ""})
-  const [cert, setCert] = useState<File | null>(null)
-  const [key, setKey] = useState<File | null>(null)
-  const [months, setMonths] = useState(3)
-  const [authorized, setAuthorized] = useState(false)
-  const [errors, setErrors] = useState<Errors>({})
-  const [server, setServer] = useState<string>()
-  const [pending, setPending] = useState(false)
+  const {t} = useTranslation();
+  const [v, setV] = useState({...EMPTY, notify_email: defaultEmail ?? ""});
+  const [cert, setCert] = useState<File | null>(null);
+  const [key, setKey] = useState<File | null>(null);
+  const [months, setMonths] = useState(3);
+  const [authorized, setAuthorized] = useState(false);
+  const [errors, setErrors] = useState<Errors>({});
+  const [server, setServer] = useState<string>();
+  const [pending, setPending] = useState(false);
 
   const set = (k: Text) => (e: {target: {value: string}}) => {
-    setV(cur => ({...cur, [k]: e.target.value}))
-    setErrors(cur => ({...cur, [k]: undefined}))
-  }
+    setV(cur => ({...cur, [k]: e.target.value}));
+    setErrors(cur => ({...cur, [k]: undefined}));
+  };
 
   function validate(): Errors {
-    const e: Errors = {}
-    const required = t("connections.form.required")
-    if (!v.client_id.trim()) e.client_id = required
-    if (!v.client_secret) e.client_secret = required
-    if (!v.account.trim()) e.account = required
-    else if (!/^\d+$/.test(v.account.trim())) e.account = t("connections.form.invalidAccount")
-    if (!EMAIL.test(v.notify_email.trim())) e.notify_email = t("connections.form.invalidEmail")
-    if (!cert) e.cert = required
-    if (!key) e.key = required
-    if (!authorized) e.authorized = required
-    return e
+    const e: Errors = {};
+    const required = t("connections.form.required");
+    if (!v.client_id.trim()) e.client_id = required;
+    if (!v.client_secret) e.client_secret = required;
+    if (!v.account.trim()) e.account = required;
+    else if (!/^\d+$/.test(v.account.trim())) e.account = t("connections.form.invalidAccount");
+    if (!EMAIL.test(v.notify_email.trim())) e.notify_email = t("connections.form.invalidEmail");
+    if (!cert) e.cert = required;
+    if (!key) e.key = required;
+    if (!authorized) e.authorized = required;
+    return e;
   }
 
   async function submit(ev: FormEvent) {
-    ev.preventDefault()
-    setServer(undefined)
-    const e = validate()
-    setErrors(e)
-    if (Object.values(e).some(Boolean) || !cert || !key) return
-    setPending(true)
+    ev.preventDefault();
+    setServer(undefined);
+    const e = validate();
+    setErrors(e);
+    if (Object.values(e).some(Boolean) || !cert || !key) return;
+    setPending(true);
     try {
       await onSubmit({
         client_id: v.client_id.trim(), client_secret: v.client_secret, account: v.account.trim().replace(/^0+/, ""),
         pix_key: v.pix_key.trim(), notify_email: v.notify_email.trim(), backfill_months: months, authorized, cert, key,
-      })
-      setV(EMPTY)
-      setCert(null)
-      setKey(null)
-      setAuthorized(false)
+      });
+      setV(EMPTY);
+      setCert(null);
+      setKey(null);
+      setAuthorized(false);
     } catch (err) {
-      const code = problemCode(err)
-      setServer(code?.startsWith("byok_") ? codeMessage(code) : messageFor(err))
+      const code = problemCode(err);
+      setServer(code?.startsWith("byok_") ? codeMessage(code) : messageFor(err));
     } finally {
-      setPending(false)
+      setPending(false);
     }
   }
 
   const fileLabels = {
     chooseLabel: t("connections.form.choose"), replaceLabel: t("connections.form.replace"), removeLabel: t("connections.form.remove"),
     tooLargeLabel: t("connections.form.tooLarge"), wrongTypeLabel: t("connections.form.wrongType"),
-  }
+  };
 
   return (
     <form noValidate onSubmit={submit} className="grid gap-5">
@@ -100,9 +100,9 @@ export function ConnectForm({onSubmit, defaultEmail}: {onSubmit: (v: ConnectForm
 
       <div className="grid gap-4 md:grid-cols-2">
         <FileDrop id="connect-cert" label={t("connections.form.cert")} accept=".crt,.pem,.cer" maxBytes={MAX_PEM} file={cert}
-          onFile={f => { setCert(f); setErrors(cur => ({...cur, cert: undefined})) }} error={errors.cert} {...fileLabels}/>
+          onFile={f => { setCert(f); setErrors(cur => ({...cur, cert: undefined})); }} error={errors.cert} {...fileLabels}/>
         <FileDrop id="connect-key" label={t("connections.form.key")} accept=".key,.pem" maxBytes={MAX_PEM} file={key}
-          onFile={f => { setKey(f); setErrors(cur => ({...cur, key: undefined})) }} error={errors.key} {...fileLabels}/>
+          onFile={f => { setKey(f); setErrors(cur => ({...cur, key: undefined})); }} error={errors.key} {...fileLabels}/>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
@@ -125,7 +125,7 @@ export function ConnectForm({onSubmit, defaultEmail}: {onSubmit: (v: ConnectForm
 
       <div className="grid gap-1.5">
         <label className="flex items-start gap-2.5 text-sm text-foreground">
-          <Checkbox checked={authorized} onCheckedChange={c => { setAuthorized(Boolean(c)); setErrors(cur => ({...cur, authorized: undefined})) }}
+          <Checkbox checked={authorized} onCheckedChange={c => { setAuthorized(Boolean(c)); setErrors(cur => ({...cur, authorized: undefined})); }}
             className="mt-0.5 shrink-0" aria-invalid={errors.authorized ? true : undefined}/>
           <span className="text-pretty">{t("connections.form.authorize")}</span>
         </label>
@@ -140,5 +140,5 @@ export function ConnectForm({onSubmit, defaultEmail}: {onSubmit: (v: ConnectForm
         </Button>
       </div>
     </form>
-  )
+  );
 }

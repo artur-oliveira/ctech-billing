@@ -1,13 +1,13 @@
-"use client"
+"use client";
 
-import {Button, buttonVariants} from "@aoctech/ui"
-import {Check} from "lucide-react"
-import Link from "next/link"
-import {useTranslation} from "react-i18next"
+import {Button, buttonVariants} from "@aoctech/ui";
+import {Check} from "lucide-react";
+import Link from "next/link";
+import {useTranslation} from "react-i18next";
 
-import {ApplySteps} from "@/components/console/ApplySteps"
-import {setMode} from "@/lib/console/mode"
-import {useMerchantSelection} from "@/lib/console/selection"
+import {ApplySteps} from "@/components/console/ApplySteps";
+import {setMode} from "@/lib/console/mode";
+import {useMerchantSelection} from "@/lib/console/selection";
 
 /**
  * What an organization without a tenant in this mode sees (spec § 7.1): the
@@ -15,16 +15,16 @@ import {useMerchantSelection} from "@/lib/console/selection"
  * beginning, never drawn as an error.
  */
 export function MerchantInvitation() {
-  const {t} = useTranslation()
-  const {organization} = useMerchantSelection()
-  const name = organization.display_name
-  const status = organization.merchant_status
+  const {t} = useTranslation();
+  const {organization} = useMerchantSelection();
+  const name = organization.display_name;
+  const status = organization.merchant_status;
 
   // "test" means under review only with a pending application: a test tenant
   // CTech provisioned by hand gets the invitation to apply like anyone else.
-  const pending = status === "test" && organization.application_status === "pending"
+  const pending = status === "test" && organization.application_status === "pending";
   if (pending || status === "rejected") {
-    const key = status === "test" ? "pending" : "rejected"
+    const key = status === "test" ? "pending" : "rejected";
     return (
       <section className="max-w-xl space-y-3">
         <h1 className="text-xl font-semibold text-foreground">{t(`console.invitation.${key}Title`)}</h1>
@@ -42,7 +42,7 @@ export function MerchantInvitation() {
           )}
         </div>
       </section>
-    )
+    );
   }
 
   // Two columns from lg: the offer and its action, then what happens next;
@@ -68,5 +68,5 @@ export function MerchantInvitation() {
       </section>
       <ApplySteps/>
     </div>
-  )
+  );
 }

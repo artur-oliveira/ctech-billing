@@ -1,19 +1,19 @@
-"use client"
+"use client";
 
-import {Button, Steps, type StepItem, type StepState} from "@aoctech/ui"
-import {useMutation, useQueryClient} from "@tanstack/react-query"
-import {Check, Copy} from "lucide-react"
-import {useState} from "react"
-import {useTranslation} from "react-i18next"
-import {toast} from "sonner"
+import {Button, Steps, type StepItem, type StepState} from "@aoctech/ui";
+import {useMutation, useQueryClient} from "@tanstack/react-query";
+import {Check, Copy} from "lucide-react";
+import {useState} from "react";
+import {useTranslation} from "react-i18next";
+import {toast} from "sonner";
 
-import {connect, connectionKeys, setOnboarding} from "@/lib/api/connections"
-import {messageFor} from "@/lib/api/client"
-import {ONBOARDING_STEPS, type Connection, type ConnectForm as ConnectFormValues, type ConnectionsScope, type OnboardingStep, type ProviderGuide, type ProviderInfo} from "@/lib/api/connectionsTypes"
-import {useIntent} from "@/lib/api/idempotency"
-import {instantShortDate} from "@/lib/format"
+import {connect, connectionKeys, setOnboarding} from "@/lib/api/connections";
+import {messageFor} from "@/lib/api/client";
+import {ONBOARDING_STEPS, type Connection, type ConnectForm as ConnectFormValues, type ConnectionsScope, type OnboardingStep, type ProviderGuide, type ProviderInfo} from "@/lib/api/connectionsTypes";
+import {useIntent} from "@/lib/api/idempotency";
+import {instantShortDate} from "@/lib/format";
 
-import {ConnectForm} from "./ConnectForm"
+import {ConnectForm} from "./ConnectForm";
 
 /**
  * The guided onboarding for a live Inter connection (BYOK spec § 11.1): six
@@ -21,44 +21,44 @@ import {ConnectForm} from "./ConnectForm"
  * week of waiting for Inter's validation resumes at the right place.
  */
 export function InterOnboarding({scope, connection, providers}: {scope: ConnectionsScope; connection: Connection | null; providers: ProviderInfo[]}) {
-  const {t} = useTranslation()
-  const qc = useQueryClient()
-  const saved: OnboardingStep = connection?.onboarding_step && connection.onboarding_step !== "webhook" ? connection.onboarding_step : "requirements"
-  const [current, setCurrent] = useState<OnboardingStep>(saved)
-  const intent = useIntent()
+  const {t} = useTranslation();
+  const qc = useQueryClient();
+  const saved: OnboardingStep = connection?.onboarding_step && connection.onboarding_step !== "webhook" ? connection.onboarding_step : "requirements";
+  const [current, setCurrent] = useState<OnboardingStep>(saved);
+  const intent = useIntent();
   const save = useMutation({
     mutationFn: (step: OnboardingStep) => setOnboarding(scope, "inter", step, crypto.randomUUID()),
     onSuccess: () => void qc.invalidateQueries({queryKey: connectionKeys.list(scope)}),
     // The step is display only (spec § 11.1): a failed save never blocks the walk.
     onError: e => toast.error(messageFor(e), {id: "onboarding-save"}),
-  })
+  });
   const go = (step: OnboardingStep) => {
-    setCurrent(step)
-    save.mutate(step)
-  }
+    setCurrent(step);
+    save.mutate(step);
+  };
   const doConnect = useMutation({
     mutationFn: (form: ConnectFormValues) => connect(scope, "inter", form, intent.key()),
     onSuccess: c => {
-      intent.done()
-      qc.setQueryData(connectionKeys.one(scope, "inter"), c)
-      void qc.invalidateQueries({queryKey: connectionKeys.list(scope)})
-      void qc.invalidateQueries({queryKey: ["finance"]})
-      toast.success(t("connections.screen.connected"))
+      intent.done();
+      qc.setQueryData(connectionKeys.one(scope, "inter"), c);
+      void qc.invalidateQueries({queryKey: connectionKeys.list(scope)});
+      void qc.invalidateQueries({queryKey: ["finance"]});
+      toast.success(t("connections.screen.connected"));
     },
-  })
+  });
 
-  const guide = providers.find(p => p.provider === "inter")?.guide
-  const waiting = current === "validation" && connection?.onboarding_step === "validation"
-  const index = ONBOARDING_STEPS.indexOf(current)
+  const guide = providers.find(p => p.provider === "inter")?.guide;
+  const waiting = current === "validation" && connection?.onboarding_step === "validation";
+  const index = ONBOARDING_STEPS.indexOf(current);
   const stateOf = (step: OnboardingStep, i: number): StepState => {
-    if (i < index) return "done"
-    if (step === current) return waiting ? "waiting" : "current"
-    return "upcoming"
-  }
-  const next = (step: OnboardingStep) => ONBOARDING_STEPS[ONBOARDING_STEPS.indexOf(step) + 1]
+    if (i < index) return "done";
+    if (step === current) return waiting ? "waiting" : "current";
+    return "upcoming";
+  };
+  const next = (step: OnboardingStep) => ONBOARDING_STEPS[ONBOARDING_STEPS.indexOf(step) + 1];
   const nextButton = (step: OnboardingStep) => (
     <Button variant="outline" size="sm" className="max-sm:w-full" onClick={() => go(next(step))}>{t(`connections.steps.${step}.next`)}</Button>
-  )
+  );
 
   const content: Record<OnboardingStep, React.ReactNode> = {
     requirements: (
@@ -107,11 +107,11 @@ export function InterOnboarding({scope, connection, providers}: {scope: Connecti
     ),
     upload: (
       <div className="pt-1">
-        <ConnectForm defaultEmail={connection?.notify_email} onSubmit={async form => { await doConnect.mutateAsync(form) }}/>
+        <ConnectForm defaultEmail={connection?.notify_email} onSubmit={async form => { await doConnect.mutateAsync(form); }}/>
       </div>
     ),
     webhook: <p className="text-pretty text-muted-foreground">{t("connections.steps.webhook.body")}</p>,
-  }
+  };
 
   const items: StepItem[] = ONBOARDING_STEPS.map((step, i) => ({
     id: step,
@@ -119,18 +119,18 @@ export function InterOnboarding({scope, connection, providers}: {scope: Connecti
     state: stateOf(step, i),
     stateLabel: t(`connections.steps.state.${stateOf(step, i)}`),
     content: content[step],
-  }))
+  }));
 
-  return <Steps label={t("connections.steps.label")} items={items} className="max-w-2xl"/>
+  return <Steps label={t("connections.steps.label")} items={items} className="max-w-2xl"/>;
 }
 
 /** The activities and permissions to tick at the bank, as its wizard shows them, with one copy button. */
 function PermissionGuide({guide}: {guide: ProviderGuide}) {
-  const {t} = useTranslation()
-  const [copied, setCopied] = useState(false)
+  const {t} = useTranslation();
+  const [copied, setCopied] = useState(false);
   const text = guide.activities
     .map(a => [t(`connections.guide.activity.${a.code}.title`), ...a.permissions.map(p => `- ${t(`connections.guide.permission.${p.key}`)}`)].join("\n"))
-    .join("\n\n")
+    .join("\n\n");
   return (
     <div className="space-y-3 rounded-md border border-border bg-surface px-3 py-3">
       {guide.activities.map(a => (
@@ -145,13 +145,13 @@ function PermissionGuide({guide}: {guide: ProviderGuide}) {
         </section>
       ))}
       <Button variant="ghost" size="sm" onClick={() => {
-        void navigator.clipboard?.writeText(text)
-        setCopied(true)
-        toast.success(t("connections.steps.create_integration.copied"), {id: "scopes-copied"})
+        void navigator.clipboard?.writeText(text);
+        setCopied(true);
+        toast.success(t("connections.steps.create_integration.copied"), {id: "scopes-copied"});
       }}>
         {copied ? <Check aria-hidden/> : <Copy aria-hidden/>}
         {t("connections.steps.create_integration.copy")}
       </Button>
     </div>
-  )
+  );
 }

@@ -12,14 +12,14 @@
  * authorization request to what the client is granted, so a scope named here
  * and missing there fails the flow rather than silently downgrading it.
  */
-const IDENTITY_SCOPES = ["openid", "profile"] as const
+const IDENTITY_SCOPES = ["openid", "profile"] as const;
 
 const PORTAL_SCOPES = [
   "billing:my-invoices:read",
   "billing:my-invoices:write",
   "billing:my-subscriptions:read",
   "billing:my-subscriptions:write",
-] as const
+] as const;
 
 /**
  * What the console needs, requested by the same login.
@@ -60,11 +60,11 @@ const CONSOLE_SCOPES = [
   "billing:products:write",
   "billing:finance:read",
   "billing:finance:write",
-] as const
+] as const;
 
-export const OAUTH_SCOPE = [...IDENTITY_SCOPES, ...PORTAL_SCOPES, ...CONSOLE_SCOPES].join(" ")
+export const OAUTH_SCOPE = [...IDENTITY_SCOPES, ...PORTAL_SCOPES, ...CONSOLE_SCOPES].join(" ");
 
-const IDENTITY = new Set<string>(IDENTITY_SCOPES)
+const IDENTITY = new Set<string>(IDENTITY_SCOPES);
 
 /**
  * The scopes this app asks for that `accessToken` was not granted. ctech-account
@@ -76,16 +76,16 @@ const IDENTITY = new Set<string>(IDENTITY_SCOPES)
  */
 export function missingScopes(accessToken: string): string[] {
   try {
-    const payload = accessToken.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")
-    const scope: unknown = JSON.parse(atob(payload)).scope
-    const granted = new Set(typeof scope === "string" ? scope.split(" ") : [])
-    return OAUTH_SCOPE.split(" ").filter(s => !IDENTITY.has(s) && !granted.has(s))
+    const payload = accessToken.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+    const scope: unknown = JSON.parse(atob(payload)).scope;
+    const granted = new Set(typeof scope === "string" ? scope.split(" ") : []);
+    return OAUTH_SCOPE.split(" ").filter(s => !IDENTITY.has(s) && !granted.has(s));
   } catch {
-    return []
+    return [];
   }
 }
 
-const UPGRADE_RETRY_MS = 10 * 60_000
+const UPGRADE_RETRY_MS = 10 * 60_000;
 
 /**
  * Whether to send the browser through /authorize again for missing scopes. At
@@ -93,5 +93,5 @@ const UPGRADE_RETRY_MS = 10 * 60_000
  * cannot grant it and re-asking on every load would be a redirect loop.
  */
 export function shouldUpgradeScopes(missing: string[], lastAttempt: number | null, now: number): boolean {
-  return missing.length > 0 && (lastAttempt === null || now - lastAttempt > UPGRADE_RETRY_MS)
+  return missing.length > 0 && (lastAttempt === null || now - lastAttempt > UPGRADE_RETRY_MS);
 }

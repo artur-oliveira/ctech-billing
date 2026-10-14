@@ -1,6 +1,6 @@
-"use client"
+"use client";
 
-import {useRef} from "react"
+import {useRef} from "react";
 
 /**
  * One Idempotency-Key per user intent.
@@ -16,19 +16,19 @@ export interface Intent {
 }
 
 export function createIntent(gen: () => string = () => crypto.randomUUID()): Intent {
-  let key: string | null = null
+  let key: string | null = null;
   return {
     current: () => (key ??= gen()),
     reset: () => {
-      key = null
+      key = null;
     },
-  }
+  };
 }
 
 /** The intent for one form or dialog; `done` after a successful submit. */
 export function useIntent(): {key: () => string; done: () => void} {
-  const ref = useRef<Intent | null>(null)
-  ref.current ??= createIntent()
-  const intent = ref.current
-  return {key: () => intent.current(), done: () => intent.reset()}
+  const ref = useRef<Intent | null>(null);
+  ref.current ??= createIntent();
+  const intent = ref.current;
+  return {key: () => intent.current(), done: () => intent.reset()};
 }

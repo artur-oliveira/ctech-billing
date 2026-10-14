@@ -1,20 +1,20 @@
-"use client"
+"use client";
 
-import {Button, DatePicker} from "@aoctech/ui"
-import {X} from "lucide-react"
-import {useTranslation} from "react-i18next"
+import {Button, DatePicker} from "@aoctech/ui";
+import {X} from "lucide-react";
+import {useTranslation} from "react-i18next";
 
-import {normalizeLocale} from "@/lib/locale"
+import {normalizeLocale} from "@/lib/locale";
 
 /** `YYYY-MM-DD` as local noon: never `new Date(iso)`, which reads UTC midnight. */
 function toDate(iso: string): Date | undefined {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return undefined
-  const [y, m, d] = iso.split("-").map(Number)
-  return new Date(y, m - 1, d, 12)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return undefined;
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(y, m - 1, d, 12);
 }
 
 function toIso(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
 interface DateFieldProps {
@@ -44,7 +44,7 @@ interface DateFieldProps {
  * `htmlFor` through `id`, like any input.
  */
 export function DateField({id, value, onValueChange, min, max, placeholder, disabled, className, invalid, clearLabel}: DateFieldProps) {
-  const {t, i18n} = useTranslation()
+  const {t, i18n} = useTranslation();
   const picker = (
     <DatePicker
       id={id}
@@ -60,8 +60,8 @@ export function DateField({id, value, onValueChange, min, max, placeholder, disa
       // @aoctech/ui's touch.css, like any control.
       className={[className, invalid && "border-danger ring-3 ring-danger/20"].filter(Boolean).join(" ")}
     />
-  )
-  if (!clearLabel) return picker
+  );
+  if (!clearLabel) return picker;
   // An optional date (UX batch 4): once it has a value, a visible way back to
   // none. The calendar has no "no date" day, and a saved end date that could
   // not be removed was the bug that asked for this.
@@ -75,5 +75,5 @@ export function DateField({id, value, onValueChange, min, max, placeholder, disa
         </Button>
       )}
     </div>
-  )
+  );
 }

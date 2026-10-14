@@ -1,12 +1,12 @@
-"use client"
+"use client";
 
-import {QueryClient, QueryClientProvider} from "@tanstack/react-query"
-import {useState} from "react"
-import {Toaster} from "sonner"
+import {QueryClient, QueryClientProvider} from "@tanstack/react-query";
+import {useState} from "react";
+import {Toaster} from "sonner";
 
-import {MockControls} from "@/dev/MockControls"
-import {AuthProvider} from "@/lib/auth/AuthContext"
-import {I18nProvider} from "@/lib/I18nProvider"
+import {MockControls} from "@/dev/MockControls";
+import {AuthProvider} from "@/lib/auth/AuthContext";
+import {I18nProvider} from "@/lib/I18nProvider";
 
 export function Providers({children}: { children: React.ReactNode }) {
   // Created in state, not at module scope: a module-level client is shared
@@ -21,14 +21,14 @@ export function Providers({children}: { children: React.ReactNode }) {
             // A 404 on an invoice is an answer, not a hiccup. Retrying it
             // three times only delays the empty state by a second and a half.
             retry: (failureCount, error) => {
-              const status = (error as { response?: { status?: number } })?.response?.status
-              if (status && status >= 400 && status < 500) return false
-              return failureCount < 2
+              const status = (error as { response?: { status?: number } })?.response?.status;
+              if (status && status >= 400 && status < 500) return false;
+              return failureCount < 2;
             },
           },
         },
       })
-  )
+  );
 
   return (
     <I18nProvider>
@@ -41,5 +41,5 @@ export function Providers({children}: { children: React.ReactNode }) {
       <MockControls/>
     </QueryClientProvider>
     </I18nProvider>
-  )
+  );
 }

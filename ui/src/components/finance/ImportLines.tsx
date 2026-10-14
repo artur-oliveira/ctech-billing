@@ -1,31 +1,31 @@
-"use client"
+"use client";
 
-import {Badge, Button, Field, Input, Select, Skeleton} from "@aoctech/ui"
-import {useQuery, useQueryClient} from "@tanstack/react-query"
-import {useState} from "react"
-import {useTranslation} from "react-i18next"
+import {Badge, Button, Field, Input, Select, Skeleton} from "@aoctech/ui";
+import {useQuery, useQueryClient} from "@tanstack/react-query";
+import {useState} from "react";
+import {useTranslation} from "react-i18next";
 
-import {wholeSpace} from "@/components/finance/TransferPanel"
-import {LedgerRow} from "@/components/finance/LedgerRow"
-import {ErrorBlock} from "@/components/portal/ErrorBlock"
-import {segmentHit} from "@/components/ui/segmentHit"
-import {messageFor} from "@/lib/api/client"
-import {financeKeys, getImport, ignoreLine, linkLine, listAccounts, matchLine, newFromLine, reopenLine} from "@/lib/api/finance"
-import type {Account, Bill, ImportLine} from "@/lib/api/financeTypes"
-import {accountName} from "@/lib/finance/accountName"
-import {selectCopy} from "@/lib/selectCopy"
-import {useFinanceMutation} from "@/lib/finance/useFinanceMutation"
-import {useFinanceCtx, useFinanceSpaces} from "@/lib/finance/useFinanceSpaces"
-import {calendarDaysUntil, dayMonth, shortDate, signedMoney} from "@/lib/format"
-import limits from "@/lib/limits.json"
+import {wholeSpace} from "@/components/finance/TransferPanel";
+import {LedgerRow} from "@/components/finance/LedgerRow";
+import {ErrorBlock} from "@/components/portal/ErrorBlock";
+import {segmentHit} from "@/components/ui/segmentHit";
+import {messageFor} from "@/lib/api/client";
+import {financeKeys, getImport, ignoreLine, linkLine, listAccounts, matchLine, newFromLine, reopenLine} from "@/lib/api/finance";
+import type {Account, Bill, ImportLine} from "@/lib/api/financeTypes";
+import {accountName} from "@/lib/finance/accountName";
+import {selectCopy} from "@/lib/selectCopy";
+import {useFinanceMutation} from "@/lib/finance/useFinanceMutation";
+import {useFinanceCtx, useFinanceSpaces} from "@/lib/finance/useFinanceSpaces";
+import {calendarDaysUntil, dayMonth, shortDate, signedMoney} from "@/lib/format";
+import limits from "@/lib/limits.json";
 
 /** A pending line shows when it expires in its last days only (it lives 90). */
-const EXPIRY_WARNING_DAYS = 15
+const EXPIRY_WARNING_DAYS = 15;
 
-const TABS = ["pending", "done", "ignored"] as const
+const TABS = ["pending", "done", "ignored"] as const;
 type Tab = (typeof TABS)[number]
 
-const tabOf = (l: ImportLine): Tab => (l.status === "pending" ? "pending" : l.status === "ignored" ? "ignored" : "done")
+const tabOf = (l: ImportLine): Tab => (l.status === "pending" ? "pending" : l.status === "ignored" ? "ignored" : "done");
 
 /**
  * One import's lines, in three tabs: what still waits for a decision, what was
@@ -33,17 +33,17 @@ const tabOf = (l: ImportLine): Tab => (l.status === "pending" ? "pending" : l.st
  * Nothing settles without the person's click.
  */
 export function ImportLines({importId}: {importId: string}) {
-  const {t} = useTranslation()
-  const ctx = useFinanceCtx()
-  const q = useQuery({queryKey: financeKeys.importDetail(ctx.mode, ctx.space, importId), queryFn: () => getImport(ctx, importId)})
-  const accounts = useQuery({queryKey: financeKeys.accounts(ctx.mode, ctx.space), queryFn: () => listAccounts(ctx)})
-  const [tab, setTab] = useState<Tab>("pending")
+  const {t} = useTranslation();
+  const ctx = useFinanceCtx();
+  const q = useQuery({queryKey: financeKeys.importDetail(ctx.mode, ctx.space, importId), queryFn: () => getImport(ctx, importId)});
+  const accounts = useQuery({queryKey: financeKeys.accounts(ctx.mode, ctx.space), queryFn: () => listAccounts(ctx)});
+  const [tab, setTab] = useState<Tab>("pending");
 
-  if (q.isLoading) return <div className="space-y-2" aria-busy><Skeleton className="h-5 w-48"/><Skeleton className="h-4 w-full"/></div>
-  if (q.error || !q.data) return <ErrorBlock error={q.error} onRetry={() => void q.refetch()}/>
-  const lines = q.data.lines
-  const shown = lines.filter(l => tabOf(l) === tab)
-  const rejected = q.data.import.rejected
+  if (q.isLoading) return <div className="space-y-2" aria-busy><Skeleton className="h-5 w-48"/><Skeleton className="h-4 w-full"/></div>;
+  if (q.error || !q.data) return <ErrorBlock error={q.error} onRetry={() => void q.refetch()}/>;
+  const lines = q.data.lines;
+  const shown = lines.filter(l => tabOf(l) === tab);
+  const rejected = q.data.import.rejected;
 
   return (
     <section aria-label={t("finance.import.lines")} className="space-y-3">
@@ -78,39 +78,39 @@ export function ImportLines({importId}: {importId: string}) {
         </details>
       )}
     </section>
-  )
+  );
 }
 
 function LineRow({importId, line, accounts}: {importId: string; line: ImportLine; accounts: Account[]}) {
-  const {t} = useTranslation()
-  const ctx = useFinanceCtx()
-  const client = useQueryClient()
-  const {can} = useFinanceSpaces()
-  const canImport = can("finance.import")
-  const canSettle = canImport && can("finance.write") && can("finance.settle")
+  const {t} = useTranslation();
+  const ctx = useFinanceCtx();
+  const client = useQueryClient();
+  const {can} = useFinanceSpaces();
+  const canImport = can("finance.import");
+  const canSettle = canImport && can("finance.write") && can("finance.settle");
   // Linking posts nothing (auto-settle already paid the bill), so it needs no settle.
-  const canLink = canImport && can("finance.write")
-  const [creating, setCreating] = useState(false)
-  const [billId, setBillId] = useState(line.candidates[0]?.id ?? "")
+  const canLink = canImport && can("finance.write");
+  const [creating, setCreating] = useState(false);
+  const [billId, setBillId] = useState(line.candidates[0]?.id ?? "");
   // A refusal (another tab decided this line, or the bill was paid elsewhere)
   // is shown, and the import is read again so the row tells the truth.
-  const refresh = () => void client.invalidateQueries({queryKey: financeKeys.importDetail(ctx.mode, ctx.space, importId)})
-  const match = useFinanceMutation((c, _: void, key) => matchLine(c, importId, line.n, {bill_id: billId}, key), wholeSpace, undefined, refresh)
-  const link = useFinanceMutation((c, _: void, key) => linkLine(c, importId, line.n, {bill_id: billId}, key), wholeSpace, undefined, refresh)
-  const ignore = useFinanceMutation((c, _: void, key) => ignoreLine(c, importId, line.n, key), wholeSpace, undefined, refresh)
-  const reopen = useFinanceMutation((c, _: void, key) => reopenLine(c, importId, line.n, key), wholeSpace, undefined, refresh)
-  const error = match.error ?? link.error ?? ignore.error ?? reopen.error
-  const busy = match.isPending || link.isPending || ignore.isPending || reopen.isPending
-  const candidate = line.candidates.find(b => b.id === billId)
+  const refresh = () => void client.invalidateQueries({queryKey: financeKeys.importDetail(ctx.mode, ctx.space, importId)});
+  const match = useFinanceMutation((c, _: void, key) => matchLine(c, importId, line.n, {bill_id: billId}, key), wholeSpace, undefined, refresh);
+  const link = useFinanceMutation((c, _: void, key) => linkLine(c, importId, line.n, {bill_id: billId}, key), wholeSpace, undefined, refresh);
+  const ignore = useFinanceMutation((c, _: void, key) => ignoreLine(c, importId, line.n, key), wholeSpace, undefined, refresh);
+  const reopen = useFinanceMutation((c, _: void, key) => reopenLine(c, importId, line.n, key), wholeSpace, undefined, refresh);
+  const error = match.error ?? link.error ?? ignore.error ?? reopen.error;
+  const busy = match.isPending || link.isPending || ignore.isPending || reopen.isPending;
+  const candidate = line.candidates.find(b => b.id === billId);
   // A candidate already paid is one auto-settle paid: the line is linked to it, not settled again.
   const label = (b: Bill) => {
-    const description = b.description || t("finance.import.noDescription")
+    const description = b.description || t("finance.import.noDescription");
     return b.status === "paid" && b.paid_date
       ? t("finance.import.candidatePaid", {description, date: dayMonth(b.paid_date)})
-      : t("finance.import.candidate", {description, date: shortDate(b.due_date)})
-  }
-  const daysLeft = line.status === "pending" && line.expires_at ? calendarDaysUntil(line.expires_at) : undefined
-  const expiring = daysLeft !== undefined && daysLeft >= 0 && daysLeft <= EXPIRY_WARNING_DAYS
+      : t("finance.import.candidate", {description, date: shortDate(b.due_date)});
+  };
+  const daysLeft = line.status === "pending" && line.expires_at ? calendarDaysUntil(line.expires_at) : undefined;
+  const expiring = daysLeft !== undefined && daysLeft >= 0 && daysLeft <= EXPIRY_WARNING_DAYS;
 
   return (
     <LedgerRow
@@ -153,7 +153,7 @@ function LineRow({importId, line, accounts}: {importId: string; line: ImportLine
       )}
       {error ? <p role="alert" className="mt-1 text-sm text-danger">{messageFor(error)}</p> : null}
     </LedgerRow>
-  )
+  );
 }
 
 /** A line nobody forecast becomes a bill created and settled at once, under a
@@ -161,23 +161,23 @@ function LineRow({importId, line, accounts}: {importId: string; line: ImportLine
 function NewBillForm({importId, line, accounts, onDone, onRefused}: {
   importId: string; line: ImportLine; accounts: Account[]; onDone: () => void; onRefused: () => void
 }) {
-  const {t} = useTranslation()
-  const cls = line.amount < 0 ? "expense" : "income"
-  const cats = accounts.filter(a => a.class === cls && !a.system && !a.archived)
-  const [category, setCategory] = useState("")
-  const [description, setDescription] = useState(line.description)
+  const {t} = useTranslation();
+  const cls = line.amount < 0 ? "expense" : "income";
+  const cats = accounts.filter(a => a.class === cls && !a.system && !a.archived);
+  const [category, setCategory] = useState("");
+  const [description, setDescription] = useState(line.description);
   const create = useFinanceMutation(
     (c, body: {category_id: string; description?: string}, key) => newFromLine(c, importId, line.n, body, key),
     wholeSpace, onDone, onRefused,
-  )
+  );
   return (
     <form
       aria-label={t("finance.import.new")}
       className="grid items-start gap-x-4 gap-y-3 rounded-lg bg-surface p-3 sm:grid-cols-2 [&>*]:min-w-0"
       onSubmit={e => {
-        e.preventDefault()
-        if (!category || create.isPending) return
-        create.mutate({category_id: category, description: description.trim() || undefined})
+        e.preventDefault();
+        if (!category || create.isPending) return;
+        create.mutate({category_id: category, description: description.trim() || undefined});
       }}
     >
       <Field label={t("finance.import.category")} htmlFor={`im-cat-${line.n}`} hint={cats.length === 0 ? t(`finance.import.noCategory.${cls}`) : undefined}>
@@ -193,5 +193,5 @@ function NewBillForm({importId, line, accounts, onDone, onRefused}: {
         {create.error ? <p role="alert" className="text-sm text-danger">{messageFor(create.error)}</p> : null}
       </div>
     </form>
-  )
+  );
 }

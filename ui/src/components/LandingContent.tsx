@@ -1,21 +1,21 @@
-"use client"
+"use client";
 
-import Image from "next/image"
-import {useTranslation} from "react-i18next"
+import Image from "next/image";
+import {useTranslation} from "react-i18next";
 
-import {LandingCta} from "@/components/LandingCta"
-import {LanguageSwitcher} from "@/components/LanguageSwitcher"
+import {LandingCta} from "@/components/LandingCta";
+import {LanguageSwitcher} from "@/components/LanguageSwitcher";
 
-const ACCOUNTS_LEGAL_URL = "https://accounts.aoctech.app/legal"
-const PRIVACY_URL = "https://accounts.aoctech.app/privacy"
-const TERMS_URL = "https://accounts.aoctech.app/terms"
+const ACCOUNTS_LEGAL_URL = "https://accounts.aoctech.app/legal";
+const PRIVACY_URL = "https://accounts.aoctech.app/privacy";
+const TERMS_URL = "https://accounts.aoctech.app/terms";
 
 /**
  * The public front door. A client component so it can translate; the page
  * keeps the static metadata. One action: sign in.
  */
 export function LandingContent() {
-  const {t} = useTranslation()
+  const {t} = useTranslation();
   return (
     <div className="flex min-h-dvh flex-col">
       <div className="flex justify-end px-4 pt-3">
@@ -62,5 +62,5 @@ export function LandingContent() {
         </div>
       </footer>
     </div>
-  )
+  );
 }

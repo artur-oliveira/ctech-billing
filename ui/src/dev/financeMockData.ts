@@ -16,24 +16,24 @@
 import type {
   Account, AccountClass, Bill, Card, CardStatement, CashFlowMonth, Purchase, StatementItem, DREGroupLine, Direction, ExpressionJSON, FinanceSpaceEntry, ProjectionMonth,
   Recurrence, StatementEntry, TxKind, Verb, CsvMapping, ImportFormat, ImportLine, ImportSummary, OpeningProposal, RejectReason,
-} from "@/lib/api/financeTypes"
-import {STATEMENT_WITH_MEMOS, STATEMENT_WITH_MEMOS_ACCOUNTS} from "@/dev/fixtures/statementWithMemos"
+} from "@/lib/api/financeTypes";
+import {STATEMENT_WITH_MEMOS, STATEMENT_WITH_MEMOS_ACCOUNTS} from "@/dev/fixtures/statementWithMemos";
 
-export const FINANCE_MOCK_ORG = "0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b"
+export const FINANCE_MOCK_ORG = "0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b";
 /** A personal workspace this person owns (ADR 0027): every verb, manages its people. */
-export const FINANCE_MOCK_HOUSE = "0190a1b2-c3d4-7e5f-8a9b-cccccccccccc"
+export const FINANCE_MOCK_HOUSE = "0190a1b2-c3d4-7e5f-8a9b-cccccccccccc";
 
 type Req = {method?: string; url: string; headers?: Record<string, unknown>; data?: unknown; params?: Record<string, unknown>}
 type Res = {status: number; data: unknown}
 
-const ALL: Verb[] = ["finance.read", "finance.write", "finance.settle", "finance.import", "finance.configure"]
-const MEMBER: Verb[] = ["finance.read", "finance.write", "finance.settle", "finance.import"]
+const ALL: Verb[] = ["finance.read", "finance.write", "finance.settle", "finance.import", "finance.configure"];
+const MEMBER: Verb[] = ["finance.read", "finance.write", "finance.settle", "finance.import"];
 
 const SPACES: FinanceSpaceEntry[] = [
   {selector: "personal", kind: "personal_default", display_name: "Pessoal", verbs: ALL, manage_people: false},
   {selector: `org:${FINANCE_MOCK_HOUSE}`, kind: "personal", display_name: "Casa", role: "owner", verbs: ALL, manage_people: true},
   {selector: `org:${FINANCE_MOCK_ORG}`, kind: "organization", display_name: "Acme Serviços LTDA", role: "member", verbs: MEMBER, manage_people: false},
-]
+];
 
 /** One leg on a cash account, as the API's entry rows (flow "-" = not cash flow). */
 interface MEntry {
@@ -77,95 +77,95 @@ interface SpaceState {
 // ---- dates (civil, no Date parsing of ISO strings) ---------------------------
 
 function iso(y: number, m: number, d: number): string {
-  return `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`
+  return `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
 }
 function parts(s: string): [number, number, number] {
-  const [y, m, d] = s.split("-").map(Number)
-  return [y, m, d]
+  const [y, m, d] = s.split("-").map(Number);
+  return [y, m, d];
 }
 function daysIn(y: number, m: number) {
-  return new Date(y, m, 0).getDate()
+  return new Date(y, m, 0).getDate();
 }
 function addDays(s: string, n: number): string {
-  const [y, m, d] = parts(s)
-  const t = new Date(y, m - 1, d + n, 12)
-  return iso(t.getFullYear(), t.getMonth() + 1, t.getDate())
+  const [y, m, d] = parts(s);
+  const t = new Date(y, m - 1, d + n, 12);
+  return iso(t.getFullYear(), t.getMonth() + 1, t.getDate());
 }
 function todayIso(): string {
-  const t = new Date()
-  return iso(t.getFullYear(), t.getMonth() + 1, t.getDate())
+  const t = new Date();
+  return iso(t.getFullYear(), t.getMonth() + 1, t.getDate());
 }
 /** `YYYY-MM` shifted by n months. */
 function ymAdd(ym: string, n: number): string {
-  const [y, m] = ym.split("-").map(Number)
-  const i = y * 12 + (m - 1) + n
-  return `${Math.floor(i / 12)}-${String((i % 12) + 1).padStart(2, "0")}`
+  const [y, m] = ym.split("-").map(Number);
+  const i = y * 12 + (m - 1) + n;
+  return `${Math.floor(i / 12)}-${String((i % 12) + 1).padStart(2, "0")}`;
 }
 /** The statement month a purchase on `date` lands on: after the closing day, the next one; never before the open month. */
 function statementMonthFor(date: string, c: Card): string {
-  let first = date.slice(0, 7)
-  if (Number(date.slice(8)) > Math.min(c.closing_day, daysIn(Number(first.slice(0, 4)), Number(first.slice(5))))) first = ymAdd(first, 1)
-  return first < c.open_month ? c.open_month : first
+  let first = date.slice(0, 7);
+  if (Number(date.slice(8)) > Math.min(c.closing_day, daysIn(Number(first.slice(0, 4)), Number(first.slice(5))))) first = ymAdd(first, 1);
+  return first < c.open_month ? c.open_month : first;
 }
 function monthOffset(s: string, n: number): [number, number] {
-  const [y, m] = parts(s)
-  const t = new Date(y, m - 1 + n, 1)
-  return [t.getFullYear(), t.getMonth() + 1]
+  const [y, m] = parts(s);
+  const t = new Date(y, m - 1 + n, 1);
+  return [t.getFullYear(), t.getMonth() + 1];
 }
 
 // ---- fixtures ------------------------------------------------------------------
 
 function seed(kind: "personal" | "org", mode: string): SpaceState {
-  const today = todayIso()
-  const live = mode === "live"
+  const today = todayIso();
+  const live = mode === "live";
   const acct = (id: string, name: string, cls: AccountClass, balance = 0, extra: Partial<Account> = {}): Account =>
-    ({id, name, class: cls, system: false, archived: false, balance, ...extra})
+    ({id, name, class: cls, system: false, archived: false, balance, ...extra});
   const bill = (id: string, dir: Direction, amount: number, due: string, category: string, description: string, extra: Partial<Bill> = {}): Bill => ({
     id, direction: dir, amount, account_id: "conta-corrente", category_id: category, description,
     competence_date: due, due_date: due, status: "forecast", origin: "manual", auto_settle: false, ...extra,
-  })
+  });
   const ledger = {
     entries: [] as MEntry[], reversed: new Set<string>(), openings: new Set<string>(),
     cards: [] as SpaceState["cards"], purchases: [] as SpaceState["purchases"], items: [] as SpaceState["items"],
     closed: new Map<string, {total: number; bill_id?: string}>(),
     imports: [] as SpaceState["imports"], locks: new Set<string>(), mappings: new Map<string, CsvMapping>(),
     autoPaid: new Set<string>(), linked: new Set<string>(),
-  }
+  };
   if (kind === "personal") {
     if (live) {
       // The seeded import is old enough for its lines to show their last days.
-      const expires_at = `${addDays(today, 12)}T12:00:00Z`
+      const expires_at = `${addDays(today, 12)}T12:00:00Z`;
       const lines: Omit<ImportLine, "candidates">[] = [
         {n: 1, date: addDays(today, -1), amount: -42_590, description: "Compra no débito - Supermercado", status: "pending", expires_at},
         {n: 2, date: addDays(today, -1), amount: -1_250, description: "Padaria", status: "pending", expires_at},
         {n: 3, date: addDays(today, -2), amount: -5_000, description: "Transferência para poupança", status: "ignored", expires_at},
         {n: 4, date: addDays(today, -3), amount: -3_990, description: "Débito automático - Streaming", status: "pending", expires_at},
-      ]
+      ];
       // Paid by the job before the seeded history starts (the seed's entries are empty).
-      ledger.autoPaid.add("b-streaming")
+      ledger.autoPaid.add("b-streaming");
       ledger.imports.push({
         id: "imp-seed", account_id: "conta-corrente", format: "ofx", created_at: `${today}T09:00:00Z`, from: addDays(today, -2), to: addDays(today, -1),
         lines: 4, duplicates: 0, rejected_count: 0, rejected: [], pending: 3, lines_: lines,
-      })
-      for (const l of lines) ledger.locks.add(`conta-corrente#seed-${l.n}`)
+      });
+      for (const l of lines) ledger.locks.add(`conta-corrente#seed-${l.n}`);
       // A branded card with a purchase in 3× that began last month: last
       // month's statement is closed and past due (Vencida), this one is open.
-      const [py, pm] = monthOffset(today, -1)
-      const ym = (n: number) => { const [y, m] = monthOffset(today, n); return `${y}-${String(m).padStart(2, "0")}` }
+      const [py, pm] = monthOffset(today, -1);
+      const ym = (n: number) => { const [y, m] = monthOffset(today, n); return `${y}-${String(m).padStart(2, "0")}`; };
       ledger.cards.push({id: "card-nubank", name: "Nubank", closing_day: 3, due_day: 10, paying_account_id: "conta-corrente",
-        open_month: ym(0), balance: -93_990, archived: false, brand: "mastercard", last4: "4242", first_month: ym(-2)})
+        open_month: ym(0), balance: -93_990, archived: false, brand: "mastercard", last4: "4242", first_month: ym(-2)});
       ledger.purchases.push({id: "p-seed", card: "card-nubank", description: "Geladeira", category_id: "mercado", date: iso(py, pm, 2),
-        total: 90_000, refunded: false, advanced: [], installments: [0, 1, 2].map(i => ({number: i + 1, amount: 30_000, month: ym(i - 1)}))})
+        total: 90_000, refunded: false, advanced: [], installments: [0, 1, 2].map(i => ({number: i + 1, amount: 30_000, month: ym(i - 1)}))});
       for (const i of [0, 1, 2]) {
         ledger.items.push({card: "card-nubank", month: ym(i - 1), key: `p-seed#${i + 1}`, purchase_id: "p-seed", description: "Geladeira",
-          category_id: "mercado", date: iso(py, pm, 2), number: i + 1, of: 3, kind: "installment", amount: 30_000})
+          category_id: "mercado", date: iso(py, pm, 2), number: i + 1, of: 3, kind: "installment", amount: 30_000});
       }
       // A streaming subscription paid by this card: the job posted this month's.
-      const [ty, tm] = monthOffset(today, 0)
+      const [ty, tm] = monthOffset(today, 0);
       ledger.purchases.push({id: "p-stream", card: "card-nubank", description: "Streaming", category_id: "assinaturas", date: iso(ty, tm, 2),
-        total: 3_990, refunded: false, advanced: [], installments: [{number: 1, amount: 3_990, month: ym(0)}], origin: "recurrence", recurrence_id: "r-streaming"})
+        total: 3_990, refunded: false, advanced: [], installments: [{number: 1, amount: 3_990, month: ym(0)}], origin: "recurrence", recurrence_id: "r-streaming"});
       ledger.items.push({card: "card-nubank", month: ym(0), key: "p-stream#1", purchase_id: "p-stream", description: "Streaming",
-        category_id: "assinaturas", date: iso(ty, tm, 2), number: 1, of: 1, kind: "installment", amount: 3_990, recurrence_id: "r-streaming"})
+        category_id: "assinaturas", date: iso(ty, tm, 2), number: 1, of: 1, kind: "installment", amount: 3_990, recurrence_id: "r-streaming"});
     }
     return {
       ...ledger,
@@ -198,7 +198,7 @@ function seed(kind: "personal" | "org", mode: string): SpaceState {
         description: "Streaming", expression: {kind: "day_of_month" as const, day: 2}, start: "2026-01-01", business_day_adjust: "none" as const,
         auto_settle: false, archived: false,
       }] : [])],
-    }
+    };
   }
   return {
     ...ledger,
@@ -210,29 +210,29 @@ function seed(kind: "personal" | "org", mode: string): SpaceState {
     ],
     bills: [bill("b-fornecedor", "payable", 980_000, addDays(today, 2), "fornecedores", "Fornecedor de insumos")],
     recurrences: [],
-  }
+  };
 }
 
 /** A scenario's additions to Pessoal · Produção. */
 function withScenario(s: SpaceState, scenario: FinanceScenario, personalLive: boolean): SpaceState {
-  if (scenario !== "extrato_memos" || !personalLive) return s
-  s.accounts.push(...STATEMENT_WITH_MEMOS_ACCOUNTS)
+  if (scenario !== "extrato_memos" || !personalLive) return s;
+  s.accounts.push(...STATEMENT_WITH_MEMOS_ACCOUNTS);
   for (const e of STATEMENT_WITH_MEMOS.entries) {
     s.entries.push({
       account: STATEMENT_WITH_MEMOS.account_id, tx: e.transaction_id, date: e.date, amount: e.amount, kind: e.kind,
       flow: e.category_id ?? "-", memo: e.memo, ref: e.bill_id ? `bill:${e.bill_id}` : undefined,
-    })
+    });
   }
-  return s
+  return s;
 }
 
-const state = new Map<string, SpaceState>()
-const replays = new Map<string, Res>()
+const state = new Map<string, SpaceState>();
+const replays = new Map<string, Res>();
 
 export function resetFinanceMock() {
-  state.clear()
-  replays.clear()
-  plans.clear()
+  state.clear();
+  replays.clear();
+  plans.clear();
 }
 
 // ---- helpers -------------------------------------------------------------------
@@ -240,16 +240,16 @@ export function resetFinanceMock() {
 const problem = (
   status: number, type: string, title: string, detail: string, code: string,
   errors?: { field: string; code: string; message: string }[],
-): Res => ({status, data: {type, title, status, detail, code, ...(errors ? {errors} : {})}})
-const ok = (data: unknown, status = 200): Res => ({status, data})
+): Res => ({status, data: {type, title, status, detail, code, ...(errors ? {errors} : {})}});
+const ok = (data: unknown, status = 200): Res => ({status, data});
 
 function header(r: Req, name: string): string | undefined {
-  const v = r.headers?.[name]
-  return typeof v === "string" && v !== "" ? v : undefined
+  const v = r.headers?.[name];
+  return typeof v === "string" && v !== "" ? v : undefined;
 }
 
 function body<T>(r: Req): T {
-  return (typeof r.data === "string" ? JSON.parse(r.data) : r.data ?? {}) as T
+  return (typeof r.data === "string" ? JSON.parse(r.data) : r.data ?? {}) as T;
 }
 
 /**
@@ -258,22 +258,22 @@ function body<T>(r: Req): T {
  */
 /** The API's 422 for a recurrence's target (spec D1), or "" when it is fine. */
 function targetError(p: Partial<Recurrence>): string {
-  if (p.card_id && p.account_id) return "pay with an account or a card, not both"
-  if (!p.card_id && !p.account_id) return "an account or a card is required"
-  if (p.card_id && p.direction === "receivable") return "a card pays expenses only"
-  if (p.card_id && p.auto_settle) return "auto_settle does not apply to a card"
-  if (!p.card_id && p.installments) return "installments are for a card only"
-  const n = p.installments ?? 1
-  if (p.card_id && (n < 1 || n > 48 || (p.amount ?? 0) < n)) return "installments must be 1..48, each at least 0,01"
-  return ""
+  if (p.card_id && p.account_id) return "pay with an account or a card, not both";
+  if (!p.card_id && !p.account_id) return "an account or a card is required";
+  if (p.card_id && p.direction === "receivable") return "a card pays expenses only";
+  if (p.card_id && p.auto_settle) return "auto_settle does not apply to a card";
+  if (!p.card_id && p.installments) return "installments are for a card only";
+  const n = p.installments ?? 1;
+  if (p.card_id && (n < 1 || n > 48 || (p.amount ?? 0) < n)) return "installments must be 1..48, each at least 0,01";
+  return "";
 }
 
 function applyPatch(target: object, patch: object) {
-  const t = target as Record<string, unknown>
+  const t = target as Record<string, unknown>;
   for (const [k, v] of Object.entries(patch)) {
-    if (v === undefined) continue
-    if (v === null) delete t[k]
-    else t[k] = v
+    if (v === undefined) continue;
+    if (v === null) delete t[k];
+    else t[k] = v;
   }
 }
 
@@ -286,800 +286,803 @@ function applyPatch(target: object, patch: object) {
  * Produção.
  */
 export type FinanceScenario = "padrao" | "extrato_memos" | "plan_basic" | "plan_over" | "plan_ondemand" | "plan_no_usage"
-const FINANCE_SCENARIOS: FinanceScenario[] = ["padrao", "extrato_memos", "plan_basic", "plan_over", "plan_ondemand", "plan_no_usage"]
-const SCENARIO_KEY = "ctech-billing-finance-scenario"
-let scenarioOverride: FinanceScenario | null = null
+const FINANCE_SCENARIOS: FinanceScenario[] = ["padrao", "extrato_memos", "plan_basic", "plan_over", "plan_ondemand", "plan_no_usage"];
+const SCENARIO_KEY = "ctech-billing-finance-scenario";
+let scenarioOverride: FinanceScenario | null = null;
 
 export function setFinanceScenario(s: FinanceScenario) {
-  scenarioOverride = s
-  try { window.localStorage.setItem(SCENARIO_KEY, s) } catch { /* no storage: the override holds */ }
+  scenarioOverride = s;
+  try { window.localStorage.setItem(SCENARIO_KEY, s); } catch { /* no storage: the override holds */ }
 }
 
 function financeScenario(): FinanceScenario {
   if (typeof window !== "undefined") {
     try {
-      const fromUrl = new URLSearchParams(window.location.search).get("finance") as FinanceScenario | null
-      if (fromUrl && FINANCE_SCENARIOS.includes(fromUrl)) window.localStorage.setItem(SCENARIO_KEY, fromUrl)
-      const stored = window.localStorage.getItem(SCENARIO_KEY) as FinanceScenario | null
-      if (stored && FINANCE_SCENARIOS.includes(stored)) return stored
+      const fromUrl = new URLSearchParams(window.location.search).get("finance") as FinanceScenario | null;
+      if (fromUrl && FINANCE_SCENARIOS.includes(fromUrl)) window.localStorage.setItem(SCENARIO_KEY, fromUrl);
+      const stored = window.localStorage.getItem(SCENARIO_KEY) as FinanceScenario | null;
+      if (stored && FINANCE_SCENARIOS.includes(stored)) return stored;
     } catch { /* fall through */ }
   }
-  return scenarioOverride ?? "padrao"
+  return scenarioOverride ?? "padrao";
 }
 
 // ---- statements (mock-grade readers; the server's are the real ones) ------------
 
 function daysBetween(a: string, b: string): number {
-  const [ay, am, ad] = parts(a), [by, bm, bd] = parts(b)
-  return Math.round((Date.UTC(by, bm - 1, bd) - Date.UTC(ay, am - 1, ad)) / 86_400_000)
+  const [ay, am, ad] = parts(a), [by, bm, bd] = parts(b);
+  return Math.round((Date.UTC(by, bm - 1, bd) - Date.UTC(ay, am - 1, ad)) / 86_400_000);
 }
 
 function mockAmount(s: string, decimal: "," | "." = "."): number | null {
-  const clean = s.replace(/\s|R\$/g, "").replace(decimal === "," ? /\./g : /,/g, "").replace(",", ".")
-  const n = Number(clean)
-  return clean !== "" && Number.isFinite(n) ? Math.round(n * 100) : null
+  const clean = s.replace(/\s|R\$/g, "").replace(decimal === "," ? /\./g : /,/g, "").replace(",", ".");
+  const n = Number(clean);
+  return clean !== "" && Number.isFinite(n) ? Math.round(n * 100) : null;
 }
 
 function mockOFX(text: string) {
-  const lines: {date: string; amount: number; description: string; fitid?: string}[] = []
-  const rejected: {line: number; reason: RejectReason}[] = []
+  const lines: {date: string; amount: number; description: string; fitid?: string}[] = [];
+  const rejected: {line: number; reason: RejectReason}[] = [];
   const field = (block: string, tag: string) => block.match(new RegExp(`<${tag}>([^<\r\n]*)`, "i"))?.[1].trim() ?? ""
   ;[...text.matchAll(/<STMTTRN>([\s\S]*?)<\/STMTTRN>/gi)].forEach((m, i) => {
-    const d = field(m[1], "DTPOSTED")
-    const amount = mockAmount(field(m[1], "TRNAMT").replace(",", "."))
-    if (!/^\d{8}/.test(d)) return rejected.push({line: i + 1, reason: "invalid_date"})
-    if (amount === null) return rejected.push({line: i + 1, reason: "invalid_amount"})
-    if (amount === 0) return rejected.push({line: i + 1, reason: "zero_amount"})
-    lines.push({date: `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`, amount, description: field(m[1], "MEMO") || field(m[1], "NAME"), fitid: field(m[1], "FITID") || undefined})
-  })
+    const d = field(m[1], "DTPOSTED");
+    const amount = mockAmount(field(m[1], "TRNAMT").replace(",", "."));
+    if (!/^\d{8}/.test(d)) return rejected.push({line: i + 1, reason: "invalid_date"});
+    if (amount === null) return rejected.push({line: i + 1, reason: "invalid_amount"});
+    if (amount === 0) return rejected.push({line: i + 1, reason: "zero_amount"});
+    lines.push({date: `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`, amount, description: field(m[1], "MEMO") || field(m[1], "NAME"), fitid: field(m[1], "FITID") || undefined});
+    return undefined;
+  });
   // LEDGERBAL, as the API reads it (UX batch 5); AVAILBAL is not it.
-  const bal = text.match(/<LEDGERBAL>([\s\S]*?)(?:<\/LEDGERBAL>|<AVAILBAL>|<\/STMTRS>)/i)?.[1]
-  const balAmount = bal ? mockAmount(field(bal, "BALAMT").replace(",", ".")) : null
-  const asOf = bal ? field(bal, "DTASOF") : ""
-  const ledger = balAmount !== null && /^\d{8}/.test(asOf) ? {amount: balAmount, asOf: `${asOf.slice(0, 4)}-${asOf.slice(4, 6)}-${asOf.slice(6, 8)}`} : undefined
-  return {lines, rejected, ledger}
+  const bal = text.match(/<LEDGERBAL>([\s\S]*?)(?:<\/LEDGERBAL>|<AVAILBAL>|<\/STMTRS>)/i)?.[1];
+  const balAmount = bal ? mockAmount(field(bal, "BALAMT").replace(",", ".")) : null;
+  const asOf = bal ? field(bal, "DTASOF") : "";
+  const ledger = balAmount !== null && /^\d{8}/.test(asOf) ? {amount: balAmount, asOf: `${asOf.slice(0, 4)}-${asOf.slice(4, 6)}-${asOf.slice(6, 8)}`} : undefined;
+  return {lines, rejected, ledger};
 }
 
 /** The API's statement.OpeningFrom: LEDGERBAL − every parsed line, the day before the first. */
 function mockOpening(p: ReturnType<typeof mockOFX>): OpeningProposal | undefined {
-  if (!p.ledger || p.lines.length === 0) return undefined
-  const first = p.lines.map(l => l.date).sort()[0]
+  if (!p.ledger || p.lines.length === 0) return undefined;
+  const first = p.lines.map(l => l.date).sort()[0];
   return {amount: p.ledger.amount - p.lines.reduce((t, l) => t + l.amount, 0), date: addDays(first, -1),
-    ledger_balance: p.ledger.amount, ledger_as_of: p.ledger.asOf, lines: p.lines.length}
+    ledger_balance: p.ledger.amount, ledger_as_of: p.ledger.asOf, lines: p.lines.length};
 }
 
 function mockCSV(text: string, m: CsvMapping) {
-  const lines: {date: string; amount: number; description: string}[] = []
-  const rejected: {line: number; reason: RejectReason}[] = []
-  const sep = m.delimiter === "\t" ? "\t" : m.delimiter
+  const lines: {date: string; amount: number; description: string}[] = [];
+  const rejected: {line: number; reason: RejectReason}[] = [];
+  const sep = m.delimiter === "\t" ? "\t" : m.delimiter;
   text.split(/\r?\n/).forEach((row, i) => {
-    if (i < m.skip_rows || row.trim() === "") return
-    const cells = row.split(sep).map(c => c.replace(/^"|"$/g, "").trim())
-    const raw = cells[m.date_column - 1] ?? ""
-    const p = raw.split(/[/.-]/)
-    const date = m.date_format === "yyyy-mm-dd" ? `${p[0]}-${p[1]}-${p[2]}` : m.date_format === "mm/dd/yyyy" ? `${p[2]}-${p[0]}-${p[1]}` : `${p[2]}-${p[1]}-${p[0]}`
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return rejected.push({line: i + 1, reason: "invalid_date"})
-    const credit = mockAmount(cells[m.amount_column - 1] ?? "", m.decimal)
-    const debit = m.debit_column ? mockAmount(cells[m.debit_column - 1] ?? "", m.decimal) : null
-    const amount = m.debit_column ? (credit ? Math.abs(credit) : 0) - (debit ? Math.abs(debit) : 0) : credit
-    if (amount === null) return rejected.push({line: i + 1, reason: "invalid_amount"})
-    if (amount === 0) return rejected.push({line: i + 1, reason: "zero_amount"})
-    lines.push({date, amount, description: cells[m.description_column - 1] ?? ""})
-  })
-  return {lines, rejected}
+    if (i < m.skip_rows || row.trim() === "") return undefined;
+    const cells = row.split(sep).map(c => c.replace(/^"|"$/g, "").trim());
+    const raw = cells[m.date_column - 1] ?? "";
+    const p = raw.split(/[/.-]/);
+    const date = m.date_format === "yyyy-mm-dd" ? `${p[0]}-${p[1]}-${p[2]}` : m.date_format === "mm/dd/yyyy" ? `${p[2]}-${p[0]}-${p[1]}` : `${p[2]}-${p[1]}-${p[0]}`;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return rejected.push({line: i + 1, reason: "invalid_date"});
+    const credit = mockAmount(cells[m.amount_column - 1] ?? "", m.decimal);
+    const debit = m.debit_column ? mockAmount(cells[m.debit_column - 1] ?? "", m.decimal) : null;
+    const amount = m.debit_column ? (credit ? Math.abs(credit) : 0) - (debit ? Math.abs(debit) : 0) : credit;
+    if (amount === null) return rejected.push({line: i + 1, reason: "invalid_amount"});
+    if (amount === 0) return rejected.push({line: i + 1, reason: "zero_amount"});
+    lines.push({date, amount, description: cells[m.description_column - 1] ?? ""});
+    return undefined;
+  });
+  return {lines, rejected};
 }
 
 // ---- occurrences (mock-grade) ----------------------------------------------------
 
 function occurrences(expr: ExpressionJSON, from: string, count: number): {nominal: string; due: string}[] {
-  const out: {nominal: string; due: string}[] = []
+  const out: {nominal: string; due: string}[] = [];
   const roll = (s: string) => {
-    let d = s
-    while ([0, 6].includes(new Date(...(([y, m, dd]) => [y, m - 1, dd, 12] as const)(parts(d))).getDay())) d = addDays(d, 1)
-    return d
-  }
-  const base = expr.kind === "difference" ? expr.include : expr
+    let d = s;
+    while ([0, 6].includes(new Date(...(([y, m, dd]) => [y, m - 1, dd, 12] as const)(parts(d))).getDay())) d = addDays(d, 1);
+    return d;
+  };
+  const base = expr.kind === "difference" ? expr.include : expr;
   for (let i = 0; out.length < count && i < 400; i++) {
-    let nominal: string | null = null
+    let nominal: string | null = null;
     if (base.kind === "weekly") {
-      nominal = addDays(base.anchor, 7 * base.every * i)
+      nominal = addDays(base.anchor, 7 * base.every * i);
     } else if (base.kind === "yearly") {
-      const [y] = parts(from)
-      nominal = iso(y + i, base.month, Math.min(base.day, daysIn(y + i, base.month)))
+      const [y] = parts(from);
+      nominal = iso(y + i, base.month, Math.min(base.day, daysIn(y + i, base.month)));
     } else {
-      const [y, m] = monthOffset(from, i)
-      const day = base.kind === "day_of_month" ? base.day : 5
-      nominal = iso(y, m, Math.min(day, daysIn(y, m)))
+      const [y, m] = monthOffset(from, i);
+      const day = base.kind === "day_of_month" ? base.day : 5;
+      nominal = iso(y, m, Math.min(day, daysIn(y, m)));
     }
-    if (nominal < from) continue
-    if (expr.kind === "difference" && expr.exclude.kind === "months_of_year" && expr.exclude.months.includes(parts(nominal)[1])) continue
-    out.push({nominal, due: roll(nominal)})
+    if (nominal < from) continue;
+    if (expr.kind === "difference" && expr.exclude.kind === "months_of_year" && expr.exclude.months.includes(parts(nominal)[1])) continue;
+    out.push({nominal, due: roll(nominal)});
   }
-  return out
+  return out;
 }
 
 // ---- the handler -----------------------------------------------------------------
 
 export function financeMock(r: Req): Res {
-  const method = (r.method ?? "get").toLowerCase()
-  const path = r.url.replace(/^.*\/v1\.0\/console\/finance/, "").split("?")[0]
+  const method = (r.method ?? "get").toLowerCase();
+  const path = r.url.replace(/^.*\/v1\.0\/console\/finance/, "").split("?")[0];
 
-  if (path === "/spaces" && method === "get") return ok({spaces: SPACES, organizations_unavailable: false})
+  if (path === "/spaces" && method === "get") return ok({spaces: SPACES, organizations_unavailable: false});
 
-  const mode = header(r, "X-Billing-Mode")
-  const selector = header(r, "X-Billing-Space")
-  if (!mode || !selector) return problem(400, "about:blank", "Bad Request", "informe X-Billing-Mode e X-Billing-Space", "bad_request")
-  const entry = SPACES.find(s => s.selector === selector)
-  if (!entry) return problem(404, "/problems/space-not-found", "Space not found", "espaço não encontrado", "space_not_found")
+  const mode = header(r, "X-Billing-Mode");
+  const selector = header(r, "X-Billing-Space");
+  if (!mode || !selector) return problem(400, "about:blank", "Bad Request", "informe X-Billing-Mode e X-Billing-Space", "bad_request");
+  const entry = SPACES.find(s => s.selector === selector);
+  if (!entry) return problem(404, "/problems/space-not-found", "Space not found", "espaço não encontrado", "space_not_found");
 
   // Before the per-space state: a plan request never seeds a finance space.
   if (path === "/plan" || path.startsWith("/plan/")) {
     if (entry.kind !== "personal_default") {
-      return problem(404, "/problems/not-found", "Not Found", "o plano é da pessoa: abra Pessoal", "plan_personal_only")
+      return problem(404, "/problems/not-found", "Not Found", "o plano é da pessoa: abra Pessoal", "plan_personal_only");
     }
-    if (method === "get") return planRoute(method, path, r, mode)
-    const idem = header(r, "Idempotency-Key")
-    if (!idem) return problem(400, "about:blank", "Bad Request", "cabeçalho Idempotency-Key obrigatório", "idempotency_key_required")
-    const replayKey = `plan|${financeScenario()}|${method}|${path}|${idem}`
-    const stored = replays.get(replayKey)
-    if (stored) return stored
-    const res = planRoute(method, path, r, mode)
-    if (res.status >= 200 && res.status < 300) replays.set(replayKey, res)
-    return res
+    if (method === "get") return planRoute(method, path, r, mode);
+    const idem = header(r, "Idempotency-Key");
+    if (!idem) return problem(400, "about:blank", "Bad Request", "cabeçalho Idempotency-Key obrigatório", "idempotency_key_required");
+    const replayKey = `plan|${financeScenario()}|${method}|${path}|${idem}`;
+    const stored = replays.get(replayKey);
+    if (stored) return stored;
+    const res = planRoute(method, path, r, mode);
+    if (res.status >= 200 && res.status < 300) replays.set(replayKey, res);
+    return res;
   }
-  const can = (v: Verb) => entry.verbs.includes(v)
+  const can = (v: Verb) => entry.verbs.includes(v);
 
-  const scenario = financeScenario()
-  const key = `${mode}|${selector}|${scenario}`
-  if (!state.has(key)) state.set(key, withScenario(seed(entry.kind === "organization" ? "org" : "personal", mode), scenario, entry.kind === "personal_default" && mode === "live"))
-  const s = state.get(key)!
+  const scenario = financeScenario();
+  const key = `${mode}|${selector}|${scenario}`;
+  if (!state.has(key)) state.set(key, withScenario(seed(entry.kind === "organization" ? "org" : "personal", mode), scenario, entry.kind === "personal_default" && mode === "live"));
+  const s = state.get(key)!;
 
-  const isWrite = method !== "get" && path !== "/recurrences/preview"
+  const isWrite = method !== "get" && path !== "/recurrences/preview";
   if (isWrite) {
-    const idem = header(r, "Idempotency-Key")
-    if (!idem) return problem(400, "about:blank", "Bad Request", "cabeçalho Idempotency-Key obrigatório", "idempotency_key_required")
-    const replayKey = `${key}|${method}|${path}|${idem}`
-    const stored = replays.get(replayKey)
-    if (stored) return stored
-    const res = route(method, path, r, s, can)
-    if (res.status >= 200 && res.status < 300) replays.set(replayKey, res)
-    return res
+    const idem = header(r, "Idempotency-Key");
+    if (!idem) return problem(400, "about:blank", "Bad Request", "cabeçalho Idempotency-Key obrigatório", "idempotency_key_required");
+    const replayKey = `${key}|${method}|${path}|${idem}`;
+    const stored = replays.get(replayKey);
+    if (stored) return stored;
+    const res = route(method, path, r, s, can);
+    if (res.status >= 200 && res.status < 300) replays.set(replayKey, res);
+    return res;
   }
-  return route(method, path, r, s, can)
+  return route(method, path, r, s, can);
 }
 
 function route(method: string, path: string, r: Req, s: SpaceState, can: (v: Verb) => boolean): Res {
-  const forbidden = () => problem(403, "about:blank", "Forbidden", "seu papel não permite esta operação", "role_denied")
-  const today = todayIso()
+  const forbidden = () => problem(403, "about:blank", "Forbidden", "seu papel não permite esta operação", "role_denied");
+  const today = todayIso();
   const withBucket = (b: Bill): Bill =>
-    b.status === "forecast" ? {...b, bucket: b.due_date < today ? "overdue" : b.due_date === today ? "today" : "upcoming"} : b
-  const nextId = (p: string) => `${p}-${++s.seq}`
-  const billMatch = path.match(/^\/bills\/([^/]+)(?:\/(settle|cancel|unsettle))?$/)
+    b.status === "forecast" ? {...b, bucket: b.due_date < today ? "overdue" : b.due_date === today ? "today" : "upcoming"} : b;
+  const nextId = (p: string) => `${p}-${++s.seq}`;
+  const billMatch = path.match(/^\/bills\/([^/]+)(?:\/(settle|cancel|unsettle))?$/);
   const post = (entries: Omit<MEntry, "tx">[]) => {
-    const tx = nextId("tx")
+    const tx = nextId("tx");
     for (const e of entries) {
-      s.entries.push({...e, tx})
-      const a = s.accounts.find(x => x.id === e.account)
-      if (a) a.balance += e.amount
+      s.entries.push({...e, tx});
+      const a = s.accounts.find(x => x.id === e.account);
+      if (a) a.balance += e.amount;
     }
-    return tx
-  }
+    return tx;
+  };
   const reverse = (tx: string) => {
-    s.reversed.add(tx)
-    return post(s.entries.filter(e => e.tx === tx).map(e => ({...e, amount: -e.amount, reversal: true, date: today})))
-  }
-  const recMatch = path.match(/^\/recurrences\/([^/]+)(?:\/archive)?$/)
+    s.reversed.add(tx);
+    return post(s.entries.filter(e => e.tx === tx).map(e => ({...e, amount: -e.amount, reversal: true, date: today})));
+  };
+  const recMatch = path.match(/^\/recurrences\/([^/]+)(?:\/archive)?$/);
 
-  if (path === "/space") return ok({kind: "personal_default", mode: "live", verbs: ALL})
+  if (path === "/space") return ok({kind: "personal_default", mode: "live", verbs: ALL});
 
   // bills
   if (path === "/bills" && method === "get") {
-    const dir = r.params?.direction as Direction
+    const dir = r.params?.direction as Direction;
     const data = s.bills.filter(b => b.direction === dir && b.status === "forecast")
-      .sort((a, b) => a.due_date.localeCompare(b.due_date)).map(withBucket)
-    return ok({data, has_more: false})
+      .sort((a, b) => a.due_date.localeCompare(b.due_date)).map(withBucket);
+    return ok({data, has_more: false});
   }
   if (path === "/bills" && method === "post") {
-    if (!can("finance.write")) return forbidden()
-    const b = body<Partial<Bill>>(r)
-    if (b.auto_settle && !can("finance.settle")) return forbidden()
-    if (!b.amount || b.amount <= 0) return problem(422, "about:blank", "Unprocessable", "amount must be positive", "validation_error", [{field: "amount", code: "required", message: "amount is required"}])
+    if (!can("finance.write")) return forbidden();
+    const b = body<Partial<Bill>>(r);
+    if (b.auto_settle && !can("finance.settle")) return forbidden();
+    if (!b.amount || b.amount <= 0) return problem(422, "about:blank", "Unprocessable", "amount must be positive", "validation_error", [{field: "amount", code: "required", message: "amount is required"}]);
     const bill: Bill = {
       id: nextId("b"), direction: b.direction!, amount: b.amount, account_id: b.account_id!, category_id: b.category_id!,
       description: b.description, competence_date: b.competence_date ?? b.due_date!, due_date: b.due_date!,
       status: "forecast", origin: "manual", auto_settle: !!b.auto_settle,
-    }
-    s.bills.push(bill)
-    return ok(withBucket(bill), 201)
+    };
+    s.bills.push(bill);
+    return ok(withBucket(bill), 201);
   }
   if (billMatch) {
-    const bill = s.bills.find(b => b.id === billMatch[1])
-    if (!bill) return problem(404, "about:blank", "Not Found", "recurso não encontrado", "resource_not_found")
-    const action = billMatch[2]
-    if (method === "get" && !action) return ok(withBucket(bill))
-    const transition = () => problem(409, "/problems/invalid-transition", "Invalid Transition", "esta conta mudou enquanto você a via", "invalid_transition")
+    const bill = s.bills.find(b => b.id === billMatch[1]);
+    if (!bill) return problem(404, "about:blank", "Not Found", "recurso não encontrado", "resource_not_found");
+    const action = billMatch[2];
+    if (method === "get" && !action) return ok(withBucket(bill));
+    const transition = () => problem(409, "/problems/invalid-transition", "Invalid Transition", "esta conta mudou enquanto você a via", "invalid_transition");
     if (action === "settle") {
-      if (!can("finance.settle")) return forbidden()
-      if (bill.status !== "forecast") return transition()
-      const req = body<{paid_amount?: number; paid_date?: string; difference_category_id?: string}>(r)
-      const paid = req.paid_amount ?? bill.amount
-      if (paid !== bill.amount && !req.difference_category_id) return problem(422, "about:blank", "Unprocessable", "a different amount needs a category for the gap", "validation_error", [{field: "difference_category_id", code: "required", message: "difference category is required"}])
-      const date = req.paid_date ?? today
+      if (!can("finance.settle")) return forbidden();
+      if (bill.status !== "forecast") return transition();
+      const req = body<{paid_amount?: number; paid_date?: string; difference_category_id?: string}>(r);
+      const paid = req.paid_amount ?? bill.amount;
+      if (paid !== bill.amount && !req.difference_category_id) return problem(422, "about:blank", "Unprocessable", "a different amount needs a category for the gap", "validation_error", [{field: "difference_category_id", code: "required", message: "difference category is required"}]);
+      const date = req.paid_date ?? today;
       post([{
         account: bill.account_id, date, amount: bill.direction === "payable" ? -paid : paid, kind: "settlement",
         flow: bill.category_id, memo: bill.description ?? "Sem descrição", ref: `bill:${bill.id}`,
-      }])
-      Object.assign(bill, {status: "paid", paid_date: date})
-      return ok(bill)
+      }]);
+      Object.assign(bill, {status: "paid", paid_date: date});
+      return ok(bill);
     }
     if (action === "unsettle") {
-      if (!can("finance.settle")) return forbidden()
-      if (bill.status !== "paid") return transition()
-      const paid = s.entries.findLast(e => e.ref === `bill:${bill.id}` && e.kind === "settlement" && !e.reversal && !s.reversed.has(e.tx))
-      if (paid) reverse(paid.tx)
-      Object.assign(bill, {status: "forecast", paid_date: undefined, auto_settle: false})
-      return ok(withBucket(bill))
+      if (!can("finance.settle")) return forbidden();
+      if (bill.status !== "paid") return transition();
+      const paid = s.entries.findLast(e => e.ref === `bill:${bill.id}` && e.kind === "settlement" && !e.reversal && !s.reversed.has(e.tx));
+      if (paid) reverse(paid.tx);
+      Object.assign(bill, {status: "forecast", paid_date: undefined, auto_settle: false});
+      return ok(withBucket(bill));
     }
     if (action === "cancel") {
-      if (!can("finance.write")) return forbidden()
-      if (bill.status !== "forecast") return transition()
-      bill.status = "canceled"
-      return ok(bill)
+      if (!can("finance.write")) return forbidden();
+      if (bill.status !== "forecast") return transition();
+      bill.status = "canceled";
+      return ok(bill);
     }
     if (method === "patch") {
-      if (!can("finance.write")) return forbidden()
-      if (bill.status !== "forecast") return transition()
-      const p = body<Partial<Bill>>(r)
-      if (p.auto_settle === true && !bill.auto_settle && !can("finance.settle")) return forbidden()
-      applyPatch(bill, p)
-      return ok(withBucket(bill))
+      if (!can("finance.write")) return forbidden();
+      if (bill.status !== "forecast") return transition();
+      const p = body<Partial<Bill>>(r);
+      if (p.auto_settle === true && !bill.auto_settle && !can("finance.settle")) return forbidden();
+      applyPatch(bill, p);
+      return ok(withBucket(bill));
     }
   }
 
   // recurrences
-  if (path === "/recurrences" && method === "get") return ok({data: s.recurrences, has_more: false})
+  if (path === "/recurrences" && method === "get") return ok({data: s.recurrences, has_more: false});
   if (path === "/recurrences/preview" && method === "post") {
-    const p = body<{expression: ExpressionJSON; start: string; end?: string; from?: string; count: number}>(r)
+    const p = body<{expression: ExpressionJSON; start: string; end?: string; from?: string; count: number}>(r);
     if (!(p.count >= 1 && p.count <= 24)) {
-      return {status: 422, data: {type: "about:blank", title: "Validation", status: 422, errors: [{field: "count", message: "entre 1 e 24"}]}}
+      return {status: 422, data: {type: "about:blank", title: "Validation", status: 422, errors: [{field: "count", message: "entre 1 e 24"}]}};
     }
-    const from = p.from && p.from > p.start ? p.from : p.start
-    return ok({data: occurrences(p.expression, from, p.count).filter(o => !p.end || o.nominal <= p.end), has_more: false})
+    const from = p.from && p.from > p.start ? p.from : p.start;
+    return ok({data: occurrences(p.expression, from, p.count).filter(o => !p.end || o.nominal <= p.end), has_more: false});
   }
   if (path === "/recurrences" && method === "post") {
-    if (!can("finance.write")) return forbidden()
-    const p = body<Partial<Recurrence>>(r)
-    if (p.auto_settle && !can("finance.settle")) return forbidden()
+    if (!can("finance.write")) return forbidden();
+    const p = body<Partial<Recurrence>>(r);
+    if (p.auto_settle && !can("finance.settle")) return forbidden();
     // Pay with an account or a card, exactly one; a card pays expenses only, without auto_settle.
-    const target = targetError(p)
-    if (target) return problem(422, "about:blank", "Unprocessable Entity", target, "invalid_recurrence")
-    const onCard = !!p.card_id
+    const target = targetError(p);
+    if (target) return problem(422, "about:blank", "Unprocessable Entity", target, "invalid_recurrence");
+    const onCard = !!p.card_id;
     const rec: Recurrence = {
       id: nextId("r"), direction: p.direction!, amount: p.amount!, category_id: p.category_id!, account_id: onCard ? "" : p.account_id!,
       ...(onCard ? {card_id: p.card_id, installments: p.installments ?? 1} : {}),
       description: p.description, expression: p.expression!, start: p.start!, end: p.end,
       business_day_adjust: p.business_day_adjust ?? "none", auto_settle: !!p.auto_settle, archived: false,
-    }
-    s.recurrences.push(rec)
-    return ok(rec, 201)
+    };
+    s.recurrences.push(rec);
+    return ok(rec, 201);
   }
-  const occMatch = path.match(/^\/recurrences\/([^/]+)\/occurrences$/)
+  const occMatch = path.match(/^\/recurrences\/([^/]+)\/occurrences$/);
   if (occMatch && method === "get") {
     // Mock-grade: the seeded rent shows every state (the latest past one is the
     // seeded overdue bill, one skipped, the rest paid, this month's forecast);
     // a recurrence created in this session has made nothing yet.
-    const rec = s.recurrences.find(x => x.id === occMatch[1])
-    if (!rec) return problem(404, "about:blank", "Not Found", "recurso não encontrado", "resource_not_found")
-    const all = occurrences(rec.expression, rec.start, 24).filter(o => !rec.end || o.nominal <= rec.end)
-    const [hy, hm] = monthOffset(today, 1)
-    const horizonEnd = iso(hy, hm, daysIn(hy, hm))
+    const rec = s.recurrences.find(x => x.id === occMatch[1]);
+    if (!rec) return problem(404, "about:blank", "Not Found", "recurso não encontrado", "resource_not_found");
+    const all = occurrences(rec.expression, rec.start, 24).filter(o => !rec.end || o.nominal <= rec.end);
+    const [hy, hm] = monthOffset(today, 1);
+    const horizonEnd = iso(hy, hm, daysIn(hy, hm));
     if (rec.card_id) {
       // A card recurrence: what the job posted is its items; the rest lands on a statement month.
-      const c = s.cards.find(x => x.id === rec.card_id)
-      const posted = s.items.filter(i => i.recurrence_id === rec.id && (i.number ?? 1) === 1)
+      const c = s.cards.find(x => x.id === rec.card_id);
+      const posted = s.items.filter(i => i.recurrence_id === rec.id && (i.number ?? 1) === 1);
       const history = posted.map(i => ({nominal: i.date, due: i.date, purchase_id: i.purchase_id, card_id: i.card,
-        statement_month: i.month, amount: rec.amount, state: "posted"}))
-      const after = posted.map(i => i.date).sort().at(-1) ?? addDays(today, -1)
+        statement_month: i.month, amount: rec.amount, state: "posted"}));
+      const after = posted.map(i => i.date).sort().at(-1) ?? addDays(today, -1);
       const upcoming = rec.archived ? [] : all.filter(o => o.nominal > after && o.nominal >= today).slice(0, 6)
-        .map(o => ({nominal: o.nominal, due: o.nominal, ...(c ? {statement_month: statementMonthFor(o.nominal, c)} : {})}))
-      return ok({history, upcoming})
+        .map(o => ({nominal: o.nominal, due: o.nominal, ...(c ? {statement_month: statementMonthFor(o.nominal, c)} : {})}));
+      return ok({history, upcoming});
     }
-    const made = rec.id === "r-aluguel" ? all.filter(o => o.nominal <= horizonEnd).slice(-6) : []
-    const past = made.filter(o => o.nominal < today)
+    const made = rec.id === "r-aluguel" ? all.filter(o => o.nominal <= horizonEnd).slice(-6) : [];
+    const past = made.filter(o => o.nominal < today);
     const history = made.map(o => {
-      const i = past.indexOf(o)
-      const last = i === past.length - 1
-      const state = i < 0 ? "forecast" : last ? "overdue" : i === past.length - 2 ? "skipped" : "paid"
-      return {...o, bill_id: last ? "b-aluguel" : `mock-${o.nominal}`, amount: rec.amount, state, auto_settle: rec.auto_settle, ...(state === "paid" ? {paid_date: o.due} : {})}
-    })
-    const after = made.at(-1)?.nominal ?? addDays(today, -1)
-    const upcoming = rec.archived ? [] : all.filter(o => o.nominal > after && o.nominal > today).slice(0, 6)
-    return ok({history, upcoming})
+      const i = past.indexOf(o);
+      const last = i === past.length - 1;
+      const state = i < 0 ? "forecast" : last ? "overdue" : i === past.length - 2 ? "skipped" : "paid";
+      return {...o, bill_id: last ? "b-aluguel" : `mock-${o.nominal}`, amount: rec.amount, state, auto_settle: rec.auto_settle, ...(state === "paid" ? {paid_date: o.due} : {})};
+    });
+    const after = made.at(-1)?.nominal ?? addDays(today, -1);
+    const upcoming = rec.archived ? [] : all.filter(o => o.nominal > after && o.nominal > today).slice(0, 6);
+    return ok({history, upcoming});
   }
   if (recMatch) {
-    const rec = s.recurrences.find(x => x.id === recMatch[1])
-    if (!rec) return problem(404, "about:blank", "Not Found", "recurso não encontrado", "resource_not_found")
-    if (!can("finance.write")) return forbidden()
+    const rec = s.recurrences.find(x => x.id === recMatch[1]);
+    if (!rec) return problem(404, "about:blank", "Not Found", "recurso não encontrado", "resource_not_found");
+    if (!can("finance.write")) return forbidden();
     if (path.endsWith("/archive")) {
-      rec.archived = true
-      return {status: 204, data: ""}
+      rec.archived = true;
+      return {status: 204, data: ""};
     }
     if (method === "patch") {
-      const p = body<Partial<Recurrence> & {archive?: boolean}>(r)
+      const p = body<Partial<Recurrence> & {archive?: boolean}>(r);
       // An end that leaves nothing after today ends it: confirmed (archive) or refused.
       if (p.end && !p.archive && !occurrences(rec.expression, addDays(today, 1), 1).some(o => o.nominal <= p.end!)) {
-        return problem(422, "about:blank", "Unprocessable", "this end date leaves the recurrence with no occurrence to come", "recurrence_would_end")
+        return problem(422, "about:blank", "Unprocessable", "this end date leaves the recurrence with no occurrence to come", "recurrence_would_end");
       }
-      if (p.card_id && p.account_id) return problem(422, "about:blank", "Unprocessable Entity", "pay with an account or a card, not both", "invalid_recurrence")
-      const {archive, ...rest} = p
+      if (p.card_id && p.account_id) return problem(422, "about:blank", "Unprocessable Entity", "pay with an account or a card, not both", "invalid_recurrence");
+      const {archive, ...rest} = p;
       if (p.card_id) {
-        rest.account_id = ""
-        rest.auto_settle = rest.auto_settle ?? false
-        if (rest.auto_settle) return problem(422, "about:blank", "Unprocessable Entity", "auto_settle does not apply to a card", "invalid_recurrence")
-        rest.installments = rest.installments ?? rec.installments ?? 1
+        rest.account_id = "";
+        rest.auto_settle = rest.auto_settle ?? false;
+        if (rest.auto_settle) return problem(422, "about:blank", "Unprocessable Entity", "auto_settle does not apply to a card", "invalid_recurrence");
+        rest.installments = rest.installments ?? rec.installments ?? 1;
       } else if (p.account_id) {
-        delete rec.card_id
-        delete rec.installments
+        delete rec.card_id;
+        delete rec.installments;
       }
-      applyPatch(rec, rest)
+      applyPatch(rec, rest);
       // The person's edit answers needs_attention: the next run re-checks.
-      delete rec.needs_attention
-      if (archive) rec.archived = true
-      return ok(rec)
+      delete rec.needs_attention;
+      if (archive) rec.archived = true;
+      return ok(rec);
     }
   }
 
   // projection
   if (path === "/projection") {
-    const n = Number(r.params?.months ?? 6)
-    const data: ProjectionMonth[] = []
+    const n = Number(r.params?.months ?? 6);
+    const data: ProjectionMonth[] = [];
     for (let i = 0; i < n; i++) {
-      const [y, m] = monthOffset(today, i)
-      const month = `${y}-${String(m).padStart(2, "0")}`
-      const open = s.bills.filter(b => b.status === "forecast" && (b.due_date.slice(0, 7) === month || (i === 0 && b.due_date.slice(0, 7) < month)))
-      const sum = (d: Direction) => open.filter(b => b.direction === d).reduce((a, b) => a + b.amount, 0)
+      const [y, m] = monthOffset(today, i);
+      const month = `${y}-${String(m).padStart(2, "0")}`;
+      const open = s.bills.filter(b => b.status === "forecast" && (b.due_date.slice(0, 7) === month || (i === 0 && b.due_date.slice(0, 7) < month)));
+      const sum = (d: Direction) => open.filter(b => b.direction === d).reduce((a, b) => a + b.amount, 0);
       // Beyond the two-month horizon, recurrences are virtual.
-      const virtualOf = (d: Direction) => i >= 2 ? s.recurrences.filter(x => !x.archived && x.direction === d).reduce((a, x) => a + x.amount, 0) : 0
-      const virtual_receivable = virtualOf("receivable"), virtual_payable = virtualOf("payable")
-      data.push({month, receivable: sum("receivable"), payable: sum("payable"), virtual: virtual_receivable - virtual_payable, virtual_receivable, virtual_payable})
+      const virtualOf = (d: Direction) => i >= 2 ? s.recurrences.filter(x => !x.archived && x.direction === d).reduce((a, x) => a + x.amount, 0) : 0;
+      const virtual_receivable = virtualOf("receivable"), virtual_payable = virtualOf("payable");
+      data.push({month, receivable: sum("receivable"), payable: sum("payable"), virtual: virtual_receivable - virtual_payable, virtual_receivable, virtual_payable});
     }
-    return ok({data, has_more: false})
+    return ok({data, has_more: false});
   }
 
   // accounts and settings
-  if (path === "/accounts" && method === "get") return ok({data: s.accounts, has_more: false})
+  if (path === "/accounts" && method === "get") return ok({data: s.accounts, has_more: false});
   if (path === "/accounts" && method === "post") {
-    if (!can("finance.configure")) return forbidden()
-    const p = body<{name: string; class: AccountClass; dre_group?: Account["dre_group"]}>(r)
-    const a: Account = {id: nextId("a"), name: p.name, class: p.class, dre_group: p.dre_group, system: false, archived: false, balance: 0}
-    s.accounts.push(a)
-    return ok(a, 201)
+    if (!can("finance.configure")) return forbidden();
+    const p = body<{name: string; class: AccountClass; dre_group?: Account["dre_group"]}>(r);
+    const a: Account = {id: nextId("a"), name: p.name, class: p.class, dre_group: p.dre_group, system: false, archived: false, balance: 0};
+    s.accounts.push(a);
+    return ok(a, 201);
   }
   // A rename (names only): a system or archived account is the API's 422, and a
   // card's account renames the card, which reads its name from it.
-  const renameMatch = path.match(/^\/accounts\/([^/]+)$/)
+  const renameMatch = path.match(/^\/accounts\/([^/]+)$/);
   if (renameMatch && method === "patch") {
-    if (!can("finance.configure")) return forbidden()
-    const a = s.accounts.find(x => x.id === renameMatch[1])
-    if (!a) return problem(404, "about:blank", "Not Found", "recurso não encontrado", "resource_not_found")
-    const sent = body<Record<string, unknown>>(r)
+    if (!can("finance.configure")) return forbidden();
+    const a = s.accounts.find(x => x.id === renameMatch[1]);
+    if (!a) return problem(404, "about:blank", "Not Found", "recurso não encontrado", "resource_not_found");
+    const sent = body<Record<string, unknown>>(r);
     // Names only: the API's strict decoder refuses any other field with a 400.
-    const extra = Object.keys(sent).find(k => k !== "name")
-    if (extra) return problem(400, "/problems/bad-request", "Bad Request", `invalid request body: json: unknown field "${extra}"`, "invalid_body")
-    const name = (typeof sent.name === "string" ? sent.name : "").trim()
-    if (!name) return problem(422, "about:blank", "Unprocessable Entity", "validation failed", "validation_failed", [{field: "name", code: "required", message: "required"}])
-    if (a.system || a.archived) return problem(422, "about:blank", "Unprocessable Entity", "archived or system accounts cannot be renamed", "invalid_account")
-    a.name = name
-    const c = s.cards.find(x => x.id === a.id)
-    if (c) c.name = name
-    return ok(a)
+    const extra = Object.keys(sent).find(k => k !== "name");
+    if (extra) return problem(400, "/problems/bad-request", "Bad Request", `invalid request body: json: unknown field "${extra}"`, "invalid_body");
+    const name = (typeof sent.name === "string" ? sent.name : "").trim();
+    if (!name) return problem(422, "about:blank", "Unprocessable Entity", "validation failed", "validation_failed", [{field: "name", code: "required", message: "required"}]);
+    if (a.system || a.archived) return problem(422, "about:blank", "Unprocessable Entity", "archived or system accounts cannot be renamed", "invalid_account");
+    a.name = name;
+    const c = s.cards.find(x => x.id === a.id);
+    if (c) c.name = name;
+    return ok(a);
   }
-  const archive = path.match(/^\/accounts\/([^/]+)\/archive$/)
+  const archive = path.match(/^\/accounts\/([^/]+)\/archive$/);
   if (archive) {
-    if (!can("finance.configure")) return forbidden()
-    const a = s.accounts.find(x => x.id === archive[1])
-    if (!a) return problem(404, "about:blank", "Not Found", "recurso não encontrado", "resource_not_found")
-    a.archived = true
-    return {status: 204, data: ""}
+    if (!can("finance.configure")) return forbidden();
+    const a = s.accounts.find(x => x.id === archive[1]);
+    if (!a) return problem(404, "about:blank", "Not Found", "recurso não encontrado", "resource_not_found");
+    a.archived = true;
+    return {status: 204, data: ""};
   }
   // cards (the backend's rules, small: allocation floored at the open month,
   // remainder on the first installment, close = frozen total + a statement bill)
   const clampDay = (ym: string, day: number) => {
-    const [y, m] = ym.split("-").map(Number)
-    return `${ym}-${String(Math.min(day, daysIn(y, m))).padStart(2, "0")}`
-  }
+    const [y, m] = ym.split("-").map(Number);
+    return `${ym}-${String(Math.min(day, daysIn(y, m))).padStart(2, "0")}`;
+  };
   const itemOut = (i: SpaceState["items"][number]): StatementItem => ({
     purchase_id: i.purchase_id, description: i.description, category_id: i.category_id, date: i.date,
     number: i.number, of: i.of, kind: i.kind, amount: i.amount, ...(i.recurrence_id ? {recurrence_id: i.recurrence_id} : {}),
-  })
+  });
   const purchaseOut = (p: SpaceState["purchases"][number]): Purchase => ({
     id: p.id, description: p.description, category_id: p.category_id, date: p.date, total: p.total,
     installments: p.installments, refunded: p.refunded,
     ...(p.recurrence_id ? {origin: "recurrence" as const, recurrence_id: p.recurrence_id} : {}),
-  })
+  });
   const statementOf = (c: Card, month: string): CardStatement => {
-    const closingDate = clampDay(month, c.closing_day)
-    const dueSame = clampDay(month, c.due_day)
-    const due = dueSame > closingDate ? dueSame : clampDay(ymAdd(month, 1), c.due_day)
+    const closingDate = clampDay(month, c.closing_day);
+    const dueSame = clampDay(month, c.due_day);
+    const due = dueSame > closingDate ? dueSame : clampDay(ymAdd(month, 1), c.due_day);
     const items = s.items.filter(i => i.card === c.id && i.month === month)
-      .map(itemOut).sort((a, b) => a.date.localeCompare(b.date))
-    const frozen = s.closed.get(`${c.id}|${month}`)
-    const bill = frozen?.bill_id ? s.bills.find(b => b.id === frozen.bill_id) : undefined
-    const status = frozen ? (bill?.status === "paid" ? "paid" : "closed") : month === c.open_month ? "open" : month > c.open_month ? "future" : "closed"
-    const total = frozen ? frozen.total : items.reduce((t, i) => t + i.amount, 0)
-    return {card_id: c.id, month, status, closing_date: closingDate, due_date: due, total, bill_id: frozen?.bill_id, items}
-  }
+      .map(itemOut).sort((a, b) => a.date.localeCompare(b.date));
+    const frozen = s.closed.get(`${c.id}|${month}`);
+    const bill = frozen?.bill_id ? s.bills.find(b => b.id === frozen.bill_id) : undefined;
+    const status = frozen ? (bill?.status === "paid" ? "paid" : "closed") : month === c.open_month ? "open" : month > c.open_month ? "future" : "closed";
+    const total = frozen ? frozen.total : items.reduce((t, i) => t + i.amount, 0);
+    return {card_id: c.id, month, status, closing_date: closingDate, due_date: due, total, bill_id: frozen?.bill_id, items};
+  };
   // What the card's recurrences will still add to a future statement (one occurrence a month, mock-grade).
   const forecastOf = (c: Card, month: string) => month <= c.open_month ? [] : s.recurrences
     .filter(r => r.card_id === c.id && !r.archived)
-    .map(r => ({recurrence_id: r.id, description: r.description, nominal: `${month}-${String(r.expression.kind === "day_of_month" ? r.expression.day : 1).padStart(2, "0")}`, installment: 1, of: 1, amount: r.amount}))
-  const cardMatch = path.match(/^\/cards\/([^/]+)(?:\/(statements|purchases|close)(?:\/([^/]+)(?:\/(refund|advance|forecast))?)?)?$/)
-  if (path === "/cards" && method === "get") return ok({data: s.cards.map(c => { const out: Card & {first_month?: string} = {...c}; delete out.first_month; return out }), has_more: false})
+    .map(r => ({recurrence_id: r.id, description: r.description, nominal: `${month}-${String(r.expression.kind === "day_of_month" ? r.expression.day : 1).padStart(2, "0")}`, installment: 1, of: 1, amount: r.amount}));
+  const cardMatch = path.match(/^\/cards\/([^/]+)(?:\/(statements|purchases|close)(?:\/([^/]+)(?:\/(refund|advance|forecast))?)?)?$/);
+  if (path === "/cards" && method === "get") return ok({data: s.cards.map(c => { const out: Card & {first_month?: string} = {...c}; delete out.first_month; return out; }), has_more: false});
   if (path === "/cards" && method === "post") {
-    if (!can("finance.configure")) return forbidden()
-    const p = body<{name: string; closing_day: number; due_day: number; paying_account_id: string; brand?: Card["brand"]; last4?: string}>(r)
+    if (!can("finance.configure")) return forbidden();
+    const p = body<{name: string; closing_day: number; due_day: number; paying_account_id: string; brand?: Card["brand"]; last4?: string}>(r);
     const c: Card = {id: nextId("card"), name: p.name, closing_day: p.closing_day, due_day: p.due_day,
       paying_account_id: p.paying_account_id, open_month: today.slice(0, 7), balance: 0, archived: false,
-      ...(p.brand ? {brand: p.brand} : {}), ...(p.last4 ? {last4: p.last4} : {})}
-    s.cards.push(c)
-    s.accounts.push({id: c.id, name: c.name, class: "liability", system: false, archived: false, balance: 0})
-    return ok(c, 201)
+      ...(p.brand ? {brand: p.brand} : {}), ...(p.last4 ? {last4: p.last4} : {})};
+    s.cards.push(c);
+    s.accounts.push({id: c.id, name: c.name, class: "liability", system: false, archived: false, balance: 0});
+    return ok(c, 201);
   }
   if (cardMatch) {
-    const c = s.cards.find(x => x.id === cardMatch[1])
-    if (!c) return problem(404, "about:blank", "Not Found", "recurso não encontrado", "resource_not_found")
-    const [, , sub, arg, action] = cardMatch
+    const c = s.cards.find(x => x.id === cardMatch[1]);
+    if (!c) return problem(404, "about:blank", "Not Found", "recurso não encontrado", "resource_not_found");
+    const [, , sub, arg, action] = cardMatch;
     if (!sub && method === "patch") {
-      if (!can("finance.configure")) return forbidden()
-      const patch = body<Record<string, unknown>>(r)
+      if (!can("finance.configure")) return forbidden();
+      const patch = body<Record<string, unknown>>(r);
       // An empty brand or last4 clears it too, as the API still accepts.
-      for (const k of ["brand", "last4"] as const) if (patch[k] === "") patch[k] = null
+      for (const k of ["brand", "last4"] as const) if (patch[k] === "") patch[k] = null;
       // The name is the card account's: written on both, refused blank or archived.
       if ("name" in patch) {
-        const name = typeof patch.name === "string" ? patch.name.trim() : ""
-        if (!name) return problem(422, "about:blank", "Unprocessable Entity", "validation failed", "validation_failed", [{field: "name", code: "required", message: "required"}])
-        const acct = s.accounts.find(x => x.id === c.id)
-        if (acct?.archived) return problem(422, "about:blank", "Unprocessable Entity", "archived accounts cannot be renamed", "invalid_account")
-        if (acct) acct.name = name
-        patch.name = name
+        const name = typeof patch.name === "string" ? patch.name.trim() : "";
+        if (!name) return problem(422, "about:blank", "Unprocessable Entity", "validation failed", "validation_failed", [{field: "name", code: "required", message: "required"}]);
+        const acct = s.accounts.find(x => x.id === c.id);
+        if (acct?.archived) return problem(422, "about:blank", "Unprocessable Entity", "archived accounts cannot be renamed", "invalid_account");
+        if (acct) acct.name = name;
+        patch.name = name;
       }
-      applyPatch(c, patch)
-      return ok(c)
+      applyPatch(c, patch);
+      return ok(c);
     }
     if (sub === "statements" && !arg && method === "get") {
-      const from = String(r.params?.from ?? "")
-      const count = Number(r.params?.count ?? 3)
-      const backward = r.params?.direction === "backward"
+      const from = String(r.params?.from ?? "");
+      const count = Number(r.params?.count ?? 3);
+      const backward = r.params?.direction === "backward";
       if (!/^\d{4}-\d{2}$/.test(from) || !(count >= 1 && count <= 12)) {
-        return problem(422, "/problems/validation", "Validation", "invalid range", "validation_failed")
+        return problem(422, "/problems/validation", "Validation", "invalid range", "validation_failed");
       }
       // Bounds: back to the card's first month; forward to the later of open + 12 and the last item.
-      const first = c.first_month ?? c.open_month
-      const lastItem = s.items.filter(i => i.card === c.id).map(i => i.month).sort().at(-1) ?? first
-      const last = [ymAdd(c.open_month, 12), lastItem].sort().at(-1)!
-      const months: string[] = []
-      let m = backward ? (from > last ? last : from) : (from < first ? first : from)
-      while (months.length < count && m >= first && m <= last) { months.push(m); m = ymAdd(m, backward ? -1 : 1) }
-      const has_more = months.length > 0 && (backward ? months.at(-1)! > first : months.at(-1)! < last)
-      const data = months.map(month => { const {items, ...rest} = statementOf(c, month); return {...rest, items_count: items.length, forecast_total: forecastOf(c, month).reduce((t, f) => t + f.amount, 0)} })
-      return ok({data, has_more})
+      const first = c.first_month ?? c.open_month;
+      const lastItem = s.items.filter(i => i.card === c.id).map(i => i.month).sort().at(-1) ?? first;
+      const last = [ymAdd(c.open_month, 12), lastItem].sort().at(-1)!;
+      const months: string[] = [];
+      let m = backward ? (from > last ? last : from) : (from < first ? first : from);
+      while (months.length < count && m >= first && m <= last) { months.push(m); m = ymAdd(m, backward ? -1 : 1); }
+      const has_more = months.length > 0 && (backward ? months.at(-1)! > first : months.at(-1)! < last);
+      const data = months.map(month => { const {items, ...rest} = statementOf(c, month); return {...rest, items_count: items.length, forecast_total: forecastOf(c, month).reduce((t, f) => t + f.amount, 0)}; });
+      return ok({data, has_more});
     }
-    if (sub === "statements" && arg && action === "forecast" && method === "get") return ok({data: forecastOf(c, arg), has_more: false})
-    if (sub === "statements" && arg && method === "get") return ok(statementOf(c, arg))
+    if (sub === "statements" && arg && action === "forecast" && method === "get") return ok({data: forecastOf(c, arg), has_more: false});
+    if (sub === "statements" && arg && method === "get") return ok(statementOf(c, arg));
     if (sub === "purchases" && !arg && method === "get") {
-      return ok({data: s.purchases.filter(p => p.card === c.id).map(purchaseOut), has_more: false})
+      return ok({data: s.purchases.filter(p => p.card === c.id).map(purchaseOut), has_more: false});
     }
     if (sub === "purchases" && !arg && method === "post") {
-      if (!can("finance.write")) return forbidden()
-      const p = body<{date: string; description: string; category_id: string; total: number; installments: number}>(r)
-      const base = Math.floor(p.total / p.installments)
-      const first = statementMonthFor(p.date, c)
-      const id = nextId("p")
+      if (!can("finance.write")) return forbidden();
+      const p = body<{date: string; description: string; category_id: string; total: number; installments: number}>(r);
+      const base = Math.floor(p.total / p.installments);
+      const first = statementMonthFor(p.date, c);
+      const id = nextId("p");
       const installments = Array.from({length: p.installments}, (_, i) => ({
         number: i + 1, amount: base + (i === 0 ? p.total - base * p.installments : 0), month: ymAdd(first, i),
-      }))
-      const purchase = {id, card: c.id, description: p.description, category_id: p.category_id, date: p.date, total: p.total, installments, refunded: false, advanced: [] as number[]}
-      s.purchases.push(purchase)
+      }));
+      const purchase = {id, card: c.id, description: p.description, category_id: p.category_id, date: p.date, total: p.total, installments, refunded: false, advanced: [] as number[]};
+      s.purchases.push(purchase);
       for (const inst of installments) {
         s.items.push({card: c.id, month: inst.month, key: `${id}#${inst.number}`, purchase_id: id, description: p.description,
-          category_id: p.category_id, date: p.date, number: inst.number, of: p.installments, kind: "installment", amount: inst.amount})
+          category_id: p.category_id, date: p.date, number: inst.number, of: p.installments, kind: "installment", amount: inst.amount});
       }
-      c.balance -= p.total
-      const cat = s.accounts.find(a => a.id === p.category_id)
-      if (cat) cat.balance += p.total
-      return ok(purchaseOut(purchase), 201)
+      c.balance -= p.total;
+      const cat = s.accounts.find(a => a.id === p.category_id);
+      if (cat) cat.balance += p.total;
+      return ok(purchaseOut(purchase), 201);
     }
     if (sub === "purchases" && arg && !action && method === "patch") {
-      if (!can("finance.write")) return forbidden()
-      const purchase = s.purchases.find(p => p.id === arg && p.card === c.id)
-      if (!purchase) return problem(404, "about:blank", "Not Found", "recurso não encontrado", "resource_not_found")
-      if (purchase.refunded) return problem(409, "/problems/invalid-transition", "Invalid Transition", "Esta compra já foi estornada.", "purchase_refunded")
-      const patch = body<{description?: string | null; category_id?: string | null}>(r)
+      if (!can("finance.write")) return forbidden();
+      const purchase = s.purchases.find(p => p.id === arg && p.card === c.id);
+      if (!purchase) return problem(404, "about:blank", "Not Found", "recurso não encontrado", "resource_not_found");
+      if (purchase.refunded) return problem(409, "/problems/invalid-transition", "Invalid Transition", "Esta compra já foi estornada.", "purchase_refunded");
+      const patch = body<{description?: string | null; category_id?: string | null}>(r);
       for (const k of ["description", "category_id"] as const) {
-        if (patch[k] === null) return problem(422, "about:blank", "Unprocessable Entity", "validation failed", "validation_failed", [{field: k, code: "required", message: "required: it cannot be cleared"}])
+        if (patch[k] === null) return problem(422, "about:blank", "Unprocessable Entity", "validation failed", "validation_failed", [{field: k, code: "required", message: "required: it cannot be cleared"}]);
       }
-      const description = patch.description == null ? purchase.description : patch.description.trim()
-      if (!description) return problem(422, "about:blank", "Unprocessable Entity", "validation failed", "validation_failed", [{field: "description", code: "required", message: "required"}])
-      const category = patch.category_id ?? purchase.category_id
-      const next = s.accounts.find(a => a.id === category)
+      const description = patch.description == null ? purchase.description : patch.description.trim();
+      if (!description) return problem(422, "about:blank", "Unprocessable Entity", "validation failed", "validation_failed", [{field: "description", code: "required", message: "required"}]);
+      const category = patch.category_id ?? purchase.category_id;
+      const next = s.accounts.find(a => a.id === category);
       if (!next || next.class !== "expense" || next.system || next.archived) {
-        return problem(422, "about:blank", "Unprocessable Entity", "the purchase needs an active expense category", "invalid_account")
+        return problem(422, "about:blank", "Unprocessable Entity", "the purchase needs an active expense category", "invalid_account");
       }
       if (category !== purchase.category_id) {
         // The whole expense moves (the server replaces the ledger transaction).
-        const was = s.accounts.find(a => a.id === purchase.category_id)
-        if (was) was.balance -= purchase.total
-        next.balance += purchase.total
+        const was = s.accounts.find(a => a.id === purchase.category_id);
+        if (was) was.balance -= purchase.total;
+        next.balance += purchase.total;
       }
-      purchase.description = description
-      purchase.category_id = category
+      purchase.description = description;
+      purchase.category_id = category;
       for (const i of s.items) {
-        if (i.purchase_id !== purchase.id || (i.kind !== "installment" && i.kind !== "advance")) continue
-        i.description = i.kind === "advance" ? `Antecipação: ${description}` : description
-        i.category_id = category
+        if (i.purchase_id !== purchase.id || (i.kind !== "installment" && i.kind !== "advance")) continue;
+        i.description = i.kind === "advance" ? `Antecipação: ${description}` : description;
+        i.category_id = category;
       }
-      return ok(purchaseOut(purchase))
+      return ok(purchaseOut(purchase));
     }
     if (sub === "purchases" && arg && (action === "refund" || action === "advance")) {
-      if (!can("finance.write")) return forbidden()
-      const purchase = s.purchases.find(p => p.id === arg && p.card === c.id)
-      if (!purchase) return problem(404, "about:blank", "Not Found", "recurso não encontrado", "resource_not_found")
-      if (purchase.refunded) return problem(409, "/problems/invalid-transition", "Invalid Transition", "Esta compra já foi estornada.", "purchase_refunded")
+      if (!can("finance.write")) return forbidden();
+      const purchase = s.purchases.find(p => p.id === arg && p.card === c.id);
+      if (!purchase) return problem(404, "about:blank", "Not Found", "recurso não encontrado", "resource_not_found");
+      if (purchase.refunded) return problem(409, "/problems/invalid-transition", "Invalid Transition", "Esta compra já foi estornada.", "purchase_refunded");
       if (action === "advance") {
-        const later = purchase.installments.filter(i => i.month > c.open_month)
-        if (later.length === 0) return problem(409, "/problems/invalid-transition", "Invalid Transition", "Não há parcelas futuras para antecipar.", "nothing_to_advance")
-        s.items = s.items.filter(i => !(i.purchase_id === purchase.id && later.some(l => `${purchase.id}#${l.number}` === i.key)))
+        const later = purchase.installments.filter(i => i.month > c.open_month);
+        if (later.length === 0) return problem(409, "/problems/invalid-transition", "Invalid Transition", "Não há parcelas futuras para antecipar.", "nothing_to_advance");
+        s.items = s.items.filter(i => !(i.purchase_id === purchase.id && later.some(l => `${purchase.id}#${l.number}` === i.key)));
         s.items.push({card: c.id, month: c.open_month, key: `${purchase.id}#adv`, purchase_id: purchase.id,
           description: `Antecipação: ${purchase.description}`, category_id: purchase.category_id, date: today, kind: "advance",
-          amount: later.reduce((t, i) => t + i.amount, 0)})
-        for (const l of later) { l.month = c.open_month; purchase.advanced.push(l.number) }
-        return ok(purchaseOut(purchase))
+          amount: later.reduce((t, i) => t + i.amount, 0)});
+        for (const l of later) { l.month = c.open_month; purchase.advanced.push(l.number); }
+        return ok(purchaseOut(purchase));
       }
-      const credit = purchase.installments.filter(i => i.month < c.open_month).reduce((t, i) => t + i.amount, 0)
-      s.items = s.items.filter(i => !(i.purchase_id === purchase.id && i.month >= c.open_month))
+      const credit = purchase.installments.filter(i => i.month < c.open_month).reduce((t, i) => t + i.amount, 0);
+      s.items = s.items.filter(i => !(i.purchase_id === purchase.id && i.month >= c.open_month));
       if (credit > 0) {
         s.items.push({card: c.id, month: c.open_month, key: `${purchase.id}#refund`, purchase_id: purchase.id,
-          description: `Estorno: ${purchase.description}`, category_id: purchase.category_id, date: today, kind: "credit", amount: -credit})
+          description: `Estorno: ${purchase.description}`, category_id: purchase.category_id, date: today, kind: "credit", amount: -credit});
       }
-      purchase.refunded = true
-      c.balance += purchase.total
-      const cat = s.accounts.find(a => a.id === purchase.category_id)
-      if (cat) cat.balance -= purchase.total
-      return ok(purchaseOut(purchase))
+      purchase.refunded = true;
+      c.balance += purchase.total;
+      const cat = s.accounts.find(a => a.id === purchase.category_id);
+      if (cat) cat.balance -= purchase.total;
+      return ok(purchaseOut(purchase));
     }
     if (sub === "close" && method === "post") {
-      if (!can("finance.write")) return forbidden()
-      const m = c.open_month
+      if (!can("finance.write")) return forbidden();
+      const m = c.open_month;
       if (body<{month?: string}>(r).month !== m) {
-        return problem(409, "/problems/invalid-transition", "Invalid Transition", "Esta fatura não está aberta para fechamento.", "statement_not_closable")
+        return problem(409, "/problems/invalid-transition", "Invalid Transition", "Esta fatura não está aberta para fechamento.", "statement_not_closable");
       }
-      const st = statementOf(c, m)
-      let billId: string | undefined
+      const st = statementOf(c, m);
+      let billId: string | undefined;
       if (st.total > 0) {
-        billId = `fatura-${c.id}-${m}`
+        billId = `fatura-${c.id}-${m}`;
         s.bills.push({id: billId, direction: "payable", amount: st.total, account_id: c.paying_account_id, category_id: c.id,
           description: `Fatura ${c.name} ${m}`, competence_date: st.closing_date, due_date: st.due_date, status: "forecast",
-          origin: "card_statement", origin_ref: `${c.id}#${m}`, auto_settle: false})
+          origin: "card_statement", origin_ref: `${c.id}#${m}`, auto_settle: false});
       } else if (st.total < 0) {
         s.items.push({card: c.id, month: ymAdd(m, 1), key: `carry#${m}`, purchase_id: "carry", description: "Crédito da fatura anterior",
-          date: st.closing_date, kind: "carry", amount: st.total})
+          date: st.closing_date, kind: "carry", amount: st.total});
       }
-      s.closed.set(`${c.id}|${m}`, {total: st.total, bill_id: billId})
-      c.open_month = ymAdd(m, 1)
-      return ok(statementOf(c, m))
+      s.closed.set(`${c.id}|${m}`, {total: st.total, bill_id: billId});
+      c.open_month = ymAdd(m, 1);
+      return ok(statementOf(c, m));
     }
   }
 
   // statement, transfers, reversals, reports
-  const cash = (id: string) => s.accounts.some(a => a.id === id && a.class === "asset" && !a.system && !a.archived)
-  const opening = path.match(/^\/accounts\/([^/]+)\/opening-balance$/)
+  const cash = (id: string) => s.accounts.some(a => a.id === id && a.class === "asset" && !a.system && !a.archived);
+  const opening = path.match(/^\/accounts\/([^/]+)\/opening-balance$/);
   if (opening && method === "post") {
-    if (!can("finance.configure")) return forbidden()
-    const id = opening[1]
-    if (!cash(id)) return problem(422, "about:blank", "Unprocessable", "conta ou categoria desconhecida neste espaço", "unknown_account")
-    if (s.openings.has(id)) return problem(409, "/problems/invalid-transition", "Invalid Transition", "Esta conta já tem saldo inicial. Estorne o atual para lançar outro.", "opening_balance_exists")
-    const p = body<{amount: number; date: string}>(r)
-    s.openings.add(id)
-    return ok({transaction_id: post([{account: id, date: p.date, amount: p.amount, kind: "opening_balance", flow: "-", memo: "Saldo inicial"}])}, 201)
+    if (!can("finance.configure")) return forbidden();
+    const id = opening[1];
+    if (!cash(id)) return problem(422, "about:blank", "Unprocessable", "conta ou categoria desconhecida neste espaço", "unknown_account");
+    if (s.openings.has(id)) return problem(409, "/problems/invalid-transition", "Invalid Transition", "Esta conta já tem saldo inicial. Estorne o atual para lançar outro.", "opening_balance_exists");
+    const p = body<{amount: number; date: string}>(r);
+    s.openings.add(id);
+    return ok({transaction_id: post([{account: id, date: p.date, amount: p.amount, kind: "opening_balance", flow: "-", memo: "Saldo inicial"}])}, 201);
   }
   if (path === "/transfers" && method === "post") {
-    if (!can("finance.write")) return forbidden()
-    const p = body<{from_account_id: string; to_account_id: string; amount: number; date: string; memo?: string}>(r)
+    if (!can("finance.write")) return forbidden();
+    const p = body<{from_account_id: string; to_account_id: string; amount: number; date: string; memo?: string}>(r);
     if (!cash(p.from_account_id) || !cash(p.to_account_id) || p.from_account_id === p.to_account_id) {
-      return problem(422, "about:blank", "Unprocessable", "conta ou categoria desconhecida neste espaço", "unknown_account")
+      return problem(422, "about:blank", "Unprocessable", "conta ou categoria desconhecida neste espaço", "unknown_account");
     }
-    const memo = p.memo || "Transferência"
+    const memo = p.memo || "Transferência";
     return ok({transaction_id: post([
       {account: p.to_account_id, date: p.date, amount: p.amount, kind: "transfer", flow: "-", memo},
       {account: p.from_account_id, date: p.date, amount: -p.amount, kind: "transfer", flow: "-", memo},
-    ])}, 201)
+    ])}, 201);
   }
-  const rev = path.match(/^\/transactions\/([^/]+)\/reverse$/)
+  const rev = path.match(/^\/transactions\/([^/]+)\/reverse$/);
   if (rev && method === "post") {
-    if (!can("finance.write")) return forbidden()
-    const legs = s.entries.filter(e => e.tx === rev[1])
-    if (!legs.length) return problem(404, "about:blank", "Not Found", "recurso não encontrado", "resource_not_found")
+    if (!can("finance.write")) return forbidden();
+    const legs = s.entries.filter(e => e.tx === rev[1]);
+    if (!legs.length) return problem(404, "about:blank", "Not Found", "recurso não encontrado", "resource_not_found");
     if (legs[0].reversal || (legs[0].kind !== "transfer" && legs[0].kind !== "opening_balance")) {
-      return problem(409, "/problems/invalid-transition", "Invalid Transition", "Só transferências e saldos iniciais são estornados pelo extrato. Para um pagamento, use Desfazer pagamento.", "not_reversible_entry")
+      return problem(409, "/problems/invalid-transition", "Invalid Transition", "Só transferências e saldos iniciais são estornados pelo extrato. Para um pagamento, use Desfazer pagamento.", "not_reversible_entry");
     }
-    if (s.reversed.has(rev[1])) return problem(409, "/problems/invalid-transition", "Invalid Transition", "ledger: transaction already reversed", "not_reversible_entry")
-    if (legs[0].kind === "opening_balance") s.openings.delete(legs[0].account)
-    return ok({transaction_id: reverse(rev[1])}, 201)
+    if (s.reversed.has(rev[1])) return problem(409, "/problems/invalid-transition", "Invalid Transition", "ledger: transaction already reversed", "not_reversible_entry");
+    if (legs[0].kind === "opening_balance") s.openings.delete(legs[0].account);
+    return ok({transaction_id: reverse(rev[1])}, 201);
   }
-  const stmt = path.match(/^\/accounts\/([^/]+)\/statement$/)
+  const stmt = path.match(/^\/accounts\/([^/]+)\/statement$/);
   if (stmt && method === "get") {
-    const a = s.accounts.find(x => x.id === stmt[1] && x.class === "asset" && !x.system)
-    if (!a) return problem(404, "about:blank", "Not Found", "recurso não encontrado", "resource_not_found")
-    const from = String(r.params?.from), to = String(r.params?.to)
-    const since = s.entries.filter(e => e.account === a.id && e.date >= from).sort((x, y) => x.date.localeCompare(y.date))
-    let bal = a.balance - since.reduce((t, e) => t + e.amount, 0)
-    const opening = bal
+    const a = s.accounts.find(x => x.id === stmt[1] && x.class === "asset" && !x.system);
+    if (!a) return problem(404, "about:blank", "Not Found", "recurso não encontrado", "resource_not_found");
+    const from = String(r.params?.from), to = String(r.params?.to);
+    const since = s.entries.filter(e => e.account === a.id && e.date >= from).sort((x, y) => x.date.localeCompare(y.date));
+    let bal = a.balance - since.reduce((t, e) => t + e.amount, 0);
+    const opening = bal;
     const entries: StatementEntry[] = since.filter(e => e.date < to).map(e => ({
       transaction_id: e.tx, date: e.date, amount: e.amount, balance: (bal += e.amount), kind: e.kind, memo: e.memo,
       category_id: e.flow && e.flow !== "-" ? e.flow : undefined, bill_id: e.ref?.replace(/^bill:/, ""),
       reversal: !!e.reversal, reversed: s.reversed.has(e.tx),
-    }))
-    return ok({account_id: a.id, from, to, opening, closing: bal, entries})
+    }));
+    return ok({account_id: a.id, from, to, opening, closing: bal, entries});
   }
   if (path === "/reports/card-spending") {
     // By statement month: the statement lines of the range, carried credits left out.
-    const from = String(r.params?.from), to = String(r.params?.to), only = r.params?.card_id ? String(r.params.card_id) : ""
-    if (only && !s.cards.some(c => c.id === only)) return problem(404, "about:blank", "Not Found", "recurso não encontrado", "resource_not_found")
-    const months: string[] = []
+    const from = String(r.params?.from), to = String(r.params?.to), only = r.params?.card_id ? String(r.params.card_id) : "";
+    if (only && !s.cards.some(c => c.id === only)) return problem(404, "about:blank", "Not Found", "recurso não encontrado", "resource_not_found");
+    const months: string[] = [];
     for (let [y, m] = parts(`${from}-01`); `${y}-${String(m).padStart(2, "0")}` <= to; m === 12 ? (y++, m = 1) : m++) {
-      months.push(`${y}-${String(m).padStart(2, "0")}`)
+      months.push(`${y}-${String(m).padStart(2, "0")}`);
     }
-    const cats = new Map<string, number[]>(), cards = new Map<string, number[]>()
-    const by_month = months.map(() => 0)
+    const cats = new Map<string, number[]>(), cards = new Map<string, number[]>();
+    const by_month = months.map(() => 0);
     for (const i of s.items) {
-      if (i.kind === "carry" || (only && i.card !== only)) continue
-      const at = months.indexOf(i.month)
-      if (at < 0) continue
+      if (i.kind === "carry" || (only && i.card !== only)) continue;
+      const at = months.indexOf(i.month);
+      if (at < 0) continue;
       for (const [rows, key] of [[cats, i.category_id ?? ""], [cards, i.card]] as const) {
-        const v = rows.get(key) ?? months.map(() => 0)
-        v[at] += i.amount
-        rows.set(key, v)
+        const v = rows.get(key) ?? months.map(() => 0);
+        v[at] += i.amount;
+        rows.set(key, v);
       }
-      by_month[at] += i.amount
+      by_month[at] += i.amount;
     }
     const rows = (m: Map<string, number[]>, field: "category_id" | "card_id") => [...m.entries()]
       .map(([id, amounts]) => ({[field]: id, amounts, total: amounts.reduce((a, b) => a + b, 0)}))
-      .filter(x => x.amounts.some(a => a !== 0)).sort((a, b) => b.total - a.total)
-    return ok({basis: "statement", months, by_month, total: by_month.reduce((a, b) => a + b, 0), categories: rows(cats, "category_id"), cards: rows(cards, "card_id")})
+      .filter(x => x.amounts.some(a => a !== 0)).sort((a, b) => b.total - a.total);
+    return ok({basis: "statement", months, by_month, total: by_month.reduce((a, b) => a + b, 0), categories: rows(cats, "category_id"), cards: rows(cards, "card_id")});
   }
   if (path === "/reports/cash-flow" || path === "/reports/dre") {
-    const from = String(r.params?.from), to = String(r.params?.to)
-    const months: string[] = []
+    const from = String(r.params?.from), to = String(r.params?.to);
+    const months: string[] = [];
     for (let [y, m] = parts(`${from}-01`); `${y}-${String(m).padStart(2, "0")}` <= to; m === 12 ? (y++, m = 1) : m++) {
-      months.push(`${y}-${String(m).padStart(2, "0")}`)
+      months.push(`${y}-${String(m).padStart(2, "0")}`);
     }
     if (path === "/reports/dre") {
-      const rows = new Map<string, number[]>()
+      const rows = new Map<string, number[]>();
       for (const b of s.bills.filter(x => x.status !== "canceled")) {
-        const i = months.indexOf(b.competence_date.slice(0, 7))
-        if (i < 0) continue
-        const v = rows.get(b.category_id) ?? months.map(() => 0)
-        v[i] += b.direction === "payable" ? -b.amount : b.amount
-        rows.set(b.category_id, v)
+        const i = months.indexOf(b.competence_date.slice(0, 7));
+        if (i < 0) continue;
+        const v = rows.get(b.category_id) ?? months.map(() => 0);
+        v[i] += b.direction === "payable" ? -b.amount : b.amount;
+        rows.set(b.category_id, v);
       }
-      const order = ["gross_revenue", "deductions", "costs", "operating_expenses", "financial_result", "other"] as const
-      const sum = (xs: number[][]) => months.map((_, i) => xs.reduce((t, x) => t + x[i], 0))
+      const order = ["gross_revenue", "deductions", "costs", "operating_expenses", "financial_result", "other"] as const;
+      const sum = (xs: number[][]) => months.map((_, i) => xs.reduce((t, x) => t + x[i], 0));
       const groups: DREGroupLine[] = order.map(g => {
         const categories = [...rows].filter(([id]) => (s.accounts.find(a => a.id === id)?.dre_group ?? "other") === g)
-          .map(([id, amounts]) => ({category_id: id, amounts, total: amounts.reduce((t, x) => t + x, 0)}))
-        const amounts = sum(categories.map(c => c.amounts))
-        return {group: g, categories, amounts, total: amounts.reduce((t, x) => t + x, 0)}
-      }).filter(g => g.categories.length > 0)
-      const result = sum(groups.map(g => g.amounts))
-      return ok({months, groups, result, total: result.reduce((t, x) => t + x, 0)})
+          .map(([id, amounts]) => ({category_id: id, amounts, total: amounts.reduce((t, x) => t + x, 0)}));
+        const amounts = sum(categories.map(c => c.amounts));
+        return {group: g, categories, amounts, total: amounts.reduce((t, x) => t + x, 0)};
+      }).filter(g => g.categories.length > 0);
+      const result = sum(groups.map(g => g.amounts));
+      return ok({months, groups, result, total: result.reduce((t, x) => t + x, 0)});
     }
-    const cashIds = new Set(s.accounts.filter(a => a.class === "asset" && !a.system).map(a => a.id))
-    const since = s.entries.filter(e => cashIds.has(e.account) && e.date >= `${from}-01`)
-    const now = s.accounts.filter(a => cashIds.has(a.id)).reduce((t, a) => t + a.balance, 0)
-    const opening_cash = now - since.reduce((t, e) => t + e.amount, 0)
+    const cashIds = new Set(s.accounts.filter(a => a.class === "asset" && !a.system).map(a => a.id));
+    const since = s.entries.filter(e => cashIds.has(e.account) && e.date >= `${from}-01`);
+    const now = s.accounts.filter(a => cashIds.has(a.id)).reduce((t, a) => t + a.balance, 0);
+    const opening_cash = now - since.reduce((t, e) => t + e.amount, 0);
     const out: CashFlowMonth[] = months.map(month => {
-      const m: CashFlowMonth = {month, in: 0, out: 0, openings: 0, lines: []}
-      const by = new Map<string, number>()
+      const m: CashFlowMonth = {month, in: 0, out: 0, openings: 0, lines: []};
+      const by = new Map<string, number>();
       for (const e of since.filter(x => x.date.slice(0, 7) === month)) {
-        if (e.kind === "opening_balance") m.openings += e.amount
+        if (e.kind === "opening_balance") m.openings += e.amount;
         else if (e.flow !== "-") {
-          if ((e.reversal ? -e.amount : e.amount) > 0) m.in += e.amount
-          else m.out -= e.amount
-          by.set(e.flow, (by.get(e.flow) ?? 0) + e.amount)
+          if ((e.reversal ? -e.amount : e.amount) > 0) m.in += e.amount;
+          else m.out -= e.amount;
+          by.set(e.flow, (by.get(e.flow) ?? 0) + e.amount);
         }
       }
-      m.lines = [...by].filter(([, a]) => a !== 0).map(([category_id, amount]) => ({category_id, amount}))
-      return m
-    })
-    const closing_cash = out.reduce((t, m) => t + m.in - m.out + m.openings, opening_cash)
-    return ok({from, to, opening_cash, closing_cash, months: out})
+      m.lines = [...by].filter(([, a]) => a !== 0).map(([category_id, amount]) => ({category_id, amount}));
+      return m;
+    });
+    const closing_cash = out.reduce((t, m) => t + m.in - m.out + m.openings, opening_cash);
+    return ok({from, to, opening_cash, closing_cash, months: out});
   }
 
   // imports (F6)
-  const importMatch = path.match(/^\/imports\/([^/]+)(?:\/lines\/(\d+)\/(match|new|ignore|reopen|link))?$/)
-  const mappingMatch = path.match(/^\/accounts\/([^/]+)\/csv-mapping$/)
+  const importMatch = path.match(/^\/imports\/([^/]+)(?:\/lines\/(\d+)\/(match|new|ignore|reopen|link))?$/);
+  const mappingMatch = path.match(/^\/accounts\/([^/]+)\/csv-mapping$/);
   const summary = (i: SpaceState["imports"][number]): ImportSummary => {
-    const {lines_, opening_: _opening, ...rest} = i
-    void _opening
-    return {...rest, pending: lines_.filter(l => l.status === "pending").length}
-  }
+    const {lines_, opening_: _opening, ...rest} = i;
+    void _opening;
+    return {...rest, pending: lines_.filter(l => l.status === "pending").length};
+  };
   // UX batch 5: offered on the upload and the detail while the account has no
   // opening balance and no entry.
-  const untouched = (account: string) => !s.openings.has(account) && !s.entries.some(e => e.account === account)
+  const untouched = (account: string) => !s.openings.has(account) && !s.entries.some(e => e.account === account);
   const withOpening = (i: SpaceState["imports"][number]): ImportSummary =>
-    i.opening_ && untouched(i.account_id) ? {...summary(i), opening_proposal: i.opening_} : summary(i)
-  const importOpening = path.match(/^\/imports\/([^/]+)\/opening-balance$/)
+    i.opening_ && untouched(i.account_id) ? {...summary(i), opening_proposal: i.opening_} : summary(i);
+  const importOpening = path.match(/^\/imports\/([^/]+)\/opening-balance$/);
   if (importOpening && method === "post") {
-    if (!can("finance.configure")) return forbidden()
-    const imp = s.imports.find(i => i.id === importOpening[1])
-    if (!imp) return problem(404, "about:blank", "Not Found", "recurso não encontrado", "resource_not_found")
-    if (!imp.opening_) return problem(422, "about:blank", "Unprocessable", "este extrato não traz saldo", "no_statement_balance")
-    if (s.openings.has(imp.account_id)) return problem(409, "/problems/invalid-transition", "Invalid Transition", "Esta conta já tem saldo inicial.", "opening_balance_exists")
-    if (!untouched(imp.account_id)) return problem(409, "/problems/invalid-transition", "Invalid Transition", "Esta conta já tem lançamentos.", "account_has_entries")
-    s.openings.add(imp.account_id)
-    return ok({transaction_id: post([{account: imp.account_id, date: imp.opening_.date, amount: imp.opening_.amount, kind: "opening_balance", flow: "-", memo: "Saldo inicial (extrato)"}])}, 201)
+    if (!can("finance.configure")) return forbidden();
+    const imp = s.imports.find(i => i.id === importOpening[1]);
+    if (!imp) return problem(404, "about:blank", "Not Found", "recurso não encontrado", "resource_not_found");
+    if (!imp.opening_) return problem(422, "about:blank", "Unprocessable", "este extrato não traz saldo", "no_statement_balance");
+    if (s.openings.has(imp.account_id)) return problem(409, "/problems/invalid-transition", "Invalid Transition", "Esta conta já tem saldo inicial.", "opening_balance_exists");
+    if (!untouched(imp.account_id)) return problem(409, "/problems/invalid-transition", "Invalid Transition", "Esta conta já tem lançamentos.", "account_has_entries");
+    s.openings.add(imp.account_id);
+    return ok({transaction_id: post([{account: imp.account_id, date: imp.opening_.date, amount: imp.opening_.amount, kind: "opening_balance", flow: "-", memo: "Saldo inicial (extrato)"}])}, 201);
   }
   if (path === "/imports" && method === "get") {
-    const account = r.params?.account_id
-    return ok({data: s.imports.filter(i => !account || i.account_id === account).map(summary).reverse(), has_more: false})
+    const account = r.params?.account_id;
+    return ok({data: s.imports.filter(i => !account || i.account_id === account).map(summary).reverse(), has_more: false});
   }
   if (path === "/imports" && method === "post") {
-    if (!can("finance.import")) return forbidden()
-    const req = body<{account_id: string; format: ImportFormat; content: string}>(r)
-    if (!cash(req.account_id)) return problem(422, "about:blank", "Unprocessable", "conta desconhecida neste espaço", "unknown_account")
-    let text: string
+    if (!can("finance.import")) return forbidden();
+    const req = body<{account_id: string; format: ImportFormat; content: string}>(r);
+    if (!cash(req.account_id)) return problem(422, "about:blank", "Unprocessable", "conta desconhecida neste espaço", "unknown_account");
+    let text: string;
     try {
-      text = atob(req.content)
+      text = atob(req.content);
     } catch {
-      return problem(422, "about:blank", "Unprocessable", "invalid body", "validation_error", [{field: "content", code: "invalid_format", message: "base64"}])
+      return problem(422, "about:blank", "Unprocessable", "invalid body", "validation_error", [{field: "content", code: "invalid_format", message: "base64"}]);
     }
-    let parsed: {lines: {date: string; amount: number; description: string; fitid?: string}[]; rejected: {line: number; reason: RejectReason}[]; ledger?: {amount: number; asOf: string}}
+    let parsed: {lines: {date: string; amount: number; description: string; fitid?: string}[]; rejected: {line: number; reason: RejectReason}[]; ledger?: {amount: number; asOf: string}};
     if (req.format === "ofx") {
-      if (/<CCSTMTRS>/i.test(text)) return problem(422, "about:blank", "Unprocessable", "card statement", "statement_card_not_supported")
-      if (!/<OFX>/i.test(text)) return problem(422, "about:blank", "Unprocessable", "not an OFX file", "statement_unreadable")
-      parsed = mockOFX(text)
+      if (/<CCSTMTRS>/i.test(text)) return problem(422, "about:blank", "Unprocessable", "card statement", "statement_card_not_supported");
+      if (!/<OFX>/i.test(text)) return problem(422, "about:blank", "Unprocessable", "not an OFX file", "statement_unreadable");
+      parsed = mockOFX(text);
     } else {
-      const m = s.mappings.get(req.account_id)
-      if (!m) return problem(422, "about:blank", "Unprocessable", "no CSV mapping", "csv_mapping_required")
-      parsed = mockCSV(text, m)
+      const m = s.mappings.get(req.account_id);
+      if (!m) return problem(422, "about:blank", "Unprocessable", "no CSV mapping", "csv_mapping_required");
+      parsed = mockCSV(text, m);
     }
-    if (parsed.lines.length + parsed.rejected.length === 0) return problem(422, "about:blank", "Unprocessable", "no transactions", "statement_empty")
-    const seen = new Map<string, number>()
-    const fresh: Omit<ImportLine, "candidates">[] = []
-    let duplicates = 0
+    if (parsed.lines.length + parsed.rejected.length === 0) return problem(422, "about:blank", "Unprocessable", "no transactions", "statement_empty");
+    const seen = new Map<string, number>();
+    const fresh: Omit<ImportLine, "candidates">[] = [];
+    let duplicates = 0;
     parsed.lines.forEach((l, i) => {
-      const ident = `${l.date}|${l.amount}|${l.description.toUpperCase()}`
-      seen.set(ident, (seen.get(ident) ?? 0) + 1)
-      const key = `${req.account_id}#${l.fitid ? `F:${l.fitid}` : `H:${ident}|${seen.get(ident)}`}`
+      const ident = `${l.date}|${l.amount}|${l.description.toUpperCase()}`;
+      seen.set(ident, (seen.get(ident) ?? 0) + 1);
+      const key = `${req.account_id}#${l.fitid ? `F:${l.fitid}` : `H:${ident}|${seen.get(ident)}`}`;
       if (s.locks.has(key)) {
-        duplicates++
-        return
+        duplicates++;
+        return undefined;
       }
-      s.locks.add(key)
+      s.locks.add(key);
       fresh.push({n: i + 1, date: l.date, amount: l.amount, description: l.description, status: "pending",
-        expires_at: new Date(Date.now() + 90 * 86_400_000).toISOString()})
-    })
-    const dates = fresh.map(l => l.date).sort()
+        expires_at: new Date(Date.now() + 90 * 86_400_000).toISOString()});
+      return undefined;
+    });
+    const dates = fresh.map(l => l.date).sort();
     const imp: SpaceState["imports"][number] = {
       id: nextId("imp"), account_id: req.account_id, format: req.format, created_at: new Date().toISOString(),
       from: dates[0], to: dates[dates.length - 1], lines: fresh.length, duplicates,
       rejected_count: parsed.rejected.length, rejected: parsed.rejected.slice(0, 50), pending: fresh.length, lines_: fresh, opening_: req.format === "ofx" ? mockOpening(parsed as ReturnType<typeof mockOFX>) : undefined,
-    }
+    };
     if (fresh.length === 0) {
-      const {id: _drop, ...rest} = summary(imp)
-      void _drop
-      return ok(rest)
+      const {id: _drop, ...rest} = summary(imp);
+      void _drop;
+      return ok(rest);
     }
-    s.imports.push(imp)
-    return ok(withOpening(imp), 201)
+    s.imports.push(imp);
+    return ok(withOpening(imp), 201);
   }
   if (importMatch) {
-    const imp = s.imports.find(i => i.id === importMatch[1])
-    if (!imp) return problem(404, "about:blank", "Not Found", "recurso não encontrado", "resource_not_found")
-    const [, , n, action] = importMatch
+    const imp = s.imports.find(i => i.id === importMatch[1]);
+    if (!imp) return problem(404, "about:blank", "Not Found", "recurso não encontrado", "resource_not_found");
+    const [, , n, action] = importMatch;
     if (!action && method === "get") {
       const fits = (l: Omit<ImportLine, "candidates">, b: Bill) =>
-        b.account_id === imp.account_id && b.direction === (l.amount < 0 ? "payable" : "receivable") && b.amount === Math.abs(l.amount)
+        b.account_id === imp.account_id && b.direction === (l.amount < 0 ? "payable" : "receivable") && b.amount === Math.abs(l.amount);
       const lines: ImportLine[] = imp.lines_.map(l => ({
         ...l,
         candidates: l.status !== "pending" ? [] : [
@@ -1091,96 +1094,96 @@ function route(method: string, path: string, r: Req, s: SpaceState, can: (v: Ver
           ...s.bills.filter(b => b.status === "paid" && b.paid_date && s.autoPaid.has(b.id) && !s.linked.has(b.id) && fits(l, b) &&
             Math.abs(daysBetween(l.date, b.paid_date)) <= 5),
         ].slice(0, 5),
-      }))
-      return ok({import: withOpening(imp), lines})
+      }));
+      return ok({import: withOpening(imp), lines});
     }
-    const line = imp.lines_.find(l => l.n === Number(n))
-    if (!line) return problem(404, "about:blank", "Not Found", "recurso não encontrado", "resource_not_found")
-    const resolved = () => problem(409, "/problems/invalid-transition", "Invalid Transition", "esta linha já foi conciliada", "line_already_reconciled")
+    const line = imp.lines_.find(l => l.n === Number(n));
+    if (!line) return problem(404, "about:blank", "Not Found", "recurso não encontrado", "resource_not_found");
+    const resolved = () => problem(409, "/problems/invalid-transition", "Invalid Transition", "esta linha já foi conciliada", "line_already_reconciled");
     if (action === "reopen") {
-      if (!can("finance.import")) return forbidden()
-      if (line.status !== "ignored") return resolved()
-      line.status = "pending"
-      return ok({line: {...line, candidates: []}})
+      if (!can("finance.import")) return forbidden();
+      if (line.status !== "ignored") return resolved();
+      line.status = "pending";
+      return ok({line: {...line, candidates: []}});
     }
     if (action === "link" && line.status === "linked" && line.bill_id === body<{bill_id: string}>(r).bill_id) {
-      return ok({line: {...line, candidates: []}, bill: s.bills.find(b => b.id === line.bill_id)})
+      return ok({line: {...line, candidates: []}, bill: s.bills.find(b => b.id === line.bill_id)});
     }
-    if (line.status !== "pending") return resolved()
+    if (line.status !== "pending") return resolved();
     if (action === "link") {
       // Posts nothing: the job already paid the bill.
-      if (!can("finance.import") || !can("finance.write")) return forbidden()
-      const bill = s.bills.find(b => b.id === body<{bill_id: string}>(r).bill_id)
-      if (!bill) return problem(404, "about:blank", "Not Found", "recurso não encontrado", "resource_not_found")
+      if (!can("finance.import") || !can("finance.write")) return forbidden();
+      const bill = s.bills.find(b => b.id === body<{bill_id: string}>(r).bill_id);
+      if (!bill) return problem(404, "about:blank", "Not Found", "recurso não encontrado", "resource_not_found");
       if (bill.account_id !== imp.account_id || bill.direction !== (line.amount < 0 ? "payable" : "receivable") || bill.amount !== Math.abs(line.amount) ||
         bill.status !== "paid" || !s.autoPaid.has(bill.id)) {
-        return problem(422, "about:blank", "Unprocessable", "mismatch", "line_bill_mismatch")
+        return problem(422, "about:blank", "Unprocessable", "mismatch", "line_bill_mismatch");
       }
-      if (s.linked.has(bill.id)) return problem(409, "/problems/invalid-transition", "Invalid Transition", "já vinculada", "bill_already_linked")
-      s.linked.add(bill.id)
-      Object.assign(line, {status: "linked", bill_id: bill.id})
-      return ok({line: {...line, candidates: []}, bill})
+      if (s.linked.has(bill.id)) return problem(409, "/problems/invalid-transition", "Invalid Transition", "já vinculada", "bill_already_linked");
+      s.linked.add(bill.id);
+      Object.assign(line, {status: "linked", bill_id: bill.id});
+      return ok({line: {...line, candidates: []}, bill});
     }
     if (action === "ignore") {
-      if (!can("finance.import")) return forbidden()
-      line.status = "ignored"
-      return ok({line: {...line, candidates: []}})
+      if (!can("finance.import")) return forbidden();
+      line.status = "ignored";
+      return ok({line: {...line, candidates: []}});
     }
-    if (!can("finance.import") || !can("finance.settle") || !can("finance.write")) return forbidden()
-    const dir: Direction = line.amount < 0 ? "payable" : "receivable"
-    const amount = Math.abs(line.amount)
+    if (!can("finance.import") || !can("finance.settle") || !can("finance.write")) return forbidden();
+    const dir: Direction = line.amount < 0 ? "payable" : "receivable";
+    const amount = Math.abs(line.amount);
     if (action === "match") {
-      const req = body<{bill_id: string}>(r)
-      const bill = s.bills.find(b => b.id === req.bill_id)
-      if (!bill) return problem(404, "about:blank", "Not Found", "recurso não encontrado", "resource_not_found")
-      if (bill.account_id !== imp.account_id || bill.direction !== dir) return problem(422, "about:blank", "Unprocessable", "mismatch", "line_bill_mismatch")
-      if (bill.status !== "forecast") return problem(409, "/problems/invalid-transition", "Invalid Transition", "esta conta mudou enquanto você a via", "invalid_transition")
-      post([{account: bill.account_id, date: line.date, amount: line.amount, kind: "settlement", flow: bill.category_id, memo: bill.description ?? "Sem descrição", ref: `bill:${bill.id}`}])
-      Object.assign(bill, {status: "paid", paid_date: line.date})
-      Object.assign(line, {status: "matched", bill_id: bill.id})
-      return ok({line: {...line, candidates: []}, bill})
+      const req = body<{bill_id: string}>(r);
+      const bill = s.bills.find(b => b.id === req.bill_id);
+      if (!bill) return problem(404, "about:blank", "Not Found", "recurso não encontrado", "resource_not_found");
+      if (bill.account_id !== imp.account_id || bill.direction !== dir) return problem(422, "about:blank", "Unprocessable", "mismatch", "line_bill_mismatch");
+      if (bill.status !== "forecast") return problem(409, "/problems/invalid-transition", "Invalid Transition", "esta conta mudou enquanto você a via", "invalid_transition");
+      post([{account: bill.account_id, date: line.date, amount: line.amount, kind: "settlement", flow: bill.category_id, memo: bill.description ?? "Sem descrição", ref: `bill:${bill.id}`}]);
+      Object.assign(bill, {status: "paid", paid_date: line.date});
+      Object.assign(line, {status: "matched", bill_id: bill.id});
+      return ok({line: {...line, candidates: []}, bill});
     }
-    const req = body<{category_id: string; description?: string}>(r)
-    const cat = s.accounts.find(a => a.id === req.category_id)
+    const req = body<{category_id: string; description?: string}>(r);
+    const cat = s.accounts.find(a => a.id === req.category_id);
     if (!cat || cat.class !== (dir === "payable" ? "expense" : "income") || cat.archived) {
-      return problem(422, "about:blank", "Unprocessable", "a category of the line's direction", "invalid_bill")
+      return problem(422, "about:blank", "Unprocessable", "a category of the line's direction", "invalid_bill");
     }
     const bill: Bill = {
       id: nextId("b"), direction: dir, amount, account_id: imp.account_id, category_id: cat.id, description: req.description || line.description,
       competence_date: line.date, due_date: line.date, paid_date: line.date, status: "paid", origin: "import", origin_ref: `${imp.id}#${line.n}`, auto_settle: false,
-    }
-    s.bills.push(bill)
-    post([{account: imp.account_id, date: line.date, amount: line.amount, kind: "settlement", flow: cat.id, memo: bill.description ?? "Sem descrição", ref: `bill:${bill.id}`}])
-    Object.assign(line, {status: "created", bill_id: bill.id})
-    return ok({line: {...line, candidates: []}, bill}, 201)
+    };
+    s.bills.push(bill);
+    post([{account: imp.account_id, date: line.date, amount: line.amount, kind: "settlement", flow: cat.id, memo: bill.description ?? "Sem descrição", ref: `bill:${bill.id}`}]);
+    Object.assign(line, {status: "created", bill_id: bill.id});
+    return ok({line: {...line, candidates: []}, bill}, 201);
   }
   if (mappingMatch) {
     if (method === "get") {
-      const m = s.mappings.get(mappingMatch[1])
-      return m ? ok(m) : problem(404, "about:blank", "Not Found", "recurso não encontrado", "resource_not_found")
+      const m = s.mappings.get(mappingMatch[1]);
+      return m ? ok(m) : problem(404, "about:blank", "Not Found", "recurso não encontrado", "resource_not_found");
     }
-    if (!can("finance.import")) return forbidden()
-    const m = body<CsvMapping>(r)
-    s.mappings.set(mappingMatch[1], m)
-    return ok(m)
+    if (!can("finance.import")) return forbidden();
+    const m = body<CsvMapping>(r);
+    s.mappings.set(mappingMatch[1], m);
+    return ok(m);
   }
 
-  if (path === "/settings" && method === "get") return ok({default_receiving_account_id: s.defaultReceiving, post_ctech_invoices: s.postCTechInvoices !== false})
+  if (path === "/settings" && method === "get") return ok({default_receiving_account_id: s.defaultReceiving, post_ctech_invoices: s.postCTechInvoices !== false});
   if (path === "/settings/post-ctech-invoices") {
-    if (!can("finance.configure")) return forbidden()
-    s.postCTechInvoices = body<{post_ctech_invoices: boolean}>(r).post_ctech_invoices
-    return ok({post_ctech_invoices: s.postCTechInvoices})
+    if (!can("finance.configure")) return forbidden();
+    s.postCTechInvoices = body<{post_ctech_invoices: boolean}>(r).post_ctech_invoices;
+    return ok({post_ctech_invoices: s.postCTechInvoices});
   }
   if (path === "/settings/default-receiving-account") {
-    if (!can("finance.configure")) return forbidden()
+    if (!can("finance.configure")) return forbidden();
     // null clears it (the PATCH rule); absent is the API's 422.
-    const id = body<{default_receiving_account_id?: string | null}>(r).default_receiving_account_id
-    if (id === undefined) return problem(422, "about:blank", "Unprocessable", "required", "validation_error", [{field: "default_receiving_account_id", code: "required", message: "required"}])
-    s.defaultReceiving = id ?? undefined
-    return ok(id ? {default_receiving_account_id: id} : {})
+    const id = body<{default_receiving_account_id?: string | null}>(r).default_receiving_account_id;
+    if (id === undefined) return problem(422, "about:blank", "Unprocessable", "required", "validation_error", [{field: "default_receiving_account_id", code: "required", message: "required"}]);
+    s.defaultReceiving = id ?? undefined;
+    return ok(id ? {default_receiving_account_id: id} : {});
   }
 
-  return problem(404, "about:blank", "Not Found", "rota de finanças desconhecida no mock", "resource_not_found")
+  return problem(404, "about:blank", "Not Found", "rota de finanças desconhecida no mock", "resource_not_found");
 }
 
 // ---- plan (Finanças → Plano): Pessoal only, tenant zero, live ----------------------
@@ -1203,34 +1206,34 @@ const PLAN_PRICES = [
     metadata: {plan: "ondemand", quota_spaces: "-1", quota_people_per_space: "-1"}},
   {id: "price_finance_ondemand_people", type: "metered", unit_amount: 290, aggregation: "max", meter: "finance_people", included_quantity: 1,
     metadata: {plan: "ondemand", quota_spaces: "-1", quota_people_per_space: "-1"}},
-] as const
+] as const;
 
-const plans = new Map<string, PlanMock>()
+const plans = new Map<string, PlanMock>();
 
 function planPeriod(): {period_start: string; period_end: string} {
-  const [y, m] = parts(todayIso())
-  const [ny, nm] = m === 12 ? [y + 1, 1] : [y, m + 1]
-  return {period_start: iso(y, m, 1), period_end: iso(ny, nm, 1)}
+  const [y, m] = parts(todayIso());
+  const [ny, nm] = m === 12 ? [y + 1, 1] : [y, m + 1];
+  return {period_start: iso(y, m, 1), period_end: iso(ny, nm, 1)};
 }
 
 function planFor(scenario: FinanceScenario): PlanMock {
-  let p = plans.get(scenario)
+  let p = plans.get(scenario);
   if (!p) {
-    const base = (ids: string[]): PlanSub => ({id: "sub-plan", status: "ACTIVE", cancel_at_period_end: false, price_ids: ids, period: planPeriod(), pending_change: null})
-    p = {subscription: null, openInvoice: null}
-    if (scenario === "plan_basic") p.subscription = base(["price_finance_basic_monthly"])
-    if (scenario === "plan_ondemand") p.subscription = base(["price_finance_ondemand_spaces", "price_finance_ondemand_people"])
-    plans.set(scenario, p)
+    const base = (ids: string[]): PlanSub => ({id: "sub-plan", status: "ACTIVE", cancel_at_period_end: false, price_ids: ids, period: planPeriod(), pending_change: null});
+    p = {subscription: null, openInvoice: null};
+    if (scenario === "plan_basic") p.subscription = base(["price_finance_basic_monthly"]);
+    if (scenario === "plan_ondemand") p.subscription = base(["price_finance_ondemand_spaces", "price_finance_ondemand_people"]);
+    plans.set(scenario, p);
   }
-  return p
+  return p;
 }
 
 function renderPlan(p: PlanMock, scenario: FinanceScenario, mode: string, invoice?: {id: string; checkout_url: string}): Res {
-  const casa = {id: FINANCE_MOCK_HOUSE, display_name: "Casa", people: 1, pending_invitations: 0}
+  const casa = {id: FINANCE_MOCK_HOUSE, display_name: "Casa", people: 1, pending_invitations: 0};
   const spaces = scenario === "plan_over"
     ? [casa, {id: "0190a1b2-c3d4-7e5f-8a9b-dddddddddddd", display_name: "Viagem", people: 1, pending_invitations: 0},
       {id: "0190a1b2-c3d4-7e5f-8a9b-eeeeeeeeeeee", display_name: "Reforma", people: 0, pending_invitations: 1}]
-    : [casa]
+    : [casa];
   return ok({
     live_only: mode === "test",
     subscription: p.subscription,
@@ -1244,54 +1247,54 @@ function renderPlan(p: PlanMock, scenario: FinanceScenario, mode: string, invoic
       : {finance_spaces: {current: spaces.length, peak: spaces.length}, finance_people: {current: 1, peak: 1}},
     // Above Basic's R$ 19,90, so the screen offers the switch (spec § 7).
     projected_ondemand_cents: scenario === "plan_ondemand" ? 2830 : 0,
-  })
+  });
 }
 
 function planRoute(method: string, path: string, r: Req, mode: string): Res {
-  const scenario = financeScenario()
-  const p = planFor(scenario)
-  if (method === "get" && path === "/plan") return renderPlan(p, scenario, mode)
+  const scenario = financeScenario();
+  const p = planFor(scenario);
+  if (method === "get" && path === "/plan") return renderPlan(p, scenario, mode);
 
   if (method === "post" && path === "/plan/cancel") {
-    if (!p.subscription) return problem(404, "/problems/not-found", "Not Found", "não há plano a cancelar", "no_finance_plan")
-    p.subscription.cancel_at_period_end = true
-    return renderPlan(p, scenario, mode)
+    if (!p.subscription) return problem(404, "/problems/not-found", "Not Found", "não há plano a cancelar", "no_finance_plan");
+    p.subscription.cancel_at_period_end = true;
+    return renderPlan(p, scenario, mode);
   }
 
   if (method === "post" && path === "/plan") {
-    const {price_ids: ids = []} = body<{price_ids?: string[]}>(r)
-    const known = ids.length > 0 && ids.every(id => PLAN_PRICES.some(x => x.id === id) && id !== "price_finance_free")
-    if (!known) return problem(422, "about:blank", "Unprocessable", "escolha um plano do catálogo", "not_a_plan_price")
-    const metered = ids.every(id => PLAN_PRICES.find(x => x.id === id)!.type === "metered")
-    const total = ids.reduce((sum, id) => sum + PLAN_PRICES.find(x => x.id === id)!.unit_amount, 0)
-    const same = (a: string[]) => a.length === ids.length && a.every(id => ids.includes(id))
+    const {price_ids: ids = []} = body<{price_ids?: string[]}>(r);
+    const known = ids.length > 0 && ids.every(id => PLAN_PRICES.some(x => x.id === id) && id !== "price_finance_free");
+    if (!known) return problem(422, "about:blank", "Unprocessable", "escolha um plano do catálogo", "not_a_plan_price");
+    const metered = ids.every(id => PLAN_PRICES.find(x => x.id === id)!.type === "metered");
+    const total = ids.reduce((sum, id) => sum + PLAN_PRICES.find(x => x.id === id)!.unit_amount, 0);
+    const same = (a: string[]) => a.length === ids.length && a.every(id => ids.includes(id));
     const invoiceFor = () => {
-      p.openInvoice = {id: "in-plan", total_cents: total, due_date: todayIso(), checkout_url: "/checkout?token=mock"}
-      return {id: p.openInvoice.id, checkout_url: p.openInvoice.checkout_url}
-    }
+      p.openInvoice = {id: "in-plan", total_cents: total, due_date: todayIso(), checkout_url: "/checkout?token=mock"};
+      return {id: p.openInvoice.id, checkout_url: p.openInvoice.checkout_url};
+    };
 
     if (!p.subscription) {
       p.subscription = {id: "sub-plan", status: metered ? "ACTIVE" : "INCOMPLETE", cancel_at_period_end: false,
-        price_ids: ids, period: planPeriod(), pending_change: null}
-      return renderPlan(p, scenario, mode, metered ? undefined : invoiceFor())
+        price_ids: ids, period: planPeriod(), pending_change: null};
+      return renderPlan(p, scenario, mode, metered ? undefined : invoiceFor());
     }
-    const sub = p.subscription
+    const sub = p.subscription;
     if (same(sub.price_ids)) {
-      sub.pending_change = null
-      return renderPlan(p, scenario, mode)
+      sub.pending_change = null;
+      return renderPlan(p, scenario, mode);
     }
     if (sub.status === "INCOMPLETE") {
       return {status: 409, data: {type: "about:blank", title: "Payment pending", status: 409, code: "plan_payment_pending",
-        invoice_id: p.openInvoice?.id, checkout_url: p.openInvoice?.checkout_url}}
+        invoice_id: p.openInvoice?.id, checkout_url: p.openInvoice?.checkout_url}};
     }
-    const currentAdvance = sub.price_ids.every(id => PLAN_PRICES.find(x => x.id === id)?.type === "fixed")
+    const currentAdvance = sub.price_ids.every(id => PLAN_PRICES.find(x => x.id === id)?.type === "fixed");
     if (currentAdvance && metered) {
-      sub.pending_change = {price_ids: ids, at: sub.period.period_end}
-      return renderPlan(p, scenario, mode)
+      sub.pending_change = {price_ids: ids, at: sub.period.period_end};
+      return renderPlan(p, scenario, mode);
     }
-    sub.price_ids = ids
-    sub.pending_change = null
-    return renderPlan(p, scenario, mode, metered ? undefined : invoiceFor())
+    sub.price_ids = ids;
+    sub.pending_change = null;
+    return renderPlan(p, scenario, mode, metered ? undefined : invoiceFor());
   }
-  return problem(404, "/problems/not-found", "Not Found", "rota não mockada", "resource_not_found")
+  return problem(404, "/problems/not-found", "Not Found", "rota não mockada", "resource_not_found");
 }

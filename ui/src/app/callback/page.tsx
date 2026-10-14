@@ -1,15 +1,15 @@
-"use client"
+"use client";
 
-import {Button} from "@aoctech/ui"
-import Link from "next/link"
-import {useRouter, useSearchParams} from "next/navigation"
-import {Suspense, useEffect, useRef, useState} from "react"
-import {useTranslation} from "react-i18next"
+import {Button} from "@aoctech/ui";
+import Link from "next/link";
+import {useRouter, useSearchParams} from "next/navigation";
+import {Suspense, useEffect, useRef, useState} from "react";
+import {useTranslation} from "react-i18next";
 
-import {StatusScreen} from "@/components/StatusScreen"
-import {useAuth} from "@/lib/auth/AuthContext"
-import {exchangeCode} from "@/lib/auth/oauth"
-import {safeReturnTo} from "@/lib/auth/returnTo"
+import {StatusScreen} from "@/components/StatusScreen";
+import {useAuth} from "@/lib/auth/AuthContext";
+import {exchangeCode} from "@/lib/auth/oauth";
+import {safeReturnTo} from "@/lib/auth/returnTo";
 
 /**
  * Where ctech-account sends the browser back to, carrying `code` and `state`.
@@ -24,7 +24,7 @@ export default function CallbackPage() {
     <Suspense fallback={<Working/>}>
       <Callback/>
     </Suspense>
-  )
+  );
 }
 
 /** The subset of RFC 6749 §4.1.2.1 errors worth a different sentence. Anything
@@ -32,54 +32,54 @@ export default function CallbackPage() {
 function messageKeyFor(error: string): string {
   switch (error) {
     case "access_denied":
-      return "auth.callback.denied"
+      return "auth.callback.denied";
     case "login_required":
     case "interaction_required":
-      return "auth.callback.expired"
+      return "auth.callback.expired";
     default:
-      return "auth.callback.failed"
+      return "auth.callback.failed";
   }
 }
 
 function Callback() {
-  const params = useSearchParams()
-  const router = useRouter()
-  const {t} = useTranslation()
-  const {onCallback} = useAuth()
+  const params = useSearchParams();
+  const router = useRouter();
+  const {t} = useTranslation();
+  const {onCallback} = useAuth();
   // Only the exchange's failure is state. What the URL already says is derived
   // during render — deciding it in an effect would paint one frame of
   // "Entrando…" over a request that was never going to be made.
-  const [exchangeFailed, setExchangeFailed] = useState(false)
+  const [exchangeFailed, setExchangeFailed] = useState(false);
   // React mounts effects twice in development. The authorization code is
   // single-use, so a second run would exchange an already-spent code and report
   // a failure on a login that worked.
-  const ran = useRef(false)
+  const ran = useRef(false);
 
-  const code = params.get("code")
-  const state = params.get("state")
-  const denied = params.get("error")
-  const usable = !denied && Boolean(code) && Boolean(state)
+  const code = params.get("code");
+  const state = params.get("state");
+  const denied = params.get("error");
+  const usable = !denied && Boolean(code) && Boolean(state);
 
   useEffect(() => {
-    if (!usable || ran.current) return
-    ran.current = true
+    if (!usable || ran.current) return;
+    ran.current = true;
 
     void (async () => {
       try {
-        const {accessToken, idToken, returnTo} = await exchangeCode(code!, state!)
-        onCallback(accessToken, idToken)
-        router.replace(safeReturnTo(returnTo))
+        const {accessToken, idToken, returnTo} = await exchangeCode(code!, state!);
+        onCallback(accessToken, idToken);
+        router.replace(safeReturnTo(returnTo));
       } catch {
-        setExchangeFailed(true)
+        setExchangeFailed(true);
       }
-    })()
-  }, [usable, code, state, onCallback, router])
+    })();
+  }, [usable, code, state, onCallback, router]);
 
   const errorKey = denied
     ? messageKeyFor(denied)
     : !usable || exchangeFailed
       ? messageKeyFor("server_error")
-      : null
+      : null;
 
   if (errorKey) {
     return (
@@ -92,18 +92,18 @@ function Callback() {
           </Button>
         }
       />
-    )
+    );
   }
 
-  return <Working/>
+  return <Working/>;
 }
 
 function Working() {
-  const {t} = useTranslation()
+  const {t} = useTranslation();
   return (
     <StatusScreen
       title={t("auth.callback.working")}
       description={t("auth.callback.workingDescription")}
     />
-  )
+  );
 }

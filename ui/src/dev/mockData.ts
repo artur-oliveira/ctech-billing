@@ -1,5 +1,5 @@
-import type {Invoice, Subscription} from "@/lib/api/types"
-import type {MockScenario} from "@/lib/mockConfig"
+import type {Invoice, Subscription} from "@/lib/api/types";
+import type {MockScenario} from "@/lib/mockConfig";
 
 /**
  * Fixtures are generated relative to today, not frozen.
@@ -16,29 +16,29 @@ import type {MockScenario} from "@/lib/mockConfig"
  */
 
 const day = (offset: number): string => {
-  const d = new Date()
-  d.setDate(d.getDate() + offset)
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
-}
+  const d = new Date();
+  d.setDate(d.getDate() + offset);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
 
-const thisPeriod = {start: day(-12), end: day(18)}
-const lastPeriod = {start: day(-42), end: day(-13)}
+const thisPeriod = {start: day(-12), end: day(18)};
+const lastPeriod = {start: day(-42), end: day(-13)};
 
 const PLAN_LINES = [
   {description: "Plano Essencial · mensal", amount: 8900, proration: false},
   {description: "Emissões adicionais (120 documentos)", amount: 2400, proration: false},
-]
+];
 
 /** The wire shape: the first line's raw description plus how many lines follow it. */
 function titled(lines: Invoice["lines"] = []): Pick<Invoice, "description" | "extra_lines"> {
   return {
     description: lines[0]?.description ?? "",
     ...(lines.length > 1 ? {extra_lines: lines.length - 1} : {}),
-  }
+  };
 }
 
 function invoice(over: Partial<Invoice> & Pick<Invoice, "id" | "state" | "tone">): Invoice {
-  const lines = over.lines ?? PLAN_LINES
+  const lines = over.lines ?? PLAN_LINES;
   return {
     number: 1042,
     due_date: day(3),
@@ -52,7 +52,7 @@ function invoice(over: Partial<Invoice> & Pick<Invoice, "id" | "state" | "tone">
     settled: false,
     ...over,
     ...titled(lines),
-  }
+  };
 }
 
 const PAID_HISTORY: Invoice[] = [
@@ -84,7 +84,7 @@ const PAID_HISTORY: Invoice[] = [
     period: {start: day(-72), end: day(-43)},
     lines: [{description: "Plano Essencial · mensal", amount: 10900, proration: false}],
   }),
-]
+];
 
 const ACTIVE_SUB: Subscription = {
   id: "sub_mock_ana",
@@ -98,7 +98,7 @@ const ACTIVE_SUB: Subscription = {
   current_period: thisPeriod,
   since: day(-402),
   cancelable: true,
-}
+};
 
 const METERED_SUB: Subscription = {
   id: "sub_mock_uso",
@@ -111,7 +111,7 @@ const METERED_SUB: Subscription = {
   current_period: thisPeriod,
   since: day(-98),
   cancelable: true,
-}
+};
 
 interface Fixture {
   invoices: Invoice[]
@@ -127,7 +127,7 @@ const OPEN_3_DAYS = invoice({
   id: "inv_mock_0042",
   state: "due_soon", days_until_due: 3,
   tone: "attention",
-})
+});
 
 export const FIXTURES: Record<MockScenario, Fixture> = {
   em_dia: {
@@ -320,10 +320,10 @@ export const FIXTURES: Record<MockScenario, Fixture> = {
     settleAfterSeconds: null,
     pixTtlSeconds: 1800,
   },
-}
+};
 
 /** A copy-and-paste PIX payload of realistic length, so the screen is laid out
  *  against the string people actually receive rather than a short placeholder. */
 export const MOCK_PIX_CODE =
   "00020126580014br.gov.bcb.pix0136mock-a1b2c3d4-e5f6-4789-a0b1-c2d3e4f5a6b7520400005303986540" +
-  "5113.005802BR5921CTECH TECNOLOGIA LTDA6009SAO PAULO62070503***6304A1B2"
+  "5113.005802BR5921CTECH TECNOLOGIA LTDA6009SAO PAULO62070503***6304A1B2";

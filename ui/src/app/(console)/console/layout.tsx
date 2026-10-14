@@ -1,27 +1,27 @@
-"use client"
+"use client";
 
-import {BottomNavSpacer, Button, ErrorState, SidebarNav, Skeleton, type SidebarNavGroup} from "@aoctech/ui"
-import {useQuery} from "@tanstack/react-query"
-import {usePathname, useRouter} from "next/navigation"
-import {useEffect} from "react"
-import {useTranslation} from "react-i18next"
+import {BottomNavSpacer, Button, ErrorState, SidebarNav, Skeleton, type SidebarNavGroup} from "@aoctech/ui";
+import {useQuery} from "@tanstack/react-query";
+import {usePathname, useRouter} from "next/navigation";
+import {useEffect} from "react";
+import {useTranslation} from "react-i18next";
 
-import {BillingShell, ShellContext, TestBanner} from "@/components/shell/BillingShell"
-import {renderLink} from "@/components/shell/renderLink"
-import {MerchantInvitation} from "@/components/console/MerchantInvitation"
-import {MerchantStatusBand} from "@/components/console/MerchantStatusBand"
-import {OrganizationSwitch} from "@/components/console/OrganizationSwitch"
-import {ConsoleBottomNav} from "@/components/console/ConsoleBottomNav"
-import {statusOf} from "@/lib/api/client"
-import {consoleKeys, getConsoleSession} from "@/lib/api/console"
-import {useAuth} from "@/lib/auth/AuthContext"
-import {pickMerchantOrg, setMerchantOrg, tenantInMode} from "@/lib/console/merchant"
-import {consoleNav} from "@/lib/console/nav"
-import {ConsoleScopeProvider} from "@/lib/console/scope"
-import {MerchantSelectionProvider} from "@/lib/console/selection"
-import {useMerchantOrg} from "@/lib/console/useMerchantOrg"
-import {useMode} from "@/lib/console/useMode"
-import {FINANCE_HREF} from "@/lib/finance/href"
+import {BillingShell, ShellContext, TestBanner} from "@/components/shell/BillingShell";
+import {renderLink} from "@/components/shell/renderLink";
+import {MerchantInvitation} from "@/components/console/MerchantInvitation";
+import {MerchantStatusBand} from "@/components/console/MerchantStatusBand";
+import {OrganizationSwitch} from "@/components/console/OrganizationSwitch";
+import {ConsoleBottomNav} from "@/components/console/ConsoleBottomNav";
+import {statusOf} from "@/lib/api/client";
+import {consoleKeys, getConsoleSession} from "@/lib/api/console";
+import {useAuth} from "@/lib/auth/AuthContext";
+import {pickMerchantOrg, setMerchantOrg, tenantInMode} from "@/lib/console/merchant";
+import {consoleNav} from "@/lib/console/nav";
+import {ConsoleScopeProvider} from "@/lib/console/scope";
+import {MerchantSelectionProvider} from "@/lib/console/selection";
+import {useMerchantOrg} from "@/lib/console/useMerchantOrg";
+import {useMode} from "@/lib/console/useMode";
+import {FINANCE_HREF} from "@/lib/finance/href";
 
 /**
  * The operator shell — invoicing, the second of the three areas the app ships
@@ -49,54 +49,54 @@ import {FINANCE_HREF} from "@/lib/finance/href"
  * other switch.
  */
 export default function ConsoleLayout({children}: LayoutProps<"/console">) {
-  const {t, i18n} = useTranslation()
-  const pathname = usePathname()
-  const router = useRouter()
-  const {authenticated, loading} = useAuth()
-  const mode = useMode()
-  const stored = useMerchantOrg()
+  const {t, i18n} = useTranslation();
+  const pathname = usePathname();
+  const router = useRouter();
+  const {authenticated, loading} = useAuth();
+  const mode = useMode();
+  const stored = useMerchantOrg();
   const {data: session, error, isPending, refetch} = useQuery({
     queryKey: consoleKeys.session(),
     queryFn: getConsoleSession,
     enabled: authenticated,
     retry: false,
     staleTime: 60_000,
-  })
+  });
 
-  const organizations = session?.organizations ?? []
-  const unavailable = session?.organizations_unavailable ?? false
-  const selected = session ? pickMerchantOrg(organizations, stored, mode) : null
-  const active = selected !== null && tenantInMode(selected.merchant_status, mode)
-  const org = selected?.organization_id
+  const organizations = session?.organizations ?? [];
+  const unavailable = session?.organizations_unavailable ?? false;
+  const selected = session ? pickMerchantOrg(organizations, stored, mode) : null;
+  const active = selected !== null && tenantInMode(selected.merchant_status, mode);
+  const org = selected?.organization_id;
   // Stable per (mode, organization): the React Compiler memoizes it.
-  const scope = org ? {mode, org} : null
+  const scope = org ? {mode, org} : null;
   // The selected organization with or without a tenant in this mode: the
   // invitation, the apply form and the status band read it.
-  const selection = selected && scope ? {scope, organization: selected} : null
-  const onApply = pathname.startsWith("/console/apply")
+  const selection = selected && scope ? {scope, organization: selected} : null;
+  const onApply = pathname.startsWith("/console/apply");
   // Bank connections need no tenant (BYOK spec § 3.1): an organization may
   // connect for its statement before it bills through CTech.
-  const onConnections = pathname.startsWith("/console/connections")
-  const reviewer = selected?.can_review_applications === true
+  const onConnections = pathname.startsWith("/console/connections");
+  const reviewer = selected?.can_review_applications === true;
 
   // Owner or admin of no organization: nothing here is theirs; Finanças is.
-  const noOrganization = statusOf(error) === 403 || (session !== undefined && !unavailable && organizations.length === 0)
+  const noOrganization = statusOf(error) === 403 || (session !== undefined && !unavailable && organizations.length === 0);
 
   // A stored organization the person no longer administers is replaced once.
   useEffect(() => {
-    if (org && org !== stored) setMerchantOrg(org)
-  }, [org, stored])
+    if (org && org !== stored) setMerchantOrg(org);
+  }, [org, stored]);
 
   useEffect(() => {
-    if (!loading && !authenticated) router.replace("/login")
-  }, [loading, authenticated, router])
+    if (!loading && !authenticated) router.replace("/login");
+  }, [loading, authenticated, router]);
 
   useEffect(() => {
-    if (noOrganization) router.replace(FINANCE_HREF)
-  }, [noOrganization, router])
+    if (noOrganization) router.replace(FINANCE_HREF);
+  }, [noOrganization, router]);
 
-  const nav = consoleNav(active, reviewer)
-  const isCurrent = (href: string) => href === "/console/overview" ? pathname === href : pathname.startsWith(href)
+  const nav = consoleNav(active, reviewer);
+  const isCurrent = (href: string) => href === "/console/overview" ? pathname === href : pathname.startsWith(href);
   const groups: SidebarNavGroup[] = NAV_GROUPS
     .map(group => ({
       label: group.label && t(group.label),
@@ -104,7 +104,7 @@ export default function ConsoleLayout({children}: LayoutProps<"/console">) {
         href, label: t(nav.find(item => item.href === href)!.label), active: isCurrent(href),
       })),
     }))
-    .filter(group => group.items.length > 0)
+    .filter(group => group.items.length > 0);
 
   return (
     <BillingShell
@@ -155,7 +155,7 @@ export default function ConsoleLayout({children}: LayoutProps<"/console">) {
       )}
       {active && <BottomNavSpacer/>}
     </BillingShell>
-  )
+  );
 }
 
 /** The sections in the column, grouped by what an operator is doing. */
@@ -164,7 +164,7 @@ const NAV_GROUPS: {label?: string; items: string[]}[] = [
   {label: "console.nav.groupCollection", items: ["/console/connections", "/console/plan"]},
   {label: "console.nav.groupIntegrations", items: ["/console/credentials", "/console/webhooks"]},
   {label: "console.nav.groupOrganization", items: ["/console/settings", "/console/applications"]},
-]
+];
 
 
 function ShellSkeleton() {
@@ -174,5 +174,5 @@ function ShellSkeleton() {
       <Skeleton className="h-4 w-full"/>
       <Skeleton className="h-4 w-5/6"/>
     </div>
-  )
+  );
 }

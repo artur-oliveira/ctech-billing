@@ -1,15 +1,15 @@
-"use client"
+"use client";
 
-import {Button, Checkbox} from "@aoctech/ui"
-import {useMutation, useQueryClient} from "@tanstack/react-query"
-import {useState} from "react"
-import {Trans, useTranslation} from "react-i18next"
-import {toast} from "sonner"
+import {Button, Checkbox} from "@aoctech/ui";
+import {useMutation, useQueryClient} from "@tanstack/react-query";
+import {useState} from "react";
+import {Trans, useTranslation} from "react-i18next";
+import {toast} from "sonner";
 
-import {messageFor} from "@/lib/api/client"
-import {acceptTerms, portalKeys} from "@/lib/api/portal"
-import type {Session} from "@/lib/api/types"
-import {BILLING_TERMS_URL, PRIVACY_POLICY_URL} from "@/lib/legal"
+import {messageFor} from "@/lib/api/client";
+import {acceptTerms, portalKeys} from "@/lib/api/portal";
+import type {Session} from "@/lib/api/types";
+import {BILLING_TERMS_URL, PRIVACY_POLICY_URL} from "@/lib/legal";
 
 /**
  * The billing terms addendum, asked once and asked again when it changes.
@@ -31,9 +31,9 @@ import {BILLING_TERMS_URL, PRIVACY_POLICY_URL} from "@/lib/legal"
  * links in its footer instead.
  */
 export function TermsGate() {
-  const {t} = useTranslation()
-  const [checked, setChecked] = useState(false)
-  const queryClient = useQueryClient()
+  const {t} = useTranslation();
+  const [checked, setChecked] = useState(false);
+  const queryClient = useQueryClient();
 
   const accept = useMutation({
     mutationFn: acceptTerms,
@@ -42,7 +42,7 @@ export function TermsGate() {
     // trip after the click that resolved it.
     onSuccess: (session: Session) => queryClient.setQueryData(portalKeys.session, session),
     onError: error => toast.error(messageFor(error)),
-  })
+  });
 
   return (
     <section aria-labelledby="termos" className="max-w-xl space-y-6">
@@ -96,5 +96,5 @@ export function TermsGate() {
         {accept.isPending ? t("portal.terms.confirming") : t("portal.terms.continue")}
       </Button>
     </section>
-  )
+  );
 }

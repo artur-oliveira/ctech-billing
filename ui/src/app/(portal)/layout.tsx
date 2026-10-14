@@ -1,23 +1,23 @@
-"use client"
+"use client";
 
-import {BottomNavSpacer, SidebarNav, Skeleton} from "@aoctech/ui"
-import {useQuery} from "@tanstack/react-query"
-import {usePathname, useRouter} from "next/navigation"
-import {useEffect} from "react"
-import {useTranslation} from "react-i18next"
+import {BottomNavSpacer, SidebarNav, Skeleton} from "@aoctech/ui";
+import {useQuery} from "@tanstack/react-query";
+import {usePathname, useRouter} from "next/navigation";
+import {useEffect} from "react";
+import {useTranslation} from "react-i18next";
 
-import {NoBillingAccount} from "@/components/portal/NoBillingAccount"
-import {PortalSpaceScope} from "@/components/portal/PortalSpaceScope"
-import {PortalSpaceSwitch} from "@/components/portal/PortalSpaceSwitch"
-import {PortalBottomNav} from "@/components/portal/PortalBottomNav"
-import {BillingShell} from "@/components/shell/BillingShell"
-import {renderLink} from "@/components/shell/renderLink"
-import {TermsGate} from "@/components/portal/TermsGate"
-import {isNoBillingAccount} from "@/lib/api/client"
-import {getSession, portalKeys} from "@/lib/api/portal"
-import {useAuth} from "@/lib/auth/AuthContext"
-import {PORTAL_NAV} from "@/lib/portal/nav"
-import {usePortalSpace} from "@/lib/portal/space"
+import {NoBillingAccount} from "@/components/portal/NoBillingAccount";
+import {PortalSpaceScope} from "@/components/portal/PortalSpaceScope";
+import {PortalSpaceSwitch} from "@/components/portal/PortalSpaceSwitch";
+import {PortalBottomNav} from "@/components/portal/PortalBottomNav";
+import {BillingShell} from "@/components/shell/BillingShell";
+import {renderLink} from "@/components/shell/renderLink";
+import {TermsGate} from "@/components/portal/TermsGate";
+import {isNoBillingAccount} from "@/lib/api/client";
+import {getSession, portalKeys} from "@/lib/api/portal";
+import {useAuth} from "@/lib/auth/AuthContext";
+import {PORTAL_NAV} from "@/lib/portal/nav";
+import {usePortalSpace} from "@/lib/portal/space";
 
 /**
  * The consumer shell, and the gate in front of it.
@@ -40,12 +40,12 @@ import {usePortalSpace} from "@/lib/portal/space"
  * administer (ADR 0025) — and only for someone who has such an organization.
  */
 export default function PortalLayout({children}: LayoutProps<"/">) {
-  const {t} = useTranslation()
-  const router = useRouter()
-  const {authenticated, loading} = useAuth()
+  const {t} = useTranslation();
+  const router = useRouter();
+  const {authenticated, loading} = useAuth();
   // Read so the shell re-renders on a change of selection: the session key
   // below carries the space (portalKeys), and so must this read of it.
-  usePortalSpace()
+  usePortalSpace();
 
   const {data: session, error: sessionError} = useQuery({
     queryKey: portalKeys.session,
@@ -54,19 +54,19 @@ export default function PortalLayout({children}: LayoutProps<"/">) {
     // "No billing account" is an answer, not a hiccup: re-asking on focus
     // would clear it and flash the screens behind it before the 403 returns.
     refetchOnWindowFocus: query => !isNoBillingAccount(query.state.error),
-  })
+  });
 
   // Signed in, nothing bought yet. Decided from the session alone rather than
   // per screen: every route below answers the same 403, so the alternative is
   // the same message three times under a nav whose every tab leads back to it.
-  const noAccount = isNoBillingAccount(sessionError)
+  const noAccount = isNoBillingAccount(sessionError);
 
   useEffect(() => {
-    if (!loading && !authenticated) router.replace("/login")
-  }, [loading, authenticated, router])
+    if (!loading && !authenticated) router.replace("/login");
+  }, [loading, authenticated, router]);
 
-  const pathname = usePathname()
-  const active = (href: string) => href === "/dashboard" ? pathname === href : pathname.startsWith(href)
+  const pathname = usePathname();
+  const active = (href: string) => href === "/dashboard" ? pathname === href : pathname.startsWith(href);
 
   return (
     <BillingShell
@@ -99,7 +99,7 @@ export default function PortalLayout({children}: LayoutProps<"/">) {
       </PortalSpaceScope>
       {!noAccount && <BottomNavSpacer/>}
     </BillingShell>
-  )
+  );
 }
 
 /** Held while the silent refresh answers. Not a spinner and not the word
@@ -112,5 +112,5 @@ function GateSkeleton() {
       <Skeleton className="h-9 w-48"/>
       <Skeleton className="h-4 w-64"/>
     </div>
-  )
+  );
 }

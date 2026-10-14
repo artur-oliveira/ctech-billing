@@ -1,9 +1,9 @@
-import {Badge} from "@aoctech/ui"
-import {AlertTriangle, Ban, CheckCircle2, Circle, FileText} from "lucide-react"
+import {Badge} from "@aoctech/ui";
+import {AlertTriangle, Ban, CheckCircle2, Circle, FileText} from "lucide-react";
 
-import {useTranslation} from "react-i18next"
+import {useTranslation} from "react-i18next";
 
-import type {ConsoleInvoice} from "@/lib/api/consoleTypes"
+import type {ConsoleInvoice} from "@/lib/api/consoleTypes";
 
 /**
  * The internal status, spelled out — the opposite of the portal's badge, and
@@ -22,7 +22,7 @@ const TONE = {
   PAID: "positive",
   VOID: "neutral",
   UNCOLLECTIBLE: "urgent",
-} as const
+} as const;
 
 const GLYPH = {
   DRAFT: FileText,
@@ -30,11 +30,11 @@ const GLYPH = {
   PAID: CheckCircle2,
   VOID: Ban,
   UNCOLLECTIBLE: AlertTriangle,
-} as const
+} as const;
 
 export function InvoiceStatusBadge({invoice}: { invoice: ConsoleInvoice }) {
-  const {t} = useTranslation()
-  const Glyph = GLYPH[invoice.status] ?? Circle
+  const {t} = useTranslation();
+  const Glyph = GLYPH[invoice.status] ?? Circle;
   return (
     <span className="inline-flex items-center gap-1.5">
       <Badge tone={TONE[invoice.status]}>
@@ -48,5 +48,5 @@ export function InvoiceStatusBadge({invoice}: { invoice: ConsoleInvoice }) {
         </Badge>
       )}
     </span>
-  )
+  );
 }

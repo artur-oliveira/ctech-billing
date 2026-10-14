@@ -1,18 +1,18 @@
-"use client"
+"use client";
 
-import {EmptyState, Skeleton} from "@aoctech/ui"
-import {useQuery} from "@tanstack/react-query"
-import type {TFunction} from "i18next"
-import {Repeat} from "lucide-react"
-import Link from "next/link"
-import {useTranslation} from "react-i18next"
+import {EmptyState, Skeleton} from "@aoctech/ui";
+import {useQuery} from "@tanstack/react-query";
+import type {TFunction} from "i18next";
+import {Repeat} from "lucide-react";
+import Link from "next/link";
+import {useTranslation} from "react-i18next";
 
-import {SubscriptionStatusBadge} from "@/components/console/SubscriptionStatusBadge"
-import {ErrorBlock} from "@/components/portal/ErrorBlock"
-import {consoleKeys, listConsoleSubscriptions} from "@/lib/api/console"
-import type {ConsoleSubscriptionRow, Recurrence} from "@/lib/api/consoleTypes"
-import {useConsoleScope} from "@/lib/console/scope"
-import {compactPeriod} from "@/lib/format"
+import {SubscriptionStatusBadge} from "@/components/console/SubscriptionStatusBadge";
+import {ErrorBlock} from "@/components/portal/ErrorBlock";
+import {consoleKeys, listConsoleSubscriptions} from "@/lib/api/console";
+import type {ConsoleSubscriptionRow, Recurrence} from "@/lib/api/consoleTypes";
+import {useConsoleScope} from "@/lib/console/scope";
+import {compactPeriod} from "@/lib/format";
 
 /**
  * C4 — the subscriptions.
@@ -34,14 +34,14 @@ import {compactPeriod} from "@/lib/format"
  * access as one muted line.
  */
 export default function ConsoleSubscriptionsPage() {
-  const {t} = useTranslation()
-  const scope = useConsoleScope()
+  const {t} = useTranslation();
+  const scope = useConsoleScope();
   const query = useQuery({
     queryKey: consoleKeys.subscriptions(scope),
     queryFn: () => listConsoleSubscriptions(scope),
-  })
+  });
 
-  const subscriptions = query.data?.data ?? []
+  const subscriptions = query.data?.data ?? [];
 
   return (
     <div className="space-y-6">
@@ -146,7 +146,7 @@ export default function ConsoleSubscriptionsPage() {
         </>
       )}
     </div>
-  )
+  );
 }
 
 /** The row's name and its way in: the plan, or the id when the plan could not
@@ -159,13 +159,13 @@ function PlanLink({sub}: { sub: ConsoleSubscriptionRow }) {
     >
       {sub.plan_name || sub.id}
     </Link>
-  )
+  );
 }
 
 function recurrenceLabel(t: TFunction, recurrence: Recurrence): string {
   return recurrence.count === 1
     ? t(`console.interval.${recurrence.interval}`, {defaultValue: recurrence.interval})
-    : t(`console.every.${recurrence.interval}`, {count: recurrence.count, defaultValue: recurrence.interval})
+    : t(`console.every.${recurrence.interval}`, {count: recurrence.count, defaultValue: recurrence.interval});
 }
 
 function RowsSkeleton() {
@@ -173,5 +173,5 @@ function RowsSkeleton() {
     <div className="space-y-2" aria-busy>
       {[0, 1, 2].map(i => <Skeleton key={i} className="h-8 w-full"/>)}
     </div>
-  )
+  );
 }

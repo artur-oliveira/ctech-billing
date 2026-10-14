@@ -1,38 +1,38 @@
-"use client"
+"use client";
 
-import {Button, Field, Input, Skeleton} from "@aoctech/ui"
-import {useQuery} from "@tanstack/react-query"
-import Link from "next/link"
-import {useState} from "react"
-import {useTranslation} from "react-i18next"
+import {Button, Field, Input, Skeleton} from "@aoctech/ui";
+import {useQuery} from "@tanstack/react-query";
+import Link from "next/link";
+import {useState} from "react";
+import {useTranslation} from "react-i18next";
 
-import {ErrorBlock} from "@/components/portal/ErrorBlock"
-import {confirmExpectedOccurrence, financeKeys, listBills, listImports, listPendingOccurrences, listRecurrences, skipExpectedOccurrence, type FinanceCtx} from "@/lib/api/finance"
-import type {Bill, ImportSummary, PendingOccurrence} from "@/lib/api/financeTypes"
-import {useFinanceCtx} from "@/lib/finance/useFinanceSpaces"
-import {useFinanceMutation} from "@/lib/finance/useFinanceMutation"
-import {formatMoneyInput, maskMoney, moneyPlaceholder, parseMoney} from "@/lib/money"
-import {money, shortDate} from "@/lib/format"
+import {ErrorBlock} from "@/components/portal/ErrorBlock";
+import {confirmExpectedOccurrence, financeKeys, listBills, listImports, listPendingOccurrences, listRecurrences, skipExpectedOccurrence, type FinanceCtx} from "@/lib/api/finance";
+import type {Bill, ImportSummary, PendingOccurrence} from "@/lib/api/financeTypes";
+import {useFinanceCtx} from "@/lib/finance/useFinanceSpaces";
+import {useFinanceMutation} from "@/lib/finance/useFinanceMutation";
+import {formatMoneyInput, maskMoney, moneyPlaceholder, parseMoney} from "@/lib/money";
+import {money, shortDate} from "@/lib/format";
 
-const INBOX_LIMIT = 20
+const INBOX_LIMIT = 20;
 
 export function ActionInboxView() {
-  const {t} = useTranslation()
-  const ctx = useFinanceCtx()
-  const payable = useQuery({queryKey: [...financeKeys.billPreview(ctx.mode, ctx.space, "payable"), "inbox"], queryFn: () => listBills(ctx, "payable", undefined, INBOX_LIMIT)})
-  const receivable = useQuery({queryKey: [...financeKeys.billPreview(ctx.mode, ctx.space, "receivable"), "inbox"], queryFn: () => listBills(ctx, "receivable", undefined, INBOX_LIMIT)})
-  const recurrences = useQuery({queryKey: financeKeys.recurrences(ctx.mode, ctx.space), queryFn: () => listRecurrences(ctx)})
-  const imports = useQuery({queryKey: financeKeys.imports(ctx.mode, ctx.space, ""), queryFn: () => listImports(ctx, "")})
-  const pending = useQuery({queryKey: financeKeys.pendingOccurrences(ctx.mode, ctx.space), queryFn: () => listPendingOccurrences(ctx)})
-  const error = payable.error ?? receivable.error ?? recurrences.error ?? imports.error ?? pending.error
-  const retry = () => { void payable.refetch(); void receivable.refetch(); void recurrences.refetch(); void imports.refetch(); void pending.refetch() }
+  const {t} = useTranslation();
+  const ctx = useFinanceCtx();
+  const payable = useQuery({queryKey: [...financeKeys.billPreview(ctx.mode, ctx.space, "payable"), "inbox"], queryFn: () => listBills(ctx, "payable", undefined, INBOX_LIMIT)});
+  const receivable = useQuery({queryKey: [...financeKeys.billPreview(ctx.mode, ctx.space, "receivable"), "inbox"], queryFn: () => listBills(ctx, "receivable", undefined, INBOX_LIMIT)});
+  const recurrences = useQuery({queryKey: financeKeys.recurrences(ctx.mode, ctx.space), queryFn: () => listRecurrences(ctx)});
+  const imports = useQuery({queryKey: financeKeys.imports(ctx.mode, ctx.space, ""), queryFn: () => listImports(ctx, "")});
+  const pending = useQuery({queryKey: financeKeys.pendingOccurrences(ctx.mode, ctx.space), queryFn: () => listPendingOccurrences(ctx)});
+  const error = payable.error ?? receivable.error ?? recurrences.error ?? imports.error ?? pending.error;
+  const retry = () => { void payable.refetch(); void receivable.refetch(); void recurrences.refetch(); void imports.refetch(); void pending.refetch(); };
   const bills = [...(payable.data?.data ?? []), ...(receivable.data?.data ?? [])]
     .filter(bill => bill.status === "forecast")
-    .sort((a, b) => (a.bucket === "overdue" ? 0 : 1) - (b.bucket === "overdue" ? 0 : 1) || a.due_date.localeCompare(b.due_date))
-  const needsAttention = (recurrences.data?.data ?? []).filter(recurrence => recurrence.needs_attention && !recurrence.archived)
-  const pendingImports = (imports.data?.data ?? []).filter(imp => imp.pending > 0)
-  const pendingOccurrences = (pending.data?.data ?? []).slice().sort((a,b) => a.due.localeCompare(b.due))
-  const loading = payable.isLoading || receivable.isLoading || recurrences.isLoading || imports.isLoading || pending.isLoading
+    .sort((a, b) => (a.bucket === "overdue" ? 0 : 1) - (b.bucket === "overdue" ? 0 : 1) || a.due_date.localeCompare(b.due_date));
+  const needsAttention = (recurrences.data?.data ?? []).filter(recurrence => recurrence.needs_attention && !recurrence.archived);
+  const pendingImports = (imports.data?.data ?? []).filter(imp => imp.pending > 0);
+  const pendingOccurrences = (pending.data?.data ?? []).slice().sort((a,b) => a.due.localeCompare(b.due));
+  const loading = payable.isLoading || receivable.isLoading || recurrences.isLoading || imports.isLoading || pending.isLoading;
 
   return (
     <div className="space-y-6">
@@ -73,17 +73,17 @@ export function ActionInboxView() {
         </div>
       )}
     </div>
-  )
+  );
 }
 
 function PendingAction({item}: {item: PendingOccurrence}) {
-  const {t} = useTranslation()
-  const [amountText, setAmountText] = useState(formatMoneyInput(item.expected_amount))
-  const [askingSkip, setAskingSkip] = useState(false)
-  const amount = parseMoney(amountText)
-  const invalidate = (c: FinanceCtx) => [financeKeys.all(c.mode,c.space)]
-  const confirm = useFinanceMutation((c, value: number, key) => confirmExpectedOccurrence(c,item.recurrence_id,item.nominal,value,key), invalidate)
-  const skip = useFinanceMutation((c, _: void, key) => skipExpectedOccurrence(c,item.recurrence_id,item.nominal,key), invalidate, () => setAskingSkip(false))
+  const {t} = useTranslation();
+  const [amountText, setAmountText] = useState(formatMoneyInput(item.expected_amount));
+  const [askingSkip, setAskingSkip] = useState(false);
+  const amount = parseMoney(amountText);
+  const invalidate = (c: FinanceCtx) => [financeKeys.all(c.mode,c.space)];
+  const confirm = useFinanceMutation((c, value: number, key) => confirmExpectedOccurrence(c,item.recurrence_id,item.nominal,value,key), invalidate);
+  const skip = useFinanceMutation((c, _: void, key) => skipExpectedOccurrence(c,item.recurrence_id,item.nominal,key), invalidate, () => setAskingSkip(false));
   return <li className="flex flex-wrap items-end justify-between gap-3 py-3">
     <div className="min-w-0"><p className="truncate text-sm font-medium">{item.description || t("finance.inbox.unnamedRecurrence")}</p><p className="text-sm text-muted-foreground">{t("finance.inbox.expectedOccurrence", {date:shortDate(item.due),amount:money(item.expected_amount)})}</p></div>
     <div className="flex flex-wrap items-end gap-2">
@@ -98,22 +98,22 @@ function PendingAction({item}: {item: PendingOccurrence}) {
       </>}
       {(confirm.error || skip.error) && <p role="alert" className="w-full text-sm text-danger">{t("finance.inbox.actionFailed")}</p>}
     </div>
-  </li>
+  </li>;
 }
 
 function ImportAction({item}: {item: ImportSummary}) {
-  const {t} = useTranslation()
+  const {t} = useTranslation();
   return <li className="flex flex-wrap items-center justify-between gap-3 py-3">
     <div><p className="text-sm font-medium">{t("finance.inbox.pendingImport", {count: item.pending})}</p><p className="text-sm text-muted-foreground">{item.from && item.to ? `${shortDate(item.from)} – ${shortDate(item.to)}` : shortDate(item.created_at.slice(0, 10))}</p></div>
     <Button size="sm" variant="outline" render={<Link href={`/finance/import?account=${encodeURIComponent(item.account_id)}`}/>}>{t("finance.inbox.reconcile")}</Button>
-  </li>
+  </li>;
 }
 
 function BillAction({bill}: {bill: Bill}) {
-  const {t} = useTranslation()
-  const overdue = bill.bucket === "overdue"
+  const {t} = useTranslation();
+  const overdue = bill.bucket === "overdue";
   return <li className="flex flex-wrap items-center justify-between gap-3 py-3">
     <div className="min-w-0"><p className="truncate text-sm font-medium">{bill.description || t("finance.inbox.unnamedBill")}</p><p className={`text-sm ${overdue ? "text-danger" : "text-muted-foreground"}`}>{t(overdue ? "finance.inbox.overdue" : "finance.inbox.due", {date: shortDate(bill.due_date)})}</p></div>
     <div className="flex items-center gap-3"><span className="text-sm tabular-nums">{money(bill.amount)}</span><Button size="sm" variant="outline" render={<Link href={`/finance/bills?direction=${bill.direction}&bill=${encodeURIComponent(bill.id)}`}/>}>{t(bill.direction === "payable" ? "finance.inbox.openPayable" : "finance.inbox.openReceivable")}</Button></div>
-  </li>
+  </li>;
 }

@@ -1,8 +1,8 @@
-"use client"
+"use client";
 
-import {useEffect} from "react"
+import {useEffect} from "react";
 
-const SUFFIX = "CTech Billing"
+const SUFFIX = "CTech Billing";
 
 /**
  * Names the tab for something only the client knows.
@@ -21,7 +21,7 @@ const SUFFIX = "CTech Billing"
  */
 export function useDocumentTitle(title: string | null) {
   useEffect(() => {
-    if (title === null) return
-    document.title = `${title} · ${SUFFIX}`
-  }, [title])
+    if (title === null) return;
+    document.title = `${title} · ${SUFFIX}`;
+  }, [title]);
 }

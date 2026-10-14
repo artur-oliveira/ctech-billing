@@ -1,14 +1,14 @@
-"use client"
+"use client";
 
-import {Button, EmptyState, PageHeader, Skeleton} from "@aoctech/ui"
-import {useInfiniteQuery} from "@tanstack/react-query"
-import {Receipt} from "lucide-react"
-import {useTranslation} from "react-i18next"
+import {Button, EmptyState, PageHeader, Skeleton} from "@aoctech/ui";
+import {useInfiniteQuery} from "@tanstack/react-query";
+import {Receipt} from "lucide-react";
+import {useTranslation} from "react-i18next";
 
-import {ErrorBlock} from "@/components/portal/ErrorBlock"
-import {InvoiceRow} from "@/components/portal/InvoiceRow"
-import {listInvoices, portalKeys} from "@/lib/api/portal"
-import {useDocumentTitle} from "@/lib/hooks/useDocumentTitle"
+import {ErrorBlock} from "@/components/portal/ErrorBlock";
+import {InvoiceRow} from "@/components/portal/InvoiceRow";
+import {listInvoices, portalKeys} from "@/lib/api/portal";
+import {useDocumentTitle} from "@/lib/hooks/useDocumentTitle";
 
 /**
  * P2 — Faturas. A list, and nothing else.
@@ -19,8 +19,8 @@ import {useDocumentTitle} from "@/lib/hooks/useDocumentTitle"
  * that costs a tap on every visit and pays off on none.
  */
 export default function InvoicesPage() {
-  const {t} = useTranslation()
-  useDocumentTitle(t("portal.invoices.title"))
+  const {t} = useTranslation();
+  useDocumentTitle(t("portal.invoices.title"));
   const query = useInfiniteQuery({
     queryKey: portalKeys.invoicePages,
     queryFn: ({pageParam}) => listInvoices(pageParam),
@@ -28,9 +28,9 @@ export default function InvoicesPage() {
     // Cursor pagination: the server says whether there is more and what to ask
     // for next. Never a page number — the set shifts as invoices are issued.
     getNextPageParam: last => (last.has_more ? last.cursor : undefined),
-  })
+  });
 
-  const invoices = query.data?.pages.flatMap(p => p.data) ?? []
+  const invoices = query.data?.pages.flatMap(p => p.data) ?? [];
 
   return (
     <div className="space-y-8">
@@ -67,7 +67,7 @@ export default function InvoicesPage() {
         </Button>
       )}
     </div>
-  )
+  );
 }
 
 function ListSkeleton() {
@@ -83,5 +83,5 @@ function ListSkeleton() {
         </li>
       ))}
     </ul>
-  )
+  );
 }

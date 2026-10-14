@@ -1,15 +1,15 @@
-"use client"
+"use client";
 
-import {Button, Separator} from "@aoctech/ui"
-import {QRCodeSVG} from "qrcode.react"
-import {Check, Copy} from "lucide-react"
-import {useCallback, useEffect, useState} from "react"
-import {useTranslation} from "react-i18next"
-import {toast} from "sonner"
+import {Button, Separator} from "@aoctech/ui";
+import {QRCodeSVG} from "qrcode.react";
+import {Check, Copy} from "lucide-react";
+import {useCallback, useEffect, useState} from "react";
+import {useTranslation} from "react-i18next";
+import {toast} from "sonner";
 
-import type {Cents, PixPayment} from "@/lib/api/types"
-import {countdown, money, shortDate} from "@/lib/format"
-import {usePaymentStream} from "@/lib/hooks/usePaymentStream"
+import type {Cents, PixPayment} from "@/lib/api/types";
+import {countdown, money, shortDate} from "@/lib/format";
+import {usePaymentStream} from "@/lib/hooks/usePaymentStream";
 
 /**
  * The PIX charge, once it is open.
@@ -48,16 +48,16 @@ export function PixPanel({
   onRegenerate: () => void
   regenerating: boolean
 }) {
-  const {t} = useTranslation()
-  const secondsLeft = useCountdown(payment.expires_at)
-  const expired = secondsLeft <= 0
-  const streamed = usePaymentStream(invoiceId ?? "", Boolean(invoiceId) && !expired)
-  const paid = settled || streamed === "paid"
-  const status = paid ? "paid" : streamed
+  const {t} = useTranslation();
+  const secondsLeft = useCountdown(payment.expires_at);
+  const expired = secondsLeft <= 0;
+  const streamed = usePaymentStream(invoiceId ?? "", Boolean(invoiceId) && !expired);
+  const paid = settled || streamed === "paid";
+  const status = paid ? "paid" : streamed;
 
   useEffect(() => {
-    if (paid) onPaid()
-  }, [paid, onPaid])
+    if (paid) onPaid();
+  }, [paid, onPaid]);
 
   if (paid) {
     return (
@@ -68,7 +68,7 @@ export function PixPanel({
           {t("portal.pix.paidAmount", {amount: money(amount, currency)})}
         </p>
       </div>
-    )
+    );
   }
 
   if (expired) {
@@ -85,7 +85,7 @@ export function PixPanel({
           {regenerating ? t("portal.pix.generating") : t("portal.pix.regenerate")}
         </Button>
       </div>
-    )
+    );
   }
 
   return (
@@ -132,22 +132,22 @@ export function PixPanel({
           : t("portal.pix.waiting")}
       </p>
     </div>
-  )
+  );
 }
 
 function CopyCode({code}: { code: string }) {
-  const {t} = useTranslation()
-  const [copied, setCopied] = useState(false)
+  const {t} = useTranslation();
+  const [copied, setCopied] = useState(false);
 
   async function copy() {
     try {
-      await navigator.clipboard.writeText(code)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2500)
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
     } catch {
       // Clipboard access can be denied outright, and telling somebody "copiado"
       // when nothing was copied is worse than telling them to select it.
-      toast.error(t("portal.pix.copyFailed"))
+      toast.error(t("portal.pix.copyFailed"));
     }
   }
 
@@ -162,7 +162,7 @@ function CopyCode({code}: { code: string }) {
         {copied ? t("portal.pix.copied") : t("portal.pix.copy")}
       </Button>
     </div>
-  )
+  );
 }
 
 /** Seconds until `iso`, ticking once a second and never below zero. */
@@ -170,25 +170,25 @@ function useCountdown(iso: string): number {
   const remaining = useCallback(
     () => Math.max(0, Math.floor((new Date(iso).getTime() - Date.now()) / 1000)),
     [iso]
-  )
-  const [seconds, setSeconds] = useState(remaining)
+  );
+  const [seconds, setSeconds] = useState(remaining);
 
   // A new charge resets the clock during render, not inside the effect: setting
   // it there paints one frame of the old code's remaining time first.
-  const [prevIso, setPrevIso] = useState(iso)
+  const [prevIso, setPrevIso] = useState(iso);
   if (prevIso !== iso) {
-    setPrevIso(iso)
-    setSeconds(remaining())
+    setPrevIso(iso);
+    setSeconds(remaining());
   }
 
   useEffect(() => {
     const timer = setInterval(() => {
-      const left = remaining()
-      setSeconds(left)
-      if (left <= 0) clearInterval(timer)
-    }, 1000)
-    return () => clearInterval(timer)
-  }, [remaining])
+      const left = remaining();
+      setSeconds(left);
+      if (left <= 0) clearInterval(timer);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [remaining]);
 
-  return seconds
+  return seconds;
 }

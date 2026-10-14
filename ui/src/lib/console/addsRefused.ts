@@ -1,9 +1,9 @@
-"use client"
+"use client";
 
-import {useQuery} from "@tanstack/react-query"
+import {useQuery} from "@tanstack/react-query";
 
-import {consoleKeys, getConsoleSession} from "@/lib/api/console"
-import {useConsoleScope} from "@/lib/console/scope"
+import {consoleKeys, getConsoleSession} from "@/lib/api/console";
+import {useConsoleScope} from "@/lib/console/scope";
 
 /**
  * Whether this screen should offer to ADD integration surface (connect, create,
@@ -12,8 +12,8 @@ import {useConsoleScope} from "@/lib/console/scope"
  * a button that cannot work. Display data, never authority.
  */
 export function useAddsRefused(): boolean {
-  const scope = useConsoleScope()
-  const session = useQuery({queryKey: consoleKeys.session(), queryFn: getConsoleSession})
-  const org = session.data?.organizations.find(o => o.organization_id === scope.org)
-  return scope.mode === "live" && org?.merchant_status === "suspended"
+  const scope = useConsoleScope();
+  const session = useQuery({queryKey: consoleKeys.session(), queryFn: getConsoleSession});
+  const org = session.data?.organizations.find(o => o.organization_id === scope.org);
+  return scope.mode === "live" && org?.merchant_status === "suspended";
 }

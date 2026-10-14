@@ -1,10 +1,10 @@
-"use client"
+"use client";
 
-import {Input} from "@aoctech/ui"
-import {type ComponentProps, type KeyboardEvent, useId, useState} from "react"
-import {useTranslation} from "react-i18next"
+import {Input} from "@aoctech/ui";
+import {type ComponentProps, type KeyboardEvent, useId, useState} from "react";
+import {useTranslation} from "react-i18next";
 
-import {money} from "@/lib/format"
+import {money} from "@/lib/format";
 
 export interface HistoryEntry {
   description: string
@@ -13,19 +13,19 @@ export interface HistoryEntry {
   accountId?: string
 }
 
-const MAX_SUGGESTIONS = 5
+const MAX_SUGGESTIONS = 5;
 
 /** What was typed before, by prefix and once per name, most recent first as given. */
 function matchesFor(value: string, entries: HistoryEntry[]): HistoryEntry[] {
-  const prefix = value.trim().toLocaleLowerCase()
-  if (!prefix) return []
-  const seen = new Set<string>()
+  const prefix = value.trim().toLocaleLowerCase();
+  if (!prefix) return [];
+  const seen = new Set<string>();
   return entries.filter(entry => {
-    const key = entry.description.trim().toLocaleLowerCase()
-    if (!key.startsWith(prefix) || seen.has(key)) return false
-    seen.add(key)
-    return true
-  }).slice(0, MAX_SUGGESTIONS)
+    const key = entry.description.trim().toLocaleLowerCase();
+    if (!key.startsWith(prefix) || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).slice(0, MAX_SUGGESTIONS);
 }
 
 type InputProps = Omit<ComponentProps<typeof Input>, "value" | "onChange" | "onSelect" | "role">
@@ -46,39 +46,39 @@ export function SuggestingInput({value, onValueChange, entries, onSelect, onKeyD
   entries: HistoryEntry[]
   onSelect: (entry: HistoryEntry) => void
 }) {
-  const {t} = useTranslation()
-  const listId = useId()
-  const [focused, setFocused] = useState(false)
-  const [dismissed, setDismissed] = useState(false)
-  const [active, setActive] = useState(-1)
-  const matches = matchesFor(value, entries)
-  const open = focused && !dismissed && matches.length > 0
-  const optionId = (i: number) => `${listId}-${i}`
+  const {t} = useTranslation();
+  const listId = useId();
+  const [focused, setFocused] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
+  const [active, setActive] = useState(-1);
+  const matches = matchesFor(value, entries);
+  const open = focused && !dismissed && matches.length > 0;
+  const optionId = (i: number) => `${listId}-${i}`;
 
   const choose = (entry: HistoryEntry) => {
-    setDismissed(true)
-    setActive(-1)
-    onSelect(entry)
-  }
+    setDismissed(true);
+    setActive(-1);
+    onSelect(entry);
+  };
   const keys = (e: KeyboardEvent<HTMLInputElement>) => {
-    onKeyDown?.(e)
-    if (!open) return
+    onKeyDown?.(e);
+    if (!open) return;
     if (e.key === "ArrowDown") {
-      e.preventDefault()
-      setActive(a => (a + 1) % matches.length)
+      e.preventDefault();
+      setActive(a => (a + 1) % matches.length);
     } else if (e.key === "ArrowUp") {
-      e.preventDefault()
-      setActive(a => (a <= 0 ? matches.length : a) - 1)
+      e.preventDefault();
+      setActive(a => (a <= 0 ? matches.length : a) - 1);
     } else if (e.key === "Enter" && active >= 0) {
-      e.preventDefault()
-      choose(matches[active])
+      e.preventDefault();
+      choose(matches[active]);
     } else if (e.key === "Escape") {
       // Only the list: the drawer around the form closes on Escape too.
-      e.preventDefault()
-      e.stopPropagation()
-      setDismissed(true)
+      e.preventDefault();
+      e.stopPropagation();
+      setDismissed(true);
     }
-  }
+  };
 
   return (
     <div className="relative">
@@ -91,10 +91,10 @@ export function SuggestingInput({value, onValueChange, entries, onSelect, onKeyD
         aria-activedescendant={open && active >= 0 ? optionId(active) : undefined}
         autoComplete="off"
         value={value}
-        onChange={e => { onValueChange(e.target.value); setDismissed(false); setActive(-1) }}
+        onChange={e => { onValueChange(e.target.value); setDismissed(false); setActive(-1); }}
         onKeyDown={keys}
-        onFocus={e => { setFocused(true); onFocus?.(e) }}
-        onBlur={e => { setFocused(false); onBlur?.(e) }}
+        onFocus={e => { setFocused(true); onFocus?.(e); }}
+        onBlur={e => { setFocused(false); onBlur?.(e); }}
       />
       {open && (
         <ul
@@ -122,5 +122,5 @@ export function SuggestingInput({value, onValueChange, entries, onSelect, onKeyD
         </ul>
       )}
     </div>
-  )
+  );
 }
