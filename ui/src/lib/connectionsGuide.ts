@@ -10,7 +10,7 @@ export function permissionsForScopes(guide: ProviderGuide | undefined, scopes: s
   const known = new Set<string>()
   for (const a of guide?.activities ?? []) {
     for (const p of a.permissions) {
-      const hit = p.scopes.filter(s => scopes.includes(s))
+      const hit = (p.scopes ?? []).filter(s => scopes.includes(s))
       if (hit.length === 0) continue
       keys.push(p.key)
       hit.forEach(s => known.add(s))

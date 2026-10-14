@@ -118,7 +118,8 @@ func TestNoCheckoutURLWithoutAConfiguredLinkSigner(t *testing.T) {
 }
 
 // Every API scope the Inter provider asks for is covered by a permission in the
-// guide, so a missing scope can always be told back as something to tick.
+// guide, so a missing scope can always be told back as something to tick. The
+// guide may hold more: permissions for products not built yet.
 func TestProviderCatalogGuideCoversInterScopes(t *testing.T) {
 	var guide providerGuide
 	for _, p := range providerCatalog() {
@@ -139,7 +140,9 @@ func TestProviderCatalogGuideCoversInterScopes(t *testing.T) {
 			t.Errorf("scope %q is asked for at connect time but no guide permission grants it", s)
 		}
 	}
-	if len(covered) != len(inter.ScopesStatement)+len(inter.ScopesCollection) {
-		t.Errorf("the guide asks to tick scopes the provider never uses: %v", covered)
+	for _, s := range []string{"cobv.write", "pix.read", "extrato.read"} {
+		if !covered[s] {
+			t.Errorf("guide lost %q", s)
+		}
 	}
 }

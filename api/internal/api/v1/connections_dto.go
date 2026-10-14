@@ -102,7 +102,8 @@ type providerInfo struct {
 // activities that hold permissions, as the provider's web wizard shows them.
 // Each permission lists the API scopes it grants, so a missing scope found at
 // connect time is told back as the permission to tick. A provider with no
-// activities (or no scopes at all) simply has an empty guide.
+// activities (or no scopes at all) simply has an empty guide. A permission with
+// no scopes is one the integration should hold for products not built yet.
 type providerGuide struct {
 	NameMax        int             `json:"name_max,omitempty"`
 	DescriptionMax int             `json:"description_max,omitempty"`
@@ -118,7 +119,7 @@ type guideActivity struct {
 
 type guidePermission struct {
 	Key    string   `json:"key"`
-	Scopes []string `json:"scopes"`
+	Scopes []string `json:"scopes,omitempty"`
 }
 
 // providerCatalog is what the onboarding asks for and which permissions to tick
@@ -143,6 +144,18 @@ func providerCatalog() []providerInfo {
 					{Key: "pix_read", Scopes: []string{"pix.read"}},
 					{Key: "webhook_write", Scopes: []string{"webhook.write"}},
 					{Key: "webhook_read", Scopes: []string{"webhook.read"}},
+					// Ticked now so a later product never needs a second integration.
+					{Key: "charge_write"}, {Key: "charge_read"},
+					{Key: "due_batch_write"}, {Key: "due_batch_read"},
+					{Key: "payload_write"}, {Key: "payload_read"},
+				}},
+				{Code: "recurring", Permissions: []guidePermission{
+					{Key: "recurrence_read"}, {Key: "recurrence_write"},
+					{Key: "recurrence_request_read"}, {Key: "recurrence_request_write"},
+					{Key: "recurring_charge_read"}, {Key: "recurring_charge_write"},
+					{Key: "recurrence_payload_read"}, {Key: "recurrence_payload_write"},
+					{Key: "recurrence_webhook_read"}, {Key: "recurrence_webhook_write"},
+					{Key: "recurring_charge_webhook_read"}, {Key: "recurring_charge_webhook_write"},
 				}},
 				{Code: "statement", Permissions: []guidePermission{
 					{Key: "statement_read", Scopes: []string{"extrato.read"}},

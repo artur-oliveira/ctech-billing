@@ -26,6 +26,7 @@ const PROVIDERS: ProviderInfo[] = [{
         {key: "pix_refund", scopes: ["pix.write"]}, {key: "pix_read", scopes: ["pix.read"]},
         {key: "webhook_write", scopes: ["webhook.write"]}, {key: "webhook_read", scopes: ["webhook.read"]},
       ]},
+      {code: "recurring", permissions: [{key: "recurrence_read", scopes: []}, {key: "recurrence_write", scopes: []}]},
       {code: "statement", permissions: [{key: "statement_read", scopes: ["extrato.read"]}]},
     ],
   },
