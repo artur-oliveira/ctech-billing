@@ -265,6 +265,8 @@ export interface NewPriceInput {
   unit_amount: number
   recurrence: {interval: string; count: number}
   billing_timing: "advance" | "arrears"
+  name?: string
+  metadata?: Record<string, string>
 }
 
 /** A new price, never an edit: a price is immutable, and the screen says so. */

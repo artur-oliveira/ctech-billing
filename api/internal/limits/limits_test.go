@@ -26,7 +26,7 @@ func TestTheUIReadsTheseLimits(t *testing.T) {
 		"maxRecurrenceYears": float64(MaxRecurrenceYears),
 		"text": map[string]any{
 			"accountName": float64(AccountName), "description": float64(Description), "memo": float64(Memo),
-			"productName": float64(ProductName), "productDescription": float64(ProductDesc), "productURL": float64(ProductURL), "ownerKey": float64(OwnerKey), "customerName": float64(CustomerName),
+			"productName": float64(ProductName), "productDescription": float64(ProductDesc), "priceName": float64(PriceName), "productURL": float64(ProductURL), "ownerKey": float64(OwnerKey), "customerName": float64(CustomerName),
 			"legalName": float64(LegalName), "address": float64(Address), "email": float64(Email),
 			"reason": float64(Reason), "externalRef": float64(ExternalRef), "taxID": float64(TaxID),
 			"applicationDescription": float64(ApplicationDescription), "website": float64(Website),

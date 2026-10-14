@@ -290,7 +290,7 @@
   "createdDone": "Price created.",
   "create": "Create",
   "newTitle": "New price",
-  "newBody": "Monthly, in reais. It cannot be edited later.",
+  "newBody": "It cannot be edited afterwards.",
   "typeFixed": "Fixed per period",
   "typeMetered": "Usage",
   "amountFixed": "Amount per period",
@@ -301,7 +301,23 @@
   "back": "Catalog",
   "editDetails": "Edit details",
   "detailsSaved": "Details saved.",
-  "save": "Save"
+  "save": "Save",
+  "priceName": "Name",
+  "priceNameHint": "Optional. How the price reads on the invoice and as the plan. Empty uses the product's name.",
+  "every": "Every",
+  "intervalLabel": "Period",
+  "timingLabel": "Billing",
+  "timingHint": "In advance bills at the start of the period; in arrears, at the end.",
+  "timingMetered": "A usage price is always billed at the end of the period.",
+  "metadataLabel": "Metadata",
+  "metadataHint": "Optional. One line per item, key=value (e.g. plan=pro, quota_nfe=1200).",
+  "metadataError": {
+   "format": "Line {{line}}: use key=value.",
+   "duplicate": "Line {{line}}: repeated key.",
+   "key": "Line {{line}}: key over 40 characters.",
+   "value": "Line {{line}}: value over 500 characters.",
+   "count": "Line {{line}}: at most 50 items."
+  }
  },
  "settings": {
   "title": "Settings",
@@ -595,5 +611,11 @@
   "changesOn": "Changes to {{plan}} on {{date}}",
   "keep": "Keep {{plan}}",
   "scheduled": "Changes to {{plan}} on {{date}}, once the current period closes."
+ },
+ "intervalUnit": {
+  "day": "day(s)",
+  "week": "week(s)",
+  "month": "month(s)",
+  "year": "year(s)"
  }
 }

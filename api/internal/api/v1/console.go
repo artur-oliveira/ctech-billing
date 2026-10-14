@@ -282,19 +282,24 @@ func (h *consoleHandlers) subscriptionRows(c fiber.Ctx, subs []billing.Subscript
 		}
 		names = h.customerNames(c, ids)
 	}
-	priceProduct := map[string]string{} // price id → product id ("" when unreadable)
-	productName := map[string]string{}  // product id → name ("" when unreadable)
+	type priceRef struct{ productID, own string }
+	priceProduct := map[string]priceRef{} // price id → its product and own name (zero when unreadable)
+	productName := map[string]string{}    // product id → name ("" when unreadable)
 	nameOfPrice := func(priceID string) string {
-		productID, seen := priceProduct[priceID]
+		ref, seen := priceProduct[priceID]
 		if !seen {
 			if price, err := h.cat.GetPrice(ctx, t.OrganizationID, t.Livemode, priceID); err == nil {
-				productID = price.ProductID
+				ref = priceRef{productID: price.ProductID, own: price.Name}
 			}
-			priceProduct[priceID] = productID
+			priceProduct[priceID] = ref
 		}
-		if productID == "" {
+		if ref.productID == "" {
 			return ""
 		}
+		if ref.own != "" {
+			return ref.own
+		}
+		productID := ref.productID
 		name, seen := productName[productID]
 		if !seen {
 			if product, err := h.cat.GetProduct(ctx, t.OrganizationID, t.Livemode, productID); err == nil {
@@ -546,7 +551,7 @@ func (h *consoleHandlers) planOfLines(c fiber.Ctx, lines []billing.InvoiceItem) 
 			continue
 		}
 		if product, err := h.cat.GetProduct(c.Context(), t.OrganizationID, t.Livemode, price.ProductID); err == nil {
-			names = append(names, product.Name)
+			names = append(names, price.Label(product.Name))
 		}
 	}
 	return planName(names)
@@ -641,6 +646,8 @@ func (h *consoleHandlers) createPrice(c fiber.Ctx) error {
 	ch := &checks{}
 	ch.price("unit_amount", req.UnitAmount)
 	ch.id("product_id", req.ProductID, true)
+	req.Name = strings.TrimSpace(req.Name)
+	ch.text("name", req.Name, false, limits.PriceName)
 	if len(ch.errs) > 0 {
 		return problem.Validation(ch.errs).Send(c)
 	}
@@ -656,6 +663,7 @@ func (h *consoleHandlers) createPrice(c fiber.Ctx) error {
 		OrganizationID: t.OrganizationID,
 		Livemode:       t.Livemode,
 		ProductID:      product.ID,
+		Name:           req.Name,
 		Type:           req.Type,
 		Currency:       billing.CurrencyBRL,
 		UnitAmount:     req.UnitAmount,
@@ -753,7 +761,7 @@ func (h *consoleHandlers) getSubscription(c fiber.Ctx) error {
 		// A product that cannot be read leaves the name empty; the subscription
 		// is still worth showing.
 		if product, err := h.cat.GetProduct(c.Context(), t.OrganizationID, t.Livemode, price.ProductID); err == nil {
-			line.ProductName = product.Name
+			line.ProductName = price.Label(product.Name)
 		}
 		productNames = append(productNames, line.ProductName)
 		out.Items = append(out.Items, line)

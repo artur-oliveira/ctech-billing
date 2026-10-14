@@ -257,7 +257,7 @@ func (s *Invoicer) buildLine(
 	period billing.Period,
 ) (billing.InvoiceItem, error) {
 	if price.Type != billing.PriceMetered {
-		return billing.FixedLine(price, product.Name, period, item.Quantity), nil
+		return billing.FixedLine(price, price.Label(product.Name), period, item.Quantity), nil
 	}
 
 	if price.Aggregation == billing.AggregationMax {
@@ -265,7 +265,7 @@ func (s *Invoicer) buildLine(
 		if err != nil {
 			return billing.InvoiceItem{}, fmt.Errorf("levels for item %s: %w", item.ID, err)
 		}
-		return billing.MeteredLine(price, product.Name, period, units), nil
+		return billing.MeteredLine(price, price.Label(product.Name), period, units), nil
 	}
 
 	records, err := s.usage.ListForPeriod(ctx, sub.OrganizationID, sub.Livemode, item.ID, period.Start)
@@ -273,7 +273,7 @@ func (s *Invoicer) buildLine(
 		return billing.InvoiceItem{}, fmt.Errorf("usage for item %s: %w", item.ID, err)
 	}
 	units := billing.SumUsage(billing.DeduplicateUsage(records), period)
-	return billing.MeteredLine(price, product.Name, period, units), nil
+	return billing.MeteredLine(price, price.Label(product.Name), period, units), nil
 }
 
 // maxLevel is the highest level of the price's meter for the subscription's

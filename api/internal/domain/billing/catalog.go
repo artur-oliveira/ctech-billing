@@ -115,6 +115,14 @@ type Price struct {
 	Type           PriceType `dynamodbav:"type"            json:"type"`
 	Currency       string    `dynamodbav:"currency"        json:"currency"`
 
+	// Name is what the customer and the operator read for this price ("DF-e
+	// Pro"): the invoice line, the plan in the console. Optional: empty falls
+	// back to the product's name, which is what a catalogue with one product per
+	// plan has always shown. It exists so one product can hold several plans
+	// without every invoice saying only the product's name. Immutable with the
+	// rest of the price.
+	Name string `dynamodbav:"name,omitempty" json:"name,omitempty"`
+
 	// UnitAmount is the amount per period for a fixed price, or the amount per
 	// reported unit for a metered one.
 	UnitAmount Cents `dynamodbav:"unit_amount" json:"unit_amount"`
@@ -135,6 +143,15 @@ type Price struct {
 	// subscriptions already on it — that is the point of immutability.
 	Archived bool     `dynamodbav:"archived" json:"archived"`
 	Metadata Metadata `dynamodbav:"metadata,omitempty" json:"metadata,omitempty"`
+}
+
+// Label is how the price reads to a person: its own name, or the product's when
+// it has none.
+func (p *Price) Label(productName string) string {
+	if p.Name != "" {
+		return p.Name
+	}
+	return productName
 }
 
 // Validate reports whether the price can be billed at all.

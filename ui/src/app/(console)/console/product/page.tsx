@@ -1,6 +1,6 @@
 "use client";
 
-import {Button, Field, Input, Modal, Skeleton} from "@aoctech/ui";
+import {Button, Field, Input, Modal, Select, Skeleton} from "@aoctech/ui";
 import {useMutation, useQuery, useQueryClient} from "@tanstack/react-query";
 import {ArrowLeft} from "lucide-react";
 import Link from "next/link";
@@ -25,6 +25,8 @@ import type {ConsolePrice, DunningStep} from "@/lib/api/consoleTypes";
 import {useConsoleScope} from "@/lib/console/scope";
 import {money} from "@/lib/format";
 import limits from "@/lib/limits.json";
+import {parseMetadataText} from "@/lib/metadataText";
+import {selectCopy} from "@/lib/selectCopy";
 import {maskMoney, moneyPlaceholder, parseMoney} from "@/lib/money";
 import {useDocumentTitle} from "@/lib/hooks/useDocumentTitle";
 
@@ -157,7 +159,8 @@ function Detail() {
                     className="border-b border-border last:border-0"
                   >
                     <td className="py-2 pr-4 text-muted-foreground">
-                      {price.id}
+                      {price.name ? <span className="text-foreground">{price.name}</span> : price.id}
+                      {price.name && <span className="block font-mono text-xs">{price.id}</span>}
                       {price.archived && (
                         <span className="ml-2 text-xs text-muted-foreground">{t("console.product.archived")}</span>
                       )}
@@ -166,7 +169,9 @@ function Detail() {
                       {price.type === "metered" ? t("console.priceType.metered") : t("console.priceType.fixed")}
                     </td>
                     <td className="py-2 pr-4 text-muted-foreground">
-                      {t(`console.interval.${price.recurrence.interval}`, {defaultValue: price.recurrence.interval})}
+                      {price.recurrence.count > 1
+                        ? t(`console.every.${price.recurrence.interval}`, {count: price.recurrence.count, defaultValue: price.recurrence.interval})
+                        : t(`console.interval.${price.recurrence.interval}`, {defaultValue: price.recurrence.interval})}
                       {` · ${price.billing_timing === "arrears" ? t("console.timing.shortArrears") : t("console.timing.shortAdvance")}`}
                     </td>
                     <td data-numeric className="py-2 pr-4 text-right text-foreground">
@@ -244,28 +249,39 @@ function NewPriceDialog({
   const scope = useConsoleScope();
   const [amount, setAmount] = useState("");
   const [type, setType] = useState<"fixed" | "metered">("fixed");
+  const [name, setName] = useState("");
+  const [interval, setInterval] = useState("month");
+  const [count, setCount] = useState("1");
+  const [timing, setTiming] = useState<"advance" | "arrears">("advance");
+  const [metadataText, setMetadataText] = useState("");
 
   // A price may be zero (free); anything else goes through the same locale-aware parse
   // as every money field, never through a float.
   const cents = /^0+([.,]0{0,2})?$/.test(amount.trim()) ? 0 : (parseMoney(amount) ?? -1);
-  const valid = cents >= 0 && amount.trim() !== "";
+  const everyN = Number(count);
+  const metadata = parseMetadataText(metadataText);
+  const valid = cents >= 0 && amount.trim() !== "" && Number.isInteger(everyN) && everyN >= 1 && metadata.ok;
+  // A metered price billed in advance would have to guess the usage it charges
+  // for, and the domain refuses it: the choice only exists for a fixed price.
+  const effectiveTiming = type === "metered" ? "arrears" : timing;
 
-  const fe = useFieldErrors(["unit_amount"], {keepOthers: false});
+  const fe = useFieldErrors(["unit_amount", "name"], {keepOthers: false});
   const create = useMutation({
     mutationFn: () =>
       createPrice(scope, {
-          product_id: productId,
-          type,
-          unit_amount: cents,
-          recurrence: {interval: "month", count: 1},
-          // A metered price billed in advance would have to guess the usage it
-          // charges for, and the domain refuses it. Decided here rather than
-          // offered as a choice that is only valid half the time.
-          billing_timing: type === "metered" ? "arrears" : "advance",
-        }),
+        product_id: productId,
+        type,
+        unit_amount: cents,
+        recurrence: {interval, count: everyN},
+        billing_timing: effectiveTiming,
+        name: name.trim() || undefined,
+        metadata: metadata.ok && Object.keys(metadata.value).length > 0 ? metadata.value : undefined,
+      }),
     onSuccess: () => {
       toast.success(t("console.product.createdDone"));
       setAmount("");
+      setName("");
+      setMetadataText("");
       onCreated();
     },
     onError: error => { if (!fe.set(error)) toast.error(messageFor(error)); },
@@ -284,6 +300,22 @@ function NewPriceDialog({
       onSubmit={() => { fe.reset(); create.mutate(); }}
     >
       <div className="space-y-4">
+        <Field
+          label={t("console.product.priceName")}
+          htmlFor="price-name"
+          hint={t("console.product.priceNameHint")}
+          error={fe.of("name")}
+        >
+          <Input
+            id="price-name"
+            maxLength={limits.text.priceName}
+            value={name}
+            {...fe.props("name", "price-name")}
+            onChange={event => { setName(event.target.value); fe.clear("name"); }}
+            placeholder="DF-e Pro"
+          />
+        </Field>
+
         <fieldset className="space-y-2">
           <legend className="text-sm font-medium text-foreground">{t("console.product.type")}</legend>
           <div className="flex gap-4">
@@ -319,6 +351,62 @@ function NewPriceDialog({
             {...fe.props("unit_amount", "price-amount")}
             onChange={event => { setAmount(maskMoney(event.target.value)); fe.clear("unit_amount"); }}
             placeholder={moneyPlaceholder()}
+          />
+        </Field>
+
+        <div className="grid grid-cols-2 gap-3">
+          <Field label={t("console.product.every")} htmlFor="price-count">
+            <Input
+              id="price-count"
+              inputMode="numeric"
+              value={count}
+              onChange={event => setCount(event.target.value.replace(/\D/g, ""))}
+            />
+          </Field>
+          <Field label={t("console.product.intervalLabel")} htmlFor="price-interval">
+            <Select {...selectCopy()}
+              id="price-interval"
+              aria-label={t("console.product.intervalLabel")}
+              className="w-full"
+              value={interval}
+              onValueChange={setInterval}
+              options={(["day", "week", "month", "year"] as const).map(v => ({value: v, label: t(`console.intervalUnit.${v}`)}))}
+            />
+          </Field>
+        </div>
+
+        {type === "fixed" ? (
+          <Field label={t("console.product.timingLabel")} htmlFor="price-timing" hint={t("console.product.timingHint")}>
+            <Select {...selectCopy()}
+              id="price-timing"
+              aria-label={t("console.product.timingLabel")}
+              className="w-full"
+              value={timing}
+              onValueChange={v => setTiming(v as "advance" | "arrears")}
+              options={[
+                {value: "advance", label: t("console.timing.advance")},
+                {value: "arrears", label: t("console.timing.arrears")},
+              ]}
+            />
+          </Field>
+        ) : (
+          <p className="text-xs text-muted-foreground">{t("console.product.timingMetered")}</p>
+        )}
+
+        <Field
+          label={t("console.product.metadataLabel")}
+          htmlFor="price-metadata"
+          hint={t("console.product.metadataHint")}
+          error={metadata.ok ? undefined : t(`console.product.metadataError.${metadata.reason}`, {line: metadata.line})}
+        >
+          <textarea
+            id="price-metadata"
+            rows={5}
+            spellCheck={false}
+            value={metadataText}
+            onChange={event => setMetadataText(event.target.value)}
+            placeholder={"plan=pro\nquota_nfe=1200"}
+            className="w-full rounded-md border border-border bg-background px-3 py-2 font-mono text-sm text-foreground"
           />
         </Field>
         {fe.general && <p role="alert" className="text-sm text-danger">{fe.general}</p>}

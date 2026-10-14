@@ -363,8 +363,8 @@ func (h *portalHandlers) describeSubscription(c fiber.Ctx, sub *billing.Subscrip
 			return out, err
 		}
 		out.Currency = price.Currency
-		if !slices.Contains(names, product.Name) {
-			names = append(names, product.Name)
+		if label := price.Label(product.Name); !slices.Contains(names, label) {
+			names = append(names, label)
 		}
 		if price.Type == billing.PriceMetered {
 			metered = true
