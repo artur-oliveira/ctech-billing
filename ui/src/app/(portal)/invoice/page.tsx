@@ -131,23 +131,25 @@ function Invoice() {
       {settled ? (
         <Receipt invoice={invoice}/>
       ) : payment ? (
-        <PixPanel
-          invoiceId={invoice.id}
-          payment={payment}
-          amount={invoice.amount_due}
-          currency={invoice.currency}
-          // The prefix, not this invoice's key: a settled charge changes the
-          // home screen's pendência and the list's row too, and going back to
-          // either one to find the bill still open reads as a lost payment.
-          onPaid={() => queryClient.invalidateQueries({queryKey: portalKeys.invoices})}
-          // Same mutation as the first attempt. The server shares one Collector
-          // between the portal and the e-mailed link, so re-opening a charge is
-          // its decision to make — not a second code this screen invents.
-          onRegenerate={() => pay.mutate()}
-          regenerating={pay.isPending}
-        />
+        <div className="max-w-xl">
+          <PixPanel
+            invoiceId={invoice.id}
+            payment={payment}
+            amount={invoice.amount_due}
+            currency={invoice.currency}
+            // The prefix, not this invoice's key: a settled charge changes the
+            // home screen's pendência and the list's row too, and going back to
+            // either one to find the bill still open reads as a lost payment.
+            onPaid={() => queryClient.invalidateQueries({queryKey: portalKeys.invoices})}
+            // Same mutation as the first attempt. The server shares one Collector
+            // between the portal and the e-mailed link, so re-opening a charge is
+            // its decision to make — not a second code this screen invents.
+            onRegenerate={() => pay.mutate()}
+            regenerating={pay.isPending}
+          />
+        </div>
       ) : invoice.payable ? (
-        <Button block onClick={() => pay.mutate()} disabled={pay.isPending}>
+        <Button className="w-full sm:w-auto" onClick={() => pay.mutate()} disabled={pay.isPending}>
           {pay.isPending
             ? t("portal.invoice.generating")
             : t("portal.invoice.payPix", {amount: money(invoice.amount_due, invoice.currency)})}

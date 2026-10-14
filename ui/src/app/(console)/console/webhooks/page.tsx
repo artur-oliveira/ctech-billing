@@ -15,6 +15,7 @@ import {useAddsRefused} from "@/lib/console/addsRefused"
 import {useConsoleScope} from "@/lib/console/scope"
 import {instantShortDate} from "@/lib/format"
 import {useDocumentTitle} from "@/lib/hooks/useDocumentTitle"
+import {useCreateRequest} from "@/lib/createRequest"
 import limits from "@/lib/limits.json"
 import {useFieldErrors} from "@/lib/useFieldErrors"
 
@@ -34,6 +35,8 @@ export default function ConsoleWebhooksPage() {
   const addsRefused = useAddsRefused()
   const query = useQuery({queryKey: consoleKeys.webhooks(scope), queryFn: () => listConsoleWebhooks(scope)})
   const [creating, setCreating] = useState(false)
+  const [asked, setAsked] = useState(false)
+  useCreateRequest("webhook", () => setAsked(true))
   const [pending, setPending] = useState<Pending>(null)
   const [secret, setSecret] = useState<string | null>(null)
   const refresh = () => queryClient.invalidateQueries({queryKey: consoleKeys.webhooks(scope)})
@@ -41,6 +44,16 @@ export default function ConsoleWebhooksPage() {
   const endpoints = query.data?.data ?? []
   const max = query.data?.max_endpoints ?? limits.maxWebhookEndpoints
   const atLimit = endpoints.length >= max
+  const canAdd = query.isSuccess && !addsRefused && !atLimit
+  // The search can ask for the form before the list is known. The ask is
+  // answered once, when the list settles: opened where the button itself
+  // could be pressed, dropped where it could not, so freeing a slot later
+  // never opens a form nobody is asking for now.
+  const settled = query.isSuccess || query.isError
+  if (asked && settled) {
+    setAsked(false)
+    if (canAdd) setCreating(true)
+  }
 
   const test = useMutation({
     mutationFn: (id: string) => testWebhook(scope, id),

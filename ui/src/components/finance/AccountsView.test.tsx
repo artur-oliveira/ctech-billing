@@ -7,7 +7,7 @@ import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import {AccountsView} from "@/components/finance/AccountsView"
 import {optionsOf, pick, renderWithQuery} from "@/components/finance/finance.test-utils"
 import * as finance from "@/lib/api/finance"
-import * as createRequest from "@/lib/finance/createRequest"
+import * as createRequest from "@/lib/createRequest"
 import type {Account, Verb} from "@/lib/api/financeTypes"
 
 // A name also appears as an <option> of the default-receiving select, so rows

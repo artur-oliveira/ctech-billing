@@ -14,6 +14,7 @@ import {messageFor} from "@/lib/api/client"
 import {useFieldErrors} from "@/lib/useFieldErrors"
 import {consoleKeys, createProduct, listConsoleProducts} from "@/lib/api/console"
 import {useConsoleScope} from "@/lib/console/scope"
+import {useCreateRequest} from "@/lib/createRequest"
 import {money} from "@/lib/format"
 
 /**
@@ -28,6 +29,7 @@ export default function ConsoleCatalogPage() {
   const scope = useConsoleScope()
   const queryClient = useQueryClient()
   const [creating, setCreating] = useState(false)
+  useCreateRequest("product", () => setCreating(true))
 
   const query = useQuery({
     queryKey: consoleKeys.products(scope),

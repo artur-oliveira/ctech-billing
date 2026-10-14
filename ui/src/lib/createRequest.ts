@@ -3,8 +3,8 @@
 import {useEffect, useRef} from "react"
 
 /**
- * The phone's central "create" button lives in the shell; the drawer it opens
- * lives in the screen. This is the one wire between them.
+ * The phone's central "create" button and the global search live in the shell;
+ * the drawer they open lives in the screen. This is the one wire between them.
  *
  * A request is held until the screen that owns that kind takes it, so it
  * survives a navigation: on Resumo the action goes to Agenda and the
@@ -17,7 +17,7 @@ import {useEffect, useRef} from "react"
  * Deliberately not a URL parameter: a `?novo=1` left in the address bar
  * reopens the drawer on every reload and on every shared link.
  */
-export type CreateKind = "bill" | "purchase" | "recurrence" | "transfer" | "account"
+export type CreateKind = "bill" | "purchase" | "recurrence" | "transfer" | "account" | "product" | "webhook"
 
 /** Long enough for a client-side navigation, short enough to never be "later". */
 const TTL_MS = 3_000

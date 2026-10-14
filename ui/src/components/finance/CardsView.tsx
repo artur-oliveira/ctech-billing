@@ -28,7 +28,7 @@ import {currentLocale} from "@/lib/i18n"
 import {monthShort, todayIso} from "@/lib/finance/today"
 import {selectCopy} from "@/lib/selectCopy"
 import {useFinanceMutation} from "@/lib/finance/useFinanceMutation"
-import {useCreateRequest} from "@/lib/finance/createRequest"
+import {useCreateRequest} from "@/lib/createRequest"
 import {useFinanceCtx, useFinanceSpaces} from "@/lib/finance/useFinanceSpaces"
 import {money, shortDate, signedMoney} from "@/lib/format"
 import {accountName} from "@/lib/finance/accountName"
@@ -172,6 +172,7 @@ function StatementBlock({card, month, accounts, purchases, purchasesError, retry
   const names = new Map(accounts.map(a => [a.id, accountName(a)]))
   const byId = new Map(purchases.map(p => [p.id, p]))
   const s = q.data
+  const forecastSum = (forecast.data?.data ?? []).reduce((sum, item) => sum + item.amount, 0)
 
   return (
     <section aria-label={`${t("finance.cards.statement")} ${monthShort(month)}`} className="space-y-3">
@@ -193,6 +194,16 @@ function StatementBlock({card, month, accounts, purchases, purchasesError, retry
                   <span className="tabular-nums">{money(item.amount)}</span>
                 </li>)}
               </ul>
+              <dl className="grid gap-1 text-sm">
+                <div className="flex items-baseline justify-between gap-3">
+                  <dt className="text-muted-foreground">{t("finance.cards.forecastSubtotal")}</dt>
+                  <dd data-numeric className="tabular-nums">{money(forecastSum)}</dd>
+                </div>
+                <div className="flex items-baseline justify-between gap-3 font-semibold">
+                  <dt>{t("finance.cards.forecastExpectedTotal")}</dt>
+                  <dd data-numeric className="tabular-nums">{signedMoney(s.total + forecastSum)}</dd>
+                </div>
+              </dl>
               <p className="text-xs text-muted-foreground">{t("finance.cards.forecastNotInTotal")}</p>
             </>}
           </section>

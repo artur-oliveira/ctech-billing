@@ -10,10 +10,10 @@ import {useQuery} from "@tanstack/react-query"
 import {useEffect} from "react"
 import {useTranslation} from "react-i18next"
 
-import {currentFinanceSection} from "@/components/finance/FinanceNav"
+import {currentFinanceSection} from "@/lib/finance/nav"
 import {financeKeys, listCards} from "@/lib/api/finance"
 import type {Verb} from "@/lib/api/financeTypes"
-import {type CreateKind, dropCreateUnlessAt, requestCreate} from "@/lib/finance/createRequest"
+import {type CreateKind, dropCreateUnlessAt, requestCreate} from "@/lib/createRequest"
 import {useFinanceCtx, useFinanceSpaces} from "@/lib/finance/useFinanceSpaces"
 
 const BASE = "/finance"
@@ -44,6 +44,8 @@ const ACTION_ICON: Record<CreateKind, React.ReactNode> = {
   recurrence: <Plus/>,
   transfer: <ArrowLeftRight/>,
   account: <Plus/>,
+  product: <Plus/>,
+  webhook: <Plus/>,
 }
 
 /**

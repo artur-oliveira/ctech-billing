@@ -6,7 +6,7 @@ import {useState} from "react"
 import {useTranslation} from "react-i18next"
 
 import {wholeSpace} from "@/components/finance/TransferPanel"
-import {HistorySuggestions} from "@/components/finance/HistorySuggestions"
+import {SuggestingInput} from "@/components/finance/HistorySuggestions"
 import {DateField} from "@/components/ui/DateField"
 import {selectCopy} from "@/lib/selectCopy"
 import {useFieldErrors} from "@/lib/useFieldErrors"
@@ -67,13 +67,14 @@ export function PurchasePanel({cardId, accounts, history = [], onDone}: {cardId:
       }}
     >
       <Field label={t("bills.common.description")} htmlFor="pu-desc" required error={fe.of("description")} className="sm:col-span-2">
-        <Input id="pu-desc" maxLength={limits.text.description} value={description} {...fe.props("description", "pu-desc")} onChange={e => { setDescription(e.target.value); fe.clear("description") }} autoFocus/>
+        <SuggestingInput id="pu-desc" maxLength={limits.text.description} value={description} {...fe.props("description", "pu-desc")} onValueChange={v => { setDescription(v); fe.clear("description") }} autoFocus
+          entries={(history.length ? history : purchases.data?.data ?? []).filter(p => !p.refunded).map(p => ({description: p.description, amount: p.total, categoryId: p.category_id}))}
+          onSelect={entry => {
+            setDescription(entry.description)
+            setAmountText(formatMoneyInput(entry.amount))
+            if (cats.some(a => a.id === entry.categoryId)) setCategory(entry.categoryId)
+          }}/>
       </Field>
-      <HistorySuggestions value={description} entries={(history.length ? history : purchases.data?.data ?? []).filter(p => !p.refunded).map(p => ({description: p.description, amount: p.total, categoryId: p.category_id}))} onSelect={entry => {
-        setDescription(entry.description)
-        setAmountText(formatMoneyInput(entry.amount))
-        if (cats.some(a => a.id === entry.categoryId)) setCategory(entry.categoryId)
-      }}/>
       <Field label={t("bills.common.amount")} htmlFor="pu-amount" required error={fe.of("total")} hint={total ? installmentsPreview(total, n) : undefined}>
         <Input id="pu-amount" inputMode="decimal" placeholder={moneyPlaceholder()} value={amountText} {...fe.props("total", "pu-amount")} onChange={e => { setAmountText(maskMoney(e.target.value)); fe.clear("total") }}/>
       </Field>

@@ -7,7 +7,7 @@ import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import {CardsView, statementState} from "@/components/finance/CardsView"
 import {pick, renderWithQuery, serveFinanceMock} from "@/components/finance/finance.test-utils"
 import * as finance from "@/lib/api/finance"
-import * as createRequest from "@/lib/finance/createRequest"
+import * as createRequest from "@/lib/createRequest"
 import type {Account, Card, CardStatement, Purchase, StatementSummary, Verb} from "@/lib/api/financeTypes"
 import {shiftMonth} from "@/lib/finance/statementTimeline"
 
@@ -90,6 +90,38 @@ describe("F5 — cartões", () => {
     expect(within(forecastBlock).getByText("Estimativas não fazem parte do total da fatura até serem lançadas.")).toBeInTheDocument()
     expect(forecast).toHaveBeenCalledWith(expect.anything(), "visa", "2026-03")
   })
+  it("shows what recurrences will still add under a statement's total, without touching the total", async () => {
+    const {range} = serve(ALL)
+    const original = range.getMockImplementation()!
+    range.mockImplementation(async (...args) => {
+      const page = await original(...args)
+      return {...page, data: page.data.map(s => s.month === "2026-03" ? {...s, forecast_total: 34000, forecast_estimated: true} : s.month === "2026-04" ? {...s, forecast_total: 12000} : s)}
+    })
+    renderWithQuery(<CardsView/>)
+    const march = await screen.findByRole("button", {name: /^Fatura de Mar\/26/})
+    expect(within(march).getByText(/R\$\s*100,00/)).toBeInTheDocument()
+    const line = within(march).getByText(/em recorrências/)
+    expect(line).toHaveTextContent(/\+\s*~R\$\s*340,00 em recorrências/)
+    expect(march).toHaveAccessibleName(/mais R\$\s*340,00 em recorrências previstas/)
+    expect(within(screen.getByRole("button", {name: /^Fatura de Abr\/26/})).getByText(/\+\s*R\$\s*120,00 em recorrências/)).toBeInTheDocument()
+    // A statement with nothing forecast says nothing about recurrences.
+    expect(within(screen.getByRole("button", {name: /^Fatura de Fev\/26/})).queryByText(/recorrências/)).toBeNull()
+  })
+
+  it("gives the expected total of the statement beside the recurrences' subtotal", async () => {
+    serve(ALL)
+    vi.spyOn(finance, "getCardStatementForecast").mockResolvedValue({data: [
+      {recurrence_id: "r-food", description: "Mercado mensal", nominal: "2026-10-20", installment: 2, of: 3, amount: 10000},
+      {recurrence_id: "r-coffee", description: "Café", nominal: "2026-10-21", installment: 1, of: 1, amount: 2800, pending_confirmation: true},
+    ], has_more: false})
+    renderWithQuery(<CardsView/>)
+    const block = await screen.findByRole("region", {name: "Fatura Mar/26"})
+    const forecastBlock = await within(block).findByRole("region", {name: "Previsão de recorrências"})
+    await within(forecastBlock).findByText(/Mercado mensal/)
+    expect(within(forecastBlock).getByText("Recorrências previstas").parentElement).toHaveTextContent(/R\$\s*128,00/)
+    expect(within(forecastBlock).getByText("Total previsto da fatura").parentElement).toHaveTextContent(/R\$\s*228,00/)
+  })
+
   // Spec § 6.6.
   it("opens on the open statement with three before and three after, selected", async () => {
     serve(ALL)
@@ -337,7 +369,7 @@ describe("F5 — cartões", () => {
     await userEvent.click(within(form).getByRole("button", {name: "Salvar"}))
     // Bought after this month's closing day or not, one of the next two statements gains R$ 100,00.
     const totals = () => screen.getAllByRole("button", {name: /^Fatura de /}).map(b => b.getAttribute("aria-label"))
-    await waitFor(() => expect(totals().some(n => /(433|400),00$/.test(n ?? ""))).toBe(true))
+    await waitFor(() => expect(totals().some(n => /(433|400),00(,|$)/.test(n ?? ""))).toBe(true))
     expect(inWindow()).toEqual(before)
     expect(screen.getByRole("button", {name: /Aberta/})).toHaveAttribute("data-month", month)
   })

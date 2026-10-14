@@ -10,25 +10,22 @@ import {NoBillingAccount} from "@/components/portal/NoBillingAccount"
 import {PortalSpaceScope} from "@/components/portal/PortalSpaceScope"
 import {PortalSpaceSwitch} from "@/components/portal/PortalSpaceSwitch"
 import {PortalBottomNav} from "@/components/portal/PortalBottomNav"
-import {BillingShell, renderLink} from "@/components/shell/BillingShell"
+import {BillingShell} from "@/components/shell/BillingShell"
+import {renderLink} from "@/components/shell/renderLink"
 import {TermsGate} from "@/components/portal/TermsGate"
 import {isNoBillingAccount} from "@/lib/api/client"
 import {getSession, portalKeys} from "@/lib/api/portal"
 import {useAuth} from "@/lib/auth/AuthContext"
+import {PORTAL_NAV} from "@/lib/portal/nav"
 import {usePortalSpace} from "@/lib/portal/space"
-
-const NAV = [
-  {href: "/dashboard", labelKey: "portal.nav.home"},
-  {href: "/invoices", labelKey: "portal.nav.invoices"},
-  {href: "/subscriptions", labelKey: "portal.nav.subscriptions"},
-] as const
 
 /**
  * The consumer shell, and the gate in front of it.
  *
  * The page is `comfortable` (every @aoctech/ui control sizes itself for a
  * thumb); the frame's column is compact, the same as the console's, so the
- * three areas share one shell.
+ * three areas share one shell. The page takes the width of the area; each
+ * screen chooses its own reading measure.
  *
  * The guard waits for `loading` before deciding. Skipping that check sends a
  * signed-in reader to /login on every hard refresh, because the boot-time
@@ -77,15 +74,12 @@ export default function PortalLayout({children}: LayoutProps<"/">) {
       home="/dashboard"
       density="comfortable"
       nav={!noAccount && <SidebarNav label={t("portal.nav.label")} renderLink={renderLink}
-        groups={[{items: NAV.map(item => ({href: item.href, label: t(item.labelKey), active: active(item.href)}))}]}/>}
+        groups={[{items: PORTAL_NAV.map(item => ({href: item.href, label: t(item.labelKey), active: active(item.href)}))}]}/>}
       // Whose bills, for a person who also runs an organization; renders
       // nothing for everybody else. Stays with no billing account, since an
       // admin with nothing of their own still has the organization's.
       context={<PortalSpaceSwitch/>}
       bottomNav={<PortalBottomNav hidden={noAccount}/>}
-      // The portal reads one bill at a time: a reading width, centred in the
-      // page area, whatever the screen.
-      contentClassName="max-w-2xl"
     >
       {/* Four states, in this order. The empty account comes before the terms
           gate because there is no session to read `terms_accepted` from when

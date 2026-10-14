@@ -66,3 +66,16 @@ export function useFinanceSpaces() {
     labelOf,
   }
 }
+
+/**
+ * The verbs the person has in the selected space, read only: the same query as
+ * useFinanceSpaces and none of its repairs (the "space lost" fallback and its
+ * toast belong to Finanças' screens, not to a search opened in the portal).
+ */
+export function useSpaceVerbs() {
+  const space = useSpace()
+  const q = useQuery({queryKey: financeKeys.spaces(), queryFn: getFinanceSpaces, staleTime: 60_000})
+  const current = (q.data?.spaces ?? []).find(e => sameSpace(entrySpace(e), space))
+  const verbs = new Set<Verb>(current?.verbs ?? [])
+  return {personal: space.kind === "personal", can: (verb: Verb) => verbs.has(verb)}
+}

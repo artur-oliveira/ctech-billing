@@ -261,75 +261,108 @@ type cardForecastDTO struct {
 	PendingConfirmation bool          `json:"pending_confirmation,omitempty"`
 }
 
-func (h *financeHandlers) cardStatementForecast(c fiber.Ctx) error {
-	month, err := finance.ParseMonth(c.Params("month"))
-	if err != nil {
-		return problem.Validation([]problem.FieldError{fieldErr("month", "invalid_format", "use YYYY-MM", "format", "YYYY-MM")}).Send(c)
+// cardForecast is what a card's recurrences will add to its statements, by
+// statement month: the occurrences the daily job has not yet made a purchase
+// (after the recurrence's cursor, from tomorrow on), each placed in its
+// installments, and the occurrences awaiting confirmation, at their expected
+// amount, marked as such. One pass over the recurrences serves every month asked
+// for, so the timeline and a single month are the same arithmetic.
+func cardForecast(cardID string, closingDay int, open finance.Month, recurrences []repositories.DueRecurrence, pending []repositories.PendingOccurrence, today brcal.Date, months []finance.Month) (map[finance.Month][]cardForecastDTO, error) {
+	wanted := make(map[finance.Month]bool, len(months))
+	last := months[0]
+	for _, m := range months {
+		wanted[m] = true
+		if m.Compare(last) > 0 {
+			last = m
+		}
 	}
-	sp := middleware.GetSpace(c)
-	card, err := h.cards.GetCard(c.Context(), sp, c.Params("id"))
-	if err != nil {
-		return fail(c, err)
-	}
-	if card.Archived {
-		return fail(c, repositories.ErrNotFound)
-	}
-	recurrences, err := h.recs.ListWithCursors(c.Context(), sp)
-	if err != nil {
-		return fail(c, err)
-	}
-	today := h.today()
+	out := make(map[finance.Month][]cardForecastDTO, len(months))
 	from := today.AddDays(1)
-	to := month.Add(1).First()
-	data := make([]cardForecastDTO, 0)
+	to := last.Add(1).First()
 	for _, entry := range recurrences {
 		rec := entry.Recurrence
-		if rec.Archived || !rec.IsCard() || rec.CardID != card.ID || !from.Before(to) {
+		if rec.Archived || !rec.IsCard() || rec.CardID != cardID || !from.Before(to) {
 			continue
 		}
 		start := from
 		if rec.Schedule.Start.After(start) {
 			start = rec.Schedule.Start
 		}
-		if start.Before(to) {
-			days, err := rec.Schedule.Occurrences(start, to)
-			if err != nil {
-				return fail(c, err)
+		if !start.Before(to) {
+			continue
+		}
+		days, err := rec.Schedule.Occurrences(start, to)
+		if err != nil {
+			return nil, err
+		}
+		for _, occurrence := range days {
+			if !entry.Cursor.IsZero() && !occurrence.Nominal.After(entry.Cursor) {
+				continue
 			}
-			for _, occurrence := range days {
-				if !entry.Cursor.IsZero() && !occurrence.Nominal.After(entry.Cursor) {
-					continue
-				}
-				plan, err := finance.PlaceInstallments(rec.Amount, rec.Installments, occurrence.Nominal, card.ClosingDay, card.OpenMonth)
-				if err != nil {
-					return fail(c, err)
-				}
-				for _, installment := range plan {
-					if installment.Statement == month {
-						data = append(data, cardForecastDTO{RecurrenceID: rec.ID, Description: rec.Description, Nominal: occurrence.Nominal,
-							Installment: installment.Number, Of: len(plan), Amount: installment.Amount})
-					}
+			plan, err := finance.PlaceInstallments(rec.Amount, rec.Installments, occurrence.Nominal, closingDay, open)
+			if err != nil {
+				return nil, err
+			}
+			for _, installment := range plan {
+				if wanted[installment.Statement] {
+					out[installment.Statement] = append(out[installment.Statement], cardForecastDTO{RecurrenceID: rec.ID, Description: rec.Description, Nominal: occurrence.Nominal,
+						Installment: installment.Number, Of: len(plan), Amount: installment.Amount})
 				}
 			}
 		}
+	}
+	for _, occurrence := range pending {
+		if occurrence.CardID != cardID {
+			continue
+		}
+		plan, err := finance.PlaceInstallments(occurrence.Expected, occurrence.Installments, occurrence.Nominal, closingDay, open)
+		if err != nil {
+			return nil, err
+		}
+		for _, installment := range plan {
+			if wanted[installment.Statement] {
+				out[installment.Statement] = append(out[installment.Statement], cardForecastDTO{RecurrenceID: occurrence.RecurrenceID, Description: occurrence.Description, Nominal: occurrence.Nominal,
+					Installment: installment.Number, Of: len(plan), Amount: installment.Amount, PendingConfirmation: true})
+			}
+		}
+	}
+	return out, nil
+}
+
+// cardForecastFor reads the recurrences and pending occurrences once and
+// forecasts `months` for the card.
+func (h *financeHandlers) cardForecastFor(c fiber.Ctx, card *repositories.CardRow, months []finance.Month) (map[finance.Month][]cardForecastDTO, error) {
+	sp := middleware.GetSpace(c)
+	recurrences, err := h.recs.ListWithCursors(c.Context(), sp)
+	if err != nil {
+		return nil, err
 	}
 	pending, err := h.recs.ListPendingOccurrences(c.Context(), sp, 5000)
 	if err != nil {
+		return nil, err
+	}
+	return cardForecast(card.ID, card.ClosingDay, card.OpenMonth, recurrences, pending, h.today(), months)
+}
+
+func (h *financeHandlers) cardStatementForecast(c fiber.Ctx) error {
+	month, err := finance.ParseMonth(c.Params("month"))
+	if err != nil {
+		return problem.Validation([]problem.FieldError{fieldErr("month", "invalid_format", "use YYYY-MM", "format", "YYYY-MM")}).Send(c)
+	}
+	card, err := h.cards.GetCard(c.Context(), middleware.GetSpace(c), c.Params("id"))
+	if err != nil {
 		return fail(c, err)
 	}
-	for _, occurrence := range pending {
-		if occurrence.CardID != card.ID {
-			continue
-		}
-		plan, err := finance.PlaceInstallments(occurrence.Expected, occurrence.Installments, occurrence.Nominal, card.ClosingDay, card.OpenMonth)
-		if err != nil {
-			return fail(c, err)
-		}
-		for _, installment := range plan {
-			if installment.Statement == month {
-				data = append(data, cardForecastDTO{RecurrenceID: occurrence.RecurrenceID, Description: occurrence.Description, Nominal: occurrence.Nominal, Installment: installment.Number, Of: len(plan), Amount: installment.Amount, PendingConfirmation: true})
-			}
-		}
+	if card.Archived {
+		return fail(c, repositories.ErrNotFound)
+	}
+	byMonth, err := h.cardForecastFor(c, card, []finance.Month{month})
+	if err != nil {
+		return fail(c, err)
+	}
+	data := byMonth[month]
+	if data == nil {
+		data = make([]cardForecastDTO, 0)
 	}
 	return c.JSON(listResponse[cardForecastDTO]{Data: data})
 }
@@ -476,6 +509,20 @@ type statementSummaryDTO struct {
 	Total       billing.Cents `json:"total"`
 	BillID      string        `json:"bill_id,omitempty"`
 	ItemsCount  int           `json:"items_count"`
+	// ForecastTotal is what the card's recurrences will still add to this
+	// statement (not in Total until they are purchases), and ForecastEstimated
+	// says some of it is an expected amount awaiting confirmation.
+	ForecastTotal     billing.Cents `json:"forecast_total"`
+	ForecastEstimated bool          `json:"forecast_estimated,omitempty"`
+}
+
+// forecastTotals sums a month's forecast and reports whether any part of it is an estimate.
+func forecastTotals(items []cardForecastDTO) (total billing.Cents, estimated bool) {
+	for _, item := range items {
+		total += item.Amount
+		estimated = estimated || item.PendingConfirmation
+	}
+	return total, estimated
 }
 
 // cardStatements is the timeline's read (spec § 4.1): summaries only; the
@@ -512,14 +559,32 @@ func (h *financeHandlers) cardStatements(c fiber.Ctx) error {
 	if err != nil {
 		return fail(c, err)
 	}
+	forecast := map[finance.Month][]cardForecastDTO{}
+	if len(page.Statements) > 0 {
+		card, err := h.cards.GetCard(c.Context(), sp, c.Params("id"))
+		if err != nil {
+			return fail(c, err)
+		}
+		if !card.Archived {
+			months := make([]finance.Month, len(page.Statements))
+			for i, s := range page.Statements {
+				months[i] = s.Month
+			}
+			if forecast, err = h.cardForecastFor(c, card, months); err != nil {
+				return fail(c, err)
+			}
+		}
+	}
 	out := listResponse[statementSummaryDTO]{Data: make([]statementSummaryDTO, 0, len(page.Statements)), HasMore: page.HasMore}
 	for _, s := range page.Statements {
 		status := s.Status
 		if s.BillID != "" && paid[s.BillID] {
 			status = "paid"
 		}
+		forecastTotal, forecastEstimated := forecastTotals(forecast[s.Month])
 		out.Data = append(out.Data, statementSummaryDTO{CardID: s.CardID, Month: s.Month.String(), Status: status,
-			ClosingDate: s.ClosingDate.String(), DueDate: s.DueDate.String(), Total: s.Total, BillID: s.BillID, ItemsCount: len(s.Items)})
+			ClosingDate: s.ClosingDate.String(), DueDate: s.DueDate.String(), Total: s.Total, BillID: s.BillID, ItemsCount: len(s.Items),
+			ForecastTotal: forecastTotal, ForecastEstimated: forecastEstimated})
 	}
 	return c.JSON(out)
 }

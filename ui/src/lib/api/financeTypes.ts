@@ -431,6 +431,10 @@ export interface StatementSummary {
   total: Cents
   bill_id?: string
   items_count: number
+  /** What the card's recurrences will still add to this statement; not in `total`. */
+  forecast_total?: Cents
+  /** Some of `forecast_total` is an expected amount, awaiting confirmation. */
+  forecast_estimated?: boolean
 }
 
 export interface SpendRow {
