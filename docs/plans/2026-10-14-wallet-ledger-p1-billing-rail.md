@@ -6,11 +6,11 @@
 
 **Architecture:** `api-commons` gains an optional payer on the Pix callback and an optional payout capability on the Inter provider. Billing writes the payer onto the `PaymentAttempt` once (first write wins) with a computed `payer_match`, adds a `Payout` entity driven by the same provider session as refunds, and adds two M2M surfaces: `POST /v1.0/invoices` (a one-off invoice collected now) and `POST /v1.0/payouts`. Wallet is not touched in this phase.
 
-**Tech Stack:** Go (Fiber v3, DynamoDB single table), `gopkg.aoctech.app/api-commons` (bumped to v1.22.0), the BYOK provider pattern, Inter Pix cobv and Banking APIs.
+**Tech Stack:** Go (Fiber v3, DynamoDB single table), `gopkg.aoctech.app/api-commons` (bumped to v1.23.0), the BYOK provider pattern, Inter Pix cobv and Banking APIs.
 
 **Spec:** `docs/specs/2026-10-14-wallet-ledger-billing-rail.md` (§3, §4, §5, §6, §8 P1)
 
-Repos: `P_COMMONS=/home/artur-revgas/Documents/Projects/Ctech/ctech-go-common` (the repo of the module `gopkg.aoctech.app/api-commons`; it is already at v1.21.0, which added the opt-in raw Inter response trace, so this plan's release is the next free tag, `v1.22.0`), `P_BILL=/home/artur-revgas/Documents/Projects/Ctech/ctech-billing` (Go in `P_BILL/api`). **Task 0 (live proof) comes first and needs no new code.** Tasks 0b–3 run in `P_COMMONS` and end with a tagged `v1.22.0`; Billing tasks (4 onward) start only after the tag exists.
+Repos: `P_COMMONS=/home/artur-revgas/Documents/Projects/Ctech/ctech-go-common` (the repo of the module `gopkg.aoctech.app/api-commons`; it is already at v1.22.0 (the opt-in raw Inter response trace, the full scope vocabulary, the 50-per-page callback listing), so this plan's release is the next free tag, `v1.23.0`), `P_BILL=/home/artur-revgas/Documents/Projects/Ctech/ctech-billing` (Go in `P_BILL/api`). **Task 0 (live proof) comes first and needs no new code.** Tasks 0b–3 run in `P_COMMONS` and end with a tagged `v1.23.0`; Billing tasks (4 onward) start only after the tag exists.
 
 ## Global Constraints
 
@@ -44,11 +44,11 @@ Billing already has the BYOK Inter integration (`api/cmd/byok-outbound` running 
 **Files:**
 - Create: `docs/runbooks/tenant-zero-inter-rail.md` (the record of what you did; Task 8 extends it)
 
-- [ ] **Step 1: Create CTech's Inter app** for Billing following the Console guide (activities Pix, Recebimentos recorrentes, Cobranças, Saldo e Extrato, and Pagamentos with the webhooks). This app is **CTech's own**, so in Pagamentos also tick the Pix payment permissions it will need for payouts in Task 1 (the guide leaves them off for other tenants on purpose). Download the zip (`.crt`, `.key`) and copy `client_id`/`client_secret` while they are on screen (shown once).
-- [ ] **Step 2: Connect it in the Console** as the tenant-zero organization in live mode. Expect `ConnectionHealth` to show statement and collection granted and no missing permissions. If it reports missing permissions, fix them in Inter (the message names them in Inter's wording) before going on.
-- [ ] **Step 3: Switch tenant zero to the BYOK rail** (the collection settings in the Console, `Organization.payout_rail = byok`, `payout_provider = inter`, status enabled) and register the Pix webhook through the connection screen.
-- [ ] **Step 4: Live proof, after asking the owner:** issue a R$ 0,10 one-off invoice to the owner's own customer from the Console, pay it by Pix from a personal account. Verify: the invoice goes `paid` without anyone calling the API by hand (the webhook woke `Confirm`, which re-queried Inter), the statement sync shows the line, and the byok-webhook Lambda log has the callback body (save it, masked, for Task 0b).
-- [ ] **Step 5:** If any step fails, **stop**: the failure is in the existing BYOK path and is fixed in its own PR before Part A starts. Record the outcome and the date in the runbook and commit it.
+- [x] **Step 1: Create CTech's Inter app** — done 2026-10-14. Account number **with its check digit, digits only, no leading zeros** (Inter's reference for `x-conta-corrente`; without the digit `GET /saldo` answered `401 Login/senha inválido`). A **dedicated Pix key** (never the Wallet's: Inter keeps one notice address per key).
+- [x] **Step 2: Connect it live** — done 2026-10-14. Token granted all seven scopes; balance and statement sync work. (Found on the way and fixed: a bare 500 on connect became `422 byok_bearer_refused`; every Inter response is now traced in the Lambda log with secrets redacted; webhook URLs keep only scheme and host in that trace.)
+- [x] **Step 3: Switch tenant zero to the BYOK rail** — done 2026-10-14 by `artur` with the audited operator command (the Console refuses it by design, spec § 12.6): `/opt/app/job.sh byok -tenant-rail=byok -mode=live -operator=artur` on the Billing instance (via `aws ssm send-command`, profile `ctech`); `-dry-run` first. Way back: `-tenant-rail=wallet`. No subscription with value existed in production, so no customer was affected. The Pix notice was already registered on the dedicated key and points at `billing-byok-hooks.aoctech.app`.
+- [ ] **Step 4: Live proof, after asking the owner** — needs a way to issue a R$ 0,10 invoice: the Console cannot create a one-off invoice, so this step runs **after Task 5** (the one-off invoice route). Then: pay it by Pix from a personal account and verify the invoice goes `paid` without anyone calling the API by hand (the webhook woke `Confirm`, which re-queried Inter), the statement sync shows the line, and the byok-webhook Lambda log has the callback body (save it, masked, for Task 0b).
+- [ ] **Step 5:** If Step 4 fails, **stop**: the failure is in the existing BYOK path and is fixed in its own PR before Part B continues. Record the outcome and the date in the runbook and commit it.
 
 ## Part A — api-commons (`P_COMMONS`)
 
@@ -63,7 +63,7 @@ This closes spec §11's open item before code depends on a guess.
 - Modify: `docs/` note in this plan's PR description (the result)
 
 - [ ] **Step 1: Pay a sandbox charge and capture the callback body.** Use the live payment from Task 0 if its webhook body was logged, otherwise Billing's sandbox (Inter's simulated payment): open a cobv, call `SimulatePayment`, and save the raw webhook body the byok-webhook Lambda receives (its CloudWatch log, or `api/cmd/byok-webhook` with body logging on in a throwaway run). Keep the file with the CPF and name replaced by obviously fake values, same shape.
-- [ ] **Step 2: Capture one extrato Pix line** from `GET /banking/v2/extrato/completo` for the same payment (`ExtratoCompleto`), saved the same way.
+- [ ] **Step 2: Capture one extrato Pix line** (already seen on 2026-10-14, in the trace of a Pix **sent** by CTech: `detalhes` carries `nomePagador` and `cpfCnpjPagador`, and the document there was **not masked**. If a received Pix's line carries the payer the same way, the extrato, not the webhook, is the better payer source: it is also what the statement sync already reads) from `GET /banking/v2/extrato/completo` for the same payment (`ExtratoCompleto`), saved the same way.
 - [ ] **Step 3: Record what you saw** in the PR description: the exact key that carries the payer name and document in each, and whether the document is masked. If the callback has **no** payer, stop and tell the owner: §6 then has to read the payer from the extrato line instead, and the payer task (Task 2) changes source.
 
 ### Task 1: Payout capability
@@ -77,7 +77,9 @@ This closes spec §11's open item before code depends on a guess.
 - Produces:
 ```go
 // byok
-const CapabilityPayout Capability = "payout"
+// CapabilityPayout and inter.ScopesPayout (pagamento-pix.read/write + webhook-banking.read/write) exist since
+// api-commons v1.23.0, and Connect already reports the capability when the integration ticks them. This task
+// adds the calls.
 type PayoutRequest struct {
 	Ref      string // caller's idempotency id, <= 35 [A-Za-z0-9], the bank dedupes on it
 	Amount   int64  // centavos
@@ -92,13 +94,11 @@ type Payouts interface {
 	Payout(ctx context.Context, c Credentials, t Token, in PayoutRequest) (Payout, error)
 	GetPayout(ctx context.Context, c Credentials, t Token, ref string) (Payout, error)
 }
-// inter
-var ScopesPayout = []string{"pagamento-pix.read", "pagamento-pix.write"}
 ```
 
 - [ ] **Step 1: Write failing tests** in `inter/payout_test.go` against the package's existing httptest harness (see `pix_calls_test.go` for how it fakes Inter): (a) `Payout` POSTs `/banking/v2/pix` with `valor` in reais, `destinatario{tipo:"CHAVE",chave}` and the `x-id-idempotente` header equal to `Ref`; (b) a 404 maps to `byok.ErrPixKeyNotFound`; (c) `GetPayout` GETs `/banking/v2/pix/{Ref}` and maps Inter's `EFETIVADO` to `done`; (d) a transport error returns a plain error (never `failed`).
 - [ ] **Step 2: Run** `go test ./inter/ -run Payout -v` — expect FAIL.
-- [ ] **Step 3: Implement** by porting `ctech-wallet/pix-gateway/internal/inter/inter.go:235-275` (`Transfer`, `QueryTransfer`) onto `Client.Do`, the idempotency header the wallet gateway uses in `doIdem`, and `Reais()` for the amount. `Provider` implements `byok.Payouts`; `Token(ctx, c, CapabilityPayout)` requests `ScopesPayout`. **Do not** add `ScopesPayout` to `Connect`'s asked set: only tenant zero's connection grants it, so the missing-scope report stays honest for every other tenant. `Connect` reports `CapabilityPayout` in `Connected.Capabilities` when the token request with `ScopesPayout` succeeds, tried **only** when `Credentials` carries the flag `payout=true` (add the field to `inter.CredentialFields()` as optional, false by default).
+- [ ] **Step 3: Implement** by porting `ctech-wallet/pix-gateway/internal/inter/inter.go:235-275` (`Transfer`, `QueryTransfer`) onto `Client.Do`, the idempotency header the wallet gateway uses in `doIdem`, and `Reais()` for the amount. `Provider` implements `byok.Payouts`; `Token(ctx, c, CapabilityPayout)` already requests `ScopesPayout`. `Connect` (v1.23.0) already asks for every product at once and steps down on refusal, so only tenant zero's connection reports `CapabilityPayout`; no credentials flag is needed. A payout call on a connection without the capability fails with `ErrScopesRefused` from Inter; the Billing service checks `conn.Has(byok.CapabilityPayout)` first.
 - [ ] **Step 4: Run** `go test ./...` — expect PASS.
 - [ ] **Step 5: Commit** `feat(byok): optional payout capability, implemented for Inter`.
 
@@ -155,13 +155,13 @@ func TestParseCallbackWithoutAPayerStaysValid(t *testing.T) {
 ### Task 3: Tag
 
 - [ ] **Step 1:** `go vet ./... && go test ./...`; update `README.md`/`doc.go` for the two additions.
-- [ ] **Step 2:** Merge, then tag `v1.22.0` and push the tag. Verify `go list -m gopkg.aoctech.app/api-commons@v1.22.0` resolves.
+- [ ] **Step 2:** Merge, then tag `v1.23.0` and push the tag. Verify `go list -m gopkg.aoctech.app/api-commons@v1.23.0` resolves.
 
 ---
 
 ## Part B — ctech-billing (`P_BILL/api`)
 
-Branch: `feat/wallet-ledger-p1`. First step of Task 4: `go get gopkg.aoctech.app/api-commons@v1.22.0 && go mod tidy`.
+Branch: `feat/wallet-ledger-p1`. First step of Task 4: `go get gopkg.aoctech.app/api-commons@v1.23.0 && go mod tidy`.
 
 ### Task 4: Store the payer on the attempt, write-once, with `payer_match`
 
