@@ -8,7 +8,7 @@
 
 **Tech Stack:** Go (Fiber v3, fx, DynamoDB), `api-commons/oauth2client`, Billing P1 routes, AWS SSM for secrets, CDK for env wiring.
 
-**Spec:** `docs/specs/2026-10-14-wallet-ledger-billing-rail.md` (§3–§5, §8 P2). **Depends on:** P1 merged and deployed, tenant zero on the BYOK rail (P1 Task 8).
+**Spec:** `docs/specs/2026-10-14-wallet-ledger-billing-rail.md` (§3–§5, §8 P2). **Depends on:** P1 merged and deployed, tenant zero on the BYOK rail (P1 Task 0).
 
 Repos: `P_WALLET=/home/artur-revgas/Documents/Projects/Ctech/ctech-wallet` (Go in `P_WALLET/api`, CDK in `P_WALLET/cdk`); `P_BILL=/home/artur-revgas/Documents/Projects/Ctech/ctech-billing` for the webhook endpoint registration.
 
