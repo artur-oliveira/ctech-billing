@@ -212,7 +212,6 @@
     "dueShort": "Vence {{date}}"
   },
   "inbox": {
-    "title": "Caixa de pendências",
     "description": "O que precisa da sua atenção em contas e recorrências.",
     "bills": "Contas em aberto ({{count}})",
     "noBills": "Nenhuma conta em aberto.",
@@ -240,7 +239,10 @@
     "openPayable": "Abrir conta",
     "openReceivable": "Abrir recebível",
     "fix": "Corrigir",
-    "attention": {"card_archived": "O cartão associado foi arquivado.", "category_archived": "A categoria associada foi arquivada."}
+    "attention": {
+      "card_archived": "O cartão associado foi arquivado.",
+      "category_archived": "A categoria associada foi arquivada."
+    }
   },
   "overview": {
     "title": "Resumo",

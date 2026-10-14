@@ -7,20 +7,22 @@ import type {ReactNode} from "react"
 import {useTranslation} from "react-i18next"
 
 import {AccountMenu} from "@/components/AccountMenu"
+import {LanguageSwitcher} from "@/components/LanguageSwitcher"
 
 export const renderLink: RenderLink = props => <Link {...props}/>
 
 export type ShellView = "portal" | "console" | "finance"
 
 /**
- * The frame of the three areas: @aoctech/ui's AppShell, one column at the left
- * edge from `md` (the mark, whose work, the sections, the person) and the page
- * across the rest of the width. Under `md` the column is the bar across the
- * top and the sections are the area's BottomNav.
+ * The frame of the three areas: @aoctech/ui's AppShell, the family's top bar
+ * (the mark at the left; whose work, the language and the person at the
+ * right, as in ctech-account and ctech-wallet), the sections on a rail pinned
+ * to the left edge from `md`, and the page across the rest of the width. On a
+ * phone the sections are the area's BottomNav.
  *
- * The column is compact in every area, so the organization, space and
- * account controls are the same 32px in the portal as in the console; the
- * page keeps its own density (`density`).
+ * The bar is compact in every area, so the organization, space and account
+ * controls are the same 32px in the portal as in the console; the page keeps
+ * its own density (`density`).
  *
  * The name is the product's, CTech Billing, and the area follows it after a
  * bullet: "CTech Billing • Finanças". Finanças is a part of Billing, not
@@ -56,7 +58,8 @@ export function BillingShell({
         brand={<Wordmark href={home} area={t(`common.account.${view}`)}/>}
         context={context}
         nav={nav}
-        account={<AccountMenu view={view} trigger="row"/>}
+        actions={<LanguageSwitcher className="max-sm:hidden"/>}
+        account={<AccountMenu view={view}/>}
         banner={banner}
         bottomNav={bottomNav}
         contentClassName={contentClassName}

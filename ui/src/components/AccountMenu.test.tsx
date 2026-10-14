@@ -174,11 +174,4 @@ describe("AccountMenu mode", () => {
     const menu = await open()
     expect(within(menu).queryByRole("menuitem", {name: "Teste"})).toBeNull()
   })
-
-  it("switches the language from the menu", async () => {
-    person({operator: false})
-    renderWithQuery(<AccountMenu view="portal"/>)
-    const menu = await open()
-    expect(within(menu).getByRole("menuitem", {name: "English"})).toBeInTheDocument()
-  })
 })

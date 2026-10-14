@@ -1,8 +1,8 @@
 "use client"
 
+import {PageHeader} from "@aoctech/ui"
 import {useSearchParams} from "next/navigation"
 import {Suspense} from "react"
-
 import {useTranslation} from "react-i18next"
 
 import {ImportView} from "@/components/finance/ImportView"
@@ -13,9 +13,12 @@ export default function FinanceImportPage() {
   const {t} = useTranslation()
   useDocumentTitle(t("finance.nav.import"))
   return (
-    <Suspense>
-      <Import/>
-    </Suspense>
+    <div className="space-y-6">
+      <PageHeader title={t("finance.nav.import")}/>
+      <Suspense>
+        <Import/>
+      </Suspense>
+    </div>
   )
 }
 

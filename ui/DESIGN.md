@@ -360,30 +360,37 @@ name contains the visible text.
 held the account becomes **Pagamento** or **Recebimento**, with the date and the account it was
 paid from or received into.
 
-## The shell is a column (2026-10-14)
+## The shell: top bar, rail, wide page (2026-10-14)
 
 Supersedes the header grammar below where they disagree. Decided by the owner after seeing a
-Full HD screen: `max-w-6xl` left about 384px of white on each side of every page.
+Full HD screen: `max-w-6xl` left about 384px of white on each side of every page. A first cut
+moved everything into a left column (no top bar, icon-and-pill nav); the owner rejected it the
+same day: the top bar is the CTech family's grammar (ctech-account, ctech-wallet), and the old
+rail had more character than a generic pill list. What stands:
 
-**One frame for the three areas,** `@aoctech/ui`'s `AppShell` (0.6.0), wrapped by
-`components/shell/BillingShell`. From `md` a 240px column pinned to the left edge, on `surface`
-with a hairline: the mark and **"CTech Billing • {área}"** (Portal, Console, Finanças; Finanças
-is part of Billing, not a product beside it), whose work (organization or space), the sections
-(`SidebarNav`, grouped, current = brand fill + weight + `aria-current`), and the person at the
-foot (`UserMenu trigger="row"`). The page takes the rest of the width up to 96rem: tables compare
-down a column, so a wide screen gives its width to them. A form or a detail keeps its own reading
-width inside the page; the portal keeps `max-w-2xl`, centred, because it reads one bill.
+**One frame for the three areas,** `@aoctech/ui`'s `AppShell` (0.7.0), wrapped by
+`components/shell/BillingShell`. The **top bar** spans the screen: the mark and **"CTech
+Billing • {área}"** at the left (Finanças is part of Billing, not a product beside it); whose work
+(organization or space), the language and the avatar at the right. Under it, from `md`, the
+sections on the **rail** pinned to the left edge: a hairline on the list's left edge, the current
+section drawing its own stretch of it in sienna with weight, no icons; groups are a quiet label
+above their own stretch of rail. The page takes the rest of the width up to 96rem, starting
+beside the rail: tables compare down a column, so a wide screen gives its width to them. A form
+or a detail keeps its own reading width; the portal keeps `max-w-2xl`.
 
-**Under `md` the same column is the bar across the top** (mark, whose work, avatar) and the
-sections are the area's `BottomNav`. Every slot renders once; nothing is duplicated for a
-breakpoint.
+**On a phone** the bar stays (mark, whose work, avatar) and the sections are the area's
+`BottomNav`.
 
-**The column is compact in every area.** The organization, space and account controls are the
-same 32px in the portal as in the console (the portal's 36px select was the inconsistency); the
-page below keeps its own density.
+**The bar is compact in every area.** The organization, space and account controls are the same
+32px in the portal as in the console (the portal's 36px select was the inconsistency); the page
+keeps its own density.
 
-**The mode moved into the account menu** ("Modo: Produção / Teste", console and Finanças only),
-with the language beside it. What made the header segment necessary still holds, so the answer
+**Every screen has a title,** an `h1` named as its section is named in the nav (Agenda,
+Pendências, Cartões, Extrato, Importar, Relatórios, Plano), present while the screen loads or
+fails. The two screens about an amount keep the amount as their heading (see "The money is the
+heading"). A card's name is the `h2` under "Cartões".
+
+**The mode moved into the account menu** ("Modo: Produção / Teste", console and Finanças only). What made the header segment necessary still holds, so the answer
 stays on screen: in test mode a **Teste** badge sits beside whose work it is, and the warning band
 spans the top of the page. A screen in test mode is never mistaken for live.
 

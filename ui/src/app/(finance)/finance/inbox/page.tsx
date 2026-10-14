@@ -7,6 +7,6 @@ import {useDocumentTitle} from "@/lib/hooks/useDocumentTitle"
 
 export default function FinanceInboxPage() {
   const {t} = useTranslation()
-  useDocumentTitle(t("finance.inbox.title"))
+  useDocumentTitle(t("finance.nav.inbox"))
   return <ActionInboxView/>
 }

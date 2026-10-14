@@ -28,12 +28,13 @@ export function BillingPlanView() {
   const {t} = useTranslation()
   const scope = useConsoleScope()
   const {data, isPending, error, refetch} = useQuery({queryKey: consoleKeys.plan(scope), queryFn: () => getBillingPlan(scope)})
-  if (isPending) return <PlanSkeleton/>
-  if (error || !data) return <ErrorBlock error={error} onRetry={() => void refetch()}/>
+  // The title stays while the plan loads or fails, like every other screen.
   return (
     <div className="space-y-8">
       <PageHeader title={t("console.plan.title")} description={t("console.plan.description")}/>
-      <PlanScreen state={data} live={scope.mode === "live"}/>
+      {isPending ? <PlanSkeleton/> : error || !data ? <ErrorBlock error={error} onRetry={() => void refetch()}/> : (
+        <PlanScreen state={data} live={scope.mode === "live"}/>
+      )}
     </div>
   )
 }
@@ -171,7 +172,6 @@ function Usage({state}: {state: BillingPlanState}) {
 function PlanSkeleton() {
   return (
     <div className="space-y-8" aria-busy>
-      <Skeleton className="h-7 w-32"/>
       <Skeleton className="h-6 w-48"/>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {[0, 1, 2, 3].map(i => <Skeleton key={i} className="h-44 w-full"/>)}

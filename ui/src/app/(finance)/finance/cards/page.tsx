@@ -1,8 +1,8 @@
 "use client"
 
+import {PageHeader} from "@aoctech/ui"
 import {useSearchParams} from "next/navigation"
 import {Suspense} from "react"
-
 import {useTranslation} from "react-i18next"
 
 import {CardsView} from "@/components/finance/CardsView"
@@ -13,9 +13,12 @@ export default function FinanceCardsPage() {
   const {t} = useTranslation()
   useDocumentTitle(t("finance.nav.cards"))
   return (
-    <Suspense>
-      <Cards/>
-    </Suspense>
+    <div className="space-y-6">
+      <PageHeader title={t("finance.nav.cards")}/>
+      <Suspense>
+        <Cards/>
+      </Suspense>
+    </div>
   )
 }
 

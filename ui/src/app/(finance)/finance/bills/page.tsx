@@ -1,5 +1,6 @@
 "use client"
 
+import {PageHeader} from "@aoctech/ui"
 import {useSearchParams} from "next/navigation"
 import {Suspense} from "react"
 import {useTranslation} from "react-i18next"
@@ -12,9 +13,12 @@ export default function FinanceBillsPage() {
   const {t} = useTranslation()
   useDocumentTitle(t("finance.nav.bills"))
   return (
-    <Suspense>
-      <Bills/>
-    </Suspense>
+    <div className="space-y-6">
+      <PageHeader title={t("finance.nav.bills")}/>
+      <Suspense>
+        <Bills/>
+      </Suspense>
+    </div>
   )
 }
 

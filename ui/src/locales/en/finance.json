@@ -212,7 +212,6 @@
     "dueShort": "Due {{date}}"
   },
   "inbox": {
-    "title": "Action inbox",
     "description": "Items needing your attention across bills and recurring entries.",
     "bills": "Open bills ({{count}})",
     "noBills": "No open bills.",
@@ -240,7 +239,10 @@
     "openPayable": "Open bill",
     "openReceivable": "Open receivable",
     "fix": "Fix",
-    "attention": {"card_archived": "The linked card was archived.", "category_archived": "The linked category was archived."}
+    "attention": {
+      "card_archived": "The linked card was archived.",
+      "category_archived": "The linked category was archived."
+    }
   },
   "overview": {
     "title": "Overview",

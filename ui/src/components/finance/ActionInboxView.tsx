@@ -35,9 +35,9 @@ export function ActionInboxView() {
   const loading = payable.isLoading || receivable.isLoading || recurrences.isLoading || imports.isLoading || pending.isLoading
 
   return (
-    <main className="space-y-6">
+    <div className="space-y-6">
       <header>
-        <h1 className="text-lg font-semibold tracking-[-0.01em] text-foreground">{t("finance.inbox.title")}</h1>
+        <h1 className="text-lg font-semibold tracking-[-0.01em] text-foreground">{t("finance.nav.inbox")}</h1>
         <p className="mt-1 text-sm text-muted-foreground">{t("finance.inbox.description")}</p>
       </header>
       {error ? <ErrorBlock error={error} onRetry={retry}/> : null}
@@ -72,7 +72,7 @@ export function ActionInboxView() {
           </section>
         </div>
       )}
-    </main>
+    </div>
   )
 }
 
