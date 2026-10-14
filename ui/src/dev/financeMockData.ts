@@ -709,7 +709,11 @@ function route(method: string, path: string, r: Req, s: SpaceState, can: (v: Ver
     const total = frozen ? frozen.total : items.reduce((t, i) => t + i.amount, 0)
     return {card_id: c.id, month, status, closing_date: closingDate, due_date: due, total, bill_id: frozen?.bill_id, items}
   }
-  const cardMatch = path.match(/^\/cards\/([^/]+)(?:\/(statements|purchases|close)(?:\/([^/]+)(?:\/(refund|advance))?)?)?$/)
+  // What the card's recurrences will still add to a future statement (one occurrence a month, mock-grade).
+  const forecastOf = (c: Card, month: string) => month <= c.open_month ? [] : s.recurrences
+    .filter(r => r.card_id === c.id && !r.archived)
+    .map(r => ({recurrence_id: r.id, description: r.description, nominal: `${month}-${String(r.expression.kind === "day_of_month" ? r.expression.day : 1).padStart(2, "0")}`, installment: 1, of: 1, amount: r.amount}))
+  const cardMatch = path.match(/^\/cards\/([^/]+)(?:\/(statements|purchases|close)(?:\/([^/]+)(?:\/(refund|advance|forecast))?)?)?$/)
   if (path === "/cards" && method === "get") return ok({data: s.cards.map(c => { const out: Card & {first_month?: string} = {...c}; delete out.first_month; return out }), has_more: false})
   if (path === "/cards" && method === "post") {
     if (!can("finance.configure")) return forbidden()
@@ -757,9 +761,10 @@ function route(method: string, path: string, r: Req, s: SpaceState, can: (v: Ver
       let m = backward ? (from > last ? last : from) : (from < first ? first : from)
       while (months.length < count && m >= first && m <= last) { months.push(m); m = ymAdd(m, backward ? -1 : 1) }
       const has_more = months.length > 0 && (backward ? months.at(-1)! > first : months.at(-1)! < last)
-      const data = months.map(month => { const {items, ...rest} = statementOf(c, month); return {...rest, items_count: items.length} })
+      const data = months.map(month => { const {items, ...rest} = statementOf(c, month); return {...rest, items_count: items.length, forecast_total: forecastOf(c, month).reduce((t, f) => t + f.amount, 0)} })
       return ok({data, has_more})
     }
+    if (sub === "statements" && arg && action === "forecast" && method === "get") return ok({data: forecastOf(c, arg), has_more: false})
     if (sub === "statements" && arg && method === "get") return ok(statementOf(c, arg))
     if (sub === "purchases" && !arg && method === "get") {
       return ok({data: s.purchases.filter(p => p.card === c.id).map(purchaseOut), has_more: false})

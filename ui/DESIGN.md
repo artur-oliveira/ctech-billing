@@ -392,6 +392,19 @@ recorrência", "Novo produto", "Novo webhook") goes to its screen and asks it to
 through `lib/createRequest`, the same wire as the phone's central button, and not through a
 query parameter: a `?novo=1` would reopen the form on every reload and shared link.
 
+**Three forms and a card, redone (2026-10-14).** (1) A recurrence's amount mode is a row of the
+form, not a toggle in a grid cell: the label "O valor é", the two choices across the width
+("Sempre o mesmo" / "Muda a cada mês", the words of what happens to the person, not of the
+mechanism), and a line saying what the chosen one means; the amount's label becomes "Valor
+estimado". (2) A description that remembers (`SuggestingInput`, Novo lançamento and Nova compra):
+what was typed before floats under the field and takes no room, so the amount and the rest of the
+form never move; arrows and Enter choose, Escape closes only the list. (3) A card statement shows
+what its recurrences will still add, beside its total and never in it: "+ R$ 340,00 em
+recorrências" under the total on the timeline card ("~" when part is an estimate awaiting
+confirmation), and in the selected statement the forecast section gives the subtotal and the
+"Total previsto da fatura". The value comes from the API (`forecast_total` on each statement
+summary), the same arithmetic as the forecast list, so the two never disagree.
+
 **On a phone** the bar stays (mark, whose work, avatar) and the sections are the area's
 `BottomNav`.
 

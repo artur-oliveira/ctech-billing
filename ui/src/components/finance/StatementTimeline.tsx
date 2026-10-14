@@ -204,7 +204,7 @@ function SummaryCard({summary: s, pressed, onPress}: {summary: StatementSummary;
       <span data-numeric className="text-base font-semibold tabular-nums text-foreground [overflow-wrap:anywhere]">{signedMoney(s.total)}</span>
       {/* What recurrences will still add: next to the total, never in it, and quieter than it. */}
       {forecast > 0 && (
-        <span data-numeric title={t("finance.cards.forecastLineTitle")} className="-mt-1 text-xs tabular-nums text-muted-foreground">
+        <span data-numeric title={t("finance.cards.forecastLineTitle")} className="-mt-1 text-balance text-xs tabular-nums text-muted-foreground">
           {t(s.forecast_estimated ? "finance.cards.forecastLineEstimated" : "finance.cards.forecastLine", {amount: money(forecast)})}
         </span>
       )}

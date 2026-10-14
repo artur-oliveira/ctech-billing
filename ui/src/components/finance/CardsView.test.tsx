@@ -369,7 +369,7 @@ describe("F5 — cartões", () => {
     await userEvent.click(within(form).getByRole("button", {name: "Salvar"}))
     // Bought after this month's closing day or not, one of the next two statements gains R$ 100,00.
     const totals = () => screen.getAllByRole("button", {name: /^Fatura de /}).map(b => b.getAttribute("aria-label"))
-    await waitFor(() => expect(totals().some(n => /(433|400),00$/.test(n ?? ""))).toBe(true))
+    await waitFor(() => expect(totals().some(n => /(433|400),00(,|$)/.test(n ?? ""))).toBe(true))
     expect(inWindow()).toEqual(before)
     expect(screen.getByRole("button", {name: /Aberta/})).toHaveAttribute("data-month", month)
   })
