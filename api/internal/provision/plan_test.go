@@ -340,3 +340,64 @@ func TestTheBillingPlansMatchTheSpecTable(t *testing.T) {
 		t.Fatalf("early access stays free and unlimited: %+v", early)
 	}
 }
+
+// The DF-e catalogue is one product, prod_dfe, holding one plan per `plan`
+// metadata. Each price carries exactly what its one-product-per-plan
+// predecessor did (the DF-e enforces quotas from this metadata), the old public
+// prices are archived, and the internal unlimited price that two live
+// subscriptions bill is untouched.
+func TestTheDFeCatalogueIsOneProductWithTheSameQuotasAndPrices(t *testing.T) {
+	plan := loadCTechPlan(t)
+	prices := map[string]Price{}
+	for _, p := range plan.Prices {
+		prices[p.ID] = p
+	}
+	successors := map[string]string{
+		"price_dfe_free_monthly":               "price_dfe_v2_free",
+		"price_dfe_pro_monthly":                "price_dfe_v2_pro",
+		"price_dfe_unlimited_monthly":          "price_dfe_v2_unlimited",
+		"price_dfe_ondemand_nfe":               "price_dfe_v2_ondemand_nfe",
+		"price_dfe_ondemand_nfce":              "price_dfe_v2_ondemand_nfce",
+		"price_dfe_ondemand_nfse":              "price_dfe_v2_ondemand_nfse",
+		"price_dfe_ondemand_cte":               "price_dfe_v2_ondemand_cte",
+		"price_dfe_ondemand_mdfe":              "price_dfe_v2_ondemand_mdfe",
+		"price_dfe_ondemand_companies_monthly": "price_dfe_v2_ondemand_companies",
+	}
+	for oldID, newID := range successors {
+		o, n := prices[oldID], prices[newID]
+		if n.ID == "" || n.ProductID != "prod_dfe" || n.Name == "" {
+			t.Fatalf("%s: %+v", newID, n)
+		}
+		if !o.Archived {
+			t.Errorf("%s is still on sale", oldID)
+		}
+		if n.Archived || n.UnitAmount != o.UnitAmount || n.Type != o.Type || n.Timing != o.Timing ||
+			n.Aggregation != o.Aggregation || n.Meter != o.Meter || n.IncludedQuantity != o.IncludedQuantity {
+			t.Errorf("%s differs from %s: %+v vs %+v", newID, oldID, n, o)
+		}
+		for k, v := range o.Metadata {
+			if n.Metadata[k] != v {
+				t.Errorf("%s: metadata %q = %q, was %q", newID, k, n.Metadata[k], v)
+			}
+		}
+		if n.Metadata["plan_name"] == "" {
+			t.Errorf("%s has no plan_name", newID)
+		}
+	}
+	internal := prices["price_dfe_unlimited_internal_monthly"]
+	if internal.Archived || internal.ProductID != "prod_dfe_unlimited_internal" {
+		t.Fatalf("the internal price changed: %+v", internal)
+	}
+	active := map[string]bool{}
+	for _, p := range plan.Products {
+		active[p.ID] = p.Active == nil || *p.Active
+	}
+	for _, id := range []string{"prod_dfe_free", "prod_dfe_pro", "prod_dfe_unlimited", "prod_dfe_ondemand"} {
+		if active[id] {
+			t.Errorf("%s should be retired", id)
+		}
+	}
+	if !active["prod_dfe"] || !active["prod_dfe_unlimited_internal"] {
+		t.Fatal("prod_dfe and the internal product stay active")
+	}
+}
