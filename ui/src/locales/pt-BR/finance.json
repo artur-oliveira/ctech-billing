@@ -209,7 +209,13 @@
     "openRecurrence": "Abrir a recorrência de {{name}}",
     "closedShort": "Fechou {{date}}",
     "closesShort": "Fecha {{date}}",
-    "dueShort": "Vence {{date}}"
+    "dueShort": "Vence {{date}}",
+    "forecastLine": "+ {{amount}} em recorrências",
+    "forecastLineEstimated": "+ ~{{amount}} em recorrências",
+    "forecastLineTitle": "Recorrências ainda não lançadas nesta fatura; não estão no total.",
+    "summaryLabelForecast": "{{label}}, mais {{amount}} em recorrências previstas",
+    "forecastSubtotal": "Recorrências previstas",
+    "forecastExpectedTotal": "Total previsto da fatura"
   },
   "inbox": {
     "description": "O que precisa da sua atenção em contas e recorrências.",

@@ -209,7 +209,13 @@
     "openRecurrence": "Open the recurrence of {{name}}",
     "closedShort": "Closed {{date}}",
     "closesShort": "Closes {{date}}",
-    "dueShort": "Due {{date}}"
+    "dueShort": "Due {{date}}",
+    "forecastLine": "+ {{amount}} in recurrences",
+    "forecastLineEstimated": "+ ~{{amount}} in recurrences",
+    "forecastLineTitle": "Recurrences not yet posted to this statement; not in the total.",
+    "summaryLabelForecast": "{{label}}, plus {{amount}} in expected recurrences",
+    "forecastSubtotal": "Expected recurrences",
+    "forecastExpectedTotal": "Expected statement total"
   },
   "inbox": {
     "description": "Items needing your attention across bills and recurring entries.",

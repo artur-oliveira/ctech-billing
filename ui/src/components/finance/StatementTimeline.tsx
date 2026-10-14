@@ -15,7 +15,7 @@ import {
 } from "@/lib/finance/statementTimeline"
 import {monthShort, todayIso} from "@/lib/finance/today"
 import {useFinanceCtx} from "@/lib/finance/useFinanceSpaces"
-import {dayMonth, signedMoney} from "@/lib/format"
+import {dayMonth, money, signedMoney} from "@/lib/format"
 import {NARROW, useMediaQuery} from "@/lib/hooks/useMediaQuery"
 
 /** Under lg the row shows five statements; from lg, seven (spec D5: 3 + open + 3). */
@@ -188,9 +188,12 @@ function SummaryCard({summary: s, pressed, onPress}: {summary: StatementSummary;
   const state = statementState(s, todayIso())
   const {tone, icon: Icon} = STATUS[state]
   const closed = s.status === "closed" || s.status === "paid"
+  const forecast = s.forecast_total ?? 0
+  const base = t("finance.cards.summaryLabel", {month: monthShort(s.month), state: t(`finance.cards.status.${state}`), total: signedMoney(s.total)})
+  const label = forecast > 0 ? t("finance.cards.summaryLabelForecast", {label: base, amount: money(forecast)}) : base
   return (
     <button type="button" data-month={s.month} aria-pressed={pressed} onClick={onPress}
-      aria-label={t("finance.cards.summaryLabel", {month: monthShort(s.month), state: t(`finance.cards.status.${state}`), total: signedMoney(s.total)})}
+      aria-label={label}
       className={`flex h-full w-full flex-col items-start gap-1.5 rounded-lg border p-3 text-left outline-none transition-colors duration-150 ease-out
         focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 motion-reduce:transition-none
         ${pressed ? "border-brand-600 bg-brand-50" : "border-border hover:bg-surface"}`}>
@@ -199,6 +202,12 @@ function SummaryCard({summary: s, pressed, onPress}: {summary: StatementSummary;
         <Badge tone={tone}><Icon aria-hidden/>{t(`finance.cards.status.${state}`)}</Badge>
       </span>
       <span data-numeric className="text-base font-semibold tabular-nums text-foreground [overflow-wrap:anywhere]">{signedMoney(s.total)}</span>
+      {/* What recurrences will still add: next to the total, never in it, and quieter than it. */}
+      {forecast > 0 && (
+        <span data-numeric title={t("finance.cards.forecastLineTitle")} className="-mt-1 text-xs tabular-nums text-muted-foreground">
+          {t(s.forecast_estimated ? "finance.cards.forecastLineEstimated" : "finance.cards.forecastLine", {amount: money(forecast)})}
+        </span>
+      )}
       <span className="grid gap-0.5 text-xs text-muted-foreground tabular-nums">
         <span>{t(closed ? "finance.cards.closedShort" : "finance.cards.closesShort", {date: dayMonth(s.closing_date)})}</span>
         <span>{t("finance.cards.dueShort", {date: dayMonth(s.due_date)})}</span>
