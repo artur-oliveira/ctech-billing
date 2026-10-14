@@ -9,7 +9,7 @@ import {useState} from "react"
 import {useTranslation} from "react-i18next"
 import {toast} from "sonner"
 
-import {connectionKeys, disconnect, registerWebhook, renewCertificate, syncNow, testConnection, type DisconnectReport} from "@/lib/api/connections"
+import {changePixKey, connectionKeys, disconnect, registerWebhook, renewCertificate, syncNow, testConnection, type DisconnectReport} from "@/lib/api/connections"
 import {messageFor, problemCode} from "@/lib/api/client"
 import type {Connection, ConnectionStatus, ConnectionsScope, ProviderGuide} from "@/lib/api/connectionsTypes"
 import {codeMessage} from "@/lib/errors"
@@ -19,6 +19,7 @@ import {instantShortDate} from "@/lib/format"
 
 import {DisconnectDialog} from "./DisconnectDialog"
 import {WebhookStep} from "./WebhookStep"
+import {PixKeyDialog} from "./PixKeyDialog"
 import {RenewDialog} from "./RenewDialog"
 
 const TONE: Record<ConnectionStatus, "neutral" | "positive" | "attention" | "urgent"> = {
@@ -60,11 +61,12 @@ export function ConnectionHealth({scope, connection: c, guide, statementHref, ex
   const {t, i18n} = useTranslation()
   const qc = useQueryClient()
   const [renewing, setRenewing] = useState(false)
+  const [changingKey, setChangingKey] = useState(false)
   const [leaving, setLeaving] = useState(false)
   const [openCharges, setOpenCharges] = useState(0)
   const [unreachable, setUnreachable] = useState(false)
   const [report, setReport] = useState<DisconnectReport | null>(null)
-  const testIntent = useIntent(), syncIntent = useIntent(), renewIntent = useIntent(), leaveIntent = useIntent(), hookIntent = useIntent()
+  const testIntent = useIntent(), syncIntent = useIntent(), renewIntent = useIntent(), keyIntent = useIntent(), leaveIntent = useIntent(), hookIntent = useIntent()
   const refresh = (next?: Connection) => {
     if (next) qc.setQueryData(connectionKeys.one(scope, "inter"), next)
     void qc.invalidateQueries({queryKey: connectionKeys.one(scope, "inter")})
@@ -94,6 +96,29 @@ export function ConnectionHealth({scope, connection: c, guide, statementHref, ex
     mutationFn: ({cert, key}: {cert: File; key: File}) => renewCertificate(scope, "inter", cert, key, renewIntent.key()),
     onSuccess: next => { renewIntent.done(); refresh(next); setRenewing(false); toast.success(t("connections.screen.renewed")) },
   })
+  // Charges still payable pay into the old key, so the change is refused while
+  // any is open; a notice another system already holds on the new key is
+  // confirmed in the webhook step, which the refreshed connection now shows.
+  const keyChange = useMutation({
+    mutationFn: (pixKey: string) => changePixKey(scope, "inter", pixKey, keyIntent.key()),
+    onSuccess: next => { keyIntent.done(); refresh(next); setChangingKey(false); toast.success(t("connections.pixKey.done")) },
+    onError: e => {
+      keyIntent.done()
+      if (problemCode(e) === "byok_webhook_conflict") {
+        refresh()
+        setChangingKey(false)
+        toast.warning(t("connections.pixKey.conflictDone"))
+      }
+    },
+  })
+  const keyError = () => {
+    if (!keyChange.isError || problemCode(keyChange.error) === "byok_webhook_conflict") return undefined
+    if (problemCode(keyChange.error) === "byok_open_charges") {
+      const count = (keyChange.error as {response?: {data?: {count?: number}}}).response?.data?.count ?? 1
+      return t("connections.pixKey.openCharges", {count})
+    }
+    return words(keyChange.error)
+  }
   // Spec § 3.6: open charges are cancelled only after the dialog says how
   // many; a bank that does not answer is skipped only after "mesmo assim",
   // and then the dialog lists what to remove at the bank.
@@ -167,6 +192,7 @@ export function ConnectionHealth({scope, connection: c, guide, statementHref, ex
               {c.last_error_at && <span className="text-muted-foreground"> • {when(c.last_error_at, i18n.language)}</span>}
             </Fact>
           )}
+          {merchant && c.pix_key && <Fact term={t("connections.screen.pixKey")}><span className="break-all font-mono text-xs">{c.pix_key}</span></Fact>}
           {merchant && c.client_id && <Fact term={t("connections.screen.clientId")}><span className="break-all font-mono text-xs">{c.client_id}</span></Fact>}
           {merchant && c.notify_email && <Fact term={t("connections.screen.notifyEmail")}>{c.notify_email}</Fact>}
         </dl>
@@ -201,6 +227,9 @@ export function ConnectionHealth({scope, connection: c, guide, statementHref, ex
         <Button variant="brand" disabled={sync.isPending} onClick={() => sync.mutate()}>{t("connections.screen.syncNow")}</Button>
         <Button variant="outline" disabled={test.isPending} onClick={() => test.mutate()}>{t("connections.screen.test")}</Button>
         {merchant && <Button variant="outline" onClick={() => { renew.reset(); setRenewing(true) }}>{t("connections.screen.renew")}</Button>}
+        {merchant && c.capabilities.includes("collection") && (
+          <Button variant="outline" onClick={() => { keyChange.reset(); setChangingKey(true) }}>{t("connections.pixKey.title")}</Button>
+        )}
         {statementHref && c.ledger_account_id && (
           <Link href={statementHref} className={cn(buttonVariants({variant: "ghost"}))}>{t("connections.screen.openStatement")}</Link>
         )}
@@ -209,6 +238,8 @@ export function ConnectionHealth({scope, connection: c, guide, statementHref, ex
 
       <RenewDialog open={renewing} onClose={() => setRenewing(false)} loading={renew.isPending}
         error={renew.isError ? words(renew.error) : undefined} onSubmit={(cert, key) => renew.mutate({cert, key})}/>
+      <PixKeyDialog open={changingKey} onClose={() => setChangingKey(false)} loading={keyChange.isPending} current={c.pix_key}
+        error={keyError()} onSubmit={pixKey => keyChange.mutate(pixKey)}/>
       <DisconnectDialog open={leaving} onClose={closeLeave} loading={leave.isPending} onConfirm={() => leave.mutate()}
         openCharges={openCharges} unreachable={unreachable} report={report}/>
     </div>

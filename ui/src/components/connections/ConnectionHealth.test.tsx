@@ -33,4 +33,16 @@ describe("ConnectionHealth", () => {
     fireEvent.click(screen.getByRole("button", {name: "Desconectar"}))
     expect(await screen.findByText(/Só você pode cancelar a integração no Inter/)).toBeTruthy()
   })
+
+  it("offers to change the Pix key to a merchant, and shows the one in use", async () => {
+    renderWithQuery(<ConnectionHealth scope={live} connection={{...active, pix_key: "evp-in-use"}}/>)
+    expect(screen.getByText("evp-in-use")).toBeTruthy()
+    fireEvent.click(screen.getByRole("button", {name: "Alterar chave Pix"}))
+    expect(await screen.findByLabelText("Nova chave Pix")).toBeTruthy()
+  })
+
+  it("does not offer it on the shared sandbox, whose key is CTech's", () => {
+    renderWithQuery(<ConnectionHealth scope={live} connection={{...active, kind: "sandbox_shared"}}/>)
+    expect(screen.queryByRole("button", {name: "Alterar chave Pix"})).toBeNull()
+  })
 })

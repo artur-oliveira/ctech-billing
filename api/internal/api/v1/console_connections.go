@@ -53,6 +53,7 @@ func registerConnections(v1 fiber.Router, d Deps, auth fiber.Handler, clock func
 	add("DELETE", "/:provider", true, h.disconnect)
 	add("POST", "/:provider/test", true, h.test)
 	add("POST", "/:provider/certificate", true, h.renew)
+	add("PUT", "/:provider/pix-key", true, h.pixKey)
 	add("POST", "/:provider/sync", true, h.sync)
 	add("PUT", "/:provider/onboarding", true, h.onboarding)
 	if h.setup != nil {
@@ -227,6 +228,31 @@ func (h *connectionHandlers) disconnect(c fiber.Ctx) error {
 		return c.JSON(rep)
 	}
 	return c.SendStatus(fiber.StatusNoContent)
+}
+
+// pixKey is "Alterar chave Pix": the key only, no secret or certificate.
+func (h *connectionHandlers) pixKey(c fiber.Ctx) error {
+	var body struct {
+		PixKey          string `json:"pix_key"`
+		ReplaceExisting bool   `json:"replace_existing"`
+	}
+	if p := decodeStrict(c, &body); p != nil {
+		return p.Send(c)
+	}
+	conn, err := h.setup.ChangePixKey(c.Context(), middleware.GetSpace(c), c.Params("provider"), body.PixKey, body.ReplaceExisting,
+		middleware.GetClaims(c).Sub, middleware.GetRequestID(c), h.now())
+	if oc := (*services.ErrOpenCharges)(nil); errors.As(err, &oc) {
+		return c.Status(fiber.StatusConflict).JSON(fiber.Map{"type": "/problems/conflict", "title": "Conflict", "status": 409,
+			"detail": "there are open charges on the current key; settle or cancel them first", "code": "byok_open_charges", "count": oc.Count})
+	}
+	if wc := (*services.ErrWebhookConflict)(nil); errors.As(err, &wc) {
+		return c.Status(fiber.StatusConflict).JSON(fiber.Map{"type": "/problems/conflict", "title": "Conflict", "status": 409,
+			"detail": "another system receives this key's payment notices", "code": "byok_webhook_conflict", "existing_host": wc.ExistingHost})
+	}
+	if err != nil {
+		return fail(c, err)
+	}
+	return c.JSON(toConnectionDTO(conn, h.now()))
 }
 
 // webhook is "Registrar aviso novamente" and the conflict's confirmation.

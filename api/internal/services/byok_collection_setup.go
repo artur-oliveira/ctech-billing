@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
@@ -31,6 +32,13 @@ var (
 	// every test tenant; only cmd/byok's bootstrap registers it.
 	ErrSandboxWebhookShared = errors.New("byok: the shared sandbox webhook is the operator's")
 )
+
+// ErrPixKeyUnknown: the bank has no such Pix key on this account (the PUT of
+// the notice is what tells it; GET answers alike for a key without one).
+var ErrPixKeyUnknown = errors.New("byok: the bank does not know this Pix key")
+
+// maxPixKeyLen is the longest Pix key there is (an e-mail address).
+const maxPixKeyLen = 77
 
 // ErrWebhookConflict: another system's URL receives the provider's payment
 // notices for this key (spec § 6.4); only replace_existing overwrites it.
@@ -154,6 +162,66 @@ func (s *ByokCollectionSetup) register(ctx context.Context, conn *byokconn.Conne
 	}
 	conn.WebhookStatus = byokconn.WebhookRegistered
 	return s.repo.SaveConnection(ctx, conn, actor, requestID, action, now)
+}
+
+// ChangePixKey moves a merchant connection to another Pix key of the same
+// account: the key is not part of the sealed credentials, so no secret or
+// certificate is involved. Charges still payable pay into the old key, so
+// they must be settled or cancelled first. The notice follows the key (a
+// foreign URL on it is a conflict, replaced only on confirmation, spec § 6.4);
+// Billing's own notice on the old key is removed best effort. Inter keeps one
+// URL per key, which is the reason to give each consumer a key of its own.
+func (s *ByokCollectionSetup) ChangePixKey(ctx context.Context, sp space.ResolvedSpace, provider, pixKey string, replaceExisting bool, actor, requestID string, now time.Time) (*byokconn.Connection, error) {
+	pixKey = strings.TrimSpace(pixKey)
+	if pixKey == "" || len(pixKey) > maxPixKeyLen {
+		return nil, fmt.Errorf("%w: pix_key", byok.ErrInvalidRequest)
+	}
+	conn, err := s.conns.Connected(ctx, sp, provider)
+	if err != nil {
+		return nil, err
+	}
+	if conn.Kind == byokconn.KindSandboxShared {
+		return nil, ErrSandboxWebhookShared
+	}
+	if pixKey == conn.PixKey {
+		return conn, nil
+	}
+	tenant, err := s.orgs.GetByAccountOrganization(ctx, conn.AccountOrganizationID, conn.Livemode)
+	if err != nil && !errors.Is(err, repositories.ErrNotFound) {
+		return nil, err
+	}
+	if tenant != nil {
+		open, err := s.openCharges(ctx, tenant, provider)
+		if err != nil {
+			return nil, err
+		}
+		if len(open) > 0 {
+			return nil, &ErrOpenCharges{Count: len(open)}
+		}
+	}
+	old := *conn
+	next := *conn
+	next.PixKey = pixKey
+	if err := s.register(ctx, &next, replaceExisting, actor, requestID, now); err != nil {
+		if errors.Is(err, byok.ErrNotFound) {
+			return nil, ErrPixKeyUnknown
+		}
+		var conflict *ErrWebhookConflict
+		if errors.As(err, &conflict) {
+			// register saved the conflict on the new key; the change stands.
+			_ = s.repo.SaveConnection(ctx, &next, actor, requestID, "byok.pix_key_changed", now)
+		}
+		return nil, err
+	}
+	if err := s.repo.SaveConnection(ctx, &next, actor, requestID, "byok.pix_key_changed", now); err != nil {
+		return nil, err
+	}
+	if old.HookID != "" && s.host != "" {
+		if _, err := s.deleteOurWebhook(ctx, &old); err != nil {
+			slog.WarnContext(ctx, "byok old pix key notice not removed", "connection_id", old.ID, "error", err)
+		}
+	}
+	return &next, nil
 }
 
 func hostOf(raw string) string {

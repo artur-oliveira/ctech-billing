@@ -99,6 +99,7 @@
     "byok_key_mismatch": "The key does not match the certificate. Send the pair downloaded from the same integration.",
     "byok_credentials_refused": "Inter refused these credentials. Check the client_id, the client_secret and the account.",
     "byok_bearer_refused": "Inter accepted the certificate but refused the account or the permissions. Check the account number (with its digit, if Inter shows one) and the Balance and Statement activity on the integration.",
+    "byok_pix_key_unknown": "Inter does not know this Pix key on this account. Check it under Pix > My keys.",
     "byok_provider_unavailable": "Inter did not answer. Try again in a moment.",
     "byok_sandbox_busy": "Inter's test environment is busy. Try again in a moment.",
     "byok_sync_too_soon": "Synced moments ago. Try again in a few minutes.",

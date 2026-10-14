@@ -24,6 +24,7 @@ func TestByokErrorsHaveTheirOwnCodes(t *testing.T) {
 		{byok.ErrCredentialsRefused, 422, "byok_credentials_refused"},
 		{byok.ErrScopesRefused, 422, "byok_credentials_refused"},
 		{byok.ErrUnauthorized, 422, "byok_bearer_refused"},
+		{services.ErrPixKeyUnknown, 422, "byok_pix_key_unknown"},
 		{byokrpc.ErrSandboxBusy, 429, "byok_sandbox_busy"},
 		{byok.ErrUnavailable, 503, "byok_provider_unavailable"},
 		{byok.ErrRateLimited, 503, "byok_provider_unavailable"},
