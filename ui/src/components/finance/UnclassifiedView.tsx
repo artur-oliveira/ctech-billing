@@ -1,6 +1,6 @@
 "use client";
 
-import {Button, EmptyState, Field, PageHeader, Select, Skeleton} from "@aoctech/ui";
+import {Button, Checkbox, EmptyState, Field, PageHeader, Select, Skeleton} from "@aoctech/ui";
 import {useMutation, useQuery, useQueryClient} from "@tanstack/react-query";
 import {ChevronLeft, CircleCheck} from "lucide-react";
 import Link from "next/link";
@@ -8,6 +8,7 @@ import {useState} from "react";
 import {useTranslation} from "react-i18next";
 import {toast} from "sonner";
 
+import {UnclassifiedBulk} from "@/components/finance/UnclassifiedBulk";
 import {ErrorBlock} from "@/components/portal/ErrorBlock";
 import {classify, connectionKeys, listUnclassified} from "@/lib/api/connections";
 import type {UnclassifiedLine} from "@/lib/api/connectionsTypes";
@@ -42,6 +43,9 @@ export function UnclassifiedView({account}: {account: string}) {
   const accounts = useQuery({queryKey: financeKeys.accounts(ctx.mode, ctx.space), queryFn: () => listAccounts(ctx)});
   const acct = accounts.data?.data.find(a => a.id === account);
   const data = lines.data?.data ?? [];
+  const canClassify = can("finance.import");
+  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  const toggle = (id: string) => setSelected(cur => { const next = new Set(cur); if (!next.delete(id)) next.add(id); return next; });
 
   return (
     <div className="space-y-6">
@@ -59,8 +63,12 @@ export function UnclassifiedView({account}: {account: string}) {
       ) : (
         <>
           <p className="text-sm text-muted-foreground">{t("connections.unclassified.count", {count: data.length})}</p>
+          {canClassify && <UnclassifiedBulk lines={data} selected={selected} onSelected={setSelected} account={account} accounts={accounts.data?.data ?? []}/>}
           <ul className="divide-y divide-border border-y border-border">
-            {data.map(l => <LineRow key={l.tx_id} line={l} account={account} accounts={accounts.data?.data ?? []} canClassify={can("finance.import")}/>)}
+            {data.map(l => (
+              <LineRow key={l.tx_id} line={l} account={account} accounts={accounts.data?.data ?? []} canClassify={canClassify}
+                selected={selected.has(l.tx_id)} onToggle={() => toggle(l.tx_id)}/>
+            ))}
           </ul>
         </>
       )}
@@ -68,7 +76,7 @@ export function UnclassifiedView({account}: {account: string}) {
   );
 }
 
-function LineRow({line, account, accounts, canClassify}: {line: UnclassifiedLine; account: string; accounts: Account[]; canClassify: boolean}) {
+function LineRow({line, account, accounts, canClassify, selected, onToggle}: {line: UnclassifiedLine; account: string; accounts: Account[]; canClassify: boolean; selected: boolean; onToggle: () => void}) {
   const {t} = useTranslation();
   const ctx = useFinanceCtx();
   const qc = useQueryClient();
@@ -105,7 +113,11 @@ function LineRow({line, account, accounts, canClassify}: {line: UnclassifiedLine
   return (
     <li className="grid gap-3 py-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-start">
       <div className="flex min-w-0 items-start justify-between gap-3">
-        <div className="min-w-0">
+        {canClassify && (
+          <Checkbox checked={selected} onCheckedChange={onToggle} className="mt-0.5 shrink-0"
+            aria-label={t("connections.unclassified.bulk.selectLine", {memo: line.memo || t(credit ? "connections.unclassified.in" : "connections.unclassified.out")})}/>
+        )}
+        <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium text-foreground">{line.memo || t(credit ? "connections.unclassified.in" : "connections.unclassified.out")}</p>
           <p className="text-xs text-muted-foreground">{shortDate(line.date)} • {t(credit ? "connections.unclassified.in" : "connections.unclassified.out")}</p>
         </div>

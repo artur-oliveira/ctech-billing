@@ -26,7 +26,19 @@ export function visibleFinanceSections(personal: boolean, canConfigure: boolean)
   });
 }
 
+/**
+ * Pages that are not a section of their own but belong to one, so the menu
+ * keeps showing where the person is. The lines to classify are a bank account's
+ * (reached from Contas), not a summary: without this they fell through to the
+ * first item, Resumo.
+ */
+const BELONGS_TO: readonly {prefix: string; section: string}[] = [
+  {prefix: "/finance/unclassified", section: "/finance/accounts"},
+];
+
 /** The section a path belongs to; Resumo when none matches. */
 export function currentFinanceSection(pathname: string): string {
+  const owner = BELONGS_TO.find(b => pathname.startsWith(b.prefix));
+  if (owner) return owner.section;
   return FINANCE_SECTIONS.find(s => ("exact" in s ? pathname === s.href : pathname.startsWith(s.href)))?.href ?? FINANCE_SECTIONS[0].href;
 }
