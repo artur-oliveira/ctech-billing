@@ -37,6 +37,9 @@ func main() {
 	_ = flag.String("date", "", "civil date for the steps that take one (parts B and C); the statement sync ignores it")
 	retry := flag.Bool("retry-callbacks", false, "operator tool: ask each live connection's provider to resend the webhook deliveries that failed since -since (not a cron step)")
 	since := flag.String("since", "", "RFC 3339 instant for -retry-callbacks")
+	rail := flag.String("tenant-rail", "", "operator tool (spec § 12.6): move tenant zero's collection rail to byok (CTech's own bank connection) or back to wallet; needs -mode=live and -operator")
+	operator := flag.String("operator", "", "who is moving the rail, recorded in the audit trail")
+	dryRun := flag.Bool("dry-run", false, "with -tenant-rail: print the state and change nothing")
 	flag.Parse()
 
 	cfg, err := config.Load()
@@ -45,6 +48,9 @@ func main() {
 		os.Exit(2)
 	}
 	ctx := context.Background()
+	if *rail != "" {
+		os.Exit(tenantRail(ctx, cfg, *rail, *modeFlag, *operator, *dryRun))
+	}
 	alerter := jobs.Alerts(ctx, cfg)
 	conns, statement, repo, guard, sweep, err := app.BuildByokJob(ctx, cfg)
 	if err == nil && conns == nil {
