@@ -57,6 +57,9 @@ func NewOneOffInvoices(invoices *repositories.InvoiceRepository, customers *repo
 	return &OneOffInvoices{invoices: invoices, customers: customers, invoicer: invoicer}
 }
 
+// OneOffGenerationKey is the key a reference is stored under.
+func OneOffGenerationKey(reference string) string { return oneOffKeyPrefix + reference }
+
 func validReference(r string) bool {
 	if r == "" || len(r) > maxReferenceLen {
 		return false
@@ -96,7 +99,7 @@ func (s *OneOffInvoices) Create(ctx context.Context, in OneOffInput, actor, requ
 	if _, err = s.customers.Get(ctx, in.OrganizationID, in.Livemode, in.CustomerID); err != nil {
 		return nil, nil, false, err
 	}
-	key := oneOffKeyPrefix + in.Reference
+	key := OneOffGenerationKey(in.Reference)
 	inv, err = s.invoices.GetByGenerationKey(ctx, in.OrganizationID, in.Livemode, key)
 	if errors.Is(err, repositories.ErrNotFound) {
 		inv, lines = s.build(in, now)

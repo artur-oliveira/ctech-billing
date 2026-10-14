@@ -521,6 +521,21 @@ func (h *handlers) getInvoice(c fiber.Ctx) error {
 	return c.JSON(h.withPayer(c, newInvoiceResponse(inv, lines, h.today(), h.links), inv))
 }
 
+// getInvoiceByReference finds the one-off invoice a caller issued under its own
+// reference: how the wallet asks about a deposit without having stored our id.
+func (h *handlers) getInvoiceByReference(c fiber.Ctx) error {
+	t := middleware.GetTenant(c)
+	inv, err := h.invoices.GetByGenerationKey(c.Context(), t.OrganizationID, t.Livemode, services.OneOffGenerationKey(c.Params("reference")))
+	if err != nil {
+		return fail(c, err)
+	}
+	lines, err := h.invoices.ListItems(c.Context(), t.OrganizationID, t.Livemode, inv.ID)
+	if err != nil {
+		return fail(c, err)
+	}
+	return c.JSON(h.withPayer(c, newInvoiceResponse(inv, lines, h.today(), h.links), inv))
+}
+
 // withPayer adds who paid to a paid invoice's response. A failure to read the
 // attempts leaves the response without it: the payer is extra, not the invoice.
 func (h *handlers) withPayer(c fiber.Ctx, resp invoiceResponse, inv *billing.Invoice) invoiceResponse {
