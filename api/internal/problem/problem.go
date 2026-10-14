@@ -254,6 +254,11 @@ func FromError(err error) *Problem {
 		return Unprocessable("the key does not belong to this certificate").WithCode("byok_key_mismatch")
 	case errors.Is(err, byok.ErrCredentialsRefused), errors.Is(err, byok.ErrScopesRefused):
 		return Unprocessable("the bank refused these credentials").WithCode("byok_credentials_refused")
+	case errors.Is(err, byok.ErrUnauthorized):
+		// The bank issued a token and then refused it on the first call (connect
+		// checks the account with a balance read). That is the account number or
+		// a missing permission, which the person can fix, not a server fault.
+		return Unprocessable("the bank accepted the certificate but refused the account or the permissions").WithCode("byok_bearer_refused")
 	case errors.Is(err, byokrpc.ErrSandboxBusy):
 		return New(429, TypeTooManyRequests, "Too Many Requests", "the shared sandbox is busy; try again in a moment").WithCode("byok_sandbox_busy")
 	case errors.Is(err, byok.ErrUnavailable), errors.Is(err, byok.ErrRateLimited):

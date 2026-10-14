@@ -48,7 +48,7 @@ func main() {
 	sealer, _ := byokseal.New(key)
 	h := &handler{
 		sealer:    sealer,
-		providers: map[string]byok.Provider{"inter": inter.NewProvider(inter.NewClient())},
+		providers: map[string]byok.Provider{"inter": inter.NewProvider(inter.NewClient(inter.WithLogger(slog.Default())))},
 		rules:     rules{forceSandbox: os.Getenv("BYOK_FORCE_SANDBOX") == "true"},
 		sandbox: sandboxLoader(params, os.Getenv("BYOK_SANDBOX_CREDENTIAL_PARAMS"),
 			os.Getenv("BYOK_SANDBOX_ACCOUNT_PARAM"), os.Getenv("BYOK_SANDBOX_PIX_KEY_PARAM")),
