@@ -133,17 +133,23 @@ func (s *ByokConnections) WithConnectionLimit(f func(ctx context.Context, accoun
 
 // checkConnectionLimit counts the organization's live connections to other
 // providers (one per provider: reconnecting the same one is not a new one).
-func (s *ByokConnections) checkConnectionLimit(ctx context.Context, accountOrgID, provider string) error {
+// It answers the guard version the count was read under: the create passes it
+// back, so two connections racing past the same count cannot both commit.
+func (s *ByokConnections) checkConnectionLimit(ctx context.Context, accountOrgID, provider string) ([]int64, error) {
 	if s.connLimit == nil {
-		return nil
+		return nil, nil
 	}
 	quota, err := s.connLimit(ctx, accountOrgID)
 	if err != nil || quota < 0 {
-		return err
+		return nil, err
+	}
+	guard, err := s.repo.ConnectionGuard(ctx, accountOrgID, true)
+	if err != nil {
+		return nil, err
 	}
 	list, err := s.repo.ListConnections(ctx, accountOrgID, true)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	var n int64
 	for _, c := range list {
@@ -152,9 +158,9 @@ func (s *ByokConnections) checkConnectionLimit(ctx context.Context, accountOrgID
 		}
 	}
 	if n >= quota {
-		return &billing.LimitError{Err: billing.ErrBankConnectionLimitReached, Quota: quota}
+		return nil, &billing.LimitError{Err: billing.ErrBankConnectionLimitReached, Quota: quota}
 	}
-	return nil
+	return []int64{guard}, nil
 }
 
 // BankConnectionLimit reads an organization's connection quota from its
@@ -240,7 +246,8 @@ func (s *ByokConnections) Connect(ctx context.Context, sp space.ResolvedSpace, i
 	if err := checkPair(in.CertPEM, in.KeyPEM, now); err != nil {
 		return nil, err
 	}
-	if err := s.checkConnectionLimit(ctx, sp.OrganizationID(), in.Provider); err != nil {
+	guard, err := s.checkConnectionLimit(ctx, sp.OrganizationID(), in.Provider)
+	if err != nil {
 		return nil, err
 	}
 	conn := &byokconn.Connection{AccountOrganizationID: sp.OrganizationID(), Livemode: true, Provider: in.Provider,
@@ -261,7 +268,7 @@ func (s *ByokConnections) Connect(ctx context.Context, sp space.ResolvedSpace, i
 	today := brcal.FromTime(now)
 	conn.FirstDay = today.AddMonths(-in.BackfillMonths)
 	conn.BackfillFrom = today
-	return s.create(ctx, sp, conn, actor, requestID, now)
+	return s.create(ctx, sp, conn, actor, requestID, now, guard...)
 }
 
 func (s *ByokConnections) apply(conn *byokconn.Connection, got byok.Connected, now time.Time) {
@@ -271,7 +278,7 @@ func (s *ByokConnections) apply(conn *byokconn.Connection, got byok.Connected, n
 	conn.LastTokenOKAt, conn.ConsecutiveFailures, conn.LastErrorCode = now.UTC(), 0, ""
 }
 
-func (s *ByokConnections) create(ctx context.Context, sp space.ResolvedSpace, conn *byokconn.Connection, actor, requestID string, now time.Time) (*byokconn.Connection, error) {
+func (s *ByokConnections) create(ctx context.Context, sp space.ResolvedSpace, conn *byokconn.Connection, actor, requestID string, now time.Time, guard ...int64) (*byokconn.Connection, error) {
 	accountKey := conn.AccountNumber
 	if conn.Kind == byokconn.KindSandboxShared {
 		accountKey = "sandbox"
@@ -295,7 +302,7 @@ func (s *ByokConnections) create(ctx context.Context, sp space.ResolvedSpace, co
 			conn.FirstDay = opened.AddDays(1)
 		}
 	}
-	if err := s.repo.CreateConnection(ctx, conn, actor, requestID, now); err != nil {
+	if err := s.repo.CreateConnection(ctx, conn, actor, requestID, now, guard...); err != nil {
 		return nil, err
 	}
 	if !conn.BackfillDone { // the shared sandbox has no history to backfill

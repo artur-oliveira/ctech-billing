@@ -197,3 +197,56 @@ func TestAPlanWithRoomConnectsASecondProvider(t *testing.T) {
 		t.Fatalf("%d %s", r.status, r.body)
 	}
 }
+
+// The connection cap is checked against a count read before the bank call; a
+// connection created meanwhile moves the guard, so the stale create loses
+// instead of passing the cap.
+func TestAConnectionCheckedAgainstAStaleCountLoses(t *testing.T) {
+	env := newCollectEnv(t, collectLive)
+	ctx := ctxT(t)
+	read, err := env.repo.ConnectionGuard(ctx, env.accountOrg, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	conn := func(provider string) *byokconn.Connection {
+		return &byokconn.Connection{AccountOrganizationID: env.accountOrg, Livemode: true, Provider: provider, ID: id.New(),
+			Kind: byokconn.KindMerchant, State: byokconn.StateActive, Version: 1, Sealed: "b1.fake",
+			Capabilities: []byok.Capability{byok.CapabilityStatement}}
+	}
+	if err := env.repo.CreateConnection(ctx, conn("other"), "u", "r", now()); err != nil {
+		t.Fatal(err)
+	}
+	if err := env.repo.CreateConnection(ctx, conn("third"), "u", "r", now(), read); !errors.Is(err, repositories.ErrTransactionConflict) {
+		t.Fatalf("a stale guard must lose: %v", err)
+	}
+	if fresh, err := env.repo.ConnectionGuard(ctx, env.accountOrg, true); err != nil || fresh != read+1 {
+		t.Fatalf("%d %v", fresh, err)
+	}
+	if err := env.repo.CreateConnection(ctx, conn("third"), "u", "r", now(), read+1); err != nil {
+		t.Fatalf("a fresh guard passes: %v", err)
+	}
+}
+
+// A tenant switched to BYOK before the counter existed has no counter row:
+// the first subscription counts the open ones instead of starting at zero.
+func TestAMissingSubscriptionCounterIsRebuilt(t *testing.T) {
+	env := newCapsEnv(t, "free") // 50
+	for range 3 {
+		if _, err := env.subscribeCustomer(t); err != nil {
+			t.Fatal(err)
+		}
+	}
+	pk, sk := repositories.SubscriptionCounterKey(env.tenant.ID)
+	if _, err := testDB.DeleteItem(ctxT(t), &dynamodb.DeleteItemInput{
+		TableName: aws.String(repositories.TableName(testCfg, repositories.TableByok)),
+		Key:       map[string]types.AttributeValue{"pk": &types.AttributeValueMemberS{Value: pk}, "sk": &types.AttributeValueMemberS{Value: sk}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := env.subscribeCustomer(t); err != nil {
+		t.Fatal(err)
+	}
+	if n := env.activeSubscriptions(t); n != 4 {
+		t.Fatalf("%d, want 4", n)
+	}
+}

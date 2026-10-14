@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 
@@ -168,13 +169,24 @@ func (r *SubscriptionRepository) Create(ctx context.Context, s *billing.Subscrip
 	counterAt := -1
 	if o.count {
 		counterAt = len(writes)
-		pk, sk := SubscriptionCounterKey(s.OrganizationID)
-		writes = append(writes, counterItem(r.byok, pk, sk, 1, o.cap, 0))
+		writes = append(writes, subscriptionCounterItem(r.byok, s.OrganizationID, o.cap))
 	}
 
 	err = r.base.TransactWrite(ctx, writes)
 	if codes := cancellationCodes(err); counterAt >= 0 && len(codes) > counterAt && codes[counterAt] == codeConditionFailed {
-		return &billing.LimitError{Err: billing.ErrSubscriptionLimitReached, Quota: o.cap}
+		// A tenant moved onto BYOK before the counter existed has no row:
+		// count its open subscriptions once and try again. No subscription
+		// commits while the row is missing, so the count is exact.
+		rebuilt, rerr := r.rebuildCounter(ctx, s.OrganizationID)
+		if rerr != nil {
+			return rerr
+		}
+		if rebuilt {
+			err = r.base.TransactWrite(ctx, writes)
+		}
+		if codes := cancellationCodes(err); len(codes) > counterAt && codes[counterAt] == codeConditionFailed {
+			return &billing.LimitError{Err: billing.ErrSubscriptionLimitReached, Quota: o.cap}
+		}
 	}
 	if IsConditionFailed(err) {
 		return fmt.Errorf("subscription %s already exists", s.ID)
@@ -218,7 +230,44 @@ func (r *SubscriptionRepository) byokUncount(ctx context.Context, s *billing.Sub
 		return nil, err
 	}
 	pk, sk := SubscriptionCounterKey(s.OrganizationID)
+	if row, err := r.byok.GetItem(ctx, pk, sk); err != nil || row == nil {
+		return nil, err // no counter yet: the next creation counts from the subscriptions
+	}
 	return txItems(counterItem(r.byok, pk, sk, -1, -1, 0)), nil
+}
+
+// subscriptionCounterItem counts one subscription on an existing counter row,
+// under cap when cap >= 0. A missing row fails the condition (rebuildCounter).
+func subscriptionCounterItem(b Base, tenantID string, cap int64) types.TransactWriteItem {
+	pk, sk := SubscriptionCounterKey(tenantID)
+	values := map[string]types.AttributeValue{":d": numberValue(1)}
+	cond := "attribute_exists(#n)"
+	if cap >= 0 {
+		cond += " AND #n < :limit"
+		values[":limit"] = numberValue(cap)
+	}
+	return b.BuildRawUpdateTxItem(pk, &sk, "ADD #n :d", cond, map[string]string{"#n": "n"}, values)
+}
+
+// rebuildCounter writes the counter from the open subscriptions when it has
+// no row; false when the row exists (the condition failed on the cap).
+func (r *SubscriptionRepository) rebuildCounter(ctx context.Context, tenantID string) (bool, error) {
+	pk, sk := SubscriptionCounterKey(tenantID)
+	if row, err := r.byok.GetItem(ctx, pk, sk); err != nil || row != nil {
+		return false, err
+	}
+	n, err := r.CountOpen(ctx, tenantID, true)
+	if err != nil {
+		return false, err
+	}
+	_, err = r.byok.PutItemRaw(ctx, &dynamodb.PutItemInput{
+		Item:                map[string]types.AttributeValue{"pk": str(pk), "sk": str(sk), "n": numberValue(n)},
+		ConditionExpression: aws.String("attribute_not_exists(pk)"),
+	})
+	if err != nil && !IsConditionFailed(err) { // another creation rebuilt it first
+		return false, err
+	}
+	return true, nil
 }
 
 // ListItems returns a subscription's items.
