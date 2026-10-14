@@ -29,7 +29,7 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/oklog/ulid/v2 v2.1.2
 	github.com/valkey-io/valkey-go v1.0.78
-	gopkg.aoctech.app/api-commons v1.21.0
+	gopkg.aoctech.app/api-commons v1.21.1
 )
 
 require (
