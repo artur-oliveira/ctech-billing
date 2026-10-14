@@ -68,7 +68,7 @@ function Invoice() {
 
   // Named by its number once there is one. Somebody paying two bills has two
   // tabs open, and "Fatura · CTech Billing" twice tells them nothing.
-  useDocumentTitle(query.data?.number ? t("portal.invoice.title", {number: query.data.number}) : null)
+  useDocumentTitle(query.data?.number ? t("portal.invoice.numbered", {number: query.data.number}) : null)
 
   // A bare /invoice with no id is the same dead end as an invoice that does not
   // exist, and saying so beats a query that never fires under a spinner.
@@ -102,7 +102,7 @@ function Invoice() {
       <header className="space-y-3">
         <BackLink/>
         <p className="text-sm text-muted-foreground">
-          {invoice.number ? t("portal.invoice.title", {number: invoice.number}) : t("portal.invoice.untitled")}
+          {invoice.number ? t("portal.invoice.numbered", {number: invoice.number}) : t("portal.invoice.untitled")}
         </p>
         <h1>
           <Money

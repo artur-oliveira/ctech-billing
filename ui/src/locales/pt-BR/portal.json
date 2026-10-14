@@ -31,6 +31,7 @@
   },
   "invoice": {
     "title": "{{description}} e mais {{count}}",
+    "numbered": "Fatura nº {{number}}",
     "untitled": "Fatura",
     "back": "Faturas",
     "paidOn": "Pago em {{date}}",
