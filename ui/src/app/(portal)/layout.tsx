@@ -2,7 +2,6 @@
 
 import {BottomNavSpacer, SidebarNav, Skeleton} from "@aoctech/ui"
 import {useQuery} from "@tanstack/react-query"
-import {FileText, House, Repeat} from "lucide-react"
 import {usePathname, useRouter} from "next/navigation"
 import {useEffect} from "react"
 import {useTranslation} from "react-i18next"
@@ -19,9 +18,9 @@ import {useAuth} from "@/lib/auth/AuthContext"
 import {usePortalSpace} from "@/lib/portal/space"
 
 const NAV = [
-  {href: "/dashboard", labelKey: "portal.nav.home", icon: <House/>},
-  {href: "/invoices", labelKey: "portal.nav.invoices", icon: <FileText/>},
-  {href: "/subscriptions", labelKey: "portal.nav.subscriptions", icon: <Repeat/>},
+  {href: "/dashboard", labelKey: "portal.nav.home"},
+  {href: "/invoices", labelKey: "portal.nav.invoices"},
+  {href: "/subscriptions", labelKey: "portal.nav.subscriptions"},
 ] as const
 
 /**
@@ -78,7 +77,7 @@ export default function PortalLayout({children}: LayoutProps<"/">) {
       home="/dashboard"
       density="comfortable"
       nav={!noAccount && <SidebarNav label={t("portal.nav.label")} renderLink={renderLink}
-        groups={[{items: NAV.map(item => ({href: item.href, label: t(item.labelKey), icon: item.icon, active: active(item.href)}))}]}/>}
+        groups={[{items: NAV.map(item => ({href: item.href, label: t(item.labelKey), active: active(item.href)}))}]}/>}
       // Whose bills, for a person who also runs an organization; renders
       // nothing for everybody else. Stays with no billing account, since an
       // admin with nothing of their own still has the organization's.

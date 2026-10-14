@@ -1,8 +1,6 @@
 "use client"
 
 import {SidebarNav, type SidebarNavGroup} from "@aoctech/ui"
-import {CalendarDays, ChartColumn, CreditCard, Gauge, House, Inbox, Landmark, Repeat, ScrollText, Upload, Wallet} from "lucide-react"
-import type {ReactNode} from "react"
 import {usePathname} from "next/navigation"
 import {useTranslation} from "react-i18next"
 
@@ -57,7 +55,7 @@ export function FinanceNav({canConfigure = false}: {canConfigure?: boolean}) {
   const group = (keys: string[], label?: string): SidebarNavGroup => ({
     label,
     items: visible.filter(s => keys.includes(s.key)).map(s => ({
-      href: s.href, label: t(`finance.nav.${s.key}`), icon: FINANCE_ICONS[s.key], active: s.href === current,
+      href: s.href, label: t(`finance.nav.${s.key}`), active: s.href === current,
     })),
   })
   const groups = [
@@ -72,10 +70,4 @@ export function FinanceNav({canConfigure = false}: {canConfigure?: boolean}) {
 export function SpaceFinanceNav() {
   const {can} = useFinanceSpaces()
   return <FinanceNav canConfigure={can("finance.configure")}/>
-}
-
-const FINANCE_ICONS: Record<string, ReactNode> = {
-  overview: <House/>, inbox: <Inbox/>, bills: <CalendarDays/>, statement: <ScrollText/>,
-  recurrences: <Repeat/>, cards: <CreditCard/>, import: <Upload/>,
-  reports: <ChartColumn/>, accounts: <Wallet/>, plan: <Gauge/>, connections: <Landmark/>,
 }

@@ -2,7 +2,7 @@
 
 import {type RenderLink, UserMenu} from "@aoctech/ui"
 import {useQuery, useQueryClient} from "@tanstack/react-query"
-import {FlaskConical, Languages, LayoutGrid, Radio, Receipt, Wallet} from "lucide-react"
+import {FlaskConical, LayoutGrid, Radio, Receipt, Wallet} from "lucide-react"
 import Link from "next/link"
 import {useTranslation} from "react-i18next"
 
@@ -14,8 +14,6 @@ import {setMode} from "@/lib/console/mode"
 import {useMerchantOrg} from "@/lib/console/useMerchantOrg"
 import {useMode} from "@/lib/console/useMode"
 import {FINANCE_HREF} from "@/lib/finance/href"
-import {changeAppLanguage} from "@/lib/i18n"
-import {normalizeLocale, persistLocalePreference} from "@/lib/locale"
 
 const renderLink: RenderLink = props => <Link {...props}/>
 
@@ -34,7 +32,7 @@ const renderLink: RenderLink = props => <Link {...props}/>
  * e-mail; with no billing account behind it, the id_token's name is used and
  * there is no e-mail to show.
  */
-export function AccountMenu({view, trigger = "avatar"}: {view: "portal" | "console" | "finance"; trigger?: "avatar" | "row"}) {
+export function AccountMenu({view}: {view: "portal" | "console" | "finance"}) {
   const {t, i18n} = useTranslation()
   const mode = useMode()
   const org = useMerchantOrg()
@@ -48,7 +46,6 @@ export function AccountMenu({view, trigger = "avatar"}: {view: "portal" | "conso
     setMode(next)
     void queryClient.removeQueries({queryKey: ["console", org, mode]})
   }
-  const nextLanguage = normalizeLocale(i18n.language) === "en" ? "pt-BR" : "en"
   const {name: signedInName, authenticated, logout} = useAuth()
 
   const {data: session} = useQuery({
@@ -87,7 +84,7 @@ export function AccountMenu({view, trigger = "avatar"}: {view: "portal" | "conso
       locale={i18n.language}
       renderLink={renderLink}
       // 32px in the compact console is for a mouse; a finger gets 44.
-      className={trigger === "row" ? "touch:max-md:size-11" : "touch:size-11"}
+      className="touch:size-11"
       views={[
         {label: t("common.account.portal"), icon: <Receipt/>, href: "/dashboard", current: view === "portal"},
         // Only for an operator: the console is invoicing, and somebody with no
@@ -104,15 +101,6 @@ export function AccountMenu({view, trigger = "avatar"}: {view: "portal" | "conso
           {label: t("console.mode.test"), icon: <FlaskConical/>, current: mode === "test", onClick: () => chooseMode("test")},
         ],
       }]}
-      items={[{
-        label: nextLanguage === "en" ? "English" : "Português",
-        icon: <Languages/>,
-        onClick: () => {
-          persistLocalePreference(nextLanguage)
-          void changeAppLanguage(nextLanguage)
-        },
-      }]}
-      trigger={trigger}
       onSignOut={logout}
     />
   )

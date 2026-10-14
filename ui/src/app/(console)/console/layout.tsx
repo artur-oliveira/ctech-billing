@@ -2,9 +2,7 @@
 
 import {BottomNavSpacer, Button, ErrorState, SidebarNav, Skeleton, type SidebarNavGroup} from "@aoctech/ui"
 import {useQuery} from "@tanstack/react-query"
-import {Building2, CreditCard, FileText, Gauge, House, KeyRound, Landmark, Package, Settings, Users, Webhook} from "lucide-react"
 import {usePathname, useRouter} from "next/navigation"
-import type {ReactNode} from "react"
 import {useEffect} from "react"
 import {useTranslation} from "react-i18next"
 
@@ -102,7 +100,7 @@ export default function ConsoleLayout({children}: LayoutProps<"/console">) {
     .map(group => ({
       label: group.label && t(group.label),
       items: group.items.filter(href => nav.some(item => item.href === href)).map(href => ({
-        href, label: t(nav.find(item => item.href === href)!.label), icon: NAV_ICONS[href], active: isCurrent(href),
+        href, label: t(nav.find(item => item.href === href)!.label), active: isCurrent(href),
       })),
     }))
     .filter(group => group.items.length > 0)
@@ -167,19 +165,6 @@ const NAV_GROUPS: {label?: string; items: string[]}[] = [
   {label: "console.nav.groupOrganization", items: ["/console/settings", "/console/applications"]},
 ]
 
-const NAV_ICONS: Record<string, ReactNode> = {
-  "/console/overview": <House/>,
-  "/console/invoices": <FileText/>,
-  "/console/subscriptions": <CreditCard/>,
-  "/console/customers": <Users/>,
-  "/console/catalog": <Package/>,
-  "/console/connections": <Landmark/>,
-  "/console/plan": <Gauge/>,
-  "/console/credentials": <KeyRound/>,
-  "/console/webhooks": <Webhook/>,
-  "/console/settings": <Settings/>,
-  "/console/applications": <Building2/>,
-}
 
 function ShellSkeleton() {
   return (

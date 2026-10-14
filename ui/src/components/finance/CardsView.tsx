@@ -146,10 +146,10 @@ function CardHeader({card}: {card: Card}) {
     <div data-card-header className="flex items-center gap-3 border-b border-border pb-3">
       <CardBrandMark brand={card.brand ?? "other"} className="h-7 w-auto text-muted-foreground"/>
       <div className="min-w-0">
-        <h1 className="flex flex-wrap items-baseline gap-x-2 text-lg font-semibold tracking-[-0.01em] text-foreground">
+        <h2 className="flex flex-wrap items-baseline gap-x-2 text-base font-semibold tracking-[-0.01em] text-foreground">
           <span className="min-w-0 [overflow-wrap:anywhere]">{card.name}</span>
           {card.last4 && <span className="text-sm font-normal tabular-nums text-muted-foreground">{maskedLast4(card.last4)}</span>}
-        </h1>
+        </h2>
         <p className="text-xs text-muted-foreground">{t("finance.cards.cycle", {closing: card.closing_day, due: card.due_day})}</p>
       </div>
     </div>
