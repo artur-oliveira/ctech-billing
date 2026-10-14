@@ -96,4 +96,3 @@ func TestAnInvoiceIsFoundByTheCallersReference(t *testing.T) {
 		t.Fatal("not an invoice")
 	}
 }
-
