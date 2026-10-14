@@ -12,6 +12,12 @@
 
 Repos: `P_COMMONS=/home/artur-revgas/Documents/Projects/Ctech/ctech-go-common` (the repo of the module `gopkg.aoctech.app/api-commons`; it is already at v1.22.0 (the opt-in raw Inter response trace, the full scope vocabulary, the 50-per-page callback listing), so this plan's release is the next free tag, `v1.23.0`), `P_BILL=/home/artur-revgas/Documents/Projects/Ctech/ctech-billing` (Go in `P_BILL/api`). **Task 0 (live proof) comes first and needs no new code.** Tasks 0b–3 run in `P_COMMONS` and end with a tagged `v1.23.0`; Billing tasks (4 onward) start only after the tag exists.
 
+## Status (2026-10-14)
+
+Done and deployed: Task 0 (live connect, rail switch, R$ 0,10 collected), 0b, 1 (payouts in api-commons v1.23.0), 2 (payer on the statement line), 4 (payer on the attempt, `payer_match`, pulled within seconds of the webhook), 5 (one-off invoice route and `GET /invoices/by-reference/:reference`), 5b (`POST /invoices/:id/credit-notes` for service clients), 6 and 7 (payouts: entity, service, routes, internal scopes, sweep, per-organization gate at the outbound Lambda), 8 (`docs/runbooks/tenant-zero-inter-rail.md`), 9 (`TestTheDepositAndWithdrawalRoundTrip`). Differences from the text below: the credit-note body is the console's (`amount`, `reason`, `refund_via_pix`); payout scopes are `internal:billing:payouts-write|read`; the payer source is the statement line (spec § 6).
+
+**Open before P2 pays real users:** the first live payout (runbook § "First live payout") to read Inter's real `status` strings, and `payoutStatus` adjusted if they differ.
+
 ## Global Constraints
 
 - Routes in English, Portuguese only in i18n text (project memory). Scopes follow `billing:<resource>:<action>`; internal ones `internal:billing:<name>`.
