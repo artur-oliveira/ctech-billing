@@ -78,9 +78,9 @@ export function ApplyForm({onApplied}: {onApplied: (a: MerchantApplication) => v
   }
 
   return (
-    <form className="max-w-xl space-y-5" noValidate onSubmit={e => { e.preventDefault(); submit() }}>
+    <form className="grid gap-5 sm:grid-cols-2" noValidate onSubmit={e => { e.preventDefault(); submit() }}>
       {byCode ? (
-        <div className="space-y-2">
+        <div className="space-y-2 sm:col-span-2">
           <Field label={t("console.apply.companyId")} htmlFor="apply-company-id" hint={t("console.apply.companyIdHint")} error={errorOf("company_id")}>
             <Input id="apply-company-id" autoComplete="off" spellCheck={false} aria-invalid={!!errorOf("company_id") || undefined}
               value={values.company_id} onChange={e => set("company_id", e.target.value)}/>
@@ -90,7 +90,7 @@ export function ApplyForm({onApplied}: {onApplied: (a: MerchantApplication) => v
           </Button>
         </div>
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-2 sm:col-span-2">
           <Field label={t("console.apply.company")} htmlFor="apply-company" hint={t("console.apply.companyHint")} error={errorOf("company_id")}>
             <Select {...selectCopy()}
               id="apply-company"
@@ -112,7 +112,7 @@ export function ApplyForm({onApplied}: {onApplied: (a: MerchantApplication) => v
           )}
         </div>
       )}
-      <Field label={t("console.apply.about")} htmlFor="apply-about" hint={t("console.apply.aboutHint")} error={errorOf("description")}>
+      <Field className="sm:col-span-2" label={t("console.apply.about")} htmlFor="apply-about" hint={t("console.apply.aboutHint")} error={errorOf("description")}>
         <Textarea id="apply-about" maxLength={limits.text.applicationDescription} rows={4}
           placeholder={t("console.apply.aboutPlaceholder")} aria-invalid={!!errorOf("description") || undefined}
           value={values.description} onChange={e => set("description", e.target.value)}/>
@@ -133,14 +133,14 @@ export function ApplyForm({onApplied}: {onApplied: (a: MerchantApplication) => v
           options={MONTHLY_VOLUMES.map(v => ({value: v, label: t(`console.volume.${v}`)}))}
         />
       </Field>
-      <Field label={t("console.apply.contact")} htmlFor="apply-contact" hint={t("console.apply.contactHint")} error={errorOf("contact_email")}>
+      <Field className="sm:col-span-2" label={t("console.apply.contact")} htmlFor="apply-contact" hint={t("console.apply.contactHint")} error={errorOf("contact_email")}>
         <Input id="apply-contact" type="email" inputMode="email" autoComplete="email" maxLength={limits.text.email}
           aria-invalid={!!errorOf("contact_email") || undefined}
           value={values.contact_email} onChange={e => set("contact_email", e.target.value)}/>
       </Field>
-      {fe.general && <p role="alert" className="text-sm text-danger">{fe.general}</p>}
+      {fe.general && <p role="alert" className="text-sm text-danger sm:col-span-2">{fe.general}</p>}
       {/* Primary first on a phone (a full-width column), on the right from sm. */}
-      <div className="flex flex-col gap-2 border-t border-border pt-5 sm:flex-row-reverse sm:justify-start">
+      <div className="flex flex-col gap-2 border-t border-border pt-5 sm:col-span-2 sm:flex-row-reverse sm:justify-start">
         <Button type="submit" variant="brand" disabled={apply.isPending} className="max-sm:w-full">{t("console.apply.submit")}</Button>
         <Button type="button" variant="ghost" className="max-sm:w-full" onClick={() => router.back()}>{t("console.apply.cancel")}</Button>
       </div>

@@ -74,7 +74,7 @@ export default function ConsoleCustomersPage() {
                   <td data-numeric className="py-2 pr-4 text-muted-foreground">
                     {customer.tax_id_masked || "—"}
                   </td>
-                  <td className="py-2 text-muted-foreground">{customer.external_ref || "—"}</td>
+                  <td className="truncate py-2 font-mono text-xs text-muted-foreground" title={customer.external_ref}>{customer.external_ref || "—"}</td>
                 </tr>
               ))}
             </tbody>

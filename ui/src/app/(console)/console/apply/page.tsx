@@ -7,6 +7,7 @@ import {useEffect} from "react"
 import {useTranslation} from "react-i18next"
 
 import {ApplicationSubmitted} from "@/components/console/ApplicationSubmitted"
+import {ApplySteps} from "@/components/console/ApplySteps"
 import {ApplyForm} from "@/components/console/ApplyForm"
 import {statusOf} from "@/lib/api/client"
 import {consoleKeys, getMerchantApplication} from "@/lib/api/console"
@@ -45,12 +46,16 @@ export default function ApplyPage() {
   if (application?.status === "pending") return <ApplicationSubmitted application={application}/>
 
   return (
-    <div className="space-y-6">
+    <div className="max-w-5xl space-y-6">
       <PageHeader title={t("console.apply.title")} description={t("console.apply.description", {name: organization.display_name})}/>
-      <ApplyForm onApplied={app => {
-        queryClient.setQueryData(consoleKeys.merchantApplication(scope), app)
-        void queryClient.invalidateQueries({queryKey: consoleKeys.session()})
-      }}/>
+      {/* The form, and beside it from lg what happens once it is sent. */}
+      <div className="grid gap-10 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] lg:gap-16">
+        <ApplyForm onApplied={app => {
+          queryClient.setQueryData(consoleKeys.merchantApplication(scope), app)
+          void queryClient.invalidateQueries({queryKey: consoleKeys.session()})
+        }}/>
+        <ApplySteps className="lg:pt-1"/>
+      </div>
     </div>
   )
 }

@@ -74,10 +74,10 @@ export function PortalSpaceSwitch() {
   }
 
   return (
-    <div data-slot="portal-space-switch" className="order-3 w-full min-w-0 sm:order-2 sm:ml-auto sm:w-48 sm:max-w-56">
+    <div data-slot="portal-space-switch" className="w-full min-w-0">
       <Select {...selectCopy()}
         aria-label={t("portal.space.label")}
-        className="h-9 w-full min-w-0"
+        className="w-full min-w-0"
         value={current}
         onValueChange={v => void choose(v)}
         options={spaces.map(s => ({

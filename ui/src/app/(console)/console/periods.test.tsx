@@ -34,7 +34,7 @@ describe("console periods", () => {
     } as unknown as Awaited<ReturnType<typeof consoleApi.listConsoleInvoices>>)
     wrap(<ConsoleInvoicesPage/>)
     expect(await screen.findByText("A O CARVALHO TECH")).toBeInTheDocument()
-    expect(screen.getByText(/10\/10\/2026.*10\/11\/2026/)).toBeInTheDocument()
+    expect(screen.getByText(/10\/10(\/26)? • 10\/11(\/26)?/)).toBeInTheDocument()
   })
 
   it("lists a subscription with the API's current period", async () => {
@@ -49,6 +49,6 @@ describe("console periods", () => {
     } as unknown as Awaited<ReturnType<typeof consoleApi.listConsoleSubscriptions>>)
     wrap(<ConsoleSubscriptionsPage/>)
     // Twice: the table, and the list a phone gets instead.
-    expect(await screen.findAllByText(/10\/10\/2026.*10\/11\/2026/)).toHaveLength(2)
+    expect(await screen.findAllByText(/10\/10(\/26)? • 10\/11(\/26)?/)).toHaveLength(2)
   })
 })

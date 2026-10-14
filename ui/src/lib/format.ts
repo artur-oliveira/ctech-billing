@@ -52,6 +52,23 @@ export const weekdayShort = (iso: IsoDate) =>
 export const dayMonth = (iso: IsoDate) =>
   intl("day-month-numeric", l => new Intl.DateTimeFormat(l, {day: "2-digit", month: "2-digit"})).format(civil(iso))
 
+/** Today's civil date in São Paulo, `YYYY-MM-DD`. */
+export const todayIso = (): IsoDate =>
+  new Intl.DateTimeFormat("en-CA", {timeZone: "America/Sao_Paulo"}).format(new Date()) as IsoDate
+
+/**
+ * "08/09" in this year, "31/12/25" in another: a row's date in a list whose
+ * filter or heading already names the period. `today` is for tests.
+ */
+export function compactDate(iso: IsoDate, today: IsoDate = todayIso()): string {
+  if (iso.slice(0, 4) === today.slice(0, 4)) return dayMonth(iso)
+  return intl("short-yy", l => new Intl.DateTimeFormat(l, {day: "2-digit", month: "2-digit", year: "2-digit"})).format(civil(iso))
+}
+
+/** "08/09 • 07/10": a billing period in a list row. */
+export const compactPeriod = (start: IsoDate, end: IsoDate, today: IsoDate = todayIso()) =>
+  `${compactDate(start, today)} • ${compactDate(end, today)}`
+
 /**
  * Whole calendar days, in the reader's time zone, from now until the instant
  * (an RFC 3339 timestamp): 0 when it falls later today, 1 tomorrow.

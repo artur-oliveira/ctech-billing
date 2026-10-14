@@ -19,7 +19,10 @@
   "applications": "Applications",
   "more": "More",
   "moreTitle": "More sections",
-  "groupMore": "Manage"
+  "groupMore": "Manage",
+  "groupCollection": "Collection",
+  "groupIntegrations": "Integrations",
+  "groupOrganization": "Organization"
  },
  "shell": {
   "testBanner": "Test mode. Nothing here charges real money."
@@ -142,12 +145,13 @@
   "status": "Status",
   "period": "Period",
   "due": "Due",
-  "attempts": "Tries",
   "total": "Total",
   "open": "Open",
   "numbered": "#{{number}}",
   "unnumbered": "no number",
-  "hasMore": "The month has more invoices than listed."
+  "hasMore": "The month has more invoices than listed.",
+  "attemptN_one": "attempt {{count}}",
+  "attemptN_other": "attempt {{count}}"
  },
  "invoice": {
   "title": "Invoice #{{number}}",
@@ -357,7 +361,22 @@
   "rejectedTitle": "Live mode not approved",
   "rejectedBody": "Test mode is still available. See the reason and apply again whenever you want.",
   "toTest": "Go to test mode",
-  "applyAgain": "Apply again"
+  "applyAgain": "Apply again",
+  "how": "How it works",
+  "steps": {
+   "send": {
+    "title": "Tell us about the business",
+    "body": "Pick the company that bills and say what it sells."
+   },
+   "test": {
+    "title": "Integrate in test mode",
+    "body": "Ready as soon as you send the request."
+   },
+   "live": {
+    "title": "Bill for real",
+    "body": "Live mode opens after our review."
+   }
+  }
  },
  "apply": {
   "title": "Apply for billing",

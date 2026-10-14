@@ -193,7 +193,7 @@ function Detail() {
           {invoice.subscription_id && (
             <Fact
               label={t("console.invoice.subscription")}
-              value={invoice.subscription_id}
+              value={query.data.subscription_name || invoice.subscription_id}
               href={`/console/subscription?id=${invoice.subscription_id}`}
             />
           )}

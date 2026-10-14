@@ -12,7 +12,7 @@ import {ErrorBlock} from "@/components/portal/ErrorBlock"
 import {consoleKeys, listConsoleSubscriptions} from "@/lib/api/console"
 import type {ConsoleSubscriptionRow, Recurrence} from "@/lib/api/consoleTypes"
 import {useConsoleScope} from "@/lib/console/scope"
-import {shortDate} from "@/lib/format"
+import {compactPeriod} from "@/lib/format"
 
 /**
  * C4 — the subscriptions.
@@ -78,7 +78,7 @@ export default function ConsoleSubscriptionsPage() {
                 </p>
                 <p className="text-xs text-muted-foreground">
                   <span data-numeric>
-                    {shortDate(sub.current_period.period_start)} – {shortDate(sub.current_period.period_end)}
+                    {compactPeriod(sub.current_period.period_start, sub.current_period.period_end)}
                   </span>
                   {" • "}
                   {recurrenceLabel(t, sub.recurrence)}
@@ -92,24 +92,24 @@ export default function ConsoleSubscriptionsPage() {
           </ul>
 
           <div className="hidden overflow-x-auto sm:block">
-            <table className="w-full min-w-[46rem] border-collapse text-sm">
+            <table className="w-full min-w-[40rem] table-fixed border-collapse text-sm">
               <thead>
                 <tr className="border-b border-border text-left text-xs text-muted-foreground">
                   <th scope="col" className="py-2 pr-4 font-medium">{t("console.subscriptions.plan")}</th>
                   <th scope="col" className="py-2 pr-4 font-medium">{t("console.subscriptions.customer")}</th>
-                  <th scope="col" className="w-56 py-2 pr-4 font-medium">{t("console.subscriptions.status")}</th>
-                  <th scope="col" className="w-52 py-2 pr-4 font-medium">{t("console.subscriptions.period")}</th>
-                  <th scope="col" className="w-32 py-2 pr-4 font-medium">{t("console.subscriptions.recurrence")}</th>
+                  <th scope="col" className="w-48 py-2 pr-4 font-medium">{t("console.subscriptions.status")}</th>
+                  <th scope="col" className="w-32 py-2 pr-4 font-medium">{t("console.subscriptions.period")}</th>
+                  <th scope="col" className="w-28 py-2 pr-4 font-medium max-lg:hidden">{t("console.subscriptions.recurrence")}</th>
                   <th scope="col" className="w-24 py-2 font-medium">{t("console.subscriptions.access")}</th>
                 </tr>
               </thead>
               <tbody>
                 {subscriptions.map(sub => (
                   <tr key={sub.id} className="border-b border-border last:border-0 hover:bg-surface">
-                    <td className="max-w-0 truncate py-2 pr-4">
+                    <td className="truncate py-2 pr-4" title={sub.plan_name || sub.id}>
                       <PlanLink sub={sub}/>
                     </td>
-                    <td className="max-w-0 truncate py-2 pr-4">
+                    <td className="truncate py-2 pr-4" title={sub.customer_name || sub.customer_id}>
                       <Link
                         href={`/console/customer?id=${sub.customer_id}`}
                         className={`underline-offset-4 hover:underline ${
@@ -125,10 +125,10 @@ export default function ConsoleSubscriptionsPage() {
                         endingAtPeriodEnd={sub.cancel_at_period_end}
                       />
                     </td>
-                    <td data-numeric className="py-2 pr-4 text-muted-foreground">
-                      {shortDate(sub.current_period.period_start)} – {shortDate(sub.current_period.period_end)}
+                    <td data-numeric className="truncate py-2 pr-4 text-muted-foreground">
+                      {compactPeriod(sub.current_period.period_start, sub.current_period.period_end)}
                     </td>
-                    <td className="py-2 pr-4 text-muted-foreground">
+                    <td className="truncate py-2 pr-4 text-muted-foreground max-lg:hidden">
                       {recurrenceLabel(t, sub.recurrence)}
                     </td>
                     <td className="py-2">

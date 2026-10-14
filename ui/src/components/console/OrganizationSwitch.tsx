@@ -21,7 +21,7 @@ export function OrganizationSwitch({organizations, selected}: {organizations: Me
   return (
     <Select {...selectCopy()}
       aria-label={t("console.organization.label")}
-      className="min-w-36 max-w-64 max-sm:max-w-none max-sm:flex-1"
+      className="w-full min-w-0"
       value={selected.organization_id}
       onValueChange={v => {
         if (v === selected.organization_id) return
