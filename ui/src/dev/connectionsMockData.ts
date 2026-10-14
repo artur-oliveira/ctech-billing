@@ -27,6 +27,8 @@ const PROVIDERS: ProviderInfo[] = [{
         {key: "webhook_write", scopes: ["webhook.write"]}, {key: "webhook_read", scopes: ["webhook.read"]},
       ]},
       {code: "recurring", permissions: [{key: "recurrence_read", scopes: []}, {key: "recurrence_write", scopes: []}]},
+      {code: "collection", permissions: [{key: "boleto_read", scopes: []}, {key: "boleto_write", scopes: []}]},
+      {code: "payments", permissions: [{key: "banking_webhook_write", scopes: []}, {key: "banking_webhook_read", scopes: []}]},
       {code: "statement", permissions: [{key: "statement_read", scopes: ["extrato.read"]}]},
     ],
   },

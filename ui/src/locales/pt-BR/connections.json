@@ -37,9 +37,9 @@
       },
       "scopes": {
         "title": "Escopos.",
-        "body": "Em “Quais atividades pretende realizar?”, marque só as três abaixo e, dentro de cada uma, todas estas permissões (as de recorrência e as extras do Pix ainda não são usadas, mas evitam criar outra integração depois):"
+        "body": "Em “Quais atividades pretende realizar?”, marque só as cinco abaixo e, dentro de cada uma, todas estas permissões (as de recorrência, as extras do Pix e as de boleto ainda não são usadas, mas evitam criar outra integração depois):"
       },
-      "noPayments": "Não marque Cobranças nem Pagamentos nem Fórum Inter: a CTech não usa.",
+      "noPayments": "Em Pagamentos, marque só os webhooks: não marque pagamentos de Pix, contas ou tributos. Não marque Fórum Inter.",
       "terms": "Marque também “Li e concordo com todos os Termos e condições de uso das APIs”.",
       "questionnaire": {
         "title": "Perguntas do Inter.",
@@ -259,6 +259,14 @@
       "recurring": {
         "title": "Recebimentos recorrentes",
         "hint": "Cobranças recorrentes e Pix Automático."
+      },
+      "collection": {
+        "title": "Cobranças",
+        "hint": "Emitir boletos com ou sem Pix."
+      },
+      "payments": {
+        "title": "Pagamentos",
+        "hint": "Pagar contas, fornecedores e despesas."
       }
     },
     "permission": {
@@ -286,7 +294,11 @@
       "recurrence_webhook_read": "Consultar webhooks de recorrências",
       "recurrence_webhook_write": "Criar e editar webhooks de recorrências",
       "recurring_charge_webhook_read": "Consultar webhooks de cobranças recorrentes",
-      "recurring_charge_webhook_write": "Criar e editar webhooks de cobranças recorrentes"
+      "recurring_charge_webhook_write": "Criar e editar webhooks de cobranças recorrentes",
+      "boleto_read": "Consultar cobranças e exportar para PDF",
+      "boleto_write": "Emitir e cancelar cobrança",
+      "banking_webhook_write": "Criar e editar webhooks",
+      "banking_webhook_read": "Consultar webhooks"
     }
   }
 }

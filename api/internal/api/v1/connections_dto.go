@@ -157,6 +157,13 @@ func providerCatalog() []providerInfo {
 					{Key: "recurrence_webhook_read"}, {Key: "recurrence_webhook_write"},
 					{Key: "recurring_charge_webhook_read"}, {Key: "recurring_charge_webhook_write"},
 				}},
+				{Code: "collection", Permissions: []guidePermission{
+					{Key: "boleto_read"}, {Key: "boleto_write"},
+				}},
+				// Only the webhook permissions: the payment ones stay with CTech's own integration.
+				{Code: "payments", Permissions: []guidePermission{
+					{Key: "banking_webhook_write"}, {Key: "banking_webhook_read"},
+				}},
 				{Code: "statement", Permissions: []guidePermission{
 					{Key: "statement_read", Scopes: []string{"extrato.read"}},
 				}},
