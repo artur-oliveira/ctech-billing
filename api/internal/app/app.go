@@ -635,6 +635,16 @@ func BuildByokJob(ctx context.Context, cfg *config.Config) (*services.ByokConnec
 	// Part B (spec § 5 steps 1 and 4): the charge sweep settles through the
 	// same collector as the api, Finanças and the settlement bus included.
 	orgs := repositories.NewOrganizationRepository(db, cfg)
+	setup, collector, payments, repo := byokSetup(ctx, cfg, db, c, conns, st, orgs)
+	usage := services.NewByokUsage(repo, payments, orgs, newBillingPlans(db, cfg), newSubscriptions(db, cfg),
+		repositories.NewCatalogRepository(db, cfg), repositories.NewUsageRepository(db, cfg), cfg.PortalOrganizationID)
+	return conns, st, repo, c, services.NewByokSweep(collector, payments, orgs, setup, repo, conns, nil).WithUsage(usage), nil
+}
+
+// byokSetup is the collection set-up and the collector it settles through,
+// wired the way the api and the hourly job both need them.
+func byokSetup(ctx context.Context, cfg *config.Config, db *dynamodb.Client, c cache.Backend, conns *services.ByokConnections,
+	st *services.ByokStatement, orgs *repositories.OrganizationRepository) (*services.ByokCollectionSetup, *services.ByokCollector, *repositories.PaymentRepository, *repositories.ByokRepository) {
 	var bus settlement.Bus
 	if cfg.RedisURL != "" {
 		if vb, err := settlement.NewValkeyBus(cfg.RedisURL); err == nil {
@@ -648,9 +658,28 @@ func BuildByokJob(ctx context.Context, cfg *config.Config) (*services.ByokConnec
 	webhooks := services.NewByokWebhooks(repo, payments, collector, c)
 	setup := services.NewByokCollectionSetup(conns, repo, orgs, payments, collector, webhooks, cfg.ByokHooksHost, cfg.PortalOrganizationID).
 		WithSubscriptions(newSubscriptions(db, cfg))
-	usage := services.NewByokUsage(repo, payments, orgs, newBillingPlans(db, cfg), newSubscriptions(db, cfg),
-		repositories.NewCatalogRepository(db, cfg), repositories.NewUsageRepository(db, cfg), cfg.PortalOrganizationID)
-	return conns, st, repo, c, services.NewByokSweep(collector, payments, orgs, setup, repo, conns, nil).WithUsage(usage), nil
+	return setup, collector, payments, repo
+}
+
+// BuildByokOperator wires what cmd/byok needs for an operator action on a
+// tenant's collection rail (spec § 12.6): the set-up and the tenant
+// repository. No HTTP app is built.
+func BuildByokOperator(ctx context.Context, cfg *config.Config) (*services.ByokCollectionSetup, *repositories.OrganizationRepository, error) {
+	db, err := newDynamoDB(ctx, cfg)
+	if err != nil {
+		return nil, nil, err
+	}
+	c := newCache(cfg)
+	conns, st, err := BuildByok(ctx, cfg, db, c, repositories.NewLedgerRepository(db, cfg))
+	if err != nil {
+		return nil, nil, err
+	}
+	if conns == nil {
+		return nil, nil, fmt.Errorf("BYOK_OUTBOUND_FUNCTION is not set")
+	}
+	orgs := repositories.NewOrganizationRepository(db, cfg)
+	setup, _, _, _ := byokSetup(ctx, cfg, db, c, conns, st, orgs)
+	return setup, orgs, nil
 }
 
 // byokCounter counts the BYOK limiters in Valkey when the app has it, so every

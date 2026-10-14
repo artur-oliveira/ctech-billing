@@ -241,6 +241,27 @@ func (s *ByokCollectionSetup) UseForCollection(ctx context.Context, sp space.Res
 	if s.tenant0 != "" && tenant.ID == s.tenant0 {
 		return ErrTenantZeroRail
 	}
+	return s.useForCollection(ctx, sp, tenant, provider, settings, actor, requestID, now)
+}
+
+// OperatorUseForCollection is the same move for tenant zero (spec § 12.6): CTech
+// billing its own customers through its own bank connection. It is not
+// reachable from any route; cmd/byok -tenant-rail calls it, so the move is
+// always an audited action by a named operator.
+func (s *ByokCollectionSetup) OperatorUseForCollection(ctx context.Context, sp space.ResolvedSpace, tenant *billing.Organization, provider string,
+	settings billing.CollectionSettings, actor, requestID string, now time.Time) error {
+	return s.useForCollection(ctx, sp, tenant, provider, settings, actor, requestID, now)
+}
+
+// OperatorLeaveCollection puts a tenant back on the wallet rail, still
+// collecting (the gate stays enabled): the way back from OperatorUseForCollection.
+// Open BYOK charges stay payable and the sweep keeps confirming them.
+func (s *ByokCollectionSetup) OperatorLeaveCollection(ctx context.Context, tenant *billing.Organization, actor, requestID string, now time.Time) error {
+	return s.orgs.SetPayoutRail(ctx, tenant, billing.RailWallet, "", billing.PayoutEnabled, actor, requestID, now)
+}
+
+func (s *ByokCollectionSetup) useForCollection(ctx context.Context, sp space.ResolvedSpace, tenant *billing.Organization, provider string,
+	settings billing.CollectionSettings, actor, requestID string, now time.Time) error {
 	if err := settings.Validate(); err != nil {
 		return err
 	}
