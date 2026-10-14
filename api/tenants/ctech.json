@@ -22,26 +22,35 @@
     {
       "id": "prod_dfe_free",
       "name": "DF-e Free",
-      "owner_key": "dfe"
+      "owner_key": "dfe",
+      "active": false
     },
     {
       "id": "prod_dfe_pro",
       "name": "DF-e Pro",
-      "owner_key": "dfe"
+      "owner_key": "dfe",
+      "active": false
     },
     {
       "id": "prod_dfe_unlimited",
       "name": "DF-e Ilimitado",
-      "owner_key": "dfe"
+      "owner_key": "dfe",
+      "active": false
     },
     {
       "id": "prod_dfe_ondemand",
       "name": "DF-e Sob Demanda",
-      "owner_key": "dfe"
+      "owner_key": "dfe",
+      "active": false
     },
     {
       "id": "prod_dfe_unlimited_internal",
       "name": "DF-e Ilimitado - Interno",
+      "owner_key": "dfe"
+    },
+    {
+      "id": "prod_dfe",
+      "name": "DF-e",
       "owner_key": "dfe"
     },
     {
@@ -75,6 +84,7 @@
         "count": 1
       },
       "billing_timing": "advance",
+      "archived": true,
       "metadata": {
         "plan": "free",
         "quota_companies": "1",
@@ -117,6 +127,7 @@
         "count": 1
       },
       "billing_timing": "advance",
+      "archived": true,
       "metadata": {
         "plan": "pro",
         "quota_companies": "10",
@@ -137,6 +148,7 @@
         "count": 1
       },
       "billing_timing": "advance",
+      "archived": true,
       "metadata": {
         "plan": "unlimited",
         "quota_companies": "-1",
@@ -190,6 +202,7 @@
         "count": 1
       },
       "billing_timing": "arrears",
+      "archived": true,
       "metadata": {
         "plan": "ondemand",
         "meter": "nfe",
@@ -206,6 +219,7 @@
         "count": 1
       },
       "billing_timing": "arrears",
+      "archived": true,
       "metadata": {
         "plan": "ondemand",
         "meter": "nfce",
@@ -222,6 +236,7 @@
         "count": 1
       },
       "billing_timing": "arrears",
+      "archived": true,
       "metadata": {
         "plan": "ondemand",
         "meter": "nfse",
@@ -238,6 +253,7 @@
         "count": 1
       },
       "billing_timing": "arrears",
+      "archived": true,
       "metadata": {
         "plan": "ondemand",
         "meter": "cte",
@@ -254,6 +270,7 @@
         "count": 1
       },
       "billing_timing": "arrears",
+      "archived": true,
       "metadata": {
         "plan": "ondemand",
         "meter": "mdfe",
@@ -359,6 +376,7 @@
         "count": 1
       },
       "billing_timing": "arrears",
+      "archived": true,
       "metadata": {
         "plan": "ondemand",
         "quota_companies": "-1"
@@ -525,6 +543,183 @@
       "billing_timing": "arrears",
       "metadata": {
         "plan": "pro"
+      }
+    },
+    {
+      "id": "price_dfe_v2_free",
+      "product_id": "prod_dfe",
+      "name": "DF-e Free",
+      "type": "fixed",
+      "unit_amount": 0,
+      "recurrence": {
+        "interval": "month",
+        "count": 1
+      },
+      "billing_timing": "advance",
+      "metadata": {
+        "plan": "free",
+        "quota_companies": "1",
+        "quota_nfe": "3",
+        "quota_nfce": "15",
+        "quota_nfse": "3",
+        "quota_cte": "0",
+        "quota_mdfe": "3",
+        "mdfe_scope": "frota_propria",
+        "plan_name": "DF-e Free"
+      }
+    },
+    {
+      "id": "price_dfe_v2_pro",
+      "product_id": "prod_dfe",
+      "name": "DF-e Pro",
+      "type": "fixed",
+      "unit_amount": 35000,
+      "recurrence": {
+        "interval": "month",
+        "count": 1
+      },
+      "billing_timing": "advance",
+      "metadata": {
+        "plan": "pro",
+        "quota_companies": "10",
+        "quota_nfe": "1200",
+        "quota_nfce": "6000",
+        "quota_nfse": "1200",
+        "quota_cte": "1200",
+        "quota_mdfe": "1200",
+        "plan_name": "DF-e Pro"
+      }
+    },
+    {
+      "id": "price_dfe_v2_unlimited",
+      "product_id": "prod_dfe",
+      "name": "DF-e Ilimitado",
+      "type": "fixed",
+      "unit_amount": 250000,
+      "recurrence": {
+        "interval": "month",
+        "count": 1
+      },
+      "billing_timing": "advance",
+      "metadata": {
+        "plan": "unlimited",
+        "quota_companies": "-1",
+        "quota_nfe": "-1",
+        "quota_nfce": "-1",
+        "quota_nfse": "-1",
+        "quota_cte": "-1",
+        "quota_mdfe": "-1",
+        "plan_name": "DF-e Ilimitado"
+      }
+    },
+    {
+      "id": "price_dfe_v2_ondemand_nfe",
+      "product_id": "prod_dfe",
+      "name": "DF-e Sob Demanda: NF-e",
+      "type": "metered",
+      "unit_amount": 5,
+      "recurrence": {
+        "interval": "month",
+        "count": 1
+      },
+      "billing_timing": "arrears",
+      "metadata": {
+        "plan": "ondemand",
+        "meter": "nfe",
+        "quota_nfe": "-1",
+        "plan_name": "DF-e Sob Demanda"
+      }
+    },
+    {
+      "id": "price_dfe_v2_ondemand_nfce",
+      "product_id": "prod_dfe",
+      "name": "DF-e Sob Demanda: NFC-e",
+      "type": "metered",
+      "unit_amount": 1,
+      "recurrence": {
+        "interval": "month",
+        "count": 1
+      },
+      "billing_timing": "arrears",
+      "metadata": {
+        "plan": "ondemand",
+        "meter": "nfce",
+        "quota_nfce": "-1",
+        "plan_name": "DF-e Sob Demanda"
+      }
+    },
+    {
+      "id": "price_dfe_v2_ondemand_nfse",
+      "product_id": "prod_dfe",
+      "name": "DF-e Sob Demanda: NFS-e",
+      "type": "metered",
+      "unit_amount": 5,
+      "recurrence": {
+        "interval": "month",
+        "count": 1
+      },
+      "billing_timing": "arrears",
+      "metadata": {
+        "plan": "ondemand",
+        "meter": "nfse",
+        "quota_nfse": "-1",
+        "plan_name": "DF-e Sob Demanda"
+      }
+    },
+    {
+      "id": "price_dfe_v2_ondemand_cte",
+      "product_id": "prod_dfe",
+      "name": "DF-e Sob Demanda: CT-e",
+      "type": "metered",
+      "unit_amount": 50,
+      "recurrence": {
+        "interval": "month",
+        "count": 1
+      },
+      "billing_timing": "arrears",
+      "metadata": {
+        "plan": "ondemand",
+        "meter": "cte",
+        "quota_cte": "-1",
+        "plan_name": "DF-e Sob Demanda"
+      }
+    },
+    {
+      "id": "price_dfe_v2_ondemand_mdfe",
+      "product_id": "prod_dfe",
+      "name": "DF-e Sob Demanda: MDF-e",
+      "type": "metered",
+      "unit_amount": 10,
+      "recurrence": {
+        "interval": "month",
+        "count": 1
+      },
+      "billing_timing": "arrears",
+      "metadata": {
+        "plan": "ondemand",
+        "meter": "mdfe",
+        "quota_mdfe": "-1",
+        "plan_name": "DF-e Sob Demanda"
+      }
+    },
+    {
+      "id": "price_dfe_v2_ondemand_companies",
+      "product_id": "prod_dfe",
+      "name": "DF-e Sob Demanda: Empresas",
+      "type": "metered",
+      "unit_amount": 500,
+      "aggregation": "max",
+      "meter": "dfe_companies",
+      "included_quantity": 0,
+      "recurrence": {
+        "interval": "month",
+        "count": 1
+      },
+      "billing_timing": "arrears",
+      "metadata": {
+        "plan": "ondemand",
+        "quota_companies": "-1",
+        "plan_name": "DF-e Sob Demanda"
       }
     }
   ]

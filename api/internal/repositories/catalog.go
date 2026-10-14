@@ -201,6 +201,44 @@ func (r *CatalogRepository) SetProductDetails(
 	return nil
 }
 
+// DeactivateProduct takes a product out of the catalogue's active set, with the
+// audit row that says who. It is one-way on purpose, like archiving a price:
+// reviving a product is a new decision, and the subscriptions on its prices are
+// not touched either way.
+func (r *CatalogRepository) DeactivateProduct(ctx context.Context, p *billing.Product, actor, requestID string, now time.Time) error {
+	if actor == "" {
+		return fmt.Errorf("repositories: deactivating product %s needs an actor", p.ID)
+	}
+	auditItem, err := buildAuditItem(p.OrganizationID, p.Livemode, AuditEntry{
+		Entity:    EntityProduct,
+		EntityID:  p.ID,
+		Action:    "product.deactivated",
+		Cause:     billing.CauseManual,
+		Actor:     actor,
+		RequestID: requestID,
+		Before:    "active",
+		After:     "inactive",
+	}, "", "", now)
+	if err != nil {
+		return err
+	}
+	update := r.products.BuildRawUpdateTxItem(
+		TenantPK(p.OrganizationID, p.Livemode), new(ProductSK(p.ID)),
+		"SET #a = :off, #ua = :now", "attribute_exists(pk) AND #a = :on",
+		map[string]string{"#a": "active", "#ua": "updated_at"},
+		map[string]types.AttributeValue{
+			":off": &types.AttributeValueMemberBOOL{Value: false},
+			":on":  &types.AttributeValueMemberBOOL{Value: true},
+			":now": &types.AttributeValueMemberS{Value: now.UTC().Format(time.RFC3339Nano)},
+		},
+	)
+	if err := r.products.TransactWrite(ctx, txItems(update, r.audit.BuildPutTxItemIfAbsent(auditItem))); err != nil {
+		return err
+	}
+	p.Active = false
+	return nil
+}
+
 // GetProduct reads a product.
 func (r *CatalogRepository) GetProduct(ctx context.Context, organizationID string, livemode bool, productID string) (*billing.Product, error) {
 	item, err := r.products.GetItem(ctx, TenantPK(organizationID, livemode), ProductSK(productID))

@@ -672,3 +672,48 @@ func TestATestSeedLeavesANewCredentialToTheLiveRun(t *testing.T) {
 		t.Fatalf("credential = %+v, %v (want live)", cred, err)
 	}
 }
+
+// A plan may retire a product it created earlier (`"active": false`), and only
+// that way round: re-declaring it active does not bring it back.
+func TestApplyDeactivatesAProductAndNeverRevivesIt(t *testing.T) {
+	ctx := ctxT(t)
+	repos := provision.Repos{
+		Organizations: repositories.NewOrganizationRepository(testDB, testCfg),
+		Credentials:   repositories.NewCredentialRepository(testDB, testCfg),
+		Catalog:       repositories.NewCatalogRepository(testDB, testCfg),
+		Webhooks:      repositories.NewWebhookRepository(testDB, testCfg),
+	}
+	orgID := "org_" + id.New()
+	doc := func(active string) *provision.Plan {
+		p, err := provision.Parse(strings.NewReader(`{"organization":{"id":"` + orgID + `","display_name":"T"},
+		  "products":[{"id":"p_old","name":"Old"` + active + `}]}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	apply := func(p *provision.Plan) {
+		if _, err := provision.Apply(ctx, repos, p, true, now()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	active := func() bool {
+		p, err := repos.Catalog.GetProduct(ctx, orgID, true, "p_old")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return p.Active
+	}
+	apply(doc(""))
+	if !active() {
+		t.Fatal("a product arrives active")
+	}
+	apply(doc(`,"active":false`))
+	if active() {
+		t.Fatal("the plan did not deactivate the product")
+	}
+	apply(doc(`,"active":true`))
+	if active() {
+		t.Fatal("a plan revived a deactivated product")
+	}
+}

@@ -173,8 +173,17 @@ func Apply(ctx context.Context, repos Repos, plan *Plan, livemode bool, now time
 	}
 
 	for _, p := range plan.Products {
-		switch _, err := repos.Catalog.GetProduct(ctx, orgID, livemode, p.ID); {
+		switch existing, err := repos.Catalog.GetProduct(ctx, orgID, livemode, p.ID); {
 		case err == nil:
+			// The one update Apply makes to a product: `"active": false` on an
+			// active one deactivates it. Never the reverse.
+			if p.Active != nil && !*p.Active && existing.Active {
+				if err := repos.Catalog.DeactivateProduct(ctx, existing, provisionActor, "", now); err != nil {
+					return res, fmt.Errorf("deactivating product %s: %w", p.ID, err)
+				}
+				res.created("product deactivation", p.ID)
+				continue
+			}
 			res.skipped("product", p.ID)
 			continue
 		case !errors.Is(err, repositories.ErrNotFound):
