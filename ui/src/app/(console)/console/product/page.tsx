@@ -18,11 +18,13 @@ import {
   consoleKeys,
   createPrice,
   getConsoleProduct,
+  setProductDetails,
   setProductDunningPolicy,
 } from "@/lib/api/console";
 import type {ConsolePrice, DunningStep} from "@/lib/api/consoleTypes";
 import {useConsoleScope} from "@/lib/console/scope";
 import {money} from "@/lib/format";
+import limits from "@/lib/limits.json";
 import {maskMoney, moneyPlaceholder, parseMoney} from "@/lib/money";
 import {useDocumentTitle} from "@/lib/hooks/useDocumentTitle";
 
@@ -54,6 +56,7 @@ function Detail() {
   const scope = useConsoleScope();
   const queryClient = useQueryClient();
   const [pricing, setPricing] = useState(false);
+  const [editing, setEditing] = useState(false);
   const [archiving, setArchiving] = useState<ConsolePrice | null>(null);
 
   const query = useQuery({
@@ -106,8 +109,22 @@ function Detail() {
           <h1 className="text-lg font-semibold tracking-[-0.01em] text-foreground">
             {product.name}
           </h1>
-          <Button size="sm" onClick={() => setPricing(true)}>{t("console.product.newPrice")}</Button>
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" onClick={() => setEditing(true)}>{t("console.product.editDetails")}</Button>
+            <Button size="sm" onClick={() => setPricing(true)}>{t("console.product.newPrice")}</Button>
+          </div>
         </div>
+        {(product.description || product.url) && (
+          <div className="space-y-1 text-sm text-muted-foreground">
+            {product.description && <p className="max-w-prose">{product.description}</p>}
+            {product.url && (
+              <a href={product.url} target="_blank" rel="noopener noreferrer"
+                 className="text-brand-600 underline-offset-4 hover:underline">
+                {product.url}
+              </a>
+            )}
+          </div>
+        )}
         {/* Said once, on the screen where it matters, rather than in a tooltip
             nobody opens. */}
         <p className="max-w-prose text-sm text-muted-foreground">
@@ -182,6 +199,16 @@ function Detail() {
           onSave={steps => savePolicy.mutateAsync(steps)}
         />
       )}
+
+      <DetailsDialog
+        key={`${product.description ?? ""}|${product.url ?? ""}`}
+        open={editing}
+        onClose={() => setEditing(false)}
+        productId={product.id}
+        description={product.description ?? ""}
+        url={product.url ?? ""}
+        onSaved={refresh}
+      />
 
       <NewPriceDialog
         open={pricing}
@@ -314,6 +341,77 @@ function NotFound() {
         </p>
       </div>
     </div>
+  );
+}
+
+function DetailsDialog({
+  open,
+  onClose,
+  productId,
+  description,
+  url,
+  onSaved,
+}: {
+  open: boolean
+  onClose: () => void
+  productId: string
+  description: string
+  url: string
+  onSaved: () => void
+}) {
+  const {t} = useTranslation();
+  const scope = useConsoleScope();
+  const [desc, setDesc] = useState(description);
+  const [address, setAddress] = useState(url);
+  const fe = useFieldErrors(["description", "url"], {keepOthers: false});
+  const save = useMutation({
+    mutationFn: () => setProductDetails(scope, productId, {description: desc.trim(), url: address.trim()}),
+    onSuccess: () => {
+      toast.success(t("console.product.detailsSaved"));
+      onSaved();
+      onClose();
+    },
+    onError: error => { if (!fe.set(error)) toast.error(messageFor(error)); },
+  });
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={t("console.product.editDetails")}
+      cancelLabel={t("common.cancel")}
+      submitLabel={t("console.product.save")}
+      loading={save.isPending}
+      onSubmit={() => { fe.reset(); save.mutate(); }}
+    >
+      <div className="space-y-4">
+        <Field label={t("console.catalog.descriptionLabel")} htmlFor="details-description" error={fe.of("description")}>
+          <Input
+            id="details-description"
+            maxLength={limits.text.productDescription}
+            value={desc}
+            {...fe.props("description", "details-description")}
+            onChange={event => { setDesc(event.target.value); fe.clear("description"); }}
+          />
+        </Field>
+        <Field
+          label={t("console.catalog.urlLabel")}
+          htmlFor="details-url"
+          hint={t("console.catalog.urlHint")}
+          error={fe.of("url")}
+        >
+          <Input
+            id="details-url"
+            type="url"
+            maxLength={limits.text.productURL}
+            value={address}
+            {...fe.props("url", "details-url")}
+            onChange={event => { setAddress(event.target.value); fe.clear("url"); }}
+          />
+        </Field>
+        {fe.general && <p role="alert" className="text-sm text-danger">{fe.general}</p>}
+      </div>
+    </Modal>
   );
 }
 

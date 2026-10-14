@@ -245,19 +245,28 @@
  },
  "catalog": {
   "title": "Catalog",
-  "new": "New product",
+  "new": "New plan",
   "empty": "Catalog is empty",
   "product": "Product",
-  "owner": "Owner",
+  "owner": "Product",
   "prices": "Prices",
   "from": "From",
   "inactive": "inactive",
   "name": "Name",
-  "ownerLabel": "Owner",
-  "ownerHint": "CTech service that receives the webhooks (dfe, poker). Empty if the catalog is yours.",
+  "ownerLabel": "Product",
+  "ownerHint": "CTech service the plan belongs to and that receives its webhooks (dfe, finance, billing). Empty if the catalog is yours.",
   "create": "Create",
-  "created": "Product created.",
-  "back": "Catalog"
+  "created": "Plan created.",
+  "back": "Catalog",
+  "plan": "Plan",
+  "descriptionLabel": "Description",
+  "urlLabel": "Address",
+  "urlHint": "Where the product lives (https). Optional.",
+  "owners": {
+   "dfe": "DF-e",
+   "finance": "Finanças",
+   "billing": "Billing"
+  }
  },
  "product": {
   "newPrice": "New price",
@@ -289,7 +298,10 @@
   "hintFixed": "Charged at the start of each period.",
   "hintMetered": "Charged at period end, on reported usage.",
   "notFound": "Product not found",
-  "back": "Catalog"
+  "back": "Catalog",
+  "editDetails": "Edit details",
+  "detailsSaved": "Details saved.",
+  "save": "Save"
  },
  "settings": {
   "title": "Settings",

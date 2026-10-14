@@ -479,6 +479,8 @@ func registerConsole(v1 fiber.Router, d Deps, h *handlers, auth fiber.Handler) {
 	// catalogue one: it changes how unpaid bills are chased, and somebody who
 	// may set a price is not thereby somebody who may decide when a customer
 	// loses access.
+	console.Put("/products/:id/details",
+		middleware.RequireUserScope(middleware.ScopeProductsWrite), ch.setProductDetails)
 	console.Put("/products/:id/dunning",
 		middleware.RequireUserScope(middleware.ScopeInvoicesWrite), ch.setProductDunningPolicy)
 

@@ -23,6 +23,8 @@ const (
 	Description  = 200
 	Memo         = 140
 	ProductName  = 120
+	ProductDesc  = 500
+	ProductURL   = 300
 	OwnerKey     = 64
 	CustomerName = 200
 	LegalName    = 120

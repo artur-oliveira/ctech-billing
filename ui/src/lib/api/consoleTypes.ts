@@ -348,6 +348,8 @@ export interface ConsoleProduct {
   name: string
   active: boolean
   owner_key?: string
+  description?: string
+  url?: string
   dunning?: DunningPolicy
   metadata?: Record<string, string>
   /** Archived prices are returned too: a subscription created under one keeps

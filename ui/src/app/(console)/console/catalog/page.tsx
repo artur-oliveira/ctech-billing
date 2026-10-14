@@ -61,7 +61,7 @@ export default function ConsoleCatalogPage() {
           <table className="w-full min-w-[36rem] border-collapse text-sm">
             <thead>
               <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                <th scope="col" className="py-2 pr-4 font-medium">{t("console.catalog.product")}</th>
+                <th scope="col" className="py-2 pr-4 font-medium">{t("console.catalog.plan")}</th>
                 <th scope="col" className="py-2 pr-4 font-medium">{t("console.catalog.owner")}</th>
                 <th scope="col" className="py-2 pr-4 text-right font-medium">{t("console.catalog.prices")}</th>
                 <th scope="col" className="py-2 text-right font-medium">{t("console.catalog.from")}</th>
@@ -86,12 +86,27 @@ export default function ConsoleCatalogPage() {
                       >
                         {product.name}
                       </Link>
+                      {product.url && (
+                        <a
+                          href={product.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="ml-2 text-xs text-muted-foreground underline-offset-4 hover:underline"
+                        >
+                          {hostOf(product.url)}
+                        </a>
+                      )}
+                      {product.description && (
+                        <p className="max-w-prose text-xs text-muted-foreground">{product.description}</p>
+                      )}
                       {!product.active && (
                         <span className="ml-2 text-xs text-muted-foreground">{t("console.catalog.inactive")}</span>
                       )}
                     </td>
                     <td className="py-2 pr-4 text-muted-foreground">
-                      {(product as {owner_key?: string}).owner_key || "—"}
+                      {product.owner_key
+                        ? t(`console.catalog.owners.${product.owner_key}`, {defaultValue: product.owner_key})
+                        : "—"}
                     </td>
                     <td data-numeric className="py-2 pr-4 text-right text-muted-foreground">
                       {active.length}
@@ -128,14 +143,23 @@ function NewProductDialog({
   const scope = useConsoleScope();
   const [name, setName] = useState("");
   const [ownerKey, setOwnerKey] = useState("");
+  const [description, setDescription] = useState("");
+  const [url, setUrl] = useState("");
 
-  const fe = useFieldErrors(["name", "owner_key"], {keepOthers: false});
+  const fe = useFieldErrors(["name", "owner_key", "description", "url"], {keepOthers: false});
   const create = useMutation({
-    mutationFn: () => createProduct(scope, {name: name.trim(), owner_key: ownerKey.trim()}),
+    mutationFn: () => createProduct(scope, {
+      name: name.trim(),
+      owner_key: ownerKey.trim(),
+      description: description.trim(),
+      url: url.trim(),
+    }),
     onSuccess: () => {
       toast.success(t("console.catalog.created"));
       setName("");
       setOwnerKey("");
+      setDescription("");
+      setUrl("");
       onCreated();
     },
     onError: error => { if (!fe.set(error)) toast.error(messageFor(error)); },
@@ -178,6 +202,31 @@ function NewProductDialog({
             placeholder="dfe"
           />
         </Field>
+        <Field label={t("console.catalog.descriptionLabel")} htmlFor="product-description" error={fe.of("description")}>
+          <Input
+            id="product-description"
+            maxLength={limits.text.productDescription}
+            value={description}
+            {...fe.props("description", "product-description")}
+            onChange={event => { setDescription(event.target.value); fe.clear("description"); }}
+          />
+        </Field>
+        <Field
+          label={t("console.catalog.urlLabel")}
+          htmlFor="product-url"
+          hint={t("console.catalog.urlHint")}
+          error={fe.of("url")}
+        >
+          <Input
+            id="product-url"
+            type="url"
+            maxLength={limits.text.productURL}
+            value={url}
+            {...fe.props("url", "product-url")}
+            onChange={event => { setUrl(event.target.value); fe.clear("url"); }}
+            placeholder="https://dfe.aoctech.app"
+          />
+        </Field>
         {fe.general && <p role="alert" className="text-sm text-danger">{fe.general}</p>}
       </div>
     </Modal>
@@ -190,4 +239,13 @@ function RowsSkeleton() {
       {[0, 1, 2].map(i => <Skeleton key={i} className="h-8 w-full"/>)}
     </div>
   );
+}
+
+/** The host of a product's URL, for a link small enough to sit beside the name. */
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
 }

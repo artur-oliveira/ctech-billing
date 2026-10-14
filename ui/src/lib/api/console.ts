@@ -232,6 +232,22 @@ export async function getConsoleProduct(scope: ConsoleScope, id: string): Promis
 export interface NewProductInput {
   name: string
   owner_key?: string
+  description?: string
+  url?: string
+}
+
+/** Replaces a product's description and URL; empty clears. */
+export async function setProductDetails(
+  scope: ConsoleScope,
+  productId: string,
+  details: {description: string; url: string},
+): Promise<ConsoleProduct> {
+  const {data} = await apiClient.put<ConsoleProduct>(
+    `/v1.0/console/products/${productId}/details`,
+    details,
+    scopeHeaders(scope),
+  );
+  return data;
 }
 
 export async function createProduct(scope: ConsoleScope, input: NewProductInput): Promise<ConsoleProduct> {

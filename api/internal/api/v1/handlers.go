@@ -593,9 +593,20 @@ func (h *handlers) listProducts(c fiber.Ctx) error {
 	if err != nil {
 		return fail(c, err)
 	}
+	// One read for every price, grouped here: the catalogue screen counts them
+	// and shows the cheapest, and a product listed without its prices reads as
+	// "nothing for sale".
+	prices, err := h.cat.ListPrices(c.Context(), t.OrganizationID, t.Livemode, pageLimit)
+	if err != nil {
+		return fail(c, err)
+	}
+	byProduct := make(map[string][]billing.Price, len(products))
+	for _, p := range prices {
+		byProduct[p.ProductID] = append(byProduct[p.ProductID], p)
+	}
 	out := make([]productResponse, 0, len(products))
 	for i := range products {
-		out = append(out, newProductResponse(&products[i], nil))
+		out = append(out, newProductResponse(&products[i], byProduct[products[i].ID]))
 	}
 	return c.JSON(listResponse[productResponse]{Data: out})
 }

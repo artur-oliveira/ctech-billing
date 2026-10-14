@@ -8,6 +8,8 @@
     "description": 200,
     "memo": 140,
     "productName": 120,
+    "productDescription": 500,
+    "productURL": 300,
     "ownerKey": 64,
     "customerName": 200,
     "legalName": 120,

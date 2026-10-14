@@ -282,9 +282,17 @@ func newPriceResponse(p *billing.Price) priceResponse {
 // routing key read out of a caller-writable map is a caller who can redirect
 // somebody else's events.
 type createProductRequest struct {
-	Name     string           `json:"name"`
-	OwnerKey string           `json:"owner_key"`
-	Metadata billing.Metadata `json:"metadata"`
+	Name        string           `json:"name"`
+	OwnerKey    string           `json:"owner_key"`
+	Description string           `json:"description"`
+	URL         string           `json:"url"`
+	Metadata    billing.Metadata `json:"metadata"`
+}
+
+// productDetailsRequest replaces both fields; empty clears.
+type productDetailsRequest struct {
+	Description string `json:"description"`
+	URL         string `json:"url"`
 }
 
 // createPriceRequest is C9's "novo preço" — never "editar preço".
@@ -304,12 +312,15 @@ type createPriceRequest struct {
 }
 
 type productResponse struct {
-	ID       string           `json:"id"`
-	Name     string           `json:"name"`
-	Active   bool             `json:"active"`
-	OwnerKey string           `json:"owner_key,omitempty"`
-	Metadata billing.Metadata `json:"metadata,omitempty"`
-	Prices   []priceResponse  `json:"prices,omitempty"`
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Active   bool   `json:"active"`
+	OwnerKey string `json:"owner_key,omitempty"`
+	// Description and URL are what the catalogue screen shows beside the name.
+	Description string           `json:"description,omitempty"`
+	URL         string           `json:"url,omitempty"`
+	Metadata    billing.Metadata `json:"metadata,omitempty"`
+	Prices      []priceResponse  `json:"prices,omitempty"`
 	// Dunning is the schedule invoices billing this product follow, always
 	// populated and flagged as inherited or overridden. An empty override is
 	// not "no policy" — it is the organization's, and the screen has to be able
@@ -320,13 +331,15 @@ type productResponse struct {
 
 func newProductResponse(p *billing.Product, prices []billing.Price) productResponse {
 	out := productResponse{
-		ID:       p.ID,
-		Name:     p.Name,
-		Active:   p.Active,
-		OwnerKey: p.OwnerKey,
-		Metadata: p.Metadata,
-		Dunning:  newDunningPolicyResponse(p.DunningPolicy),
-		Livemode: p.Livemode,
+		ID:          p.ID,
+		Name:        p.Name,
+		Active:      p.Active,
+		OwnerKey:    p.OwnerKey,
+		Description: p.Description,
+		URL:         p.URL,
+		Metadata:    p.Metadata,
+		Dunning:     newDunningPolicyResponse(p.DunningPolicy),
+		Livemode:    p.Livemode,
 	}
 	for i := range prices {
 		out.Prices = append(out.Prices, newPriceResponse(&prices[i]))

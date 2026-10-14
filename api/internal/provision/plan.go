@@ -105,6 +105,9 @@ type Product struct {
 	ID       string `json:"id"`
 	Name     string `json:"name"`
 	OwnerKey string `json:"owner_key,omitempty"`
+	// Description and URL: see billing.Product.
+	Description string `json:"description,omitempty"`
+	URL         string `json:"url,omitempty"`
 	// DefaultPriceID: see billing.Product.DefaultPriceID.
 	DefaultPriceID string           `json:"default_price_id,omitempty"`
 	Active         *bool            `json:"active,omitempty"`
@@ -309,6 +312,8 @@ func (p Product) entity(organizationID string, livemode bool) *billing.Product {
 		Livemode:       livemode,
 		Name:           p.Name,
 		OwnerKey:       p.OwnerKey,
+		Description:    p.Description,
+		URL:            p.URL,
 		DefaultPriceID: p.DefaultPriceID,
 		Active:         active,
 		Metadata:       p.Metadata,
