@@ -31,13 +31,15 @@ A repeated `-invoice-reference` or `-payout-reference` returns the same invoice 
 3. The outbound Lambda allows money out for the account organization only if it is in `BYOK_PAYOUT_ACCOUNT_ORGS` (terraform `byok_payout_account_orgs`; prod names CTech's own organization only). Any other organization is refused at the Lambda whatever the API asks.
 4. Payments from the Inter account are **self-approved** (no manual approval per Pix in Inter's Gestão de Aprovações).
 
-## First live payout (do once, by hand)
+## First live payout — done 2026-10-14
 
-Inter's reference does not list the payment `status` values, so the provider maps only the ones that clearly mean paid or refused and leaves the rest `processing`. Before the Wallet pays users through this path:
+A live R$ 0,10 payout to the owner's CPF key (`-tenant-payout`, reference `proof-payout-20261014`) arrived. What Inter answered:
 
-1. `-tenant-payout=<your CPF> … -payout-amount-cents=10 -payout-reference=proof-1` (dry run, then with `-yes`).
-2. Read the raw responses: `aws logs tail /aws/lambda/prod-ctech-billing-byok-outbound --since 10m --profile ctech | grep '/banking/v2/pix'`. Note the `status` the lookup returns when the payment is done.
-3. If it is not one of the values in `api-commons/inter/payout.go` (`payoutStatus`), add it there with a test, release, bump, deploy. Until then the payout stays `processing` and the sweep alarms after six hours.
+- `POST /banking/v2/pix` → 200, `tipoRetorno: PROCESSADO`, `codigoSolicitacao` (the id a lookup uses).
+- First lookup: `status: ENVIADO`, `endToEnd` empty, history `TRANSACAO_CRIADA → TRANSACAO_APROVADA → PIX_ENVIADO`.
+- A minute later (the sweep): `status: PAGO`, `endToEnd` filled, history ending `PIX_PAGO`. Billing marked the payout `done` with that end-to-end id.
+
+So: `ENVIADO` is "sent, not confirmed yet" (processing) and `PAGO` is done (api-commons v1.24.0 maps both). Failure statuses have not been observed; the provider treats only clearly refusing words as failed and leaves every other unknown text `processing` with an error log, so a new word is noticed, never guessed. Re-run this check whenever Inter changes its API.
 
 ## Rollback
 

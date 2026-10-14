@@ -113,5 +113,5 @@ golang.org/x/text v0.43.0 h1:1QivrlhwAsnMOcqgOdl9my7s9OyZl8O5/UGUTJVXoWc=
 golang.org/x/text v0.43.0/go.mod h1:hbSIYA/amXcRXTFSZqh8tWHEoqRvvbKPJ2uz/KU+a+s=
 golang.org/x/tools v0.51.0 h1:k4Xc/1Om9jwkBJBo4NVLMSARBoWtK10mx+W5BnXCeAI=
 golang.org/x/tools v0.51.0/go.mod h1:9eEncMayCV6zRMGhR5eZEC2iBx98qWcF1HZ9Z7wJOoA=
-gopkg.aoctech.app/api-commons v1.23.0 h1:+X3LIYMS3ZA97DPVqKN8VhTcuFy0glQnXLwI6pzaB7w=
-gopkg.aoctech.app/api-commons v1.23.0/go.mod h1:CrvKeQweOS+/piP/lLtFJcKyIQjDhzqtPWqN8LwHfog=
+gopkg.aoctech.app/api-commons v1.24.0 h1:KIYX2lkde2VnHlNqnqVDKJaFVbEIEV5jNB3D/jekV2I=
+gopkg.aoctech.app/api-commons v1.24.0/go.mod h1:CrvKeQweOS+/piP/lLtFJcKyIQjDhzqtPWqN8LwHfog=
