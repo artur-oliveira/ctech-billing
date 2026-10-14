@@ -6,7 +6,7 @@ const t = (key: string) => key
 const go = vi.fn()
 const base: SearchContext = {
   portal: true,
-  console: {reviewer: false, active: true},
+  console: {reviewer: false, active: true, addsRefused: false},
   finance: {personal: true, canConfigure: true, canWrite: true},
 }
 const ids = (ctx: Partial<SearchContext>, current: "portal" | "console" | "finance" = "finance") =>
@@ -25,12 +25,12 @@ describe("buildSearchEntries", () => {
   })
 
   it("Console without a tenant in this mode offers nothing from the console", () => {
-    expect(ids({console: {reviewer: false, active: false}}).some(i => i.includes("console:"))).toBe(false)
+    expect(ids({console: {reviewer: false, active: false, addsRefused: false}}).some(i => i.includes("console:"))).toBe(false)
   })
 
   it("Solicitações only for a reviewer", () => {
     expect(ids({}).includes("console:/console/applications")).toBe(false)
-    expect(ids({console: {reviewer: true, active: true}}).includes("console:/console/applications")).toBe(true)
+    expect(ids({console: {reviewer: true, active: true, addsRefused: false}}).includes("console:/console/applications")).toBe(true)
   })
 
   it("Plano only in a personal space, Conexões only where the person may configure an organization's", () => {
@@ -52,7 +52,14 @@ describe("buildSearchEntries", () => {
 
   it("Console create actions need an active tenant", () => {
     expect(ids({}).filter(i => i.startsWith("action:console:"))).toEqual(["action:console:product", "action:console:webhook"])
-    expect(ids({console: {reviewer: false, active: false}}).filter(i => i.startsWith("action:console:"))).toEqual([])
+    expect(ids({console: {reviewer: false, active: false, addsRefused: false}}).filter(i => i.startsWith("action:console:"))).toEqual([])
+  })
+
+  it("a suspended live tenant is not offered a new webhook, the screen would refuse it", () => {
+    const list = ids({console: {reviewer: false, active: true, addsRefused: true}})
+    expect(list).toContain("console:/console/webhooks")
+    expect(list).not.toContain("action:console:webhook")
+    expect(list).toContain("action:console:product")
   })
 
   it("an action asks to go to its screen with its kind; a page just carries its href", () => {

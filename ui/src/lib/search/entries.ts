@@ -1,6 +1,6 @@
 import type {CommandEntry} from "@aoctech/ui"
 
-import {visibleFinanceSections} from "@/components/finance/FinanceNav"
+import {visibleFinanceSections} from "@/lib/finance/nav"
 import {consoleNav} from "@/lib/console/nav"
 import type {CreateKind} from "@/lib/createRequest"
 import {PORTAL_NAV} from "@/lib/portal/nav"
@@ -11,7 +11,7 @@ export interface SearchContext {
   /** Has a billing account (the portal session did not answer 403). */
   portal: boolean
   /** null: the person runs no organization. `active`: it has a tenant in this mode. */
-  console: {reviewer: boolean; active: boolean} | null
+  console: {reviewer: boolean; active: boolean; addsRefused: boolean} | null
   finance: {personal: boolean; canConfigure: boolean; canWrite: boolean}
 }
 
@@ -61,7 +61,9 @@ export function buildSearchEntries(ctx: SearchContext, t: SearchText, go: Search
     if (view === "console") {
       if (!ctx.console?.active) return []
       const pages = consoleNav(true, ctx.console.reviewer).map(n => page(t(n.label), n.href, `console.${n.href.split("/")[2]}`))
-      return [...pages, ...CONSOLE_ACTIONS.map(a => action(a.kind, a.href))]
+      // A suspended live tenant may not add integration surface: the screen would refuse.
+      const actions = CONSOLE_ACTIONS.filter(a => !(a.kind === "webhook" && ctx.console?.addsRefused))
+      return [...pages, ...actions.map(a => action(a.kind, a.href))]
     }
     const pages = visibleFinanceSections(ctx.finance.personal, ctx.finance.canConfigure)
       .map(s => page(t(`finance.nav.${s.key}`), s.href, `finance.${s.key}`))

@@ -9,9 +9,8 @@ import {useTranslation} from "react-i18next"
 import {AccountMenu} from "@/components/AccountMenu"
 import {LanguageSwitcher} from "@/components/LanguageSwitcher"
 import {GlobalSearch} from "@/components/shell/GlobalSearch"
-import {renderLink, type ShellView} from "@/components/shell/renderLink"
+import type {ShellView} from "@/components/shell/renderLink"
 
-export {renderLink, type ShellView}
 
 /**
  * The frame of the three areas: @aoctech/ui's AppShell, the family's top bar

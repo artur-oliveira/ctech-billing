@@ -377,9 +377,8 @@ section drawing its own stretch of it in sienna with weight, no icons; groups ar
 above their own stretch of rail. The page takes the rest of the width up to 96rem, starting
 beside the rail: tables compare down a column, so a wide screen gives its width to them. A form
 or a detail keeps its own reading width; the portal no longer caps the page (2026-10-14: the
-owner saw it fixed while the other two areas used the width): a screen of text sets a measure on
-its paragraph (`max-w-prose`), the pay button and the Pix panel on an invoice keep their own
-(`sm:w-auto`, `max-w-xl`), and lists and details use the width.
+owner saw it fixed while the other two areas used the width): the terms gate and the pay button and Pix panel on an invoice keep a
+measure of their own (`max-w-xl`, `sm:w-auto`), and lists and details use the width.
 
 **Search (⌘K / Ctrl+K), 2026-10-14.** `@aoctech/ui`'s `CommandPalette` (0.8.0), mounted once in
 `BillingShell` through `components/shell/GlobalSearch`, so the three areas have it. The button in

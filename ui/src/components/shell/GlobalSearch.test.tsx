@@ -94,4 +94,20 @@ describe("GlobalSearch", () => {
     await screen.findAllByRole("option") // Cartões, by its keyword
     expect(names().some(n => n.includes("Portal"))).toBe(false)
   })
+
+  it("asks for what makes it searchable once it is opened", async () => {
+    person({operator: false})
+    renderWithQuery(<GlobalSearch view="portal"/>)
+    await userEvent.click(screen.getByRole("button", {name: "Buscar"}))
+    await screen.findByRole("combobox")
+    expect(finance.getFinanceSpaces).toHaveBeenCalled()
+  })
+
+  it("does not call the spaces list or the sessions at first paint", async () => {
+    person({operator: false})
+    renderWithQuery(<GlobalSearch view="portal"/>)
+    await new Promise(r => setTimeout(r, 50))
+    expect(finance.getFinanceSpaces).not.toHaveBeenCalled()
+    expect(consoleApi.getConsoleSession).not.toHaveBeenCalled()
+  })
 })

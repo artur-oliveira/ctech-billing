@@ -45,7 +45,7 @@ export function TermsGate() {
   })
 
   return (
-    <section aria-labelledby="termos" className="space-y-6">
+    <section aria-labelledby="termos" className="max-w-xl space-y-6">
       <header className="space-y-2">
         <h1 id="termos" className="text-2xl font-semibold tracking-[-0.02em] text-foreground">
           {t("portal.terms.title")}

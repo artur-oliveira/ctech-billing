@@ -12,9 +12,8 @@ import {useAuth} from "@/lib/auth/AuthContext"
 import {pickMerchantOrg, tenantInMode} from "@/lib/console/merchant"
 import {useMerchantOrg} from "@/lib/console/useMerchantOrg"
 import {useMode} from "@/lib/console/useMode"
-import {useSpace} from "@/lib/console/useSpace"
 import {type CreateKind, requestCreate} from "@/lib/createRequest"
-import {useFinanceSpaces} from "@/lib/finance/useFinanceSpaces"
+import {useSpaceVerbs} from "@/lib/finance/useFinanceSpaces"
 import {buildSearchEntries, type View} from "@/lib/search/entries"
 
 /**
@@ -28,8 +27,7 @@ export function useSearchEntries(view: View): CommandEntry[] {
   const {authenticated} = useAuth()
   const mode = useMode()
   const stored = useMerchantOrg()
-  const space = useSpace()
-  const {can} = useFinanceSpaces()
+  const {personal, can} = useSpaceVerbs()
 
   const portalSession = useQuery({
     queryKey: portalKeys.session,
@@ -60,8 +58,12 @@ export function useSearchEntries(view: View): CommandEntry[] {
   return buildSearchEntries(
     {
       portal: view === "portal" ? !isNoBillingAccount(portalSession.error) : portalSession.isSuccess,
-      console: selected ? {active: tenantInMode(selected.merchant_status, mode), reviewer: selected.can_review_applications === true} : null,
-      finance: {personal: space.kind === "personal", canConfigure: can("finance.configure"), canWrite: can("finance.write")},
+      console: selected ? {
+        active: tenantInMode(selected.merchant_status, mode),
+        reviewer: selected.can_review_applications === true,
+        addsRefused: mode === "live" && selected.merchant_status === "suspended",
+      } : null,
+      finance: {personal, canConfigure: can("finance.configure"), canWrite: can("finance.write")},
     },
     key => t(key),
     go,

@@ -25,7 +25,7 @@ function list(data: ConsoleWebhookEndpoint[]) {
 
 function wrap(ui: ReactNode) {
   const client = new QueryClient({defaultOptions: {queries: {retry: false}}})
-  return render(<QueryClientProvider client={client}><ConsoleScopeProvider value={SCOPE}>{ui}</ConsoleScopeProvider></QueryClientProvider>)
+  return {client, ...render(<QueryClientProvider client={client}><ConsoleScopeProvider value={SCOPE}>{ui}</ConsoleScopeProvider></QueryClientProvider>)}
 }
 
 beforeEach(() => {
@@ -124,6 +124,17 @@ describe("/console/webhooks", () => {
     requestCreate("webhook")
     wrap(<ConsoleWebhooksPage/>)
     expect(await screen.findByRole("button", {name: "Novo endpoint"})).toBeDisabled()
+    expect(screen.queryByRole("dialog")).toBeNull()
+  })
+
+  it("a request refused at the limit is dropped: freeing a slot later does not open the form", async () => {
+    list([ep("a"), ep("b"), ep("c"), ep("d"), ep("e")])
+    requestCreate("webhook")
+    const {client} = wrap(<ConsoleWebhooksPage/>)
+    expect(await screen.findByRole("button", {name: "Novo endpoint"})).toBeDisabled()
+    list([ep("a"), ep("b"), ep("c"), ep("d")])
+    await client.invalidateQueries()
+    await vi.waitFor(() => expect(screen.getByRole("button", {name: "Novo endpoint"})).toBeEnabled())
     expect(screen.queryByRole("dialog")).toBeNull()
   })
 })
