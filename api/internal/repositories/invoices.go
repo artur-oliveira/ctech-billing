@@ -151,6 +151,25 @@ func (r *InvoiceRepository) Get(ctx context.Context, organizationID string, live
 	return &row.Invoice, nil
 }
 
+// GetByGenerationKey is the invoice created under a generation key, or
+// ErrNotFound. The key is the create-only marker Create writes in the invoice's
+// own transaction, so "does this reference already have an invoice?" is one
+// GetItem and cannot disagree with the invoice itself.
+func (r *InvoiceRepository) GetByGenerationKey(ctx context.Context, organizationID string, livemode bool, generationKey string) (*billing.Invoice, error) {
+	item, err := r.base.GetItem(ctx, LookupInvoiceGenerationPK(organizationID, livemode, generationKey), "GEN")
+	if err != nil {
+		return nil, err
+	}
+	if item == nil {
+		return nil, fmt.Errorf("%w: generation key %s", ErrNotFound, generationKey)
+	}
+	marker, err := Decode[generationRow](item)
+	if err != nil {
+		return nil, err
+	}
+	return r.Get(ctx, organizationID, livemode, marker.InvoiceID)
+}
+
 // ListItems returns an invoice's lines in order.
 func (r *InvoiceRepository) ListItems(ctx context.Context, organizationID string, livemode bool, invoiceID string) ([]billing.InvoiceItem, error) {
 	res, err := r.base.Query(ctx, QueryOpts{

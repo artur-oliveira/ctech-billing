@@ -393,6 +393,11 @@ func FromError(err error) *Problem {
 		return New(409, TypeConcurrentUpdate, "Concurrent Update",
 			"another payment attempt for this invoice is in progress; reload and try again").WithCode("payment_attempt_in_progress")
 
+	case errors.Is(err, services.ErrOneOffConflict):
+		return Conflict("this reference already names another invoice").WithCode("reference_conflict")
+	case errors.Is(err, services.ErrOneOffInvalid):
+		return Unprocessable("the invoice request is invalid").WithCode("invalid_one_off_invoice")
+
 	case errors.Is(err, repositories.ErrAlreadyGenerated):
 		return New(409, TypeAlreadyGenerated, "Already Generated",
 			"this period has already been invoiced")

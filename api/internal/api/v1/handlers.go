@@ -32,6 +32,9 @@ type handlers struct {
 	usage      *repositories.UsageRepository
 	levels     *repositories.LevelRepository
 	subscriber *services.Subscriber
+	// oneOff issues an invoice no subscription produced. Nil without the
+	// invoicer, and the route is then not mounted.
+	oneOff *services.OneOffInvoices
 	// cat is the catalogue. It sits on the shared struct rather than on one
 	// surface's because all three read it and they must read it identically: a
 	// quota an integration sees in a price's metadata and a quota the console
@@ -470,6 +473,38 @@ func usageItem(items []billing.SubscriptionItem, priceID string) (billing.Subscr
 		}
 	}
 	return billing.SubscriptionItem{}, &usageItemError{code: "not_found", msg: fmt.Sprintf("the subscription has no item for price %s", priceID)}
+}
+
+// createInvoice issues a one-off invoice (POST /v1.0/invoices): the way a CTech
+// service, such as the wallet for a deposit, asks for money. 201 when it made the
+// invoice, 200 when the reference already had one for the same customer and
+// amount; the same reference for anything else is a 409.
+func (h *handlers) createInvoice(c fiber.Ctx) error {
+	t := middleware.GetTenant(c)
+	var req createInvoiceRequest
+	if err := c.Bind().Body(&req); err != nil {
+		return problem.BadRequest("invalid request body").WithCode("invalid_body").Send(c)
+	}
+	ch := &checks{}
+	ch.id("customer_id", req.CustomerID, true)
+	ch.text("description", req.Description, true, limits.Description)
+	ch.amount("amount_cents", req.AmountCents)
+	ch.text("reference", req.Reference, true, 64)
+	if len(ch.errs) > 0 {
+		return problem.Validation(ch.errs).Send(c)
+	}
+	inv, lines, created, err := h.oneOff.Create(c.Context(), services.OneOffInput{
+		OrganizationID: t.OrganizationID, Livemode: t.Livemode, CustomerID: req.CustomerID, Description: req.Description,
+		Reference: req.Reference, AmountCents: int64(req.AmountCents), Metadata: req.Metadata,
+	}, actorOf(c), middleware.GetRequestID(c), h.now())
+	if err != nil {
+		return fail(c, err)
+	}
+	status := fiber.StatusOK
+	if created {
+		status = fiber.StatusCreated
+	}
+	return c.Status(status).JSON(newInvoiceResponse(inv, lines, h.today(), h.links))
 }
 
 func (h *handlers) getInvoice(c fiber.Ctx) error {

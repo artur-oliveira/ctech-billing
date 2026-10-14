@@ -304,6 +304,22 @@ func BuildInvoicer(ctx context.Context, cfg *config.Config) (*services.Invoicer,
 	return invoicer, nil
 }
 
+// BuildOneOff wires what the operator's one-off invoice needs (cmd/byok
+// -tenant-invoice): the service the route uses, issued through the sweep's own
+// invoicer so a BYOK tenant's charge follows, and the signer of the checkout link.
+func BuildOneOff(ctx context.Context, cfg *config.Config) (*services.OneOffInvoices, *services.PayLink, error) {
+	invoicer, err := BuildInvoicer(ctx, cfg)
+	if err != nil {
+		return nil, nil, err
+	}
+	db, err := newDynamoDB(ctx, cfg)
+	if err != nil {
+		return nil, nil, err
+	}
+	return services.NewOneOffInvoices(repositories.NewInvoiceRepository(db, cfg), repositories.NewCustomerRepository(db, cfg), invoicer),
+		services.NewPayLink(cfg.CheckoutLinkSecret, cfg.CheckoutBaseURL), nil
+}
+
 // BuildProvisioner wires only what applying a tenant plan needs.
 //
 // Four repositories and nothing else. The seed is the one process that writes
