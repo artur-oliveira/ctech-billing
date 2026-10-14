@@ -26,9 +26,9 @@ Repos: `P_COMMONS=/home/artur-revgas/Documents/Projects/Ctech/ctech-go-common` (
 
 ## Review Focus
 
-- A Pix webhook with no `pagador` block (plain transfer, or Inter omits it) leaves the payer empty and `payer_match = unknown`; it must not fail the confirmation. Pinned in Task 2 and Task 4.
-- Two payments on one charge: the payer stored is the first payment's, the second is an excess and never rewrites it. Pinned in Task 4.
-- A masked CPF (`***137303**`) matches only on the revealed digits; a CPF with a different revealed digit is `mismatch`, a payer with zero revealed digits is `unknown`. Pinned in Task 4.
+- A credit line with no payer detail (an old line, or Inter omits it) leaves the payer empty and `payer_match = unknown`; it must not fail the sync or the confirmation. Pinned in Task 2 and Task 4.
+- Two payments on one charge: the payer stored is the first payment's (matched by `endToEndId`), the second is an excess and never rewrites it. Pinned in Task 4.
+- A document that is masked, partial or in another shape (CNPJ for a CPF customer) never reads as `match`: digits that differ are `mismatch`, too few digits are `unknown`. Pinned in Task 4.
 - A payout retried with the same `Idempotency-Key` returns the original payout and never pays twice; a key reused with another amount or CPF is `409`. Pinned in Task 6.
 - A payout whose Inter call fails or times out stays `processing` and is resolved by the sweep from Inter's status, never marked failed on a transport error. Pinned in Task 1 and Task 6.
 - A one-off invoice for a customer with no tax ID is refused before any charge opens. Pinned in Task 5.
@@ -54,17 +54,9 @@ Billing already has the BYOK Inter integration (`api/cmd/byok-outbound` running 
 
 Branch: `feat/byok-payer-and-payout`.
 
-### Task 0b: Capture the real payloads
+### Task 0b: Capture the real payloads — DONE 2026-10-14
 
-This closes spec §11's open item before code depends on a guess.
-
-**Files:**
-- Create: `inter/testdata/pix_callback_paid.json`, `inter/testdata/extrato_pix_line.json`
-- Modify: `docs/` note in this plan's PR description (the result)
-
-- [ ] **Step 1: Pay a sandbox charge and capture the callback body.** Use the live payment from Task 0 if its webhook body was logged, otherwise Billing's sandbox (Inter's simulated payment): open a cobv, call `SimulatePayment`, and save the raw webhook body the byok-webhook Lambda receives (its CloudWatch log, or `api/cmd/byok-webhook` with body logging on in a throwaway run). Keep the file with the CPF and name replaced by obviously fake values, same shape.
-- [ ] **Step 2: Capture one extrato Pix line** (already seen on 2026-10-14, in the trace of a Pix **sent** by CTech: `detalhes` carries `nomePagador` and `cpfCnpjPagador`, and the document there was **not masked**. If a received Pix's line carries the payer the same way, the extrato, not the webhook, is the better payer source: it is also what the statement sync already reads) from `GET /banking/v2/extrato/completo` for the same payment (`ExtratoCompleto`), saved the same way.
-- [ ] **Step 3: Record what you saw** in the PR description: the exact key that carries the payer name and document in each, and whether the document is masked. If the callback has **no** payer, stop and tell the owner: §6 then has to read the payer from the extrato line instead, and the payer task (Task 2) changes source.
+Spec §11's open fact is closed by the live proof (spec §6 has the table). Keep as fixtures, with the document and name replaced by fake values of the same shape: the **statement line** of the received Pix (`inter/testdata/extrato_pix_received.json`: `detalhes` with `nomePagador`, `cpfCnpjPagador`, `nomeEmpresaPagador`, `endToEndId`, `txId`) and the **paid cobv** (`inter/testdata/cobv_paid.json`: `pix[]` with an empty `infoPagador`). The webhook body was not captured (the Lambda logs none) and is not needed.
 
 ### Task 1: Payout capability
 
@@ -102,55 +94,46 @@ type Payouts interface {
 - [ ] **Step 4: Run** `go test ./...` — expect PASS.
 - [ ] **Step 5: Commit** `feat(byok): optional payout capability, implemented for Inter`.
 
-### Task 2: `Payer` on the Pix callback
+### Task 2: `Payer` on the statement line
 
 **Files:**
-- Modify: `byok/types.go` (`Callback`), `inter/pix/types.go` (`Recebido`), `inter/callback.go`
-- Test: `inter/callback_test.go`
+- Modify: `byok/types.go` (`StatementLine`), `inter/banking_calls.go` (`ExtratoLine.Detalhes`), `inter/provider.go` (`StatementPage`)
+- Test: `inter/provider_test.go` (or `banking_calls_test.go`)
 
 **Interfaces:**
 - Produces:
 ```go
 // byok
 type Payer struct {
-	Name       string `json:"name,omitempty"`
-	Document   string `json:"document,omitempty"` // as received, possibly masked
-	Masked     bool   `json:"masked,omitempty"`
-	EndToEndID string `json:"end_to_end_id,omitempty"`
+	Name        string `json:"name,omitempty"`
+	Document    string `json:"document,omitempty"`    // CPF or CNPJ as the bank gives it
+	Institution string `json:"institution,omitempty"` // the payer's bank
 }
-type Callback struct { /* existing fields */ Payers []Payer `json:"payers,omitempty"` } // one per payment, same order as PaymentIDs
+type StatementLine struct { /* existing fields */ Payer *Payer `json:"payer,omitempty"` } // credit lines only, nil when the bank sends none
 ```
 
-- [ ] **Step 1: Write the failing test** in `inter/callback_test.go`, using the Task 0b fixture (adjust the field names to what Task 0b recorded; the shape below is Bacen's `pagador`):
+- [ ] **Step 1: Write the failing test** with the Task 0b fixture:
 
 ```go
-func TestParseCallbackKeepsThePayerAsEvidence(t *testing.T) {
-	body := []byte(`{"pix":[{"endToEndId":"E1","txid":"ctb01HZXXXXXXXXXXXXXXXXXXXXX","valor":"10.00","horario":"2026-10-14T12:00:00Z","pagador":{"nome":"Fulano de Tal","cpf":"***137303**"}}]}`)
-	got, err := (&Provider{}).ParseCallback(byok.ProductPixDue, nil, body)
+func TestAReceivedPixLineCarriesItsPayer(t *testing.T) {
+	c, cr, _ := recorder(t, `{"totalPaginas":1,"transacoes":[{"idTransacao":"T1","dataTransacao":"2026-10-14","tipoOperacao":"C","valor":"0.10","titulo":"Pix recebido","descricao":"Fulano de Tal","detalhes":{"txId":"ctb01JABCDEFGHJKMNPQRSTVWXYZ","endToEndId":"E1","nomePagador":"Fulano de Tal","cpfCnpjPagador":"12345678909","nomeEmpresaPagador":"BANCO EXEMPLO"}}]}`, 200)
+	page, err := NewProvider(c).StatementPage(context.Background(), byok.Credentials{Values: credValues(cr)}, byok.Token{Value: "t"}, day("2026-10-14"), day("2026-10-14"), 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := byok.Payer{Name: "Fulano de Tal", Document: "***137303**", Masked: true, EndToEndID: "E1"}
-	if len(got.Payers) != 1 || got.Payers[0] != want {
-		t.Fatalf("payers = %+v, want [%+v]", got.Payers, want)
+	want := &byok.Payer{Name: "Fulano de Tal", Document: "12345678909", Institution: "BANCO EXEMPLO"}
+	if got := page.Lines[0].Payer; got == nil || *got != *want {
+		t.Fatalf("payer = %+v, want %+v", got, want)
 	}
 }
 
-func TestParseCallbackWithoutAPayerStaysValid(t *testing.T) {
-	body := []byte(`{"pix":[{"endToEndId":"E1","txid":"ctb01HZXXXXXXXXXXXXXXXXXXXXX","valor":"10.00"}]}`)
-	got, err := (&Provider{}).ParseCallback(byok.ProductPixDue, nil, body)
-	if err != nil || len(got.ChargeRefs) != 1 || len(got.Payers) != 0 {
-		t.Fatalf("got %+v err %v", got, err)
-	}
-}
+func TestADebitLineHasNoPayer(t *testing.T) { /* the same shape with tipoOperacao "D": Payer must be nil: the "payer" there is CTech itself */ }
+func TestALineWithoutPayerDetailsHasNoPayer(t *testing.T) { /* detalhes without the three fields: Payer nil, the line is still returned */ }
 ```
-
-(Use the product constant the existing tests in that file use; open it first and copy its call shape.)
-
-- [ ] **Step 2: Run** `go test ./inter/ -run ParseCallback -v` — expect FAIL (`Payers` undefined).
-- [ ] **Step 3: Implement.** Add `Pagador *struct{ Nome, CPF, CNPJ string }` (json `pagador`, `nome`, `cpf`, `cnpj`) to `pix.Recebido`; in `ParseCallback` append a `byok.Payer` per accepted `r` when `Pagador != nil`, `Document` = CPF else CNPJ, `Masked = strings.Contains(Document, "*")`. Update the comment above `ParseCallback` ("payer is kept as evidence only; amounts and status remain dropped").
-- [ ] **Step 4: Run** the same command — expect PASS. Run `go test ./...`.
-- [ ] **Step 5: Commit** `feat(byok): keep the Pix payer on the parsed callback as evidence`.
+  (`credValues` and `day` are two small helpers in the test file: copy the credential map and `byok.ParseDate` use from `TestAStatementLineWithAnUnreadableAmountIsSkippedNotPostedAsZero`.)
+- [ ] **Step 2: Run** `go test ./inter/ -run Payer -v` — expect FAIL (`Payer` undefined).
+- [ ] **Step 3: Implement.** Add `NomePagador`, `CPFCNPJPagador`, `NomeEmpresaPagador` (`json:"nomePagador"`, `cpfCnpjPagador`, `nomeEmpresaPagador`) to `ExtratoLine.Detalhes`; in `StatementPage`, for credit lines, set `Payer` when name or document is non-empty. Never for debits: on a Pix sent by CTech the "pagador" is CTech itself.
+- [ ] **Step 4: Run** `go test ./...` — PASS. **Step 5: Commit** `feat(byok): the payer of a received Pix on its statement line`.
 
 ### Task 3: Tag
 
@@ -163,12 +146,12 @@ func TestParseCallbackWithoutAPayerStaysValid(t *testing.T) {
 
 Branch: `feat/wallet-ledger-p1`. First step of Task 4: `go get gopkg.aoctech.app/api-commons@v1.23.0 && go mod tidy`.
 
-### Task 4: Store the payer on the attempt, write-once, with `payer_match`
+### Task 4: Record the payer on the attempt, write-once, with `payer_match`
 
 **Files:**
-- Modify: `internal/domain/billing/payment.go` (`PaymentAttempt`), `internal/services/byok_webhooks.go` (`NotifyRequest`), `cmd/byok-webhook/main.go`, `internal/services/byok_confirm.go`, `internal/repositories/payments_byok.go`, `internal/api/v1/dto.go` (`invoiceResponse`)
+- Modify: `internal/domain/billing/payment.go` (`PaymentAttempt`), `internal/repositories/payments_byok.go`, `internal/repositories` (`BankLine` gains the payer), `internal/services/byok_statement.go` (map the line), `internal/services/byok_linker.go` (`Link`), `internal/services/byok_confirm.go` (the on-demand pull), `internal/api/v1/dto.go` (`invoiceResponse`)
 - Create: `internal/domain/billing/payer.go`, `internal/domain/billing/payer_test.go`
-- Test: `internal/services/byok_confirm_payer_test.go`, `internal/repositories` integration test beside existing ones
+- Test: `internal/services/byok_linker_payer_test.go`, a repository integration test beside the existing ones
 
 **Interfaces:**
 - Produces:
@@ -176,21 +159,16 @@ Branch: `feat/wallet-ledger-p1`. First step of Task 4: `go get gopkg.aoctech.app
 // billing
 type PayerMatch string
 const ( PayerMatchYes PayerMatch = "match"; PayerMatchNo PayerMatch = "mismatch"; PayerMatchUnknown PayerMatch = "unknown" )
-type Payer struct {
-	Name, Document, EndToEndID string
-	Masked                     bool
-}
+type Payer struct{ Name, Document, Institution string }
 func MatchPayer(customerTaxID string, p Payer) PayerMatch
 // PaymentAttempt gains:
 //   Payer      *Payer     `dynamodbav:"payer,omitempty" json:"payer,omitempty"`
 //   PayerMatch PayerMatch `dynamodbav:"payer_match,omitempty" json:"payer_match,omitempty"`
 // repositories
 func (r *PaymentRepository) SetPayerOnce(ctx context.Context, a *billing.PaymentAttempt, p billing.Payer, m billing.PayerMatch, now time.Time) (bool, error) // true when this call wrote it
-// services
-type NotifyRequest struct { /* existing */ Payers []byok.Payer `json:"payers,omitempty"` }
 ```
 
-- [ ] **Step 1: Failing domain tests** in `payer_test.go`:
+- [ ] **Step 1: Failing domain test** (`payer_test.go`):
 
 ```go
 func TestMatchPayer(t *testing.T) {
@@ -199,13 +177,15 @@ func TestMatchPayer(t *testing.T) {
 		p         Payer
 		want      PayerMatch
 	}{
-		{"full cpf equal", "12345678909", Payer{Document: "12345678909"}, PayerMatchYes},
-		{"masked, revealed digits equal", "12345678909", Payer{Document: "***456789**", Masked: true}, PayerMatchYes},
-		{"masked, a revealed digit differs", "12345678909", Payer{Document: "***456780**", Masked: true}, PayerMatchNo},
-		{"nothing revealed", "12345678909", Payer{Document: "***********", Masked: true}, PayerMatchUnknown},
+		{"cpf equal", "12345678909", Payer{Document: "12345678909"}, PayerMatchYes},
+		{"cpf equal with punctuation", "123.456.789-09", Payer{Document: "12345678909"}, PayerMatchYes},
+		{"cpf different", "12345678909", Payer{Document: "98765432100"}, PayerMatchNo},
+		{"cnpj payer, cpf customer", "12345678909", Payer{Document: "12345678000195"}, PayerMatchNo},
+		{"masked, revealed digits equal", "12345678909", Payer{Document: "***456789**"}, PayerMatchYes},
+		{"masked, a revealed digit differs", "12345678909", Payer{Document: "***456780**"}, PayerMatchNo},
+		{"nothing revealed", "12345678909", Payer{Document: "***********"}, PayerMatchUnknown},
 		{"no payer", "12345678909", Payer{}, PayerMatchUnknown},
 		{"customer has no tax id", "", Payer{Document: "12345678909"}, PayerMatchUnknown},
-		{"cnpj payer, cpf customer", "12345678909", Payer{Document: "12345678000195"}, PayerMatchNo},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -216,14 +196,13 @@ func TestMatchPayer(t *testing.T) {
 	}
 }
 ```
-
-  The masked comparison mirrors `maskedCPFMatches` in `ctech-wallet/api/internal/services/wallet.go` (grep for it and copy the rule exactly, including how many digits the mask hides; adjust the test strings if Inter's real mask in the Task 0b fixture differs).
-- [ ] **Step 2: Run** `go test ./internal/domain/billing -run MatchPayer` — FAIL. **Step 3:** implement `payer.go` (digits-only normalisation, `*` positions skipped, `unknown` when fewer than 3 digits are revealed). **Step 4:** PASS.
-- [ ] **Step 5: Failing repository test** (follow the neighbouring `payments_byok` integration tests for the DynamoDB harness): `SetPayerOnce` returns `true` on the first call and `false` on the second with a different payer, and the stored payer is the first. Implement with `attribute_not_exists(payer)` as the condition; a `ConditionalCheckFailed` is `(false, nil)`.
-- [ ] **Step 6: Failing service test** in `byok_confirm_payer_test.go` (use `byok_testhelpers_test.go` helpers): a `Confirm` woken with a payer settles the invoice and stores the payer with the right `payer_match`; a `Confirm` woken **without** a payer settles and leaves `Payer == nil`, `PayerMatch == "unknown"`; a second `Confirm` carrying another payer does not change the stored one. Thread the payer in via a new optional argument: `Confirm(ctx, ref, cause, now, payer ...byok.Payer)`; `ByokWebhooks.Notify` passes `in.Payers` matched to the charge by `EndToEndID` where present. Keep the existing callers compiling (variadic).
-- [ ] **Step 7: Implement** in `confirmAttempt`: after the re-query finds `ch.Payments` non-empty and **before** settlement, pick the payer whose `EndToEndID` equals `first.ID` (fall back to the only payer), compute `MatchPayer(customer.TaxID, payer)`, call `SetPayerOnce`. A failure to store is logged and never blocks settlement.
-- [ ] **Step 8:** `byok-webhook` copies `Callback.Payers` into `NotifyRequest.Payers`. Add `payer` and `payer_match` to the M2M/console `invoiceResponse` (from the paid attempt) so consumers can read it; `Payer.Document` is returned as received (masked), never expanded.
-- [ ] **Step 9:** `go test ./...` PASS; **Step 10: Commit** `feat(billing): keep the payer of a Pix on its attempt, write-once, with payer_match`.
+- [ ] **Step 2: Run** `go test ./internal/domain/billing -run MatchPayer` — FAIL. **Step 3:** implement `payer.go`: digits-only normalisation of both sides; a document with no `*` compares whole; with `*` compare only the revealed positions and answer `unknown` when fewer than 3 digits are revealed. **Step 4:** PASS.
+- [ ] **Step 5: Failing repository test** (follow the neighbouring `payments_byok` integration tests): `SetPayerOnce` returns `true` on the first call and `false` on the second with a different payer, and the stored payer is the first. Implement with condition `attribute_not_exists(payer)`; `ConditionalCheckFailed` is `(false, nil)`.
+- [ ] **Step 6: Failing service test** (`byok_linker_payer_test.go`, helpers in `byok_testhelpers_test.go`): linking a credit line that carries a payer to its attempt stores the payer and `payer_match` against the customer's tax ID; a second line for the same attempt with another payer changes nothing; a line without a payer leaves `Payer == nil` and `PayerMatch == "unknown"`, and the link still succeeds.
+- [ ] **Step 7: Implement.** Carry `Payer` through `byok_statement.go` into `repositories.BankLine`; in `Link`, after the attempt is found (and only for the line whose `PaymentID` matches the attempt's, or the first when none is recorded), call `SetPayerOnce`. A failure to store is logged and never blocks the link.
+- [ ] **Step 8: The on-demand pull.** Failing test: after `Confirm` settles an attempt, one statement page for today is requested for that connection (a fake provider counts calls) and the payer is on the attempt without waiting for the hourly sync; a rate-limited or failing pull leaves the confirmation untouched. Implement by calling the existing statement sync entry point for a one-day window under its per-connection lock (`byok_statement.go`); never inside the confirmation's critical section, and never more than once a minute per connection.
+- [ ] **Step 9:** add `payer` and `payer_match` to the M2M and console `invoiceResponse` (from the paid attempt). The document is returned as received; the console shows it masked.
+- [ ] **Step 10:** `go test ./... && go test -tags integration ./tests/integration/` PASS. **Commit** `feat(billing): the payer of a Pix on its attempt, write-once, with payer_match`.
 
 ### Task 5: One-off invoice route
 
@@ -332,8 +311,8 @@ The connection and the rail switch for tenant zero were done and proven live in 
 
 | Spec requirement | Task |
 |---|---|
-| §6 payer on the invoice, write-once, `payer_match` | 2, 4 |
-| §6 open fact: extrato/webhook payer fields | 0b |
+| §6 payer on the invoice, write-once, `payer_match`, recorded within a minute | 2, 4 |
+| §6 open fact: where the payer comes from | 0b (closed: the statement line) |
 | §5 payout through Billing, CPF only | 1, 6, 7 |
 | §4 Billing issues the deposit invoice; lookup by the caller's reference | 5 |
 | §4 refund the payer of a quarantined deposit | 5b |
