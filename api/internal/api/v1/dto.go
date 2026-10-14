@@ -18,6 +18,17 @@ import (
 // request states its mode, and it is a different surface for that reason
 // (ADR 0011).
 
+// createInvoiceRequest is a one-off invoice: one amount, one line, asked for by
+// a service. The reference is the caller's own name for it and makes the call
+// safe to repeat.
+type createInvoiceRequest struct {
+	CustomerID  string           `json:"customer_id"`
+	Description string           `json:"description"`
+	AmountCents billing.Cents    `json:"amount_cents"`
+	Reference   string           `json:"reference"`
+	Metadata    billing.Metadata `json:"metadata"`
+}
+
 type createCustomerRequest struct {
 	ExternalRef string `json:"external_ref"`
 	// UserID is the customer's ctech-account subject, when they are a person with

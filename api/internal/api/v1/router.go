@@ -144,6 +144,9 @@ func Register(app *fiber.App, d Deps) {
 		invoicesTable: d.InvoicesTable,
 		appVersion:    d.AppVersion,
 	}
+	if d.Invoicer != nil && d.Invoices != nil && d.Customers != nil {
+		h.oneOff = services.NewOneOffInvoices(d.Invoices, d.Customers, d.Invoicer)
+	}
 	// Only when the routes the links point at are actually mounted. A signed URL
 	// for a checkout this deployment does not serve is a 404 published to a paying
 	// customer, which is worse than the absent field a consumer already has to
@@ -213,6 +216,10 @@ func Register(app *fiber.App, d Deps) {
 	usage.Post("/levels", middleware.RequireM2MScope(middleware.ScopeUsageWrite), h.reportLevel)
 
 	invoices := m2m("/invoices")
+	if h.oneOff != nil {
+		invoices.Post("",
+			middleware.RequireM2MScope(middleware.ScopeInvoicesWrite), idem, h.createInvoice)
+	}
 	invoices.Get("/:id",
 		middleware.RequireM2MScope(middleware.ScopeInvoicesRead), h.getInvoice)
 	invoices.Get("",

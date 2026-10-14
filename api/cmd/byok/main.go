@@ -40,6 +40,10 @@ func main() {
 	rail := flag.String("tenant-rail", "", "operator tool (spec § 12.6): move tenant zero's collection rail to byok (CTech's own bank connection) or back to wallet; needs -mode=live and -operator")
 	operator := flag.String("operator", "", "who is moving the rail, recorded in the audit trail")
 	dryRun := flag.Bool("dry-run", false, "with -tenant-rail: print the state and change nothing")
+	invoiceFor := flag.String("tenant-invoice", "", "operator tool: issue a one-off invoice in tenant zero for this customer id (needs -mode=live, -operator, -invoice-amount-cents, -invoice-reference, -invoice-description); prints the checkout link")
+	invoiceCents := flag.Int64("invoice-amount-cents", 0, "with -tenant-invoice: the amount in centavos")
+	invoiceRef := flag.String("invoice-reference", "", "with -tenant-invoice: the caller's name for it; repeating it returns the same invoice")
+	invoiceText := flag.String("invoice-description", "", "with -tenant-invoice: the line the customer reads")
 	fine := flag.Int("fine-bp", -1, "with -tenant-rail=byok: the late fine in basis points (200 = 2 %); -1 keeps the current one")
 	interest := flag.Int("interest-bp", -1, "with -tenant-rail=byok: the monthly late interest in basis points (100 = 1 %); -1 keeps the current one")
 	flag.Parse()
@@ -50,6 +54,9 @@ func main() {
 		os.Exit(2)
 	}
 	ctx := context.Background()
+	if *invoiceFor != "" {
+		os.Exit(tenantInvoice(ctx, cfg, *modeFlag, *operator, *invoiceFor, *invoiceText, *invoiceRef, *invoiceCents))
+	}
 	if *rail != "" {
 		os.Exit(tenantRail(ctx, cfg, *rail, *modeFlag, *operator, *fine, *interest, *dryRun))
 	}
