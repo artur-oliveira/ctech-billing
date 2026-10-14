@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"time"
@@ -17,6 +18,12 @@ import (
 
 // webhookEndpointResponse never has a secret field: the secret is only in
 // webhookSecretResponse, which only create and rotate answer with.
+// WebhookVerifier proves a URL answers a GET carrying a random challenge by
+// returning it, before an endpoint at that URL is registered.
+type WebhookVerifier interface {
+	Verify(ctx context.Context, url string) error
+}
+
 type webhookEndpointResponse struct {
 	ID          string   `json:"id"`
 	URL         string   `json:"url"`
@@ -92,6 +99,13 @@ func (h *consoleHandlers) createWebhook(c fiber.Ctx) error {
 	events := ch.webhookEvents("events", req.Events)
 	if len(ch.errs) > 0 {
 		return problem.Validation(ch.errs).Send(c)
+	}
+	// hub.subscribe style: the endpoint must send back a challenge we make up
+	// now. It proves the URL is live and under the registrant's control, and a
+	// mistyped address fails here instead of after twelve lost deliveries.
+	if err := h.verifier.Verify(c.Context(), req.URL); err != nil {
+		return problem.Unprocessable("the endpoint did not confirm the registration: " + err.Error()).
+			WithCode("webhook_verification_failed").Send(c)
 	}
 	t := middleware.GetTenant(c)
 	now := h.now()

@@ -519,7 +519,7 @@
   "form": {
    "title": "Novo endpoint",
    "url": "URL",
-   "urlHint": "Só https, em um endereço público.",
+   "urlHint": "Só https, em um endereço público. Ao adicionar, enviamos um GET com ?hub.mode=subscribe&hub.challenge=<texto>; seu endpoint deve responder 200 com exatamente esse texto.",
    "urlPlaceholder": "https://sua-api.com.br/webhooks/billing",
    "all": "Todos os eventos",
    "submit": "Adicionar"

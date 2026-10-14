@@ -41,11 +41,31 @@ import (
 	"gopkg.aoctech.app/billing/api/internal/wallet"
 )
 
+// Option changes how Build wires the app. Tests use it to replace what would
+// otherwise reach the network.
+type Option func(*options)
+
+type options struct{ webhookVerifier v1.WebhookVerifier }
+
+// WithWebhookVerifier replaces the check that a new webhook endpoint answers
+// its challenge (the real one refuses loopback addresses by design).
+func WithWebhookVerifier(v v1.WebhookVerifier) Option {
+	return func(o *options) { o.webhookVerifier = v }
+}
+
 // Build assembles the Fiber app and every repository and service behind it.
 //
 // It takes an explicit clock so integration tests can pin "today" — a billing
 // service tested against the wall clock passes in March and fails in February.
-func Build(ctx context.Context, cfg *config.Config, clock func() time.Time) (*fiber.App, error) {
+func Build(ctx context.Context, cfg *config.Config, clock func() time.Time, opts ...Option) (*fiber.App, error) {
+	var o options
+	for _, apply := range opts {
+		apply(&o)
+	}
+	var verifier v1.WebhookVerifier = services.NewWebhookVerifier()
+	if o.webhookVerifier != nil {
+		verifier = o.webhookVerifier
+	}
 	db, err := newDynamoDB(ctx, cfg)
 	if err != nil {
 		return nil, err
@@ -222,6 +242,7 @@ func Build(ctx context.Context, cfg *config.Config, clock func() time.Time) (*fi
 		Idempotency:       idem,
 		Connector:         services.NewCredentialConnector(clientReader, creds, machineScopes),
 		Webhooks:          repositories.NewWebhookRepository(db, cfg),
+		WebhookVerifier:   verifier,
 
 		Organizations: orgs,
 		Audit:         audit,

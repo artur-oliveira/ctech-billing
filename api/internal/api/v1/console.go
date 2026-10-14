@@ -55,6 +55,7 @@ type consoleHandlers struct {
 	creds     *repositories.CredentialRepository
 	connector *services.CredentialConnector
 	hooks     *repositories.WebhookRepository
+	verifier  WebhookVerifier
 	// gates is the single charge-gate builder (BYOK spec § 7.1): can_charge
 	// and the BYOK collection routes.
 	gates *services.ChargeGates
