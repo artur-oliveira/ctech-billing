@@ -30,11 +30,23 @@
     },
     "create_integration": {
       "title": "Criar a integração no Inter",
-      "body": "No Internet Banking, abra Integrar e escolha Nova integração. Sugestão de nome: CTech Billing. Marque estes escopos:",
-      "copy": "Copiar escopos",
-      "copied": "Escopos copiados",
-      "noPayments": "Não marque nenhum escopo de pagamento (pagamento-*).",
-      "questionnaire": "O Inter pede um questionário em três partes e o aceite dos termos de uso da API.",
+      "body": "No Internet Banking, abra Integrar e escolha Nova integração. São três partes:",
+      "details": {
+        "title": "Nova integração.",
+        "body": "Informe o nome (até {{nameMax}} caracteres; sugestão: {{name}}) e a descrição (até {{descriptionMax}} caracteres)."
+      },
+      "scopes": {
+        "title": "Escopos.",
+        "body": "Em “Quais atividades pretende realizar?”, marque só as duas abaixo e, dentro de cada uma, apenas estas permissões:"
+      },
+      "noPayments": "Não marque Cobranças, Pagamentos, Recebimentos recorrentes nem Fórum Inter: a CTech não usa.",
+      "terms": "Marque também “Li e concordo com todos os Termos e condições de uso das APIs”.",
+      "questionnaire": {
+        "title": "Perguntas do Inter.",
+        "body": "Se for a primeira integração da conta, o Inter pede mais passos (Sobre a sua empresa, Sobre seus clientes e Revisão). Nas seguintes eles não aparecem."
+      },
+      "copy": "Copiar lista",
+      "copied": "Lista copiada",
       "next": "Criei a integração"
     },
     "validation": {
@@ -46,7 +58,7 @@
     },
     "download": {
       "title": "Baixar chave e certificado",
-      "body": "Na integração aprovada, baixe o certificado (.crt) e a chave (.key). O client_secret aparece só uma vez: copie agora.",
+      "body": "Em Integrar, a nova integração aparece com o status “Novo”. Clique nela para baixar a chave e o certificado: um zip com dois arquivos, .crt e .key. O client_id e o client_secret aparecem só uma vez na tela e não vêm no zip: copie agora.",
       "next": "Baixei os arquivos"
     },
     "upload": {
@@ -120,7 +132,7 @@
     "notifyEmail": "Avisos para",
     "backfilling": "Trazendo o histórico do extrato. Pode levar alguns minutos.",
     "statementFrom": "Extrato desde {{date}}",
-    "missingScopes": "Para cobrar pelo Inter, faltam estes escopos na integração: {{scopes}}",
+    "missingScopes": "Para cobrar pelo Inter, faltam estas permissões na integração: {{scopes}}",
     "openStatement": "Ver no Finanças",
     "test": "Testar conexão",
     "renew": "Renovar certificado",
@@ -233,5 +245,26 @@
     "replaceBody": "{{host}} deixa de receber os avisos de pagamento desta chave Pix. Faça isso só se esse sistema não precisar mais deles.",
     "replaceKeep": "Manter o atual",
     "done": "Aviso de pagamentos registrado."
+  },
+  "guide": {
+    "activity": {
+      "pix": {
+        "title": "Pix",
+        "hint": "Receber e enviar pagamentos por Pix."
+      },
+      "statement": {
+        "title": "Saldo e Extrato",
+        "hint": "Conferir saldo e movimentações."
+      }
+    },
+    "permission": {
+      "due_charge_write": "Emitir e editar cobranças com vencimento",
+      "due_charge_read": "Consultar cobranças com vencimento",
+      "pix_refund": "Solicitar devolução do Pix",
+      "pix_read": "Consultar Pix recebidos e devoluções",
+      "webhook_write": "Criar e editar webhooks",
+      "webhook_read": "Consultar webhooks",
+      "statement_read": "Consultar extrato e saldo"
+    }
   }
 }

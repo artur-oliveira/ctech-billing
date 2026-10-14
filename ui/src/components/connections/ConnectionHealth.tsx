@@ -2,6 +2,7 @@
 
 import {Alert, Badge, Button, buttonVariants, cn} from "@aoctech/ui"
 import {useMutation, useQueryClient} from "@tanstack/react-query"
+import type {TFunction} from "i18next"
 import {AlertTriangle, CheckCircle2, Circle, Clock} from "lucide-react"
 import Link from "next/link"
 import {useState} from "react"
@@ -10,9 +11,10 @@ import {toast} from "sonner"
 
 import {connectionKeys, disconnect, registerWebhook, renewCertificate, syncNow, testConnection, type DisconnectReport} from "@/lib/api/connections"
 import {messageFor, problemCode} from "@/lib/api/client"
-import type {Connection, ConnectionStatus, ConnectionsScope} from "@/lib/api/connectionsTypes"
+import type {Connection, ConnectionStatus, ConnectionsScope, ProviderGuide} from "@/lib/api/connectionsTypes"
 import {codeMessage} from "@/lib/errors"
 import {useIntent} from "@/lib/api/idempotency"
+import {permissionsForScopes} from "@/lib/connectionsGuide"
 import {instantShortDate} from "@/lib/format"
 
 import {DisconnectDialog} from "./DisconnectDialog"
@@ -46,9 +48,11 @@ function when(instant: string, locale: string): string {
  * certificate's expiry from D-90, the last sync and the last error in words,
  * and the actions. Blocks are ruled, not boxed; one warning at a time.
  */
-export function ConnectionHealth({scope, connection: c, statementHref, extra}: {
+export function ConnectionHealth({scope, connection: c, guide, statementHref, extra}: {
   scope: ConnectionsScope
   connection: Connection
+  /** The provider's guide: names the permissions to tick for a refused scope. */
+  guide?: ProviderGuide
   statementHref?: string
   /** The console's collection settings (spec § 11.2); Finanças passes none. */
   extra?: React.ReactNode
@@ -146,7 +150,7 @@ export function ConnectionHealth({scope, connection: c, statementHref, extra}: {
           ))}
         </ul>
         {merchant && c.missing_scopes.length > 0 && (
-          <p className="text-pretty text-sm text-muted-foreground">{t("connections.screen.missingScopes", {scopes: c.missing_scopes.join(", ")})}</p>
+          <p className="text-pretty text-sm text-muted-foreground">{t("connections.screen.missingScopes", {scopes: missingList(t, guide, c.missing_scopes)})}</p>
         )}
       </section>
 
@@ -218,4 +222,10 @@ function Fact({term, children}: {term: string; children: React.ReactNode}) {
       <dd className="min-w-0 text-foreground">{children}</dd>
     </div>
   )
+}
+
+/** The permissions to tick at the bank for the refused scopes, in the bank's words. */
+function missingList(t: TFunction, guide: ProviderGuide | undefined, scopes: string[]): string {
+  const {keys, unknown} = permissionsForScopes(guide, scopes)
+  return [...keys.map(k => t(`connections.guide.permission.${k}`)), ...unknown].join("; ")
 }

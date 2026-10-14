@@ -45,7 +45,26 @@ export interface ProviderField {
 export interface ProviderInfo {
   provider: "inter"
   fields: ProviderField[]
-  scopes: {statement: string[]; collection: string[]}
+  guide: ProviderGuide
+}
+
+/** What to tick at the bank, in the bank's own terms (activities hold permissions). */
+export interface ProviderGuide {
+  name_max?: number
+  description_max?: number
+  suggested_name?: string
+  accept_terms: boolean
+  activities: GuideActivity[]
+}
+
+export interface GuideActivity {
+  code: string
+  permissions: GuidePermission[]
+}
+
+export interface GuidePermission {
+  key: string
+  scopes: string[]
 }
 
 export interface ConnectForm {

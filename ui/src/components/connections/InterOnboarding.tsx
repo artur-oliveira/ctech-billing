@@ -9,7 +9,7 @@ import {toast} from "sonner"
 
 import {connect, connectionKeys, setOnboarding} from "@/lib/api/connections"
 import {messageFor} from "@/lib/api/client"
-import {ONBOARDING_STEPS, type Connection, type ConnectForm as ConnectFormValues, type ConnectionsScope, type OnboardingStep, type ProviderInfo} from "@/lib/api/connectionsTypes"
+import {ONBOARDING_STEPS, type Connection, type ConnectForm as ConnectFormValues, type ConnectionsScope, type OnboardingStep, type ProviderGuide, type ProviderInfo} from "@/lib/api/connectionsTypes"
 import {useIntent} from "@/lib/api/idempotency"
 import {instantShortDate} from "@/lib/format"
 
@@ -47,8 +47,7 @@ export function InterOnboarding({scope, connection, providers}: {scope: Connecti
     },
   })
 
-  const scopes = providers.find(p => p.provider === "inter")?.scopes
-  const scopeList = [...(scopes?.statement ?? []), ...(scopes?.collection ?? [])].join(" ")
+  const guide = providers.find(p => p.provider === "inter")?.guide
   const waiting = current === "validation" && connection?.onboarding_step === "validation"
   const index = ONBOARDING_STEPS.indexOf(current)
   const stateOf = (step: OnboardingStep, i: number): StepState => {
@@ -71,9 +70,23 @@ export function InterOnboarding({scope, connection, providers}: {scope: Connecti
     create_integration: (
       <div className="space-y-3">
         <p className="text-pretty text-muted-foreground">{t("connections.steps.create_integration.body")}</p>
-        <ScopeList text={scopeList}/>
-        <p className="font-medium text-foreground">{t("connections.steps.create_integration.noPayments")}</p>
-        <p className="text-pretty text-muted-foreground">{t("connections.steps.create_integration.questionnaire")}</p>
+        <ol className="list-decimal space-y-3 pl-5 text-pretty text-muted-foreground marker:text-foreground">
+          <li>
+            <span className="font-medium text-foreground">{t("connections.steps.create_integration.details.title")}</span>{" "}
+            {t("connections.steps.create_integration.details.body", {name: guide?.suggested_name, nameMax: guide?.name_max, descriptionMax: guide?.description_max})}
+          </li>
+          <li className="space-y-2">
+            <span className="font-medium text-foreground">{t("connections.steps.create_integration.scopes.title")}</span>{" "}
+            {t("connections.steps.create_integration.scopes.body")}
+            {guide && <PermissionGuide guide={guide}/>}
+            <p className="font-medium text-foreground">{t("connections.steps.create_integration.noPayments")}</p>
+            {guide?.accept_terms && <p>{t("connections.steps.create_integration.terms")}</p>}
+          </li>
+          <li>
+            <span className="font-medium text-foreground">{t("connections.steps.create_integration.questionnaire.title")}</span>{" "}
+            {t("connections.steps.create_integration.questionnaire.body")}
+          </li>
+        </ol>
         {nextButton("create_integration")}
       </div>
     ),
@@ -111,13 +124,26 @@ export function InterOnboarding({scope, connection, providers}: {scope: Connecti
   return <Steps label={t("connections.steps.label")} items={items} className="max-w-2xl"/>
 }
 
-/** The scopes to tick at Inter, as one copyable line. */
-function ScopeList({text}: {text: string}) {
+/** The activities and permissions to tick at the bank, as its wizard shows them, with one copy button. */
+function PermissionGuide({guide}: {guide: ProviderGuide}) {
   const {t} = useTranslation()
   const [copied, setCopied] = useState(false)
+  const text = guide.activities
+    .map(a => [t(`connections.guide.activity.${a.code}.title`), ...a.permissions.map(p => `- ${t(`connections.guide.permission.${p.key}`)}`)].join("\n"))
+    .join("\n\n")
   return (
-    <div className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-surface px-3 py-2">
-      <code className="min-w-0 flex-1 break-words font-mono text-xs text-foreground">{text}</code>
+    <div className="space-y-3 rounded-md border border-border bg-surface px-3 py-3">
+      {guide.activities.map(a => (
+        <section key={a.code} aria-labelledby={`guide-${a.code}`}>
+          <h3 id={`guide-${a.code}`} className="text-sm font-semibold text-foreground">{t(`connections.guide.activity.${a.code}.title`)}</h3>
+          <p className="text-xs text-muted-foreground">{t(`connections.guide.activity.${a.code}.hint`)}</p>
+          <ul className="mt-1 space-y-0.5 text-sm text-foreground">
+            {a.permissions.map(p => (
+              <li key={p.key} className="flex items-start gap-2"><Check aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground"/>{t(`connections.guide.permission.${p.key}`)}</li>
+            ))}
+          </ul>
+        </section>
+      ))}
       <Button variant="ghost" size="sm" onClick={() => {
         void navigator.clipboard?.writeText(text)
         setCopied(true)

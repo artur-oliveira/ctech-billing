@@ -9,11 +9,16 @@ import {InterOnboarding} from "./InterOnboarding"
 import {interInfo, live} from "./testing"
 
 describe("InterOnboarding", () => {
-  it("starts at the saved step and offers the copyable scope list with the no-payments warning", () => {
+  it("starts at the saved step and lists the activities and permissions as Inter's wizard shows them", () => {
     renderWithQuery(<InterOnboarding scope={live} connection={{provider: "inter", state: "onboarding", onboarding_step: "create_integration"} as Connection} providers={[interInfo]}/>)
     expect(screen.getByText("Criar a integração no Inter").closest("li")!.getAttribute("aria-current")).toBe("step")
-    expect(screen.getByText("extrato.read cobv.read cobv.write pix.read pix.write webhook.read webhook.write")).toBeTruthy()
-    expect(screen.getByText("Não marque nenhum escopo de pagamento (pagamento-*).")).toBeTruthy()
+    expect(screen.getByRole("heading", {name: "Pix"})).toBeTruthy()
+    expect(screen.getByRole("heading", {name: "Saldo e Extrato"})).toBeTruthy()
+    expect(screen.getByText("Emitir e editar cobranças com vencimento")).toBeTruthy()
+    expect(screen.getByText("Consultar extrato e saldo")).toBeTruthy()
+    expect(screen.getByText(/até 50 caracteres; sugestão: CTech Billing/)).toBeTruthy()
+    expect(screen.getByText(/Não marque Cobranças, Pagamentos/)).toBeTruthy()
+    expect(screen.getByText(/Li e concordo com todos os Termos/)).toBeTruthy()
   })
 
   it("starts at the requirements when nothing was saved, and saves the next step", async () => {

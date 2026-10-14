@@ -48,7 +48,7 @@ export function InterConnectionScreen({scope, backHref, statementHref, extra}: {
       ) : q.isError ? (
         <ErrorBlock error={q.error} onRetry={() => void q.refetch()}/>
       ) : connected ? (
-        <ConnectionHealth scope={scope} connection={conn} extra={extra?.(conn)}
+        <ConnectionHealth scope={scope} connection={conn} guide={q.data?.providers.find(p => p.provider === "inter")?.guide} extra={extra?.(conn)}
           statementHref={statementHref && conn.ledger_account_id ? statementHref(conn.ledger_account_id) : undefined}/>
       ) : scope.mode === "test" ? (
         <SandboxBlock scope={scope}/>

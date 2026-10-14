@@ -8,7 +8,17 @@ export const test: ConnectionsScope = {...live, mode: "test"}
 export const interInfo: ProviderInfo = {
   provider: "inter",
   fields: [{name: "client_id", required: true}],
-  scopes: {statement: ["extrato.read"], collection: ["cobv.read", "cobv.write", "pix.read", "pix.write", "webhook.read", "webhook.write"]},
+  guide: {
+    name_max: 50, description_max: 250, suggested_name: "CTech Billing", accept_terms: true,
+    activities: [
+      {code: "pix", permissions: [
+        {key: "due_charge_write", scopes: ["cobv.write"]}, {key: "due_charge_read", scopes: ["cobv.read"]},
+        {key: "pix_refund", scopes: ["pix.write"]}, {key: "pix_read", scopes: ["pix.read"]},
+        {key: "webhook_write", scopes: ["webhook.write"]}, {key: "webhook_read", scopes: ["webhook.read"]},
+      ]},
+      {code: "statement", permissions: [{key: "statement_read", scopes: ["extrato.read"]}]},
+    ],
+  },
 }
 
 export const active: Connection = {

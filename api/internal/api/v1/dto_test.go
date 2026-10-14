@@ -2,9 +2,11 @@ package v1
 
 import (
 	"net/url"
+	"slices"
 	"testing"
 	"time"
 
+	"gopkg.aoctech.app/api-commons/inter"
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
 	"gopkg.aoctech.app/billing/api/internal/domain/brcal"
 	"gopkg.aoctech.app/billing/api/internal/services"
@@ -112,5 +114,32 @@ func TestNoCheckoutURLWithoutAConfiguredLinkSigner(t *testing.T) {
 	// send anybody, so the field stays absent rather than becoming a bare token.
 	if out := newInvoiceResponse(inv, nil, today, services.NewPayLink(testLinkSecret, "")); out.CheckoutURL != "" {
 		t.Errorf("missing base URL published %q", out.CheckoutURL)
+	}
+}
+
+// Every API scope the Inter provider asks for is covered by a permission in the
+// guide, so a missing scope can always be told back as something to tick.
+func TestProviderCatalogGuideCoversInterScopes(t *testing.T) {
+	var guide providerGuide
+	for _, p := range providerCatalog() {
+		if p.Provider == "inter" {
+			guide = p.Guide
+		}
+	}
+	covered := map[string]bool{}
+	for _, a := range guide.Activities {
+		for _, p := range a.Permissions {
+			for _, s := range p.Scopes {
+				covered[s] = true
+			}
+		}
+	}
+	for _, s := range append(slices.Clone(inter.ScopesStatement), inter.ScopesCollection...) {
+		if !covered[s] {
+			t.Errorf("scope %q is asked for at connect time but no guide permission grants it", s)
+		}
+	}
+	if len(covered) != len(inter.ScopesStatement)+len(inter.ScopesCollection) {
+		t.Errorf("the guide asks to tick scopes the provider never uses: %v", covered)
 	}
 }

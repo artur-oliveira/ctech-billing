@@ -30,11 +30,23 @@
     },
     "create_integration": {
       "title": "Create the integration at Inter",
-      "body": "In Internet Banking, open Integrar and choose Nova integração. Suggested name: CTech Billing. Tick these scopes:",
-      "copy": "Copy scopes",
-      "copied": "Scopes copied",
-      "noPayments": "Do not tick any payment scope (pagamento-*).",
-      "questionnaire": "Inter asks for a three-part questionnaire and the acceptance of its API terms.",
+      "body": "In Internet Banking, open Integrar and choose Nova integração. There are three parts:",
+      "details": {
+        "title": "Nova integração.",
+        "body": "Enter the name (up to {{nameMax}} characters; suggestion: {{name}}) and the description (up to {{descriptionMax}} characters)."
+      },
+      "scopes": {
+        "title": "Escopos.",
+        "body": "Under “Quais atividades pretende realizar?”, tick only the two below and, inside each, only these permissions:"
+      },
+      "noPayments": "Do not tick Cobranças, Pagamentos, Recebimentos recorrentes or Forum Inter: CTech does not use them.",
+      "terms": "Also tick “Li e concordo com todos os Termos e condições de uso das APIs”.",
+      "questionnaire": {
+        "title": "Inter's questions.",
+        "body": "On the account's first integration Inter asks for more steps (Sobre a sua empresa, Sobre seus clientes and Revisão). They do not appear on later ones."
+      },
+      "copy": "Copy list",
+      "copied": "List copied",
       "next": "I created the integration"
     },
     "validation": {
@@ -46,7 +58,7 @@
     },
     "download": {
       "title": "Download the key and certificate",
-      "body": "In the approved integration, download the certificate (.crt) and the key (.key). The client_secret is shown only once: copy it now.",
+      "body": "Under Integrar, the new integration shows with the status “Novo”. Click it to download the key and certificate: a zip with two files, .crt and .key. The client_id and client_secret show on screen only once and are not in the zip: copy them now.",
       "next": "I downloaded the files"
     },
     "upload": {
@@ -120,7 +132,7 @@
     "notifyEmail": "Notices to",
     "backfilling": "Bringing the statement history. It may take a few minutes.",
     "statementFrom": "Statement since {{date}}",
-    "missingScopes": "To charge through Inter, the integration lacks these scopes: {{scopes}}",
+    "missingScopes": "To charge through Inter, the integration lacks these permissions: {{scopes}}",
     "openStatement": "See in Finanças",
     "test": "Test connection",
     "renew": "Renew certificate",
@@ -233,5 +245,26 @@
     "replaceBody": "{{host}} stops receiving this Pix key's payment notices. Do it only if that system no longer needs them.",
     "replaceKeep": "Keep the current one",
     "done": "Payment notices registered."
+  },
+  "guide": {
+    "activity": {
+      "pix": {
+        "title": "Pix",
+        "hint": "Receive and send Pix payments."
+      },
+      "statement": {
+        "title": "Saldo e Extrato",
+        "hint": "Check balance and transactions."
+      }
+    },
+    "permission": {
+      "due_charge_write": "Emitir e editar cobranças com vencimento",
+      "due_charge_read": "Consultar cobranças com vencimento",
+      "pix_refund": "Solicitar devolução do Pix",
+      "pix_read": "Consultar Pix recebidos e devoluções",
+      "webhook_write": "Criar e editar webhooks",
+      "webhook_read": "Consultar webhooks",
+      "statement_read": "Consultar extrato e saldo"
+    }
   }
 }
