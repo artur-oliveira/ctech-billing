@@ -349,15 +349,27 @@ func (s *ByokConnections) Test(ctx context.Context, sp space.ResolvedSpace, prov
 // Renew: § 3.2 checks, Reseal (the api never sees the client_secret again),
 // one conditional write of the new version; warnings reset.
 func (s *ByokConnections) Renew(ctx context.Context, sp space.ResolvedSpace, provider, certPEM, keyPEM, actor, requestID string, now time.Time) (*byokconn.Connection, error) {
+	if err := checkPair(certPEM, keyPEM, now); err != nil {
+		return nil, err
+	}
+	return s.reseal(ctx, sp, provider, certPEM, keyPEM, actor, requestID, "byok.certificate_renewed", now)
+}
+
+// Refresh tests the stored credentials again and records what they can do now
+// (an operator action: the bank's product list grows after a connection was
+// made). The certificate and the key stay as they are; the connection is sealed
+// under the next version, like a renewal.
+func (s *ByokConnections) Refresh(ctx context.Context, sp space.ResolvedSpace, provider, actor, requestID string, now time.Time) (*byokconn.Connection, error) {
+	return s.reseal(ctx, sp, provider, "", "", actor, requestID, "byok.refreshed", now)
+}
+
+func (s *ByokConnections) reseal(ctx context.Context, sp space.ResolvedSpace, provider, certPEM, keyPEM, actor, requestID, action string, now time.Time) (*byokconn.Connection, error) {
 	conn, err := s.Connected(ctx, sp, provider)
 	if err != nil {
 		return nil, err
 	}
 	if conn.Kind != byokconn.KindMerchant {
 		return nil, ErrSandboxInLive
-	}
-	if err := checkPair(certPEM, keyPEM, now); err != nil {
-		return nil, err
 	}
 	got, err := s.out.For(provider, conn.Livemode).Reseal(ctx, conn.Ref(), certPEM, keyPEM)
 	if err != nil {
@@ -368,7 +380,7 @@ func (s *ByokConnections) Renew(ctx context.Context, sp space.ResolvedSpace, pro
 	conn.Version++
 	conn.State = byokconn.StateActive
 	conn.ResetWarnings()
-	if err := s.repo.SaveConnection(ctx, conn, actor, requestID, "byok.certificate_renewed", now); err != nil {
+	if err := s.repo.SaveConnection(ctx, conn, actor, requestID, action, now); err != nil {
 		return nil, err
 	}
 	s.tokens.Invalidate(ctx, &old)

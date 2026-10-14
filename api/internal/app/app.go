@@ -682,25 +682,33 @@ func byokSetup(ctx context.Context, cfg *config.Config, db *dynamodb.Client, c c
 	return setup, collector, payments, repo
 }
 
+// ByokOperator is what cmd/byok's operator actions need.
+type ByokOperator struct {
+	Setup   *services.ByokCollectionSetup
+	Conns   *services.ByokConnections
+	Orgs    *repositories.OrganizationRepository
+	Payouts *services.Payouts
+}
+
 // BuildByokOperator wires what cmd/byok needs for an operator action on a
-// tenant's collection rail (spec § 12.6): the set-up and the tenant
-// repository. No HTTP app is built.
-func BuildByokOperator(ctx context.Context, cfg *config.Config) (*services.ByokCollectionSetup, *repositories.OrganizationRepository, error) {
+// tenant's collection rail, its connection or its payouts (spec § 12.6). No
+// HTTP app is built.
+func BuildByokOperator(ctx context.Context, cfg *config.Config) (*ByokOperator, error) {
 	db, err := newDynamoDB(ctx, cfg)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	c := newCache(cfg)
 	conns, st, err := BuildByok(ctx, cfg, db, c, repositories.NewLedgerRepository(db, cfg))
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	if conns == nil {
-		return nil, nil, fmt.Errorf("BYOK_OUTBOUND_FUNCTION is not set")
+		return nil, fmt.Errorf("BYOK_OUTBOUND_FUNCTION is not set")
 	}
 	orgs := repositories.NewOrganizationRepository(db, cfg)
-	setup, _, _, _ := byokSetup(ctx, cfg, db, c, conns, st, orgs)
-	return setup, orgs, nil
+	setup, _, payments, repo := byokSetup(ctx, cfg, db, c, conns, st, orgs)
+	return &ByokOperator{Setup: setup, Conns: conns, Orgs: orgs, Payouts: services.NewPayouts(payments, orgs, repo, conns.Session)}, nil
 }
 
 // byokCounter counts the BYOK limiters in Valkey when the app has it, so every

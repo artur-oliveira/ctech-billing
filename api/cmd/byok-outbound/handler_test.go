@@ -151,3 +151,20 @@ func TestParseOrgsIgnoresBlanks(t *testing.T) {
 		t.Fatalf("%v", got)
 	}
 }
+
+func TestResealWithNoNewPairRetestsTheStoredCredentials(t *testing.T) {
+	// An operator refresh: nothing to replace, so the stored certificate and key stay
+	// and the connection is tested (and sealed under the next version) again.
+	h, f := newHandler(t, rules{})
+	ref := connect(t, h, "live")
+	resp := call(t, h, byok.Request{Op: byok.OpReseal, Provider: "inter", Mode: "live", Connection: ref, Payload: payload(byok.ResealArgs{})})
+	if resp.Code != "" || f.Calls(byok.OpConnect) != 2 {
+		t.Fatalf("%+v connects=%d", resp, f.Calls(byok.OpConnect))
+	}
+	var got byok.Connected
+	_ = json.Unmarshal(resp.Payload, &got)
+	plain, err := h.sealer.Open(got.Sealed, byokseal.AAD("org-a", "live", "inter", "conn-1", 2))
+	if err != nil || !strings.Contains(string(plain), `"client_secret":"s3cr3t"`) || strings.Contains(string(plain), `"cert_pem":""`) {
+		t.Fatalf("the stored bundle is kept as it was: %v %s", err, plain)
+	}
+}

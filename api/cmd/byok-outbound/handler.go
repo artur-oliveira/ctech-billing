@@ -161,7 +161,11 @@ func (h *handler) dispatch(ctx context.Context, req byok.Request) byok.Response 
 		for k, v := range old {
 			next[k] = v
 		}
-		next["cert_pem"], next["key_pem"] = a.CertPEM, a.KeyPEM
+		// No new pair means a refresh: the stored credentials are tested again and
+		// sealed under the next version (what the connection can do may have grown).
+		if a.CertPEM != "" || a.KeyPEM != "" {
+			next["cert_pem"], next["key_pem"] = a.CertPEM, a.KeyPEM
+		}
 		return h.connect(ctx, p, req, next, req.Connection.Account, req.Connection.PixKey, req.Connection.Version+1, sandbox)
 	}
 
