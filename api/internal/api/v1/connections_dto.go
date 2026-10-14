@@ -144,25 +144,26 @@ func providerCatalog() []providerInfo {
 					{Key: "pix_read", Scopes: []string{"pix.read"}},
 					{Key: "webhook_write", Scopes: []string{"webhook.write"}},
 					{Key: "webhook_read", Scopes: []string{"webhook.read"}},
-					// Ticked now so a later product never needs a second integration.
-					{Key: "charge_write"}, {Key: "charge_read"},
-					{Key: "due_batch_write"}, {Key: "due_batch_read"},
-					{Key: "payload_write"}, {Key: "payload_read"},
+					// Ticked now so a later product never needs a second integration; the
+					// scopes are Inter's documented ones (api-commons inter.Scopes*).
+					{Key: "charge_write", Scopes: []string{"cob.write"}}, {Key: "charge_read", Scopes: []string{"cob.read"}},
+					{Key: "due_batch_write", Scopes: []string{"lotecobv.write"}}, {Key: "due_batch_read", Scopes: []string{"lotecobv.read"}},
+					{Key: "payload_write", Scopes: []string{"payloadlocation.write"}}, {Key: "payload_read", Scopes: []string{"payloadlocation.read"}},
 				}},
 				{Code: "recurring", Permissions: []guidePermission{
-					{Key: "recurrence_read"}, {Key: "recurrence_write"},
-					{Key: "recurrence_request_read"}, {Key: "recurrence_request_write"},
-					{Key: "recurring_charge_read"}, {Key: "recurring_charge_write"},
-					{Key: "recurrence_payload_read"}, {Key: "recurrence_payload_write"},
-					{Key: "recurrence_webhook_read"}, {Key: "recurrence_webhook_write"},
-					{Key: "recurring_charge_webhook_read"}, {Key: "recurring_charge_webhook_write"},
+					{Key: "recurrence_read", Scopes: []string{"rec.read"}}, {Key: "recurrence_write", Scopes: []string{"rec.write"}},
+					{Key: "recurrence_request_read", Scopes: []string{"solicrec.read"}}, {Key: "recurrence_request_write", Scopes: []string{"solicrec.write"}},
+					{Key: "recurring_charge_read", Scopes: []string{"cobr.read"}}, {Key: "recurring_charge_write", Scopes: []string{"cobr.write"}},
+					{Key: "recurrence_payload_read", Scopes: []string{"payloadlocationrec.read"}}, {Key: "recurrence_payload_write", Scopes: []string{"payloadlocationrec.write"}},
+					{Key: "recurrence_webhook_read", Scopes: []string{"webhookrec.read"}}, {Key: "recurrence_webhook_write", Scopes: []string{"webhookrec.write"}},
+					{Key: "recurring_charge_webhook_read", Scopes: []string{"webhookcobr.read"}}, {Key: "recurring_charge_webhook_write", Scopes: []string{"webhookcobr.write"}},
 				}},
 				{Code: "collection", Permissions: []guidePermission{
-					{Key: "boleto_read"}, {Key: "boleto_write"},
+					{Key: "boleto_read", Scopes: []string{"boleto-cobranca.read"}}, {Key: "boleto_write", Scopes: []string{"boleto-cobranca.write"}},
 				}},
 				// Only the webhook permissions: the payment ones stay with CTech's own integration.
 				{Code: "payments", Permissions: []guidePermission{
-					{Key: "banking_webhook_write"}, {Key: "banking_webhook_read"},
+					{Key: "banking_webhook_write", Scopes: []string{"webhook-banking.write"}}, {Key: "banking_webhook_read", Scopes: []string{"webhook-banking.read"}},
 				}},
 				{Code: "statement", Permissions: []guidePermission{
 					{Key: "statement_read", Scopes: []string{"extrato.read"}},
