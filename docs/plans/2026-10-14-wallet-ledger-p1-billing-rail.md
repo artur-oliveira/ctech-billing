@@ -78,7 +78,7 @@ This closes spec §11's open item before code depends on a guess.
 ```go
 // byok
 // CapabilityPayout and inter.ScopesPayout (pagamento-pix.read/write + webhook-banking.read/write) exist since
-// api-commons v1.23.0, and Connect already reports the capability when the integration ticks them. This task
+// api-commons v1.22.0, and Connect already reports the capability when the integration ticks them. This task
 // adds the calls.
 type PayoutRequest struct {
 	Ref      string // caller's idempotency id, <= 35 [A-Za-z0-9], the bank dedupes on it
