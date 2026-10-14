@@ -152,7 +152,40 @@ func (r *ByokRepository) auditItem(c *byokconn.Connection, action, actor, reques
 	return r.audit.BuildPutTxItem(item), nil
 }
 
-func (r *ByokRepository) CreateConnection(ctx context.Context, c *byokconn.Connection, actor, requestID string, now time.Time) error {
+// ByokGuardSK is an organization's connection guard: every created connection
+// moves it, so a create checked against a count read before the bank call
+// loses to a connection created meanwhile (the bank-connection cap).
+const ByokGuardSK = "CONNGUARD"
+
+// ConnectionGuard is the guard's version; a missing row is zero.
+func (r *ByokRepository) ConnectionGuard(ctx context.Context, accountOrgID string, livemode bool) (int64, error) {
+	return r.counter(ctx, ByokConnectionPK(accountOrgID, livemode), ByokGuardSK)
+}
+
+// guardItem moves the guard, conditional on the version read when there is one.
+func (r *ByokRepository) guardItem(c *byokconn.Connection, read []int64) types.TransactWriteItem {
+	u := &types.Update{
+		TableName: aws.String(r.base.TableName),
+		Key: map[string]types.AttributeValue{"pk": str(ByokConnectionPK(c.AccountOrganizationID, c.Livemode)),
+			"sk": str(ByokGuardSK)},
+		UpdateExpression:          aws.String("ADD n :one"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{":one": numberValue(1)},
+	}
+	switch {
+	case len(read) == 0:
+	case read[0] == 0:
+		u.ConditionExpression = aws.String("attribute_not_exists(n)")
+	default:
+		u.ConditionExpression = aws.String("n = :read")
+		u.ExpressionAttributeValues[":read"] = numberValue(read[0])
+	}
+	return types.TransactWriteItem{Update: u}
+}
+
+// CreateConnection writes a new connection. guard is the ConnectionGuard
+// version the caller counted against; a connection created since makes this
+// one ErrTransactionConflict (retried, the count is read again).
+func (r *ByokRepository) CreateConnection(ctx context.Context, c *byokconn.Connection, actor, requestID string, now time.Time, guard ...int64) error {
 	c.Revision, c.CreatedAt = 1, now.UTC()
 	item, err := Encode(r.row(c, now))
 	if err != nil {
@@ -170,7 +203,7 @@ func (r *ByokRepository) CreateConnection(ctx context.Context, c *byokconn.Conne
 		ConditionExpression:      aws.String("attribute_not_exists(#state)"),
 		ExpressionAttributeNames: map[string]string{"#state": "state"},
 	}}
-	items := txItems(put, audit)
+	items := txItems(put, audit, r.guardItem(c, guard))
 	if c.Sealed != "" {
 		sp, err := r.sealedPut(c, now)
 		if err != nil {
@@ -179,6 +212,9 @@ func (r *ByokRepository) CreateConnection(ctx context.Context, c *byokconn.Conne
 		items = append(items, sp)
 	}
 	err = r.base.TransactWrite(ctx, items)
+	if codes := cancellationCodes(err); len(codes) > 2 && codes[2] == codeConditionFailed {
+		return fmt.Errorf("%w: connection guard moved", ErrTransactionConflict)
+	}
 	if IsConditionFailed(err) {
 		return ErrConnectionExists
 	}

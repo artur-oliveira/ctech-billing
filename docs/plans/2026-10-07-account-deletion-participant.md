@@ -3077,3 +3077,7 @@ feature erases the two counter partitions. The usage step drops a pending row wh
 organization has no `prod_billing` subscription (R19 cancels it), so an erased workspace is never billed afterwards.
 The `billing_charges` usage records live in tenant zero under the organization's `ORG_` subscription: invoicing
 evidence, retained like the invoice (24 months, `RetentionUsageRecord`), anonymized with the `ORG_` customer.
+
+The bank-connection cap adds one row to the organization's connection partition: `{org}#{mode}` / `CONNGUARD`, a
+version every created connection moves (no TTL). It is the workspace's, not a tenant's: the purger deletes it with
+`SEALED#` and `HOOK#` (R23).
