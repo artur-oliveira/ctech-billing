@@ -40,6 +40,8 @@ func main() {
 	rail := flag.String("tenant-rail", "", "operator tool (spec § 12.6): move tenant zero's collection rail to byok (CTech's own bank connection) or back to wallet; needs -mode=live and -operator")
 	operator := flag.String("operator", "", "who is moving the rail, recorded in the audit trail")
 	dryRun := flag.Bool("dry-run", false, "with -tenant-rail: print the state and change nothing")
+	fine := flag.Int("fine-bp", -1, "with -tenant-rail=byok: the late fine in basis points (200 = 2 %); -1 keeps the current one")
+	interest := flag.Int("interest-bp", -1, "with -tenant-rail=byok: the monthly late interest in basis points (100 = 1 %); -1 keeps the current one")
 	flag.Parse()
 
 	cfg, err := config.Load()
@@ -49,7 +51,7 @@ func main() {
 	}
 	ctx := context.Background()
 	if *rail != "" {
-		os.Exit(tenantRail(ctx, cfg, *rail, *modeFlag, *operator, *dryRun))
+		os.Exit(tenantRail(ctx, cfg, *rail, *modeFlag, *operator, *fine, *interest, *dryRun))
 	}
 	alerter := jobs.Alerts(ctx, cfg)
 	conns, statement, repo, guard, sweep, err := app.BuildByokJob(ctx, cfg)
