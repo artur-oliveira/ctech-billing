@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -21,6 +22,25 @@ import (
 // security control only: an unknown op or provider never reaches a bank.
 type rules struct {
 	forceSandbox bool // every non-prod environment: no real bank, whatever the mode
+	// payoutOrgs are the account organizations whose connections may pay out
+	// (byok.GroupPayout): money leaving an account is allowed for the named ones
+	// only, whatever the api asks. Empty means nobody.
+	payoutOrgs map[string]bool
+}
+
+// payoutAllowed is the gate for byok.GroupPayout.
+func (r rules) payoutAllowed(accountOrgID string) bool {
+	return accountOrgID != "" && r.payoutOrgs[accountOrgID]
+}
+
+func parseOrgs(csv string) map[string]bool {
+	out := map[string]bool{}
+	for _, o := range strings.Split(csv, ",") {
+		if o = strings.TrimSpace(o); o != "" {
+			out[o] = true
+		}
+	}
+	return out
 }
 
 type sandboxCreds struct {
@@ -116,6 +136,10 @@ func (h *handler) dispatch(ctx context.Context, req byok.Request) byok.Response 
 	if group == byok.GroupSandbox && !sandbox {
 		return fail(byok.ErrSandboxOnly)
 	}
+	// Money out: the sandbox moves none, a real bank only for the named organizations.
+	if group == byok.GroupPayout && !sandbox && !h.rules.payoutAllowed(req.Connection.AccountOrganizationID) {
+		return fail(byok.ErrOpRefused)
+	}
 
 	switch req.Op {
 	case byok.OpConnect:
@@ -190,6 +214,26 @@ func (h *handler) dispatch(ctx context.Context, req byok.Request) byok.Response 
 			return fail(err)
 		}
 		return result(struct{}{}, p.CancelCharge(ctx, creds, tok, a.Ref))
+	case byok.OpPayout:
+		a, err := decode[byok.PayoutRequest](req.Payload)
+		if err != nil {
+			return fail(err)
+		}
+		pp, ok := p.(byok.Payouts)
+		if !ok {
+			return fail(byok.ErrInvalidRequest)
+		}
+		return result(pp.Payout(ctx, creds, tok, a))
+	case byok.OpGetPayout:
+		a, err := decode[byok.RefArgs](req.Payload)
+		if err != nil {
+			return fail(err)
+		}
+		pp, ok := p.(byok.Payouts)
+		if !ok {
+			return fail(byok.ErrInvalidRequest)
+		}
+		return result(pp.GetPayout(ctx, creds, tok, a.Ref))
 	case byok.OpRefund:
 		a, err := decode[byok.RefundRequest](req.Payload)
 		if err != nil {

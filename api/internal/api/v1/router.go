@@ -52,6 +52,9 @@ type Deps struct {
 	Webhooks      *repositories.WebhookRepository
 	Idempotency   *repositories.IdempotencyRepository
 	Organizations *repositories.OrganizationRepository
+	// Payouts pays Pix keys out of the tenant's connected bank account (CTech's own
+	// services; internal scopes). Nil unmounts the routes.
+	Payouts *services.Payouts
 	// Applications is the merchant application lifecycle (spec § 4). Disabled
 	// (routes not mounted) without tenant zero.
 	Applications *services.Applications
@@ -225,6 +228,15 @@ func Register(app *fiber.App, d Deps) {
 		middleware.RequireM2MScope(middleware.ScopeInvoicesRead), h.getInvoice)
 	invoices.Get("",
 		middleware.RequireM2MScope(middleware.ScopeInvoicesRead), h.listInvoices)
+
+	if d.Payouts != nil {
+		ph := &payoutHandlers{svc: d.Payouts, clock: clock}
+		payouts := m2m("/payouts")
+		payouts.Post("", middleware.RequireM2MScope(middleware.ScopePayoutsWrite), idem, ph.create)
+		// by-reference before /:id, so "by-reference" is never read as a payout id.
+		payouts.Get("/by-reference/:reference", middleware.RequireM2MScope(middleware.ScopePayoutsRead), ph.getByReference)
+		payouts.Get("/:id", middleware.RequireM2MScope(middleware.ScopePayoutsRead), ph.get)
+	}
 
 	m2m("/entitlements").Get("",
 		middleware.RequireM2MScope(middleware.ScopeEntitlementsRead), h.getEntitlements)

@@ -32,12 +32,20 @@ const (
 	retryCallsMinute = 5
 )
 
+// payoutMinAge keeps the sweep from racing the request that just created a
+// payout; payoutStuckAfter is when a payout still processing is the operator's.
+const (
+	payoutMinAge     = time.Minute
+	payoutStuckAfter = 6 * time.Hour
+)
+
 // ByokSweep is cmd/byok's part B (spec § 5): the charge sweep, the daily
 // webhook audit, refunds in flight, the sandbox webhook and the callback
 // retry tool.
 type ByokSweep struct {
 	collector *ByokCollector
 	payments  *repositories.PaymentRepository
+	payouts   *Payouts
 	orgs      *repositories.OrganizationRepository
 	setup     *ByokCollectionSetup
 	repo      *repositories.ByokRepository
@@ -49,6 +57,9 @@ type ByokSweep struct {
 
 // WithUsage adds part C's usage step (spec § 5 step 6) to the job.
 func (s *ByokSweep) WithUsage(u *ByokUsage) *ByokSweep { s.usage = u; return s }
+
+// WithPayouts makes the sweep finish the payouts still processing.
+func (s *ByokSweep) WithPayouts(p *Payouts) *ByokSweep { s.payouts = p; return s }
 
 func NewByokSweep(collector *ByokCollector, payments *repositories.PaymentRepository, orgs *repositories.OrganizationRepository,
 	setup *ByokCollectionSetup, repo *repositories.ByokRepository, conns *ByokConnections, p alerts.Publisher) *ByokSweep {
@@ -73,6 +84,9 @@ func (s *ByokSweep) Register(j *ByokJob) {
 	j.Register(StepSweep, s.Sweep)
 	j.Register(StepAudit, s.Audit)
 	j.WithFinally(s.collector.FollowRefunds)
+	if s.payouts != nil {
+		j.WithFinally(s.FollowPayouts)
+	}
 	if s.usage != nil {
 		// Once per run, after every connection; test-mode charges are never
 		// reported (they have no usage row).
@@ -281,4 +295,38 @@ func (s *ByokSweep) RetryCallbacks(ctx context.Context, conn *byokconn.Connectio
 		}
 	}
 	return len(refs), nil
+}
+
+// FollowPayouts asks the bank about every payout still processing, live only.
+// A payout the bank has not settled after payoutStuckAfter is returned as an
+// error so the run alerts: money that left the account and is not accounted for
+// is never left quiet.
+func (s *ByokSweep) FollowPayouts(ctx context.Context, livemode bool, now time.Time) []error {
+	if !livemode || s.payouts == nil {
+		return nil
+	}
+	var errs []error
+	var start map[string]types.AttributeValue
+	for {
+		page, err := s.payments.ProcessingPayouts(ctx, livemode, start, 100)
+		if err != nil {
+			return append(errs, err)
+		}
+		for i := range page.Items {
+			p := page.Items[i]
+			if now.Sub(p.UpdatedAt) < payoutMinAge {
+				continue
+			}
+			if err := s.payouts.Resolve(ctx, &p, now); err != nil {
+				errs = append(errs, fmt.Errorf("payout %s: %w", p.ID, err))
+			}
+			if !p.Final() && now.Sub(p.CreatedAt) > payoutStuckAfter {
+				errs = append(errs, fmt.Errorf("payout %s has been processing since %s", p.ID, p.CreatedAt.Format(time.RFC3339)))
+			}
+		}
+		if page.LastEvaluatedKey == nil {
+			return errs
+		}
+		start = page.LastEvaluatedKey
+	}
 }

@@ -121,6 +121,16 @@ func (p *LambdaProvider) CancelCharge(ctx context.Context, c byok.Credentials, t
 	return err
 }
 
+// Payout asks the bank to pay a Pix key; only the organizations the outbound
+// Lambda names may (byok.GroupPayout).
+func (p *LambdaProvider) Payout(ctx context.Context, c byok.Credentials, t byok.Token, in byok.PayoutRequest) (byok.Payout, error) {
+	return invoke[byok.Payout](ctx, p, byok.OpPayout, ref(c), t.Value, in)
+}
+
+func (p *LambdaProvider) GetPayout(ctx context.Context, c byok.Credentials, t byok.Token, providerRef string) (byok.Payout, error) {
+	return invoke[byok.Payout](ctx, p, byok.OpGetPayout, ref(c), t.Value, byok.RefArgs{Ref: providerRef})
+}
+
 func (p *LambdaProvider) Refund(ctx context.Context, c byok.Credentials, t byok.Token, in byok.RefundRequest) (byok.Refund, error) {
 	return invoke[byok.Refund](ctx, p, byok.OpRefund, ref(c), t.Value, in)
 }

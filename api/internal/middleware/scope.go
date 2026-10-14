@@ -61,6 +61,13 @@ const (
 	// internal visibility, never machine-grantable to a merchant. Only the
 	// billing-byok-webhook client created in ctech-account holds it.
 	ScopeByokNotify = "internal:billing:byok-notify"
+
+	// ScopePayoutsWrite and ScopePayoutsRead are CTech's own services' (the
+	// wallet paying a withdrawal): money leaving the tenant's bank account. Internal,
+	// so never machine-grantable to a merchant, and the outbound Lambda allows the
+	// operation for the named organizations only.
+	ScopePayoutsWrite = "internal:billing:payouts-write"
+	ScopePayoutsRead  = "internal:billing:payouts-read"
 )
 
 // AllScopes is the manifest ctech-account must know about. Keeping it in one
@@ -86,6 +93,8 @@ var AllScopes = []string{
 	ScopeFinanceRead,
 	ScopeFinanceWrite,
 	ScopeByokNotify,
+	ScopePayoutsWrite,
+	ScopePayoutsRead,
 }
 
 // RequireM2MScope gates a route on a client_credentials token carrying the

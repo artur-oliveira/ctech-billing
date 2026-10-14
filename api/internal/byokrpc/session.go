@@ -56,3 +56,20 @@ func (s Session) StatementPage(ctx context.Context, from, to byok.Date, page int
 		return s.P.StatementPage(ctx, c, t, from, to, page)
 	})
 }
+
+// Payout and GetPayout are the money-out calls, with their own token set (only
+// the payout scopes) and their own rate limit.
+func (s Session) Payout(ctx context.Context, in byok.PayoutRequest) (byok.Payout, error) {
+	if err := s.Limits.Payout(ctx, s.Conn); err != nil {
+		return byok.Payout{}, err
+	}
+	return Call(ctx, s, byok.CapabilityPayout, func(c byok.Credentials, t byok.Token) (byok.Payout, error) {
+		return s.P.Payout(ctx, c, t, in)
+	})
+}
+
+func (s Session) GetPayout(ctx context.Context, providerRef string) (byok.Payout, error) {
+	return Call(ctx, s, byok.CapabilityPayout, func(c byok.Credentials, t byok.Token) (byok.Payout, error) {
+		return s.P.GetPayout(ctx, c, t, providerRef)
+	})
+}

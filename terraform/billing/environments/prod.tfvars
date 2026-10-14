@@ -14,3 +14,6 @@ os_family = "alpine"
 # (Inter's webhook intermediate + root CA, the same bundle the wallet trusts;
 # sha256 804d9856312184e8554cf957c9d22b35ed82055e435dca7b664b0c6b64f98ca4).
 byok_truststore_version = "2ZaTHrSZRLn9z4s4wf3AHt.4xVO.IQiI"
+
+# CTech's own organization: the only connection that may pay Pix out (wallet withdrawals).
+byok_payout_account_orgs = "01a04ed6-1af9-745e-bcf7-d3b66fe52321"

@@ -58,3 +58,27 @@ run "the_api_never_reads_the_credentials_key" {
     error_message = "the outbound Lambda is not VPC-attached (IPv4 egress without NAT)"
   }
 }
+
+# Money out: the outbound Lambda gets the organizations that may pay Pix out
+# from a variable, and prod names only CTech's own.
+run "payout_organizations_reach_the_lambda" {
+  command = plan
+
+  variables {
+    byok_payout_account_orgs = "org-a,org-b"
+  }
+
+  assert {
+    condition     = aws_lambda_function.byok_outbound.environment[0].variables["BYOK_PAYOUT_ACCOUNT_ORGS"] == "org-a,org-b"
+    error_message = "the outbound Lambda must receive byok_payout_account_orgs"
+  }
+}
+
+run "nobody_may_pay_out_by_default" {
+  command = plan
+
+  assert {
+    condition     = aws_lambda_function.byok_outbound.environment[0].variables["BYOK_PAYOUT_ACCOUNT_ORGS"] == ""
+    error_message = "without the variable no organization may pay out"
+  }
+}

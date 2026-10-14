@@ -73,6 +73,14 @@ variable "max_size" {
 # customers the consumer portal serves. Empty is the correct default — the
 # service answers 404 on every portal route rather than pointing the portal at
 # whichever organization happens to be first.
+# The account organizations whose bank connection may pay Pix out (the
+# byok-outbound Lambda refuses money-out for every other, whatever the api asks).
+# Comma-separated; empty means nobody. Only CTech's own organization, in prod.
+variable "byok_payout_account_orgs" {
+  type    = string
+  default = ""
+}
+
 variable "portal_organization_id" {
   type    = string
   default = ""

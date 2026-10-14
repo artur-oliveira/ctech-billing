@@ -117,7 +117,7 @@ func refPtr(conn *byokconn.Connection) *byok.ConnectionRef { r := conn.Ref(); re
 
 // Invalidate drops every cached token of the connection (renewal, disconnect, 401).
 func (m *TokenManager) Invalidate(ctx context.Context, conn *byokconn.Connection) {
-	for _, set := range []byok.Capability{byok.CapabilityStatement, byok.CapabilityCollection} {
+	for _, set := range []byok.Capability{byok.CapabilityStatement, byok.CapabilityCollection, byok.CapabilityPayout} {
 		_ = m.cache.Delete(ctx, tokenKey(conn, set))
 	}
 }
