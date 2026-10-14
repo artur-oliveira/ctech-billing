@@ -399,8 +399,12 @@ function RecurrencePanel({editing, accounts, cards, onDone}: {editing?: Recurren
       return;
     }
     lastPatch.current = body;
+    // An end the server already asked about: show the confirmation again from
+    // the same refusal. Sending here would repeat the request the person has not
+    // confirmed (and, once the API accepts it, end and archive the recurrence).
     if (body.end && body.end === asked?.end) {
       setConfirming(true);
+      return;
     }
     send(body);
   }
