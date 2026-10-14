@@ -16,7 +16,7 @@ Repos: `P_WALLET=/home/artur-revgas/Documents/Projects/Ctech/ctech-wallet` (Go i
 
 - All Wallet invariants hold unchanged (non-negative balance by conditional write, append-only ledger, idempotency on every mutation, one operation per wallet, ordered locks, Sandbox never becomes real, webhook never the source of truth, no money in limbo). `TestSandboxPurchaseNeverDebitsRealWallet` stays green.
 - Wallet never trusts the event: it re-reads the invoice from Billing and requires the paid amount to equal the deposit's expected amount.
-- The credit requires **both** Wallet's own masked-CPF match against the KYC CPF (existing `maskedCPFMatches`) **and** Billing's `payer_match = match`. Any disagreement quarantines (never credits) and refunds the payer.
+- The credit requires **both** Wallet's own match of the payer document against the KYC CPF (the existing `maskedCPFMatches` also reads a full CPF) **and** Billing's `payer_match = match`. Any disagreement quarantines (never credits) and refunds the payer. While Billing has no payer for a paid invoice yet (`payer_match` empty; the payer is normally recorded within a minute, spec §6) the deposit stays *pending* — not credited, not refunded — and Wallet's sweep re-reads it; after 30 minutes without a payer it is raised to the operator.
 - The payout destination is always the CPF on the user's KYC record; the client never supplies it.
 - Flag `BILLING_RAIL` (`off` | `on`), default `off`. Off = byte-for-byte today's behaviour.
 - Routes in English; constants for headers, scopes and env names; RFC 7807 problems; no attribution trailers.

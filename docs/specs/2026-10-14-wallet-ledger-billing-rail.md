@@ -82,18 +82,21 @@ risk, recorded as Wallet invariant 12 is today. It is named here so it is never 
 
 ## 6. Payer data on the invoice
 
-Today the shared provider drops it (`ParseCallback`: "Amounts, status and payer are deliberately dropped").
+Verified on 2026-10-14 with a live R$ 0,10 charge on CTech's Inter account (invoice 9, paid by Pix):
 
-- **`api-commons`** (`byok.Callback`, Inter `ParseCallback`): add an optional `Payer` — name, document, a
-  `Masked` flag and the `endToEndId` — read from the webhook body when present. Additive and backwards
-  compatible.
-- **Billing**: on the first confirmation of an attempt, persist the payer on the payment attempt. **First write
-  wins**; a later webhook never overwrites it. Persist `payer_match` ∈ `match | mismatch | unknown`, computed once
-  against the customer's registered tax ID on the digits Inter reveals (Wallet's `maskedCPFMatches` rule).
-- **Not used for NF.** The NF tomador is the customer's registered tax ID. A masked CPF cannot be issued on,
-  and a third party paying someone else's invoice must not become the tomador.
-- **To verify before P1** (open fact, not assumed): whether Inter's Pix extrato carries a fuller payer document
-  than the webhook. Check against a real sandbox payload and record the result here.
+| Source | Carries the payer? |
+|---|---|
+| The charge re-query (`GET /pix/v2/cobv/{txid}`, what `Confirm` trusts) | **No.** `pix[]` has `endToEndId`, `valor`, `horario`, and an empty `infoPagador`. |
+| The Pix webhook body | Not observed: the webhook Lambda logs no body. Wallet's old notes say it carries the CPF **masked**. Not relied on. |
+| The statement line (`GET /banking/v2/extrato/completo`, what the statement sync reads) | **Yes, complete:** `detalhes.nomePagador`, `detalhes.cpfCnpjPagador` (**unmasked**), `detalhes.nomeEmpresaPagador` (the payer's institution), `detalhes.endToEndId`, `detalhes.txId`. The line was readable about a minute after the payment. |
+
+So the payer comes from the **statement line**, joined to the payment by `txId` / `endToEndId` (which Billing's statement mapping already extracts as `ChargeRef` / `PaymentID`).
+
+- **`api-commons`** (`byok.StatementLine`): an optional `Payer` (name, document, institution), filled by the Inter mapping for credit lines. Additive. The callback is left as it is.
+- **Billing**: when the statement linker matches a credit line to a payment attempt (`ByokLinker.Link`), it persists the payer on the attempt, **write-once** (first write wins), and computes `payer_match` ∈ `match | mismatch | unknown` once, against the customer's registered tax ID, digit for digit (the document is not masked; a masked one, if Inter ever sends it, compares on the revealed digits and `unknown` when too few are shown).
+- **Not waiting for the hourly sync.** Right after `Confirm` settles an attempt, Billing pulls the current day's statement page for that connection (one request, under the existing per-connection sync lock and rate limits) so the payer is normally recorded within a minute. The hourly sync and the sweep remain the safety net.
+- **Consequence for the credit decision (§4):** a deposit is credited when the invoice is paid **and** `payer_match = match`. While the payer is not yet known, the deposit stays *pending*, never credited and never refunded; Wallet's sweep re-reads it. If no payer is known after a bounded wait (default 30 minutes), the deposit is raised to the operator, not credited.
+- **Not used for NF.** The NF tomador is the customer's registered tax ID. A third party paying someone else's invoice must not become the tomador.
 
 ## 7. Sandbox and the games
 
@@ -150,7 +153,6 @@ P5 plan, as the owner asked for infra costs to be reported.
 
 ## 11. Open items
 
-- Inter's extrato payer fields (§6), to verify with a real payload before P1.
 - Whether payout needs its own scope set on CTech's Inter app beyond what Wallet's gateway used. Verify in P1.
 - NF timing for deposits (on the invoice at payment, as intended). Fiscal treatment of credit deposits belongs to
   the accountant, not to this spec.
