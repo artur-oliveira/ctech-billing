@@ -109,7 +109,7 @@
     "line_already_classified": "Este lançamento já foi classificado.",
     "account_is_synced": "Esta conta é sincronizada com o banco. Os lançamentos vêm do extrato.",
     "customer_tax_id_required": "O cliente não tem CPF ou CNPJ cadastrado. Cadastre para gerar o Pix.",
-    "byok_collection_scopes_missing": "A integração com o banco não tem os escopos de cobrança. Marque cobv, pix e webhook na integração.",
+    "byok_collection_scopes_missing": "A integração com o banco não tem os escopos de cobrança. Marque, em Pix, as permissões de cobrança com vencimento, Pix recebidos, devolução e webhooks.",
     "byok_quota_exceeded": "As cobranças do plano acabaram neste mês. Mude de plano para continuar cobrando.",
     "byok_charge_open": "O Pix desta fatura ainda pode ser pago.",
     "byok_charge_ended": "O Pix desta fatura venceu sem pagamento. Gere um novo Pix.",

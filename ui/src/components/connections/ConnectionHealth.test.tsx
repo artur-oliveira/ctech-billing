@@ -4,7 +4,7 @@ import {describe, expect, it} from "vitest"
 import {renderWithQuery} from "@/components/finance/finance.test-utils"
 
 import {ConnectionHealth} from "./ConnectionHealth"
-import {active, live} from "./testing"
+import {active, interInfo, live} from "./testing"
 
 describe("ConnectionHealth", () => {
   it("warns from 90 days before expiry", () => {
@@ -18,9 +18,9 @@ describe("ConnectionHealth", () => {
     expect(screen.queryByRole("status")).toBeNull()
   })
 
-  it("says in words which scopes collection lacks", () => {
-    renderWithQuery(<ConnectionHealth scope={live} connection={{...active, capabilities: ["statement"], missing_scopes: ["cobv.write", "pix.write"]}}/>)
-    expect(screen.getByText(/faltam estes escopos na integração: cobv.write, pix.write/)).toBeTruthy()
+  it("says in the bank's words which permissions collection lacks", () => {
+    renderWithQuery(<ConnectionHealth scope={live} guide={interInfo.guide} connection={{...active, capabilities: ["statement"], missing_scopes: ["cobv.write", "pix.write", "other.scope"]}}/>)
+    expect(screen.getByText(/faltam estas permissões na integração: Emitir e editar cobranças com vencimento; Solicitar devolução do Pix; other.scope/)).toBeTruthy()
   })
 
   it("names the status with a word, never colour alone", () => {

@@ -93,14 +93,38 @@ type providerField struct {
 }
 
 type providerInfo struct {
-	Provider string              `json:"provider"`
-	Fields   []providerField     `json:"fields"`
-	Scopes   map[string][]string `json:"scopes"`
+	Provider string          `json:"provider"`
+	Fields   []providerField `json:"fields"`
+	Guide    providerGuide   `json:"guide"`
 }
 
-// providerCatalog is what the onboarding asks for and which scopes to tick at
-// the bank, per provider. It mirrors inter.Provider.CredentialFields without
-// importing api-commons/inter (only the outbound Lambda imports it).
+// providerGuide is what the person ticks at the bank, in the bank's own terms:
+// activities that hold permissions, as the provider's web wizard shows them.
+// Each permission lists the API scopes it grants, so a missing scope found at
+// connect time is told back as the permission to tick. A provider with no
+// activities (or no scopes at all) simply has an empty guide.
+type providerGuide struct {
+	NameMax        int             `json:"name_max,omitempty"`
+	DescriptionMax int             `json:"description_max,omitempty"`
+	SuggestedName  string          `json:"suggested_name,omitempty"`
+	AcceptTerms    bool            `json:"accept_terms"`
+	Activities     []guideActivity `json:"activities"`
+}
+
+type guideActivity struct {
+	Code        string            `json:"code"`
+	Permissions []guidePermission `json:"permissions"`
+}
+
+type guidePermission struct {
+	Key    string   `json:"key"`
+	Scopes []string `json:"scopes"`
+}
+
+// providerCatalog is what the onboarding asks for and which permissions to tick
+// at the bank, per provider. It mirrors inter.Provider.CredentialFields without
+// importing api-commons/inter (only the outbound Lambda imports it). The labels
+// are the UI's (connections.guide.*), keyed by activity code and permission key.
 func providerCatalog() []providerInfo {
 	return []providerInfo{{
 		Provider: "inter",
@@ -109,9 +133,21 @@ func providerCatalog() []providerInfo {
 			{Name: "cert", File: true, Required: true}, {Name: "key", File: true, Secret: true, Required: true},
 			{Name: "account", Required: true}, {Name: "pix_key"},
 		},
-		Scopes: map[string][]string{
-			"statement":  {"extrato.read"},
-			"collection": {"cobv.read", "cobv.write", "pix.read", "pix.write", "webhook.read", "webhook.write"},
+		Guide: providerGuide{
+			NameMax: 50, DescriptionMax: 250, SuggestedName: "CTech Billing", AcceptTerms: true,
+			Activities: []guideActivity{
+				{Code: "pix", Permissions: []guidePermission{
+					{Key: "due_charge_write", Scopes: []string{"cobv.write"}},
+					{Key: "due_charge_read", Scopes: []string{"cobv.read"}},
+					{Key: "pix_refund", Scopes: []string{"pix.write"}},
+					{Key: "pix_read", Scopes: []string{"pix.read"}},
+					{Key: "webhook_write", Scopes: []string{"webhook.write"}},
+					{Key: "webhook_read", Scopes: []string{"webhook.read"}},
+				}},
+				{Code: "statement", Permissions: []guidePermission{
+					{Key: "statement_read", Scopes: []string{"extrato.read"}},
+				}},
+			},
 		},
 	}}
 }

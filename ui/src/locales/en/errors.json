@@ -109,7 +109,7 @@
     "line_already_classified": "This entry was already classified.",
     "account_is_synced": "This account is synced with the bank. Its entries come from the statement.",
     "customer_tax_id_required": "The customer has no CPF or CNPJ. Add one to create the Pix.",
-    "byok_collection_scopes_missing": "The bank integration lacks the collection scopes. Tick cobv, pix and webhook in the integration.",
+    "byok_collection_scopes_missing": "The bank integration lacks the collection scopes. Under Pix, tick the due-charge, received-Pix, refund and webhook permissions.",
     "byok_quota_exceeded": "The plan's charges are used up this month. Change plans to keep collecting.",
     "byok_charge_open": "This invoice's Pix can still be paid.",
     "byok_charge_ended": "This invoice's Pix expired unpaid. Create a new Pix.",

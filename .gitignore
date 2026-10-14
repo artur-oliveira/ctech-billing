@@ -8,3 +8,4 @@ cdk.out/
 api/coverage.out
 
 api/dist/
+tmp/
