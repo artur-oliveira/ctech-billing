@@ -93,3 +93,17 @@ export function countdown(secondsLeft: number): string {
 
 /** "−R$ 300,00" (a real minus sign) for a negative amount, "R$ 300,00" otherwise. */
 export const signedMoney = (cents: Cents) => (cents < 0 ? `−${money(-cents)}` : money(cents));
+
+/**
+ * A CPF ("000.000.000-00") or CNPJ ("00.000.000/0000-00") by the length of what
+ * is given. Digits and the mask bullet "•" both count as a position, so the
+ * masked value the API returns (bullets then the last four digits) comes out in
+ * the document's own shape. Anything of another length is returned unchanged.
+ */
+export function formatTaxID(value: string): string {
+  const chars = [...value].filter(c => c === "•" || (c >= "0" && c <= "9")).join("");
+  const shape = chars.length === 11 ? "###.###.###-##" : chars.length === 14 ? "##.###.###/####-##" : null;
+  if (shape === null) return value;
+  let i = 0;
+  return [...shape].map(c => (c === "#" ? chars[i++] : c)).join("");
+}

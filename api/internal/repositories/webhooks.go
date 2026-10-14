@@ -133,17 +133,28 @@ func (r *WebhookRepository) openEndpoint(row *endpointRow) (*billing.WebhookEndp
 // endpoint that fails one delivery in a hundred is a working endpoint, and
 // disabling it after twelve such failures spread over a year would be the job
 // breaking a healthy integration.
-func (r *WebhookRepository) RecordEndpointHealth(ctx context.Context, e *billing.WebhookEndpoint, ok bool, now time.Time) error {
+//
+// detail is what the endpoint said when it failed ("HTTP 404", "timeout"),
+// kept so the console can show why; it is ignored on success.
+func (r *WebhookRepository) RecordEndpointHealth(ctx context.Context, e *billing.WebhookEndpoint, ok bool, detail string, now time.Time) error {
 	updates := map[string]any{"updated_at": now.UTC().Format(time.RFC3339Nano)}
+	stamp := now.UTC().Format(time.RFC3339)
 	switch {
 	case ok:
-		if e.FailureRun == 0 {
+		// Nothing to say when a healthy endpoint stays healthy.
+		if e.FailureRun == 0 && e.LastDeliveryOK {
 			return nil
 		}
 		updates["failure_run"] = 0
+		updates["last_delivery_ok"] = true
+		updates["last_delivery_at"] = stamp
+		updates["last_delivery_detail"] = ""
 	default:
 		run := e.FailureRun + 1
 		updates["failure_run"] = run
+		updates["last_delivery_ok"] = false
+		updates["last_delivery_at"] = stamp
+		updates["last_delivery_detail"] = truncate(detail, 200)
 		if run >= billing.MaxFailureRun {
 			updates["status"] = string(billing.EndpointDisabled)
 			updates["disabled_at"] = now.UTC().Format(time.RFC3339Nano)

@@ -246,7 +246,7 @@ func (d *Deliverer) Deliver(ctx context.Context, livemode bool, limit int, now t
 		// Endpoint health is updated on every attempt, success or not, so a run of
 		// failures eventually disables a destination that is plainly gone and a
 		// single success clears the count.
-		if err := d.hooks.RecordEndpointHealth(ctx, endpoint, err == nil, now); err != nil {
+		if err := d.hooks.RecordEndpointHealth(ctx, endpoint, err == nil, failureDetail(status, err), now); err != nil {
 			res.fail("recording endpoint health for %s: %v", endpoint.ID, err)
 		}
 	}
@@ -327,4 +327,16 @@ func isDue(at string, now time.Time) bool {
 		return true
 	}
 	return !t.After(now)
+}
+
+// failureDetail is what the console shows for a failed attempt: the status the
+// endpoint answered with, or the transport error when it never answered.
+func failureDetail(status int, err error) string {
+	switch {
+	case err == nil:
+		return ""
+	case status > 0:
+		return fmt.Sprintf("HTTP %d", status)
+	}
+	return err.Error()
 }

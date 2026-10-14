@@ -262,7 +262,7 @@ func TestADisabledEndpointRefusesTheTest(t *testing.T) {
 		t.Fatal(err)
 	}
 	full.FailureRun = billing.MaxFailureRun - 1
-	if err := repo.RecordEndpointHealth(ctxT(t), full, false, now()); err != nil {
+	if err := repo.RecordEndpointHealth(ctxT(t), full, false, "HTTP 500", now()); err != nil {
 		t.Fatal(err)
 	}
 	res := e.consoleWrite(t, http.MethodPost, hooksPath+"/"+ep.ID+"/test", tok, "live", "")

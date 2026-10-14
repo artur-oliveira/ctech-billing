@@ -65,7 +65,7 @@
       "title": "Enviar para a CTech"
     },
     "webhook": {
-      "title": "Aviso de pagamentos",
+      "title": "Webhook de pagamentos",
       "body": "Chega com a cobrança pelo Inter. A conexão já traz o extrato e o saldo."
     },
     "state": {
@@ -83,7 +83,7 @@
     "account": "Conta corrente",
     "accountHint": "Só números, com o dígito, sem zeros à esquerda.",
     "pixKey": "Chave Pix para cobranças",
-    "pixKeyHint": "Opcional. Recomendamos uma chave aleatória só para a CTech: o aviso de pagamento do Inter é um por chave.",
+    "pixKeyHint": "Opcional. Recomendamos uma chave aleatória só para a CTech: o webhook de pagamento do Inter é um por chave.",
     "notifyEmail": "E-mail para avisos",
     "notifyEmailHint": "Avisos de certificado e de conexão vão para este endereço.",
     "backfill": "Histórico do extrato",
@@ -159,10 +159,10 @@
     "openCharges_one": "Há 1 cobrança em aberto. Desconectar cancela essa cobrança.",
     "cancelAndLeave": "Cancelar cobranças e desconectar",
     "anyway": "Desconectar mesmo assim",
-    "anywayBody": "O Inter não respondeu. Se desconectar mesmo assim, remova você mesmo no Inter as cobranças e o aviso abaixo.",
+    "anywayBody": "O Inter não respondeu. Se desconectar mesmo assim, remova você mesmo no Inter as cobranças e o webhook abaixo.",
     "leftoverTitle": "Remova no Inter",
     "leftoverCharges": "Cobranças (txid): {{refs}}",
-    "leftoverWebhook": "Aviso de pagamentos: {{url}}"
+    "leftoverWebhook": "Webhook de pagamentos: {{url}}"
   },
   "unclassified": {
     "title": "A classificar",
@@ -260,18 +260,18 @@
     }
   },
   "webhook": {
-    "title": "Aviso de pagamentos",
-    "registered": "Aviso registrado: o Inter avisa a CTech de cada Pix pago.",
-    "notRegistered": "Sem aviso: as confirmações chegam em até uma hora.",
-    "overwritten": "Outro sistema passou a receber os avisos desta chave. As confirmações chegam em até uma hora.",
-    "conflictTitle": "Outro sistema recebe os avisos desta chave",
-    "conflictBody": "Os avisos de pagamento desta chave Pix vão para {{host}}. Se a CTech registrar o dela, esse sistema deixa de receber os avisos. O melhor é usar uma chave aleatória (EVP) só para a CTech.",
-    "register": "Registrar aviso novamente",
+    "title": "Webhook de pagamentos",
+    "registered": "Webhook registrado: o Inter avisa a CTech de cada Pix pago.",
+    "notRegistered": "Sem webhook: as confirmações chegam em até uma hora.",
+    "overwritten": "Outro sistema passou a receber os webhooks desta chave. As confirmações chegam em até uma hora.",
+    "conflictTitle": "Outro sistema recebe os webhooks desta chave",
+    "conflictBody": "Os webhooks de pagamento desta chave Pix vão para {{host}}. Se a CTech registrar o dela, esse sistema deixa de receber os webhooks. O melhor é usar uma chave aleatória (EVP) só para a CTech.",
+    "register": "Registrar webhook novamente",
     "replace": "Substituir mesmo assim",
-    "replaceTitle": "Substituir o aviso de {{host}}?",
-    "replaceBody": "{{host}} deixa de receber os avisos de pagamento desta chave Pix. Faça isso só se esse sistema não precisar mais deles.",
+    "replaceTitle": "Substituir o webhook de {{host}}?",
+    "replaceBody": "{{host}} deixa de receber os webhooks de pagamento desta chave Pix. Faça isso só se esse sistema não precisar mais deles.",
     "replaceKeep": "Manter o atual",
-    "done": "Aviso de pagamentos registrado."
+    "done": "Webhook de pagamentos registrado."
   },
   "guide": {
     "activity": {
@@ -330,12 +330,12 @@
   },
   "pixKey": {
     "title": "Alterar chave Pix",
-    "body": "A chave Pix em que as cobranças são emitidas. O Inter envia os avisos de pagamento a um só endereço por chave: use uma chave aleatória (EVP) só da CTech, para não tirar os avisos de outro sistema.",
+    "body": "A chave Pix em que as cobranças são emitidas. O Inter envia os webhooks de pagamento a um só endereço por chave: use uma chave aleatória (EVP) só da CTech, para não tirar os webhooks de outro sistema.",
     "label": "Nova chave Pix",
     "current": "Chave em uso: {{key}}",
     "submit": "Alterar chave",
     "done": "Chave Pix alterada.",
-    "conflictDone": "Chave alterada. Outro sistema recebe os avisos desta chave: veja abaixo e confirme se quer substituí-lo.",
+    "conflictDone": "Chave alterada. Outro sistema recebe os webhooks desta chave: veja abaixo e confirme se quer substituí-lo.",
     "openCharges_one": "Há {{count}} cobrança em aberto na chave atual. Espere o pagamento ou cancele-a antes de trocar a chave.",
     "openCharges_other": "Há {{count}} cobranças em aberto na chave atual. Espere o pagamento ou cancele-as antes de trocar a chave."
   }

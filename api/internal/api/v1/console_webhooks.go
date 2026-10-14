@@ -27,6 +27,11 @@ type webhookEndpointResponse struct {
 	Provisioned bool     `json:"provisioned"`
 	AddedAt     string   `json:"added_at,omitempty"`
 	OwnerKey    string   `json:"owner_key,omitempty"`
+	// LastDeliveryAt empty means never tried; otherwise LastDeliveryOK says how
+	// the endpoint answered and LastDeliveryDetail why not.
+	LastDeliveryOK     bool   `json:"last_delivery_ok"`
+	LastDeliveryAt     string `json:"last_delivery_at,omitempty"`
+	LastDeliveryDetail string `json:"last_delivery_detail,omitempty"`
 }
 
 type webhookSecretResponse struct {
@@ -53,6 +58,7 @@ func newWebhookEndpointResponse(e *billing.WebhookEndpoint) webhookEndpointRespo
 	return webhookEndpointResponse{
 		ID: e.ID, URL: e.URL, Events: events, Status: string(e.Status), FailureRun: e.FailureRun,
 		DisabledAt: e.DisabledAt, Provisioned: e.Provisioned(), AddedAt: e.AddedAt, OwnerKey: e.OwnerKey,
+		LastDeliveryOK: e.LastDeliveryOK, LastDeliveryAt: e.LastDeliveryAt, LastDeliveryDetail: e.LastDeliveryDetail,
 	}
 }
 

@@ -17,7 +17,7 @@ import {ErrorBlock} from "@/components/portal/ErrorBlock";
 import {messageFor, statusOf} from "@/lib/api/client";
 import {consoleKeys, getConsoleCustomer, revealTaxID} from "@/lib/api/console";
 import {useConsoleScope} from "@/lib/console/scope";
-import {shortDate} from "@/lib/format";
+import {formatTaxID, shortDate} from "@/lib/format";
 import {useDocumentTitle} from "@/lib/hooks/useDocumentTitle";
 
 /**
@@ -157,7 +157,7 @@ function TaxID({customerId, masked}: { customerId: string; masked?: string }) {
     <div className="space-y-1">
       <dt className="text-xs text-muted-foreground">{t("console.customer.taxId")}</dt>
       <dd className="flex items-center gap-2">
-        <span data-numeric className="text-foreground">{full ?? masked}</span>
+        <span data-numeric className="text-foreground">{formatTaxID(full ?? masked)}</span>
         {full === null && (
           <Button
             variant="ghost"

@@ -360,7 +360,7 @@
  },
  "invitation": {
   "title": "Cobre seus clientes com o CTech Billing",
-  "body": "{{name}} pode emitir faturas, cobrar assinaturas e receber avisos de pagamento pela API.",
+  "body": "{{name}} pode emitir faturas, cobrar assinaturas e receber webhooks de pagamento pela API.",
   "points": {
    "subscriptions": "Assinaturas e faturas recorrentes",
    "api": "Integração pela API, com webhooks",
@@ -511,7 +511,7 @@
   "disabled": "Desativado",
   "disabledHint": "Desativado depois de falhas seguidas. Exclua e cadastre de novo.",
   "test": "Testar",
-  "tested": "Ping enviado. Ele chega em até 2 minutos.",
+  "tested": "Teste enviado. O resultado aparece na linha em até 1 minuto.",
   "rotate": "Trocar segredo",
   "delete": "Excluir",
   "more": "Mais ações: {{url}}",
@@ -544,7 +544,10 @@
   "rotateBody": "O segredo atual para de valer na hora. Entregas que falharem enquanto você atualiza a sua API são tentadas de novo, já com o segredo novo.",
   "deleteTitle": "Excluir {{url}}?",
   "deleteBody": "Nenhum evento é enviado para ele depois disso, nem os que estão na fila.",
-  "deleted": "Endpoint excluído."
+  "deleted": "Endpoint excluído.",
+  "untested": "Ainda não testado. Configure o segredo no seu servidor e clique em Testar.",
+  "responding": "Respondendo",
+  "failing": "Não está respondendo: {{detail}}"
  },
  "plan": {
   "title": "Plano",

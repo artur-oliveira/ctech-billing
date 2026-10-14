@@ -65,7 +65,7 @@
       "title": "Send them to CTech"
     },
     "webhook": {
-      "title": "Payment notices",
+      "title": "Payment webhook",
       "body": "Comes with charging through Inter. The connection already brings the statement and the balance."
     },
     "state": {
@@ -83,7 +83,7 @@
     "account": "Checking account",
     "accountHint": "Digits only, with the check digit, no leading zeros.",
     "pixKey": "Pix key for charges",
-    "pixKeyHint": "Optional. We recommend a random key used only by CTech: Inter's payment notice is one per key.",
+    "pixKeyHint": "Optional. We recommend a random key used only by CTech: Inter's payment webhook is one per key.",
     "notifyEmail": "E-mail for notices",
     "notifyEmailHint": "Certificate and connection notices go to this address.",
     "backfill": "Statement history",
@@ -159,10 +159,10 @@
     "openCharges_one": "There is 1 open charge. Disconnecting cancels it.",
     "cancelAndLeave": "Cancel charges and disconnect",
     "anyway": "Disconnect anyway",
-    "anywayBody": "Inter did not answer. If you disconnect anyway, remove the charges and the notice below at Inter yourself.",
+    "anywayBody": "Inter did not answer. If you disconnect anyway, remove the charges and the webhook below at Inter yourself.",
     "leftoverTitle": "Remove at Inter",
     "leftoverCharges": "Charges (txid): {{refs}}",
-    "leftoverWebhook": "Payment notices: {{url}}"
+    "leftoverWebhook": "Payment webhook: {{url}}"
   },
   "unclassified": {
     "title": "To classify",
@@ -260,18 +260,18 @@
     }
   },
   "webhook": {
-    "title": "Payment notices",
-    "registered": "Notices registered: Inter tells CTech about every Pix paid.",
-    "notRegistered": "No notices: confirmations arrive within an hour.",
-    "overwritten": "Another system now receives this key's notices. Confirmations arrive within an hour.",
-    "conflictTitle": "Another system receives this key's notices",
-    "conflictBody": "This Pix key's payment notices go to {{host}}. If CTech registers its own, that system stops receiving them. Better use a random key (EVP) for CTech only.",
-    "register": "Register notices again",
+    "title": "Payment webhook",
+    "registered": "Webhook registered: Inter tells CTech about every Pix paid.",
+    "notRegistered": "No webhook: confirmations arrive within an hour.",
+    "overwritten": "Another system now receives this key's webhooks. Confirmations arrive within an hour.",
+    "conflictTitle": "Another system receives this key's webhooks",
+    "conflictBody": "This Pix key's payment webhooks go to {{host}}. If CTech registers its own, that system stops receiving them. Better use a random key (EVP) for CTech only.",
+    "register": "Register webhook again",
     "replace": "Replace anyway",
-    "replaceTitle": "Replace the notices of {{host}}?",
-    "replaceBody": "{{host}} stops receiving this Pix key's payment notices. Do it only if that system no longer needs them.",
+    "replaceTitle": "Replace the webhook of {{host}}?",
+    "replaceBody": "{{host}} stops receiving this Pix key's payment webhooks. Do it only if that system no longer needs them.",
     "replaceKeep": "Keep the current one",
-    "done": "Payment notices registered."
+    "done": "Payment webhook registered."
   },
   "guide": {
     "activity": {
@@ -330,12 +330,12 @@
   },
   "pixKey": {
     "title": "Change Pix key",
-    "body": "The Pix key charges are issued on. Inter sends payment notices to one address per key: use a random (EVP) key of CTech's own so another system does not lose its notices.",
+    "body": "The Pix key charges are issued on. Inter sends payment webhooks to one address per key: use a random (EVP) key of CTech's own so another system does not lose its webhooks.",
     "label": "New Pix key",
     "current": "Key in use: {{key}}",
     "submit": "Change key",
     "done": "Pix key changed.",
-    "conflictDone": "Key changed. Another system receives this key's notices: see below and confirm if you want to replace it.",
+    "conflictDone": "Key changed. Another system receives this key's webhooks: see below and confirm if you want to replace it.",
     "openCharges_one": "{{count}} charge is still open on the current key. Wait for it to be paid or cancel it before changing the key.",
     "openCharges_other": "{{count}} charges are still open on the current key. Wait for them to be paid or cancel them before changing the key."
   }

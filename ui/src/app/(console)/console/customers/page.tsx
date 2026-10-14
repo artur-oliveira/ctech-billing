@@ -9,6 +9,7 @@ import {useTranslation} from "react-i18next";
 import {ErrorBlock} from "@/components/portal/ErrorBlock";
 import {consoleKeys, listConsoleCustomers} from "@/lib/api/console";
 import {useConsoleScope} from "@/lib/console/scope";
+import {formatTaxID} from "@/lib/format";
 
 /**
  * C6 — the customers.
@@ -72,7 +73,7 @@ export default function ConsoleCustomersPage() {
                   </td>
                   <td className="py-2 pr-4 text-muted-foreground">{customer.email || "—"}</td>
                   <td data-numeric className="py-2 pr-4 text-muted-foreground">
-                    {customer.tax_id_masked || "—"}
+                    {customer.tax_id_masked ? formatTaxID(customer.tax_id_masked) : "—"}
                   </td>
                   <td className="truncate py-2 font-mono text-xs text-muted-foreground" title={customer.external_ref}>{customer.external_ref || "—"}</td>
                 </tr>

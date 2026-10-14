@@ -8,7 +8,7 @@ import {WebhookStep} from "./WebhookStep";
 describe("WebhookStep", () => {
   it("says confirmations take up to an hour without a notice", () => {
     renderWithQuery(<WebhookStep status="not_registered" onRegister={vi.fn()}/>);
-    expect(screen.getByText("Sem aviso: as confirmações chegam em até uma hora.")).toBeTruthy();
+    expect(screen.getByText("Sem webhook: as confirmações chegam em até uma hora.")).toBeTruthy();
   });
 
   it("never replaces another system's notice without the confirmation", async () => {
@@ -17,7 +17,7 @@ describe("WebhookStep", () => {
     });
     const register = vi.fn().mockRejectedValueOnce(conflict).mockResolvedValue(undefined);
     renderWithQuery(<WebhookStep status="not_registered" onRegister={register}/>);
-    fireEvent.click(screen.getByRole("button", {name: "Registrar aviso novamente"}));
+    fireEvent.click(screen.getByRole("button", {name: "Registrar webhook novamente"}));
     await waitFor(() => expect(register).toHaveBeenCalledWith(false));
     expect(await screen.findByText(/vão para erp\.example\.com/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", {name: "Substituir mesmo assim"}));
