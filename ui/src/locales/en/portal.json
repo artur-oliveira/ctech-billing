@@ -31,6 +31,7 @@
   },
   "invoice": {
     "title": "{{description}} and {{count}} more",
+    "numbered": "Invoice #{{number}}",
     "untitled": "Invoice",
     "back": "Invoices",
     "paidOn": "Paid on {{date}}",
