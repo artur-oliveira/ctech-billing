@@ -7,7 +7,7 @@ import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import {CardsView, statementState} from "@/components/finance/CardsView"
 import {pick, renderWithQuery, serveFinanceMock} from "@/components/finance/finance.test-utils"
 import * as finance from "@/lib/api/finance"
-import * as createRequest from "@/lib/finance/createRequest"
+import * as createRequest from "@/lib/createRequest"
 import type {Account, Card, CardStatement, Purchase, StatementSummary, Verb} from "@/lib/api/financeTypes"
 import {shiftMonth} from "@/lib/finance/statementTimeline"
 

@@ -7,7 +7,7 @@ import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import {RecurrencesView} from "@/components/finance/RecurrencesView"
 import {optionsOf, pick, renderWithQuery, selectByLabel} from "@/components/finance/finance.test-utils"
 import * as finance from "@/lib/api/finance"
-import * as createRequest from "@/lib/finance/createRequest"
+import * as createRequest from "@/lib/createRequest"
 import type {Account, Card, Recurrence, RecurrenceOccurrences, Verb} from "@/lib/api/financeTypes"
 
 const ALL: Verb[] = ["finance.read", "finance.write", "finance.settle", "finance.import", "finance.configure"]

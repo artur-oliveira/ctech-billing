@@ -18,7 +18,7 @@ import type {Account, AccountClass, AccountPatch, Card, DREGroup, OpeningBalance
 import {classLabel, dreGroupLabel, groupsForClass} from "@/lib/finance/labels"
 import {selectCopy} from "@/lib/selectCopy"
 import {useFinanceMutation} from "@/lib/finance/useFinanceMutation"
-import {useCreateRequest} from "@/lib/finance/createRequest"
+import {useCreateRequest} from "@/lib/createRequest"
 import {useFinanceCtx, useFinanceSpaces} from "@/lib/finance/useFinanceSpaces"
 import {money} from "@/lib/format"
 import {todayIso} from "@/lib/finance/today"

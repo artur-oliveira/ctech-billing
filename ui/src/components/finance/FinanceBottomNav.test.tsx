@@ -12,7 +12,7 @@ import {FinanceBottomNav} from "@/components/finance/FinanceBottomNav"
 import {renderWithQuery} from "@/components/finance/finance.test-utils"
 import * as finance from "@/lib/api/finance"
 import type {Card, Verb} from "@/lib/api/financeTypes"
-import * as create from "@/lib/finance/createRequest"
+import * as create from "@/lib/createRequest"
 
 const ALL: Verb[] = ["finance.read", "finance.write", "finance.settle", "finance.import", "finance.configure"]
 

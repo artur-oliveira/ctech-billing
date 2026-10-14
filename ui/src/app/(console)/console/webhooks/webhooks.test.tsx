@@ -10,6 +10,7 @@ import ConsoleWebhooksPage from "@/app/(console)/console/webhooks/page"
 import * as consoleApi from "@/lib/api/console"
 import type {ConsoleWebhookEndpoint} from "@/lib/api/consoleTypes"
 import {ConsoleScopeProvider} from "@/lib/console/scope"
+import {clearPendingCreate, requestCreate} from "@/lib/createRequest"
 import ptBR from "@/locales/pt-BR"
 
 const SCOPE = {mode: "live", org: "0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b"} as const
@@ -33,7 +34,10 @@ beforeEach(() => {
     organizations_unavailable: false,
   })
 })
-afterEach(() => vi.restoreAllMocks())
+afterEach(() => {
+  vi.restoreAllMocks()
+  clearPendingCreate()
+})
 
 describe("/console/webhooks", () => {
   it("shows the new secret once, and forgets it when closed", async () => {
@@ -106,5 +110,20 @@ describe("/console/webhooks", () => {
     await userEvent.click(within(form).getByRole("button", {name: "Adicionar"}))
     expect(await within(form).findByText(ptBR.errors.field.webhook_host_not_public)).toBeInTheDocument()
     expect(within(form).queryByText(/\{\{/)).toBeNull()
+  })
+
+  it("opens the create form when the search asks for it, once the list is known", async () => {
+    list([ep("a")])
+    requestCreate("webhook")
+    wrap(<ConsoleWebhooksPage/>)
+    expect(await screen.findByRole("dialog")).toBeInTheDocument()
+  })
+
+  it("does not open it at the limit, even when asked", async () => {
+    list([ep("a"), ep("b"), ep("c"), ep("d"), ep("e")])
+    requestCreate("webhook")
+    wrap(<ConsoleWebhooksPage/>)
+    expect(await screen.findByRole("button", {name: "Novo endpoint"})).toBeDisabled()
+    expect(screen.queryByRole("dialog")).toBeNull()
   })
 })

@@ -15,6 +15,7 @@ import {useAddsRefused} from "@/lib/console/addsRefused"
 import {useConsoleScope} from "@/lib/console/scope"
 import {instantShortDate} from "@/lib/format"
 import {useDocumentTitle} from "@/lib/hooks/useDocumentTitle"
+import {useCreateRequest} from "@/lib/createRequest"
 import limits from "@/lib/limits.json"
 import {useFieldErrors} from "@/lib/useFieldErrors"
 
@@ -34,6 +35,7 @@ export default function ConsoleWebhooksPage() {
   const addsRefused = useAddsRefused()
   const query = useQuery({queryKey: consoleKeys.webhooks(scope), queryFn: () => listConsoleWebhooks(scope)})
   const [creating, setCreating] = useState(false)
+  useCreateRequest("webhook", () => setCreating(true))
   const [pending, setPending] = useState<Pending>(null)
   const [secret, setSecret] = useState<string | null>(null)
   const refresh = () => queryClient.invalidateQueries({queryKey: consoleKeys.webhooks(scope)})
@@ -41,6 +43,9 @@ export default function ConsoleWebhooksPage() {
   const endpoints = query.data?.data ?? []
   const max = query.data?.max_endpoints ?? limits.maxWebhookEndpoints
   const atLimit = endpoints.length >= max
+  // The search can ask for the form before the list is known; it opens only
+  // where the button itself could be pressed.
+  const canAdd = query.isSuccess && !addsRefused && !atLimit
 
   const test = useMutation({
     mutationFn: (id: string) => testWebhook(scope, id),
@@ -102,7 +107,7 @@ export default function ConsoleWebhooksPage() {
       </section>
 
       <NewEndpointDialog
-        open={creating} eventTypes={query.data?.event_types ?? []} onClose={() => setCreating(false)}
+        open={creating && canAdd} eventTypes={query.data?.event_types ?? []} onClose={() => setCreating(false)}
         onCreated={s => { setCreating(false); setSecret(s); void refresh() }}
       />
       <Modal
