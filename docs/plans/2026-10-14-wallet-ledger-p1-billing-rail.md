@@ -6,11 +6,11 @@
 
 **Architecture:** `api-commons` gains an optional payer on the Pix callback and an optional payout capability on the Inter provider. Billing writes the payer onto the `PaymentAttempt` once (first write wins) with a computed `payer_match`, adds a `Payout` entity driven by the same provider session as refunds, and adds two M2M surfaces: `POST /v1.0/invoices` (a one-off invoice collected now) and `POST /v1.0/payouts`. Wallet is not touched in this phase.
 
-**Tech Stack:** Go (Fiber v3, DynamoDB single table), `gopkg.aoctech.app/api-commons` (bumped to v1.19.0), the BYOK provider pattern, Inter Pix cobv and Banking APIs.
+**Tech Stack:** Go (Fiber v3, DynamoDB single table), `gopkg.aoctech.app/api-commons` (bumped to v1.22.0), the BYOK provider pattern, Inter Pix cobv and Banking APIs.
 
 **Spec:** `docs/specs/2026-10-14-wallet-ledger-billing-rail.md` (§3, §4, §5, §6, §8 P1)
 
-Repos: `P_COMMONS=/home/artur-revgas/Documents/Projects/Ctech/api-commons` (confirm the path with `ls` first; the module is `gopkg.aoctech.app/api-commons`), `P_BILL=/home/artur-revgas/Documents/Projects/Ctech/ctech-billing` (Go in `P_BILL/api`). **Task 0 (live proof) comes first and needs no new code.** Tasks 0b–3 run in `P_COMMONS` and end with a tagged `v1.19.0`; Billing tasks (4 onward) start only after the tag exists.
+Repos: `P_COMMONS=/home/artur-revgas/Documents/Projects/Ctech/ctech-go-common` (the repo of the module `gopkg.aoctech.app/api-commons`; it is already at v1.21.0, which added the opt-in raw Inter response trace, so this plan's release is the next free tag, `v1.22.0`), `P_BILL=/home/artur-revgas/Documents/Projects/Ctech/ctech-billing` (Go in `P_BILL/api`). **Task 0 (live proof) comes first and needs no new code.** Tasks 0b–3 run in `P_COMMONS` and end with a tagged `v1.22.0`; Billing tasks (4 onward) start only after the tag exists.
 
 ## Global Constraints
 
@@ -155,13 +155,13 @@ func TestParseCallbackWithoutAPayerStaysValid(t *testing.T) {
 ### Task 3: Tag
 
 - [ ] **Step 1:** `go vet ./... && go test ./...`; update `README.md`/`doc.go` for the two additions.
-- [ ] **Step 2:** Merge, then tag `v1.19.0` and push the tag. Verify `go list -m gopkg.aoctech.app/api-commons@v1.19.0` resolves.
+- [ ] **Step 2:** Merge, then tag `v1.22.0` and push the tag. Verify `go list -m gopkg.aoctech.app/api-commons@v1.22.0` resolves.
 
 ---
 
 ## Part B — ctech-billing (`P_BILL/api`)
 
-Branch: `feat/wallet-ledger-p1`. First step of Task 4: `go get gopkg.aoctech.app/api-commons@v1.19.0 && go mod tidy`.
+Branch: `feat/wallet-ledger-p1`. First step of Task 4: `go get gopkg.aoctech.app/api-commons@v1.22.0 && go mod tidy`.
 
 ### Task 4: Store the payer on the attempt, write-once, with `payer_match`
 
