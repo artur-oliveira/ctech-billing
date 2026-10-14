@@ -23,7 +23,7 @@ afterEach(() => vi.restoreAllMocks())
 
 describe("/invoice", () => {
   it("captions the invoice by its number, never with the list's summary wording", async () => {
-    const invoice = {...(await fixture()), number: "1042"}
+    const invoice = {...(await fixture()), number: 1042}
     vi.spyOn(portal, "getInvoice").mockResolvedValue(invoice)
     render(<QueryClientProvider client={new QueryClient({defaultOptions: {queries: {retry: false}}})}><PortalInvoicePage/></QueryClientProvider>)
     expect(await screen.findByText("Fatura nº 1042")).toBeInTheDocument()
