@@ -220,6 +220,18 @@ func Register(app *fiber.App, d Deps) {
 	usage.Post("/levels", middleware.RequireM2MScope(middleware.ScopeUsageWrite), h.reportLevel)
 
 	invoices := m2m("/invoices")
+	// By reference first, so "by-reference" is never read as an invoice id.
+	invoices.Get("/by-reference/:reference",
+		middleware.RequireM2MScope(middleware.ScopeInvoicesRead), h.getInvoiceByReference)
+	if d.CreditNotes != nil {
+		// The console's credit note (and "Devolver via Pix") for a service client.
+		cn := &consoleHandlers{handlers: h, credit: d.CreditNotes, byok: d.ByokCollector}
+		if d.FinanceInvoices != nil {
+			cn.finance = d.FinanceInvoices
+		}
+		invoices.Post("/:id/credit-notes",
+			middleware.RequireM2MScope(middleware.ScopeInvoicesWrite), idem, cn.creditInvoiceM2M)
+	}
 	if h.oneOff != nil {
 		invoices.Post("",
 			middleware.RequireM2MScope(middleware.ScopeInvoicesWrite), idem, h.createInvoice)

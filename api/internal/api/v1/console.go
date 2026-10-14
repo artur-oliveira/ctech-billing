@@ -413,6 +413,17 @@ func (h *consoleHandlers) voidInvoice(c fiber.Ctx) error {
 // returned it, with the reference there — billing issuing money is how this
 // service would start becoming a wallet.
 func (h *consoleHandlers) creditInvoice(c fiber.Ctx) error {
+	return h.creditInvoiceAs(c, actorOfUser(c))
+}
+
+// creditInvoiceM2M is the same credit note for a service client (the wallet
+// giving a deposit back to its payer): one implementation, so the rules the
+// console enforces are the ones an integration meets, with the client as actor.
+func (h *consoleHandlers) creditInvoiceM2M(c fiber.Ctx) error {
+	return h.creditInvoiceAs(c, actorOf(c))
+}
+
+func (h *consoleHandlers) creditInvoiceAs(c fiber.Ctx, actor string) error {
 	t := middleware.GetTenant(c)
 	var req creditNoteRequest
 	if err := c.Bind().Body(&req); err != nil {
@@ -454,7 +465,7 @@ func (h *consoleHandlers) creditInvoice(c fiber.Ctx) error {
 		Metadata:           req.Metadata,
 	}
 	if err := h.credit.Issue(
-		c.Context(), cn, inv, actorOfUser(c), middleware.GetRequestID(c), h.now(),
+		c.Context(), cn, inv, actor, middleware.GetRequestID(c), h.now(),
 	); err != nil {
 		return fail(c, err)
 	}
@@ -462,12 +473,12 @@ func (h *consoleHandlers) creditInvoice(c fiber.Ctx) error {
 	// ledgers (spec § 3.8). After the note exists, never instead of it, and
 	// nothing the rule answers changes this response.
 	if h.finance != nil && inv.Status == billing.InvoicePaid {
-		h.finance.Credited(c.Context(), inv, cn, actorOfUser(c), middleware.GetRequestID(c), h.now())
+		h.finance.Credited(c.Context(), inv, cn, actor, middleware.GetRequestID(c), h.now())
 	}
 	// "Devolver via Pix": after the note exists. A refusal (window closed,
 	// not a BYOK payment) answers the error; the note stands.
 	if req.RefundViaPix && h.byok != nil {
-		if _, err := h.byok.RefundCredit(c.Context(), inv, cn, actorOfUser(c), middleware.GetRequestID(c), h.now()); err != nil {
+		if _, err := h.byok.RefundCredit(c.Context(), inv, cn, actor, middleware.GetRequestID(c), h.now()); err != nil {
 			return fail(c, err)
 		}
 	}
