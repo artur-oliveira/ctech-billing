@@ -145,7 +145,8 @@
     "renewBody": "Send the new certificate and the new key downloaded from Inter. The client_id and client_secret stay the same.",
     "renewSubmit": "Send the new pair",
     "renewed": "Certificate renewed",
-    "connected": "Account connected. We are bringing the statement."
+    "connected": "Account connected. We are bringing the statement.",
+    "pixKey": "Pix key"
   },
   "disconnect": {
     "title": "Disconnect Banco Inter?",
@@ -300,5 +301,16 @@
       "banking_webhook_write": "Criar e editar webhooks",
       "banking_webhook_read": "Consultar webhooks"
     }
+  },
+  "pixKey": {
+    "title": "Change Pix key",
+    "body": "The Pix key charges are issued on. Inter sends payment notices to one address per key: use a random (EVP) key of CTech's own so another system does not lose its notices.",
+    "label": "New Pix key",
+    "current": "Key in use: {{key}}",
+    "submit": "Change key",
+    "done": "Pix key changed.",
+    "conflictDone": "Key changed. Another system receives this key's notices: see below and confirm if you want to replace it.",
+    "openCharges_one": "{{count}} charge is still open on the current key. Wait for it to be paid or cancel it before changing the key.",
+    "openCharges_other": "{{count}} charges are still open on the current key. Wait for them to be paid or cancel them before changing the key."
   }
 }

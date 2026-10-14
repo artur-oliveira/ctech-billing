@@ -123,6 +123,14 @@ export function connectionsMock(r: Req): Res {
       if (!cur) return problem(404, "byok_not_connected")
       state.set(key, {...cur, cert_not_after: iso(365), cert_days_left: 365, state: "active", status: "active"})
       return ok(state.get(key))
+    case "put pix-key": {
+      if (!cur) return problem(404, "byok_not_connected")
+      const pixKey = String((r.data as {pix_key?: string})?.pix_key ?? "").trim()
+      if (!pixKey) return problem(422, "byok_invalid_request")
+      if (pixKey.includes("erro")) return problem(422, "byok_pix_key_unknown")
+      state.set(key, {...cur, pix_key: pixKey, webhook_status: "registered"})
+      return ok(state.get(key))
+    }
     case "post sync": {
       if (!cur) return problem(404, "byok_not_connected")
       const last = lastSync.get(key) ?? 0

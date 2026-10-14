@@ -145,7 +145,8 @@
     "renewBody": "Envie o novo certificado e a nova chave baixados do Inter. O client_id e o client_secret continuam os mesmos.",
     "renewSubmit": "Enviar o novo par",
     "renewed": "Certificado renovado",
-    "connected": "Conta conectada. Estamos trazendo o extrato."
+    "connected": "Conta conectada. Estamos trazendo o extrato.",
+    "pixKey": "Chave Pix"
   },
   "disconnect": {
     "title": "Desconectar o Banco Inter?",
@@ -300,5 +301,16 @@
       "banking_webhook_write": "Criar e editar webhooks",
       "banking_webhook_read": "Consultar webhooks"
     }
+  },
+  "pixKey": {
+    "title": "Alterar chave Pix",
+    "body": "A chave Pix em que as cobranças são emitidas. O Inter envia os avisos de pagamento a um só endereço por chave: use uma chave aleatória (EVP) só da CTech, para não tirar os avisos de outro sistema.",
+    "label": "Nova chave Pix",
+    "current": "Chave em uso: {{key}}",
+    "submit": "Alterar chave",
+    "done": "Chave Pix alterada.",
+    "conflictDone": "Chave alterada. Outro sistema recebe os avisos desta chave: veja abaixo e confirme se quer substituí-lo.",
+    "openCharges_one": "Há {{count}} cobrança em aberto na chave atual. Espere o pagamento ou cancele-a antes de trocar a chave.",
+    "openCharges_other": "Há {{count}} cobranças em aberto na chave atual. Espere o pagamento ou cancele-as antes de trocar a chave."
   }
 }

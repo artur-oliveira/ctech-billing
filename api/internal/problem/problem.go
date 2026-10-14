@@ -254,6 +254,8 @@ func FromError(err error) *Problem {
 		return Unprocessable("the key does not belong to this certificate").WithCode("byok_key_mismatch")
 	case errors.Is(err, byok.ErrCredentialsRefused), errors.Is(err, byok.ErrScopesRefused):
 		return Unprocessable("the bank refused these credentials").WithCode("byok_credentials_refused")
+	case errors.Is(err, services.ErrPixKeyUnknown):
+		return Unprocessable("the bank has no such Pix key on this account").WithCode("byok_pix_key_unknown")
 	case errors.Is(err, byok.ErrUnauthorized):
 		// The bank issued a token and then refused it on the first call (connect
 		// checks the account with a balance read). That is the account number or

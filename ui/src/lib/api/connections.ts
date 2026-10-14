@@ -118,6 +118,13 @@ export async function registerWebhook(s: ConnectionsScope, provider: string, rep
   return data
 }
 
+/** "Alterar chave Pix": only the key moves; a conflicting notice on it comes back
+ *  as byok_webhook_conflict and is confirmed through the webhook step. */
+export async function changePixKey(s: ConnectionsScope, provider: string, pixKey: string, key: string): Promise<Connection> {
+  const {data} = await apiClient.put<Connection>(`${BASE}/${provider}/pix-key`, {pix_key: pixKey}, {headers: headers(s, key)})
+  return data
+}
+
 function financeHeaders(c: FinanceCtx, key?: string): Record<string, string> {
   const h: Record<string, string> = {"X-Billing-Mode": c.mode, "X-Billing-Space": spaceHeader(c.space)}
   if (key) h["Idempotency-Key"] = key
