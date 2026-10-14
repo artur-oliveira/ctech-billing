@@ -27,10 +27,13 @@ func TestTheOperatorMovesTenantZeroToByokAndBack(t *testing.T) {
 		t.Fatalf("the console path still refuses tenant zero: %v", err)
 	}
 
-	if err := setup.OperatorUseForCollection(ctx, env.sp, env.tenantNow(t), "inter", billing.CollectionSettings{}, "operator:test", "req", now()); err != nil {
+	if err := setup.OperatorUseForCollection(ctx, env.sp, env.tenantNow(t), "inter", billing.CollectionSettings{FineBasisPoints: 200, MonthlyInterestBasisPoints: 100}, "operator:test", "req", now()); err != nil {
 		t.Fatal(err)
 	}
 	org := env.tenantNow(t)
+	if org.Collection.FineBasisPoints != 200 || org.Collection.MonthlyInterestBasisPoints != 100 {
+		t.Fatalf("the late fees are set with the rail: %+v", org.Collection)
+	}
 	if org.Rail() != billing.RailBYOK || org.PayoutProvider != "inter" || org.PayoutStatus != billing.PayoutEnabled {
 		t.Fatalf("moved to BYOK: %+v", org)
 	}
