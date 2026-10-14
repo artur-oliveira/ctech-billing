@@ -49,7 +49,7 @@ func main() {
 	h := &handler{
 		sealer:    sealer,
 		providers: map[string]byok.Provider{"inter": inter.NewProvider(inter.NewClient(inter.WithLogger(slog.Default())))},
-		rules:     rules{forceSandbox: os.Getenv("BYOK_FORCE_SANDBOX") == "true"},
+		rules:     rules{forceSandbox: os.Getenv("BYOK_FORCE_SANDBOX") == "true", payoutOrgs: parseOrgs(os.Getenv("BYOK_PAYOUT_ACCOUNT_ORGS"))},
 		sandbox: sandboxLoader(params, os.Getenv("BYOK_SANDBOX_CREDENTIAL_PARAMS"),
 			os.Getenv("BYOK_SANDBOX_ACCOUNT_PARAM"), os.Getenv("BYOK_SANDBOX_PIX_KEY_PARAM")),
 		bundles: newBundleCache(),

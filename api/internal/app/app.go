@@ -183,6 +183,7 @@ func Build(ctx context.Context, cfg *config.Config, clock func() time.Time) (*fi
 	byokCollector := byokCollection(ctx, cfg, db, byokConns, byokStatement, gates, finance, bus)
 	var byokWebhooks *services.ByokWebhooks
 	var byokSetup *services.ByokCollectionSetup
+	var payouts *services.Payouts
 	if byokCollector != nil {
 		byokWebhooks = services.NewByokWebhooks(repositories.NewByokRepository(db, cfg), payments, byokCollector, cacheBackend).
 			WithStatement(byokStatement)
@@ -193,12 +194,14 @@ func Build(ctx context.Context, cfg *config.Config, clock func() time.Time) (*fi
 				byokSetup = byokSetup.WithMail(mail)
 			}
 		}
+		payouts = services.NewPayouts(payments, orgs, repositories.NewByokRepository(db, cfg), byokConns.Session)
 		invoicer.WithCharges(byokCollector)
 		if collector != nil {
 			collector.WithByok(byokCollector)
 		}
 	}
 	v1.Register(app, v1.Deps{
+		Payouts:           payouts,
 		ByokConnections:   byokConns,
 		ByokStatement:     byokStatement,
 		ChargeGates:       gates,
@@ -655,7 +658,8 @@ func BuildByokJob(ctx context.Context, cfg *config.Config) (*services.ByokConnec
 	setup, collector, payments, repo := byokSetup(ctx, cfg, db, c, conns, st, orgs)
 	usage := services.NewByokUsage(repo, payments, orgs, newBillingPlans(db, cfg), newSubscriptions(db, cfg),
 		repositories.NewCatalogRepository(db, cfg), repositories.NewUsageRepository(db, cfg), cfg.PortalOrganizationID)
-	return conns, st, repo, c, services.NewByokSweep(collector, payments, orgs, setup, repo, conns, nil).WithUsage(usage), nil
+	return conns, st, repo, c, services.NewByokSweep(collector, payments, orgs, setup, repo, conns, nil).WithUsage(usage).
+		WithPayouts(services.NewPayouts(payments, orgs, repo, conns.Session)), nil
 }
 
 // byokSetup is the collection set-up and the collector it settles through,

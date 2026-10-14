@@ -125,3 +125,29 @@ func TestPayloadsAndSecretsAreNeverLogged(t *testing.T) {
 		}
 	}
 }
+
+func TestMoneyOutIsAllowedOnlyForTheNamedOrganizations(t *testing.T) {
+	pay := func(t *testing.T, r rules) (byok.Response, int) {
+		h, f := newHandler(t, r)
+		ref := connect(t, h, "live")
+		resp := call(t, h, byok.Request{Op: byok.OpPayout, Provider: "inter", Mode: "live", Connection: ref, OAuthToken: "t",
+			Payload: payload(byok.PayoutRequest{Ref: "8bbdede4-35db-4ec9-b652-e176841e62c8", Amount: 100, PixKey: "39053344705"})})
+		return resp, f.PayoutCalls()
+	}
+	if r, calls := pay(t, rules{}); r.Code != "op_refused" || calls != 0 {
+		t.Fatalf("nobody is named: %+v calls=%d", r, calls)
+	}
+	if r, calls := pay(t, rules{payoutOrgs: parseOrgs("org-b, org-c")}); r.Code != "op_refused" || calls != 0 {
+		t.Fatalf("another organization is named: %+v calls=%d", r, calls)
+	}
+	if r, calls := pay(t, rules{payoutOrgs: parseOrgs(" org-a ,org-b")}); r.Code != "" || calls != 1 {
+		t.Fatalf("the named organization pays: %+v calls=%d", r, calls)
+	}
+}
+
+func TestParseOrgsIgnoresBlanks(t *testing.T) {
+	got := parseOrgs(" a, ,b,, ")
+	if len(got) != 2 || !got["a"] || !got["b"] || (rules{}).payoutAllowed("") {
+		t.Fatalf("%v", got)
+	}
+}

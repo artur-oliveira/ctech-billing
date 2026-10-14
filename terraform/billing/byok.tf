@@ -106,6 +106,8 @@ resource "aws_lambda_function" "byok_outbound" {
       BYOK_SANDBOX_PIX_KEY_PARAM     = aws_ssm_parameter.byok_sandbox["pix-key"].name
       # spec § 4.2: merchants' real credentials exist only in prod.
       BYOK_FORCE_SANDBOX = var.environment == "prod" ? "false" : "true"
+      # Money out is allowed for the named account organizations only.
+      BYOK_PAYOUT_ACCOUNT_ORGS = var.byok_payout_account_orgs
     }
   }
 

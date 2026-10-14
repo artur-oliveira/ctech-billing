@@ -393,6 +393,12 @@ func FromError(err error) *Problem {
 		return New(409, TypeConcurrentUpdate, "Concurrent Update",
 			"another payment attempt for this invoice is in progress; reload and try again").WithCode("payment_attempt_in_progress")
 
+	case errors.Is(err, services.ErrPayoutConflict):
+		return Conflict("this reference already names another payout").WithCode("payout_reference_conflict")
+	case errors.Is(err, services.ErrPayoutNotAllowed):
+		return Conflict("this tenant has no bank connection that can pay out").WithCode("payout_not_allowed")
+	case errors.Is(err, services.ErrPayoutInvalid):
+		return Unprocessable("the payout request is invalid").WithCode("invalid_payout")
 	case errors.Is(err, services.ErrOneOffConflict):
 		return Conflict("this reference already names another invoice").WithCode("reference_conflict")
 	case errors.Is(err, services.ErrOneOffInvalid):

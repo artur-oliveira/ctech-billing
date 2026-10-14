@@ -89,6 +89,10 @@ func (i *fakeInvoker) Invoke(ctx context.Context, in *lambda.InvokeInput, _ ...f
 	case byok.OpRetryCallbacks:
 		err = f.RetryCallbacks(ctx, creds, tok, decodeArgs[byok.RetryArgs](req.Payload).Refs)
 		out = struct{}{}
+	case byok.OpPayout:
+		out, err = f.Payout(ctx, creds, tok, decodeArgs[byok.PayoutRequest](req.Payload))
+	case byok.OpGetPayout:
+		out, err = f.GetPayout(ctx, creds, tok, decodeArgs[byok.RefArgs](req.Payload).Ref)
 	case byok.OpSimulatePayment:
 		// The Lambda refuses SimulatePayment outside a sandbox (part A).
 		if req.Mode != "test" {

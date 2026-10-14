@@ -184,6 +184,24 @@
       },
       "visibility": "internal",
       "status": "active"
+    },
+    {
+      "name": "internal:billing:payouts-write",
+      "descriptions": {
+        "pt-BR": "Pagar um Pix a partir da conta bancária do CTech Billing (uso interno).",
+        "en": "Pay a Pix out of CTech Billing's bank account (internal use)."
+      },
+      "visibility": "internal",
+      "status": "active"
+    },
+    {
+      "name": "internal:billing:payouts-read",
+      "descriptions": {
+        "pt-BR": "Consultar pagamentos Pix enviados pelo CTech Billing (uso interno).",
+        "en": "Read the Pix payments CTech Billing sent (internal use)."
+      },
+      "visibility": "internal",
+      "status": "active"
     }
   ]
 }
