@@ -371,12 +371,27 @@ rail had more character than a generic pill list. What stands:
 **One frame for the three areas,** `@aoctech/ui`'s `AppShell` (0.7.0), wrapped by
 `components/shell/BillingShell`. The **top bar** spans the screen: the mark and **"CTech
 Billing • {área}"** at the left (Finanças is part of Billing, not a product beside it); whose work
-(organization or space), the language and the avatar at the right. Under it, from `md`, the
+(organization or space), the search, the language and the avatar at the right. Under it, from `md`, the
 sections on the **rail** pinned to the left edge: a hairline on the list's left edge, the current
 section drawing its own stretch of it in sienna with weight, no icons; groups are a quiet label
 above their own stretch of rail. The page takes the rest of the width up to 96rem, starting
 beside the rail: tables compare down a column, so a wide screen gives its width to them. A form
-or a detail keeps its own reading width; the portal keeps `max-w-2xl`.
+or a detail keeps its own reading width; the portal no longer caps the page (2026-10-14: the
+owner saw it fixed while the other two areas used the width): a screen of text sets a measure on
+its paragraph (`max-w-prose`), the pay button and the Pix panel on an invoice keep their own
+(`sm:w-auto`, `max-w-xl`), and lists and details use the width.
+
+**Search (⌘K / Ctrl+K), 2026-10-14.** `@aoctech/ui`'s `CommandPalette` (0.8.0), mounted once in
+`BillingShell` through `components/shell/GlobalSearch`, so the three areas have it. The button in
+the bar says "Buscar" with its key from `sm`, and is the icon alone (44px) on a phone. A result is
+a screen or an action, with its subproduct (Portal, Console, Finanças) under its name; choosing one
+in another subproduct is a navigation and that area's layout takes over. The entries are built from
+the lists that draw the navs (`lib/search/entries.ts`: `PORTAL_NAV`, `consoleNav`,
+`visibleFinanceSections`), filtered by what the person may reach (no organization, no Console; no
+billing account, no Portal; the space's verbs for the create actions). An action ("Nova
+recorrência", "Novo produto", "Novo webhook") goes to its screen and asks it to open its form
+through `lib/createRequest`, the same wire as the phone's central button, and not through a
+query parameter: a `?novo=1` would reopen the form on every reload and shared link.
 
 **On a phone** the bar stays (mark, whose work, avatar) and the sections are the area's
 `BottomNav`.

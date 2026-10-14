@@ -64,8 +64,8 @@ Own matcher, **no new dependency** (no Fuse.js in the shared package):
 
 ### 3.3 Behaviour and accessibility
 
-- Built on the package's `Modal` (Base UI Dialog): focus trap, Esc, scroll lock, portal. Top-anchored (≈10vh), full
-  width minus gutters on a phone.
+- Built on Base UI's Dialog directly, as `Drawer` is (`Modal` carries a title bar and a footer a search does not
+  want): focus trap, Esc, scroll lock, portal. Top-anchored (≈10vh), full width minus gutters on a phone.
 - Input is a combobox (`role="combobox"`, `aria-controls`, `aria-activedescendant`); results are a `listbox`
   of `option`s. ArrowDown/ArrowUp cycle, Enter selects, mouse hover moves the cursor. The active option is scrolled
   into view.
@@ -109,7 +109,7 @@ type (Agenda ↔ "contas a pagar", "boletos"; Extrato ↔ "saldo"; Cartões ↔ 
 ### 4.2 Create actions
 
 `lib/finance/createRequest.ts` moves to `lib/createRequest.ts` (it is no longer Finanças-only) and `CreateKind` gains
-`"price"` and `"webhook"`. Everything else about it stays: held ≤3 s, taken once, dropped when the person lands
+`"product"` and `"webhook"`. Everything else about it stays: held ≤3 s, taken once, dropped when the person lands
 elsewhere, deliberately **not a URL parameter** (a `?novo=1` would reopen the form on every reload and shared link).
 The bottom nav, the six `useCreateRequest` call sites and their tests are updated for the move.
 
@@ -120,15 +120,14 @@ The bottom nav, the six `useCreateRequest` call sites and their tests are update
 | Nova recorrência | `recurrence` | `/finance/recurrences` | `finance.write` |
 | Nova transferência | `transfer` | `/finance/statement` | `finance.write` |
 | Nova conta | `account` | `/finance/accounts` | `finance.configure` |
-| Novo preço | `price` | `/console/catalog` | Console `active` |
+| Novo produto | `product` | `/console/catalog` | Console `active` |
 | Novo webhook | `webhook` | `/console/webhooks` | Console `active` |
 
 Selecting an action runs `requestCreate(kind, target)` then `router.push(target)`. The screen opens its drawer on mount
 through `useCreateRequest(kind, …)` and still applies its own checks (the webhooks screen's `atLimit`, the role).
 `catalog/page.tsx` and `webhooks/page.tsx` gain a `useCreateRequest` call each. Already on the target screen: the
 request is taken at once by the mounted listener, so it opens in place. The action's label comes from the existing
-`finance.nav.create.<kind>` strings where they exist; `console.catalog.new` and the webhooks button text for the two
-new ones.
+`finance.nav.create.<kind>` strings where they exist; `common.search.actions.*` for all seven, since the screens' own button texts ("Novo produto", "Novo endpoint") differ from the verbs a search wants ("Novo webhook").
 
 ### 4.3 Mounting
 
@@ -165,7 +164,7 @@ No infrastructure, cost or API change in either.
 - **ctech-billing** (vitest): `entries.ts` by situation: no organization (no Console entries), no billing account (no
   Portal entries), personal space (Plano yes, Conexões no), organization space with `finance.configure` (Conexões
   yes), viewer role (no create actions), reviewer (Solicitações); `createRequest` still holds, expires and drops by
-  target after the move; the price and webhook screens open their drawer on a request; the shell opens the palette
+  target after the move; the catalog and webhook screens open their drawer on a request; the shell opens the palette
   on Ctrl+K.
 - **Browser check** (chrome-devtools) before the PR: Portal at 1440px and 390px; ⌘K from each area; "recor" →
   "Nova recorrência" lands with the drawer open; switching Portal → Finanças → Console through results; no
