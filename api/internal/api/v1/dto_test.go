@@ -156,3 +156,20 @@ func TestProviderCatalogGuideCoversInterScopes(t *testing.T) {
 		}
 	}
 }
+
+func TestPayerOfTakesTheSettlingAttemptsPayer(t *testing.T) {
+	attempts := []billing.PaymentAttempt{
+		{Status: billing.AttemptFailed, Payer: &billing.Payer{Name: "Nunca pagou"}},
+		{Status: billing.AttemptSucceeded, Payer: &billing.Payer{Name: "Fulano", Document: "12345678909", Institution: "BANCO"}, PayerMatch: billing.PayerMatchYes},
+	}
+	p, m := payerOf(attempts)
+	if p == nil || p.Name != "Fulano" || p.Document != "12345678909" || m != billing.PayerMatchYes {
+		t.Fatalf("%+v %q", p, m)
+	}
+	if p, m := payerOf([]billing.PaymentAttempt{{Status: billing.AttemptSucceeded}}); p != nil || m != "" {
+		t.Fatalf("no payer recorded yet: %+v %q", p, m)
+	}
+	if p, _ := payerOf(nil); p != nil {
+		t.Fatal("no attempts")
+	}
+}

@@ -25,10 +25,18 @@ const scheduleOwnerFile = "../repositories/finance_schedule.go"
 // request named.
 const postingRuleFile = "../services/finance_invoices.go"
 
+// The webhook's payer pull syncs the statement of the connection a payment
+// notice is about. The space comes from that connection's stored row, which the
+// notice reaches only through a hook id and a secret that billing issued; the
+// body of the notice names no organization and no space. It is the daily job's
+// reasoning for one connection, run right after a settlement instead of hourly.
+const webhookPullFile = "../services/byok_webhooks.go"
+
 func TestForJobIsNotCalledFromInternal(t *testing.T) {
-	// The one exception: the daily job's cross-tenant read rebuilds a space from
-	// the owner in a schedule-index key (see that file's comment).
-	assertCalledOnlyFrom(t, "ForJob", scheduleOwnerFile)
+	// The exceptions: the daily job's cross-tenant read rebuilds a space from the
+	// owner in a schedule-index key (see that file's comment), and the webhook's
+	// payer pull rebuilds it from the connection row its hook points to.
+	assertCalledOnlyFrom(t, "ForJob", scheduleOwnerFile, webhookPullFile)
 }
 
 func TestPostingSpacesAreBuiltOnlyByTheInvoicePostingRule(t *testing.T) {

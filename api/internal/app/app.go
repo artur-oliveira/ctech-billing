@@ -184,7 +184,8 @@ func Build(ctx context.Context, cfg *config.Config, clock func() time.Time) (*fi
 	var byokWebhooks *services.ByokWebhooks
 	var byokSetup *services.ByokCollectionSetup
 	if byokCollector != nil {
-		byokWebhooks = services.NewByokWebhooks(repositories.NewByokRepository(db, cfg), payments, byokCollector, cacheBackend)
+		byokWebhooks = services.NewByokWebhooks(repositories.NewByokRepository(db, cfg), payments, byokCollector, cacheBackend).
+			WithStatement(byokStatement)
 		byokSetup = services.NewByokCollectionSetup(byokConns, repositories.NewByokRepository(db, cfg), orgs, payments, byokCollector,
 			byokWebhooks, cfg.ByokHooksHost, cfg.PortalOrganizationID).WithSubscriptions(subs)
 		if cfg.EmailFrom != "" {

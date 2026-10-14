@@ -26,6 +26,8 @@ type BankLine struct {
 	Amount               billing.Cents
 	Memo                 string
 	ChargeRef, PaymentID string
+	// Payer is who sent a received payment, when the bank's line says so.
+	Payer *billing.Payer
 }
 
 func BankLineRef(accountID, lineID string) string { return "byok:" + accountID + ":" + lineID }

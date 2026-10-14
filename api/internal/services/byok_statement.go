@@ -205,6 +205,9 @@ func (s *ByokStatement) line(ctx context.Context, sp space.ResolvedSpace, conn *
 	}
 	bl := repositories.BankLine{Provider: conn.Provider, LineID: l.ID, Date: fromByok(l.Date), Credit: l.Direction == byok.Credit,
 		Amount: billing.Cents(l.Amount), Memo: memo(l), ChargeRef: l.ChargeRef, PaymentID: l.PaymentID}
+	if l.Payer != nil {
+		bl.Payer = &billing.Payer{Name: l.Payer.Name, Document: l.Payer.Document, Institution: l.Payer.Institution}
+	}
 	if s.links != nil && l.ChargeRef != "" {
 		handled, err := s.links.Link(ctx, sp, conn, bl)
 		if err != nil {

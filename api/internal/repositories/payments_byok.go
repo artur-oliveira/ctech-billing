@@ -322,6 +322,31 @@ func (r *PaymentRepository) SetByokAmount(ctx context.Context, a *billing.Paymen
 	return nil
 }
 
+// SetPayerOnce records who paid on a settled attempt, once: a later call with
+// another payer changes nothing (true only when this call wrote it). The
+// condition is on the attribute, so two statement lines racing cannot both win.
+func (r *PaymentRepository) SetPayerOnce(ctx context.Context, a *billing.PaymentAttempt, p billing.Payer, m billing.PayerMatch, now time.Time) (bool, error) {
+	sk := PaymentAttemptSK(a.InvoiceID, a.AttemptNumber)
+	payer := map[string]types.AttributeValue{}
+	for k, v := range map[string]string{"name": p.Name, "document": p.Document, "institution": p.Institution} {
+		if v != "" {
+			payer[k] = str(v)
+		}
+	}
+	err := r.base.TransactWrite(ctx, txItems(r.base.BuildRawUpdateTxItem(TenantPK(a.OrganizationID, a.Livemode), &sk,
+		"SET payer = :p, payer_match = :m, updated_at = :now", "attribute_exists(pk) AND attribute_not_exists(payer)", nil,
+		map[string]types.AttributeValue{":p": &types.AttributeValueMemberM{Value: payer}, ":m": str(string(m)),
+			":now": str(now.UTC().Format(time.RFC3339Nano))})))
+	if IsConditionFailed(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, conflictErr(err)
+	}
+	a.Payer, a.PayerMatch = &p, m
+	return true, nil
+}
+
 func refundingPK(livemode bool) string { return Mode(livemode) + "#" + JobByokRefunding }
 
 // JobByokRefunding names the partition of refunds still in flight.
