@@ -360,7 +360,7 @@
  },
  "invitation": {
   "title": "Bill your customers with CTech Billing",
-  "body": "{{name}} can issue invoices, charge subscriptions and get payment notices through the API.",
+  "body": "{{name}} can issue invoices, charge subscriptions and get payment webhooks through the API.",
   "points": {
    "subscriptions": "Subscriptions and recurring invoices",
    "api": "API integration, with webhooks",
@@ -511,7 +511,7 @@
   "disabled": "Disabled",
   "disabledHint": "Disabled after repeated failures. Delete it and add it again.",
   "test": "Test",
-  "tested": "Ping sent. It arrives within 2 minutes.",
+  "tested": "Test sent. The result shows on the row within a minute.",
   "rotate": "Rotate secret",
   "delete": "Delete",
   "more": "More actions: {{url}}",
@@ -544,7 +544,10 @@
   "rotateBody": "The current secret stops working at once. Deliveries that fail while you update your API are retried, signed with the new secret.",
   "deleteTitle": "Delete {{url}}?",
   "deleteBody": "No event is sent to it after this, including the ones already queued.",
-  "deleted": "Endpoint deleted."
+  "deleted": "Endpoint deleted.",
+  "untested": "Not tested yet. Set the secret on your server, then press Test.",
+  "responding": "Responding",
+  "failing": "Not responding: {{detail}}"
  },
  "plan": {
   "title": "Plan",

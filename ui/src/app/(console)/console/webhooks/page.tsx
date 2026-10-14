@@ -33,7 +33,14 @@ export default function ConsoleWebhooksPage() {
   useDocumentTitle(t("console.webhooks.title"));
   const queryClient = useQueryClient();
   const addsRefused = useAddsRefused();
-  const query = useQuery({queryKey: consoleKeys.webhooks(scope), queryFn: () => listConsoleWebhooks(scope)});
+  // After "Testar" the result arrives with the next delivery pass (up to a
+  // minute), so the list follows itself for a couple of minutes and then stops.
+  const [testedAt, setTestedAt] = useState<number | null>(null);
+  const query = useQuery({
+    queryKey: consoleKeys.webhooks(scope),
+    queryFn: () => listConsoleWebhooks(scope),
+    refetchInterval: () => (testedAt !== null && Date.now() - testedAt < 120_000 ? 8_000 : false),
+  });
   const [creating, setCreating] = useState(false);
   const [asked, setAsked] = useState(false);
   useCreateRequest("webhook", () => setAsked(true));
@@ -57,7 +64,7 @@ export default function ConsoleWebhooksPage() {
 
   const test = useMutation({
     mutationFn: (id: string) => testWebhook(scope, id),
-    onSuccess: () => toast.success(t("console.webhooks.tested")),
+    onSuccess: () => { setTestedAt(Date.now()); toast.success(t("console.webhooks.tested")); },
     onError: e => toast.error(messageFor(e)),
   });
   const act = useMutation({
@@ -151,6 +158,12 @@ function EndpointRow({endpoint: e, canTest, testing, onTest, onRotate, onDelete}
     e.provisioned ? t("console.webhooks.provisioned") : e.added_at ? t("console.webhooks.addedOn", {date: instantShortDate(e.added_at)}) : null,
   ].filter((m): m is string => m !== null);
   const active = e.status === "active";
+  // What the endpoint last answered; a provisioned one is CTech's own and is
+  // not described here.
+  const health = e.provisioned || !active ? null
+    : !e.last_delivery_at ? {tone: "text-muted-foreground", text: t("console.webhooks.untested")}
+    : e.last_delivery_ok ? {tone: "text-success", text: t("console.webhooks.responding")}
+    : {tone: "text-danger", text: t("console.webhooks.failing", {detail: e.last_delivery_detail ?? ""})};
 
   return (
     <li>
@@ -161,6 +174,7 @@ function EndpointRow({endpoint: e, canTest, testing, onTest, onRotate, onDelete}
             <p className="text-xs text-muted-foreground">
               {meta.map((m, i) => <span key={m}>{i > 0 && <span aria-hidden> • </span>}<span>{m}</span></span>)}
             </p>
+            {health && <p className={`text-xs ${health.tone}`}>{health.text}</p>}
             {!active && <p className="text-xs text-danger">{t("console.webhooks.disabledHint")}</p>}
           </div>
           <div className="flex items-center gap-1 sm:contents">

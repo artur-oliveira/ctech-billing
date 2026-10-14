@@ -364,9 +364,13 @@ export interface ConsoleSubscriptionItem {
   price_id: string
   quantity: number
   price: ConsolePrice
+  /** What the item bills, by name; absent when the server could not read it. */
+  product_name?: string
 }
 
 export interface ConsoleSubscriptionDetail {
+  customer_name?: string
+  plan_name?: string
   subscription: ConsoleSubscription
   items: ConsoleSubscriptionItem[]
   timeline: AuditEntry[]
@@ -392,7 +396,7 @@ export interface ConsoleCredentialList {data: ConsoleCredential[]; machine_scope
 /** An endpoint is disabled by the delivery job after repeated failures. */
 export type WebhookStatus = "active" | "disabled"
 /** A webhook endpoint as the console lists it; never carries the secret. `events: []` is every event. */
-export interface ConsoleWebhookEndpoint {id: string; url: string; events: string[]; status: WebhookStatus; failure_run: number; disabled_at?: string; provisioned: boolean; added_at?: string; owner_key?: string}
+export interface ConsoleWebhookEndpoint {id: string; url: string; events: string[]; status: WebhookStatus; failure_run: number; disabled_at?: string; provisioned: boolean; added_at?: string; owner_key?: string; last_delivery_ok?: boolean; last_delivery_at?: string; last_delivery_detail?: string}
 /** The endpoint list, with the subscribable event types and the per-mode limit. */
 export interface ConsoleWebhookList {data: ConsoleWebhookEndpoint[]; event_types: string[]; max_endpoints: number}
 /** Only create and rotate answer with this; the secret is never shown again. */

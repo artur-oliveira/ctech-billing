@@ -137,4 +137,16 @@ describe("/console/webhooks", () => {
     await vi.waitFor(() => expect(screen.getByRole("button", {name: "Novo endpoint"})).toBeEnabled());
     expect(screen.queryByRole("dialog")).toBeNull();
   });
+
+  it("says whether each endpoint answers: untested, responding or failing with the reason", async () => {
+    list([
+      ep("whe_new"),
+      ep("whe_ok", {last_delivery_at: "2026-10-12T10:00:00Z", last_delivery_ok: true}),
+      ep("whe_bad", {last_delivery_at: "2026-10-12T10:00:00Z", last_delivery_ok: false, last_delivery_detail: "HTTP 404"}),
+    ]);
+    wrap(<ConsoleWebhooksPage/>);
+    expect(await screen.findByText(/Ainda não testado/)).toBeInTheDocument();
+    expect(screen.getByText("Respondendo")).toBeInTheDocument();
+    expect(screen.getByText("Não está respondendo: HTTP 404")).toBeInTheDocument();
+  });
 });

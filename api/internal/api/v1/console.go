@@ -736,6 +736,8 @@ func (h *consoleHandlers) getSubscription(c fiber.Ctx) error {
 		Subscription: newSubscriptionResponse(sub),
 		Timeline:     trail,
 	}
+	out.CustomerName = h.customerNames(c, []string{sub.CustomerID})[sub.CustomerID]
+	var productNames []string
 	for _, it := range items {
 		line := subscriptionItemResponse{ID: it.ID, PriceID: it.PriceID, Quantity: it.Quantity}
 		// The price is resolved here rather than left as an id for the console to
@@ -747,8 +749,15 @@ func (h *consoleHandlers) getSubscription(c fiber.Ctx) error {
 			return fail(c, err)
 		}
 		line.Price = newPriceResponse(price)
+		// A product that cannot be read leaves the name empty; the subscription
+		// is still worth showing.
+		if product, err := h.cat.GetProduct(c.Context(), t.OrganizationID, t.Livemode, price.ProductID); err == nil {
+			line.ProductName = product.Name
+		}
+		productNames = append(productNames, line.ProductName)
 		out.Items = append(out.Items, line)
 	}
+	out.PlanName = planName(productNames)
 	return c.JSON(out)
 }
 

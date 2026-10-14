@@ -9,7 +9,7 @@ import {toast} from "sonner";
 import {messageFor, problemCode} from "@/lib/api/client";
 
 /**
- * "Aviso de pagamentos" (BYOK spec § 6.4, § 11.1 step 6): registered, absent
+ * "Webhook de pagamentos" (BYOK spec § 6.4, § 11.1 step 6): registered, absent
  * (confirmations within the hour), or another system's. Another system's
  * notice is replaced only after a confirmation that names it.
  */

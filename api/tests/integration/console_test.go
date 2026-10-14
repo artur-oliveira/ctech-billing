@@ -345,6 +345,21 @@ func TestConsoleSubscriptionsCarryTheCustomerAndPlanNames(t *testing.T) {
 		t.Fatalf("customer subscriptions = %+v, want the plan's name", detail.Subscriptions)
 	}
 
+	// C5 names whose it is and what it bills, and its items by product.
+	res = e.console(t, "/v1.0/console/subscriptions/"+created.Subscription.ID, token, "live")
+	var one struct {
+		CustomerName string `json:"customer_name"`
+		PlanName     string `json:"plan_name"`
+		Items        []struct {
+			ProductName string `json:"product_name"`
+		} `json:"items"`
+	}
+	res.decode(t, &one)
+	if res.status != http.StatusOK || one.CustomerName != "A O CARVALHO TECH" || one.PlanName != "DF-e Basic" ||
+		len(one.Items) != 1 || one.Items[0].ProductName != "DF-e Basic" {
+		t.Fatalf("subscription detail: %d %s", res.status, res.body)
+	}
+
 	// C3 names the subscription an invoice bills by its plan, not sub_….
 	invoices, err := repositories.NewInvoiceRepository(testDB, testCfg).ListBySubscription(ctxT(t), e.org.ID, true, created.Subscription.ID, 10)
 	if err != nil || len(invoices) == 0 {

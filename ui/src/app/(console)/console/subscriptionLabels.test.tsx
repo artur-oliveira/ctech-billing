@@ -6,6 +6,7 @@ import type {ReactNode} from "react";
 import {afterEach, describe, expect, it, vi} from "vitest";
 
 import ConsoleCustomerPage from "@/app/(console)/console/customer/page";
+import ConsoleSubscriptionPage from "@/app/(console)/console/subscription/page";
 import ConsoleSubscriptionsPage from "@/app/(console)/console/subscriptions/page";
 import * as consoleApi from "@/lib/api/console";
 import type {ConsoleSubscriptionRow} from "@/lib/api/consoleTypes";
@@ -86,5 +87,34 @@ describe("console subscription labels", () => {
     const link = await screen.findByRole("link", {name: "Finanças Free"});
     expect(link).toHaveAttribute("href", "/console/subscription?id=sub_1");
     expect(screen.queryByText("sub_1")).not.toBeInTheDocument();
+  });
+
+  it("shows a subscription's detail by plan, customer and product, not by ids", async () => {
+    vi.spyOn(consoleApi, "getConsoleSubscription").mockResolvedValue({
+      customer_name: "A O CARVALHO TECH",
+      plan_name: "DF-e Ilimitado interno",
+      subscription: row(),
+      items: [{
+        id: "it_1", price_id: "price_dfe_internal", quantity: 1, product_name: "DF-e Ilimitado interno",
+        price: {id: "price_dfe_internal", product_id: "p", type: "fixed", unit_amount: 0, currency: "BRL", archived: false} as never,
+      }],
+      timeline: [],
+    });
+    wrap(<ConsoleSubscriptionPage/>);
+
+    expect(await screen.findByRole("heading", {name: "DF-e Ilimitado interno"})).toBeInTheDocument();
+    expect(screen.getByRole("link", {name: "A O CARVALHO TECH"})).toHaveAttribute("href", "/console/customer?id=cus_1");
+    expect(screen.queryByText("price_dfe_internal")).not.toBeInTheDocument();
+  });
+
+  it("formats the customer's CPF, masked", async () => {
+    vi.spyOn(consoleApi, "getConsoleCustomer").mockResolvedValue({
+      customer: {id: "cus_1", name: "Fulano", anonymized: false, livemode: true, tax_id_masked: "•••••••8909"} as never,
+      subscriptions: [],
+      timeline: [],
+    });
+    wrap(<ConsoleCustomerPage/>);
+
+    expect(await screen.findByText("•••.•••.•89-09")).toBeInTheDocument();
   });
 });

@@ -84,6 +84,14 @@ type WebhookEndpoint struct {
 	// which is a working endpoint.
 	FailureRun int    `dynamodbav:"failure_run" json:"failure_run"`
 	DisabledAt string `dynamodbav:"disabled_at,omitempty" json:"disabled_at,omitempty"`
+	// LastDeliveryOK, LastDeliveryAt and LastDeliveryDetail say how the endpoint
+	// last answered, for the console ("responding", "HTTP 404"). Empty
+	// LastDeliveryAt means it has never been tried. They are written when the
+	// state changes and on every failure, not on every success: a healthy
+	// endpoint costs no extra write per delivery.
+	LastDeliveryOK     bool   `dynamodbav:"last_delivery_ok,omitempty"     json:"last_delivery_ok,omitempty"`
+	LastDeliveryAt     string `dynamodbav:"last_delivery_at,omitempty"     json:"last_delivery_at,omitempty"`
+	LastDeliveryDetail string `dynamodbav:"last_delivery_detail,omitempty" json:"last_delivery_detail,omitempty"`
 	// AddedBy is the ctech-account user who created the endpoint in the console,
 	// AddedAt when (RFC 3339). Empty on an endpoint the tenant plan provisioned,
 	// which the console lists and never changes.

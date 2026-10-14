@@ -202,9 +202,16 @@ type subscriptionItemResponse struct {
 	PriceID  string        `json:"price_id"`
 	Quantity int64         `json:"quantity"`
 	Price    priceResponse `json:"price"`
+	// ProductName is what the item bills, so the screen shows "DF-e Pro" and not
+	// price_….
+	ProductName string `json:"product_name,omitempty"`
 }
 
 type subscriptionDetailResponse struct {
+	// CustomerName and PlanName are how an operator reads the subscription; the
+	// screen falls back to the ids when either could not be read.
+	CustomerName string                     `json:"customer_name,omitempty"`
+	PlanName     string                     `json:"plan_name,omitempty"`
 	Subscription subscriptionResponse       `json:"subscription"`
 	Items        []subscriptionItemResponse `json:"items"`
 	Timeline     []auditResponse            `json:"timeline"`

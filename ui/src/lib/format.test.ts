@@ -1,6 +1,6 @@
 import {describe, expect, it} from "vitest";
 
-import {calendarDaysUntil, countdown, dayMonth, longDate, money, period, shortDate, compactDate, compactPeriod} from "./format";
+import {calendarDaysUntil, compactDate, compactPeriod, countdown, dayMonth, formatTaxID, longDate, money, period, shortDate} from "./format";
 
 // Intl separates the symbol with a non-breaking space; normalise so the
 // assertion is about the number and not about which space Node chose.
@@ -72,5 +72,26 @@ describe("compactDate", () => {
   });
   it("joins a period with a bullet", () => {
     expect(compactPeriod("2026-09-08", "2026-10-07", today)).toBe("08/09 • 07/10");
+  });
+});
+
+describe("formatTaxID", () => {
+  it("formats a CPF and a CNPJ by their length", () => {
+    expect(formatTaxID("12345678909")).toBe("123.456.789-09");
+    expect(formatTaxID("12345678000195")).toBe("12.345.678/0001-95");
+  });
+
+  it("formats an already formatted value the same way", () => {
+    expect(formatTaxID("123.456.789-09")).toBe("123.456.789-09");
+  });
+
+  it("keeps the mask of a masked value in the document's shape", () => {
+    expect(formatTaxID("•••••••8909")).toBe("•••.•••.•89-09");
+    expect(formatTaxID("••••••••••0195")).toBe("••.•••.•••/••01-95");
+  });
+
+  it("leaves anything that is neither a CPF nor a CNPJ as it came", () => {
+    expect(formatTaxID("123")).toBe("123");
+    expect(formatTaxID("")).toBe("");
   });
 });

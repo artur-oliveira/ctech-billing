@@ -46,7 +46,7 @@ func TestADisabledEndpointNeverBlocksTheQueue(t *testing.T) {
 		t.Fatal(err)
 	}
 	full.FailureRun = billing.MaxFailureRun - 1
-	if err := repo.RecordEndpointHealth(ctx, full, false, later); err != nil {
+	if err := repo.RecordEndpointHealth(ctx, full, false, "HTTP 500", later); err != nil {
 		t.Fatal(err)
 	}
 
@@ -73,4 +73,41 @@ func TestADisabledEndpointNeverBlocksTheQueue(t *testing.T) {
 		}
 	}
 	t.Fatal("the live endpoint's delivery never left the queue behind the disabled endpoint's rows")
+}
+
+// An endpoint remembers how its last delivery went, so the console can say
+// whether it answers: "responding" after a success, the status code after a
+// failure, and nothing before the first attempt.
+func TestEndpointRemembersHowItsLastDeliveryWent(t *testing.T) {
+	ctx := ctxT(t)
+	repo := repositories.NewWebhookRepository(testDB, testCfg)
+	org := newOrg(t, true)
+
+	deliver := func(c *consumer) *billing.WebhookEndpoint {
+		ep := registerEndpoint(t, org, c, "")
+		if got, _ := repo.GetEndpoint(ctx, org.ID, org.Livemode, ep.ID); got.LastDeliveryAt != "" {
+			t.Fatalf("before any delivery: %+v", got)
+		}
+		if _, err := repo.EmitPing(ctx, ep, now()); err != nil {
+			t.Fatal(err)
+		}
+		d := newDeliverer(t, c)
+		later := now().Add(time.Hour)
+		for pass := 0; pass < 4; pass++ {
+			d.FanOut(context.Background(), true, 100, later)
+			d.Deliver(context.Background(), true, 50, later)
+		}
+		got, err := repo.GetEndpoint(ctx, org.ID, org.Livemode, ep.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return got
+	}
+
+	if got := deliver(newConsumer(t, http.StatusOK)); !got.LastDeliveryOK || got.LastDeliveryAt == "" || got.LastDeliveryDetail != "" {
+		t.Fatalf("after a 200: %+v", got)
+	}
+	if got := deliver(newConsumer(t, http.StatusNotFound)); got.LastDeliveryOK || got.LastDeliveryDetail != "HTTP 404" {
+		t.Fatalf("after a 404: ok=%v detail=%q", got.LastDeliveryOK, got.LastDeliveryDetail)
+	}
 }
