@@ -276,6 +276,8 @@ export interface ConsoleSubscriptionRow extends ConsoleSubscription {
 
 export interface ConsolePrice {
   id: string
+  /** What the price is called to a person; absent means the product's name. */
+  name?: string
   product_id: string
   type: "fixed" | "metered"
   currency: string

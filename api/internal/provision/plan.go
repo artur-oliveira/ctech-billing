@@ -119,6 +119,7 @@ type Product struct {
 type Price struct {
 	ID               string                `json:"id"`
 	ProductID        string                `json:"product_id"`
+	Name             string                `json:"name,omitempty"`
 	Type             billing.PriceType     `json:"type"`
 	Currency         string                `json:"currency,omitempty"`
 	UnitAmount       billing.Cents         `json:"unit_amount"`
@@ -285,6 +286,7 @@ func (p Price) entity(organizationID string, livemode bool) *billing.Price {
 		OrganizationID:   organizationID,
 		Livemode:         livemode,
 		ProductID:        p.ProductID,
+		Name:             p.Name,
 		Type:             p.Type,
 		Currency:         currency,
 		UnitAmount:       p.UnitAmount,

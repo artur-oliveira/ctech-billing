@@ -5,6 +5,7 @@ package integration
 import (
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -566,5 +567,87 @@ func TestConsoleCatalogueWritesNeedTheProductsWriteScope(t *testing.T) {
 	res := e.consolePost(t, "/v1.0/console/products", readOnly, "live", `{"name":"Não"}`)
 	if res.status != http.StatusForbidden {
 		t.Fatalf("status = %d, want 403: %s", res.status, res.body)
+	}
+}
+
+// A price's own name is what its subscription and its invoice line are called,
+// so one product can hold several plans.
+func TestAPriceNameIsThePlanNameAndTheInvoiceLine(t *testing.T) {
+	e := newAPI(t)
+	token := e.sessionToken(t, middleware.ScopeProductsWrite, middleware.ScopeProductsRead,
+		middleware.ScopeSubscriptionsRead, middleware.ScopeInvoicesRead)
+
+	created := e.consolePost(t, "/v1.0/console/products", token, "live", `{"name":"DF-e"}`)
+	var product struct {
+		ID string `json:"id"`
+	}
+	created.decode(t, &product)
+	mk := func(body string) apiResponse {
+		return e.consolePost(t, "/v1.0/console/prices", token, "live",
+			`{"product_id":"`+product.ID+`","type":"fixed","unit_amount":35000,`+
+				`"recurrence":{"interval":"month","count":1},"billing_timing":"advance",`+body+`}`)
+	}
+	if res := mk(`"name":"` + strings.Repeat("x", 81) + `"`); res.status != http.StatusUnprocessableEntity {
+		t.Fatalf("an 81-character name: %d %s", res.status, res.body)
+	}
+	res := mk(`"name":"DF-e Pro"`)
+	if res.status != http.StatusCreated {
+		t.Fatalf("price: %d %s", res.status, res.body)
+	}
+	var price consolePrice
+	res.decode(t, &price)
+	var detail struct {
+		Prices []struct {
+			ID   string `json:"id"`
+			Name string `json:"name"`
+		} `json:"prices"`
+	}
+	e.console(t, "/v1.0/console/products/"+product.ID, token, "live").decode(t, &detail)
+	if len(detail.Prices) != 1 || detail.Prices[0].Name != "DF-e Pro" {
+		t.Fatalf("prices = %+v", detail.Prices)
+	}
+
+	m2m := e.token(t, e.client, "", middleware.ScopeCustomersWrite, middleware.ScopeSubscriptionsWrite)
+	res = e.do(t, http.MethodPost, "/v1.0/customers", m2m, "cust-label", `{"name":"Cliente","email":"c@example.com","external_ref":"user_label"}`)
+	var customer struct {
+		ID string `json:"id"`
+	}
+	res.decode(t, &customer)
+	res = e.do(t, http.MethodPost, "/v1.0/subscriptions", m2m, "sub-label",
+		`{"customer_id":"`+customer.ID+`","items":[{"price_id":"`+price.ID+`"}],"anchor":"2026-03-10"}`)
+	if res.status != http.StatusCreated {
+		t.Fatalf("subscribe: %d %s", res.status, res.body)
+	}
+	var sub struct {
+		Subscription struct {
+			ID string `json:"id"`
+		} `json:"subscription"`
+	}
+	res.decode(t, &sub)
+
+	var one struct {
+		PlanName string `json:"plan_name"`
+		Items    []struct {
+			ProductName string `json:"product_name"`
+		} `json:"items"`
+	}
+	e.console(t, "/v1.0/console/subscriptions/"+sub.Subscription.ID, token, "live").decode(t, &one)
+	if one.PlanName != "DF-e Pro" || len(one.Items) != 1 || one.Items[0].ProductName != "DF-e Pro" {
+		t.Fatalf("subscription = %+v", one)
+	}
+	invoices, err := repositories.NewInvoiceRepository(testDB, testCfg).ListBySubscription(ctxT(t), e.org.ID, true, sub.Subscription.ID, 10)
+	if err != nil || len(invoices) == 0 {
+		t.Fatalf("invoices: %v %d", err, len(invoices))
+	}
+	var inv struct {
+		Invoice struct {
+			Lines []struct {
+				Description string `json:"description"`
+			} `json:"lines"`
+		} `json:"invoice"`
+	}
+	e.console(t, "/v1.0/console/invoices/"+invoices[0].ID, token, "live").decode(t, &inv)
+	if len(inv.Invoice.Lines) == 0 || inv.Invoice.Lines[0].Description != "DF-e Pro" {
+		t.Fatalf("invoice lines = %+v", inv.Invoice.Lines)
 	}
 }

@@ -24,6 +24,7 @@ const (
 	Memo         = 140
 	ProductName  = 120
 	ProductDesc  = 500
+	PriceName    = 80
 	ProductURL   = 300
 	OwnerKey     = 64
 	CustomerName = 200

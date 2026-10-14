@@ -359,14 +359,14 @@ func (s *Subscriber) sideOf(
 		// The name comes from the first product either way, so a metered-only plan
 		// still has something to call itself on the credit line.
 		if side.Name == "" {
-			side.Name = product.Name
+			side.Name = price.Label(product.Name)
 		}
 		if price.Type != billing.PriceFixed || timing != billing.BillAdvance {
 			continue
 		}
 		fixed++
 		side.Total += price.UnitAmount * billing.Cents(items[i].quantity())
-		side.Name = product.Name
+		side.Name = price.Label(product.Name)
 		side.PriceID = price.ID
 	}
 	// PriceID is only meaningful when the side is a single price; an aggregate

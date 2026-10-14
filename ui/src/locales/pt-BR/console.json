@@ -290,7 +290,7 @@
   "createdDone": "Preço criado.",
   "create": "Criar",
   "newTitle": "Novo preço",
-  "newBody": "Mensal, em reais. Não pode ser editado depois.",
+  "newBody": "Não pode ser editado depois.",
   "typeFixed": "Fixo por período",
   "typeMetered": "Por uso",
   "amountFixed": "Valor por período",
@@ -301,7 +301,23 @@
   "back": "Catálogo",
   "editDetails": "Editar detalhes",
   "detailsSaved": "Detalhes salvos.",
-  "save": "Salvar"
+  "save": "Salvar",
+  "priceName": "Nome",
+  "priceNameHint": "Opcional. É como o preço aparece na fatura e no plano. Vazio usa o nome do produto.",
+  "every": "A cada",
+  "intervalLabel": "Período",
+  "timingLabel": "Cobrança",
+  "timingHint": "Antecipada cobra no início do período; posterior, no fim.",
+  "timingMetered": "Preço por uso é sempre cobrado no fim do período.",
+  "metadataLabel": "Metadados",
+  "metadataHint": "Opcional. Uma linha por item, chave=valor (ex.: plan=pro, quota_nfe=1200).",
+  "metadataError": {
+   "format": "Linha {{line}}: use chave=valor.",
+   "duplicate": "Linha {{line}}: chave repetida.",
+   "key": "Linha {{line}}: chave com mais de 40 caracteres.",
+   "value": "Linha {{line}}: valor com mais de 500 caracteres.",
+   "count": "Linha {{line}}: no máximo 50 itens."
+  }
  },
  "settings": {
   "title": "Configurações",
@@ -595,5 +611,11 @@
   "changesOn": "Muda para {{plan}} em {{date}}",
   "keep": "Manter {{plan}}",
   "scheduled": "Muda para {{plan}} em {{date}}, depois de fechar o período atual."
+ },
+ "intervalUnit": {
+  "day": "dia(s)",
+  "week": "semana(s)",
+  "month": "mês(es)",
+  "year": "ano(s)"
  }
 }

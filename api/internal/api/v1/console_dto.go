@@ -258,6 +258,7 @@ func planName(productNames []string) string {
 
 type priceResponse struct {
 	ID         string                `json:"id"`
+	Name       string                `json:"name,omitempty"`
 	ProductID  string                `json:"product_id"`
 	Type       billing.PriceType     `json:"type"`
 	Currency   string                `json:"currency"`
@@ -271,6 +272,7 @@ type priceResponse struct {
 func newPriceResponse(p *billing.Price) priceResponse {
 	return priceResponse{
 		ID:         p.ID,
+		Name:       p.Name,
 		ProductID:  p.ProductID,
 		Type:       p.Type,
 		Currency:   p.Currency,
@@ -311,6 +313,7 @@ type productDetailsRequest struct {
 // typo in a new price does not always mean to stop selling the old one.
 type createPriceRequest struct {
 	ProductID  string                `json:"product_id"`
+	Name       string                `json:"name"`
 	Type       billing.PriceType     `json:"type"`
 	UnitAmount billing.Cents         `json:"unit_amount"`
 	Recurrence billing.Recurrence    `json:"recurrence"`
