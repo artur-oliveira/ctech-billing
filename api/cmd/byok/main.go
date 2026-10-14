@@ -44,6 +44,11 @@ func main() {
 	invoiceCents := flag.Int64("invoice-amount-cents", 0, "with -tenant-invoice: the amount in centavos")
 	invoiceRef := flag.String("invoice-reference", "", "with -tenant-invoice: the caller's name for it; repeating it returns the same invoice")
 	invoiceText := flag.String("invoice-description", "", "with -tenant-invoice: the line the customer reads")
+	refresh := flag.Bool("tenant-refresh", false, "operator tool: re-test tenant zero's stored bank credentials and record what they can do now (needs -mode=live, -operator)")
+	payoutCPF := flag.String("tenant-payout", "", "operator tool: pay a Pix out of tenant zero's account to this CPF's key (live proof of payouts; needs -mode=live, -operator, -payout-amount-cents, -payout-reference; sends only with -yes)")
+	payoutCents := flag.Int64("payout-amount-cents", 0, "with -tenant-payout: the amount in centavos")
+	payoutRef := flag.String("payout-reference", "", "with -tenant-payout: the caller's name for it; repeating it returns the same payout, never a second payment")
+	yes := flag.Bool("yes", false, "with -tenant-payout: really send it")
 	fine := flag.Int("fine-bp", -1, "with -tenant-rail=byok: the late fine in basis points (200 = 2 %); -1 keeps the current one")
 	interest := flag.Int("interest-bp", -1, "with -tenant-rail=byok: the monthly late interest in basis points (100 = 1 %); -1 keeps the current one")
 	flag.Parse()
@@ -54,6 +59,12 @@ func main() {
 		os.Exit(2)
 	}
 	ctx := context.Background()
+	if *refresh {
+		os.Exit(tenantRefresh(ctx, cfg, *modeFlag, *operator))
+	}
+	if *payoutCPF != "" {
+		os.Exit(tenantPayout(ctx, cfg, *modeFlag, *operator, *payoutCPF, *payoutRef, *payoutCents, *yes))
+	}
 	if *invoiceFor != "" {
 		os.Exit(tenantInvoice(ctx, cfg, *modeFlag, *operator, *invoiceFor, *invoiceText, *invoiceRef, *invoiceCents))
 	}

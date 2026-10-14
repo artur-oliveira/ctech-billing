@@ -38,11 +38,12 @@ func tenantRail(ctx context.Context, cfg *config.Config, rail, mode, operator st
 		fmt.Fprintln(os.Stderr, "PORTAL_ORGANIZATION_ID (tenant zero) is not set")
 		return 2
 	}
-	setup, orgs, err := app.BuildByokOperator(ctx, cfg)
+	op, err := app.BuildByokOperator(ctx, cfg)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "startup:", err)
 		return 1
 	}
+	setup, orgs := op.Setup, op.Orgs
 	tenant, err := orgs.Get(ctx, cfg.PortalOrganizationID, true)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "reading tenant zero:", err)
