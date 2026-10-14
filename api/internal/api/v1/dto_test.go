@@ -135,9 +135,19 @@ func TestProviderCatalogGuideCoversInterScopes(t *testing.T) {
 			}
 		}
 	}
-	for _, s := range append(slices.Clone(inter.ScopesStatement), inter.ScopesCollection...) {
-		if !covered[s] {
-			t.Errorf("scope %q is asked for at connect time but no guide permission grants it", s)
+	// Every scope Inter documents is something the guide has the person tick,
+	// except what stays with CTech's own integration: paying out and paying
+	// bills, DARF and batches. Ticking everything up front is what keeps a later
+	// product from needing a second integration.
+	ctechOnly := append(slices.Clone(inter.ScopesBankPayments), "pagamento-pix.read", "pagamento-pix.write")
+	for _, s := range inter.AllScopes() {
+		switch {
+		case slices.Contains(ctechOnly, s):
+			if covered[s] {
+				t.Errorf("scope %q is CTech's own: the guide must not ask other tenants for it", s)
+			}
+		case !covered[s]:
+			t.Errorf("scope %q is documented by Inter but no guide permission grants it", s)
 		}
 	}
 	for _, s := range []string{"cobv.write", "pix.read", "extrato.read"} {

@@ -3,7 +3,7 @@
 export type ConnectionState = "onboarding" | "active" | "expired" | "disconnected"
 export type ConnectionStatus = "onboarding" | "active" | "degraded" | "expired" | "disconnected"
 export type OnboardingStep = "requirements" | "create_integration" | "validation" | "download" | "upload" | "webhook"
-export type Capability = "statement" | "collection"
+export type Capability = "statement" | "collection" | "immediate_charge" | "due_batch" | "boleto" | "recurring" | "payout"
 
 export const ONBOARDING_STEPS: OnboardingStep[] = ["requirements", "create_integration", "validation", "download", "upload", "webhook"]
 
