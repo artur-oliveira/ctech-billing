@@ -122,9 +122,8 @@
   "rec": {
     "title": "Recurrences",
     "new": "New recurrence",
-    "amountMode": {"label":"How should the amount be posted?","fixed":"Fixed amount","expected":"Confirm each occurrence"},
-    "expectedAmount": "Expected average amount",
-    "expectedHint": "This is an estimate. Nothing is posted until you confirm the actual amount.",
+    "amountMode": {"label": "The amount is", "fixed": "Always the same", "expected": "Changes each month", "fixedHint": "The same amount every time; the bill is created on its own.", "expectedHint": "Used as a forecast. Each month you enter the real amount, and only then is the bill created."},
+    "expectedAmount": "Estimated amount",
     "expectedShort": "estimate",
     "edit": "Edit recurrence",
     "empty": "No recurrences",

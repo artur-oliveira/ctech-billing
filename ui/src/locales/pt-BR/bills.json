@@ -122,9 +122,8 @@
   "rec": {
     "title": "Recorrências",
     "new": "Nova recorrência",
-    "amountMode": {"label":"Como lançar o valor?","fixed":"Valor fixo","expected":"Confirmar a cada ocorrência"},
-    "expectedAmount": "Valor médio esperado",
-    "expectedHint": "Será uma estimativa. Nenhum lançamento ocorre até você confirmar o valor real.",
+    "amountMode": {"label": "O valor é", "fixed": "Sempre o mesmo", "expected": "Muda a cada mês", "fixedHint": "O mesmo valor em toda ocorrência; o lançamento é criado sozinho.", "expectedHint": "Usamos como previsão. A cada mês você informa o valor real, e só então o lançamento é criado."},
+    "expectedAmount": "Valor estimado",
     "expectedShort": "estimativa",
     "edit": "Editar recorrência",
     "empty": "Nenhuma recorrência",

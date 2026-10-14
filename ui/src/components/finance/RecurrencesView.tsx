@@ -438,8 +438,8 @@ function RecurrencePanel({editing, accounts, cards, onDone}: {editing?: Recurren
       <form className="space-y-4" onSubmit={submit}>
         <div className="grid items-start gap-x-4 gap-y-3 sm:grid-cols-2 [&>*]:min-w-0">
           <Field label={t("bills.common.description")} htmlFor="rc-desc" error={fe.of("description")} className="sm:col-span-2"><Input id="rc-desc" maxLength={limits.text.description} value={description} {...fe.props("description", "rc-desc")} onChange={e => { setDescription(e.target.value); fe.clear("description") }}/></Field>
-          {!editing && <Segmented label={t("bills.rec.amountMode.label")} value={amountMode} onValueChange={v => setAmountMode(v as "fixed" | "expected")} options={(["fixed","expected"] as const).map(v => ({value:v,label:t(`bills.rec.amountMode.${v}`)}))}/>}
-          <Field label={t(amountMode === "expected" ? "bills.rec.expectedAmount" : "bills.common.amount")} htmlFor="rc-amount" required error={fe.of("amount")} hint={amountMode === "expected" ? t("bills.rec.expectedHint") : undefined}><Input id="rc-amount" inputMode="decimal" placeholder={moneyPlaceholder()} value={amountText} {...fe.props("amount", "rc-amount")} onChange={e => { setAmountText(maskMoney(e.target.value)); fe.clear("amount") }}/></Field>
+          {!editing && <AmountModeField value={amountMode} onChange={setAmountMode}/>}
+          <Field label={t(amountMode === "expected" ? "bills.rec.expectedAmount" : "bills.common.amount")} htmlFor="rc-amount" required error={fe.of("amount")}><Input id="rc-amount" inputMode="decimal" placeholder={moneyPlaceholder()} value={amountText} {...fe.props("amount", "rc-amount")} onChange={e => { setAmountText(maskMoney(e.target.value)); fe.clear("amount") }}/></Field>
           <Field label={t("bills.common.category")} htmlFor="rc-cat" required error={fe.of("category_id")} hint={cats.length === 0 ? t(`bills.noCategory.${direction === "payable" ? "expense" : "income"}`) : undefined}>
             <Select {...selectCopy()} id="rc-cat" value={category} {...fe.props("category_id", "rc-cat")} onValueChange={v => { setCategory(v); fe.clear("category_id") }} options={cats.map(a => ({value: a.id, label: accountName(a)}))}/>
           </Field>
@@ -532,6 +532,24 @@ function RecurrencePanel({editing, accounts, cards, onDone}: {editing?: Recurren
         )}
         {fe.general && <p role="alert" className="text-sm text-danger">{fe.general}</p>}
       </form>
+    </div>
+  )
+}
+
+
+/**
+ * How the amount behaves, as a row of the form: a label, the two choices across
+ * the whole width, and a line saying what the chosen one means. It was a bare
+ * toggle in a grid cell, which put it beside the amount with no label to align to.
+ */
+function AmountModeField({value, onChange}: {value: "fixed" | "expected"; onChange: (mode: "fixed" | "expected") => void}) {
+  const {t} = useTranslation()
+  return (
+    <div data-slot="mode-field" className="grid gap-1.5 sm:col-span-2">
+      <span className="text-sm font-medium text-foreground">{t("bills.rec.amountMode.label")}</span>
+      <Segmented fill label={t("bills.rec.amountMode.label")} value={value} onValueChange={v => onChange(v as "fixed" | "expected")}
+        options={(["fixed", "expected"] as const).map(v => ({value: v, label: t(`bills.rec.amountMode.${v}`)}))}/>
+      <p className="text-sm text-muted-foreground">{t(`bills.rec.amountMode.${value}Hint`)}</p>
     </div>
   )
 }

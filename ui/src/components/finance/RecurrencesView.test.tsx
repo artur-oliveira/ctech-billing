@@ -47,6 +47,22 @@ describe("F4 — recorrências", () => {
     expect(await screen.findByText("Sem categoria de despesa. Crie em Contas.")).toBeInTheDocument()
   })
 
+  it("asks how the amount behaves as a labelled, full-width choice that says what it means", async () => {
+    serve(ALL, [])
+    renderWithQuery(<RecurrencesView/>)
+    await userEvent.click(await screen.findByRole("button", {name: "Nova recorrência"}))
+    const mode = await screen.findByRole("group", {name: "O valor é"})
+    expect(within(mode).getByRole("button", {name: "Sempre o mesmo"})).toHaveAttribute("aria-pressed", "true")
+    expect(screen.getByLabelText(/^Valor/)).toBeInTheDocument()
+    expect(screen.queryByText(/Valor estimado/)).toBeNull()
+    await userEvent.click(within(mode).getByRole("button", {name: "Muda a cada mês"}))
+    expect(screen.getByText("Valor estimado")).toBeInTheDocument()
+    expect(screen.getByText(/A cada mês você informa o valor real, e só então o lançamento é criado/)).toBeInTheDocument()
+    // The old wording is gone, and the mode is a form row of its own, not a cell beside the amount.
+    expect(screen.queryByText(/Confirmar a cada ocorrência|Valor médio esperado|Valor fixo/)).toBeNull()
+    expect(mode.closest("[data-slot=mode-field]")).toHaveClass("sm:col-span-2")
+  })
+
   it("lists each recurrence with its rule in words", async () => {
     serve(ALL)
     renderWithQuery(<RecurrencesView/>)
