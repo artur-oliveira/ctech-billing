@@ -565,6 +565,9 @@ func (h *consoleHandlers) createProduct(c fiber.Ctx) error {
 	}
 	ch := &checks{}
 	ch.text("name", req.Name, true, limits.ProductName)
+	req.Description, req.URL = strings.TrimSpace(req.Description), strings.TrimSpace(req.URL)
+	ch.text("description", req.Description, false, limits.ProductDesc)
+	ch.productURL("url", req.URL)
 	ch.id("owner_key", req.OwnerKey, false)
 	if len(req.OwnerKey) > limits.OwnerKey {
 		ch.fail("owner_key", "too_long", "at most 64 characters", "max", limits.OwnerKey)
@@ -581,9 +584,11 @@ func (h *consoleHandlers) createProduct(c fiber.Ctx) error {
 		// A product nobody can sell is not what "novo produto" means. Archiving
 		// is a later, separate decision, and there is no screen that asks for an
 		// inactive one at creation.
-		Active:   true,
-		OwnerKey: req.OwnerKey,
-		Metadata: req.Metadata,
+		Active:      true,
+		OwnerKey:    req.OwnerKey,
+		Description: req.Description,
+		URL:         req.URL,
+		Metadata:    req.Metadata,
 	}
 	if err := h.cat.CreateProduct(
 		c.Context(), product, actorOfUser(c), middleware.GetRequestID(c), h.now(),
@@ -591,6 +596,32 @@ func (h *consoleHandlers) createProduct(c fiber.Ctx) error {
 		return fail(c, err)
 	}
 	return c.Status(fiber.StatusCreated).JSON(newProductResponse(product, nil))
+}
+
+// setProductDetails changes a product's description and URL (C8/C9).
+func (h *consoleHandlers) setProductDetails(c fiber.Ctx) error {
+	t := middleware.GetTenant(c)
+	var req productDetailsRequest
+	if err := c.Bind().Body(&req); err != nil {
+		return problem.BadRequest("invalid request body").WithCode("invalid_body").Send(c)
+	}
+	req.Description, req.URL = strings.TrimSpace(req.Description), strings.TrimSpace(req.URL)
+	ch := &checks{}
+	ch.text("description", req.Description, false, limits.ProductDesc)
+	ch.productURL("url", req.URL)
+	if len(ch.errs) > 0 {
+		return problem.Validation(ch.errs).Send(c)
+	}
+	product, err := h.cat.GetProduct(c.Context(), t.OrganizationID, t.Livemode, c.Params("id"))
+	if err != nil {
+		return fail(c, err)
+	}
+	if err := h.cat.SetProductDetails(
+		c.Context(), product, req.Description, req.URL, actorOfUser(c), middleware.GetRequestID(c), h.now(),
+	); err != nil {
+		return fail(c, err)
+	}
+	return c.JSON(newProductResponse(product, nil))
 }
 
 // createPrice adds a price to a product (C9).

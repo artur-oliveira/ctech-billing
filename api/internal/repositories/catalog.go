@@ -3,6 +3,7 @@ package repositories
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
@@ -139,6 +140,64 @@ func (r *CatalogRepository) SetProductDunningPolicy(
 		return err
 	}
 	p.DunningPolicy = policy.Clone()
+	return nil
+}
+
+// SetProductDetails changes a product's description and URL, with the audit row
+// that says who did. Neither is read by billing, routing or any invoice, which
+// is why this is allowed on a catalogue entry whose price is not.
+func (r *CatalogRepository) SetProductDetails(
+	ctx context.Context,
+	p *billing.Product,
+	description, url string,
+	actor, requestID string,
+	now time.Time,
+) error {
+	if actor == "" {
+		return fmt.Errorf("repositories: changing the details of product %s needs an actor", p.ID)
+	}
+	names := map[string]string{"#ua": "updated_at"}
+	values := map[string]types.AttributeValue{
+		":now": &types.AttributeValueMemberS{Value: now.UTC().Format(time.RFC3339Nano)},
+	}
+	set, remove := []string{"#ua = :now"}, []string{}
+	for _, f := range []struct{ attr, ph, v string }{
+		{"description", "d", description}, {"url", "u", url},
+	} {
+		names["#"+f.ph] = f.attr
+		if f.v == "" {
+			remove = append(remove, "#"+f.ph)
+			continue
+		}
+		values[":"+f.ph] = &types.AttributeValueMemberS{Value: f.v}
+		set = append(set, "#"+f.ph+" = :"+f.ph)
+	}
+	expr := "SET " + strings.Join(set, ", ")
+	if len(remove) > 0 {
+		expr += " REMOVE " + strings.Join(remove, ", ")
+	}
+
+	auditItem, err := buildAuditItem(p.OrganizationID, p.Livemode, AuditEntry{
+		Entity:    EntityProduct,
+		EntityID:  p.ID,
+		Action:    "product.details_changed",
+		Cause:     billing.CauseManual,
+		Actor:     actor,
+		RequestID: requestID,
+		Before:    p.URL,
+		After:     url,
+	}, "", "", now)
+	if err != nil {
+		return err
+	}
+	update := r.products.BuildRawUpdateTxItem(
+		TenantPK(p.OrganizationID, p.Livemode), new(ProductSK(p.ID)),
+		expr, "attribute_exists(pk)", names, values,
+	)
+	if err := r.products.TransactWrite(ctx, txItems(update, r.audit.BuildPutTxItemIfAbsent(auditItem))); err != nil {
+		return err
+	}
+	p.Description, p.URL = description, url
 	return nil
 }
 

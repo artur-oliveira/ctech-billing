@@ -73,6 +73,13 @@ type Product struct {
 	// who can redirect somebody else's events.
 	OwnerKey string `dynamodbav:"owner_key,omitempty" json:"owner_key,omitempty"`
 
+	// Description and URL say what the product is and where it lives, for the
+	// people reading the catalogue; nothing routes or bills by them. Both are
+	// optional, and editable after creation (unlike a price) because fixing a
+	// typo in a description changes nobody's invoice.
+	Description string `dynamodbav:"description,omitempty" json:"description,omitempty"`
+	URL         string `dynamodbav:"url,omitempty"         json:"url,omitempty"`
+
 	// DunningPolicy overrides the organization's schedule for invoices that bill
 	// this product. Empty inherits, which is the normal case.
 	//

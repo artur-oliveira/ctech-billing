@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/mail"
+	"net/url"
 	"regexp"
 	"slices"
 	"strings"
@@ -153,6 +154,22 @@ func (c *checks) clientID(field, v string) {
 		c.fail(field, "too_long", fmt.Sprintf("at most %d characters", limits.ClientID), "max", limits.ClientID)
 	case !clientIDChars.MatchString(v):
 		c.fail(field, "invalid_chars", "contains invalid characters")
+	}
+}
+
+// productURL: where a catalogue product lives. Optional; shown as a link, so
+// only https (a javascript: or http: link in a console is not something to
+// render).
+func (c *checks) productURL(field, v string) {
+	if v == "" {
+		return
+	}
+	c.text(field, v, false, limits.ProductURL)
+	if len(c.errs) > 0 && c.errs[len(c.errs)-1].Field == field {
+		return
+	}
+	if u, err := url.Parse(v); err != nil || u.Scheme != "https" || u.Host == "" {
+		c.fail(field, "url_not_https", "an https URL is required")
 	}
 }
 

@@ -336,6 +336,100 @@ func TestConsoleCreatesAProductAndAPrice(t *testing.T) {
 	}
 }
 
+// The catalogue list carries each product's prices: the screen counts them and
+// shows the cheapest, and a list that omitted them read as "no prices".
+func TestConsoleProductListCarriesPrices(t *testing.T) {
+	e := newAPI(t)
+	token := e.sessionToken(t, middleware.ScopeProductsWrite, middleware.ScopeProductsRead)
+
+	created := e.consolePost(t, "/v1.0/console/products", token, "live", `{"name":"Com preço"}`)
+	var product struct {
+		ID string `json:"id"`
+	}
+	created.decode(t, &product)
+	priced := e.consolePost(t, "/v1.0/console/prices", token, "live",
+		`{"product_id":"`+product.ID+`","type":"fixed","unit_amount":4900,`+
+			`"recurrence":{"interval":"month","count":1},"billing_timing":"advance"}`)
+	if priced.status != http.StatusCreated {
+		t.Fatalf("price status = %d: %s", priced.status, priced.body)
+	}
+
+	list := e.console(t, "/v1.0/console/products", token, "live")
+	var page struct {
+		Data []struct {
+			ID     string         `json:"id"`
+			Prices []consolePrice `json:"prices"`
+		} `json:"data"`
+	}
+	list.decode(t, &page)
+	for _, p := range page.Data {
+		if p.ID == product.ID {
+			if len(p.Prices) != 1 || p.Prices[0].UnitAmount != 4900 {
+				t.Fatalf("prices = %+v, want the one price of 4900", p.Prices)
+			}
+			return
+		}
+	}
+	t.Fatal("the product is missing from the listing")
+}
+
+// A product carries a description and a URL, set at creation, editable later,
+// clearable, and https only.
+func TestConsoleProductDescriptionAndURL(t *testing.T) {
+	e := newAPI(t)
+	token := e.sessionToken(t, middleware.ScopeProductsWrite, middleware.ScopeProductsRead)
+
+	bad := e.consolePost(t, "/v1.0/console/products", token, "live",
+		`{"name":"X","url":"http://example.com"}`)
+	if bad.status != http.StatusUnprocessableEntity {
+		t.Fatalf("http url: status = %d: %s", bad.status, bad.body)
+	}
+
+	created := e.consolePost(t, "/v1.0/console/products", token, "live",
+		`{"name":"Com link","description":"Emissão de notas","url":"https://dfe.aoctech.app"}`)
+	if created.status != http.StatusCreated {
+		t.Fatalf("status = %d: %s", created.status, created.body)
+	}
+	type view struct {
+		ID          string `json:"id"`
+		Description string `json:"description"`
+		URL         string `json:"url"`
+	}
+	var product view
+	created.decode(t, &product)
+	if product.Description != "Emissão de notas" || product.URL != "https://dfe.aoctech.app" {
+		t.Fatalf("created = %+v", product)
+	}
+
+	put := func(body string) (int, view) {
+		res := e.consolePut(t, "/v1.0/console/products/"+product.ID+"/details", token, "live", body)
+		var v view
+		if res.status == http.StatusOK {
+			res.decode(t, &v)
+		}
+		return res.status, v
+	}
+	if status, v := put(`{"description":"Novo","url":"https://novo.aoctech.app"}`); status != http.StatusOK || v.URL != "https://novo.aoctech.app" {
+		t.Fatalf("edit: status = %d, %+v", status, v)
+	}
+	var read view
+	e.console(t, "/v1.0/console/products/"+product.ID, token, "live").decode(t, &read)
+	if read.Description != "Novo" || read.URL != "https://novo.aoctech.app" {
+		t.Fatalf("read back = %+v", read)
+	}
+	if status, _ := put(`{"description":"","url":"javascript:alert(1)"}`); status != http.StatusUnprocessableEntity {
+		t.Fatalf("non-https url on edit: status = %d", status)
+	}
+	if status, _ := put(`{"description":"","url":""}`); status != http.StatusOK {
+		t.Fatalf("clear: status = %d", status)
+	}
+	read = view{}
+	e.console(t, "/v1.0/console/products/"+product.ID, token, "live").decode(t, &read)
+	if read.Description != "" || read.URL != "" {
+		t.Fatalf("after clear = %+v", read)
+	}
+}
+
 // A metered price billed in advance would have to guess the usage it charges
 // for. The domain refuses it, and the route must surface that rather than store
 // a price that fails weeks later at invoice generation.

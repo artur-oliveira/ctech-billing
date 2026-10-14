@@ -245,19 +245,28 @@
  },
  "catalog": {
   "title": "Catálogo",
-  "new": "Novo produto",
+  "new": "Novo plano",
   "empty": "Catálogo vazio",
   "product": "Produto",
-  "owner": "Dono",
+  "owner": "Produto",
   "prices": "Preços",
   "from": "A partir de",
   "inactive": "inativo",
   "name": "Nome",
-  "ownerLabel": "Dono",
-  "ownerHint": "Serviço da CTech que recebe os webhooks (dfe, poker). Vazio se o catálogo é seu.",
+  "ownerLabel": "Produto",
+  "ownerHint": "Serviço da CTech a que o plano pertence e que recebe os webhooks (dfe, finance, billing). Vazio se o catálogo é seu.",
   "create": "Criar",
-  "created": "Produto criado.",
-  "back": "Catálogo"
+  "created": "Plano criado.",
+  "back": "Catálogo",
+  "plan": "Plano",
+  "descriptionLabel": "Descrição",
+  "urlLabel": "Endereço",
+  "urlHint": "Onde o produto está no ar (https). Opcional.",
+  "owners": {
+   "dfe": "DF-e",
+   "finance": "Finanças",
+   "billing": "Billing"
+  }
  },
  "product": {
   "newPrice": "Novo preço",
@@ -289,7 +298,10 @@
   "hintFixed": "Cobrado no início de cada período.",
   "hintMetered": "Cobrado no fim do período, sobre o uso informado.",
   "notFound": "Produto não encontrado",
-  "back": "Catálogo"
+  "back": "Catálogo",
+  "editDetails": "Editar detalhes",
+  "detailsSaved": "Detalhes salvos.",
+  "save": "Salvar"
  },
  "settings": {
   "title": "Configurações",
