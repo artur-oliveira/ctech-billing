@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -185,6 +186,9 @@ func (e *apiEnv) do(t *testing.T, method, path, token, idemKey, body string) api
 	}
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	if idemKey == "" && method != http.MethodGet && (strings.HasPrefix(path, "/v1.0/console/") || strings.HasPrefix(path, "/v1.0/portal/")) {
+		idemKey = id.New() // a browser write always carries one (the UI's per-intent key)
 	}
 	if idemKey != "" {
 		req.Header.Set(middleware.IdempotencyHeader, idemKey)
@@ -424,6 +428,46 @@ func TestIdempotencyReplaysTheFirstResponse(t *testing.T) {
 	conflict.decode(t, &p)
 	if p.Type != "/problems/idempotency-conflict" {
 		t.Fatalf("problem type = %q", p.Type)
+	}
+}
+
+// Retries racing each other with one key run the operation once: the rest
+// replay its answer or are told it is still running, never a second customer.
+func TestConcurrentRetriesWithOneKeyRunOnce(t *testing.T) {
+	e := newAPI(t)
+	token := e.token(t, e.client, "", middleware.ScopeCustomersWrite)
+	body := `{"name":"Fulana","email":"f@example.com"}`
+	var wg sync.WaitGroup
+	results := make(chan apiResponse, 8)
+	for range 8 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			results <- e.do(t, http.MethodPost, "/v1.0/customers", token, "race-me", body)
+		}()
+	}
+	wg.Wait()
+	close(results)
+	var created []byte
+	for r := range results {
+		switch {
+		case r.status == http.StatusCreated && created == nil:
+			created = r.body
+		case r.status == http.StatusCreated:
+			if !bytes.Equal(created, r.body) {
+				t.Fatalf("two operations ran:\n%s\n%s", created, r.body)
+			}
+		case r.status == http.StatusConflict && strings.Contains(string(r.body), "idempotency_in_progress"):
+		default:
+			t.Fatalf("unexpected %d %s", r.status, r.body)
+		}
+	}
+	if created == nil {
+		t.Fatal("nothing ran")
+	}
+	again := e.do(t, http.MethodPost, "/v1.0/customers", token, "race-me", body)
+	if again.status != http.StatusCreated || !bytes.Equal(again.body, created) {
+		t.Fatalf("after the race: %d %s", again.status, again.body)
 	}
 }
 

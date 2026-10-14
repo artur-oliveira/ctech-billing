@@ -53,6 +53,9 @@ func (e *apiEnv) consoleAs(t *testing.T, method, path, token, mode, selector, bo
 	if mode != "" {
 		req.Header.Set(middleware.ModeHeader, mode)
 	}
+	if method != http.MethodGet {
+		req.Header.Set(middleware.IdempotencyHeader, id.New()) // the UI sends one per intent
+	}
 	if selector != "" {
 		req.Header.Set(middleware.SpaceHeader, selector)
 	}

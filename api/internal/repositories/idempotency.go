@@ -4,9 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 
 	"gopkg.aoctech.app/billing/api/internal/config"
 )
@@ -52,40 +55,70 @@ func NewIdempotencyRepository(db *dynamodb.Client, cfg *config.Config) *Idempote
 	return &IdempotencyRepository{base: NewBase(db, cfg, TableIdempotency)}
 }
 
-// Lookup returns a previously stored response for the key.
-//
-// A key found with a different request hash returns ErrIdempotencyConflict; a
-// key not found returns (nil, nil), which is the signal to run the operation.
-func (r *IdempotencyRepository) Lookup(ctx context.Context, organizationID string, livemode bool, key, requestHash string) (*IdempotencyRecord, error) {
-	item, err := r.base.GetItem(ctx, TenantPK(organizationID, livemode), IdempotencySK(key))
+// ErrIdempotencyInProgress: another request with the same key holds the claim
+// and has not answered yet. The caller retries after a moment and gets its
+// answer replayed.
+var ErrIdempotencyInProgress = errors.New("a request with this idempotency key is still running")
+
+// IdempotencyLease is how long a claim holds without an answer: past it, a
+// process that died mid-request no longer blocks the key. Longer than any
+// request runs (the bank calls time out well inside it).
+const IdempotencyLease = 2 * time.Minute
+
+// Claim reserves the key for this request before it runs, in one conditional
+// write, so two processes racing with one key cannot both run the operation.
+// It answers the stored record when the key already completed (a replay),
+// ErrIdempotencyConflict for another body, ErrIdempotencyInProgress while the
+// first request still runs, and (nil, nil) when the caller holds the claim.
+func (r *IdempotencyRepository) Claim(ctx context.Context, owner string, livemode bool, key, requestHash, route string, now time.Time) (*IdempotencyRecord, error) {
+	item, err := Encode(idempotencyRow{
+		keys: keys{
+			PK:        TenantPK(owner, livemode),
+			SK:        IdempotencySK(key),
+			TTL:       new(now.Add(IdempotencyLease).Unix()),
+			CreatedAt: now.UTC().Format(time.RFC3339Nano),
+			UpdatedAt: now.UTC().Format(time.RFC3339Nano),
+		},
+		IdempotencyRecord: IdempotencyRecord{Key: key, RequestHash: requestHash, Route: route},
+	})
 	if err != nil {
 		return nil, err
 	}
-	if item == nil {
+	// Free, or a claim whose holder died (status 0 past its lease).
+	_, err = r.base.PutItemRaw(ctx, &dynamodb.PutItemInput{
+		Item:                     item,
+		ConditionExpression:      aws.String("attribute_not_exists(pk) OR (#s = :zero AND #ttl < :now)"),
+		ExpressionAttributeNames: map[string]string{"#s": "status", "#ttl": "ttl"},
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":zero": &types.AttributeValueMemberN{Value: "0"},
+			":now":  &types.AttributeValueMemberN{Value: strconv.FormatInt(now.Unix(), 10)},
+		},
+		ReturnValuesOnConditionCheckFailure: types.ReturnValuesOnConditionCheckFailureAllOld,
+	})
+	if err == nil {
 		return nil, nil
 	}
-	row, err := Decode[idempotencyRow](item)
-	if err != nil {
+	var ccf *types.ConditionalCheckFailedException
+	if !errors.As(err, &ccf) || ccf.Item == nil {
 		return nil, err
 	}
-	if row.RequestHash != requestHash {
+	row, derr := Decode[idempotencyRow](ccf.Item)
+	switch {
+	case derr != nil:
+		return nil, derr
+	case row.RequestHash != requestHash:
 		return nil, fmt.Errorf("%w: %s", ErrIdempotencyConflict, key)
+	case row.Status == 0:
+		return nil, fmt.Errorf("%w: %s", ErrIdempotencyInProgress, key)
 	}
 	return &row.IdempotencyRecord, nil
 }
 
-// Store records a completed response.
-//
-// The write is create-only. Two concurrent requests with the same key both run
-// the operation — this store does not lock, and pretending otherwise would be
-// worse than not having it — but only the first result is recorded, so every
-// later replay returns one consistent answer rather than whichever finished
-// last. Real mutual exclusion belongs in the operation's own conditional write,
-// which is where it already is for invoices and usage.
-func (r *IdempotencyRepository) Store(ctx context.Context, organizationID string, livemode bool, rec IdempotencyRecord, now time.Time) error {
+// Complete turns the caller's claim into the replayable answer (24 hours).
+func (r *IdempotencyRepository) Complete(ctx context.Context, owner string, livemode bool, rec IdempotencyRecord, now time.Time) error {
 	item, err := Encode(idempotencyRow{
 		keys: keys{
-			PK:        TenantPK(organizationID, livemode),
+			PK:        TenantPK(owner, livemode),
 			SK:        IdempotencySK(rec.Key),
 			TTL:       new(now.Add(IdempotencyTTL).Unix()),
 			CreatedAt: now.UTC().Format(time.RFC3339Nano),
@@ -96,10 +129,22 @@ func (r *IdempotencyRepository) Store(ctx context.Context, organizationID string
 	if err != nil {
 		return err
 	}
-	err = r.base.TransactWrite(ctx, txItems(r.base.BuildPutTxItemIfAbsent(item)))
+	return r.base.PutItem(ctx, item)
+}
+
+// Release gives up the caller's claim (the request failed: a 4xx or 5xx is not
+// replayed, so the fixed retry runs). Only a claim is removed, never an answer.
+func (r *IdempotencyRepository) Release(ctx context.Context, owner string, livemode bool, key string) error {
+	_, err := r.base.DeleteItemRaw(ctx, &dynamodb.DeleteItemInput{
+		Key: map[string]types.AttributeValue{
+			"pk": &types.AttributeValueMemberS{Value: TenantPK(owner, livemode)},
+			"sk": &types.AttributeValueMemberS{Value: IdempotencySK(key)},
+		},
+		ConditionExpression:       aws.String("#s = :zero"),
+		ExpressionAttributeNames:  map[string]string{"#s": "status"},
+		ExpressionAttributeValues: map[string]types.AttributeValue{":zero": &types.AttributeValueMemberN{Value: "0"}},
+	})
 	if IsConditionFailed(err) {
-		// Another in-flight request with the same key won the race. Its response
-		// is the one that will be replayed; ours is discarded, not an error.
 		return nil
 	}
 	return err

@@ -344,7 +344,8 @@ func registerConsole(v1 fiber.Router, d Deps, h *handlers, auth fiber.Handler) {
 		v1.Get("/console/merchant/application", auth, middleware.RequireUserSession(), middleware.ResolveSpace(spaces),
 			middleware.RequireMerchantRole(), middleware.RequireUserScope(middleware.ScopeOrganizationRead), ch.getMerchantApplication)
 		v1.Post("/console/merchant/application", auth, middleware.RequireUserSession(), middleware.ResolveSpace(spaces),
-			middleware.RequireMerchantRole(), middleware.RequireUserScope(middleware.ScopeOrganizationWrite), ch.applyMerchant)
+			middleware.RequireMerchantRole(), middleware.RequireUserScope(middleware.ScopeOrganizationWrite),
+			middleware.SessionIdempotency(d.Idempotency, h.clock), ch.applyMerchant)
 		v1.Get("/console/merchant/companies", auth, middleware.RequireUserSession(), middleware.ResolveSpace(spaces),
 			middleware.RequireMerchantRole(), middleware.RequireUserScope(middleware.ScopeOrganizationRead), ch.merchantCompanies)
 	}
@@ -352,7 +353,11 @@ func registerConsole(v1 fiber.Router, d Deps, h *handlers, auth fiber.Handler) {
 	console := v1.Group("/console", auth,
 		middleware.RequireUserSession(),
 		middleware.ResolveSpace(spaces),
-		middleware.ResolveMerchantTenant(d.Organizations))
+		middleware.ResolveMerchantTenant(d.Organizations),
+		// Every write in the console needs an Idempotency-Key, the M2M rule:
+		// a double click or a retried timeout must not void, charge or refund
+		// twice, whatever process each request lands on.
+		middleware.SessionIdempotency(d.Idempotency, h.clock))
 
 	// C1. Behind the invoices read scope rather than the organization one: every
 	// figure on it is an invoice figure, and a token that may not read invoices
@@ -392,11 +397,9 @@ func registerConsole(v1 fiber.Router, d Deps, h *handlers, auth fiber.Handler) {
 	// than the read one: the token that renders the screen is not the token that
 	// can void from it.
 	//
-	// No idempotency middleware, unlike the M2M routes, and that is the console
-	// session's own property rather than an omission: each of these is a
-	// deliberate click, each is a no-op when the invoice is already in the
-	// state it asks for, and the credit note is the one that is not — which is
-	// why it is refused rather than replayed when it would exceed the total.
+	// Behind the group's idempotency middleware like every console write; each
+	// is also a no-op when the invoice is already in the state it asks for, and
+	// the credit note is refused rather than replayed past the total.
 	console.Post("/invoices/:id/finalize",
 		middleware.RequireUserScope(middleware.ScopeInvoicesWrite), ch.finalizeInvoice)
 	console.Post("/invoices/:id/void",
@@ -480,7 +483,7 @@ func registerPortal(v1 fiber.Router, d Deps, h *handlers, auth fiber.Handler) {
 	// a customer but administers an organization that is (scope decision 12).
 	v1.Get("/portal/spaces", auth, middleware.RequireUserScope(middleware.ScopeMySubscriptionsRead), ph.listSpaces)
 	identity := middleware.ResolvePortalIdentity(d.Customers, d.PortalOrganizationID, d.Spaces)
-	portal := v1.Group("/portal", auth, identity)
+	portal := v1.Group("/portal", auth, identity, middleware.SessionIdempotency(d.Idempotency, h.clock))
 
 	portal.Get("/session",
 		middleware.RequireUserScope(middleware.ScopeMySubscriptionsRead), ph.session,

@@ -71,8 +71,20 @@ apiClient.interceptors.request.use(async config => {
     await sessionCheck
   }
   if (accessToken) config.headers.Authorization = `Bearer ${accessToken}`
+  // Every write carries an Idempotency-Key: the API refuses one without. A
+  // screen that names its intent (useIntent) keeps its key across the reader's
+  // retries; any other write gets one here, which still covers the silent 401
+  // retry and the in-progress retry below (both resend this same config).
+  if (!SAFE_METHODS.has((config.method ?? "get").toLowerCase()) && !config.headers["Idempotency-Key"]) {
+    config.headers["Idempotency-Key"] = crypto.randomUUID()
+  }
   return config
 })
+
+const SAFE_METHODS = new Set(["get", "head", "options"])
+
+/** How many times a write still running elsewhere is asked again. */
+const IN_PROGRESS_RETRIES = 5
 
 const MAINTENANCE_PATH = "/maintenance"
 const LOGIN_PATH = "/login"
@@ -89,7 +101,7 @@ export const registerRefresh = (fn: () => Promise<string | null>) => {
 
 /** Marks a request that has already been retried once, so a 401 answered by a
  *  refreshed token that is *also* rejected ends instead of looping. */
-type Retriable = InternalAxiosRequestConfig & { _retried?: boolean }
+type Retriable = InternalAxiosRequestConfig & { _retried?: boolean; _inProgress?: number }
 
 /**
  * The two statuses that are about the session or the service rather than the
@@ -118,6 +130,17 @@ apiClient.interceptors.response.use(undefined, async (error: AxiosError) => {
   const config = error.config as Retriable | undefined
   const onPage = (path: string) =>
     typeof window !== "undefined" && window.location.pathname === path
+
+  // The same key is still running (a double submit, a retry racing the
+  // original, maybe on another server): ask again with the same key and the
+  // API answers with that request's result once it has one.
+  if (status === 409 && config && (error.response?.data as Problem | undefined)?.code === "idempotency_in_progress"
+    && (config._inProgress ?? 0) < IN_PROGRESS_RETRIES) {
+    config._inProgress = (config._inProgress ?? 0) + 1
+    const after = Number(error.response?.headers?.["retry-after"] ?? 1)
+    await new Promise(resolve => setTimeout(resolve, (Number.isFinite(after) ? after : 1) * 1000))
+    return apiClient(config)
+  }
 
   if (status === 401 && config && !config._retried && refresh) {
     config._retried = true
