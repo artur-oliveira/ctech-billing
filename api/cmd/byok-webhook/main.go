@@ -42,7 +42,9 @@ func main() {
 		ssm:      ssm.NewFromConfig(awsCfg),
 		http:     &http.Client{Timeout: 8 * time.Second},
 	}
-	lambda.Start(newHandler(b.notify).handle)
+	h := newHandler(b.notify)
+	h.warm = b.prime
+	lambda.Start(h.handle)
 }
 
 // billing calls the notify route with the client's token. The secret is read
@@ -72,6 +74,17 @@ func (b *billing) tokenManager(ctx context.Context) (*oauth2client.TokenManager,
 	}
 	b.tokens = oauth2client.New(b.http, nil, b.tokenURL, aws.ToString(id.Parameter.Value), aws.ToString(out.Parameter.Value), notifyScope)
 	return b.tokens, nil
+}
+
+// prime reads the client and fetches a token now, so the first notice finds both
+// ready. A client that does not exist yet is the same 503 a notice would meet.
+func (b *billing) prime(ctx context.Context) error {
+	tm, err := b.tokenManager(ctx)
+	if err != nil {
+		return err
+	}
+	_, err = tm.Get(ctx)
+	return err
 }
 
 func (b *billing) notify(ctx context.Context, in notifyRequest) (int, error) {

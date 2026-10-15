@@ -168,3 +168,15 @@ func TestResealWithNoNewPairRetestsTheStoredCredentials(t *testing.T) {
 		t.Fatalf("the stored bundle is kept as it was: %v %s", err, plain)
 	}
 }
+
+func TestTheKeepWarmOpAnswersAtOnceWithoutTouchingABank(t *testing.T) {
+	h := &handler{providers: map[string]byok.Provider{}}
+	resp, err := h.handle(context.Background(), byok.Request{Op: opWarm})
+	if err != nil || resp.Code != "" || resp.Error != "" {
+		t.Fatalf("%+v %v", resp, err)
+	}
+	// And it is the only op that skips the allowlist.
+	if r, _ := h.handle(context.Background(), byok.Request{Op: "warm-ish", Provider: "inter", Mode: "live"}); r.Code == "" {
+		t.Fatalf("anything else still meets the allowlist: %+v", r)
+	}
+}

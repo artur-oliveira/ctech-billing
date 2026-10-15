@@ -31,7 +31,14 @@ type notifyRequest struct {
 type handler struct {
 	parsers map[string]byok.Provider
 	notify  func(context.Context, notifyRequest) (int, error)
+	// warm primes what the first real call would otherwise pay for (the client
+	// secret and token); nil in tests.
+	warm func(context.Context) error
 }
+
+// warmPath is what the scheduler's keep-warm invocation asks for. It is not a
+// route: nothing reaches it from the internet (the API only forwards /w/...).
+const warmPath = "/warm"
 
 func newHandler(notify func(context.Context, notifyRequest) (int, error)) *handler {
 	// Parsing needs no client and no credential: this Lambda holds none.
@@ -102,6 +109,16 @@ func logRequest(ctx context.Context, req events.APIGatewayV2HTTPRequest, body []
 }
 
 func (h *handler) handle(ctx context.Context, req events.APIGatewayV2HTTPRequest) (events.APIGatewayV2HTTPResponse, error) {
+	if req.RawPath == warmPath {
+		// The scheduler keeps this function warm and its token ready, so a payment
+		// notice does not pay for a cold start. Not logged: it runs every few minutes.
+		if h.warm != nil {
+			if err := h.warm(ctx); err != nil {
+				slog.WarnContext(ctx, "byok webhook: warm-up could not prime the token")
+			}
+		}
+		return status(http.StatusOK), nil
+	}
 	body := []byte(req.Body)
 	if req.IsBase64Encoded {
 		if b, err := base64.StdEncoding.DecodeString(req.Body); err == nil {

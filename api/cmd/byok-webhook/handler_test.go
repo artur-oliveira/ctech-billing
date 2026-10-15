@@ -126,3 +126,19 @@ func TestEvenARequestThatIsRefusedIsLogged(t *testing.T) {
 		t.Fatalf("a refused request is evidence too, without the secret:\n%s", logs.String())
 	}
 }
+
+func TestTheKeepWarmInvocationPrimesTheTokenCallsNobodyAndLogsNothing(t *testing.T) {
+	var logs bytes.Buffer
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&logs, nil)))
+	b := &fakeBilling{status: 200}
+	h := newHandler(b.notify)
+	primed := 0
+	h.warm = func(context.Context) error { primed++; return nil }
+	resp, err := h.handle(context.Background(), events.APIGatewayV2HTTPRequest{RawPath: "/warm"})
+	if err != nil || resp.StatusCode != 200 || primed != 1 || len(b.calls) != 0 {
+		t.Fatalf("%v %d primed %d calls %d", err, resp.StatusCode, primed, len(b.calls))
+	}
+	if logs.Len() != 0 {
+		t.Fatalf("a keep-warm every few minutes must not fill the log: %s", logs.String())
+	}
+}
