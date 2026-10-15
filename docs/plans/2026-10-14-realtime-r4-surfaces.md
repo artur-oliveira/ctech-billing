@@ -131,3 +131,8 @@ Repos: `P_BILL/ui` (mount points: `src/app/checkout/layout.tsx`, `src/app/(conso
 - Mounted in `FinanceShell`, keyed by person, mode and space.
 - **Coalescing lives in `applyChange`** (`COALESCE_MS = 250`), leading and trailing: the first change of a key invalidates at once, the rest of the window become one more at its close. A burst of 100 changes in 50 ms is two invalidations of a key; a lone change loses no time. Tests: binding burst test; the leader test advances past the window.
 - No Finanças screen pins a poll, so none was changed. The end-to-end bulk-classification check in staging is still to be done by hand (there is no stage environment; it will be done against production behind the flag, surface by surface).
+
+### Task 5: Contract (test/realtime-event-catalogue)
+
+- `docs/realtime/events.md` is the table, between `events:begin/end` markers. Go (`events_doc_test.go`) reads the `Entity*` constants out of `emit.go`'s source and checks them, `Entities()`, and every type (`billing.WebhookEventTypes()` plus `RealtimeOnlyTypes()`) against it. TypeScript (`emission.contract.test.ts`) checks each row's four surface columns against `effectsOf`: `none` invalidates nothing, anything else something.
+- The flag-off check across the four layouts is not repeated here: the provider's flag-off behaviour (no socket, no cursor) is pinned in `RealtimeProvider.test.tsx`, and every layout mounts that provider.

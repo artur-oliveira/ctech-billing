@@ -194,3 +194,8 @@ func (e *Emitter) ForSpace(spaceKey, entity, entityID, typ, status string) *repo
 func Free(entity, entityID, typ, status string, scopes ...string) *repositories.Change {
 	return &repositories.Change{Type: typ, Entity: entity, EntityID: entityID, Status: status, Scopes: scopes}
 }
+
+// Entities lists every entity name a Change can carry, for the catalogue test.
+func Entities() []string {
+	return []string{EntityInvoice, EntityPayment, EntityCheckout, EntityCreditNote, EntitySubscription, EntityCustomer, EntityPayout, EntityConnection, EntityStatement, EntityBill}
+}
