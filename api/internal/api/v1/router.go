@@ -208,6 +208,8 @@ func Register(app *fiber.App, d Deps) {
 		middleware.RequireM2MScope(middleware.ScopeCustomersRead), h.getCustomerByUser)
 	customers.Get("/:id",
 		middleware.RequireM2MScope(middleware.ScopeCustomersRead), h.getCustomer)
+	customers.Put("/:id/tax-id",
+		middleware.RequireM2MScope(middleware.ScopeCustomersWrite), idem, h.setCustomerTaxID)
 
 	subscriptions := m2m("/subscriptions")
 	subscriptions.Post("",
