@@ -208,40 +208,41 @@ func buildEventWrites(events Base, c StatusChange, now time.Time) ([]types.Trans
 
 	out := make([]types.TransactWriteItem, 0, 3*len(c.Emit))
 	for _, t := range c.Emit {
-		row := eventRow{
-			Event: billing.Event{
-				ID:             id.NewWithPrefix(id.PrefixEvent),
-				OrganizationID: c.OrganizationID,
-				Livemode:       c.Livemode,
-				Type:           t,
-				Entity:         c.Subject.Object,
-				EntityID:       c.Subject.ObjectID,
-				SubscriptionID: c.Subject.SubscriptionID,
-				OwnerKey:       c.Subject.OwnerKey,
-				OccurredAt:     now.UTC().Format(time.RFC3339Nano),
-			},
-			SchedulePK: WebhookQueuePK(c.Livemode, JobWebhookFanout),
-		}
-		row.keys = newKeys(
-			TenantPK(c.OrganizationID, c.Livemode),
-			EventSK(row.Event.ID),
-			RetentionEvent,
-			now,
-		)
-		row.ScheduleSK = WebhookQueueSK(now, row.Event.ID)
-
-		item, err := Encode(row)
+		writes, err := eventWrites(events, billing.Event{
+			ID:             id.NewWithPrefix(id.PrefixEvent),
+			OrganizationID: c.OrganizationID,
+			Livemode:       c.Livemode,
+			Type:           t,
+			Entity:         c.Subject.Object,
+			EntityID:       c.Subject.ObjectID,
+			SubscriptionID: c.Subject.SubscriptionID,
+			OwnerKey:       c.Subject.OwnerKey,
+		}, now)
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, events.BuildPutTxItemIfAbsent(item))
-		refs, err := eventRefWrites(events, row.Event, now)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, refs...)
+		out = append(out, writes...)
 	}
 	return out, nil
+}
+
+// eventWrites renders one event as the outbox row, queued for fan-out, plus the
+// pointers that make it findable from what it concerns.
+func eventWrites(events Base, ev billing.Event, now time.Time) ([]types.TransactWriteItem, error) {
+	ev.OccurredAt = now.UTC().Format(time.RFC3339Nano)
+	row := eventRow{Event: ev, SchedulePK: WebhookQueuePK(ev.Livemode, JobWebhookFanout)}
+	row.keys = newKeys(TenantPK(ev.OrganizationID, ev.Livemode), EventSK(ev.ID), RetentionEvent, now)
+	row.ScheduleSK = WebhookQueueSK(now, ev.ID)
+	item, err := Encode(row)
+	if err != nil {
+		return nil, err
+	}
+	out := []types.TransactWriteItem{events.BuildPutTxItemIfAbsent(item)}
+	refs, err := eventRefWrites(events, ev, now)
+	if err != nil {
+		return nil, err
+	}
+	return append(out, refs...), nil
 }
 
 func buildStatusChangeWrites(base, audit Base, c StatusChange, now time.Time) ([]types.TransactWriteItem, error) {

@@ -11,6 +11,7 @@ import (
 
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
 	"gopkg.aoctech.app/billing/api/internal/middleware"
+	"gopkg.aoctech.app/billing/api/internal/repositories"
 	"gopkg.aoctech.app/billing/api/internal/services"
 )
 
@@ -89,5 +90,10 @@ func TestTheDepositAndWithdrawalRoundTrip(t *testing.T) {
 	r.decode(t, &po)
 	if po.Status != "done" || po.PaymentID != "E-e2e" {
 		t.Fatalf("settled by the sweep: %+v", po)
+	}
+	// The consumer is told in the transaction that settled it.
+	evs, err := repositories.NewWebhookRepository(testDB, testCfg).EventsOf(ctxT(t), env.tenant.ID, true, "payout", po.ID, nil, 5)
+	if err != nil || len(evs.Items) != 1 || evs.Items[0].Type != billing.EventPayoutDone {
+		t.Fatalf("payout events: %v %+v", err, evs)
 	}
 }
