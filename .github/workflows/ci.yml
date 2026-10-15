@@ -27,21 +27,49 @@ concurrency:
 permissions:
   contents: read
 
-# The stages run in order — static → api → ui — the same `needs:` chain the
-# deploy pipelines use, and for the same reason: the cheapest check that can
-# fail should fail before anything expensive starts. gofmt disagreeing costs
-# seconds; discovering it after a DynamoDB container has come up and `npm ci`
-# has resolved four hundred packages costs minutes, three times over, on every
-# push of the branch.
+# Only what the change can affect runs. `changes` reads the files the pull
+# request touches and the three stages below start only for the code they cover:
+# a Terraform, docs or UI-only change does not start the Go suites, and an
+# API-only change does not run npm. (infra.yml and proto.yml carry their own path
+# filters.) The things two sides read together are listed under both: the event
+# catalogue docs/realtime/events.md is parsed by a Go test and a UI test, and the
+# wire files are generated for both. A change to this file runs everything.
 #
-# The cost is wall-clock on a green run, and it is the right trade at this size:
-# these three stages together are a few minutes, and a red build that reports in
-# thirty seconds is worth more than a green one that reports slightly sooner.
+# Static analysis gates the API job (the cheapest check that can fail should fail
+# before the DynamoDB container comes up). The UI is independent of the Go side,
+# so it runs beside it instead of after it: the wall-clock of a green run is the
+# slower of the two, not their sum.
 jobs:
+  changes:
+    name: What changed
+    runs-on: ubuntu-26.04-arm
+    outputs:
+      api: ${{ steps.filter.outputs.api }}
+      ui: ${{ steps.filter.outputs.ui }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - id: filter
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          files="$(git diff --name-only "$BASE" "$HEAD")"
+          echo "$files"
+          has() { echo "$files" | grep -Eq "$1"; }
+          all='^\.github/workflows/ci\.yml$'
+          api='^(api/|docs/realtime/|proto/|buf\.yaml$|scripts/generate-proto\.sh$)'
+          ui='^(ui/|docs/realtime/|proto/|buf\.yaml$|scripts/generate-proto\.sh$)'
+          if has "$all" || has "$api"; then echo "api=true" >> "$GITHUB_OUTPUT"; else echo "api=false" >> "$GITHUB_OUTPUT"; fi
+          if has "$all" || has "$ui"; then echo "ui=true" >> "$GITHUB_OUTPUT"; else echo "ui=false" >> "$GITHUB_OUTPUT"; fi
+
   # No services, no npm, no build tags. Just the checks that need nothing but
   # the source, which is what makes this the right first gate.
   static:
     name: Static analysis
+    needs: changes
+    if: needs.changes.outputs.api == 'true'
     runs-on: ubuntu-26.04-arm
     defaults:
       run:
@@ -105,7 +133,8 @@ jobs:
 
   api:
     name: API
-    needs: static
+    needs: [changes, static]
+    if: needs.changes.outputs.api == 'true'
     runs-on: ubuntu-26.04-arm
     defaults:
       run:
@@ -149,7 +178,8 @@ jobs:
 
   ui:
     name: UI
-    needs: api
+    needs: changes
+    if: needs.changes.outputs.ui == 'true'
     runs-on: ubuntu-26.04-arm
     defaults:
       run:
