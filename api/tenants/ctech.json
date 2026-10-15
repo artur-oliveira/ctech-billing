@@ -6,7 +6,7 @@
     "owner_user_id": "78fd4d57-88a7-4eec-a997-7d7c09f58a1b",
     "account_organization_id": "01a04ed6-1af9-745e-bcf7-d3b66fe52321"
   },
-  "owners": ["wallet"],
+  "owners": ["wallet", "poker"],
   "credentials": [
     {
       "client_id": "dfe-billing",
@@ -22,6 +22,11 @@
       "client_id": "wallet-billing",
       "description": "CTech Wallet — deposits as one-off invoices and withdrawals as payouts",
       "owner_key": "wallet"
+    },
+    {
+      "client_id": "poker-billing",
+      "description": "CTech Poker — chip packs and premium goods sold by Pix as one-off invoices",
+      "owner_key": "poker"
     }
   ],
   "products": [
@@ -85,6 +90,13 @@
       "url": "https://dfe.internal.aoctech.app/v1/internal/webhooks/billing",
       "owner_key": "dfe",
       "secret_env": "WEBHOOK_SECRET_DFE"
+    },
+    {
+      "id": "whe_poker",
+      "url": "https://poker.internal.aoctech.app/v1.0/webhooks/billing",
+      "owner_key": "poker",
+      "events": ["invoice.paid"],
+      "secret_env": "WEBHOOK_SECRET_POKER"
     }
   ],
   "prices": [
