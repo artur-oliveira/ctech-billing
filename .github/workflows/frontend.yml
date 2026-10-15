@@ -22,22 +22,29 @@ jobs:
       # app should have. `wrangler triggers deploy` already disabled workers.dev at
       # cutover; this is what stops the next CI deploy from turning it back on.
       prod-workers-dev: false
+      # NEXT_PUBLIC_WS_URL is the realtime socket's host. The CSP match is
+      # scheme-exact (https://host does not permit wss://host), and the policy is
+      # built from the literals below, so without it the browser refuses every
+      # socket and the screens quietly stay on polling.
       # NEXT_PUBLIC_SITE_URL is the app's own origin. It lands in connect-src too,
       # which is harmless — 'self' already covers it.
       build-env-dev: |
         NEXT_PUBLIC_API_URL=https://billing-api-dev.aoctech.app
+        NEXT_PUBLIC_WS_URL=wss://billing-api-dev.aoctech.app
         NEXT_PUBLIC_SITE_URL=https://billing-dev.aoctech.app
         NEXT_PUBLIC_CTECH_URL=https://accounts-dev-api.aoctech.app
         NEXT_PUBLIC_CTECH_CLIENT_URL=https://accounts-dev.aoctech.app
         NEXT_PUBLIC_CTECH_CLIENT_ID=billing
       build-env-stage: |
         NEXT_PUBLIC_API_URL=https://billing-api-stage.aoctech.app
+        NEXT_PUBLIC_WS_URL=wss://billing-api-stage.aoctech.app
         NEXT_PUBLIC_SITE_URL=https://billing-stage.aoctech.app
         NEXT_PUBLIC_CTECH_URL=https://accounts-stage-api.aoctech.app
         NEXT_PUBLIC_CTECH_CLIENT_URL=https://accounts-stage.aoctech.app
         NEXT_PUBLIC_CTECH_CLIENT_ID=billing
       build-env-prod: |
         NEXT_PUBLIC_API_URL=https://billing-api.aoctech.app
+        NEXT_PUBLIC_WS_URL=wss://billing-api.aoctech.app
         NEXT_PUBLIC_SITE_URL=https://billing.aoctech.app
         NEXT_PUBLIC_CTECH_URL=https://accounts-api.aoctech.app
         NEXT_PUBLIC_CTECH_CLIENT_URL=https://accounts.aoctech.app

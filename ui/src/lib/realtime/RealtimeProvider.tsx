@@ -36,8 +36,10 @@ export function realtimeEnabledFor(kind: Surface["kind"]): boolean {
   return list.split(",").map((s) => s.trim()).includes(kind);
 }
 
-/** wss://…/v1.0/ws: the API's own host with the scheme mapped, and no query string. */
+/** wss://…/v1.0/ws, no query string: NEXT_PUBLIC_WS_URL (the host the CSP allows) or the API's own host with the scheme mapped. */
 export function realtimeUrl(): string {
+  const configured = process.env.NEXT_PUBLIC_WS_URL;
+  if (configured) return `${configured.replace(/\/$/, "")}/v1.0/ws`;
   const base = API_BASE_URL || (typeof window === "undefined" ? "" : window.location.origin);
   return `${base.replace(/^http/, "ws")}/v1.0/ws`;
 }
@@ -218,7 +220,7 @@ function Connection({surface, cursorKey, auth, onStatus}: ConnectionProps) {
     url: realtimeUrl(),
     // Held after a draining Bye (until its retry-after) or while waiting for a
     // token: the shared hook would otherwise reconnect on its own in a second.
-    enabled: !held && election.leader,
+    enabled: !held && election.leader && coreStatus !== "off",
     binaryType: "arraybuffer",
     encode,
     decode,

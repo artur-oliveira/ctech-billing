@@ -143,3 +143,27 @@ describe("the fallback ladder", () => {
     expect(spy).toHaveBeenCalled();
   });
 });
+
+describe("the server has realtime switched off", () => {
+  it("a 404 from the cursor route ends polling and the socket attempts for good, with the status off", async () => {
+    const fetchMock = stubChanges(() => new Response("{}", {status: 404}));
+    mount(); // the socket never opens: the upgrade is refused as well
+    await advance(16_000);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(status()).toBe("off");
+
+    const sockets = FakeWebSocket.instances.length;
+    await advance(120_000);
+    expect(fetchMock).toHaveBeenCalledTimes(1); // no more polling
+    expect(FakeWebSocket.instances.length).toBe(sockets); // and no more reconnecting
+  });
+
+  it("a server error is only the network: polling goes on", async () => {
+    const fetchMock = stubChanges(() => new Response("{}", {status: 503}));
+    mount();
+    await advance(16_000);
+    await advance(10_000);
+    expect(fetchMock.mock.calls.length).toBeGreaterThanOrEqual(2);
+    expect(status()).toBe("polling");
+  });
+});

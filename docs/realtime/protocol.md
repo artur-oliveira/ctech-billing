@@ -91,3 +91,7 @@ in CI, so put the pinned one first in `PATH`.
 
 Replace it with `reserved <number>;` and `reserved "<name>";`. Never reuse either.
 Keep reading it on the server until no supported client sends it.
+
+## Limits per connection
+
+A connection may send 20 frames a second (a burst of 40); beyond that the server sends `Bye{limit}` and closes. A client sends a ping every 20 to 25 s, so only a misbehaving one meets it. Frames are capped at 32 KiB both ways.

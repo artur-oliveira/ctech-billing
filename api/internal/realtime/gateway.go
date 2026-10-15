@@ -62,6 +62,10 @@ type Config struct {
 	// DegradedPoll is the interval the client is asked to poll at while the
 	// fan-out is down (Hint).
 	DegradedPoll time.Duration
+	// FramesPerSecond caps what one connection may send; beyond it (a burst of twice
+	// as many is tolerated) the connection is closed with Bye limit. A client sends a
+	// ping every half minute: the cap is for the ones that do not behave. Zero is off.
+	FramesPerSecond int
 }
 
 // DefaultConfig is the production configuration.
@@ -72,6 +76,7 @@ func DefaultConfig() Config {
 		TickInterval: 30 * time.Second, RecheckInterval: 5 * time.Minute,
 		ReplayMax: 500, ReplaysPerMinute: 3, HeadTTL: 10 * time.Second,
 		DrainRetry: 3 * time.Second, AuthorizeTimeout: 5 * time.Second, DegradedPoll: 10 * time.Second,
+		FramesPerSecond: 20,
 	}
 }
 
@@ -332,12 +337,17 @@ func (g *Gateway) readLoop(conn *fws.Conn, c *Conn, p *Principal, authz Authoriz
 	extend := func() { _ = conn.SetReadDeadline(time.Now().Add(g.Config.PongWait)) }
 	extend()
 	conn.SetPongHandler(func(string) error { extend(); return nil })
+	budget := newFrameBudget(g.Config.FramesPerSecond, g.now)
 	for {
 		kind, raw, err := conn.ReadMessage()
 		if err != nil {
 			return
 		}
 		extend()
+		if !budget.take() {
+			c.Finish(ByeFrame(ByeLimit, 0), ClosePolicy, ByeLimit)
+			return
+		}
 		if kind != fws.BinaryMessage {
 			c.Finish(ByeFrame(ByeBadFrame, 0), fws.CloseUnsupportedData, ByeBadFrame)
 			return
@@ -526,4 +536,31 @@ func (h *headCache) get(scopes []string, now time.Time, log ChangeLog) (string, 
 	h.m[key] = cachedHead{head: head, expires: now.Add(h.ttl)}
 	h.mu.Unlock()
 	return head, nil
+}
+
+// frameBudget is a token bucket for what one connection sends: rate a second,
+// a burst of twice that. Not shared, so it needs no lock.
+type frameBudget struct {
+	rate   float64
+	tokens float64
+	last   time.Time
+	now    func() time.Time
+}
+
+func newFrameBudget(perSecond int, now func() time.Time) *frameBudget {
+	return &frameBudget{rate: float64(perSecond), tokens: float64(2 * perSecond), last: now(), now: now}
+}
+
+func (b *frameBudget) take() bool {
+	if b.rate <= 0 {
+		return true
+	}
+	at := b.now()
+	b.tokens = min(b.tokens+at.Sub(b.last).Seconds()*b.rate, 2*b.rate)
+	b.last = at
+	if b.tokens < 1 {
+		return false
+	}
+	b.tokens--
+	return true
 }

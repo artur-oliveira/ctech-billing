@@ -130,3 +130,19 @@ The ten chaos scenarios pass twice; the capacity numbers are recorded and the ca
 | § 10 cost measured | 1, 6 |
 | Multi-instance resilience | 2 (scenarios 1, 2, 4, 7) |
 | Reconnect resilience | 2 (scenarios 5, 7, 10) |
+
+## Status
+
+### Done on `feat/realtime-r5-hardening` (what could be done without a staging stack and without alarms)
+
+- **Alarms are out, by the owner's rule (never CloudWatch alarms, any kind; memory `no-cloudwatch-alarms`).** Task 4's alarms and `realtime_alarms.tf` are replaced by `scripts/realtime-check.sh` (reads the one-line-a-minute stats from the already shipped app log group and exits 2 on a rollback trigger) and `docs/runbooks/realtime.md`. No metric filters either: they are metrics.
+- **Task 3 (abuse, fuzz, secrecy):** the audit found no inbound frame cap, so a client could make the server marshal and queue a pong per ping as fast as it could write. Added `Config.FramesPerSecond` (20 a second, burst 40, `Bye{limit}`), with a test that fails without it. Garbage, text and oversized frames close only the offender; a log-capture test asserts no token, pay link or scope key at Info and above (api-commons logs registered keys at Debug only). `FuzzClientFrame` runs its seeds in CI and 60 s nightly (`realtime-fuzz.yml`, a minute of Actions a night); the UI `decode` is property-tested on 10,000 seeded buffers.
+- **Task 5 (kill switches):** a 404 from the cursor route (the server has realtime off, including a stale UI in front of it) now ends polling and the socket attempts for good (`status: off`, until reload) instead of one failing request every 10 s. A 5xx stays "the network" and polling goes on.
+- **A rollout blocker found and fixed:** the CSP's `connect-src` is generated from the `https://`/`wss://` literals of the `build-env-*` and is scheme-exact, so no browser would have been allowed to open the socket. `NEXT_PUBLIC_WS_URL=wss://billing-api*.aoctech.app` is in all three environments and `realtimeUrl()` uses it.
+- **Task 7 partly:** `docs/adr/0030-realtime.md` (the plan said 0031; 0030 is the next free number).
+
+### Not done, and why
+
+- **Tasks 1 and 2 (rtload, rtchaos on staging):** there is no staging stack (one production instance), and the plan's own constraint forbids running them against production. The guarantees they would prove are pinned in-process instead: the R2 integration and isolation suites (no loss on a lost publish, replay once, isolation by mode and tenant), the hub tests (slow consumer, caps, drain). Capacity numbers will be measured by the first production canary through the stats line, not predicted.
+- **Task 6 (production canary):** needs days of soak and the owner's go before each step; `docs/runbooks/realtime.md#rollout` is the procedure.
+- **Task 7 (remove SSE):** requires 14 days of the checkout on the socket in production; not before. The ESLint/Go guard test will be added with the removal.

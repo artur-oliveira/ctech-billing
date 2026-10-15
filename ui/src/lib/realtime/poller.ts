@@ -16,6 +16,9 @@ export interface PollResult {
 /** The cursor route refused the credential: the token is dead, not the network. */
 export class PollUnauthorized extends Error {}
 
+/** The cursor route does not exist on this server: realtime is switched off there. */
+export class PollDisabled extends Error {}
+
 /** A request more than this many pages long is a runaway, not a catch-up. */
 const MAX_PAGES = 20;
 
@@ -47,6 +50,10 @@ export function startPolling(opts: PollOptions): () => void {
         // A dead token is told to the core (it waits for a new one); anything
         // else is the network, and the screens keep refetching on focus.
         if (error instanceof PollUnauthorized) opts.core.onFrame({type: "bye", reason: "unauthorized", retryAfterMs: 0});
+        if (error instanceof PollDisabled) {
+          stopped = true;
+          opts.core.onDisabled();
+        }
         return;
       }
       if (stopped) return;
@@ -114,6 +121,7 @@ export function changesFetcher(surface: Surface): (cursor: string) => Promise<Po
     const query = cursor ? `?cursor=${encodeURIComponent(cursor)}` : "";
     const res = await fetch(`${API_BASE_URL}/v1.0/realtime/changes${query}`, {headers, cache: "no-store"});
     if (res.status === 401 || res.status === 403) throw new PollUnauthorized();
+    if (res.status === 404) throw new PollDisabled();
     if (!res.ok) throw new Error(`changes: ${res.status}`);
     const body = (await res.json()) as {changes?: WireChange[]; head?: string; more?: boolean; gap?: string};
     return {

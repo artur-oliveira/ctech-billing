@@ -101,7 +101,7 @@ export class RealtimeCore {
   onClose(): void {
     // Polling ends at a Ready, not at a close: a socket that keeps failing to
     // come back is exactly when the cursor route is needed.
-    if (this.current === "waiting-token" || this.current === "revoked" || this.current === "polling" || this.held) return;
+    if (this.current === "waiting-token" || this.current === "revoked" || this.current === "off" || this.current === "polling" || this.held) return;
     this.setStatus("connecting");
   }
 
@@ -212,9 +212,20 @@ export class RealtimeCore {
    * well. It ends by itself at the next Ready.
    */
   onUnreachable(): void {
-    if (this.current === "waiting-token" || this.current === "revoked") return;
+    if (this.current === "waiting-token" || this.current === "revoked" || this.current === "off") return;
     if (this.pollIntervalMs <= 0) this.pollIntervalMs = DEFAULT_POLL_MS;
     this.setStatus("polling");
+  }
+
+  /**
+   * The server answered the cursor route with "no such route": realtime is off
+   * there (the kill switch, or a UI built with it on in front of an API with it
+   * off). Final until the page is reloaded: no socket, no polling, and the screens
+   * go on as they did before any of this.
+   */
+  onDisabled(): void {
+    if (this.current === "revoked") return;
+    this.setStatus("off");
   }
 
   /** A fresh access token: sent in band, or, if we were waiting for one, the wait ends. */
