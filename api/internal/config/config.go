@@ -47,6 +47,10 @@ type Config struct {
 	// (see newFiber); in production Load refuses to boot without it.
 	CorsAllowedOrigins []string `env:"CORS_ALLOWED_ORIGINS" envSeparator:","`
 
+	// RealtimeProbe mounts GET /v1.0/realtime/probe, a throwaway route that proves
+	// the edge carries a WebSocket (docs/realtime/protocol.md, "Edge"). Off.
+	RealtimeProbe bool `env:"REALTIME_PROBE" envDefault:"false"`
+
 	// Auth (ctech-account). ServiceAudience is the `aud` this service accepts;
 	// a token minted for another CTech service must not be usable here.
 	CtechIssuerURL  string `env:"CTECH_ISSUER_URL"`
