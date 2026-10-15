@@ -21,10 +21,24 @@ export interface Problem {
 }
 
 let accessToken: string | null = null;
+const tokenListeners = new Set<(token: string) => void>();
 export const setAccessToken = (t: string | null) => {
+  const changed = t !== accessToken;
   accessToken = t;
+  if (changed && t) for (const listener of [...tokenListeners]) listener(t);
 };
 export const getAccessToken = () => accessToken;
+
+/**
+ * Calls back with each new access token, once per change (a silent refresh, a
+ * sign-in). Never with a sign-out: a connection ends then, it does not renew. The
+ * realtime stream uses it to send the fresh token in band instead of
+ * reconnecting.
+ */
+export const subscribeAccessToken = (listener: (token: string) => void): (() => void) => {
+  tokenListeners.add(listener);
+  return () => void tokenListeners.delete(listener);
+};
 
 /**
  * Where the API lives.
