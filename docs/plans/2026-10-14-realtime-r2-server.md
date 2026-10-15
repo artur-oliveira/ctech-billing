@@ -261,3 +261,22 @@ func (c *Conn) Send(frame []byte) bool                 // false when the queue i
 | § 8 metrics | 8 |
 | § 9 flag | 9 |
 | § 11 open item: the edge | 1 |
+
+## Status
+
+Done on branch `feat/realtime-r2-scopes-2` (tasks 2 to 10; task 1 was #165 to #167). Where it differs from the plan above:
+
+- **The socket is `GET /v1.0/ws`**, the path the wallet and Poker use (owner's choice). The cursor fallback stays `GET /v1.0/realtime/changes`.
+- **`Auth.mode`** (field 6, additive, no protocol version): the console picks live or test with a header on REST and the first frame had no way to say it. A selector, not a permission: both partitions of a tenant belong to the same organization.
+- **`StatusChange.Realtime` is a pointer**, so the write fills in the change's id and revision and the caller publishes that very change after the commit. `id.NewAt` puts the transaction's clock in the ULID.
+- **The emitter is an interface in `repositories`** (`ChangeEmitter`, `ChangePublisher`, `Realtime`), because `realtime` imports `repositories`. Beside the per-entity methods it has `ForInvoiceRef`, `ForTenant` and `ForSpace`, so every scope key is built in one package.
+- **Wiring is process-wide.** The sweep, the reconciler, the dunner and the BYOK jobs also write transitions and each builds its own repositories (48 construction sites), so `newDynamoDB` calls `enableRealtime` once and every constructor reads `repositories.realtimeDefault()`. Off means off: a later build with the flag off clears it. `app.ResetRealtime` is for tests.
+- **Scopes of the explicit mutations:** a connection goes to the account organization's `space:` scope (the merchant console and Finanças both hold it); a payout and a customer to `tenant:`; a payer to `tenant:` and `invoice:`; a statement line and a bill to `space:`. Payment attempts and checkout sessions have no customer, so they reach `tenant:` and `invoice:` only (the portal hears the invoice change).
+- **Not announced:** the hourly connection health save (a plain put, deliberately a half-price write); card-statement bills and card purchases; portal users who are an organization's customer (no `user_id` on the customer, so no `user:` scope; they keep polling). All three are additions, not redesigns.
+- **Metrics are not CloudWatch custom metrics.** Each series is billed ($0.30 a month) and Poker switched its EMF emission off for that reason. They are in-process counters and one latency histogram, written as one log line a minute, and the rollout's few alarms are metric filters on it (R5).
+- **Degraded mode** is measured by a probe round trip through `ws.Publisher.Publish` (which never falls back to local delivery, unlike `Broadcast`), not by the registry's subscription state, which the registry does not expose.
+- **Heads are shared:** the `Tick` head of a scope set is cached for 10 s across connections, so a Tick is not a table read per connection.
+- **The token's expiry** is read from the payload of an already verified token, because `jwtverify.Claims` does not carry `exp`. It should: proposed for api-commons as `Claims.ExpiresAt`.
+- A missing `Origin` is refused when an allow-list is configured (the plan said so; the wallet's gateway allows it).
+- Task 1 ran on the single production instance (there is no stage environment) and cost one instance replacement that failed once, on a `$$` in the nginx block, before the fix and a Terraform test that renders both bootstraps.
+
