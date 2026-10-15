@@ -7,6 +7,42 @@ import "sync/atomic"
 // the tests can assert on them, and a nil *Metrics is safe everywhere.
 type Metrics struct {
 	publishErrors atomic.Int64
+	slowCloses    atomic.Int64
+	active        atomic.Int64
+}
+
+func (m *Metrics) slowClose() {
+	if m != nil {
+		m.slowCloses.Add(1)
+	}
+}
+
+func (m *Metrics) connected(string) {
+	if m != nil {
+		m.active.Add(1)
+	}
+}
+
+func (m *Metrics) disconnected(string) {
+	if m != nil {
+		m.active.Add(-1)
+	}
+}
+
+// SlowCloses is how many connections were closed for not keeping up.
+func (m *Metrics) SlowCloses() int64 {
+	if m == nil {
+		return 0
+	}
+	return m.slowCloses.Load()
+}
+
+// Active is the connections currently registered.
+func (m *Metrics) Active() int64 {
+	if m == nil {
+		return 0
+	}
+	return m.active.Load()
 }
 
 func (m *Metrics) publishError() {
