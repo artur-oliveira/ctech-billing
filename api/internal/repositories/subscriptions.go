@@ -67,6 +67,7 @@ func NewSubscriptionRepository(db *dynamodb.Client, cfg *config.Config) *Subscri
 		events: NewBase(db, cfg, TableWebhooks),
 		byok:   NewBase(db, cfg, TableByok),
 		orgs:   NewOrganizationRepository(db, cfg),
+		rt:     realtimeDefault(),
 	}
 }
 

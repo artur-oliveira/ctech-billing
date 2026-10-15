@@ -34,7 +34,7 @@ type BillRepository struct {
 }
 
 func NewBillRepository(db *dynamodb.Client, cfg *config.Config) *BillRepository {
-	return &BillRepository{bills: NewBase(db, cfg, TableBills), events: NewBase(db, cfg, TableWebhooks), recs: NewBase(db, cfg, TableRecurrences), ledger: NewLedgerRepository(db, cfg)}
+	return &BillRepository{bills: NewBase(db, cfg, TableBills), events: NewBase(db, cfg, TableWebhooks), recs: NewBase(db, cfg, TableRecurrences), ledger: NewLedgerRepository(db, cfg), rt: realtimeDefault()}
 }
 
 // WithRealtime makes a bill created, settled, canceled, edited or reopened write

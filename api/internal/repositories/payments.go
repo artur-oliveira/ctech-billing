@@ -49,6 +49,7 @@ func NewPaymentRepository(db *dynamodb.Client, cfg *config.Config) *PaymentRepos
 		audit:  NewBase(db, cfg, TableAudit),
 		events: NewBase(db, cfg, TableWebhooks),
 		byok:   NewBase(db, cfg, TableByok),
+		rt:     realtimeDefault(),
 	}
 }
 

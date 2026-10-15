@@ -147,6 +147,7 @@ locals {
     checkout_base_url      = "${local.app_domain_url}/checkout"
     portal_organization_id = var.portal_organization_id
     cors_allowed_origins   = join(",", local.cors_allowed_origins)
+    realtime_enabled       = var.realtime_enabled
 
     valkey_db                = local.valkey_db
     ssm_valkey_url           = local.shared_ssm.valkey_url

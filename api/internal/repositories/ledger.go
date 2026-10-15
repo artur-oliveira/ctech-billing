@@ -75,6 +75,7 @@ func NewLedgerRepository(db *dynamodb.Client, cfg *config.Config) *LedgerReposit
 		audit:    NewBase(db, cfg, TableAudit),
 		imports:  NewBase(db, cfg, TableImports),
 		events:   NewBase(db, cfg, TableWebhooks),
+		rt:       realtimeDefault(),
 	}
 }
 

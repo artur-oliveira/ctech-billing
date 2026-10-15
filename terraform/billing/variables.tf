@@ -86,6 +86,15 @@ variable "portal_organization_id" {
   default = ""
 }
 
+# Turns on the realtime change log, the publisher and GET /v1.0/ws
+# (docs/specs/2026-10-14-realtime.md). Off: nothing is written or published and the
+# routes answer 404. Flip it per environment once the staging soak of the
+# surface being enabled has passed (docs/plans/2026-10-14-realtime-r4).
+variable "realtime_enabled" {
+  type    = bool
+  default = false
+}
+
 # The identity dunning reminders are sent from.
 #
 # It is a variable and not just the SSM value because the IAM condition needs it

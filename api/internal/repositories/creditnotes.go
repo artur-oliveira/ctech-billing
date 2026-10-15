@@ -38,6 +38,7 @@ func NewCreditNoteRepository(db *dynamodb.Client, cfg *config.Config) *CreditNot
 		base:   NewBase(db, cfg, TableInvoices),
 		audit:  NewBase(db, cfg, TableAudit),
 		events: NewBase(db, cfg, TableWebhooks),
+		rt:     realtimeDefault(),
 	}
 }
 

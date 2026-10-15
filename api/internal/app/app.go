@@ -220,7 +220,12 @@ func Build(ctx context.Context, cfg *config.Config, clock func() time.Time, opts
 			collector.WithByok(byokCollector)
 		}
 	}
+	spaces := space.NewResolver(account, cacheBackend)
+	apiVerifier := middleware.NewVerifier(cfg.CtechJWKSURL, cfg.ServiceAudience, cfg.CtechIssuerURL, cacheBackend)
+	realtimeGateway, realtimeChanges := realtimeServer(ctx, cfg, app, db, apiVerifier, spaces, orgs, links)
 	v1.Register(app, v1.Deps{
+		Realtime:          realtimeGateway,
+		RealtimeChanges:   realtimeChanges,
 		Payouts:           payouts,
 		ByokConnections:   byokConns,
 		ByokStatement:     byokStatement,
@@ -264,9 +269,9 @@ func Build(ctx context.Context, cfg *config.Config, clock func() time.Time, opts
 		Recurrences:     recRepo,
 		Cards:           repositories.NewCardRepository(db, cfg),
 		Ledger:          ledgerRepo,
-		Spaces:          space.NewResolver(account, cacheBackend),
+		Spaces:          spaces,
 		SpaceLister:     account,
-		Verifier:        middleware.NewVerifier(cfg.CtechJWKSURL, cfg.ServiceAudience, cfg.CtechIssuerURL, cacheBackend),
+		Verifier:        apiVerifier,
 		Clock:           clock,
 
 		PortalOrganizationID: cfg.PortalOrganizationID,
@@ -622,12 +627,16 @@ func newDynamoDB(ctx context.Context, cfg *config.Config) (*dynamodb.Client, err
 	if err != nil {
 		return nil, fmt.Errorf("aws config: %w", err)
 	}
-	return dynamodb.NewFromConfig(awsConf, func(o *dynamodb.Options) {
+	db := dynamodb.NewFromConfig(awsConf, func(o *dynamodb.Options) {
 		if cfg.DynamoDBEndpoint != "" {
 			o.BaseEndpoint = aws.String(cfg.DynamoDBEndpoint)
 		}
 		o.APIOptions = append(o.APIOptions, DynamoDBAPIOptions...)
-	}), nil
+	})
+	// Every process that builds repositories builds this first, so it is the one
+	// place that makes every process able to announce a transition.
+	enableRealtime(cfg, db)
+	return db, nil
 }
 
 // Test hooks, nil in production. ByokInvoker replaces the outbound Lambda client

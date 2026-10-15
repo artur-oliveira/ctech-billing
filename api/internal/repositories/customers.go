@@ -39,6 +39,7 @@ func NewCustomerRepository(db *dynamodb.Client, cfg *config.Config) *CustomerRep
 		audit:  NewBase(db, cfg, TableAudit),
 		events: NewBase(db, cfg, TableWebhooks),
 		seal:   crypto.NewSealer(cfg.FieldEncryptionKey),
+		rt:     realtimeDefault(),
 	}
 }
 

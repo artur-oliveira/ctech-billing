@@ -38,7 +38,7 @@ type ByokRepository struct {
 }
 
 func NewByokRepository(db *dynamodb.Client, cfg *config.Config) *ByokRepository {
-	return &ByokRepository{base: NewBase(db, cfg, TableByok), audit: NewBase(db, cfg, TableAudit), events: NewBase(db, cfg, TableWebhooks)}
+	return &ByokRepository{base: NewBase(db, cfg, TableByok), audit: NewBase(db, cfg, TableAudit), events: NewBase(db, cfg, TableWebhooks), rt: realtimeDefault()}
 }
 
 // WithRealtime makes an audited connection change (connect, renew, disconnect)
