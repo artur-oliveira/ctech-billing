@@ -8,6 +8,7 @@ import (
 	"gopkg.aoctech.app/api-commons/cache"
 
 	"gopkg.aoctech.app/billing/api/internal/middleware"
+	"gopkg.aoctech.app/billing/api/internal/realtime"
 	"gopkg.aoctech.app/billing/api/internal/repositories"
 	"gopkg.aoctech.app/billing/api/internal/services"
 	"gopkg.aoctech.app/billing/api/internal/settlement"
@@ -53,6 +54,10 @@ type Deps struct {
 	// WebhookVerifier proves a new endpoint answers its challenge before it is
 	// registered (hub.subscribe style).
 	WebhookVerifier WebhookVerifier
+	// RealtimeProbe mounts the throwaway edge probe (REALTIME_PROBE);
+	// RealtimeOrigins are the browser origins it accepts.
+	RealtimeProbe   bool
+	RealtimeOrigins []string
 	Idempotency     *repositories.IdempotencyRepository
 	Organizations   *repositories.OrganizationRepository
 	// Payouts pays Pix keys out of the tenant's connected bank account (CTech's own
@@ -163,6 +168,9 @@ func Register(app *fiber.App, d Deps) {
 	}
 
 	v1 := app.Group("/v1.0")
+	if d.RealtimeProbe {
+		realtime.RegisterProbe(v1, d.RealtimeOrigins)
+	}
 	// Both unauthenticated, and neither behind the tenant resolver: a probe has
 	// no credential, and the balancer that runs one is not a tenant. What that
 	// costs is bounded by the payloads — the report publishes latencies,

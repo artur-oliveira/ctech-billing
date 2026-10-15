@@ -97,6 +97,39 @@ ctech_run setup-realip.sh ${vpc_cidr}
 # restarting the only process — a t4g.nano deploy no longer drops the health
 # check for the few seconds `systemctl restart app` takes. Trade-off is a
 # second Go process resident on a 512 MiB box; watch memory if it becomes tight.
+# WebSocket locations. The shared nginx.conf's `location /` sends `Connection ""`
+# and times out at 60 s, so an Upgrade never reaches the app and an idle socket
+# is cut. $connection_upgrade comes from the map in the shared nginx.conf.
+# `location =` is exact: only the realtime endpoints get the long timeouts.
+cat > /etc/nginx/conf.d/location-ws.conf << 'WSLOC'
+location = /v1.0/realtime {
+    proxy_pass http://app;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $$http_upgrade;
+    proxy_set_header Connection $$connection_upgrade;
+    proxy_set_header Host $$host;
+    proxy_set_header X-Real-IP $$remote_addr;
+    proxy_set_header X-Forwarded-For $$remote_addr;
+    proxy_set_header X-Forwarded-Proto $$http_x_forwarded_proto;
+    proxy_read_timeout 3600s;
+    proxy_send_timeout 3600s;
+    proxy_buffering off;
+}
+location = /v1.0/realtime/probe {
+    proxy_pass http://app;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $$http_upgrade;
+    proxy_set_header Connection $$connection_upgrade;
+    proxy_set_header Host $$host;
+    proxy_set_header X-Real-IP $$remote_addr;
+    proxy_set_header X-Forwarded-For $$remote_addr;
+    proxy_set_header X-Forwarded-Proto $$http_x_forwarded_proto;
+    proxy_read_timeout 3600s;
+    proxy_send_timeout 3600s;
+    proxy_buffering off;
+}
+WSLOC
+
 ctech_run setup-nginx.sh ${nginx_port} ${app_port} ${health_path} 100 1m ${app_port_alt}
 ctech_run setup-app-service.sh "CTech Billing API" app "network.target nginx.service" ${app_port_alt}
 ctech_run setup-deploy.sh ${deployments_bucket} app "http://127.0.0.1:${nginx_port}${health_path}" sweep reconcile deliver dunning finance byok

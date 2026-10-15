@@ -229,6 +229,8 @@ func Build(ctx context.Context, cfg *config.Config, clock func() time.Time, opts
 		ByokCollector:     byokCollector,
 		ByokWebhooks:      byokWebhooks,
 		ByokSetup:         byokSetup,
+		RealtimeProbe:     cfg.RealtimeProbe,
+		RealtimeOrigins:   cfg.CorsAllowedOrigins,
 		Bills:             billRepo,
 		Applications:      applications,
 		Customers:         customers,
