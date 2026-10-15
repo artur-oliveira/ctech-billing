@@ -126,6 +126,19 @@ func (r *WebhookRepository) openEndpoint(row *endpointRow) (*billing.WebhookEndp
 	return &e, nil
 }
 
+// SetEndpointEvents replaces the event types an endpoint takes ([] is every event).
+func (r *WebhookRepository) SetEndpointEvents(ctx context.Context, e *billing.WebhookEndpoint, events []billing.EventType, now time.Time) error {
+	if events == nil {
+		events = []billing.EventType{}
+	}
+	_, err := r.base.UpdateItem(ctx,
+		TenantPK(e.OrganizationID, e.Livemode),
+		new(EndpointSK(e.ID)),
+		map[string]any{"events": events, "updated_at": now.UTC().Format(time.RFC3339Nano)},
+	)
+	return err
+}
+
 // RecordEndpointHealth updates the consecutive-failure run, disabling the
 // endpoint once it is plainly gone.
 //
