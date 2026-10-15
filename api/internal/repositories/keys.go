@@ -361,6 +361,28 @@ func SchedulePK(livemode bool, job string, due brcal.Date) string {
 // than by a condition somebody has to remember to write.
 func EndpointSK(endpointID string) string { return skEndpoint + endpointID }
 func EventSK(eventID string) string       { return skEvent + eventID }
+
+// EntityEventPrefix and the two functions below are the lookups that answer
+// "which events concern this invoice/subscription" and "what did this endpoint
+// get": pointer rows written beside the event and the delivery, in the same
+// transactions, so they exist exactly when the event does.
+func EntityEventPrefix(object, objectID string) string {
+	return "ENTITY#" + object + "#" + objectID + "#"
+}
+func EntityEventSK(object, objectID, eventID string) string {
+	return EntityEventPrefix(object, objectID) + eventID
+}
+func EndpointEventPrefix(endpointID string) string { return "ENDPOINT#" + endpointID + "#" }
+func EndpointEventSK(endpointID, eventID string) string {
+	return EndpointEventPrefix(endpointID) + eventID
+}
+func AttemptPrefix(eventID, endpointID string) string {
+	return "ATTEMPT#" + eventID + "#" + endpointID + "#"
+}
+func AttemptSK(eventID, endpointID string, n int) string {
+	return fmt.Sprintf("%s%02d", AttemptPrefix(eventID, endpointID), n)
+}
+
 func DeliverySK(eventID, endpointID string) string {
 	return skEvent + eventID + "#" + skDelivery + endpointID
 }

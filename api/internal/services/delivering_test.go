@@ -20,7 +20,7 @@ func TestAMerchantEndpointNeverDialsAPrivateAddress(t *testing.T) {
 	t.Cleanup(srv.Close)
 	d := NewDeliverer(nil)
 	e := &billing.WebhookEndpoint{ID: "whe_1", URL: srv.URL, Secret: billing.NewWebhookSecret(), AddedBy: "usr_1"}
-	_, err := d.post(context.Background(), e, &billing.Event{ID: "evt_1", Type: billing.EventPing}, time.Now())
+	_, _, err := d.post(context.Background(), e, &billing.Event{ID: "evt_1", Type: billing.EventPing}, time.Now())
 	if !errors.Is(err, errPrivateAddress) {
 		t.Fatalf("err = %v, want errPrivateAddress", err)
 	}

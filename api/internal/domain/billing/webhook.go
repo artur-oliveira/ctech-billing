@@ -269,6 +269,22 @@ type Delivery struct {
 	DeliveredAt    string `dynamodbav:"delivered_at,omitempty" json:"delivered_at,omitempty"`
 }
 
+// DeliveryAttempt is one try at delivering an event to an endpoint, kept as it
+// happened: what the delivery row summarises (a count and the last answer) the
+// attempts spell out, so "what did they say the first time?" has an answer.
+type DeliveryAttempt struct {
+	EventID    string `dynamodbav:"event_id"             json:"-"`
+	EndpointID string `dynamodbav:"endpoint_id"          json:"-"`
+	Number     int    `dynamodbav:"number"               json:"number"`
+	At         string `dynamodbav:"at"                   json:"at"`
+	StatusCode int    `dynamodbav:"status_code,omitempty" json:"status_code,omitempty"`
+	DurationMs int64  `dynamodbav:"duration_ms"          json:"duration_ms"`
+	Error      string `dynamodbav:"error,omitempty"      json:"error,omitempty"`
+	// Response is the first bytes of what the endpoint answered, to tell a 401
+	// from a gateway's HTML page without a debugger. Never the request.
+	Response string `dynamodbav:"response,omitempty"   json:"response,omitempty"`
+}
+
 // Backoff is how long to wait before attempt n (1-based).
 //
 // Exponential from 30 seconds, capped at 12 hours. The cap is what keeps the

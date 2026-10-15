@@ -25,7 +25,9 @@ type handlers struct {
 	// documents renders and serves invoice PDFs, shared by both signed-in
 	// surfaces because they render the same document from the same invoice.
 	// Nil when the deployment has no bucket, and then neither route exists.
-	documents  *services.Documents
+	documents *services.Documents
+	// webhooks is the event and delivery store, read by the history routes.
+	webhooks   *repositories.WebhookRepository
 	customers  *repositories.CustomerRepository
 	subs       *repositories.SubscriptionRepository
 	invoices   *repositories.InvoiceRepository

@@ -422,6 +422,16 @@ func BuildInvoices(ctx context.Context, cfg *config.Config) (*repositories.Invoi
 	return repositories.NewInvoiceRepository(db, cfg), nil
 }
 
+// BuildWebhooks wires only the webhook repository, for the event history
+// backfill.
+func BuildWebhooks(ctx context.Context, cfg *config.Config) (*repositories.WebhookRepository, error) {
+	db, err := newDynamoDB(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+	return repositories.NewWebhookRepository(db, cfg), nil
+}
+
 // BuildOrganizations wires only the organizations repository, for the
 // account-organization lookup backfill.
 func BuildOrganizations(ctx context.Context, cfg *config.Config) (*repositories.OrganizationRepository, error) {

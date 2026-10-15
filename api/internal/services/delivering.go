@@ -223,7 +223,20 @@ func (d *Deliverer) Deliver(ctx context.Context, livemode bool, limit int, now t
 			continue
 		}
 
-		status, err := d.post(ctx, endpoint, &item.Event, now)
+		began := time.Now()
+		status, answer, err := d.post(ctx, endpoint, &item.Event, now)
+		attempt := billing.DeliveryAttempt{
+			Number: item.Delivery.Attempts + 1, StatusCode: status, DurationMs: time.Since(began).Milliseconds(), Response: answer,
+		}
+		if err != nil {
+			attempt.Error = err.Error()
+		}
+		// Kept before the delivery row moves on, and idempotent on the number, so a
+		// crash between the two repeats nothing. A failure to keep it is logged and
+		// never stops the delivery: the history is evidence, not the work.
+		if recErr := d.hooks.RecordAttempt(ctx, &item.Delivery, attempt, now); recErr != nil {
+			slog.Warn("webhook attempt not recorded", "event", item.Event.ID, "endpoint", endpoint.ID, "error", recErr)
+		}
 		switch {
 		case err == nil:
 			if err := d.hooks.MarkDelivered(ctx, &item.Delivery, status, now); err != nil {
@@ -255,15 +268,15 @@ func (d *Deliverer) Deliver(ctx context.Context, livemode bool, limit int, now t
 
 // post makes one signed attempt. It returns the status code alongside the error
 // so a failure can record what the endpoint actually said.
-func (d *Deliverer) post(ctx context.Context, e *billing.WebhookEndpoint, ev *billing.Event, now time.Time) (int, error) {
+func (d *Deliverer) post(ctx context.Context, e *billing.WebhookEndpoint, ev *billing.Event, now time.Time) (int, string, error) {
 	body, err := json.Marshal(ev.Payload())
 	if err != nil {
-		return 0, fmt.Errorf("rendering payload: %w", err)
+		return 0, "", fmt.Errorf("rendering payload: %w", err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, e.URL, bytes.NewReader(body))
 	if err != nil {
-		return 0, fmt.Errorf("building request: %w", err)
+		return 0, "", fmt.Errorf("building request: %w", err)
 	}
 	timestamp := strconv.FormatInt(now.Unix(), 10)
 	req.Header.Set("Content-Type", "application/json")
@@ -279,7 +292,7 @@ func (d *Deliverer) post(ctx context.Context, e *billing.WebhookEndpoint, ev *bi
 
 	resp, err := d.clientFor(e).Do(req)
 	if err != nil {
-		return 0, err
+		return 0, "", err
 	}
 	defer func() {
 		if closeErr := resp.Body.Close(); closeErr != nil {
@@ -288,14 +301,22 @@ func (d *Deliverer) post(ctx context.Context, e *billing.WebhookEndpoint, ev *bi
 	}()
 	// Drained so the connection can be reused. An undrained body is a new TCP
 	// handshake per delivery, which for a job that retries is a lot of them.
-	if _, err := io.Copy(io.Discard, io.LimitReader(resp.Body, 4096)); err != nil {
-		return resp.StatusCode, fmt.Errorf("draining endpoint response: %w", err)
+	// The first bytes of the answer are kept with the attempt (a 401 from the
+	// consumer and an HTML page from a gateway in front of it are different
+	// problems), the rest is drained.
+	answer, err := io.ReadAll(io.LimitReader(resp.Body, 4096))
+	if err != nil {
+		return resp.StatusCode, "", fmt.Errorf("draining endpoint response: %w", err)
+	}
+	snippet := string(answer)
+	if len(snippet) > 512 {
+		snippet = snippet[:512]
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		return resp.StatusCode, fmt.Errorf("endpoint answered %d", resp.StatusCode)
+		return resp.StatusCode, snippet, fmt.Errorf("endpoint answered %d", resp.StatusCode)
 	}
-	return resp.StatusCode, nil
+	return resp.StatusCode, snippet, nil
 }
 
 // Sign renders the delivery signature: HMAC-SHA256 over "timestamp.body".
