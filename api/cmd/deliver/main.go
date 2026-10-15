@@ -76,10 +76,11 @@ func run(ctx context.Context, d *services.Deliverer, livemode bool, limit int, n
 		mode = "live"
 	}
 
-	fan := d.FanOut(ctx, livemode, limit, now)
+	// The second pass is fed by the first: a delivery created a moment ago is not
+	// yet in the queue an index serves, and read from there it would wait a whole
+	// minute for the next run (services.Deliverer.FanOutAndDeliver).
+	fan, del := d.FanOutAndDeliver(ctx, livemode, limit, now)
 	report(ctx, "webhook fan-out", mode, fan)
-
-	del := d.Deliver(ctx, livemode, limit, now)
 	report(ctx, "webhook delivery", mode, del)
 
 	return append(append([]string{}, fan.Errors...), del.Errors...)

@@ -111,3 +111,43 @@ func TestEndpointRemembersHowItsLastDeliveryWent(t *testing.T) {
 		t.Fatalf("after a 404: ok=%v detail=%q", got.LastDeliveryOK, got.LastDeliveryDetail)
 	}
 }
+
+// The delivery pass must not depend on the queue index showing what the fan-out
+// pass wrote a moment earlier: FanOutAndDeliver attempts what it just fanned out,
+// once, and the backlog read does not try it again.
+func TestWhatTheFanOutJustCreatedIsDeliveredInTheSameRunExactlyOnce(t *testing.T) {
+	e := newAPI(t)
+	cons := newConsumer(t, http.StatusOK)
+	registerEndpoint(t, e.org, cons, "")
+	tok := e.oneOffToken(t)
+	cust := e.customerID(t, tok)
+	r := e.do(t, http.MethodPost, "/v1.0/invoices", tok, "k-same-run", `{"customer_id":"`+cust+`","description":"x","amount_cents":5000,"reference":"same-run-1"}`)
+	var made oneOffInvoice
+	r.decode(t, &made)
+
+	d := newDeliverer(t, cons)
+	const batch = 100
+	for {
+		fan, _ := d.FanOutAndDeliver(context.Background(), e.org.Livemode, batch, time.Now())
+		if fan.Examined < batch {
+			break
+		}
+	}
+	got := 0
+	for _, dl := range cons.deliveries() {
+		if dl.payload.Data.ID == made.ID {
+			got++
+		}
+	}
+	if got != 1 {
+		t.Fatalf("the invoice's event reached the endpoint %d times in one run", got)
+	}
+	page, err := repositories.NewWebhookRepository(testDB, testCfg).EventsOf(ctxT(t), e.org.ID, e.org.Livemode, "invoice", made.ID, nil, 5)
+	if err != nil || len(page.Items) != 1 {
+		t.Fatalf("%v %+v", err, page)
+	}
+	dels, _ := repositories.NewWebhookRepository(testDB, testCfg).ListDeliveries(ctxT(t), e.org.ID, e.org.Livemode, page.Items[0].ID)
+	if len(dels) != 1 || dels[0].Status != billing.DeliveryDelivered || dels[0].Attempts != 1 {
+		t.Fatalf("deliveries %+v", dels)
+	}
+}

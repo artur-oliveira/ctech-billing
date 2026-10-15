@@ -110,6 +110,9 @@ type PassResult struct {
 	Deferred int
 	Failed   int
 	Errors   []string
+	// fresh are the deliveries a fan-out pass created, to be attempted without
+	// going through the delivery queue.
+	fresh []repositories.DueDelivery
 }
 
 func (r *PassResult) fail(format string, args ...any) {
@@ -163,14 +166,43 @@ func (d *Deliverer) FanOut(ctx context.Context, livemode bool, limit int, now ti
 		// registered for this" is an answer, and leaving it pending would build a
 		// backlog that grows forever in a tenant with no webhooks at all —
 		// which is every tenant until somebody registers one.
-		n, err := d.hooks.FanOut(ctx, ev, wanted, now)
+		made, err := d.hooks.FanOutRows(ctx, ev, wanted, now)
 		if err != nil {
 			res.fail("fanning out %s: %v", ev.ID, err)
 			continue
 		}
-		res.Handled += n
+		res.Handled += len(made)
+		for _, m := range made {
+			res.fresh = append(res.fresh, repositories.DueDelivery{Delivery: m, Event: *ev})
+		}
 	}
 	return res
+}
+
+// FanOutAndDeliver is both passes with the second one fed by the first.
+//
+// The delivery queue is an index, and an index shows a row a moment after it is
+// written. Run back to back, the delivery pass would not see what the fan-out
+// pass had just created, and the delivery would wait for the next run of the job:
+// a minute, for an event somebody is watching a screen for. So the deliveries the
+// fan-out made are attempted directly, and the queue is then read for the backlog
+// (anything it also shows of those is skipped: they were just tried).
+func (d *Deliverer) FanOutAndDeliver(ctx context.Context, livemode bool, limit int, now time.Time) (fan, del PassResult) {
+	fan = d.FanOut(ctx, livemode, limit, now)
+	tried := make(map[string]bool, len(fan.fresh))
+	for i := range fan.fresh {
+		item := &fan.fresh[i]
+		tried[item.Delivery.EventID+"#"+item.Delivery.EndpointID] = true
+		del.Examined++
+		d.attempt(ctx, item, now, &del)
+	}
+	backlog := d.deliver(ctx, livemode, limit, now, tried)
+	del.Examined += backlog.Examined
+	del.Handled += backlog.Handled
+	del.Deferred += backlog.Deferred
+	del.Failed += backlog.Failed
+	del.Errors = append(del.Errors, backlog.Errors...)
+	return fan, del
 }
 
 // Deliver attempts the deliveries that are due.
@@ -179,6 +211,11 @@ func (d *Deliverer) FanOut(ctx context.Context, livemode bool, limit int, now ti
 // not due yet rather than filtering — everything after it is further in the
 // future by construction.
 func (d *Deliverer) Deliver(ctx context.Context, livemode bool, limit int, now time.Time) PassResult {
+	return d.deliver(ctx, livemode, limit, now, nil)
+}
+
+// deliver is Deliver, skipping the deliveries just attempted by this run.
+func (d *Deliverer) deliver(ctx context.Context, livemode bool, limit int, now time.Time, skip map[string]bool) PassResult {
 	var res PassResult
 
 	due, err := d.hooks.DueDeliveries(ctx, livemode, limit)
@@ -193,77 +230,86 @@ func (d *Deliverer) Deliver(ctx context.Context, livemode bool, limit int, now t
 			res.Deferred = len(due) - i
 			break
 		}
+		if skip[item.Delivery.EventID+"#"+item.Delivery.EndpointID] {
+			continue
+		}
 		res.Examined++
-
-		endpoint, err := d.hooks.GetEndpoint(ctx, item.Delivery.OrganizationID, item.Delivery.Livemode, item.Delivery.EndpointID)
-		if err != nil {
-			// The endpoint was deleted under a queued delivery. Not retryable, and
-			// not an error worth alarming on: there is nowhere to send it.
-			if markErr := d.hooks.MarkAttemptFailed(ctx, &item.Delivery, 0, "endpoint no longer exists", now); markErr != nil {
-				res.fail("closing orphaned delivery %s: %v", item.Delivery.EventID, markErr)
-			}
-			continue
-		}
-		// A disabled endpoint's rows must leave the head of the queue: the queue
-		// is shared by every tenant, and rows left in place would be the whole
-		// of every later batch. A provisioned endpoint (an operator may
-		// re-enable it) keeps what it missed, an hour further down; a console
-		// endpoint cannot be re-enabled (delete and add again), so its rows close.
-		if endpoint.Status != billing.EndpointActive {
-			var markErr error
-			if endpoint.Provisioned() {
-				markErr = d.hooks.DeferDelivery(ctx, &item.Delivery, now.Add(disabledRecheck), now)
-			} else {
-				markErr = d.hooks.CloseDelivery(ctx, &item.Delivery, "endpoint disabled", now)
-			}
-			if markErr != nil {
-				res.fail("moving delivery %s of a disabled endpoint: %v", item.Delivery.EventID, markErr)
-			}
-			res.Deferred++
-			continue
-		}
-
-		began := time.Now()
-		status, answer, err := d.post(ctx, endpoint, &item.Event, now)
-		attempt := billing.DeliveryAttempt{
-			Number: item.Delivery.Attempts + 1, StatusCode: status, DurationMs: time.Since(began).Milliseconds(), Response: answer,
-		}
-		if err != nil {
-			attempt.Error = err.Error()
-		}
-		// Kept before the delivery row moves on, and idempotent on the number, so a
-		// crash between the two repeats nothing. A failure to keep it is logged and
-		// never stops the delivery: the history is evidence, not the work.
-		if recErr := d.hooks.RecordAttempt(ctx, &item.Delivery, attempt, now); recErr != nil {
-			slog.Warn("webhook attempt not recorded", "event", item.Event.ID, "endpoint", endpoint.ID, "error", recErr)
-		}
-		switch {
-		case err == nil:
-			if err := d.hooks.MarkDelivered(ctx, &item.Delivery, status, now); err != nil {
-				res.fail("recording delivery of %s: %v", item.Event.ID, err)
-				continue
-			}
-			res.Handled++
-		default:
-			if err := d.hooks.MarkAttemptFailed(ctx, &item.Delivery, status, err.Error(), now); err != nil {
-				res.fail("recording failed attempt for %s: %v", item.Event.ID, err)
-				continue
-			}
-			slog.Warn("webhook delivery failed",
-				"event", item.Event.ID,
-				"endpoint", endpoint.ID,
-				"attempt", item.Delivery.Attempts+1,
-				"status", status,
-				"error", err)
-		}
-		// Endpoint health is updated on every attempt, success or not, so a run of
-		// failures eventually disables a destination that is plainly gone and a
-		// single success clears the count.
-		if err := d.hooks.RecordEndpointHealth(ctx, endpoint, err == nil, failureDetail(status, err), now); err != nil {
-			res.fail("recording endpoint health for %s: %v", endpoint.ID, err)
-		}
+		d.attempt(ctx, item, now, &res)
 	}
 	return res
+}
+
+// attempt makes one try at one delivery and records it: the attempt, the delivery's
+// new state and the endpoint's health.
+func (d *Deliverer) attempt(ctx context.Context, item *repositories.DueDelivery, now time.Time, res *PassResult) {
+	endpoint, err := d.hooks.GetEndpoint(ctx, item.Delivery.OrganizationID, item.Delivery.Livemode, item.Delivery.EndpointID)
+	if err != nil {
+		// The endpoint was deleted under a queued delivery. Not retryable, and
+		// not an error worth alarming on: there is nowhere to send it.
+		if markErr := d.hooks.MarkAttemptFailed(ctx, &item.Delivery, 0, "endpoint no longer exists", now); markErr != nil {
+			res.fail("closing orphaned delivery %s: %v", item.Delivery.EventID, markErr)
+		}
+		return
+	}
+	// A disabled endpoint's rows must leave the head of the queue: the queue
+	// is shared by every tenant, and rows left in place would be the whole
+	// of every later batch. A provisioned endpoint (an operator may
+	// re-enable it) keeps what it missed, an hour further down; a console
+	// endpoint cannot be re-enabled (delete and add again), so its rows close.
+	if endpoint.Status != billing.EndpointActive {
+		var markErr error
+		if endpoint.Provisioned() {
+			markErr = d.hooks.DeferDelivery(ctx, &item.Delivery, now.Add(disabledRecheck), now)
+		} else {
+			markErr = d.hooks.CloseDelivery(ctx, &item.Delivery, "endpoint disabled", now)
+		}
+		if markErr != nil {
+			res.fail("moving delivery %s of a disabled endpoint: %v", item.Delivery.EventID, markErr)
+		}
+		res.Deferred++
+		return
+	}
+
+	began := time.Now()
+	status, answer, err := d.post(ctx, endpoint, &item.Event, now)
+	attempt := billing.DeliveryAttempt{
+		Number: item.Delivery.Attempts + 1, StatusCode: status, DurationMs: time.Since(began).Milliseconds(), Response: answer,
+	}
+	if err != nil {
+		attempt.Error = err.Error()
+	}
+	// Kept before the delivery row moves on, and idempotent on the number, so a
+	// crash between the two repeats nothing. A failure to keep it is logged and
+	// never stops the delivery: the history is evidence, not the work.
+	if recErr := d.hooks.RecordAttempt(ctx, &item.Delivery, attempt, now); recErr != nil {
+		slog.Warn("webhook attempt not recorded", "event", item.Event.ID, "endpoint", endpoint.ID, "error", recErr)
+	}
+	switch {
+	case err == nil:
+		if err := d.hooks.MarkDelivered(ctx, &item.Delivery, status, now); err != nil {
+			res.fail("recording delivery of %s: %v", item.Event.ID, err)
+			return
+		}
+		res.Handled++
+	default:
+		if err := d.hooks.MarkAttemptFailed(ctx, &item.Delivery, status, err.Error(), now); err != nil {
+			res.fail("recording failed attempt for %s: %v", item.Event.ID, err)
+			return
+		}
+		slog.Warn("webhook delivery failed",
+			"event", item.Event.ID,
+			"endpoint", endpoint.ID,
+			"attempt", item.Delivery.Attempts+1,
+			"status", status,
+			"error", err)
+	}
+	// Endpoint health is updated on every attempt, success or not, so a run of
+	// failures eventually disables a destination that is plainly gone and a
+	// single success clears the count.
+	if err := d.hooks.RecordEndpointHealth(ctx, endpoint, err == nil, failureDetail(status, err), now); err != nil {
+		res.fail("recording endpoint health for %s: %v", endpoint.ID, err)
+	}
+
 }
 
 // post makes one signed attempt. It returns the status code alongside the error

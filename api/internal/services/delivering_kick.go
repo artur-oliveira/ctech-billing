@@ -8,8 +8,7 @@ import (
 
 // passer is the two passes of the outbound webhook pipeline.
 type passer interface {
-	FanOut(ctx context.Context, livemode bool, limit int, now time.Time) PassResult
-	Deliver(ctx context.Context, livemode bool, limit int, now time.Time) PassResult
+	FanOutAndDeliver(ctx context.Context, livemode bool, limit int, now time.Time) (fan, del PassResult)
 }
 
 const (
@@ -68,8 +67,8 @@ func (k *DeliveryKick) loop(i int, livemode bool) {
 	for {
 		ctx, cancel := context.WithTimeout(context.Background(), kickTimeout)
 		for attempt := 0; ; attempt++ {
-			found := k.passes.FanOut(ctx, livemode, kickBatch, k.clock()).Examined > 0
-			k.passes.Deliver(ctx, livemode, kickBatch, k.clock())
+			fan, _ := k.passes.FanOutAndDeliver(ctx, livemode, kickBatch, k.clock())
+			found := fan.Examined > 0
 			if found || attempt >= len(k.retry) {
 				break
 			}
