@@ -126,6 +126,7 @@ type Auth struct {
 	Space                 string                 `protobuf:"bytes,3,opt,name=space,proto3" json:"space,omitempty"`
 	ResumeCursor          string                 `protobuf:"bytes,4,opt,name=resume_cursor,json=resumeCursor,proto3" json:"resume_cursor,omitempty"`
 	ClientProtocolVersion uint32                 `protobuf:"varint,5,opt,name=client_protocol_version,json=clientProtocolVersion,proto3" json:"client_protocol_version,omitempty"`
+	Mode                  string                 `protobuf:"bytes,6,opt,name=mode,proto3" json:"mode,omitempty"`
 	unknownFields         protoimpl.UnknownFields
 	sizeCache             protoimpl.SizeCache
 }
@@ -193,6 +194,13 @@ func (x *Auth) GetClientProtocolVersion() uint32 {
 		return x.ClientProtocolVersion
 	}
 	return 0
+}
+
+func (x *Auth) GetMode() string {
+	if x != nil {
+		return x.Mode
+	}
+	return ""
 }
 
 type Reauth struct {
@@ -842,13 +850,14 @@ const file_realtime_proto_rawDesc = "" +
 	"\x04auth\x18\x01 \x01(\v2\x1f.ctech.billing.realtime.v1.AuthH\x00R\x04auth\x12;\n" +
 	"\x06reauth\x18\x02 \x01(\v2!.ctech.billing.realtime.v1.ReauthH\x00R\x06reauth\x125\n" +
 	"\x04ping\x18\x03 \x01(\v2\x1f.ctech.billing.realtime.v1.PingH\x00R\x04pingB\x06\n" +
-	"\x04body\"\xaa\x01\n" +
+	"\x04body\"\xbe\x01\n" +
 	"\x04Auth\x12\x14\n" +
 	"\x05token\x18\x01 \x01(\tR\x05token\x12\x19\n" +
 	"\bpay_link\x18\x02 \x01(\tR\apayLink\x12\x14\n" +
 	"\x05space\x18\x03 \x01(\tR\x05space\x12#\n" +
 	"\rresume_cursor\x18\x04 \x01(\tR\fresumeCursor\x126\n" +
-	"\x17client_protocol_version\x18\x05 \x01(\rR\x15clientProtocolVersion\"\x1e\n" +
+	"\x17client_protocol_version\x18\x05 \x01(\rR\x15clientProtocolVersion\x12\x12\n" +
+	"\x04mode\x18\x06 \x01(\tR\x04mode\"\x1e\n" +
 	"\x06Reauth\x12\x14\n" +
 	"\x05token\x18\x01 \x01(\tR\x05token\",\n" +
 	"\x04Ping\x12$\n" +
