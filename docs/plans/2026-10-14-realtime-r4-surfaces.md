@@ -120,3 +120,8 @@ Repos: `P_BILL/ui` (mount points: `src/app/checkout/layout.tsx`, `src/app/(conso
 - Mounted in the console layout around the children of the scope provider, keyed by the selected organization and the mode. `useSubject` (`lib/auth/subject.ts`) reads the access token's `sub` unverified, only to key the cursor; the API authorizes.
 - No console screen sets a `refetchInterval`, so there was nothing to lengthen: the screens already refetch on focus and navigation, and the socket now invalidates them.
 - Tests are at the layout level (session mocked): first frame carries the bearer, `org:` selector and mode; an invoice change invalidates only this organization's keys; switching mode closes the socket and reconnects with the new mode and no cursor. The per-screen in-place flip is the catalogue and binding tests of R3, not repeated here.
+
+### Task 3: Portal (feat/realtime-r4-portal)
+
+- Mounted around the portal shell; the principal is the token's subject while signed in with a billing account, null otherwise (no socket). The first frame carries the bearer and no space, so the socket hears the person's own `user:` scope only. Bills of an organization the person administers (the space switch) do not arrive over it, because those customers have no user scope (R2 Status); they keep refetching on focus and navigation.
+- The portal's `PixPanel` still streams over SSE (`usePaymentStream`); that is removed in R5 after the soak.

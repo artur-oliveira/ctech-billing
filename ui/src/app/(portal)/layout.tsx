@@ -16,8 +16,10 @@ import {TermsGate} from "@/components/portal/TermsGate";
 import {isNoBillingAccount} from "@/lib/api/client";
 import {getSession, portalKeys} from "@/lib/api/portal";
 import {useAuth} from "@/lib/auth/AuthContext";
+import {useSubject} from "@/lib/auth/subject";
 import {PORTAL_NAV} from "@/lib/portal/nav";
 import {usePortalSpace} from "@/lib/portal/space";
+import {RealtimeProvider} from "@/lib/realtime/RealtimeProvider";
 
 /**
  * The consumer shell, and the gate in front of it.
@@ -43,6 +45,7 @@ export default function PortalLayout({children}: LayoutProps<"/">) {
   const {t} = useTranslation();
   const router = useRouter();
   const {authenticated, loading} = useAuth();
+  const subject = useSubject();
   // Read so the shell re-renders on a change of selection: the session key
   // below carries the space (portalKeys), and so must this read of it.
   usePortalSpace();
@@ -69,6 +72,9 @@ export default function PortalLayout({children}: LayoutProps<"/">) {
   const active = (href: string) => href === "/dashboard" ? pathname === href : pathname.startsWith(href);
 
   return (
+    // The user scope only: the first frame carries the bearer and no space, so
+    // the socket hears the signed-in person's own invoices and subscriptions.
+    <RealtimeProvider surface={{kind: "portal"}} principal={authenticated && !noAccount ? subject : null}>
     <BillingShell
       view="portal"
       home="/dashboard"
@@ -99,6 +105,7 @@ export default function PortalLayout({children}: LayoutProps<"/">) {
       </PortalSpaceScope>
       {!noAccount && <BottomNavSpacer/>}
     </BillingShell>
+    </RealtimeProvider>
   );
 }
 
