@@ -15,6 +15,7 @@
     "@aoctech/auth-client": "^1.4.0",
     "@aoctech/ui": "^0.8.1",
     "@base-ui/react": "^1",
+    "@bufbuild/protobuf": "^2.16.0",
     "@tanstack/react-query": "^5",
     "axios": "^1",
     "class-variance-authority": "^0.7.1",
@@ -42,6 +43,7 @@
     "eslint-config-next": "^16",
     "jsdom": "^30",
     "tailwindcss": "^4",
+    "ts-proto": "^2.15.3",
     "typescript": "^6",
     "vitest": "^5"
   }

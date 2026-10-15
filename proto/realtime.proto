@@ -1,0 +1,42 @@
+syntax = "proto3";
+package ctech.billing.realtime.v1;
+
+option go_package = "gopkg.aoctech.app/billing/api/internal/realtime/wire;wire";
+
+message ClientFrame {
+  oneof body {
+    Auth   auth   = 1;
+    Reauth reauth = 2;
+    Ping   ping   = 3;
+  }
+}
+message Auth   { string token = 1; string pay_link = 2; string space = 3; string resume_cursor = 4; uint32 client_protocol_version = 5; }
+message Reauth { string token = 1; }
+message Ping   { uint64 client_time_ms = 1; }
+
+message ServerFrame {
+  oneof body {
+    Ready  ready  = 1;
+    Change change = 2;
+    Gap    gap    = 3;
+    Pong   pong   = 4;
+    Tick   tick   = 5;
+    Bye    bye    = 6;
+    Hint   hint   = 7;
+  }
+}
+message Ready  { uint32 protocol_version = 1; uint64 server_time_ms = 2; repeated string scope_kinds = 3; }
+message Change {
+  string id          = 1;  // ULID: the cursor
+  string type        = 2;  // "invoice.paid": the webhook names, plus the realtime-only ones
+  string entity      = 3;  // "invoice"
+  string entity_id   = 4;
+  string status      = 5;  // the entity's new status, when it has one
+  uint64 revision    = 6;  // strictly increasing per entity: an older one is ignored
+  uint64 occurred_at_ms = 7;
+}
+message Gap  { string reason = 1; }              // "cursor_too_old" | "slow_consumer" | "replay_limit"
+message Pong { uint64 client_time_ms = 1; uint64 server_time_ms = 2; }
+message Tick { string head = 1; }                // newest change id the server knows for this connection's scopes
+message Bye  { string reason = 1; uint32 retry_after_ms = 2; }  // "token_expired" | "revoked" | "draining" | "limit"
+message Hint { uint32 poll_interval_ms = 1; }    // the server asks the client to also poll (degraded fan-out)

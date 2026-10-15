@@ -232,3 +232,15 @@ func TestChangeCarriesIdsAndStateOnly(t *testing.T) {
 | § 7.5 generated files committed | 2, 4 |
 | § 7.7 protocol.md and the PR checklist | 1, 6 |
 | § 7.6 deploy order and `protocol_version` | documented in 1 and 6 (enforced by use in R2/R3) |
+
+## Status
+
+Done on branch `feat/realtime-r1-contract`. Where it differs from the plan above:
+
+- `buf.yaml` also excepts `PACKAGE_DIRECTORY_MATCH`: the file is `proto/realtime.proto`, flat, as in Poker, and `STANDARD` otherwise demands `proto/ctech/billing/realtime/v1/`.
+- `api/go.mod` gains `google.golang.org/protobuf` v1.36.12 (the generated code needs it at runtime).
+- The workflow installs `buf` with `bufbuild/buf-action` (`setup_only`) and runs `buf lint` and `buf breaking` as plain steps, so the first change that adds `proto/` (nothing on the base branch to compare with) skips the comparison with a notice instead of failing.
+- The unknown-field fixture carries field 99 inside `Change` (what a newer server would send), not after the whole frame.
+- Task 4's three failure proofs were run locally rather than on throwaway branches: renumbering `Auth.pay_link` fails `buf breaking`; renaming `Tick.head` without regenerating leaves a diff in the generated files; flipping a byte of `tick.bin` fails the golden test. Task 5's guard fails when `Change.customer_name` is added.
+- Local generation needs the pinned `protoc` 36.1 and `protoc-gen-go` 1.36.12 ahead of any other in `PATH` (`docs/realtime/protocol.md`).
+
