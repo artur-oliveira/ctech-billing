@@ -109,3 +109,87 @@ func last4(s string) string {
 	}
 	return s[len(s)-4:]
 }
+
+// tenantPayoutWebhook shows, registers or removes the bank's notice about the Pix
+// payments tenant zero sends (Inter's Banking webhook pix-pagamento), pointing it
+// at billing's own hook for them. With it a withdrawal is settled when the bank
+// says so, instead of at the next follow-up.
+//
+//	byok -tenant-payout-webhook=show|register|remove -mode=live -operator=NAME [-replace]
+func tenantPayoutWebhook(ctx context.Context, cfg *config.Config, mode, operator, action string, replace bool) int {
+	if err := operatorArgs(mode, operator, cfg.PortalOrganizationID); err != nil || (action != "show" && action != "register" && action != "remove") {
+		if err == nil {
+			err = errors.New("the action is show, register or remove")
+		}
+		fmt.Fprintln(os.Stderr, "usage: byok -tenant-payout-webhook=show|register|remove -mode=live -operator=<name> [-replace]:", err)
+		return 2
+	}
+	op, err := app.BuildByokOperator(ctx, cfg)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "startup:", err)
+		return 1
+	}
+	tenant, err := op.Orgs.Get(ctx, cfg.PortalOrganizationID, true)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "reading tenant zero:", err)
+		return 1
+	}
+	sp, err := space.ForJob(tenant.AccountOrganizationID, true)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	conn, err := op.Conns.Connected(ctx, sp, provider)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "tenant zero's bank connection:", err)
+		return 1
+	}
+	who := "operator:" + operator
+	switch action {
+	case "show":
+		url, ours, err := op.Setup.PayoutWebhook(ctx, conn)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "reading it:", err)
+			return 1
+		}
+		if url == "" {
+			fmt.Println("no notice about outgoing Pix payments is registered")
+		} else {
+			fmt.Printf("registered, ours=%v, host=%s\n", ours, hostOnly(url))
+		}
+	case "register":
+		var conflict *services.ErrWebhookConflict
+		err := op.Setup.RegisterPayoutWebhook(ctx, conn, replace, who, time.Now())
+		switch {
+		case errors.As(err, &conflict):
+			fmt.Fprintf(os.Stderr, "another notice is registered (%s); -replace to take it over\n", conflict.ExistingHost)
+			return 1
+		case err != nil:
+			fmt.Fprintln(os.Stderr, "not registered:", err)
+			return 1
+		}
+		fmt.Println("registered: the bank now tells billing when a Pix payment this account sent changes")
+	case "remove":
+		removed, err := op.Setup.RemovePayoutWebhook(ctx, conn, who)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "not removed:", err)
+			return 1
+		}
+		fmt.Printf("removed=%v\n", removed)
+	}
+	return 0
+}
+
+// hostOnly keeps the host of a URL: the rest of ours carries a secret.
+func hostOnly(u string) string {
+	const prefix = "https://"
+	if len(u) > len(prefix) && u[:len(prefix)] == prefix {
+		u = u[len(prefix):]
+	}
+	for i := 0; i < len(u); i++ {
+		if u[i] == '/' {
+			return u[:i]
+		}
+	}
+	return u
+}

@@ -4,6 +4,7 @@ package integration
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -209,5 +210,95 @@ func TestAProcessingPayoutIsFollowedSoonAndItsSettlementIsAnnounced(t *testing.T
 	case <-kicked:
 		t.Fatal("kicked twice for one settlement")
 	case <-time.After(200 * time.Millisecond):
+	}
+}
+
+// The bank's notice about outgoing Pix payments settles the payouts still
+// processing, in the background: the answer to the bank is immediate, the payout
+// settles on the bank's own word and its event is kicked out.
+func TestAPayoutNoticeSettlesTheProcessingPayoutsAndKicksTheDelivery(t *testing.T) {
+	env := newCollectEnv(t, collectLive)
+	env.issueHook(t)
+	kicked := make(chan bool, 4)
+	svc := env.payoutEnv(t).WithFollowSteps() // no follow-up of its own: only the notice acts
+	env.webhooks.WithPayouts(svc).WithDeliveryKick(func(live bool) { kicked <- live })
+
+	p, _, err := svc.Create(ctxT(t), env.tenant.ID, true, services.PayoutInput{Reference: "wd-notice", CPF: validCPF, AmountCents: 900, OwnerKey: "wallet"}, now())
+	if err != nil || p.Final() {
+		t.Fatalf("%+v %v", p, err)
+	}
+	env.fake.SettlePayout(env.payout(t, p.ID).Ref, byok.PayoutDone, "E-notice", "")
+
+	status := env.webhooks.Notify(ctxT(t), services.NotifyRequest{Provider: "inter", HookID: env.hookID, Secret: env.secret,
+		Product: string(byok.ProductPixPayment), PaymentIDs: []string{"E-notice"}}, now())
+	if status != 200 {
+		t.Fatalf("the notice is acknowledged at once: %d", status)
+	}
+	select {
+	case <-kicked:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the payout was not settled by the notice")
+	}
+	if got := env.payout(t, p.ID); got.Status != billing.PayoutDone || got.PaymentID != "E-notice" {
+		t.Fatalf("%+v", got)
+	}
+	// A notice with a wrong secret settles nothing and is a 404 like any other.
+	if st := env.webhooks.Notify(ctxT(t), services.NotifyRequest{Provider: "inter", HookID: env.hookID, Secret: "wrong", Product: string(byok.ProductPixPayment)}, now()); st != 404 {
+		t.Fatalf("a wrong secret: %d", st)
+	}
+}
+
+func TestThePayoutWebhookHasItsOwnHookAndTheOtherOneIsLeftAlone(t *testing.T) {
+	env := newCollectEnv(t, collectLive)
+	env.issueHook(t)
+	env.payoutEnv(t)
+	ctx := ctxT(t)
+	setup := services.NewByokCollectionSetup(env.conns, env.repo, env.orgs, env.payments, env.byok, env.webhooks,
+		"billing-byok-hooks-test.aoctech.app", env.tenant.ID)
+	conn, err := env.conns.Connected(ctx, env.sp, "inter")
+	if err != nil {
+		t.Fatal(err)
+	}
+	env.fake.SetWebhookURL(byok.ProductPix, "https://billing-byok-hooks-test.aoctech.app/w/inter/"+env.hookID+"/s3cret/pix")
+
+	if url, ours, err := setup.PayoutWebhook(ctx, conn); err != nil || url != "" || ours {
+		t.Fatalf("nothing yet: %q %v %v", url, ours, err)
+	}
+	if err := setup.RegisterPayoutWebhook(ctx, conn, false, "operator:test", now()); err != nil {
+		t.Fatal(err)
+	}
+	url := env.fake.WebhookURL(byok.ProductPixPayment)
+	if !strings.HasPrefix(url, "https://billing-byok-hooks-test.aoctech.app/w/inter/") || !strings.HasSuffix(url, "/pix-pagamento") {
+		t.Fatalf("registered url %q", url)
+	}
+	parts := strings.Split(strings.TrimPrefix(url, "https://billing-byok-hooks-test.aoctech.app/w/inter/"), "/")
+	hook, err := env.repo.GetHook(ctx, parts[0])
+	if err != nil || !services.HookMatches(hook, parts[1], now()) || parts[0] == env.hookID {
+		t.Fatalf("its own hook, with the secret in the url: %+v %v (the pix one is %s)", hook, err, env.hookID)
+	}
+	if _, ours, _ := setup.PayoutWebhook(ctx, conn); !ours {
+		t.Fatal("what is registered is ours")
+	}
+
+	// Someone else's notice there is a conflict unless taken over on purpose.
+	env.fake.SetWebhookURL(byok.ProductPixPayment, "https://other.example/hook")
+	var conflict *services.ErrWebhookConflict
+	if err := setup.RegisterPayoutWebhook(ctx, conn, false, "operator:test", now()); !errors.As(err, &conflict) || conflict.ExistingHost != "other.example" {
+		t.Fatalf("want a conflict: %v", err)
+	}
+	if err := setup.RegisterPayoutWebhook(ctx, conn, true, "operator:test", now()); err != nil {
+		t.Fatal(err)
+	}
+
+	// Removing ours removes only ours.
+	if removed, err := setup.RemovePayoutWebhook(ctx, conn, "operator:test"); err != nil || !removed {
+		t.Fatalf("%v %v", removed, err)
+	}
+	if env.fake.WebhookURL(byok.ProductPixPayment) != "" || env.fake.WebhookURL(byok.ProductPix) == "" {
+		t.Fatal("the payout notice is gone and the Pix one is not touched")
+	}
+	env.fake.SetWebhookURL(byok.ProductPixPayment, "https://other.example/hook")
+	if removed, _ := setup.RemovePayoutWebhook(ctx, conn, "operator:test"); removed || env.fake.WebhookURL(byok.ProductPixPayment) == "" {
+		t.Fatal("someone else's notice is never removed")
 	}
 }

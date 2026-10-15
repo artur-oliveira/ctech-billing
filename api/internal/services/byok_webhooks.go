@@ -13,6 +13,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+
 	"gopkg.aoctech.app/api-commons/byok"
 	"gopkg.aoctech.app/api-commons/cache"
 
@@ -97,6 +99,15 @@ type ByokWebhooks struct {
 	// kick, when set, delivers the events a settlement just queued without waiting
 	// for the delivery job's next tick.
 	kick func(livemode bool)
+	// payouts, when set, is asked about the payouts still processing when the bank
+	// says something happened to a payment this account sent.
+	payouts *Payouts
+}
+
+// WithPayouts lets a notice about outgoing Pix payments settle the payouts it concerns.
+func (w *ByokWebhooks) WithPayouts(p *Payouts) *ByokWebhooks {
+	w.payouts = p
+	return w
 }
 
 // WithDeliveryKick makes a settled payment deliver its events at once (see
@@ -219,6 +230,14 @@ func (w *ByokWebhooks) Notify(ctx context.Context, in NotifyRequest, now time.Ti
 			return http.StatusOK
 		}
 	}
+	if in.Product == string(byok.ProductPixPayment) {
+		// Something happened to a Pix payment this account sent. The body names no
+		// charge and settles nothing: the processing payouts of this tenant are
+		// asked about, in the background, and each settles on the bank's own word.
+		w.followPayouts(h, now)
+		slog.InfoContext(ctx, "byok payout notice", "hook_id", h.ID, "payment_ids", len(in.PaymentIDs))
+		return http.StatusOK
+	}
 	status, ignored := http.StatusOK, 0
 	for _, ref := range in.ChargeRefs {
 		ptr, err := w.payments.ChargeRef(ctx, h.Provider, h.Livemode, ref)
@@ -293,4 +312,49 @@ func (w *ByokWebhooks) recordWebhookPayer(ctx context.Context, ptr repositories.
 		return false
 	}
 	return true
+}
+
+// followPayouts resolves the processing payouts of the hook's tenant. In the
+// background: the bank wants an answer to its notice quickly, and a payout that
+// is not settled yet is simply asked about again by the next notice, the
+// follow-up, the sweep or the wallet's read.
+func (w *ByokWebhooks) followPayouts(h *repositories.Hook, now time.Time) {
+	if w.payouts == nil || !h.Livemode {
+		return
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		tenant, err := w.collector.orgs.GetByAccountOrganization(ctx, h.AccountOrganizationID, h.Livemode)
+		if err != nil {
+			slog.WarnContext(ctx, "byok payout notice: tenant", "hook_id", h.ID, "error", err)
+			return
+		}
+		settled := false
+		var start map[string]types.AttributeValue
+		for {
+			page, err := w.payouts.payments.ProcessingPayouts(ctx, h.Livemode, start, 100)
+			if err != nil {
+				slog.WarnContext(ctx, "byok payout notice: payouts", "hook_id", h.ID, "error", err)
+				break
+			}
+			for i := range page.Items {
+				p := page.Items[i]
+				if p.OrganizationID != tenant.ID {
+					continue
+				}
+				if err := w.payouts.Resolve(ctx, &p, now); err != nil {
+					slog.WarnContext(ctx, "byok payout notice: resolving", "payout_id", p.ID, "error", err)
+				}
+				settled = settled || p.Final()
+			}
+			if len(page.LastEvaluatedKey) == 0 {
+				break
+			}
+			start = page.LastEvaluatedKey
+		}
+		if settled && w.kick != nil {
+			w.kick(h.Livemode)
+		}
+	}()
 }
