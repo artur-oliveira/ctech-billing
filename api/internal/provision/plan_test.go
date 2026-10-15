@@ -384,9 +384,20 @@ func TestTheDFeCatalogueIsOneProductWithTheSameQuotasAndPrices(t *testing.T) {
 			t.Errorf("%s has no plan_name", newID)
 		}
 	}
-	internal := prices["price_dfe_unlimited_internal_monthly"]
-	if internal.Archived || internal.ProductID != "prod_dfe_unlimited_internal" {
-		t.Fatalf("the internal price changed: %+v", internal)
+	// The internal plan moved into prod_dfe too: its old price is archived (the
+	// subscriptions on it are moved by `byok -tenant-move-subscription`) and its
+	// successor carries the same quotas and stays out of public sale.
+	oldInternal, newInternal := prices["price_dfe_unlimited_internal_monthly"], prices["price_dfe_v2_unlimited_internal"]
+	if !oldInternal.Archived || newInternal.Archived || newInternal.ProductID != "prod_dfe" || newInternal.UnitAmount != 0 {
+		t.Fatalf("internal price move: %+v -> %+v", oldInternal, newInternal)
+	}
+	for k, v := range oldInternal.Metadata {
+		if newInternal.Metadata[k] != v {
+			t.Errorf("internal successor: metadata %q = %q, was %q", k, newInternal.Metadata[k], v)
+		}
+	}
+	if newInternal.Metadata["visibility"] != "internal" || newInternal.Metadata["plan"] != "unlimited" {
+		t.Errorf("the internal successor must stay internal and unlimited: %v", newInternal.Metadata)
 	}
 	active := map[string]bool{}
 	for _, p := range plan.Products {
@@ -397,7 +408,7 @@ func TestTheDFeCatalogueIsOneProductWithTheSameQuotasAndPrices(t *testing.T) {
 			t.Errorf("%s should be retired", id)
 		}
 	}
-	if !active["prod_dfe"] || !active["prod_dfe_unlimited_internal"] {
-		t.Fatal("prod_dfe and the internal product stay active")
+	if !active["prod_dfe"] || active["prod_dfe_unlimited_internal"] {
+		t.Fatal("prod_dfe stays active and the old internal product is retired")
 	}
 }

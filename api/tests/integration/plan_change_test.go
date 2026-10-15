@@ -241,3 +241,43 @@ func TestChangingAnIncompleteSubscriptionIsRefused(t *testing.T) {
 		t.Fatal("a subscription that never activated must not be changeable")
 	}
 }
+
+// The internal plan moves to another price that costs the same (R$ 0): the
+// subscription must end up on the new price, stay as it was, and not produce an
+// invoice. `byok -tenant-move-subscription` relies on exactly this.
+func TestMovingBetweenPricesThatCostTheSameBillsNothing(t *testing.T) {
+	ctx := ctxT(t)
+	f := newCatalog(t, "dfe")
+
+	from := f.price(t, f.product.ID, billing.PriceFixed, billing.BillAdvance, 0, billing.IntervalMonth)
+	to := f.price(t, f.product.ID, billing.PriceFixed, billing.BillAdvance, 0, billing.IntervalMonth)
+	sub, _, err := f.subscribe(ctx, from)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := sub.Status
+
+	inv, err := f.subber.ChangePlan(ctx, sub, services.ChangeInput{
+		Items: []services.SubscribeItem{{PriceID: to.ID, Quantity: 1}},
+		Cause: billing.CauseManual,
+		Actor: "operator:test",
+	}, changeAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inv != nil {
+		t.Fatalf("a move between two R$ 0 prices issued an invoice: %+v", inv)
+	}
+
+	fresh, err := f.subs.Get(ctx, f.org.ID, true, sub.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fresh.Status != before {
+		t.Fatalf("status = %s, was %s", fresh.Status, before)
+	}
+	items, err := f.subs.ListItems(ctx, f.org.ID, true, sub.ID)
+	if err != nil || len(items) != 1 || items[0].PriceID != to.ID || items[0].Quantity != 1 {
+		t.Fatalf("items = %+v (%v), want the one item on the new price", items, err)
+	}
+}
