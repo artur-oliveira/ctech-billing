@@ -404,20 +404,16 @@ func TestAPendingFirstInvoiceIsA409WithItsLink(t *testing.T) {
 	}
 }
 
-// With the wallet configured, choosing a paid plan answers the invoice's
+// Choosing a paid plan answers the invoice's
 // checkout link — what the screen redirects to.
 func TestTheChoiceCarriesTheCheckoutURL(t *testing.T) {
 	tenant := seedCTechCatalogue(t)
 	acct := &fakeAccount{members: map[string][2]string{}, names: map[string]string{}, counts: map[string][2]int{}}
 	srv := acct.serve(t)
-	fake := newFakeWallet(t)
 	e := newAPIWith(t, func(c *config.Config) {
 		c.PortalOrganizationID = tenant
 		c.AccountBaseURL, c.AccountTokenURL = srv.URL, srv.URL+"/token"
 		c.AccountClientID, c.AccountClientSecret = "billing-test", "secret"
-		c.WalletBaseURL, c.WalletTokenURL = fake.server.URL, fake.server.URL+"/token"
-		c.WalletClientID, c.WalletClientSecret = "billing", "secret"
-		c.WalletWebhookSecret = testWalletSecret
 		c.CheckoutLinkSecret = testLinkSecret
 		c.CheckoutBaseURL = "https://pay.test/c"
 	})

@@ -3,34 +3,15 @@
 package integration
 
 import (
-	"context"
 	"testing"
 	"time"
 
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
 	"gopkg.aoctech.app/billing/api/internal/services"
-	"gopkg.aoctech.app/billing/api/internal/wallet"
 )
 
-// failingWallet fails the test on any call: the BYOK rail never reaches it.
-type failingWallet struct{ t *testing.T }
-
-func (f *failingWallet) OpenCharge(context.Context, wallet.OpenChargeInput) (*wallet.Charge, error) {
-	f.t.Fatal("the BYOK rail opened a wallet charge")
-	return nil, nil
-}
-func (f *failingWallet) GetCharge(context.Context, string) (*wallet.Charge, error) {
-	f.t.Fatal("the BYOK rail read a wallet charge")
-	return nil, nil
-}
-func (f *failingWallet) VerifySignature([]byte, string) bool {
-	f.t.Fatal("the BYOK rail verified a wallet signature")
-	return false
-}
-
-func TestABYOKInvoiceNeverTouchesTheWallet(t *testing.T) {
+func TestABYOKInvoiceIsCollectedAndSettled(t *testing.T) {
 	env := newCollectEnv(t, collectTest)
-	env.useWallet(&failingWallet{t: t})
 	inv := env.finalizeInvoice(t, 1000)
 	env.checkout(t, inv)
 	ref := env.chargeRef(t, inv)

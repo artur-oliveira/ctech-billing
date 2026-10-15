@@ -12,7 +12,7 @@ re-litigate settled questions. Every ADR here is already decided — the analysi
 | [0001](0001-product-scope-a-and-b.md) | Product scope: CTech billing its own customers **and** third-party merchants | D1, D4, D6 |
 | [0002](0002-datastore-dynamodb.md) | Datastore: DynamoDB, one table per entity, period GSI for analytics | D7 |
 | [0003](0003-tenant-and-livemode-partition-key.md) | Partition key `{organization_id}#{livemode}` | D7, §12.4 |
-| [0004](0004-pix-on-invoice-via-wallet.md) | Collection rail: PIX on the invoice, through wallet | D2, D11 |
+| [0004](0004-pix-on-invoice-via-wallet.md) | Collection rail: PIX on the invoice, through wallet — **superseded 2026-10-14** by the wallet ledger spec | D2, D11 |
 | [0005](0005-payout-gate.md) | External merchants built but gated by `payout_status` | D3, D9 |
 | [0006](0006-due-date-roll-forward.md) | Weekend/holiday due dates roll **forward** | D5 |
 | [0007](0007-minimal-organization.md) | Minimal `Organization`, no company registry, no CNPJ | superseded in part by 0021 (2026-08-29) |

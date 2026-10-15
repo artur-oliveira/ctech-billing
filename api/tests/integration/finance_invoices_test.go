@@ -595,20 +595,11 @@ func TestACreditThatCouldNotBeWrittenIsReplayed(t *testing.T) {
 	}
 }
 
-// payByWebhook opens the invoice, pays it in the fake wallet and delivers the
-// wallet's webhook, as production does.
-func (f *financePayEnv) payByWebhook(t *testing.T) (*billing.Invoice, string) {
+// payByWebhook opens the invoice and settles it, as a confirmed payment does.
+func (f *financePayEnv) payByWebhook(t *testing.T) (*billing.Invoice, *billing.PaymentAttempt) {
 	t.Helper()
 	inv := f.openInvoice(t)
-	charge := f.openCharge(t, inv)
-	f.wallet.settle(charge, int64(inv.Total))
-	if res := f.notify(t, charge); res.status != http.StatusOK {
-		t.Fatalf("webhook: %d", res.status)
-	}
-	if got := f.invoiceStatus(t, inv.ID); got != billing.InvoicePaid {
-		t.Fatalf("invoice is %s, want PAID", got)
-	}
-	return inv, charge
+	return inv, f.payInFull(t, inv)
 }
 
 func (f *financePayEnv) bal(t *testing.T, sp space.ResolvedSpace, account string) billing.Cents {
@@ -645,12 +636,11 @@ func TestAPaidInvoiceIsRevenueForTheIssuerAndAnExpenseForThePayer(t *testing.T) 
 // the same charge — one bill per space, money counted once.
 func TestAReplayedSettlementRecordsTheInvoiceOnce(t *testing.T) {
 	f := newFinancePayEnv(t, true)
-	inv, charge := f.payByWebhook(t)
-	if res := f.notify(t, charge); res.status != http.StatusOK {
-		t.Fatalf("second webhook: %d", res.status)
-	}
-	if err := f.collector.Confirm(ctxT(t), true, charge, billing.CauseReconciliation, "req_reconcile", now()); err != nil {
-		t.Fatal(err)
+	inv, attempt := f.payByWebhook(t)
+	for range 2 {
+		if _, err := f.collector.SettleAttempt(ctxT(t), attempt, billing.CauseByokConfirmed, "test", "req_replay", now()); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if got := f.bal(t, f.issuer, "bank"); got != inv.Total {
 		t.Errorf("issuer bank = %d, want %d once", got, inv.Total)
@@ -690,9 +680,8 @@ func TestAFailingFinancePostingNeverFailsTheSettlement(t *testing.T) {
 	f := newFinancePayEnv(t, true)
 	f.collector.WithFinance(panickingPoster{})
 	inv := f.openInvoice(t)
-	charge := f.openCharge(t, inv)
-	f.wallet.settle(charge, int64(inv.Total))
-	if err := f.collector.Confirm(ctxT(t), true, charge, billing.CauseReconciliation, "req_reconcile", now()); err != nil {
+	attempt := f.newAttempt(t, inv)
+	if _, err := f.collector.SettleAttempt(ctxT(t), attempt, billing.CauseByokConfirmed, "test", "req_pay", now()); err != nil {
 		t.Fatalf("the settlement failed because of finance: %v", err)
 	}
 	if got := f.invoiceStatus(t, inv.ID); got != billing.InvoicePaid {

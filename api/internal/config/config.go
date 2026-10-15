@@ -76,16 +76,6 @@ type Config struct {
 	// the JWKS itself.
 	RedisURL string `env:"VALKEY_URL"`
 
-	// Collection (ADR 0004, docs/specs/2026-08-15-wallet-invoice-charge.md).
-	//
-	// Billing does not move money; it asks ctech-wallet to. An incomplete block
-	// here disables every checkout route rather than letting them fail at the last
-	// step, in front of somebody holding a bill.
-	WalletBaseURL      string `env:"WALLET_BASE_URL"`
-	WalletTokenURL     string `env:"WALLET_TOKEN_URL"`
-	WalletClientID     string `env:"WALLET_CLIENT_ID"`
-	WalletClientSecret string `env:"WALLET_CLIENT_SECRET"`
-
 	// ctech-account membership (ADR 0025). Reach for an organization space is a
 	// service-to-service question; an incomplete block leaves organization spaces
 	// unavailable (fail closed) while personal spaces keep working.
@@ -93,9 +83,6 @@ type Config struct {
 	AccountTokenURL     string `env:"ACCOUNT_TOKEN_URL"`
 	AccountClientID     string `env:"ACCOUNT_CLIENT_ID"`
 	AccountClientSecret string `env:"ACCOUNT_CLIENT_SECRET"`
-	// WalletWebhookSecret verifies wallet's notify-back HMAC. It authenticates the
-	// sender and nothing else: the charge is always re-read before an invoice moves.
-	WalletWebhookSecret string `env:"WALLET_WEBHOOK_SECRET"`
 
 	// CheckoutLinkSecret signs public payment links. Empty means no public
 	// checkout at all — a forgeable link is worse than no link, so there is no

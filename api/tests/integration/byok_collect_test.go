@@ -116,14 +116,14 @@ func TestANewPixAfterTheOldOneExpired(t *testing.T) {
 	}
 }
 
-func TestTestModeIsCollectableOnTheBYOKRailOnly(t *testing.T) {
+func TestOnlyABYOKTenantCanCollect(t *testing.T) {
 	env := newCollectEnv(t, collectTest)
 	if s := env.checkout(t, env.finalizeInvoice(t, 100)); s.PixCode == "" {
 		t.Fatal("a test BYOK invoice is payable in the sandbox")
 	}
 	w := newCollectEnv(t, collectTestWallet)
-	if _, err := w.checkoutErr(t, w.finalizeInvoice(t, 100)); !errors.Is(err, services.ErrTestModeNotPayable) {
-		t.Fatalf("wallet rail in test: %v", err)
+	if _, err := w.checkoutErr(t, w.finalizeInvoice(t, 100)); !errors.Is(err, billing.ErrByokNotConnected) {
+		t.Fatalf("a tenant with no BYOK connection: %v", err)
 	}
 }
 

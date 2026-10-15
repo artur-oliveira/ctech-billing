@@ -18,7 +18,6 @@ import (
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
 	"gopkg.aoctech.app/billing/api/internal/domain/brcal"
 	"gopkg.aoctech.app/billing/api/internal/repositories"
-	"gopkg.aoctech.app/billing/api/internal/services"
 )
 
 // api-commons v1.11.0 stopped reading a TransactionConflict as a failed
@@ -120,39 +119,5 @@ func TestRecordingThePDFKeyIgnoresATransactionConflict(t *testing.T) {
 	}
 	if fired.Load() < 1 {
 		t.Fatal("the conflict was never injected")
-	}
-}
-
-// M1: two "Pagar" presses together. The other press wins the attempt row; ours
-// gets a TransactionConflict on it. The person sees the winner's checkout —
-// the same QR code — not a 500.
-func TestTwoPayPressesShowTheSameChargeOnATransactionConflict(t *testing.T) {
-	e := newPayEnv(t)
-	inv := e.openInvoice(t)
-	var winner *billing.CheckoutSession
-	client, fired := conflictOnce("_invoices", func() {
-		s, _, err := e.collector.Pay(ctxT(t), e.org.ID, true, inv.ID, "test", "req_winner", now())
-		if err != nil {
-			t.Errorf("the winning press = %v", err)
-		}
-		winner = s
-	})
-	loser := services.NewCollector(
-		repositories.NewInvoiceRepository(testDB, testCfg),
-		repositories.NewPaymentRepository(client, testCfg),
-		repositories.NewCustomerRepository(testDB, testCfg),
-		repositories.NewOrganizationRepository(testDB, testCfg),
-		repositories.NewSubscriptionRepository(testDB, testCfg),
-		e.collectorCharges(),
-	)
-	got, _, err := loser.Pay(ctxT(t), e.org.ID, true, inv.ID, "test", "req_loser", now())
-	if fired.Load() < 1 {
-		t.Fatal("the conflict was never injected")
-	}
-	if err != nil {
-		t.Fatalf("the second press = %v, want the winner's checkout", err)
-	}
-	if winner == nil || got.ID != winner.ID || got.PixCode != winner.PixCode {
-		t.Fatalf("second press shows %+v, want the winner's %+v", got, winner)
 	}
 }
