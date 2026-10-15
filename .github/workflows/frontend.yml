@@ -53,4 +53,4 @@ jobs:
         NEXT_PUBLIC_CTECH_CLIENT_URL=https://accounts.aoctech.app
         NEXT_PUBLIC_CTECH_CLIENT_ID=billing
         NEXT_PUBLIC_REALTIME=true
-        NEXT_PUBLIC_REALTIME_SURFACES=checkout
+        NEXT_PUBLIC_REALTIME_SURFACES=checkout,console
