@@ -5,8 +5,10 @@ package integration
 import (
 	"net/http"
 	"testing"
+	"time"
 
 	"gopkg.aoctech.app/billing/api/internal/middleware"
+	"gopkg.aoctech.app/billing/api/internal/repositories"
 )
 
 type oneOffInvoice struct {
@@ -131,5 +133,97 @@ func TestOneOffInvoicesNeedTheirOwnScope(t *testing.T) {
 	r := e.do(t, http.MethodPost, "/v1.0/invoices", readOnly, "k-x", `{"customer_id":"c","description":"x","amount_cents":100,"reference":"r"}`)
 	if r.status != http.StatusForbidden {
 		t.Fatalf("%d %s", r.status, r.body)
+	}
+}
+
+// A service that sells through one-off invoices names its owner key, and the
+// invoice carries it, so the paid event reaches the endpoint registered for that
+// key and no other service's endpoint.
+func TestAOneOffInvoiceCarriesTheCallersOwnerKey(t *testing.T) {
+	e := newAPI(t)
+	tok := e.oneOffToken(t)
+	cust := e.customerID(t, tok)
+	body := func(ref, owner string) string {
+		return `{"customer_id":"` + cust + `","description":"Depósito","amount_cents":5000,"reference":"` + ref + `","owner_key":"` + owner + `"}`
+	}
+	r := e.do(t, http.MethodPost, "/v1.0/invoices", tok, "k-owner", body("dep-owner", "wallet"))
+	if r.status != http.StatusCreated {
+		t.Fatalf("%d %s", r.status, r.body)
+	}
+	var made oneOffInvoice
+	r.decode(t, &made)
+	inv, err := repositories.NewInvoiceRepository(testDB, testCfg).Get(ctxT(t), e.org.ID, true, made.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inv.OwnerKey != "wallet" {
+		t.Fatalf("owner key %q, want wallet", inv.OwnerKey)
+	}
+	if r = e.do(t, http.MethodPost, "/v1.0/invoices", tok, "k-owner-2", body("dep-owner-2", "not valid!")); r.status != http.StatusUnprocessableEntity && r.status != http.StatusBadRequest {
+		t.Fatalf("an owner key with spaces is refused: %d", r.status)
+	}
+}
+
+// A credential scoped to an owner issues for that owner without saying so, and
+// cannot issue for another.
+func TestAScopedCredentialIssuesOneOffInvoicesForItsOwnerOnly(t *testing.T) {
+	e := newAPI(t)
+	tok := e.oneOffToken(t)
+	cust := e.customerID(t, tok)
+	creds := repositories.NewCredentialRepository(testDB, testCfg)
+	cred, err := creds.Resolve(ctxT(t), e.client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := creds.SetOwnerKey(ctxT(t), cred, "wallet", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	body := func(ref, owner string) string {
+		extra := ""
+		if owner != "" {
+			extra = `,"owner_key":"` + owner + `"`
+		}
+		return `{"customer_id":"` + cust + `","description":"Depósito","amount_cents":5000,"reference":"` + ref + `"` + extra + `}`
+	}
+	r := e.do(t, http.MethodPost, "/v1.0/invoices", tok, "k-scoped", body("dep-scoped", ""))
+	if r.status != http.StatusCreated {
+		t.Fatalf("%d %s", r.status, r.body)
+	}
+	var made oneOffInvoice
+	r.decode(t, &made)
+	inv, err := repositories.NewInvoiceRepository(testDB, testCfg).Get(ctxT(t), e.org.ID, true, made.ID)
+	if err != nil || inv.OwnerKey != "wallet" {
+		t.Fatalf("owner %q err %v", inv.OwnerKey, err)
+	}
+	if r = e.do(t, http.MethodPost, "/v1.0/invoices", tok, "k-scoped-2", body("dep-scoped-2", "poker")); r.status != http.StatusForbidden {
+		t.Fatalf("another owner is refused: %d %s", r.status, r.body)
+	}
+}
+
+func TestACustomerIsFoundByTheirAccountUser(t *testing.T) {
+	e := newAPI(t)
+	tok := e.oneOffToken(t)
+	r := e.do(t, http.MethodPost, "/v1.0/customers", tok, "cust-by-user", `{"name":"Pessoa","email":"p@example.com","tax_id":"39053344705","user_id":"user-abc"}`)
+	if r.status != http.StatusCreated {
+		t.Fatalf("%d %s", r.status, r.body)
+	}
+	var made struct {
+		ID string `json:"id"`
+	}
+	r.decode(t, &made)
+	tok = e.token(t, e.client, "", middleware.ScopeCustomersRead)
+	r = e.do(t, http.MethodGet, "/v1.0/customers/by-user/user-abc", tok, "", "")
+	if r.status != http.StatusOK {
+		t.Fatalf("%d %s", r.status, r.body)
+	}
+	var found struct {
+		ID string `json:"id"`
+	}
+	r.decode(t, &found)
+	if found.ID != made.ID {
+		t.Fatalf("found %s, made %s", found.ID, made.ID)
+	}
+	if r = e.do(t, http.MethodGet, "/v1.0/customers/by-user/nobody", tok, "", ""); r.status != http.StatusNotFound {
+		t.Fatalf("an unknown user is 404: %d", r.status)
 	}
 }

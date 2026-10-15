@@ -147,6 +147,18 @@ func (h *handlers) createCustomerAs(c fiber.Ctx, actor string) error {
 	return c.Status(fiber.StatusCreated).JSON(newCustomerResponse(customer))
 }
 
+// getCustomerByUser finds the customer a ctech-account subject already is, so a
+// service that creates customers for its users can reuse the existing one
+// instead of meeting a 409 on a person who is also a customer for another reason.
+func (h *handlers) getCustomerByUser(c fiber.Ctx) error {
+	t := middleware.GetTenant(c)
+	customer, err := h.customers.GetByUser(c.Context(), t.OrganizationID, t.Livemode, c.Params("user_id"))
+	if err != nil {
+		return fail(c, err)
+	}
+	return c.JSON(newCustomerResponse(customer))
+}
+
 func (h *handlers) getCustomer(c fiber.Ctx) error {
 	t := middleware.GetTenant(c)
 	customer, err := h.customers.Get(c.Context(), t.OrganizationID, t.Livemode, c.Params("id"))
@@ -491,12 +503,27 @@ func (h *handlers) createInvoice(c fiber.Ctx) error {
 	ch.text("description", req.Description, true, limits.Description)
 	ch.amount("amount_cents", req.AmountCents)
 	ch.text("reference", req.Reference, true, 64)
+	ch.id("owner_key", req.OwnerKey, false)
+	if len(req.OwnerKey) > limits.OwnerKey {
+		ch.fail("owner_key", "too_long", "at most 64 characters", "max", limits.OwnerKey)
+	}
 	if len(ch.errs) > 0 {
 		return problem.Validation(ch.errs).Send(c)
 	}
+	// A credential scoped to one owner issues for that owner only, whether or not
+	// it says so (the same rule the entitlements read follows).
+	owner := req.OwnerKey
+	if cred := middleware.GetCredential(c); cred != nil && cred.OwnerKey != "" {
+		switch {
+		case owner == "":
+			owner = cred.OwnerKey
+		case owner != cred.OwnerKey:
+			return ownerNotAllowed(c)
+		}
+	}
 	inv, lines, created, err := h.oneOff.Create(c.Context(), services.OneOffInput{
 		OrganizationID: t.OrganizationID, Livemode: t.Livemode, CustomerID: req.CustomerID, Description: req.Description,
-		Reference: req.Reference, AmountCents: int64(req.AmountCents), Metadata: req.Metadata,
+		Reference: req.Reference, AmountCents: int64(req.AmountCents), OwnerKey: owner, Metadata: req.Metadata,
 	}, actorOf(c), middleware.GetRequestID(c), h.now())
 	if err != nil {
 		return fail(c, err)

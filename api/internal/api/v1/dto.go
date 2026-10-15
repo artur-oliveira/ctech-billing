@@ -22,11 +22,16 @@ import (
 // a service. The reference is the caller's own name for it and makes the call
 // safe to repeat.
 type createInvoiceRequest struct {
-	CustomerID  string           `json:"customer_id"`
-	Description string           `json:"description"`
-	AmountCents billing.Cents    `json:"amount_cents"`
-	Reference   string           `json:"reference"`
-	Metadata    billing.Metadata `json:"metadata"`
+	CustomerID  string        `json:"customer_id"`
+	Description string        `json:"description"`
+	AmountCents billing.Cents `json:"amount_cents"`
+	Reference   string        `json:"reference"`
+	// OwnerKey routes this invoice's webhook events (invoice.paid ...) to the
+	// endpoint that registered the same key, so a service that sells through
+	// one-off invoices hears only its own. Optional: unset, the events go to the
+	// endpoints that take every owner.
+	OwnerKey string           `json:"owner_key"`
+	Metadata billing.Metadata `json:"metadata"`
 }
 
 type createCustomerRequest struct {
