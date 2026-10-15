@@ -30,6 +30,10 @@ const (
 	RetentionTwentyFourMonths
 	// RetentionNinetyDays is the redelivery/debugging window.
 	RetentionNinetyDays
+	// RetentionFortyEightHours is the realtime change log: long enough for a
+	// client that was offline over a weekend morning to replay, short enough that
+	// it never becomes a second event store.
+	RetentionFortyEightHours
 	// RetentionThirteenMonths is for a level report (spec § 6.2): long enough to
 	// carry a level across a year of no change.
 	RetentionThirteenMonths
@@ -53,6 +57,7 @@ const (
 	RetentionCredential      = RetentionPermanent // revoking is a flag, not an expiry
 	RetentionLevel           = RetentionThirteenMonths
 	RetentionEvent           = RetentionNinetyDays
+	RetentionRealtimeChange  = RetentionFortyEightHours
 	RetentionWebhookDelivery = RetentionNinetyDays
 	// RetentionCheckoutSession applies to every session, not only expired and
 	// canceled ones. A completed session is support data too — the evidence of
@@ -84,6 +89,8 @@ func (r Retention) ExpiresAt(now time.Time) *int64 {
 		return unixPtr(now.AddDate(0, 24, 0))
 	case RetentionNinetyDays:
 		d = 90 * 24 * time.Hour
+	case RetentionFortyEightHours:
+		d = 48 * time.Hour
 	case RetentionThirteenMonths:
 		return unixPtr(now.AddDate(0, 13, 0))
 
