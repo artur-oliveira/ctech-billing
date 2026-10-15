@@ -48,20 +48,6 @@ const (
 // for a second collector built against another DynamoDB client.
 // openCharge pays an invoice through the portal and returns the wallet charge id
 // the checkout is waiting on.
-// attemptFor reads back the invoice's only attempt.
-func (e *payEnv) attemptFor(t *testing.T, invoiceID string) billing.PaymentAttempt {
-	t.Helper()
-	attempts, err := repositories.NewPaymentRepository(testDB, testCfg).
-		ListAttempts(ctxT(t), e.org.ID, true, invoiceID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(attempts) != 1 {
-		t.Fatalf("%d attempts, want 1", len(attempts))
-	}
-	return attempts[0]
-}
-
 func (e *payEnv) invoiceStatus(t *testing.T, invoiceID string) billing.InvoiceStatus {
 	t.Helper()
 	inv, err := repositories.NewInvoiceRepository(testDB, testCfg).Get(ctxT(t), e.org.ID, true, invoiceID)
