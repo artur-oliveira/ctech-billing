@@ -125,3 +125,9 @@ Repos: `P_BILL/ui` (mount points: `src/app/checkout/layout.tsx`, `src/app/(conso
 
 - Mounted around the portal shell; the principal is the token's subject while signed in with a billing account, null otherwise (no socket). The first frame carries the bearer and no space, so the socket hears the person's own `user:` scope only. Bills of an organization the person administers (the space switch) do not arrive over it, because those customers have no user scope (R2 Status); they keep refetching on focus and navigation.
 - The portal's `PixPanel` still streams over SSE (`usePaymentStream`); that is removed in R5 after the soak.
+
+### Task 4: Finanças (feat/realtime-r4-finance)
+
+- Mounted in `FinanceShell`, keyed by person, mode and space.
+- **Coalescing lives in `applyChange`** (`COALESCE_MS = 250`), leading and trailing: the first change of a key invalidates at once, the rest of the window become one more at its close. A burst of 100 changes in 50 ms is two invalidations of a key; a lone change loses no time. Tests: binding burst test; the leader test advances past the window.
+- No Finanças screen pins a poll, so none was changed. The end-to-end bulk-classification check in staging is still to be done by hand (there is no stage environment; it will be done against production behind the flag, surface by surface).

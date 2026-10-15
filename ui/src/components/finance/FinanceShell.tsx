@@ -10,8 +10,11 @@ import {SpaceFinanceNav} from "@/components/finance/FinanceNav";
 import {BillingShell, ShellContext, TestBanner} from "@/components/shell/BillingShell";
 import {SpaceSwitch} from "@/components/finance/SpaceSwitch";
 import {useAuth} from "@/lib/auth/AuthContext";
+import {useSubject} from "@/lib/auth/subject";
 import {useMode} from "@/lib/console/useMode";
+import {useSpace} from "@/lib/console/useSpace";
 import {FINANCE_HREF} from "@/lib/finance/href";
+import {RealtimeProvider} from "@/lib/realtime/RealtimeProvider";
 
 /**
  * Finanças, the third area beside the portal and the console. It was a section
@@ -30,12 +33,17 @@ export function FinanceShell({children}: {children: ReactNode}) {
   const router = useRouter();
   const {authenticated, loading} = useAuth();
   const mode = useMode();
+  const space = useSpace();
+  const subject = useSubject();
 
   useEffect(() => {
     if (!loading && !authenticated) router.replace("/login");
   }, [loading, authenticated, router]);
 
   return (
+    // Keyed by person, mode and space: switching any of them closes the socket
+    // and opens another with no cursor.
+    <RealtimeProvider surface={{kind: "finance", mode, space}} principal={authenticated ? subject : null}>
     <BillingShell
       view="finance"
       home={FINANCE_HREF}
@@ -58,5 +66,6 @@ export function FinanceShell({children}: {children: ReactNode}) {
         </>
       )}
     </BillingShell>
+    </RealtimeProvider>
   );
 }
