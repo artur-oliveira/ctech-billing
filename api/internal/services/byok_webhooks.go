@@ -94,6 +94,16 @@ type ByokWebhooks struct {
 	// settles one of its charges, so the payer is recorded within seconds instead
 	// of at the next hourly sync (spec 2026-10-14 § 6).
 	statement *ByokStatement
+	// kick, when set, delivers the events a settlement just queued without waiting
+	// for the delivery job's next tick.
+	kick func(livemode bool)
+}
+
+// WithDeliveryKick makes a settled payment deliver its events at once (see
+// DeliveryKick) instead of at the next tick of the delivery job.
+func (w *ByokWebhooks) WithDeliveryKick(k func(livemode bool)) *ByokWebhooks {
+	w.kick = k
+	return w
 }
 
 // WithStatement turns on the payer pull after a webhook settles a charge.
@@ -227,6 +237,9 @@ func (w *ByokWebhooks) Notify(ctx context.Context, in NotifyRequest, now time.Ti
 		} else {
 			w.recordWebhookPayer(ctx, *ptr, in.Payers, now)
 			if outcome == OutcomeSettled {
+				if w.kick != nil {
+					w.kick(h.Livemode)
+				}
 				w.pullPayer(h, now)
 			}
 		}
