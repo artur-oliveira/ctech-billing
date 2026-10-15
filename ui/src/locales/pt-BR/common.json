@@ -47,5 +47,9 @@
         "recurrence": "criar recorrente"
       }
     }
+  },
+  "realtime": {
+    "live": "Ao vivo",
+    "polling": "Atualizando a cada {{seconds}} s"
   }
 }
