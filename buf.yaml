@@ -1,0 +1,10 @@
+version: v2
+modules:
+  - path: proto
+lint:
+  use: [STANDARD]
+  except:
+    - PACKAGE_VERSION_SUFFIX      # the version is in the package already: v1
+    - PACKAGE_DIRECTORY_MATCH     # one flat proto/ directory, as in Poker
+breaking:
+  use: [FILE]
