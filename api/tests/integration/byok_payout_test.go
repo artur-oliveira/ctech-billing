@@ -5,10 +5,12 @@ package integration
 import (
 	"errors"
 	"testing"
+	"time"
 
 	"gopkg.aoctech.app/api-commons/byok"
 
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
+	"gopkg.aoctech.app/billing/api/internal/repositories"
 	"gopkg.aoctech.app/billing/api/internal/services"
 )
 
@@ -168,5 +170,44 @@ func TestATenantWithoutThePayoutCapabilityCannotPay(t *testing.T) {
 	_, _, err := svc.Create(ctxT(t), env.tenant.ID, true, services.PayoutInput{Reference: "wd-7", CPF: validCPF, AmountCents: 100}, now())
 	if !errors.Is(err, services.ErrPayoutNotAllowed) || env.fake.PayoutCalls() != 0 {
 		t.Fatalf("%v calls=%d", err, env.fake.PayoutCalls())
+	}
+}
+
+// A payout the bank has taken but not settled is followed soon after, in the
+// background, and its settlement is announced and kicked without waiting for the
+// sweep or the caller's next read.
+func TestAProcessingPayoutIsFollowedSoonAndItsSettlementIsAnnounced(t *testing.T) {
+	env := newCollectEnv(t, collectLive)
+	kicked := make(chan bool, 4)
+	svc := env.payoutEnv(t).WithFollowSteps(20*time.Millisecond, 20*time.Millisecond, 20*time.Millisecond, 20*time.Millisecond).
+		WithSettlementKick(func(live bool) { kicked <- live })
+
+	p, created, err := svc.Create(ctxT(t), env.tenant.ID, true, services.PayoutInput{Reference: "wd-follow", CPF: validCPF, AmountCents: 700, OwnerKey: "wallet"}, now())
+	if err != nil || !created || p.Final() {
+		t.Fatalf("%+v %v %v", p, created, err)
+	}
+	svc.FollowSoon(p)
+	svc.FollowSoon(p) // one follower per payout
+	env.fake.SettlePayout(env.payout(t, p.ID).Ref, byok.PayoutDone, "E-follow", "")
+
+	select {
+	case live := <-kicked:
+		if !live {
+			t.Fatal("the kick is for live mode")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the payout was not followed to its settlement")
+	}
+	if got := env.payout(t, p.ID); got.Status != billing.PayoutDone || got.PaymentID != "E-follow" {
+		t.Fatalf("%+v", got)
+	}
+	evs, err := repositories.NewWebhookRepository(testDB, testCfg).EventsOf(ctxT(t), env.tenant.ID, true, "payout", p.ID, nil, 5)
+	if err != nil || len(evs.Items) != 1 || evs.Items[0].Type != billing.EventPayoutDone || evs.Items[0].OwnerKey != "wallet" {
+		t.Fatalf("event: %v %+v", err, evs)
+	}
+	select {
+	case <-kicked:
+		t.Fatal("kicked twice for one settlement")
+	case <-time.After(200 * time.Millisecond):
 	}
 }

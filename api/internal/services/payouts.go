@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -42,6 +43,8 @@ type PayoutInput struct {
 	CPF         string
 	AmountCents int64
 	Message     string
+	// OwnerKey routes the payout's events to the service that asked for it.
+	OwnerKey string
 }
 
 // Payouts pays Pix keys out of a tenant's connected bank account. It reserves
@@ -53,11 +56,79 @@ type Payouts struct {
 	orgs     *repositories.OrganizationRepository
 	conns    *repositories.ByokRepository
 	sessions func(*byokconn.Connection) byokrpc.Session
+
+	// onSettled runs after FollowSoon settles a payout, to deliver its events at
+	// once (DeliveryKick).
+	onSettled func(livemode bool)
+	steps     []time.Duration
+	mu        sync.Mutex
+	following map[string]bool
+}
+
+// WithFollowSteps replaces the waits of FollowSoon (tests).
+func (s *Payouts) WithFollowSteps(steps ...time.Duration) *Payouts {
+	s.steps = steps
+	return s
+}
+
+// WithSettlementKick delivers a payout's events at once when FollowSoon settles it.
+func (s *Payouts) WithSettlementKick(f func(livemode bool)) *Payouts {
+	s.onSettled = f
+	return s
+}
+
+// followSteps is how soon after a payout is sent the bank is asked again: a Pix
+// settles in seconds, and waiting for the wallet's next reconcile (minutes) or the
+// hourly job is what made a withdrawal look unfinished long after the money had
+// arrived. Each step costs one read at the bank; the sweep stays the safety net.
+var defaultFollowSteps = []time.Duration{3 * time.Second, 6 * time.Second, 12 * time.Second, 25 * time.Second, 45 * time.Second, 90 * time.Second}
+
+// FollowSoon asks the bank about a processing payout at growing intervals until it
+// answers, in the background. One follower per payout.
+func (s *Payouts) FollowSoon(p *billing.Payout) {
+	if p.Final() {
+		return
+	}
+	s.mu.Lock()
+	if s.following == nil {
+		s.following = map[string]bool{}
+	}
+	if s.following[p.ID] {
+		s.mu.Unlock()
+		return
+	}
+	s.following[p.ID] = true
+	s.mu.Unlock()
+	copy := *p
+	go s.follow(&copy)
+}
+
+func (s *Payouts) follow(p *billing.Payout) {
+	defer func() {
+		s.mu.Lock()
+		delete(s.following, p.ID)
+		s.mu.Unlock()
+	}()
+	for _, wait := range s.steps {
+		time.Sleep(wait)
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		err := s.Resolve(ctx, p, time.Now())
+		cancel()
+		if err != nil {
+			slog.Warn("payout follow-up", "payout_id", p.ID, "error", err)
+		}
+		if p.Final() {
+			if s.onSettled != nil {
+				s.onSettled(p.Livemode)
+			}
+			return
+		}
+	}
 }
 
 func NewPayouts(payments *repositories.PaymentRepository, orgs *repositories.OrganizationRepository, conns *repositories.ByokRepository,
 	sessions func(*byokconn.Connection) byokrpc.Session) *Payouts {
-	return &Payouts{payments: payments, orgs: orgs, conns: conns, sessions: sessions}
+	return &Payouts{payments: payments, orgs: orgs, conns: conns, sessions: sessions, steps: defaultFollowSteps}
 }
 
 func (in *PayoutInput) validate() error {
@@ -119,7 +190,7 @@ func (s *Payouts) Create(ctx context.Context, organizationID string, livemode bo
 	if err != nil {
 		return nil, false, err
 	}
-	p := &billing.Payout{ID: id.NewWithPrefix(prefixPayout), OrganizationID: organizationID, Livemode: livemode, Reference: in.Reference,
+	p := &billing.Payout{ID: id.NewWithPrefix(prefixPayout), OrganizationID: organizationID, Livemode: livemode, Reference: in.Reference, OwnerKey: in.OwnerKey,
 		RequestHash: payoutHash(in), Ref: uuid.NewString(), Amount: billing.Cents(in.AmountCents), CPF: in.CPF,
 		Message: strings.TrimSpace(in.Message), Status: billing.PayoutProcessing}
 	got, created, err := s.payments.CreatePayout(ctx, p, now)

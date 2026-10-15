@@ -215,7 +215,8 @@ func Build(ctx context.Context, cfg *config.Config, clock func() time.Time, opts
 				byokSetup = byokSetup.WithMail(mail)
 			}
 		}
-		payouts = services.NewPayouts(payments, orgs, repositories.NewByokRepository(db, cfg), byokConns.Session)
+		payouts = services.NewPayouts(payments, orgs, repositories.NewByokRepository(db, cfg), byokConns.Session).
+			WithSettlementKick(newDeliveryKick(db, cfg))
 		invoicer.WithCharges(byokCollector)
 		if collector != nil {
 			collector.WithByok(byokCollector)

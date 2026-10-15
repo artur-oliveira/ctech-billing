@@ -8,6 +8,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
+	"gopkg.aoctech.app/billing/api/internal/domain/id"
 )
 
 // Payouts live in the tenant's partition beside its payment attempts. A marker
@@ -135,6 +136,20 @@ func (r *PaymentRepository) SettlePayout(ctx context.Context, p *billing.Payout,
 	if err != nil {
 		return err
 	}
+	// The consumer that asked for the payout is told in the same transaction that
+	// settles it, so there is no settled payout it never hears of.
+	evType := billing.EventPayoutFailed
+	if status == billing.PayoutDone {
+		evType = billing.EventPayoutDone
+	}
+	announce, err := eventWrites(r.events, billing.Event{
+		ID: id.NewWithPrefix(id.PrefixEvent), OrganizationID: p.OrganizationID, Livemode: p.Livemode, Type: evType,
+		Entity: "payout", EntityID: p.ID, OwnerKey: p.OwnerKey,
+	}, now)
+	if err != nil {
+		return err
+	}
+	writes = append(writes, announce...)
 	err = r.base.TransactWrite(ctx, append(writes, changes...))
 	if IsConditionFailed(err) {
 		return fmt.Errorf("%w: payout %s is no longer processing", ErrConcurrentModification, p.ID)

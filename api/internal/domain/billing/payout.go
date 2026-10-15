@@ -13,6 +13,13 @@ const (
 	PayoutFailed     PayoutState = "failed"
 )
 
+// The events a payout emits when the bank has answered. Both name the payout; the
+// consumer (the wallet) reads it for the outcome.
+const (
+	EventPayoutDone   EventType = "payout.done"
+	EventPayoutFailed EventType = "payout.failed"
+)
+
 // Failure reasons a payout can carry.
 const (
 	PayoutKeyNotFound = "key_not_found" // the bank has no Pix key for that CPF
@@ -26,6 +33,9 @@ type Payout struct {
 	ID             string `dynamodbav:"id"              json:"id"`
 	OrganizationID string `dynamodbav:"organization_id" json:"-"`
 	Livemode       bool   `dynamodbav:"livemode"        json:"livemode"`
+
+	// OwnerKey routes the payout's events to the service that asked for it.
+	OwnerKey string `dynamodbav:"owner_key,omitempty" json:"-"`
 
 	// Reference is the caller's own name for the payout (the wallet's withdrawal
 	// id): unique per tenant, the same reference with the same CPF and amount is

@@ -62,11 +62,18 @@ func (h *payoutHandlers) create(c fiber.Ctx) error {
 	if len(ch.errs) > 0 {
 		return problem.Validation(ch.errs).Send(c)
 	}
+	owner := ""
+	if cred := middleware.GetCredential(c); cred != nil {
+		owner = cred.OwnerKey
+	}
 	p, created, err := h.svc.Create(c.Context(), t.OrganizationID, t.Livemode, services.PayoutInput{
-		Reference: req.Reference, CPF: req.CPF, AmountCents: int64(req.AmountCents), Message: req.Message}, h.clock())
+		Reference: req.Reference, CPF: req.CPF, AmountCents: int64(req.AmountCents), Message: req.Message, OwnerKey: owner}, h.clock())
 	if err != nil {
 		return fail(c, err)
 	}
+	// The bank settles a Pix in seconds: ask again soon, in the background, so the
+	// caller is told when it happens and not at the next sweep.
+	h.svc.FollowSoon(p)
 	status := fiber.StatusOK
 	if created {
 		status = fiber.StatusCreated

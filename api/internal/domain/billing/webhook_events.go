@@ -15,6 +15,7 @@ var webhookEventTypes = func() []EventType {
 		EventPaymentAttempted, EventPaymentSucceeded, EventPaymentFailed, EventPaymentAbandoned,
 		EventCheckoutCreated, EventCheckoutCompleted, EventCheckoutExpired, EventCheckoutCanceled,
 		EventCreditNoteCreated,
+		EventPayoutDone, EventPayoutFailed,
 	}
 	slices.Sort(list)
 	return list

@@ -19,7 +19,7 @@ entity it does not know invalidates nothing (the screens still refetch on focus)
 | credit_note | credit_note.created | tenant, invoice, user | invoices | invoices | none | the view |
 | subscription | subscription.created, subscription.activated, subscription.past_due, subscription.recovered, subscription.renewed, subscription.paused, subscription.resumed, subscription.canceled, subscription.updated | tenant, user | subscriptions, overview | subscriptions | none | none |
 | customer | customer.updated | tenant | customers | none | none | none |
-| payout | payout.updated | tenant | connections | none | accounts | none |
+| payout | payout.updated, payout.done, payout.failed | tenant | connections | none | accounts | none |
 | connection | connection.updated | space | connections | none | connections, accounts | none |
 | statement | statement.line_posted | space | none | none | the whole space | none |
 | bill | bill.updated | space | none | none | the whole space | none |
