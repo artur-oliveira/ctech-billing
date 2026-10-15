@@ -236,10 +236,12 @@ func (w *ByokWebhooks) Notify(ctx context.Context, in NotifyRequest, now time.Ti
 			status = http.StatusServiceUnavailable
 		} else {
 			w.recordWebhookPayer(ctx, *ptr, in.Payers, now)
+			// Also when something else settled it a moment ago (the hourly job, the
+			// sweep): its events may be queued and not yet delivered.
+			if (outcome == OutcomeSettled || outcome == OutcomeAlreadySettled) && w.kick != nil {
+				w.kick(h.Livemode)
+			}
 			if outcome == OutcomeSettled {
-				if w.kick != nil {
-					w.kick(h.Livemode)
-				}
 				w.pullPayer(h, now)
 			}
 		}
