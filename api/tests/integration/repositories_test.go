@@ -729,7 +729,7 @@ func TestApplyBringsAnExistingEndpointsEventsToThePlan(t *testing.T) {
 		Catalog:       repositories.NewCatalogRepository(testDB, testCfg),
 		Webhooks:      repositories.NewWebhookRepository(testDB, testCfg),
 	}
-	t.Setenv("WH_SECRET_T", "s3cret")
+	t.Setenv("WH_SECRET_T", "ssssssssssssssssssssssssssssssssssssssss")
 	orgID := "org_" + id.New()
 	doc := func(events string) *provision.Plan {
 		p, err := provision.Parse(strings.NewReader(`{"organization":{"id":"` + orgID + `","display_name":"T"},
@@ -748,7 +748,7 @@ func TestApplyBringsAnExistingEndpointsEventsToThePlan(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(e.Events) != 2 || e.Events[1] != "payout.done" || e.Secret != "s3cret" {
+	if len(e.Events) != 2 || e.Events[1] != "payout.done" || e.Secret != "ssssssssssssssssssssssssssssssssssssssss" {
 		t.Fatalf("endpoint = events %v secret %q", e.Events, e.Secret)
 	}
 }
