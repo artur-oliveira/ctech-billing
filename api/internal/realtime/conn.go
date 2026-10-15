@@ -109,6 +109,7 @@ func (c *Conn) Send(frame []byte) bool {
 	}
 	c.mu.Unlock()
 	c.metrics.slowClose()
+	c.metrics.gap(GapSlowConsumer)
 	c.slow.Store(true)
 	c.Finish(gapFrame(GapSlowConsumer), CloseTryLater, GapSlowConsumer)
 	return false
@@ -125,6 +126,9 @@ func (c *Conn) Finish(final []byte, code int, reason string) {
 	}
 	c.finishing, c.final, c.code, c.reason = true, final, code, reason
 	c.mu.Unlock()
+	if reason != "" {
+		c.metrics.bye(reason)
+	}
 	close(c.finish)
 }
 
@@ -148,6 +152,8 @@ func (c *Conn) run() {
 			if err := c.write(msgBinary, frame); err != nil {
 				return
 			}
+			c.metrics.frameSent()
+			c.metrics.observeWrite(frame, time.Now())
 		case <-c.finish:
 			c.mu.Lock()
 			final, code, reason := c.final, c.code, c.reason

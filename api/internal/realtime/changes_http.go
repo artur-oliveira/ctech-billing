@@ -36,6 +36,7 @@ type ChangesHandler struct {
 	Authorizers map[string]Authorizer
 	Log         ChangeLog
 	Now         func() time.Time
+	Metrics     *Metrics
 }
 
 type changeJSON struct {
@@ -88,6 +89,7 @@ func authFromRequest(c fiber.Ctx) (*wire.Auth, bool) {
 
 func (h *ChangesHandler) get(c fiber.Ctx) error {
 	c.Set(fiber.HeaderCacheControl, "no-store")
+	h.Metrics.fallbackPoll()
 	auth, ok := authFromRequest(c)
 	if !ok {
 		return problem.Unauthorized("credenciais ausentes").Send(c)

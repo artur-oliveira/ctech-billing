@@ -59,6 +59,9 @@ type Config struct {
 	DrainRetry time.Duration
 	// AuthorizeTimeout bounds the upstream calls of one authorization.
 	AuthorizeTimeout time.Duration
+	// DegradedPoll is the interval the client is asked to poll at while the
+	// fan-out is down (Hint).
+	DegradedPoll time.Duration
 }
 
 // DefaultConfig is the production configuration.
@@ -68,7 +71,7 @@ func DefaultConfig() Config {
 		PingInterval: 25 * time.Second, PongWait: 40 * time.Second,
 		TickInterval: 30 * time.Second, RecheckInterval: 5 * time.Minute,
 		ReplayMax: 500, ReplaysPerMinute: 3, HeadTTL: 10 * time.Second,
-		DrainRetry: 3 * time.Second, AuthorizeTimeout: 5 * time.Second,
+		DrainRetry: 3 * time.Second, AuthorizeTimeout: 5 * time.Second, DegradedPoll: 10 * time.Second,
 	}
 }
 
@@ -90,6 +93,9 @@ type Gateway struct {
 	Drain          *drain.Tracker
 	Config         Config
 	Now            func() time.Time
+	// Health, when set, reports a fan-out that is not working; the gateway then
+	// asks its clients to poll too (Hint) until it recovers.
+	Health interface{ Degraded() bool }
 
 	replays *replayLimiter
 	heads   *headCache
@@ -228,6 +234,7 @@ func (g *Gateway) serve(conn *fws.Conn, ip string) {
 	// Ready is queued before the connection is registered, so it is the first
 	// frame any client reads; changes published from here on follow it.
 	c.Send(readyFrame(g.now(), kindsOf(p.Scopes)))
+	g.hint(c)
 	if err := g.Hub.Add(c, p.Scopes); err != nil {
 		c.Finish(ByeFrame(ByeLimit, 0), ClosePolicy, ByeLimit)
 		<-c.Done()
@@ -244,6 +251,19 @@ func (g *Gateway) serve(conn *fws.Conn, ip string) {
 	reauth := make(chan time.Time, 1)
 	go g.watch(c, p, authz, fwsSocket{conn}, reauth)
 	g.readLoop(conn, c, p, authz, reauth)
+}
+
+// hint asks the client to poll as well while the fan-out is down. It says it
+// again on every Tick and stops saying it the moment the fan-out recovers, which
+// is how a client learns it can stop polling.
+func (g *Gateway) hint(c *Conn) {
+	if g.Health == nil || !g.Health.Degraded() {
+		return
+	}
+	b, _ := proto.Marshal(&wire.ServerFrame{Body: &wire.ServerFrame_Hint{Hint: &wire.Hint{
+		PollIntervalMs: uint32(g.Config.DegradedPoll.Milliseconds()),
+	}}})
+	c.Send(b)
 }
 
 func readyFrame(now time.Time, kinds []string) []byte {
@@ -270,10 +290,12 @@ func (g *Gateway) replay(c *Conn, p *Principal, cursor string) {
 		return
 	}
 	if !g.replays.allow(principalKey(p), g.now()) {
+		g.Hub.metrics.gap(GapReplayLimit)
 		c.Send(gapFrame(GapReplayLimit))
 		return
 	}
 	if tooOld, err := repositories.CursorTooOld(cursor, g.now()); err != nil || tooOld {
+		g.Hub.metrics.gap(GapCursorTooOld)
 		c.Send(gapFrame(GapCursorTooOld))
 		return
 	}
@@ -285,12 +307,15 @@ func (g *Gateway) replay(c *Conn, p *Principal, cursor string) {
 		// A log that cannot be read is a client that cannot be caught up: make it
 		// reload rather than let it believe it is current.
 		slog.Warn("realtime: replay failed", "error", err)
+		g.Hub.metrics.gap(GapCursorTooOld)
 		c.Send(gapFrame(GapCursorTooOld))
 		return
 	case more:
+		g.Hub.metrics.gap(GapReplayLimit)
 		c.Send(gapFrame(GapReplayLimit))
 		return
 	}
+	g.Hub.metrics.replay(len(changes))
 	for i := range changes {
 		frame, err := FrameOf(&changes[i])
 		if err != nil {
@@ -398,6 +423,7 @@ func (g *Gateway) watch(c *Conn, p *Principal, authz Authorizer, sock fwsSocket,
 				b, _ := proto.Marshal(&wire.ServerFrame{Body: &wire.ServerFrame_Tick{Tick: &wire.Tick{Head: head}}})
 				c.Send(b)
 			}
+			g.hint(c)
 		case next := <-reauth:
 			if !expire.Stop() {
 				select {

@@ -106,6 +106,7 @@ type gwEnv struct {
 	authz   *fakeAuthz
 	drain   *drain.Tracker
 	metrics *Metrics
+	health  interface{ Degraded() bool }
 }
 
 func fastConfig() Config {
@@ -119,13 +120,22 @@ func fastConfig() Config {
 
 func newGateway(t *testing.T, cfg Config, origins []string, lim Limits) *gwEnv {
 	t.Helper()
-	m := &Metrics{}
+	return buildGateway(t, cfg, origins, lim, nil, &Metrics{})
+}
+
+func newGatewayWithHealth(t *testing.T, cfg Config, health interface{ Degraded() bool }, m *Metrics) *gwEnv {
+	t.Helper()
+	return buildGateway(t, cfg, nil, DefaultLimits(), health, m)
+}
+
+func buildGateway(t *testing.T, cfg Config, origins []string, lim Limits, health interface{ Degraded() bool }, m *Metrics) *gwEnv {
+	t.Helper()
 	reg := ws.NewMemoryRegistry()
 	hub := NewHub(reg, lim, m)
-	e := &gwEnv{hub: hub, reg: reg, log: &fakeLog{}, authz: &fakeAuthz{now: time.Now}, drain: &drain.Tracker{}, metrics: m}
+	e := &gwEnv{hub: hub, reg: reg, log: &fakeLog{}, authz: &fakeAuthz{now: time.Now}, drain: &drain.Tracker{}, metrics: m, health: health}
 	gw := &Gateway{
 		Authorizers: map[string]Authorizer{KindPortal: e.authz, KindConsole: e.authz, KindCheckout: e.authz},
-		Hub:         hub, Log: e.log, AllowedOrigins: origins, Drain: e.drain, Config: cfg,
+		Hub:         hub, Log: e.log, AllowedOrigins: origins, Drain: e.drain, Config: cfg, Health: health,
 	}
 	app := fiber.New()
 	RegisterGateway(app.Group("/v1.0"), gw)
