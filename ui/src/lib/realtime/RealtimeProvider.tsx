@@ -9,9 +9,10 @@ import {spaceHeader} from "@/lib/console/space";
 
 import {applyChange, applyGap} from "./binding";
 import type {Surface} from "./catalogue";
-import {decode, encode, type Inbound} from "./codec";
+import {decode, encode, type Inbound, type Outbound} from "./codec";
 import {DEFAULT_POLL_MS, RealtimeCore, type RealtimeStatus} from "./core";
 import {createCursorStore} from "./cursor";
+import {type Shared, sharedRealtimeEnabled, useElection} from "./leader";
 import {changesFetcher, startPolling} from "./poller";
 import {RealtimeStatusContext} from "./useRealtimeStatus";
 
@@ -133,6 +134,36 @@ interface ConnectionProps {
   onStatus: (s: RealtimeStatus) => void
 }
 
+/**
+ * What the core needs from the socket and the election, which are hooks that run
+ * after the core is built. It starts inert and is bound once they exist; their
+ * send, reconnect and post are stable for the component's life, so the first
+ * binding is the only one that matters.
+ */
+class LateLink {
+  private sendFn: (o: Outbound) => boolean = () => false;
+  private reconnectFn: () => void = () => {};
+  private postFn: (m: Shared) => void = () => {};
+
+  bind(send: (o: Outbound) => boolean, reconnect: () => void, post: (m: Shared) => void): void {
+    this.sendFn = send;
+    this.reconnectFn = reconnect;
+    this.postFn = post;
+  }
+
+  send(o: Outbound): boolean {
+    return this.sendFn(o);
+  }
+
+  reconnect(): void {
+    this.reconnectFn();
+  }
+
+  post(m: Shared): void {
+    this.postFn(m);
+  }
+}
+
 /** How long the socket may be down before the screens are also fed by polling. */
 const UNREACHABLE_AFTER_MS = 15_000;
 
@@ -144,11 +175,50 @@ function Connection({surface, cursorKey, auth, onStatus}: ConnectionProps) {
   const [held, setHeld] = useState(false);
   const [coreStatus, setCoreStatus] = useState<RealtimeStatus>("connecting");
 
+  // What the core needs from the hooks below, which only exist after it: filled in
+  // once they do (their send, reconnect and post are stable for the component's life).
+  const [link] = useState(() => new LateLink());
+
+  const [core] = useState(() => {
+    const c = new RealtimeCore({
+      scopeKind: initial.surface.kind,
+      cursor: createCursorStore(cursorKey),
+      onChange: (change) => {
+        applyChange(qc, initial.surface, change);
+        link.post({type: "change", change});
+      },
+      onGap: (reason) => {
+        applyGap(qc, initial.surface);
+        link.post({type: "gap", reason});
+      },
+      onStatus: (s) => {
+        setCoreStatus(s);
+        onStatus(s);
+        link.post({type: "status", status: s});
+      },
+      onHold: setHeld,
+    });
+    c.attach({
+      send: (o) => link.send(o),
+      reconnect: () => link.reconnect(),
+      close: () => setHeld(true),
+    });
+    return c;
+  });
+
+  // With one socket per browser (flagged), only the elected tab holds the socket;
+  // the others apply what the leader tells them. Alone, an instance is its own leader.
+  const election = useElection(cursorKey, sharedRealtimeEnabled(), (shared) => {
+    if (shared.type === "change") core.onFrame({type: "change", change: shared.change});
+    else if (shared.type === "gap") core.onFrame({type: "gap", reason: shared.reason});
+    else onStatus(shared.status);
+  });
+
   const socket = useWebSocket({
     url: realtimeUrl(),
     // Held after a draining Bye (until its retry-after) or while waiting for a
     // token: the shared hook would otherwise reconnect on its own in a second.
-    enabled: !held,
+    enabled: !held && election.leader,
     binaryType: "arraybuffer",
     encode,
     decode,
@@ -160,26 +230,9 @@ function Connection({surface, cursorKey, auth, onStatus}: ConnectionProps) {
     connectTimeoutMs: 10_000,
   });
 
-  // Built after the hook, whose send and reconnect are stable for its lifetime.
-  const [core] = useState(() => {
-    const c = new RealtimeCore({
-      scopeKind: initial.surface.kind,
-      cursor: createCursorStore(cursorKey),
-      onChange: (change) => applyChange(qc, initial.surface, change),
-      onGap: () => applyGap(qc, initial.surface),
-      onStatus: (s) => {
-        setCoreStatus(s);
-        onStatus(s);
-      },
-      onHold: setHeld,
-    });
-    c.attach({
-      send: (o) => socket.send(o),
-      reconnect: () => socket.reconnect(),
-      close: () => setHeld(true),
-    });
-    return c;
-  });
+  useEffect(() => {
+    link.bind(socket.send, socket.reconnect, election.post);
+  }, [link, socket.send, socket.reconnect, election.post]);
 
   useEffect(() => {
     if (socket.status === "disconnected" || socket.status === "error") core.onClose();
@@ -193,20 +246,20 @@ function Connection({surface, cursorKey, auth, onStatus}: ConnectionProps) {
   // flaps between connecting and disconnected must not restart the count.
   const connected = socket.status === "connected";
   useEffect(() => {
-    if (connected) return undefined;
+    if (connected || !election.leader) return undefined;
     const timer = setTimeout(() => core.onUnreachable(), UNREACHABLE_AFTER_MS);
     return () => clearTimeout(timer);
-  }, [connected, core]);
+  }, [connected, election.leader, core]);
 
   useEffect(() => {
-    if (coreStatus !== "polling") return undefined;
+    if (coreStatus !== "polling" || !election.leader) return undefined;
     return startPolling({
       fetchChanges: changesFetcher(initial.surface),
       core,
       intervalMs: core.pollIntervalMs || DEFAULT_POLL_MS,
       visible: () => typeof document === "undefined" || document.visibilityState === "visible",
     });
-  }, [coreStatus, core, initial.surface]);
+  }, [coreStatus, election.leader, core, initial.surface]);
 
   useEffect(() => {
     // A checkout link is not renewed: the page reconnects with the same link.
