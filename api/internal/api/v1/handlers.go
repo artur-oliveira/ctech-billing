@@ -491,12 +491,16 @@ func (h *handlers) createInvoice(c fiber.Ctx) error {
 	ch.text("description", req.Description, true, limits.Description)
 	ch.amount("amount_cents", req.AmountCents)
 	ch.text("reference", req.Reference, true, 64)
+	ch.id("owner_key", req.OwnerKey, false)
+	if len(req.OwnerKey) > limits.OwnerKey {
+		ch.fail("owner_key", "too_long", "at most 64 characters", "max", limits.OwnerKey)
+	}
 	if len(ch.errs) > 0 {
 		return problem.Validation(ch.errs).Send(c)
 	}
 	inv, lines, created, err := h.oneOff.Create(c.Context(), services.OneOffInput{
 		OrganizationID: t.OrganizationID, Livemode: t.Livemode, CustomerID: req.CustomerID, Description: req.Description,
-		Reference: req.Reference, AmountCents: int64(req.AmountCents), Metadata: req.Metadata,
+		Reference: req.Reference, AmountCents: int64(req.AmountCents), OwnerKey: req.OwnerKey, Metadata: req.Metadata,
 	}, actorOf(c), middleware.GetRequestID(c), h.now())
 	if err != nil {
 		return fail(c, err)

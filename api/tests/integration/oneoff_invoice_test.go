@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"gopkg.aoctech.app/billing/api/internal/middleware"
+	"gopkg.aoctech.app/billing/api/internal/repositories"
 )
 
 type oneOffInvoice struct {
@@ -131,5 +132,33 @@ func TestOneOffInvoicesNeedTheirOwnScope(t *testing.T) {
 	r := e.do(t, http.MethodPost, "/v1.0/invoices", readOnly, "k-x", `{"customer_id":"c","description":"x","amount_cents":100,"reference":"r"}`)
 	if r.status != http.StatusForbidden {
 		t.Fatalf("%d %s", r.status, r.body)
+	}
+}
+
+// A service that sells through one-off invoices names its owner key, and the
+// invoice carries it, so the paid event reaches the endpoint registered for that
+// key and no other service's endpoint.
+func TestAOneOffInvoiceCarriesTheCallersOwnerKey(t *testing.T) {
+	e := newAPI(t)
+	tok := e.oneOffToken(t)
+	cust := e.customerID(t, tok)
+	body := func(ref, owner string) string {
+		return `{"customer_id":"` + cust + `","description":"Depósito","amount_cents":5000,"reference":"` + ref + `","owner_key":"` + owner + `"}`
+	}
+	r := e.do(t, http.MethodPost, "/v1.0/invoices", tok, "k-owner", body("dep-owner", "wallet"))
+	if r.status != http.StatusCreated {
+		t.Fatalf("%d %s", r.status, r.body)
+	}
+	var made oneOffInvoice
+	r.decode(t, &made)
+	inv, err := repositories.NewInvoiceRepository(testDB, testCfg).Get(ctxT(t), e.org.ID, true, made.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inv.OwnerKey != "wallet" {
+		t.Fatalf("owner key %q, want wallet", inv.OwnerKey)
+	}
+	if r = e.do(t, http.MethodPost, "/v1.0/invoices", tok, "k-owner-2", body("dep-owner-2", "not valid!")); r.status != http.StatusUnprocessableEntity && r.status != http.StatusBadRequest {
+		t.Fatalf("an owner key with spaces is refused: %d", r.status)
 	}
 }
