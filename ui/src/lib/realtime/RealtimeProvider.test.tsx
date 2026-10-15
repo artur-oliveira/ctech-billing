@@ -259,3 +259,13 @@ describe("encode", () => {
     expect(ClientFrame.decode(encodeClient(frame)).body?.$case).toBe("ping");
   });
 });
+
+describe("realtimeUrl", () => {
+  it("prefers NEXT_PUBLIC_WS_URL, the host the CSP allows, and falls back to the API's own host", async () => {
+    const {realtimeUrl} = await import("./RealtimeProvider");
+    vi.stubEnv("NEXT_PUBLIC_WS_URL", "wss://billing-api.aoctech.app/");
+    expect(realtimeUrl()).toBe("wss://billing-api.aoctech.app/v1.0/ws");
+    vi.stubEnv("NEXT_PUBLIC_WS_URL", "");
+    expect(realtimeUrl()).toBe("wss://billing-api.aoctech.app/v1.0/ws");
+  });
+});

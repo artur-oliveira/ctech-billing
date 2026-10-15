@@ -38,6 +38,7 @@ re-litigate settled questions. Every ADR here is already decided — the analysi
 | [0027](0027-personal-workspaces-in-account.md) | Shared and additional personal spaces are ctech-account workspaces of kind `personal`; verbs by kind and role | extends 0025 (2026-10-09) |
 | [0028](0028-console-tenant-from-membership.md) | The console's tenant comes from the selected organization's membership, not from an owner | supersedes 0011 in part (2026-10-10) |
 | [0029](0029-byok-phase-1.md) | BYOK phase 1: an organization's own bank account, reached through a dedicated outbound Lambda | extends 0004, 0005, 0017, 0024, 0025 (2026-10-11) |
+| [0030](0030-realtime.md) | Realtime: a change log and a cursor | — (2026-10-15) |
 
 ## Status of the record itself
 
