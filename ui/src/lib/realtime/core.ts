@@ -27,6 +27,9 @@ export interface CoreOptions {
 
 type AuthFields = {token?: string; payLink?: string; space?: string; mode?: "live" | "test"}
 
+/** How often to poll when the socket is down and the server has not said otherwise. */
+export const DEFAULT_POLL_MS = 10_000;
+
 const SEEN_CAPACITY = 500;
 const REVISION_CAPACITY = 2000;
 const MAX_JITTER_MS = 2000;
@@ -96,7 +99,9 @@ export class RealtimeCore {
 
   /** The socket closed. The shared hook reconnects on its own backoff unless we hold it. */
   onClose(): void {
-    if (this.current === "waiting-token" || this.current === "revoked" || this.held) return;
+    // Polling ends at a Ready, not at a close: a socket that keeps failing to
+    // come back is exactly when the cursor route is needed.
+    if (this.current === "waiting-token" || this.current === "revoked" || this.current === "polling" || this.held) return;
     this.setStatus("connecting");
   }
 
@@ -104,6 +109,7 @@ export class RealtimeCore {
     switch (f.type) {
       case "ready":
         this.protocolVersion = f.protocolVersion;
+        this.pollIntervalMs = 0;
         this.setStatus("live");
         return;
       case "change":
@@ -199,6 +205,16 @@ export class RealtimeCore {
         // "limit", or a reason from a newer server: the shared hook's backoff decides.
         this.setStatus("connecting");
     }
+  }
+
+  /**
+   * The socket has been down too long to wait for it: poll the cursor route as
+   * well. It ends by itself at the next Ready.
+   */
+  onUnreachable(): void {
+    if (this.current === "waiting-token" || this.current === "revoked") return;
+    if (this.pollIntervalMs <= 0) this.pollIntervalMs = DEFAULT_POLL_MS;
+    this.setStatus("polling");
   }
 
   /** A fresh access token: sent in band, or, if we were waiting for one, the wait ends. */

@@ -10,8 +10,9 @@ import {spaceHeader} from "@/lib/console/space";
 import {applyChange, applyGap} from "./binding";
 import type {Surface} from "./catalogue";
 import {decode, encode, type Inbound} from "./codec";
-import {RealtimeCore, type RealtimeStatus} from "./core";
+import {DEFAULT_POLL_MS, RealtimeCore, type RealtimeStatus} from "./core";
 import {createCursorStore} from "./cursor";
+import {changesFetcher, startPolling} from "./poller";
 import {RealtimeStatusContext} from "./useRealtimeStatus";
 
 /** What the first frame carries; the server decides every scope from it. */
@@ -97,7 +98,7 @@ interface ProviderProps {
 export function RealtimeProvider({surface, principal, auth, children}: ProviderProps) {
   const enabled = realtimeEnabledFor(surface.kind) && principal !== null;
   const cursorKey = enabled ? cursorKeyOf(surface, principal) : null;
-  const [status, setStatus] = useState<RealtimeStatus>("off");
+  const [status, setStatus] = useState<RealtimeStatus>("connecting");
 
   // Leaving a principal, a mode or a space for another one, or signing out,
   // forgets where its stream had got to. The cleanup reads the key of the commit
@@ -132,12 +133,16 @@ interface ConnectionProps {
   onStatus: (s: RealtimeStatus) => void
 }
 
+/** How long the socket may be down before the screens are also fed by polling. */
+const UNREACHABLE_AFTER_MS = 15_000;
+
 function Connection({surface, cursorKey, auth, onStatus}: ConnectionProps) {
   const qc = useQueryClient();
   // The component is keyed by the principal, mode and space, so the first surface
   // and auth it sees are the ones for its whole life.
   const [initial] = useState(() => ({surface, auth}));
   const [held, setHeld] = useState(false);
+  const [coreStatus, setCoreStatus] = useState<RealtimeStatus>("connecting");
 
   const socket = useWebSocket({
     url: realtimeUrl(),
@@ -162,7 +167,10 @@ function Connection({surface, cursorKey, auth, onStatus}: ConnectionProps) {
       cursor: createCursorStore(cursorKey),
       onChange: (change) => applyChange(qc, initial.surface, change),
       onGap: () => applyGap(qc, initial.surface),
-      onStatus,
+      onStatus: (s) => {
+        setCoreStatus(s);
+        onStatus(s);
+      },
       onHold: setHeld,
     });
     c.attach({
@@ -176,6 +184,29 @@ function Connection({surface, cursorKey, auth, onStatus}: ConnectionProps) {
   useEffect(() => {
     if (socket.status === "disconnected" || socket.status === "error") core.onClose();
   }, [socket.status, core]);
+
+  // The ladder's second rung: a socket that has been down for a while is not
+  // coming back soon, so the cursor route feeds the screens until it does. The
+  // first rung is the shared hook's own backoff; the last is the screens'
+  // refetch on focus, which is what they did before any of this.
+  // Keyed on connected-or-not, not on the hook's finer states: a socket that
+  // flaps between connecting and disconnected must not restart the count.
+  const connected = socket.status === "connected";
+  useEffect(() => {
+    if (connected) return undefined;
+    const timer = setTimeout(() => core.onUnreachable(), UNREACHABLE_AFTER_MS);
+    return () => clearTimeout(timer);
+  }, [connected, core]);
+
+  useEffect(() => {
+    if (coreStatus !== "polling") return undefined;
+    return startPolling({
+      fetchChanges: changesFetcher(initial.surface),
+      core,
+      intervalMs: core.pollIntervalMs || DEFAULT_POLL_MS,
+      visible: () => typeof document === "undefined" || document.visibilityState === "visible",
+    });
+  }, [coreStatus, core, initial.surface]);
 
   useEffect(() => {
     // A checkout link is not renewed: the page reconnects with the same link.

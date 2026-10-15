@@ -210,6 +210,16 @@ describe("status", () => {
     expect(h.core.status).toBe("connecting");
   });
 
+  it("keeps polling through a close: only a Ready ends it", () => {
+    const h = harness();
+    h.core.onUnreachable();
+    h.core.onClose();
+    h.core.onClose();
+    expect(h.core.status).toBe("polling");
+    h.core.onFrame({type: "ready", protocolVersion: 1, serverTimeMs: 1, scopeKinds: []});
+    expect(h.core.status).toBe("live");
+  });
+
   it("emits a status only when it changes", () => {
     const h = harness();
     h.core.onFrame({type: "ready", protocolVersion: 1, serverTimeMs: 1, scopeKinds: []});
