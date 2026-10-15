@@ -23,6 +23,12 @@ func registerIntegrations(console fiber.Router, ch *consoleHandlers) {
 	console.Delete("/webhooks/:id", write, ch.deleteWebhook)
 	console.Post("/webhooks/:id/rotate-secret", write, ch.rotateWebhookSecret)
 	console.Post("/webhooks/:id/test", write, ch.testWebhook)
+	// The history: what an endpoint was sent, and the events of an invoice or a
+	// subscription with where each went.
+	console.Get("/webhooks/:id/deliveries", read, ch.endpointDeliveries)
+	console.Get("/events/:id", read, ch.eventDetail)
+	console.Get("/invoices/:id/events", middleware.RequireUserScope(middleware.ScopeInvoicesRead), ch.invoiceEvents)
+	console.Get("/subscriptions/:id/events", middleware.RequireUserScope(middleware.ScopeSubscriptionsRead), ch.subscriptionEvents)
 }
 
 // isSuspended reports a suspended live tenant (part 2, spec § 4.3). Scope

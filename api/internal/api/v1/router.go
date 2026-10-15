@@ -142,6 +142,7 @@ func Register(app *fiber.App, d Deps) {
 	}
 	h := &handlers{
 		documents:  d.Documents,
+		webhooks:   d.Webhooks,
 		customers:  d.Customers,
 		subs:       d.Subs,
 		invoices:   d.Invoices,
@@ -257,6 +258,11 @@ func Register(app *fiber.App, d Deps) {
 	if h.oneOff != nil {
 		invoices.Post("",
 			middleware.RequireM2MScope(middleware.ScopeInvoicesWrite), idem, h.createInvoice)
+	}
+	// The history of an invoice: what happened and where it was sent.
+	if h.webhooks != nil {
+		invoices.Get("/:id/events", middleware.RequireM2MScope(middleware.ScopeInvoicesRead), h.invoiceEvents)
+		subscriptions.Get("/:id/events", middleware.RequireM2MScope(middleware.ScopeSubscriptionsRead), h.subscriptionEvents)
 	}
 	invoices.Get("/:id",
 		middleware.RequireM2MScope(middleware.ScopeInvoicesRead), h.getInvoice)

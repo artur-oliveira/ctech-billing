@@ -206,7 +206,7 @@ func buildEventWrites(events Base, c StatusChange, now time.Time) ([]types.Trans
 		return nil, fmt.Errorf("repositories: %s emits %v with no subject", c.SK, c.Emit)
 	}
 
-	out := make([]types.TransactWriteItem, 0, len(c.Emit))
+	out := make([]types.TransactWriteItem, 0, 3*len(c.Emit))
 	for _, t := range c.Emit {
 		row := eventRow{
 			Event: billing.Event{
@@ -235,6 +235,11 @@ func buildEventWrites(events Base, c StatusChange, now time.Time) ([]types.Trans
 			return nil, err
 		}
 		out = append(out, events.BuildPutTxItemIfAbsent(item))
+		refs, err := eventRefWrites(events, row.Event, now)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, refs...)
 	}
 	return out, nil
 }

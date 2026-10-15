@@ -178,6 +178,13 @@ func (r *WebhookRepository) RecordEndpointHealth(ctx context.Context, e *billing
 // its customer paid. This is the same reasoning that puts the audit row inside
 // the transaction, applied to the other record a state change must not lose.
 func (r *WebhookRepository) BuildEventTxItem(e *billing.Event, now time.Time) (types.TransactWriteItem, error) {
+	item, _, err := r.BuildEventTxItems(e, now)
+	return item, err
+}
+
+// BuildEventTxItems is BuildEventTxItem plus the pointers that make the event
+// findable from the thing it concerns.
+func (r *WebhookRepository) BuildEventTxItems(e *billing.Event, now time.Time) (types.TransactWriteItem, []types.TransactWriteItem, error) {
 	if e.OccurredAt == "" {
 		e.OccurredAt = now.UTC().Format(time.RFC3339Nano)
 	}
@@ -192,9 +199,13 @@ func (r *WebhookRepository) BuildEventTxItem(e *billing.Event, now time.Time) (t
 	}
 	item, err := Encode(row)
 	if err != nil {
-		return types.TransactWriteItem{}, err
+		return types.TransactWriteItem{}, nil, err
 	}
-	return r.base.BuildPutTxItemIfAbsent(item), nil
+	refs, err := eventRefWrites(r.base, *e, now)
+	if err != nil {
+		return types.TransactWriteItem{}, nil, err
+	}
+	return r.base.BuildPutTxItemIfAbsent(item), refs, nil
 }
 
 // PendingEvents returns events waiting to be matched to endpoints, oldest first.
@@ -236,7 +247,7 @@ func (r *WebhookRepository) PendingEvents(ctx context.Context, livemode bool, li
 func (r *WebhookRepository) FanOut(ctx context.Context, ev *billing.Event, endpoints []billing.WebhookEndpoint, now time.Time) (int, error) {
 	pk := TenantPK(ev.OrganizationID, ev.Livemode)
 
-	writes := make([]types.TransactWriteItem, 0, len(endpoints)+1)
+	writes := make([]types.TransactWriteItem, 0, 2*len(endpoints)+1)
 	for _, e := range endpoints {
 		row := deliveryRow{
 			keys: newKeys(pk, DeliverySK(ev.ID, e.ID), RetentionWebhookDelivery, now),
@@ -256,6 +267,11 @@ func (r *WebhookRepository) FanOut(ctx context.Context, ev *billing.Event, endpo
 			return 0, err
 		}
 		writes = append(writes, r.base.BuildPutTxItemIfAbsent(item))
+		ref, err := r.EndpointRefItem(*ev, e.ID, now)
+		if err != nil {
+			return 0, err
+		}
+		writes = append(writes, ref)
 	}
 
 	writes = append(writes, r.base.BuildRawUpdateTxItem(
