@@ -334,6 +334,22 @@ func BuildInvoicer(ctx context.Context, cfg *config.Config) (*services.Invoicer,
 	return invoicer, nil
 }
 
+// BuildSubscriber wires what the operator's subscription move needs (cmd/byok
+// -tenant-move-subscription): the service the console's "change plan" route
+// calls, and the repository to read the subscription it acts on.
+func BuildSubscriber(ctx context.Context, cfg *config.Config) (*services.Subscriber, *repositories.SubscriptionRepository, error) {
+	invoicer, err := BuildInvoicer(ctx, cfg)
+	if err != nil {
+		return nil, nil, err
+	}
+	db, err := newDynamoDB(ctx, cfg)
+	if err != nil {
+		return nil, nil, err
+	}
+	subs := newSubscriptions(db, cfg)
+	return services.NewSubscriber(subs, repositories.NewCatalogRepository(db, cfg), invoicer), subs, nil
+}
+
 // BuildOneOff wires what the operator's one-off invoice needs (cmd/byok
 // -tenant-invoice): the service the route uses, issued through the sweep's own
 // invoicer so a BYOK tenant's charge follows, and the signer of the checkout link.
