@@ -15,6 +15,7 @@ import {ConsoleBottomNav} from "@/components/console/ConsoleBottomNav";
 import {statusOf} from "@/lib/api/client";
 import {consoleKeys, getConsoleSession} from "@/lib/api/console";
 import {useAuth} from "@/lib/auth/AuthContext";
+import {useSubject} from "@/lib/auth/subject";
 import {pickMerchantOrg, setMerchantOrg, tenantInMode} from "@/lib/console/merchant";
 import {consoleNav} from "@/lib/console/nav";
 import {ConsoleScopeProvider} from "@/lib/console/scope";
@@ -22,6 +23,7 @@ import {MerchantSelectionProvider} from "@/lib/console/selection";
 import {useMerchantOrg} from "@/lib/console/useMerchantOrg";
 import {useMode} from "@/lib/console/useMode";
 import {FINANCE_HREF} from "@/lib/finance/href";
+import {RealtimeProvider} from "@/lib/realtime/RealtimeProvider";
 
 /**
  * The operator shell — invoicing, the second of the three areas the app ships
@@ -54,6 +56,7 @@ export default function ConsoleLayout({children}: LayoutProps<"/console">) {
   const router = useRouter();
   const {authenticated, loading} = useAuth();
   const mode = useMode();
+  const subject = useSubject();
   const stored = useMerchantOrg();
   const {data: session, error, isPending, refetch} = useQuery({
     queryKey: consoleKeys.session(),
@@ -147,7 +150,12 @@ export default function ConsoleLayout({children}: LayoutProps<"/console">) {
         // the application stands. /console/apply runs without a tenant.
         <MerchantSelectionProvider value={selection}>
           {onApply ? children : onConnections || active ? (
-            <ConsoleScopeProvider value={selection.scope}>{children}</ConsoleScopeProvider>
+            <ConsoleScopeProvider value={selection.scope}>
+              {/* The organization and mode are the connection's key: switching either one closes the socket and opens another with no cursor. */}
+              <RealtimeProvider surface={{kind: "console", scope: selection.scope}} principal={subject}>
+                {children}
+              </RealtimeProvider>
+            </ConsoleScopeProvider>
           ) : <MerchantInvitation/>}
         </MerchantSelectionProvider>
       ) : (
