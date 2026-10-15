@@ -207,3 +207,18 @@ export function applyGap(qc: QueryClient, surface: Surface): void
 | § 5 token never in the URL | 4, 5 |
 | § 6 failure modes (drain, gap, offline, blocked WS) | 6 |
 | § 9 flag off is today | 4 |
+
+## Status
+
+Done on branch `feat/realtime-r3-client` (tasks 1 to 8). Where it differs from the plan above:
+
+- **Invalidate only.** The binding never patches a cached view and there is no optimistic status patch: a change invalidates the keys it touches and the screens refetch through the authorized REST API. The catalogue (`effectsOf`) is a table of key prefixes, `rootsOf` the roots a Gap invalidates.
+- **A Gap clears the cursor**, except `slow_consumer`, where the cursor is still good and the replay catches up.
+- **Polling is not ended by a close.** Once the ladder reaches polling (or waiting for a token, or revoked, or held by a Bye) a socket close does not leave it; only `Ready` does, and it resets the poll interval.
+- **`onHold`** is a core callback so the shared hook is not left to reconnect on its own during a draining Bye or while a token is awaited.
+- **The 15 s unreachable timer** is keyed on the `connected` boolean, and the provider's first status is `connecting`.
+- **Provider structure** (React 19 lint rules): the core is built before the hooks that call it, a `LateLink` bridges the election's `post` to the core, and the outer component clears the previous principal's cursor in an effect cleanup.
+- **One socket per browser** (`leader.ts`) is Web Locks for the leader and `BroadcastChannel` for its frames, behind `NEXT_PUBLIC_REALTIME_SHARED`. The channel name is an FNV-1a hash of the cursor key, so a principal, space or mode never shares one and nothing identifying is in the name. With neither API each tab connects alone.
+- **The indicator** says "Ao vivo" when live and "Atualizando a cada 10 s" when polling (or still connecting after 3 s); nothing otherwise.
+- **The mock** (`dev/realtimeMock.ts`) replaces the global `WebSocket` in mock mode at import of `MockControls` and scripts a payment every 8 s.
+- `ui/src/lib/api/client.ts` gained `subscribeAccessToken`, so a refreshed token reaches the open socket as a Reauth.
