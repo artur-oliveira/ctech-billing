@@ -28,8 +28,8 @@ data "aws_subnets" "public" {
   }
 }
 
-# Keep the VPC's public subnet in us-east-1e available to other workloads, but
-# exclude it from this t4g ASG because that instance family is unavailable there.
+# Pinned to a single AZ to avoid EC2 Inter-AZ data transfer charges. Keep in
+# sync with PINNED_AZ in ctech-cdk/lib/constants.ts. Tradeoff: no AZ failover.
 data "aws_subnet" "public" {
   for_each = toset(data.aws_subnets.public.ids)
   id       = each.value
@@ -38,7 +38,7 @@ data "aws_subnet" "public" {
 locals {
   t4g_public_subnet_ids = [
     for subnet in data.aws_subnet.public : subnet.id
-    if subnet.availability_zone != "us-east-1e"
+    if subnet.availability_zone == "us-east-1b"
   ]
 }
 
