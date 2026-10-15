@@ -140,8 +140,7 @@ func main() {
 	// minute job still picks up whatever this misses.
 	if *modeFlag == "live" || *modeFlag == "both" {
 		if d, derr := app.BuildDeliverer(ctx, cfg); derr == nil {
-			d.FanOut(ctx, true, 50, time.Now())
-			d.Deliver(ctx, true, 50, time.Now())
+			d.FanOutAndDeliver(ctx, true, 50, time.Now())
 		}
 	}
 	if len(errs) > 0 {

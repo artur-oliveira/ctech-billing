@@ -245,7 +245,16 @@ func (r *WebhookRepository) PendingEvents(ctx context.Context, livemode bool, li
 // entirely. An event that matches nothing still leaves the queue — "no endpoint
 // wanted this" is a decision, not a pending job.
 func (r *WebhookRepository) FanOut(ctx context.Context, ev *billing.Event, endpoints []billing.WebhookEndpoint, now time.Time) (int, error) {
+	made, err := r.FanOutRows(ctx, ev, endpoints, now)
+	return len(made), err
+}
+
+// FanOutRows is FanOut returning the deliveries it created, so the caller can
+// attempt them at once instead of waiting for the delivery queue (an index) to
+// show them: a row written a moment ago is not in it yet.
+func (r *WebhookRepository) FanOutRows(ctx context.Context, ev *billing.Event, endpoints []billing.WebhookEndpoint, now time.Time) ([]billing.Delivery, error) {
 	pk := TenantPK(ev.OrganizationID, ev.Livemode)
+	made := make([]billing.Delivery, 0, len(endpoints))
 
 	writes := make([]types.TransactWriteItem, 0, 2*len(endpoints)+1)
 	for _, e := range endpoints {
@@ -264,14 +273,15 @@ func (r *WebhookRepository) FanOut(ctx context.Context, ev *billing.Event, endpo
 		}
 		item, err := Encode(row)
 		if err != nil {
-			return 0, err
+			return nil, err
 		}
 		writes = append(writes, r.base.BuildPutTxItemIfAbsent(item))
 		ref, err := r.EndpointRefItem(*ev, e.ID, now)
 		if err != nil {
-			return 0, err
+			return nil, err
 		}
 		writes = append(writes, ref)
+		made = append(made, row.Delivery)
 	}
 
 	writes = append(writes, r.base.BuildRawUpdateTxItem(
@@ -288,9 +298,12 @@ func (r *WebhookRepository) FanOut(ctx context.Context, ev *billing.Event, endpo
 	err := r.base.TransactWrite(ctx, writes)
 	if IsConditionFailed(err) {
 		// Another pass got there first. Not an error: the work is done.
-		return 0, nil
+		return nil, nil
 	}
-	return len(endpoints), err
+	if err != nil {
+		return nil, err
+	}
+	return made, nil
 }
 
 // ── Deliveries ───────────────────────────────────────────────────────────────

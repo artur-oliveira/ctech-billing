@@ -18,7 +18,7 @@ type fakePasses struct {
 	started chan struct{}
 }
 
-func (f *fakePasses) FanOut(_ context.Context, live bool, _ int, _ time.Time) PassResult {
+func (f *fakePasses) FanOutAndDeliver(_ context.Context, live bool, _ int, _ time.Time) (PassResult, PassResult) {
 	f.record("fanout", live)
 	f.mu.Lock()
 	f.fanouts++
@@ -34,15 +34,11 @@ func (f *fakePasses) FanOut(_ context.Context, live bool, _ int, _ time.Time) Pa
 	if f.block != nil {
 		<-f.block
 	}
-	if found {
-		return PassResult{Examined: 1}
-	}
-	return PassResult{}
-}
-
-func (f *fakePasses) Deliver(_ context.Context, live bool, _ int, _ time.Time) PassResult {
 	f.record("deliver", live)
-	return PassResult{}
+	if found {
+		return PassResult{Examined: 1}, PassResult{}
+	}
+	return PassResult{}, PassResult{}
 }
 
 func (f *fakePasses) record(what string, live bool) {

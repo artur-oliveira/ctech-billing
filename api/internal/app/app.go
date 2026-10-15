@@ -206,7 +206,8 @@ func Build(ctx context.Context, cfg *config.Config, clock func() time.Time, opts
 	var payouts *services.Payouts
 	if byokCollector != nil {
 		byokWebhooks = services.NewByokWebhooks(repositories.NewByokRepository(db, cfg), payments, byokCollector, cacheBackend).
-			WithStatement(byokStatement)
+			WithStatement(byokStatement).
+			WithDeliveryKick(newDeliveryKick(db, cfg))
 		byokSetup = services.NewByokCollectionSetup(byokConns, repositories.NewByokRepository(db, cfg), orgs, payments, byokCollector,
 			byokWebhooks, cfg.ByokHooksHost, cfg.PortalOrganizationID).WithSubscriptions(subs)
 		if cfg.EmailFrom != "" {
@@ -420,6 +421,13 @@ func BuildInvoices(ctx context.Context, cfg *config.Config) (*repositories.Invoi
 		return nil, err
 	}
 	return repositories.NewInvoiceRepository(db, cfg), nil
+}
+
+// newDeliveryKick is how a settled payment delivers its events at once. One
+// function for every place a ByokWebhooks is built: the server's is the one that
+// matters, and a second copy of the wiring is how it was left out once.
+func newDeliveryKick(db *dynamodb.Client, cfg *config.Config) func(livemode bool) {
+	return services.NewDeliveryKick(services.NewDeliverer(repositories.NewWebhookRepository(db, cfg))).Kick
 }
 
 // BuildWebhooks wires only the webhook repository, for the event history
@@ -743,7 +751,7 @@ func byokSetup(ctx context.Context, cfg *config.Config, db *dynamodb.Client, c c
 	repo := repositories.NewByokRepository(db, cfg)
 	payments := repositories.NewPaymentRepository(db, cfg)
 	webhooks := services.NewByokWebhooks(repo, payments, collector, c).
-		WithDeliveryKick(services.NewDeliveryKick(services.NewDeliverer(repositories.NewWebhookRepository(db, cfg))).Kick)
+		WithDeliveryKick(newDeliveryKick(db, cfg))
 	setup := services.NewByokCollectionSetup(conns, repo, orgs, payments, collector, webhooks, cfg.ByokHooksHost, cfg.PortalOrganizationID).
 		WithSubscriptions(newSubscriptions(db, cfg))
 	return setup, collector, payments, repo

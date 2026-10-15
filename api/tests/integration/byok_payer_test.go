@@ -149,3 +149,26 @@ func TestTheWebhooksMaskedPayerIsProvisionalAndTheStatementReplacesIt(t *testing
 		t.Fatalf("a masked claim replaced the statement's payer: %+v %q", got.Payer, got.PayerMatch)
 	}
 }
+
+// A settlement delivers its events at once, whichever path settled it first:
+// the notice that settles the charge kicks, and so does one that finds it
+// already settled (the hourly job or the sweep got there before the webhook).
+func TestANoticeKicksTheDeliveryWhetherItSettledTheChargeOrFoundItSettled(t *testing.T) {
+	env := newCollectEnv(t, collectLive)
+	env.issueHook(t)
+	var kicks []bool
+	env.webhooks.WithDeliveryKick(func(live bool) { kicks = append(kicks, live) })
+	inv := env.finalizeInvoice(t, 5000)
+	line := env.payLine(t, inv, "L-kick-1", &byok.Payer{Name: "Fulano de Tal", Document: env.customer.TaxID})
+	ref := env.chargeRef(t, inv)
+	notify := func() int {
+		return env.webhooks.Notify(ctxT(t), services.NotifyRequest{Provider: "inter", HookID: env.hookID, Secret: env.secret, Product: "pix",
+			ChargeRefs: []string{ref.Ref}, PaymentIDs: []string{line.PaymentID}}, now())
+	}
+	if st := notify(); st != 200 || len(kicks) != 1 || !kicks[0] {
+		t.Fatalf("the notice that settles it kicks (live): %d %v", st, kicks)
+	}
+	if st := notify(); st != 200 || len(kicks) != 2 {
+		t.Fatalf("a notice that finds it settled kicks too: %d %v", st, kicks)
+	}
+}
