@@ -106,3 +106,11 @@ Repos: `P_BILL/ui` (mount points: `src/app/checkout/layout.tsx`, `src/app/(conso
 | § 4.1 scopes per surface | 1–4 (surface → scope kind) |
 | § 5 one customer never sees another's change | 2, 3 (+ R2 Task 10) |
 | § 9 rollout order, flag | rollout table, 5 |
+
+## Status
+
+### Task 1: Checkout (feat/realtime-r4-checkout)
+
+- **The checkout never used SSE**: it polled `GET /checkout/:token` every 4 s. Only the portal's `PixPanel` streams (`usePaymentStream`), so that hook stays until the portal mounts (Task 3) and R5 removes it. There is no `useInvoiceSettled`: a paid change invalidates `checkoutKeys.view(token)`, the page refetches, and `amount_due === 0` shows the settled screen.
+- The provider is mounted in `checkout/page.tsx` (the token is a query parameter, so the server layout cannot read it); the principal is the token, the first frame carries it as the pay link only.
+- While the status is `live` the safety-net poll is 60 s instead of 4 s; with the socket down the 4 s poll is unchanged. The indicator sits under the Pix panel.

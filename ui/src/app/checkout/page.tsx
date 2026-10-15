@@ -13,6 +13,7 @@ import {StatusScreen} from "@/components/StatusScreen";
 import {ErrorBlock} from "@/components/portal/ErrorBlock";
 import {Money} from "@/components/portal/Money";
 import {PixPanel} from "@/components/portal/PixPanel";
+import {LiveIndicator} from "@/components/realtime/LiveIndicator";
 import {StatusBadge} from "@/components/portal/StatusBadge";
 import {checkoutKeys, getCheckout, payCheckout} from "@/lib/api/checkout";
 import {messageFor, statusOf} from "@/lib/api/client";
@@ -21,6 +22,8 @@ import {longDate, money} from "@/lib/format";
 import {useDocumentTitle} from "@/lib/hooks/useDocumentTitle";
 import {invoiceTitle} from "@/lib/invoice";
 import {BILLING_TERMS_URL, PRIVACY_POLICY_URL} from "@/lib/legal";
+import {RealtimeProvider} from "@/lib/realtime/RealtimeProvider";
+import {useRealtimeStatus} from "@/lib/realtime/useRealtimeStatus";
 
 /**
  * X1 — the payment link. The only screen here a stranger can pay from.
@@ -40,8 +43,22 @@ import {BILLING_TERMS_URL, PRIVACY_POLICY_URL} from "@/lib/legal";
 export default function CheckoutPage() {
   return (
     <Suspense fallback={<CheckoutSkeleton/>}>
-      <CheckoutScreen/>
+      <CheckoutWithRealtime/>
     </Suspense>
+  );
+}
+
+/**
+ * The link is the credential: the socket's first frame carries it as a pay link
+ * and its cursor is kept per link. The principal is the token itself; no token,
+ * no socket.
+ */
+function CheckoutWithRealtime() {
+  const token = useSearchParams().get("token") ?? "";
+  return (
+    <RealtimeProvider surface={{kind: "checkout", token}} principal={token || null}>
+      <CheckoutScreen/>
+    </RealtimeProvider>
   );
 }
 
@@ -50,6 +67,9 @@ export default function CheckoutPage() {
  *  fast enough that the confirmation feels immediate and slow enough that a
  *  thirty-minute window is 450 requests rather than 1800. */
 const POLL_MS = 4_000;
+
+/** The same question while the socket is telling us: only a safety net. */
+const LIVE_POLL_MS = 60_000;
 
 function CheckoutScreen() {
   const {t} = useTranslation();
@@ -62,6 +82,7 @@ function CheckoutScreen() {
   // view's key would therefore have the first poll — four seconds later — wipe
   // the PIX code off the screen of somebody in the middle of scanning it.
   const [payment, setPayment] = useState<PixPayment | null>(null);
+  const live = useRealtimeStatus() === "live";
 
   const query = useQuery({
     queryKey: checkoutKeys.view(token),
@@ -72,7 +93,7 @@ function CheckoutScreen() {
     // seconds would be a request per reader per four seconds for as long as
     // somebody stares at the page deciding whether to pay.
     refetchInterval: q =>
-      payment && (q.state.data?.invoice.amount_due ?? 0) > 0 ? POLL_MS : false,
+      payment && (q.state.data?.invoice.amount_due ?? 0) > 0 ? (live ? LIVE_POLL_MS : POLL_MS) : false,
   });
 
   const pay = useMutation({
@@ -117,6 +138,7 @@ function CheckoutScreen() {
           </div>
         </div>
       ) : payment ? (
+        <>
         <PixPanel
           payment={payment}
           settled={settled}
@@ -126,6 +148,8 @@ function CheckoutScreen() {
           onRegenerate={() => pay.mutate()}
           regenerating={pay.isPending}
         />
+        <div className="text-center"><LiveIndicator/></div>
+        </>
       ) : invoice.payable ? (
         <Button block onClick={() => pay.mutate()} disabled={pay.isPending}>
           {pay.isPending
