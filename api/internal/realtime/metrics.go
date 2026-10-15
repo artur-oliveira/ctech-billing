@@ -9,6 +9,21 @@ type Metrics struct {
 	publishErrors atomic.Int64
 	slowCloses    atomic.Int64
 	active        atomic.Int64
+	authFailures  atomic.Int64
+}
+
+func (m *Metrics) authFailure(string) {
+	if m != nil {
+		m.authFailures.Add(1)
+	}
+}
+
+// AuthFailures is how many connections were refused at authorization.
+func (m *Metrics) AuthFailures() int64 {
+	if m == nil {
+		return 0
+	}
+	return m.authFailures.Load()
 }
 
 func (m *Metrics) slowClose() {
