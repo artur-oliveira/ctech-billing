@@ -13,7 +13,6 @@ import (
 	"gopkg.aoctech.app/billing/api/internal/problem"
 	"gopkg.aoctech.app/billing/api/internal/repositories"
 	"gopkg.aoctech.app/billing/api/internal/services"
-	"gopkg.aoctech.app/billing/api/internal/wallet"
 )
 
 // The checkout surface — screen X1, and the only routes in the service that
@@ -197,41 +196,6 @@ func newCheckoutInvoice(inv *billing.Invoice, lines []billing.InvoiceItem, org *
 	return out
 }
 
-// webhook is wallet's notify-back.
-//
-// The signature says the call is from wallet. It does **not** say the charge was
-// paid — Collector.Confirm re-reads the charge from wallet before an invoice
-// moves, which is wallet's own posture toward its provider and must not get
-// weaker one layer up.
-//
-// It answers 200 for anything it has correctly decided not to act on, including
-// a charge it has never heard of. Wallet retries non-2xx through its sweep, and
-// a permanent disagreement retried forever is noise that buries the real one.
-func (h *checkoutHandlers) webhook(c fiber.Ctx) error {
-	body := c.Body()
-	if !h.collector.VerifyWebhook(body, c.Get(wallet.HeaderSignature)) {
-		return problem.Unauthorized("invalid signature").WithCode("invalid_signature").Send(c)
-	}
-	var note wallet.Notification
-	if err := c.Bind().Body(&note); err != nil || note.ChargeID == "" {
-		return problem.BadRequest("invalid request body").WithCode("invalid_body").Send(c)
-	}
-
-	// Live only, and that is now true by construction rather than by assumption:
-	// Collector.Pay refuses a test-mode invoice outright
-	// (services.ErrTestModeNotPayable), so no test-mode attempt can exist to
-	// resolve. Passing the mode through from the body instead would be the hole
-	// this closes — a test notification settling a live invoice.
-	if err := h.collector.Confirm(c.Context(), true, note.ChargeID, billing.CauseWalletWebhook, middleware.GetRequestID(c), h.now()); err != nil {
-		if errors.Is(err, repositories.ErrNotFound) {
-			// Not ours. Wallet notifies its client, and billing is one of several.
-			return c.SendStatus(fiber.StatusOK)
-		}
-		return fail(c, err)
-	}
-	return c.SendStatus(fiber.StatusOK)
-}
-
 // failLink answers the two link failures identically, so probing a token learns
 // nothing about which invoices exist.
 func failLink(c fiber.Ctx, err error) error {
@@ -250,9 +214,7 @@ func failCheckout(c fiber.Ctx, err error) error {
 	switch {
 	case errors.Is(err, services.ErrInvoiceNotPayable):
 		return problem.Conflict("this invoice is not open for payment").WithCode("invoice_not_payable").Send(c)
-	case errors.Is(err, services.ErrNoPayerAccount),
-		errors.Is(err, services.ErrTestModeNotPayable),
-		errors.Is(err, billing.ErrPayoutNotEnabled),
+	case errors.Is(err, billing.ErrPayoutNotEnabled),
 		// The BYOK rail's refusals (spec 2026-10-11 § 7.1) are the merchant's
 		// business too, as is a customer with no tax id.
 		errors.Is(err, billing.ErrByokNotConnected), errors.Is(err, billing.ErrByokCertificateExpired),
@@ -271,8 +233,6 @@ func failCheckout(c fiber.Ctx, err error) error {
 			"request_id", middleware.GetRequestID(c),
 			"path", c.Path())
 		return problem.Conflict("payment is unavailable for this invoice").WithCode("payment_unavailable").Send(c)
-	case errors.Is(err, wallet.ErrChargeRejected):
-		return problem.Unprocessable("could not open a charge for this amount").WithCode("charge_amount_rejected").Send(c)
 	default:
 		return fail(c, err)
 	}

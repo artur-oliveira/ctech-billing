@@ -38,7 +38,6 @@ import (
 	"gopkg.aoctech.app/billing/api/internal/services"
 	"gopkg.aoctech.app/billing/api/internal/settlement"
 	"gopkg.aoctech.app/billing/api/internal/space"
-	"gopkg.aoctech.app/billing/api/internal/wallet"
 )
 
 // Option changes how Build wires the app. Tests use it to replace what would
@@ -100,31 +99,16 @@ func Build(ctx context.Context, cfg *config.Config, clock func() time.Time, opts
 		}
 	}
 
-	// Collection is wired only when wallet is fully configured. A half-configured
-	// one leaves Collector nil, which unmounts every route that collects money —
-	// see v1.registerCheckout for why that is the safe direction.
 	var collector *services.Collector
-	walletCfg := wallet.Config{
-		BaseURL:       cfg.WalletBaseURL,
-		TokenURL:      cfg.WalletTokenURL,
-		ClientID:      cfg.WalletClientID,
-		ClientSecret:  cfg.WalletClientSecret,
-		WebhookSecret: cfg.WalletWebhookSecret,
-		Cache:         cacheBackend,
-	}
 	finance := financeInvoices(db, cfg, orgs, customers)
 	// The single charge gate's facts (BYOK spec § 7.1): the connection row and,
 	// in live, the tenant's prod_billing entitlement. Built before the collector
 	// and the applications service it reads entitlement from.
 	gates := newChargeGates(db, cfg)
-	if walletCfg.Enabled() {
-		collector = services.NewCollector(invoices, payments, customers, orgs, subs, wallet.New(walletCfg)).
-			WithSettlementBus(bus).
-			WithFinance(finance).
-			WithGates(gates)
-	} else {
-		slog.Warn("wallet not configured — checkout and payment routes are not mounted")
-	}
+	collector = services.NewCollector(invoices, payments, customers, orgs, subs).
+		WithSettlementBus(bus).
+		WithFinance(finance).
+		WithGates(gates)
 
 	// Invoice documents. A deployment with no bucket serves no PDFs and mounts
 	// no download route, which is visible rather than broken.
@@ -494,58 +478,16 @@ func BuildDunner(ctx context.Context, cfg *config.Config) (*services.Dunner, err
 	).WithOrganizations(repositories.NewOrganizationRepository(db, cfg)), nil
 }
 
-// BuildCollector wires only what the reconciliation job needs.
-//
-// Same discipline as BuildInvoicer, and one addition: this job cannot run at all
-// without wallet, so an incomplete configuration is a hard failure here rather
-// than the warning it is in Build. The API degrades by unmounting its checkout
-// routes; a reconciler that started and reconciled nothing would report success
-// every hour while payments sat unsettled.
-//
-// It also returns the finance posting rule, whose Replay the same job runs: the
-// postings a settlement could not write are retried on the reconciler's clock.
-func BuildCollector(ctx context.Context, cfg *config.Config) (*services.Collector, *services.FinanceInvoices, error) {
-	walletCfg := wallet.Config{
-		BaseURL:       cfg.WalletBaseURL,
-		TokenURL:      cfg.WalletTokenURL,
-		ClientID:      cfg.WalletClientID,
-		ClientSecret:  cfg.WalletClientSecret,
-		WebhookSecret: cfg.WalletWebhookSecret,
-		Cache:         newCache(cfg),
-	}
-	if !walletCfg.Enabled() {
-		return nil, nil, fmt.Errorf("reconciliation needs wallet configured (WALLET_BASE_URL, WALLET_TOKEN_URL, WALLET_CLIENT_ID, WALLET_CLIENT_SECRET, WALLET_WEBHOOK_SECRET)")
-	}
+// BuildFinance wires only what the hourly job needs: the finance posting rule, whose
+// Replay retries the postings a settlement or a credit note could not write.
+func BuildFinance(ctx context.Context, cfg *config.Config) (*services.FinanceInvoices, error) {
 	db, err := newDynamoDB(ctx, cfg)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	customers := repositories.NewCustomerRepository(db, cfg)
 	orgs := repositories.NewOrganizationRepository(db, cfg)
-	finance := financeInvoices(db, cfg, orgs, customers)
-	collector := services.NewCollector(
-		repositories.NewInvoiceRepository(db, cfg),
-		repositories.NewPaymentRepository(db, cfg),
-		customers,
-		orgs,
-		newSubscriptions(db, cfg),
-		wallet.New(walletCfg),
-	).WithFinance(finance)
-	// The reconciler settles invoices the webhook missed, so it records them in
-	// Finanças too (spec § 3.8); the bill's id makes it a no-op when the webhook
-	// already did.
-	// The reconciler settles invoices too — that is its whole job — and somebody
-	// may well have the payment screen open when it does. Without this, the
-	// settlement that arrives through reconciliation is the one case that still
-	// waits for a re-read.
-	if cfg.RedisURL != "" {
-		if bus, err := settlement.NewValkeyBus(cfg.RedisURL); err != nil {
-			slog.Error("valkey unavailable — reconciled settlements will not be announced", "error", err)
-		} else {
-			collector = collector.WithSettlementBus(bus)
-		}
-	}
-	return collector, finance, nil
+	return financeInvoices(db, cfg, orgs, customers), nil
 }
 
 func newFiber(cfg *config.Config) *fiber.App {
@@ -849,7 +791,7 @@ func byokCollection(ctx context.Context, cfg *config.Config, db *dynamodb.Client
 	payments := repositories.NewPaymentRepository(db, cfg)
 	customers := repositories.NewCustomerRepository(db, cfg)
 	orgs := repositories.NewOrganizationRepository(db, cfg)
-	settler := services.NewCollector(invoices, payments, customers, orgs, newSubscriptions(db, cfg), nil).
+	settler := services.NewCollector(invoices, payments, customers, orgs, newSubscriptions(db, cfg)).
 		WithFinance(finance).WithGates(gates)
 	if bus != nil {
 		settler = settler.WithSettlementBus(bus)

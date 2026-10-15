@@ -1,6 +1,6 @@
 # ADR 0004 — Collection rail: PIX on the invoice, through wallet
 
-Status: Accepted (2026-08-15) · **Implemented on both sides 2026-08-16** · Records decisions **D2**
+Status: **Superseded by [the wallet ledger spec](../specs/2026-10-14-wallet-ledger-billing-rail.md) (2026-10-14)**: Billing collects through its own Inter connection (BYOK) and the Wallet no longer opens charges for it. Was: Accepted (2026-08-15) · **Implemented on both sides 2026-08-16** · Records decisions **D2**
 and **D11**
 
 > The Context below describes what existed on 2026-08-15 and is left as written — it is the record

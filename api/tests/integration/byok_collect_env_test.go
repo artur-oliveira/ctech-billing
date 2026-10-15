@@ -34,7 +34,7 @@ type collectMode int
 const (
 	collectLive       collectMode = iota // live BYOK tenant, merchant connection, entitled
 	collectTest                          // test BYOK tenant on the shared sandbox
-	collectTestWallet                    // test tenant on the wallet rail
+	collectTestWallet                    // test tenant with no BYOK connection
 )
 
 // collectScopes is a console session that may also configure collection.
@@ -141,9 +141,9 @@ func (e *collectEnv) wire(t *testing.T) {
 		repositories.NewCatalogRepository(testDB, testCfg), e.tz))
 	finance := services.NewFinanceInvoices(repositories.NewBillRepository(testDB, testCfg), e.orgs, customers, e.invoices,
 		repositories.NewCreditNoteRepository(testDB, testCfg), e.tz).WithByok(services.ByokPostingFrom(e.payments, e.repo))
-	settler := services.NewCollector(e.invoices, e.payments, customers, e.orgs, subs, nil).WithFinance(finance).WithGates(e.gates)
+	settler := services.NewCollector(e.invoices, e.payments, customers, e.orgs, subs).WithFinance(finance).WithGates(e.gates)
 	e.byok = services.NewByokCollector(e.invoices, e.payments, customers, e.orgs, e.repo, e.gates, conns.Session, settler)
-	e.collector = services.NewCollector(e.invoices, e.payments, customers, e.orgs, subs, nil).WithFinance(finance).
+	e.collector = services.NewCollector(e.invoices, e.payments, customers, e.orgs, subs).WithFinance(finance).
 		WithGates(e.gates).WithByok(e.byok)
 	e.invoicer = services.NewInvoicer(subs, e.invoices, repositories.NewCatalogRepository(testDB, testCfg),
 		repositories.NewUsageRepository(testDB, testCfg)).WithOrganizations(e.orgs).WithCharges(e.byok)
@@ -365,9 +365,3 @@ var _ byokrpc.Session
 func todayPlus(n int) brcal.Date { return brcal.FromTime(now()).AddDays(n) }
 
 func bodyHas(b []byte, s string) bool { return strings.Contains(string(b), s) }
-
-// useWallet rebuilds the env's collector with this wallet client.
-func (e *collectEnv) useWallet(w services.ChargeOpener) {
-	customers := repositories.NewCustomerRepository(testDB, testCfg)
-	e.collector = services.NewCollector(e.invoices, e.payments, customers, e.orgs, hookedSubs(e.tz), w).WithGates(e.gates).WithByok(e.byok)
-}

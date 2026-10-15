@@ -8,10 +8,8 @@ import (
 	"time"
 
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
-	"gopkg.aoctech.app/billing/api/internal/domain/id"
 	"gopkg.aoctech.app/billing/api/internal/repositories"
 	"gopkg.aoctech.app/billing/api/internal/settlement"
-	"gopkg.aoctech.app/billing/api/internal/wallet"
 )
 
 // Errors the collection path returns. Each is a different answer to "why can I
@@ -21,47 +19,10 @@ var (
 	// ErrInvoiceNotPayable covers a draft (not a bill yet), a paid one (nothing
 	// owed) and a void one (withdrawn).
 	ErrInvoiceNotPayable = errors.New("invoice is not payable")
-	// ErrNoPayerAccount reports a customer with no ctech-account subject.
-	//
-	// This is the second blocker on a third-party merchant's checkout, and it is
-	// structural rather than missing code: wallet's purchase path is keyed on
-	// user_id from the reservation through to the refund, so a payer with no CTech
-	// account has nowhere to be recorded. Inventing an id would file a stranger's
-	// purchase in somebody's wallet history, so billing refuses here instead —
-	// before the call, where the reason is still legible.
-	ErrNoPayerAccount = errors.New("customer has no CTech account to charge")
 	// ErrAmountMismatch reports a settled charge whose amount is not the amount
 	// billing opened it for. It is an alarm, never a partial payment.
 	ErrAmountMismatch = errors.New("charge amount does not match the attempt")
-	// ErrTestModeNotPayable refuses collection on a test-mode invoice.
-	//
-	// There is one set of wallet credentials (config.WALLET_CLIENT_*), and wallet
-	// has no test rail for this charge kind: OpenCharge goes straight to
-	// pix.CreateCharge whatever mode billing thinks it is in. So a test-mode
-	// invoice taken through this path opens a **real** PIX charge for real money
-	// — and then the settlement never arrives, because the notify-back route
-	// resolves the attempt in live mode only. Real money in, test invoice stays
-	// open, nothing reconciles the two.
-	//
-	// Refusing here is not a limitation being papered over, it is the limitation
-	// stated at the only place that can act on it. It becomes unnecessary the day
-	// wallet has a sandbox charge rail and billing has a second set of
-	// credentials to reach it with; until then, silence would be the bug.
-	ErrTestModeNotPayable = errors.New("test-mode invoices cannot be collected")
 )
-
-// ChargeOpener is the slice of ctech-wallet that collection uses.
-//
-// It exists so the whole payment path is testable without a wallet. The route
-// behind it now ships (docs/specs/2026-08-15-wallet-invoice-charge.md, marked
-// Implemented), so the fake in tests/integration is no longer a stand-in for
-// something absent — it is the contract test, and it fails the day either side
-// drifts from the spec.
-type ChargeOpener interface {
-	OpenCharge(ctx context.Context, in wallet.OpenChargeInput) (*wallet.Charge, error)
-	GetCharge(ctx context.Context, chargeID string) (*wallet.Charge, error)
-	VerifySignature(body []byte, header string) bool
-}
 
 // Collector turns an open invoice into something a person can pay, and turns
 // wallet's confirmation back into a paid invoice.
@@ -71,7 +32,6 @@ type Collector struct {
 	customers *repositories.CustomerRepository
 	orgs      *repositories.OrganizationRepository
 	subs      *repositories.SubscriptionRepository
-	charges   ChargeOpener
 	// bus announces a settlement to whichever instance is holding the payer's
 	// screen. Optional: without Valkey the screen falls back to re-reading the
 	// invoice, which is slower and equally correct.
@@ -136,7 +96,6 @@ func NewCollector(
 	customers *repositories.CustomerRepository,
 	orgs *repositories.OrganizationRepository,
 	subs *repositories.SubscriptionRepository,
-	charges ChargeOpener,
 ) *Collector {
 	return &Collector{
 		invoices:  invoices,
@@ -144,24 +103,7 @@ func NewCollector(
 		customers: customers,
 		orgs:      orgs,
 		subs:      subs,
-		charges:   charges,
 	}
-}
-
-// VerifyWebhook authenticates a notify-back. It proves the sender, and nothing
-// else: what the body claims is never acted on without Confirm re-reading the
-// charge.
-func (c *Collector) VerifyWebhook(body []byte, signature string) bool {
-	return c.charges.VerifySignature(body, signature)
-}
-
-// invoiceChargeDescription is the statement text of an invoice charge: the
-// gapless invoice number when it has been finalized, the id otherwise.
-func invoiceChargeDescription(inv *billing.Invoice) string {
-	if inv.Number > 0 {
-		return fmt.Sprintf("Fatura #%d", inv.Number)
-	}
-	return "Fatura " + inv.ID
 }
 
 // Pay opens a checkout session for an invoice, or returns the one that is still
@@ -202,171 +144,8 @@ func (c *Collector) Pay(
 		session, err := c.byok.Checkout(ctx, org, inv, actor, requestID, now)
 		return session, inv, err
 	}
-	// The wallet rail only: test mode would open a real charge (see the error).
-	// This is the choke point both callers pass through — the public link and
-	// the portal. A guard in each of them is a guard the third caller forgets.
-	if !livemode {
-		return nil, nil, fmt.Errorf("%w: invoice %s", ErrTestModeNotPayable, invoiceID)
-	}
-
-	session, err := c.payments.LatestSession(ctx, organizationID, livemode, invoiceID)
-	if err != nil {
-		return nil, nil, err
-	}
-	if session != nil && session.IsUsable(now) {
-		return session, inv, nil
-	}
-
-	// The payout gate is checked here and only here on this path (ADR 0005).
-	// Tenant zero is enabled because the money lands in CTech's own account; an
-	// external merchant stays blocked until the legal opinion and the KYC test
-	// clear, and no button anywhere can change that.
-	if err := c.gates.Authorize(ctx, org); err != nil {
-		return nil, inv, err
-	}
-
-	customer, err := c.customers.Get(ctx, organizationID, livemode, inv.CustomerID)
-	if err != nil {
-		return nil, nil, err
-	}
-	if customer.UserID == "" {
-		return nil, inv, fmt.Errorf("%w: customer %s", ErrNoPayerAccount, customer.ID)
-	}
-
-	attempts, err := c.payments.ListAttempts(ctx, organizationID, livemode, invoiceID)
-	if err != nil {
-		return nil, nil, err
-	}
-	attempt := &billing.PaymentAttempt{
-		ID:             id.NewWithPrefix(id.PrefixPaymentAttempt),
-		OrganizationID: organizationID,
-		Livemode:       livemode,
-		InvoiceID:      inv.ID,
-		AttemptNumber:  len(attempts) + 1,
-		Status:         billing.AttemptPending,
-		Method:         billing.MethodPIX,
-		Amount:         inv.AmountDue(),
-	}
-
-	charge, err := c.charges.OpenCharge(ctx, wallet.OpenChargeInput{
-		UserID:         customer.UserID,
-		Amount:         int64(attempt.Amount),
-		Reference:      inv.ID,
-		IdempotencyKey: attempt.IdempotencyKey(),
-		PayerTaxID:     customer.TaxID,
-		Description:    invoiceChargeDescription(inv),
-	})
-	if err != nil {
-		return nil, inv, err
-	}
-	attempt.WalletChargeID = charge.ID
-
-	if err := c.payments.CreateAttempt(ctx, attempt, now); err != nil {
-		if errors.Is(err, repositories.ErrAttemptExists) || errors.Is(err, repositories.ErrTransactionConflict) {
-			// Two clicks arrived together and the other one won. Its session is the
-			// one to show — and its charge is this same charge, because the
-			// idempotency key both computed is identical.
-			if session := c.winnerSession(ctx, organizationID, livemode, invoiceID, now); session != nil {
-				return session, inv, nil
-			}
-			// Nothing to show yet: a 409 the page re-reads, never a 500.
-			return nil, inv, fmt.Errorf("%w: %v", repositories.ErrAttemptExists, err)
-		}
-		return nil, inv, err
-	}
-
-	session = &billing.CheckoutSession{
-		ID:               id.NewWithPrefix(id.PrefixCheckoutSession),
-		OrganizationID:   organizationID,
-		Livemode:         livemode,
-		InvoiceID:        inv.ID,
-		Status:           billing.CheckoutOpen,
-		ExpiresAt:        chargeExpiry(charge, now.Add(billing.DefaultCheckoutTTL)),
-		PaymentAttemptID: attempt.ID,
-		PixCode:          charge.PixCode,
-	}
-	if err := c.payments.CreateSession(ctx, session, now); err != nil {
-		return nil, inv, err
-	}
-	slog.InfoContext(ctx, "checkout opened",
-		"invoice_id", inv.ID, "attempt", attempt.AttemptNumber,
-		"charge_id", charge.ID, "actor", actor, "request_id", requestID)
-	return session, inv, nil
-}
-
-// winnerSession reads the checkout the other press opened. The winner writes its
-// attempt and then its session, so a press that lost the attempt row can be a
-// few milliseconds early: it looks again, briefly, before giving up.
-func (c *Collector) winnerSession(ctx context.Context, organizationID string, livemode bool, invoiceID string, now time.Time) *billing.CheckoutSession {
-	for attempt := 1; attempt <= 4; attempt++ {
-		session, err := c.payments.LatestSession(ctx, organizationID, livemode, invoiceID)
-		if err == nil && session != nil && session.IsUsable(now) {
-			return session
-		}
-		select {
-		case <-ctx.Done():
-			return nil
-		case <-time.After(time.Duration(attempt) * 50 * time.Millisecond):
-		}
-	}
-	return nil
-}
-
-// Confirm settles an invoice from a wallet charge.
-//
-// It is called by the webhook and by reconciliation, and it takes a charge id
-// rather than a payload for exactly that reason: the only input either of them
-// is allowed to contribute is *which charge to go and ask about*. Everything the
-// decision rests on is re-read from wallet inside this function.
-//
-// Every step is idempotent, because both callers will run it more than once: a
-// webhook is retried by wallet's sweep, and reconciliation deliberately revisits
-// charges the webhook may already have settled.
-func (c *Collector) Confirm(ctx context.Context, livemode bool, chargeID string, cause billing.Cause, requestID string, now time.Time) error {
-	actor := settledBy(cause)
-	attempt, err := c.payments.GetAttemptByCharge(ctx, livemode, chargeID)
-	if err != nil {
-		return err
-	}
-	if attempt.Status == billing.AttemptSucceeded {
-		return c.settleInvoice(ctx, attempt, cause, actor, requestID, now)
-	}
-	if attempt.Status != billing.AttemptPending {
-		// FAILED or ABANDONED. A late confirmation for one of those is a real
-		// finding, not something to quietly apply: reconciliation gave up on a
-		// charge that turned out to settle.
-		slog.WarnContext(ctx, "wallet confirmed a charge that is no longer pending",
-			"charge_id", chargeID, "attempt_status", attempt.Status, "invoice_id", attempt.InvoiceID)
-		return nil
-	}
-
-	charge, err := c.charges.GetCharge(ctx, chargeID)
-	if err != nil {
-		return err
-	}
-	if !charge.Paid() {
-		// The wake-up signal was early or wrong. Wallet is the authority and it
-		// says no, so nothing happens — and the retry will ask again.
-		slog.InfoContext(ctx, "wallet charge not settled yet",
-			"charge_id", chargeID, "status", charge.Status)
-		return nil
-	}
-	if charge.Amount != int64(attempt.Amount) {
-		// Refuse rather than reconcile the difference. Marking an invoice paid for
-		// the wrong amount is worse than leaving it open: the second is visible on
-		// a screen someone reads, the first is not.
-		slog.ErrorContext(ctx, "charge settled for an unexpected amount",
-			"charge_id", chargeID, "expected", int64(attempt.Amount), "settled", charge.Amount)
-		return fmt.Errorf("%w: charge %s settled %d, expected %d",
-			ErrAmountMismatch, chargeID, charge.Amount, int64(attempt.Amount))
-	}
-
-	if _, err := c.payments.TransitionAttempt(
-		ctx, attempt, billing.AttemptSucceeded, cause, actor, requestID, now,
-	); err != nil {
-		return err
-	}
-	return c.settleInvoice(ctx, attempt, cause, actor, requestID, now)
+	// BYOK is the only rail: a tenant without it has no bank to collect through.
+	return nil, inv, billing.ErrByokNotConnected
 }
 
 // SettleAttempt moves a confirmed attempt to SUCCEEDED (the guarded PENDING
@@ -397,25 +176,6 @@ func (c *Collector) SettleAttempt(ctx context.Context, a *billing.PaymentAttempt
 		return false, nil
 	}
 	return won, c.settleInvoice(ctx, a, cause, actor, requestID, now)
-}
-
-// actorWallet names the webhook in the audit trail. Not "system": during an
-// incident, "who marked this paid" has to distinguish the rail from the sweep
-// from an operator.
-const actorWallet = "service:ctech-wallet"
-
-// settledBy derives the audit actor from the cause, rather than taking both as
-// arguments.
-//
-// The two are the same fact said twice, and a settlement attributed to the
-// webhook under the reconciliation cause — or the reverse — is a trail that
-// makes an incident harder to read, not easier. Deriving one from the other
-// makes the mismatch unwritable.
-func settledBy(cause billing.Cause) string {
-	if cause == billing.CauseReconciliation {
-		return actorReconciler
-	}
-	return actorWallet
 }
 
 // settleInvoice moves the invoice to PAID, restores the service it pays for, and
@@ -550,20 +310,11 @@ func (c *Collector) completeSession(ctx context.Context, attempt *billing.Paymen
 	}
 }
 
-// chargeExpiry prefers what wallet says the charge is good for. The rail's
-// expiry is the one that matters — a page that stays live past it shows a QR
-// code the bank will refuse.
-//
-// The fallback is the caller's, because the two callers want different ones. A
-// checkout session wants a short TTL so the page stops offering a dead QR code;
-// reconciliation wants a long one, because there the fallback decides when to
-// give up on a charge, and giving up early on a charge somebody paid is the
-// expensive mistake.
-func chargeExpiry(charge *wallet.Charge, fallback time.Time) time.Time {
-	if charge.ExpiresAt != "" {
-		if t, err := time.Parse(time.RFC3339, charge.ExpiresAt); err == nil {
-			return t
-		}
+// invoiceChargeDescription is the statement text of an invoice charge: the
+// gapless invoice number when it has been finalized, the id otherwise.
+func invoiceChargeDescription(inv *billing.Invoice) string {
+	if inv.Number > 0 {
+		return fmt.Sprintf("Fatura #%d", inv.Number)
 	}
-	return fallback
+	return "Fatura " + inv.ID
 }

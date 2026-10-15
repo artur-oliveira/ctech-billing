@@ -316,11 +316,6 @@ func registerCheckout(v1 fiber.Router, d Deps, h *handlers) {
 	}
 	ch := &checkoutHandlers{handlers: h, orgs: d.Organizations, collector: d.Collector}
 
-	// The webhook is mounted whenever there is a collector, links or not: a
-	// deployment can collect through the portal alone, and a settlement wallet has
-	// no route to report is money received that billing never records.
-	v1.Post("/internal/webhooks/wallet", ch.webhook)
-
 	if !checkoutMounted(d) {
 		return
 	}
