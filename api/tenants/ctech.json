@@ -77,7 +77,7 @@
       "id": "whe_wallet",
       "url": "https://wallet.internal.aoctech.app/v1.0/internal/billing/events",
       "owner_key": "wallet",
-      "events": ["invoice.paid"],
+      "events": ["invoice.paid", "payout.done", "payout.failed"],
       "secret_env": "WEBHOOK_SECRET_WALLET"
     },
     {
