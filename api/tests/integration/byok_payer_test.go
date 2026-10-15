@@ -95,3 +95,57 @@ func TestSettlingByWebhookPullsTheStatementForThePayer(t *testing.T) {
 	}
 	t.Fatal("the payer was not recorded within seconds of the webhook")
 }
+
+// The webhook names the payer too, masked. Once the re-query has settled that same
+// payment it is recorded as provisional ("partial"), so a consumer can act at once;
+// the statement line's complete payer then replaces it, and a webhook never replaces
+// a statement payer.
+func TestTheWebhooksMaskedPayerIsProvisionalAndTheStatementReplacesIt(t *testing.T) {
+	env := newCollectEnv(t, collectLive)
+	env.issueHook(t)
+	inv := env.finalizeInvoice(t, 5000)
+	line := env.payLine(t, inv, "L-wh-1", &byok.Payer{Name: "Fulano de Tal", Document: env.customer.TaxID})
+	ref := env.chargeRef(t, inv)
+
+	masked := "***" + env.customer.TaxID[3:9] + "**"
+	notify := func(claim byok.CallbackPayer) int {
+		return env.webhooks.Notify(ctxT(t), services.NotifyRequest{Provider: "inter", HookID: env.hookID, Secret: env.secret, Product: "pix",
+			ChargeRefs: []string{ref.Ref}, PaymentIDs: []string{line.PaymentID}, Payers: []byok.CallbackPayer{claim}}, now())
+	}
+
+	// A claim for another payment than the one the re-query settled is not recorded.
+	if st := notify(byok.CallbackPayer{ChargeRef: ref.Ref, PaymentID: "E-someone-else", Name: "Outra Pessoa", Document: masked}); st != 200 {
+		t.Fatalf("notify %d", st)
+	}
+	if a := env.attempt(t, inv); a.Payer != nil {
+		t.Fatalf("a payer for another payment was recorded: %+v", a.Payer)
+	}
+
+	if st := notify(byok.CallbackPayer{ChargeRef: ref.Ref, PaymentID: line.PaymentID, Name: "Fulano de Tal", Document: masked}); st != 200 {
+		t.Fatalf("notify %d", st)
+	}
+	a := env.attempt(t, inv)
+	if a.Payer == nil || !a.Payer.Provisional || a.Payer.Document != masked || a.PayerMatch != billing.PayerMatchPartial {
+		t.Fatalf("provisional payer %+v match %q", a.Payer, a.PayerMatch)
+	}
+
+	// A second webhook claim does not replace the first.
+	notify(byok.CallbackPayer{ChargeRef: ref.Ref, PaymentID: line.PaymentID, Name: "Troca", Document: "***000000**"})
+	if got := env.attempt(t, inv); got.Payer.Name != "Fulano de Tal" {
+		t.Fatalf("a webhook replaced the first claim: %+v", got.Payer)
+	}
+
+	// The statement's complete payer replaces it.
+	env.fake.AddLines(line)
+	env.syncNow(t)
+	a = env.attempt(t, inv)
+	if a.Payer == nil || a.Payer.Provisional || a.Payer.Document != env.customer.TaxID || a.PayerMatch != billing.PayerMatchYes {
+		t.Fatalf("after the statement: %+v match %q", a.Payer, a.PayerMatch)
+	}
+
+	// And nothing masked ever replaces it again.
+	notify(byok.CallbackPayer{ChargeRef: ref.Ref, PaymentID: line.PaymentID, Name: "Fulano de Tal", Document: masked})
+	if got := env.attempt(t, inv); got.Payer.Provisional || got.PayerMatch != billing.PayerMatchYes {
+		t.Fatalf("a masked claim replaced the statement's payer: %+v %q", got.Payer, got.PayerMatch)
+	}
+}
