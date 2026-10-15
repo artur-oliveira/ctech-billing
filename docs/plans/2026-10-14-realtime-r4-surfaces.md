@@ -114,3 +114,9 @@ Repos: `P_BILL/ui` (mount points: `src/app/checkout/layout.tsx`, `src/app/(conso
 - **The checkout never used SSE**: it polled `GET /checkout/:token` every 4 s. Only the portal's `PixPanel` streams (`usePaymentStream`), so that hook stays until the portal mounts (Task 3) and R5 removes it. There is no `useInvoiceSettled`: a paid change invalidates `checkoutKeys.view(token)`, the page refetches, and `amount_due === 0` shows the settled screen.
 - The provider is mounted in `checkout/page.tsx` (the token is a query parameter, so the server layout cannot read it); the principal is the token, the first frame carries it as the pay link only.
 - While the status is `live` the safety-net poll is 60 s instead of 4 s; with the socket down the 4 s poll is unchanged. The indicator sits under the Pix panel.
+
+### Task 2: Console (feat/realtime-r4-console)
+
+- Mounted in the console layout around the children of the scope provider, keyed by the selected organization and the mode. `useSubject` (`lib/auth/subject.ts`) reads the access token's `sub` unverified, only to key the cursor; the API authorizes.
+- No console screen sets a `refetchInterval`, so there was nothing to lengthen: the screens already refetch on focus and navigation, and the socket now invalidates them.
+- Tests are at the layout level (session mocked): first frame carries the bearer, `org:` selector and mode; an invoice change invalidates only this organization's keys; switching mode closes the socket and reconnects with the new mode and no cursor. The per-screen in-place flip is the catalogue and binding tests of R3, not repeated here.
