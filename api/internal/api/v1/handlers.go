@@ -498,9 +498,20 @@ func (h *handlers) createInvoice(c fiber.Ctx) error {
 	if len(ch.errs) > 0 {
 		return problem.Validation(ch.errs).Send(c)
 	}
+	// A credential scoped to one owner issues for that owner only, whether or not
+	// it says so (the same rule the entitlements read follows).
+	owner := req.OwnerKey
+	if cred := middleware.GetCredential(c); cred != nil && cred.OwnerKey != "" {
+		switch {
+		case owner == "":
+			owner = cred.OwnerKey
+		case owner != cred.OwnerKey:
+			return ownerNotAllowed(c)
+		}
+	}
 	inv, lines, created, err := h.oneOff.Create(c.Context(), services.OneOffInput{
 		OrganizationID: t.OrganizationID, Livemode: t.Livemode, CustomerID: req.CustomerID, Description: req.Description,
-		Reference: req.Reference, AmountCents: int64(req.AmountCents), OwnerKey: req.OwnerKey, Metadata: req.Metadata,
+		Reference: req.Reference, AmountCents: int64(req.AmountCents), OwnerKey: owner, Metadata: req.Metadata,
 	}, actorOf(c), middleware.GetRequestID(c), h.now())
 	if err != nil {
 		return fail(c, err)

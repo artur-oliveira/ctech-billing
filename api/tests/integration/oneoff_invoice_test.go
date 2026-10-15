@@ -5,6 +5,7 @@ package integration
 import (
 	"net/http"
 	"testing"
+	"time"
 
 	"gopkg.aoctech.app/billing/api/internal/middleware"
 	"gopkg.aoctech.app/billing/api/internal/repositories"
@@ -160,5 +161,41 @@ func TestAOneOffInvoiceCarriesTheCallersOwnerKey(t *testing.T) {
 	}
 	if r = e.do(t, http.MethodPost, "/v1.0/invoices", tok, "k-owner-2", body("dep-owner-2", "not valid!")); r.status != http.StatusUnprocessableEntity && r.status != http.StatusBadRequest {
 		t.Fatalf("an owner key with spaces is refused: %d", r.status)
+	}
+}
+
+// A credential scoped to an owner issues for that owner without saying so, and
+// cannot issue for another.
+func TestAScopedCredentialIssuesOneOffInvoicesForItsOwnerOnly(t *testing.T) {
+	e := newAPI(t)
+	tok := e.oneOffToken(t)
+	cust := e.customerID(t, tok)
+	creds := repositories.NewCredentialRepository(testDB, testCfg)
+	cred, err := creds.Resolve(ctxT(t), e.client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := creds.SetOwnerKey(ctxT(t), cred, "wallet", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	body := func(ref, owner string) string {
+		extra := ""
+		if owner != "" {
+			extra = `,"owner_key":"` + owner + `"`
+		}
+		return `{"customer_id":"` + cust + `","description":"Depósito","amount_cents":5000,"reference":"` + ref + `"` + extra + `}`
+	}
+	r := e.do(t, http.MethodPost, "/v1.0/invoices", tok, "k-scoped", body("dep-scoped", ""))
+	if r.status != http.StatusCreated {
+		t.Fatalf("%d %s", r.status, r.body)
+	}
+	var made oneOffInvoice
+	r.decode(t, &made)
+	inv, err := repositories.NewInvoiceRepository(testDB, testCfg).Get(ctxT(t), e.org.ID, true, made.ID)
+	if err != nil || inv.OwnerKey != "wallet" {
+		t.Fatalf("owner %q err %v", inv.OwnerKey, err)
+	}
+	if r = e.do(t, http.MethodPost, "/v1.0/invoices", tok, "k-scoped-2", body("dep-scoped-2", "poker")); r.status != http.StatusForbidden {
+		t.Fatalf("another owner is refused: %d %s", r.status, r.body)
 	}
 }
