@@ -17,3 +17,7 @@ byok_truststore_version = "2ZaTHrSZRLn9z4s4wf3AHt.4xVO.IQiI"
 
 # CTech's own organization: the only connection that may pay Pix out (wallet withdrawals).
 byok_payout_account_orgs = "01a04ed6-1af9-745e-bcf7-d3b66fe52321"
+
+# Realtime (docs/runbooks/realtime.md#rollout): the change log, the publisher and
+# GET /v1.0/ws. Nothing reaches a user until a UI build names a surface.
+realtime_enabled = true
