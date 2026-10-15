@@ -147,6 +147,18 @@ func (h *handlers) createCustomerAs(c fiber.Ctx, actor string) error {
 	return c.Status(fiber.StatusCreated).JSON(newCustomerResponse(customer))
 }
 
+// getCustomerByUser finds the customer a ctech-account subject already is, so a
+// service that creates customers for its users can reuse the existing one
+// instead of meeting a 409 on a person who is also a customer for another reason.
+func (h *handlers) getCustomerByUser(c fiber.Ctx) error {
+	t := middleware.GetTenant(c)
+	customer, err := h.customers.GetByUser(c.Context(), t.OrganizationID, t.Livemode, c.Params("user_id"))
+	if err != nil {
+		return fail(c, err)
+	}
+	return c.JSON(newCustomerResponse(customer))
+}
+
 func (h *handlers) getCustomer(c fiber.Ctx) error {
 	t := middleware.GetTenant(c)
 	customer, err := h.customers.Get(c.Context(), t.OrganizationID, t.Livemode, c.Params("id"))

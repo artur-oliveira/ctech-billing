@@ -203,6 +203,9 @@ func Register(app *fiber.App, d Deps) {
 	customers := m2m("/customers")
 	customers.Post("",
 		middleware.RequireM2MScope(middleware.ScopeCustomersWrite), idem, h.createCustomer)
+	// By user before /:id, so "by-user" is never read as a customer id.
+	customers.Get("/by-user/:user_id",
+		middleware.RequireM2MScope(middleware.ScopeCustomersRead), h.getCustomerByUser)
 	customers.Get("/:id",
 		middleware.RequireM2MScope(middleware.ScopeCustomersRead), h.getCustomer)
 

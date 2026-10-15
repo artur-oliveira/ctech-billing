@@ -199,3 +199,31 @@ func TestAScopedCredentialIssuesOneOffInvoicesForItsOwnerOnly(t *testing.T) {
 		t.Fatalf("another owner is refused: %d %s", r.status, r.body)
 	}
 }
+
+func TestACustomerIsFoundByTheirAccountUser(t *testing.T) {
+	e := newAPI(t)
+	tok := e.oneOffToken(t)
+	r := e.do(t, http.MethodPost, "/v1.0/customers", tok, "cust-by-user", `{"name":"Pessoa","email":"p@example.com","tax_id":"39053344705","user_id":"user-abc"}`)
+	if r.status != http.StatusCreated {
+		t.Fatalf("%d %s", r.status, r.body)
+	}
+	var made struct {
+		ID string `json:"id"`
+	}
+	r.decode(t, &made)
+	tok = e.token(t, e.client, "", middleware.ScopeCustomersRead)
+	r = e.do(t, http.MethodGet, "/v1.0/customers/by-user/user-abc", tok, "", "")
+	if r.status != http.StatusOK {
+		t.Fatalf("%d %s", r.status, r.body)
+	}
+	var found struct {
+		ID string `json:"id"`
+	}
+	r.decode(t, &found)
+	if found.ID != made.ID {
+		t.Fatalf("found %s, made %s", found.ID, made.ID)
+	}
+	if r = e.do(t, http.MethodGet, "/v1.0/customers/by-user/nobody", tok, "", ""); r.status != http.StatusNotFound {
+		t.Fatalf("an unknown user is 404: %d", r.status)
+	}
+}
