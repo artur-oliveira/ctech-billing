@@ -86,9 +86,17 @@ func (b *bundleCache) put(k [32]byte, v map[string]string) {
 	b.mu.Unlock()
 }
 
+// opWarm is the scheduler's keep-warm invocation. It is not a bank operation and
+// is not in the allowlist: it is answered before any of that, touches no
+// credential and calls no bank.
+const opWarm = "warm"
+
 // handle never returns an invoke error for a provider or allowlist failure, and
 // never logs a payload, a bundle, a token or an account number.
 func (h *handler) handle(ctx context.Context, req byok.Request) (byok.Response, error) {
+	if req.Op == opWarm {
+		return byok.Response{}, nil // the scheduler keeping this function warm; no bank, no log
+	}
 	resp := h.dispatch(ctx, req)
 	slog.InfoContext(ctx, "byok outbound", "op", req.Op, "provider", req.Provider, "mode", req.Mode, "code", resp.Code)
 	return resp, nil

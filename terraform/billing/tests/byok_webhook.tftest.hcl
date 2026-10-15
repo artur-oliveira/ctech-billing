@@ -87,3 +87,17 @@ run "the_domain_is_regional_with_mtls" {
     error_message = "the env host"
   }
 }
+
+# Both BYOK Lambdas are kept warm, five minutes apart, with a payload they answer
+# without a bank, and the scheduler may invoke exactly those two functions.
+run "byok_lambdas_are_kept_warm" {
+  command = plan
+  assert {
+    condition     = aws_scheduler_schedule.byok_webhook_warm.schedule_expression == "rate(5 minutes)" && aws_scheduler_schedule.byok_outbound_warm.schedule_expression == "rate(5 minutes)"
+    error_message = "both warm-up schedules run every five minutes"
+  }
+  assert {
+    condition     = jsondecode(aws_scheduler_schedule.byok_webhook_warm.target[0].input).rawPath == "/warm" && jsondecode(aws_scheduler_schedule.byok_outbound_warm.target[0].input).op == "warm"
+    error_message = "the payloads are the ones the handlers answer"
+  }
+}
