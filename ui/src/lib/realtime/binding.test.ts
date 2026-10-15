@@ -1,5 +1,5 @@
 import {QueryClient, type QueryKey} from "@tanstack/react-query";
-import {describe, expect, it} from "vitest";
+import {describe, expect, it, vi} from "vitest";
 
 import {checkoutKeys} from "@/lib/api/checkout";
 import {connectionKeys} from "@/lib/api/connections";
@@ -145,5 +145,24 @@ describe("applyGap", () => {
     applyGap(qc, {kind: "portal"} satisfies Surface);
     expect(stale(qc, keys[0]) && stale(qc, keys[1])).toBe(true);
     expect(stale(qc, keys[2]) || stale(qc, keys[3])).toBe(false);
+  });
+});
+
+describe("coalescing", () => {
+  it("a burst of changes costs one more invalidation per distinct key, not one each", async () => {
+    vi.useFakeTimers();
+    const qc = new QueryClient();
+    const spy = vi.spyOn(qc, "invalidateQueries");
+    const surface = {kind: "portal"} as const;
+    for (let i = 0; i < 100; i++) {
+      applyChange(qc, surface, {id: `0${i}`, type: "invoice.paid", entity: "invoice", entityId: `in_${i}`, status: "PAID", revision: 1, occurredAt: 1} as never);
+      vi.advanceTimersByTime(0.5);
+    }
+    expect(spy.mock.calls.length).toBe(1); // the leading one
+    await vi.advanceTimersByTimeAsync(300);
+    expect(spy.mock.calls.length).toBe(2); // plus one when the window closed
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(spy.mock.calls.length).toBe(2);
+    vi.useRealTimers();
   });
 });

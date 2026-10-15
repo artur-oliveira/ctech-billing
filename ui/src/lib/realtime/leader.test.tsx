@@ -129,6 +129,7 @@ describe("one socket per browser", () => {
 
     act(() => void successor.ready().change("01A", "in_1", 1).change("01B", "in_1", 2));
     await flush();
+    await act(async () => { await vi.advanceTimersByTimeAsync(300); }); // the coalescing window closes
     const added = b.spy.mock.calls.length - applied;
     expect(added).toBeGreaterThan(0); // 01B applied
     expect(added).toBeLessThanOrEqual(2); // and 01A was not applied a second time
