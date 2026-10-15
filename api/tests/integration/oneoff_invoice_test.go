@@ -4,6 +4,7 @@ package integration
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -225,5 +226,40 @@ func TestACustomerIsFoundByTheirAccountUser(t *testing.T) {
 	}
 	if r = e.do(t, http.MethodGet, "/v1.0/customers/by-user/nobody", tok, "", ""); r.status != http.StatusNotFound {
 		t.Fatalf("an unknown user is 404: %d", r.status)
+	}
+}
+
+// A customer created without a tax id (a DF-e customer) is given one by a service
+// that holds it, once, and never has it replaced.
+func TestATaxIDIsSetOnceAndNeverReplacedByAServiceClient(t *testing.T) {
+	e := newAPI(t)
+	tok := e.oneOffToken(t)
+	r := e.do(t, http.MethodPost, "/v1.0/customers", tok, "cust-no-tax", `{"name":"Sem CPF","email":"s@example.com","user_id":"user-notax"}`)
+	if r.status != http.StatusCreated {
+		t.Fatalf("%d %s", r.status, r.body)
+	}
+	var made struct {
+		ID          string `json:"id"`
+		TaxIDMasked string `json:"tax_id_masked"`
+	}
+	r.decode(t, &made)
+	if made.TaxIDMasked != "" {
+		t.Fatalf("created with a tax id: %s", made.TaxIDMasked)
+	}
+	put := func(key, cpf string) (int, string) {
+		r := e.do(t, http.MethodPut, "/v1.0/customers/"+made.ID+"/tax-id", tok, key, `{"tax_id":"`+cpf+`"}`)
+		return r.status, string(r.body)
+	}
+	if code, body := put("tax-1", "39053344705"); code != http.StatusOK || !strings.Contains(body, "tax_id_masked") {
+		t.Fatalf("set: %d %s", code, body)
+	}
+	if code, _ := put("tax-2", "39053344705"); code != http.StatusOK {
+		t.Fatalf("the same value again is a no-op: %d", code)
+	}
+	if code, body := put("tax-3", "11144477735"); code != http.StatusConflict {
+		t.Fatalf("a different value is refused: %d %s", code, body)
+	}
+	if code, _ := put("tax-4", "abc"); code != http.StatusUnprocessableEntity && code != http.StatusBadRequest {
+		t.Fatalf("a malformed tax id is refused: %d", code)
 	}
 }

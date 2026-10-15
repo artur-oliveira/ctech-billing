@@ -375,6 +375,35 @@ func (r *CustomerRepository) AcceptTerms(ctx context.Context, c *billing.Custome
 	return nil
 }
 
+// SetTaxID gives a customer that has none a tax id. It never replaces one: the
+// tax id is the NF tomador and the payer check, so changing it is not something
+// a service client may do. The caller has already refused a different value.
+func (r *CustomerRepository) SetTaxID(ctx context.Context, c *billing.Customer, taxID, actor, requestID string, now time.Time) error {
+	sealed, err := r.seal.Seal(taxID)
+	if err != nil {
+		return err
+	}
+	updates := map[string]any{
+		"tax_id":     sealed,
+		"updated_at": now.UTC().Format(time.RFC3339Nano),
+	}
+	if _, err := r.base.UpdateItem(ctx, TenantPK(c.OrganizationID, c.Livemode), new(CustomerSK(c.ID)), updates); err != nil {
+		return err
+	}
+	item, err := buildAuditItem(c.OrganizationID, c.Livemode, AuditEntry{
+		Entity: EntityCustomer, EntityID: c.ID, Action: "customer.tax_id_set", Cause: billing.CauseCustomer,
+		Actor: actor, RequestID: requestID, Before: "none", After: "set",
+	}, "none", "set", now)
+	if err != nil {
+		return err
+	}
+	if err := r.audit.TransactWrite(ctx, txItems(r.audit.BuildPutTxItemIfAbsent(item))); err != nil {
+		return err
+	}
+	c.TaxID = taxID
+	return nil
+}
+
 // appendTermsAudit records who agreed to what, and when.
 func (r *CustomerRepository) appendTermsAudit(ctx context.Context, c *billing.Customer, actor, requestID string, now time.Time) error {
 	before := c.TermsVersion

@@ -147,6 +147,43 @@ func (h *handlers) createCustomerAs(c fiber.Ctx, actor string) error {
 	return c.Status(fiber.StatusCreated).JSON(newCustomerResponse(customer))
 }
 
+type setTaxIDRequest struct {
+	TaxID string `json:"tax_id"`
+}
+
+// setCustomerTaxID gives a customer with no tax id one, for a service that holds
+// it (the wallet, from the person's KYC) and needs the customer billable by Pix.
+// It never changes one that is set: the same value is a no-op, a different one is
+// a conflict, because the tax id is who the NF is issued to and who may pay.
+func (h *handlers) setCustomerTaxID(c fiber.Ctx) error {
+	t := middleware.GetTenant(c)
+	var req setTaxIDRequest
+	if err := c.Bind().Body(&req); err != nil {
+		return problem.BadRequest("invalid request body").WithCode("invalid_body").Send(c)
+	}
+	ch := &checks{}
+	ch.taxID("tax_id", req.TaxID, true, false)
+	if len(ch.errs) > 0 {
+		return problem.Validation(ch.errs).Send(c)
+	}
+	customer, err := h.customers.Get(c.Context(), t.OrganizationID, t.Livemode, c.Params("id"))
+	if err != nil {
+		return fail(c, err)
+	}
+	switch {
+	case customer.Anonymized:
+		return problem.Conflict("the customer was erased").WithCode("customer_anonymized").Send(c)
+	case customer.TaxID == req.TaxID:
+		return c.JSON(newCustomerResponse(customer))
+	case customer.TaxID != "":
+		return problem.Conflict("the customer already has a different tax id").WithCode("tax_id_already_set").Send(c)
+	}
+	if err := h.customers.SetTaxID(c.Context(), customer, req.TaxID, actorOf(c), middleware.GetRequestID(c), h.now()); err != nil {
+		return fail(c, err)
+	}
+	return c.JSON(newCustomerResponse(customer))
+}
+
 // getCustomerByUser finds the customer a ctech-account subject already is, so a
 // service that creates customers for its users can reuse the existing one
 // instead of meeting a 409 on a person who is also a customer for another reason.
