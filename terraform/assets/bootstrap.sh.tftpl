@@ -115,19 +115,6 @@ location = /v1.0/realtime {
     proxy_send_timeout 3600s;
     proxy_buffering off;
 }
-location = /v1.0/realtime/probe {
-    proxy_pass http://app;
-    proxy_http_version 1.1;
-    proxy_set_header Upgrade $http_upgrade;
-    proxy_set_header Connection $connection_upgrade;
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $remote_addr;
-    proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;
-    proxy_read_timeout 3600s;
-    proxy_send_timeout 3600s;
-    proxy_buffering off;
-}
 WSLOC
 
 ctech_run setup-nginx.sh ${nginx_port} ${app_port} ${health_path} 100 1m ${app_port_alt}
