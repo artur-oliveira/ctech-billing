@@ -1,0 +1,26 @@
+name: Realtime fuzz
+
+# Not in the pull-request path: the seed corpus already runs there as a plain
+# test. This is the open-ended part, a minute a night.
+on:
+  schedule:
+    - cron: "17 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz:
+    name: Fuzz
+    runs-on: ubuntu-26.04-arm
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: api/go.mod
+          cache-dependency-path: api/go.sum
+      - name: ClientFrame
+        working-directory: api
+        run: go test ./internal/realtime/wire -run xxx -fuzz FuzzClientFrame -fuzztime 60s
