@@ -99,7 +99,8 @@ func (k *ByokLinker) Link(ctx context.Context, sp space.ResolvedSpace, conn *byo
 // whether that is the customer. It never blocks the link: a payer that cannot be
 // recorded now is recorded by the next sync, which re-reads this window.
 func (k *ByokLinker) recordPayer(ctx context.Context, a *billing.PaymentAttempt, l repositories.BankLine) {
-	if l.Payer == nil || a.Payer != nil {
+	// The webhook's provisional payer (masked) is the one a statement line replaces.
+	if l.Payer == nil || (a.Payer != nil && !a.Payer.Provisional) {
 		return
 	}
 	taxID := ""

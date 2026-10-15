@@ -13,8 +13,10 @@ import (
 	"strings"
 	"time"
 
+	"gopkg.aoctech.app/api-commons/byok"
 	"gopkg.aoctech.app/api-commons/cache"
 
+	"gopkg.aoctech.app/billing/api/internal/domain/billing"
 	"gopkg.aoctech.app/billing/api/internal/domain/byokconn"
 	"gopkg.aoctech.app/billing/api/internal/domain/id"
 	"gopkg.aoctech.app/billing/api/internal/repositories"
@@ -76,6 +78,10 @@ type NotifyRequest struct {
 	Account    string   `json:"account"`
 	ChargeRefs []string `json:"charge_refs"`
 	PaymentIDs []string `json:"payment_ids"`
+	// Payers is who the body names as the payer of each payment (name in full,
+	// document masked). A claim: it is used as provisional evidence of the payer
+	// once the charge re-query has settled that same payment, never to settle.
+	Payers []byok.CallbackPayer `json:"payers,omitempty"`
 }
 
 // ByokWebhooks owns the hook rows and the notify decision.
@@ -218,10 +224,49 @@ func (w *ByokWebhooks) Notify(ctx context.Context, in NotifyRequest, now time.Ti
 		if err != nil {
 			slog.WarnContext(ctx, "byok webhook re-query failed", "hook_id", h.ID, "error", err)
 			status = http.StatusServiceUnavailable
-		} else if outcome == OutcomeSettled {
-			w.pullPayer(h, now)
+		} else {
+			w.recordWebhookPayer(ctx, *ptr, in.Payers, now)
+			if outcome == OutcomeSettled {
+				w.pullPayer(h, now)
+			}
 		}
 	}
 	slog.InfoContext(ctx, "byok webhook", "hook_id", h.ID, "refs", len(in.ChargeRefs), "ignored", ignored, "status", status)
 	return status
+}
+
+// recordWebhookPayer stores the payer the webhook names, as provisional, on the
+// attempt the re-query settled, so a consumer (the wallet) can act on it at once
+// instead of waiting for the statement. It writes only when the payer claim is
+// for the very payment that settled the attempt (the end-to-end id the re-query
+// returned), so a second payer on the same charge cannot be mistaken for the
+// first. The statement line replaces it with the complete payer.
+func (w *ByokWebhooks) recordWebhookPayer(ctx context.Context, ptr repositories.ChargeRef, payers []byok.CallbackPayer, now time.Time) {
+	var claim *byok.CallbackPayer
+	for i := range payers {
+		if payers[i].ChargeRef == ptr.Ref {
+			claim = &payers[i]
+			break
+		}
+	}
+	if claim == nil || (claim.Name == "" && claim.Document == "") {
+		return
+	}
+	a, err := w.payments.GetAttempt(ctx, ptr.TenantID, ptr.Livemode, ptr.InvoiceID, ptr.AttemptNumber)
+	if err != nil || a.Status != billing.AttemptSucceeded || a.Payer != nil {
+		return
+	}
+	if a.PaymentID == "" || claim.PaymentID != a.PaymentID {
+		return // not the payment that settled this attempt
+	}
+	taxID := ""
+	if inv, err := w.collector.invoices.Get(ctx, a.OrganizationID, a.Livemode, a.InvoiceID); err == nil {
+		if c, err := w.collector.customers.Get(ctx, a.OrganizationID, a.Livemode, inv.CustomerID); err == nil {
+			taxID = c.TaxID
+		}
+	}
+	p := billing.Payer{Name: claim.Name, Document: claim.Document, Provisional: true}
+	if _, err := w.payments.SetPayerOnce(ctx, a, p, billing.MatchPayer(taxID, p), now); err != nil {
+		slog.WarnContext(ctx, "byok webhook payer not recorded", "invoice_id", a.InvoiceID, "error", err)
+	}
 }

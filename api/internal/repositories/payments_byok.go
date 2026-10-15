@@ -325,6 +325,10 @@ func (r *PaymentRepository) SetByokAmount(ctx context.Context, a *billing.Paymen
 // SetPayerOnce records who paid on a settled attempt, once: a later call with
 // another payer changes nothing (true only when this call wrote it). The
 // condition is on the attribute, so two statement lines racing cannot both win.
+//
+// A provisional payer (from the webhook, masked) is the one exception to "once":
+// the complete payer of the statement line replaces it, and a provisional one
+// never replaces anything.
 func (r *PaymentRepository) SetPayerOnce(ctx context.Context, a *billing.PaymentAttempt, p billing.Payer, m billing.PayerMatch, now time.Time) (bool, error) {
 	sk := PaymentAttemptSK(a.InvoiceID, a.AttemptNumber)
 	payer := map[string]types.AttributeValue{}
@@ -333,10 +337,18 @@ func (r *PaymentRepository) SetPayerOnce(ctx context.Context, a *billing.Payment
 			payer[k] = str(v)
 		}
 	}
+	cond := "attribute_exists(pk) AND (attribute_not_exists(payer) OR payer.provisional = :t)"
+	if p.Provisional {
+		payer["provisional"] = &types.AttributeValueMemberBOOL{Value: true}
+		cond = "attribute_exists(pk) AND attribute_not_exists(payer)"
+	}
+	values := map[string]types.AttributeValue{":p": &types.AttributeValueMemberM{Value: payer}, ":m": str(string(m)),
+		":now": str(now.UTC().Format(time.RFC3339Nano))}
+	if !p.Provisional {
+		values[":t"] = &types.AttributeValueMemberBOOL{Value: true}
+	}
 	writes := txItems(r.base.BuildRawUpdateTxItem(TenantPK(a.OrganizationID, a.Livemode), &sk,
-		"SET payer = :p, payer_match = :m, updated_at = :now", "attribute_exists(pk) AND attribute_not_exists(payer)", nil,
-		map[string]types.AttributeValue{":p": &types.AttributeValueMemberM{Value: payer}, ":m": str(string(m)),
-			":now": str(now.UTC().Format(time.RFC3339Nano))}))
+		"SET payer = :p, payer_match = :m, updated_at = :now", cond, nil, values))
 	// The payer appears on the invoice screens without a reload: written with the
 	// payer, in this transaction.
 	change := r.rt.invoiceRef(a.OrganizationID, a.Livemode, a.InvoiceID, "invoice.payer_recorded", "")

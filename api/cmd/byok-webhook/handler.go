@@ -23,6 +23,9 @@ type notifyRequest struct {
 	Account    string   `json:"account"`
 	ChargeRefs []string `json:"charge_refs"`
 	PaymentIDs []string `json:"payment_ids"`
+	// Payers is who the body names as payer (name, masked document): a claim that
+	// billing uses as provisional evidence after it has re-queried the charge.
+	Payers []byok.CallbackPayer `json:"payers,omitempty"`
 }
 
 type handler struct {
@@ -134,7 +137,7 @@ func (h *handler) serve(ctx context.Context, req events.APIGatewayV2HTTPRequest)
 		return status(http.StatusBadRequest), nil
 	}
 	code, err := h.notify(ctx, notifyRequest{Provider: provider, HookID: hook, Secret: secret, Product: string(product),
-		Account: cb.Account, ChargeRefs: cb.ChargeRefs, PaymentIDs: cb.PaymentIDs})
+		Account: cb.Account, ChargeRefs: cb.ChargeRefs, PaymentIDs: cb.PaymentIDs, Payers: cb.Payers})
 	if err != nil {
 		slog.WarnContext(ctx, "byok webhook: billing unreachable", "hook_id", hook)
 		return status(http.StatusServiceUnavailable), nil

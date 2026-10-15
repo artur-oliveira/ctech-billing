@@ -13,7 +13,7 @@ func TestMatchPayer(t *testing.T) {
 		{"cpf different", "12345678909", Payer{Document: "98765432100"}, PayerMatchNo},
 		{"cnpj payer, cpf customer", "12345678909", Payer{Document: "12345678000195"}, PayerMatchNo},
 		{"cnpj equal", "12.345.678/0001-95", Payer{Document: "12345678000195"}, PayerMatchYes},
-		{"masked, revealed digits equal", "12345678909", Payer{Document: "***456789**"}, PayerMatchYes},
+		{"masked, revealed digits equal", "12345678909", Payer{Document: "***456789**"}, PayerMatchPartial},
 		{"masked, a revealed digit differs", "12345678909", Payer{Document: "***456780**"}, PayerMatchNo},
 		{"masked, too few digits shown", "12345678909", Payer{Document: "*********09"}, PayerMatchUnknown},
 		{"nothing revealed", "12345678909", Payer{Document: "***********"}, PayerMatchUnknown},
