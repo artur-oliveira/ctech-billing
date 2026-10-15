@@ -40,6 +40,14 @@ type InvoiceRepository struct {
 	base   Base
 	audit  Base
 	events Base
+	rt     Realtime
+}
+
+// WithRealtime makes the repository write a change to the realtime log with each
+// invoice transition and publish it after the commit. Without it nothing changes.
+func (r *InvoiceRepository) WithRealtime(rt Realtime) *InvoiceRepository {
+	r.rt = rt
+	return r
 }
 
 func NewInvoiceRepository(db *dynamodb.Client, cfg *config.Config) *InvoiceRepository {
@@ -106,9 +114,22 @@ func (r *InvoiceRepository) Create(
 		writes = append(writes, r.base.BuildPutTxItemIfAbsent(marker))
 	}
 
+	// A new draft is news to the console's invoice list. It has no webhook (a
+	// draft is not something a consumer is told about), so this is the only place
+	// it is written.
+	created := r.rt.invoice(ctx, inv, billing.EventInvoiceCreated)
+	changes, err := changeWrites(r.events, created, now)
+	if err != nil {
+		return err
+	}
+	writes = append(writes, changes...)
+
 	err = r.base.TransactWrite(ctx, writes)
 	if IsConditionFailed(err) {
 		return fmt.Errorf("%w: %s", ErrAlreadyGenerated, generationKey)
+	}
+	if err == nil {
+		r.rt.publish(ctx, created)
 	}
 	return err
 }
@@ -297,13 +318,15 @@ func (r *InvoiceRepository) Finalize(
 			// same transaction. Not a second list maintained here: a state machine
 			// that names its events and a repository that re-derives them are two
 			// answers to one question.
-			Emit:    events,
-			Subject: invoiceSubject(inv),
+			Emit:     events,
+			Subject:  invoiceSubject(inv),
+			Realtime: r.rt.invoice(ctx, &updated, events[0]),
 		}
 
 		err = commitWithExtraWrites(ctx, r.tables(), change, now, counterUpdate)
 		if err == nil {
 			*inv = updated
+			r.rt.publish(ctx, change.Realtime)
 			return events, nil
 		}
 		if !numberingRetryable(err) {
@@ -438,13 +461,15 @@ func (r *InvoiceRepository) Transition(
 			Actor:     actor,
 			RequestID: requestID,
 		},
-		Emit:    events,
-		Subject: invoiceSubject(inv),
+		Emit:     events,
+		Subject:  invoiceSubject(inv),
+		Realtime: r.rt.invoice(ctx, &updated, events[0]),
 	}
 	if err := CommitStatusChange(ctx, r.tables(), change, now); err != nil {
 		return nil, err
 	}
 	*inv = updated
+	r.rt.publish(ctx, change.Realtime)
 	return events, nil
 }
 

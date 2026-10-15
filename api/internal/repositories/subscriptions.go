@@ -28,6 +28,14 @@ type SubscriptionRepository struct {
 	// byok and orgs keep a BYOK-rail tenant's subscription counter (part C).
 	byok Base
 	orgs *OrganizationRepository
+	rt   Realtime
+}
+
+// WithRealtime makes subscription changes write to the realtime log and publish
+// after the commit.
+func (r *SubscriptionRepository) WithRealtime(rt Realtime) *SubscriptionRepository {
+	r.rt = rt
+	return r
 }
 
 // CreateOption adjusts Create.
@@ -158,6 +166,13 @@ func (r *SubscriptionRepository) Create(ctx context.Context, s *billing.Subscrip
 	}
 	writes = append(writes, event)
 
+	created := r.rt.subscription(ctx, s, billing.EventSubscriptionCreated)
+	changes, err := changeWrites(r.events, created, now)
+	if err != nil {
+		return err
+	}
+	writes = append(writes, changes...)
+
 	if r.hook != nil && s.IsEntitled() {
 		extra, err := r.hook.EntitlementWrites(ctx, s, true, billing.CauseManual, "", "", now)
 		if err != nil {
@@ -190,6 +205,9 @@ func (r *SubscriptionRepository) Create(ctx context.Context, s *billing.Subscrip
 	}
 	if IsConditionFailed(err) {
 		return fmt.Errorf("subscription %s already exists", s.ID)
+	}
+	if err == nil {
+		r.rt.publish(ctx, created)
 	}
 	return conflictErr(err)
 }
@@ -366,8 +384,9 @@ func (r *SubscriptionRepository) Transition(
 			Actor:     actor,
 			RequestID: requestID,
 		},
-		Emit:    events,
-		Subject: subscriptionSubject(&updated),
+		Emit:     events,
+		Subject:  subscriptionSubject(&updated),
+		Realtime: r.rt.subscription(ctx, &updated, events[0]),
 	}
 	extra, err := r.byokUncount(ctx, s, to)
 	if err != nil {
@@ -384,6 +403,7 @@ func (r *SubscriptionRepository) Transition(
 		return nil, err
 	}
 	*s = updated
+	r.rt.publish(ctx, change.Realtime)
 	return events, nil
 }
 
@@ -509,13 +529,15 @@ func (r *SubscriptionRepository) changeItems(
 			Before: "prices=" + strings.Join(priceIDsOf(oldItems), ","),
 			After:  "prices=" + strings.Join(priceIDsOf(newItems), ","),
 		},
-		Emit:    events,
-		Subject: subscriptionSubject(&updated),
+		Emit:     events,
+		Subject:  subscriptionSubject(&updated),
+		Realtime: r.rt.subscription(ctx, &updated, events[0]),
 	}
 	if err := commitWithExtraWrites(ctx, r.tables(), change, now, extra...); err != nil {
 		return err
 	}
 	*s = updated
+	r.rt.publish(ctx, change.Realtime)
 	return nil
 }
 
@@ -542,13 +564,15 @@ func (r *SubscriptionRepository) SchedulePlanChange(ctx context.Context, s *bill
 		Set: map[string]types.AttributeValue{"pending_change": value},
 		Audit: AuditEntry{Entity: EntitySubscription, EntityID: s.ID, Action: string(billing.EventSubscriptionUpdated),
 			Cause: cause, Actor: actor, RequestID: requestID, Before: "pending_change", After: after},
-		Emit:    []billing.EventType{billing.EventSubscriptionUpdated},
-		Subject: subscriptionSubject(s),
+		Emit:     []billing.EventType{billing.EventSubscriptionUpdated},
+		Subject:  subscriptionSubject(s),
+		Realtime: r.rt.subscription(ctx, s, billing.EventSubscriptionUpdated),
 	}
 	if err := CommitStatusChange(ctx, r.tables(), change, now); err != nil {
 		return err
 	}
 	s.PendingChange = pc
+	r.rt.publish(ctx, change.Realtime)
 	return nil
 }
 
@@ -678,8 +702,9 @@ func (r *SubscriptionRepository) ScheduleCancellation(
 		// notice that entitlement ends at the period boundary. Emitting only on
 		// the eventual CANCELED would tell them on the day it happens, which is
 		// too late to email a customer about it.
-		Emit:    []billing.EventType{billing.EventSubscriptionUpdated},
-		Subject: subscriptionSubject(s),
+		Emit:     []billing.EventType{billing.EventSubscriptionUpdated},
+		Subject:  subscriptionSubject(s),
+		Realtime: r.rt.subscription(ctx, s, billing.EventSubscriptionUpdated),
 	}
 	if _, err := (&billing.Subscription{Status: s.Status}).Transition(s.Status, cause); err != nil {
 		// The domain still decides whether this subscription may be scheduled for
@@ -690,6 +715,7 @@ func (r *SubscriptionRepository) ScheduleCancellation(
 		return err
 	}
 	s.CancelAtPeriodEnd = true
+	r.rt.publish(ctx, change.Realtime)
 	return nil
 }
 

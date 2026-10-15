@@ -33,6 +33,14 @@ type PaymentRepository struct {
 	// byok holds the CHARGEREF# pointers (spec § 12.2), written in the same
 	// transaction as a BYOK attempt.
 	byok Base
+	rt   Realtime
+}
+
+// WithRealtime makes attempt and checkout-session transitions write a change to
+// the realtime log and publish it after the commit.
+func (r *PaymentRepository) WithRealtime(rt Realtime) *PaymentRepository {
+	r.rt = rt
+	return r
 }
 
 func NewPaymentRepository(db *dynamodb.Client, cfg *config.Config) *PaymentRepository {
@@ -244,6 +252,7 @@ func (r *PaymentRepository) TransitionAttempt(
 			Actor:     actor,
 			RequestID: requestID,
 		},
+		Realtime: r.rt.attempt(ctx, &updated, events[0]),
 	}
 	var extra []types.TransactWriteItem
 	if a.Method == billing.MethodBYOK && a.Livemode && !updated.CancelledAt.IsZero() && !a.CreatedAt.IsZero() &&
@@ -256,6 +265,7 @@ func (r *PaymentRepository) TransitionAttempt(
 		return nil, err
 	}
 	*a = updated
+	r.rt.publish(ctx, change.Realtime)
 	return events, nil
 }
 
@@ -332,11 +342,13 @@ func (r *PaymentRepository) TransitionSession(
 			Actor:     actor,
 			RequestID: requestID,
 		},
+		Realtime: r.rt.checkout(ctx, &updated, events[0]),
 	}
 	if err := CommitStatusChange(ctx, r.tables(), change, now); err != nil {
 		return nil, err
 	}
 	*s = updated
+	r.rt.publish(ctx, change.Realtime)
 	return events, nil
 }
 

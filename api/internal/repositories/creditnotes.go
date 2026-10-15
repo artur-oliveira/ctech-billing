@@ -23,6 +23,14 @@ type CreditNoteRepository struct {
 	base   Base
 	audit  Base
 	events Base
+	rt     Realtime
+}
+
+// WithRealtime makes a credit note write a change to the realtime log and
+// publish it after the commit.
+func (r *CreditNoteRepository) WithRealtime(rt Realtime) *CreditNoteRepository {
+	r.rt = rt
+	return r
 }
 
 func NewCreditNoteRepository(db *dynamodb.Client, cfg *config.Config) *CreditNoteRepository {
@@ -126,14 +134,26 @@ func (r *CreditNoteRepository) Issue(
 		return err
 	}
 
-	err = r.base.TransactWrite(ctx, []types.TransactWriteItem{
+	writes := []types.TransactWriteItem{
 		r.base.BuildPutTxItemIfAbsent(item),
 		r.guardInvoice(pk, inv, credited, credited+cn.Amount, now),
 		r.audit.BuildPutTxItemIfAbsent(auditItem),
 		event,
-	})
+	}
+	// The invoice screens learn of the note in the same transaction.
+	change := r.rt.creditNote(ctx, cn, inv)
+	changes, err := changeWrites(r.events, change, now)
+	if err != nil {
+		return err
+	}
+	writes = append(writes, changes...)
+
+	err = r.base.TransactWrite(ctx, writes)
 	if IsConditionFailed(err) {
 		return fmt.Errorf("%w: invoice %s expected to be %s with %s credited", ErrConcurrentModification, inv.ID, inv.Status, credited)
+	}
+	if err == nil {
+		r.rt.publish(ctx, change)
 	}
 	return err
 }
