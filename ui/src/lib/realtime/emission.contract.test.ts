@@ -32,7 +32,7 @@ function rows(): Row[] {
 }
 
 const change = (entity: string, type: string): ChangeView =>
-  ({id: "01A", type, entity, entityId: "x_1", status: "S", revision: 1, occurredAt: 1}) as ChangeView;
+  ({id: "01A", type, entity, entityId: "x_1", status: "S", revision: 1, occurredAtMs: 1});
 
 describe("events.md and the UI catalogue", () => {
   it("has rows", () => expect(rows().length).toBeGreaterThan(5));
