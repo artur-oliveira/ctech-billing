@@ -56,7 +56,7 @@ func splitPath(p string) (provider, hook, secret string, product byok.Product, o
 	if len(seg) == 6 && seg[5] != seg[4] {
 		return
 	}
-	if seg[1] != "inter" || seg[4] != string(byok.ProductPix) || seg[2] == "" || seg[3] == "" {
+	if seg[1] != "inter" || (seg[4] != string(byok.ProductPix) && seg[4] != string(byok.ProductPixPayment)) || seg[2] == "" || seg[3] == "" {
 		return
 	}
 	return seg[1], seg[2], seg[3], byok.Product(seg[4]), true

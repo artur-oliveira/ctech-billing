@@ -142,3 +142,24 @@ func TestTheKeepWarmInvocationPrimesTheTokenCallsNobodyAndLogsNothing(t *testing
 		t.Fatalf("a keep-warm every few minutes must not fill the log: %s", logs.String())
 	}
 }
+
+func TestAPayoutNoticeReachesBillingWithItsProductAndTheAccount(t *testing.T) {
+	b := &fakeBilling{status: 200}
+	h := newHandler(b.notify)
+	for _, p := range []string{"/w/inter/01HOOK/" + secret + "/pix-pagamento", "/w/inter/01HOOK/" + secret + "/pix-pagamento/pix-pagamento"} {
+		if r := call(t, h, p, `{"codigoSolicitacao":"abc-1","status":"PAGO"}`); r.StatusCode != 200 {
+			t.Fatalf("%s: %d", p, r.StatusCode)
+		}
+	}
+	if len(b.calls) != 2 || b.calls[0].Product != "pix-pagamento" || b.calls[0].Account != "1234567" ||
+		len(b.calls[0].PaymentIDs) != 1 || b.calls[0].PaymentIDs[0] != "abc-1" || len(b.calls[0].ChargeRefs) != 0 {
+		t.Fatalf("%+v", b.calls)
+	}
+	if r := call(t, h, "/w/inter/01HOOK/"+secret+"/pix-pagamento/pix", "{}"); r.StatusCode != 404 {
+		t.Fatalf("a mismatched suffix: %d", r.StatusCode)
+	}
+	// A body nobody documented still wakes billing, and is in the log.
+	if r := call(t, h, "/w/inter/01HOOK/"+secret+"/pix-pagamento", "not json"); r.StatusCode != 200 {
+		t.Fatalf("an unreadable body: %d", r.StatusCode)
+	}
+}

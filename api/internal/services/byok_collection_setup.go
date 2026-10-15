@@ -408,3 +408,66 @@ func (s *ByokCollectionSetup) openCharges(ctx context.Context, tenant *billing.O
 		start = page.LastEvaluatedKey
 	}
 }
+
+// payoutHookID is the hook of a connection's outgoing-payment notices: its own
+// row and secret, beside the one of the Pix it receives, so rotating or removing
+// either never touches the other.
+func payoutHookID(conn *byokconn.Connection) string { return hookIDOf(conn) + "-payout" }
+
+// PayoutWebhook reports what is registered at the bank for the Pix payments this
+// connection sends.
+func (s *ByokCollectionSetup) PayoutWebhook(ctx context.Context, conn *byokconn.Connection) (url string, ours bool, err error) {
+	sess := s.conns.Session(conn)
+	url, err = byokrpc.Call(ctx, sess, byok.CapabilityPayout, func(cr byok.Credentials, t byok.Token) (string, error) {
+		return sess.P.GetWebhook(ctx, cr, t, byok.ProductPixPayment)
+	})
+	return url, url != "" && IsOurHookURL(url, s.host, payoutHookID(conn)), err
+}
+
+// RegisterPayoutWebhook points the bank's notices about the Pix payments this
+// connection sends at us (Banking webhook pix-pagamento). A URL of someone
+// else's there is a conflict unless replace. The hook gets a fresh secret on
+// every call; the previous one stays valid for the overlap.
+func (s *ByokCollectionSetup) RegisterPayoutWebhook(ctx context.Context, conn *byokconn.Connection, replace bool, actor string, now time.Time) error {
+	if !conn.Has(byok.CapabilityPayout) {
+		return billing.ErrByokScopesMissing
+	}
+	if s.host == "" {
+		return ErrNoHooksHost
+	}
+	current, ours, err := s.PayoutWebhook(ctx, conn)
+	if err != nil {
+		return err
+	}
+	if current != "" && !ours && !replace {
+		return &ErrWebhookConflict{ExistingHost: hostOf(current)}
+	}
+	id, secret, err := s.webhooks.IssueHook(ctx, conn, payoutHookID(conn), now)
+	if err != nil {
+		return err
+	}
+	sess := s.conns.Session(conn)
+	if _, err := byokrpc.Call(ctx, sess, byok.CapabilityPayout, func(cr byok.Credentials, t byok.Token) (struct{}, error) {
+		return struct{}{}, sess.P.RegisterWebhook(ctx, cr, t, byok.ProductPixPayment, HookURL(s.host, conn.Provider, id, secret, string(byok.ProductPixPayment)))
+	}); err != nil {
+		return err
+	}
+	slog.InfoContext(ctx, "byok payout webhook registered", "connection_id", conn.ID, "actor", actor)
+	return nil
+}
+
+// RemovePayoutWebhook deletes our notice at the bank; someone else's is left.
+func (s *ByokCollectionSetup) RemovePayoutWebhook(ctx context.Context, conn *byokconn.Connection, actor string) (bool, error) {
+	_, ours, err := s.PayoutWebhook(ctx, conn)
+	if err != nil || !ours {
+		return false, err
+	}
+	sess := s.conns.Session(conn)
+	if _, err := byokrpc.Call(ctx, sess, byok.CapabilityPayout, func(cr byok.Credentials, t byok.Token) (struct{}, error) {
+		return struct{}{}, sess.P.DeleteWebhook(ctx, cr, t, byok.ProductPixPayment)
+	}); err != nil {
+		return false, err
+	}
+	slog.InfoContext(ctx, "byok payout webhook removed", "connection_id", conn.ID, "actor", actor)
+	return true, nil
+}

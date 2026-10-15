@@ -46,3 +46,15 @@ So: `ENVIADO` is "sent, not confirmed yet" (processing) and `PAGO` is done (api-
 
 - Rail back to the Wallet: `-tenant-rail=wallet`. Invoices already issued keep the Pix charge they have; the sweep keeps confirming them.
 - Stop all money out: empty `byok_payout_account_orgs` in the tfvars and apply.
+
+## The bank's notice about Pix payments we send
+
+A withdrawal is a Billing payout. Billing asks the bank about it 3, 6, 12, 25, 45 and 90 seconds after sending it, and the bank also tells us: Inter's Banking webhook `pix-pagamento` (`PUT /banking/v2/webhooks/pix-pagamento`, scope `webhook-banking.write`) calls the same mTLS host as the Pix notices, on the path `/w/inter/<hook>-payout/<secret>/pix-pagamento`. The notice settles nothing by itself: it makes billing ask the bank about the tenant's processing payouts. The body was not documented where it could be read, so it is read leniently and every request is in the log of `prod-ctech-billing-byok-webhook` (`inter webhook request`).
+
+```
+/opt/app/job.sh byok -tenant-payout-webhook=show     -mode=live -operator=NAME
+/opt/app/job.sh byok -tenant-payout-webhook=register -mode=live -operator=NAME   # -replace to take over someone else's
+/opt/app/job.sh byok -tenant-payout-webhook=remove   -mode=live -operator=NAME
+```
+
+Order of events for a withdrawal: payout created (`processing`) -> the bank settles -> billing settles the payout and writes `payout.done` (or `payout.failed`) in the same transaction -> the event is delivered to the wallet at once -> the wallet completes or reverses the withdrawal.
