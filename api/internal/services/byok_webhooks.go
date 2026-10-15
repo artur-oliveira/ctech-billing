@@ -235,13 +235,17 @@ func (w *ByokWebhooks) Notify(ctx context.Context, in NotifyRequest, now time.Ti
 			slog.WarnContext(ctx, "byok webhook re-query failed", "hook_id", h.ID, "error", err)
 			status = http.StatusServiceUnavailable
 		} else {
-			w.recordWebhookPayer(ctx, *ptr, in.Payers, now)
+			named := w.recordWebhookPayer(ctx, *ptr, in.Payers, now)
 			// Also when something else settled it a moment ago (the hourly job, the
 			// sweep): its events may be queued and not yet delivered.
 			if (outcome == OutcomeSettled || outcome == OutcomeAlreadySettled) && w.kick != nil {
 				w.kick(h.Livemode)
 			}
-			if outcome == OutcomeSettled {
+			// The statement is pulled for the payer only when the webhook did not
+			// name one: it is one of Inter's few calls a minute, and when the webhook
+			// named the payer the hourly sync upgrades the masked document to the
+			// complete one without a call per payment.
+			if outcome == OutcomeSettled && !named {
 				w.pullPayer(h, now)
 			}
 		}
@@ -256,7 +260,7 @@ func (w *ByokWebhooks) Notify(ctx context.Context, in NotifyRequest, now time.Ti
 // for the very payment that settled the attempt (the end-to-end id the re-query
 // returned), so a second payer on the same charge cannot be mistaken for the
 // first. The statement line replaces it with the complete payer.
-func (w *ByokWebhooks) recordWebhookPayer(ctx context.Context, ptr repositories.ChargeRef, payers []byok.CallbackPayer, now time.Time) {
+func (w *ByokWebhooks) recordWebhookPayer(ctx context.Context, ptr repositories.ChargeRef, payers []byok.CallbackPayer, now time.Time) (recorded bool) {
 	var claim *byok.CallbackPayer
 	for i := range payers {
 		if payers[i].ChargeRef == ptr.Ref {
@@ -265,14 +269,17 @@ func (w *ByokWebhooks) recordWebhookPayer(ctx context.Context, ptr repositories.
 		}
 	}
 	if claim == nil || (claim.Name == "" && claim.Document == "") {
-		return
+		return false
 	}
 	a, err := w.payments.GetAttempt(ctx, ptr.TenantID, ptr.Livemode, ptr.InvoiceID, ptr.AttemptNumber)
-	if err != nil || a.Status != billing.AttemptSucceeded || a.Payer != nil {
-		return
+	if err != nil || a.Status != billing.AttemptSucceeded {
+		return false
+	}
+	if a.Payer != nil {
+		return true // already named (an earlier delivery of this webhook)
 	}
 	if a.PaymentID == "" || claim.PaymentID != a.PaymentID {
-		return // not the payment that settled this attempt
+		return false // not the payment that settled this attempt
 	}
 	taxID := ""
 	if inv, err := w.collector.invoices.Get(ctx, a.OrganizationID, a.Livemode, a.InvoiceID); err == nil {
@@ -283,5 +290,7 @@ func (w *ByokWebhooks) recordWebhookPayer(ctx context.Context, ptr repositories.
 	p := billing.Payer{Name: claim.Name, Document: claim.Document, Provisional: true}
 	if _, err := w.payments.SetPayerOnce(ctx, a, p, billing.MatchPayer(taxID, p), now); err != nil {
 		slog.WarnContext(ctx, "byok webhook payer not recorded", "invoice_id", a.InvoiceID, "error", err)
+		return false
 	}
+	return true
 }
