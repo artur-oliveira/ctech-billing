@@ -17,6 +17,12 @@ const (
 	kickTimeout = 30 * time.Second
 )
 
+// kickRetryAfter: the queue the fan-out reads is an index, and an index lags the
+// write that fed it by a moment. A kick that finds nothing may simply be earlier
+// than the event it was kicked for, so it looks again after these waits (the
+// first look is immediate) and stops at the first pass that finds work.
+var defaultKickRetryAfter = []time.Duration{700 * time.Millisecond, 1500 * time.Millisecond, 3 * time.Second}
+
 // DeliveryKick runs the fan-out and delivery passes for one mode right now, in
 // the background, instead of waiting for the once-a-minute delivery job. A paid
 // invoice is the event a person is watching a screen for (a wallet deposit), and
@@ -30,6 +36,7 @@ const (
 type DeliveryKick struct {
 	passes passer
 	clock  func() time.Time
+	retry  []time.Duration
 
 	mu      sync.Mutex
 	running [2]bool
@@ -37,7 +44,7 @@ type DeliveryKick struct {
 }
 
 func NewDeliveryKick(p passer) *DeliveryKick {
-	return &DeliveryKick{passes: p, clock: time.Now}
+	return &DeliveryKick{passes: p, clock: time.Now, retry: defaultKickRetryAfter}
 }
 
 // Kick starts a pass for the mode and returns at once.
@@ -60,9 +67,17 @@ func (k *DeliveryKick) Kick(livemode bool) {
 func (k *DeliveryKick) loop(i int, livemode bool) {
 	for {
 		ctx, cancel := context.WithTimeout(context.Background(), kickTimeout)
-		now := k.clock()
-		k.passes.FanOut(ctx, livemode, kickBatch, now)
-		k.passes.Deliver(ctx, livemode, kickBatch, k.clock())
+		for attempt := 0; ; attempt++ {
+			found := k.passes.FanOut(ctx, livemode, kickBatch, k.clock()).Examined > 0
+			k.passes.Deliver(ctx, livemode, kickBatch, k.clock())
+			if found || attempt >= len(k.retry) {
+				break
+			}
+			select {
+			case <-time.After(k.retry[attempt]):
+			case <-ctx.Done():
+			}
+		}
 		cancel()
 
 		k.mu.Lock()

@@ -135,6 +135,15 @@ func main() {
 			slog.WarnContext(ctx, "byok test connection", "error", e)
 		}
 	}
+	// A payment this run settled queued its events; deliver them now instead of at
+	// the delivery job's next tick (see services.DeliveryKick). Best effort: the
+	// minute job still picks up whatever this misses.
+	if *modeFlag == "live" || *modeFlag == "both" {
+		if d, derr := app.BuildDeliverer(ctx, cfg); derr == nil {
+			d.FanOut(ctx, true, 50, time.Now())
+			d.Deliver(ctx, true, 50, time.Now())
+		}
+	}
 	if len(errs) > 0 {
 		jobs.Fail(ctx, alerter, "byok", fmt.Sprintf("%d bank connection(s) could not be synced or checked", len(errs)), jobs.Rendered(errs))
 	}
