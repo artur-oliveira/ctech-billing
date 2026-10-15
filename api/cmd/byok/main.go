@@ -48,6 +48,7 @@ func main() {
 	creditCents := flag.Int64("credit-amount-cents", 0, "with -tenant-credit: the amount in centavos")
 	creditReason := flag.String("credit-reason", "", "with -tenant-credit: why, written for whoever reads the invoice later")
 	creditRef := flag.String("credit-ref", "", "with -tenant-credit: the bank's reference for the return, when there is one")
+	voidFor := flag.String("tenant-void-invoice", "", "operator tool: void an open tenant-zero invoice like the console does (removes the open Pix charge first; needs -mode=live and -operator)")
 	moveSub := flag.String("tenant-move-subscription", "", "operator tool: move a tenant-zero subscription's single item to another price of the same cycle (needs -mode=live, -operator, -to-price); idempotent, and a move between prices that cost the same issues no invoice")
 	toPrice := flag.String("to-price", "", "with -tenant-move-subscription: the price id to move to")
 	refresh := flag.Bool("tenant-refresh", false, "operator tool: re-test tenant zero's stored bank credentials and record what they can do now (needs -mode=live, -operator)")
@@ -70,6 +71,9 @@ func main() {
 	}
 	if *payoutCPF != "" {
 		os.Exit(tenantPayout(ctx, cfg, *modeFlag, *operator, *payoutCPF, *payoutRef, *payoutCents, *yes))
+	}
+	if *voidFor != "" {
+		os.Exit(tenantVoid(ctx, cfg, *modeFlag, *operator, *voidFor))
 	}
 	if *moveSub != "" {
 		os.Exit(tenantMoveSubscription(ctx, cfg, *modeFlag, *operator, *moveSub, *toPrice))

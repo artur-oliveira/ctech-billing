@@ -740,10 +740,12 @@ func byokSetup(ctx context.Context, cfg *config.Config, db *dynamodb.Client, c c
 
 // ByokOperator is what cmd/byok's operator actions need.
 type ByokOperator struct {
-	Setup   *services.ByokCollectionSetup
-	Conns   *services.ByokConnections
-	Orgs    *repositories.OrganizationRepository
-	Payouts *services.Payouts
+	Collector *services.ByokCollector
+	Invoices  *repositories.InvoiceRepository
+	Setup     *services.ByokCollectionSetup
+	Conns     *services.ByokConnections
+	Orgs      *repositories.OrganizationRepository
+	Payouts   *services.Payouts
 }
 
 // BuildByokOperator wires what cmd/byok needs for an operator action on a
@@ -763,8 +765,9 @@ func BuildByokOperator(ctx context.Context, cfg *config.Config) (*ByokOperator, 
 		return nil, fmt.Errorf("BYOK_OUTBOUND_FUNCTION is not set")
 	}
 	orgs := repositories.NewOrganizationRepository(db, cfg)
-	setup, _, payments, repo := byokSetup(ctx, cfg, db, c, conns, st, orgs)
-	return &ByokOperator{Setup: setup, Conns: conns, Orgs: orgs, Payouts: services.NewPayouts(payments, orgs, repo, conns.Session)}, nil
+	setup, collector, payments, repo := byokSetup(ctx, cfg, db, c, conns, st, orgs)
+	return &ByokOperator{Collector: collector, Invoices: repositories.NewInvoiceRepository(db, cfg), Setup: setup, Conns: conns, Orgs: orgs,
+		Payouts: services.NewPayouts(payments, orgs, repo, conns.Session)}, nil
 }
 
 // byokCounter counts the BYOK limiters in Valkey when the app has it, so every
