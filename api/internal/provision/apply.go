@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"time"
 
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
@@ -217,8 +218,17 @@ func Apply(ctx context.Context, repos Repos, plan *Plan, livemode bool, now time
 	}
 
 	for _, e := range plan.Endpoints {
-		switch _, err := repos.Webhooks.GetEndpoint(ctx, orgID, livemode, e.ID); {
+		switch existing, err := repos.Webhooks.GetEndpoint(ctx, orgID, livemode, e.ID); {
 		case err == nil:
+			// The file is the source of truth for what an endpoint subscribes to: an
+			// event type added later (payout.done) must reach a row created before it.
+			if !slices.Equal(existing.Events, e.Events) {
+				if err := repos.Webhooks.SetEndpointEvents(ctx, existing, e.Events, now); err != nil {
+					return nil, fmt.Errorf("updating webhook endpoint %s: %w", e.ID, err)
+				}
+				res.created("webhook endpoint events", e.ID)
+				continue
+			}
 			res.skipped("webhook endpoint", e.ID)
 			continue
 		case !errors.Is(err, repositories.ErrNotFound):

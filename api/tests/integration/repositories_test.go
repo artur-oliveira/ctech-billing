@@ -717,3 +717,38 @@ func TestApplyDeactivatesAProductAndNeverRevivesIt(t *testing.T) {
 		t.Fatal("a plan revived a deactivated product")
 	}
 }
+
+// Production, 2026-10-15: the wallet's endpoint was seeded with only invoice.paid; the file then
+// gained payout.done and payout.failed, but the seed skipped the existing row, so no withdrawal was
+// ever announced. The file decides what an endpoint subscribes to.
+func TestApplyBringsAnExistingEndpointsEventsToThePlan(t *testing.T) {
+	ctx := ctxT(t)
+	repos := provision.Repos{
+		Organizations: repositories.NewOrganizationRepository(testDB, testCfg),
+		Credentials:   repositories.NewCredentialRepository(testDB, testCfg),
+		Catalog:       repositories.NewCatalogRepository(testDB, testCfg),
+		Webhooks:      repositories.NewWebhookRepository(testDB, testCfg),
+	}
+	t.Setenv("WH_SECRET_T", "ssssssssssssssssssssssssssssssssssssssss")
+	orgID := "org_" + id.New()
+	doc := func(events string) *provision.Plan {
+		p, err := provision.Parse(strings.NewReader(`{"organization":{"id":"` + orgID + `","display_name":"T"},
+		  "webhook_endpoints":[{"id":"whe_t","url":"https://t.example/h","owner_key":"t","events":` + events + `,"secret_env":"WH_SECRET_T"}]}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	for _, events := range []string{`["invoice.paid"]`, `["invoice.paid","payout.done"]`} {
+		if _, err := provision.Apply(ctx, repos, doc(events), true, now()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	e, err := repos.Webhooks.GetEndpoint(ctx, orgID, true, "whe_t")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(e.Events) != 2 || e.Events[1] != "payout.done" || e.Secret != "ssssssssssssssssssssssssssssssssssssssss" {
+		t.Fatalf("endpoint = events %v secret %q", e.Events, e.Secret)
+	}
+}
