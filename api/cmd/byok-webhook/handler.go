@@ -56,7 +56,62 @@ func status(code int) events.APIGatewayV2HTTPResponse {
 	return events.APIGatewayV2HTTPResponse{StatusCode: code}
 }
 
+// maxLoggedBody keeps one log event under CloudWatch's 256 KiB; a Pix webhook is
+// a few hundred bytes, so this only ever trims abuse.
+const maxLoggedBody = 200 << 10
+
+// redactedHeaders are credentials, not evidence. Everything else Inter sends is
+// logged as it came.
+var redactedHeaders = map[string]bool{"authorization": true, "cookie": true, "x-api-key": true}
+
+// redactPath hides the hook's secret, which is a path segment: every segment
+// long enough to be one (the hook id is shorter) is replaced.
+func redactPath(p string) string {
+	seg := strings.Split(p, "/")
+	for i, s := range seg {
+		if len(s) >= 30 {
+			seg[i] = "<redacted>"
+		}
+	}
+	return strings.Join(seg, "/")
+}
+
+// logRequest records exactly what arrived: the method, the path without its
+// secret, the source, every header but credentials, and the whole body. We have
+// to know what Inter really sends (whether it names the payer, and how), and the
+// only way to know is to keep it.
+func logRequest(ctx context.Context, req events.APIGatewayV2HTTPRequest, body []byte) {
+	headers := make(map[string]string, len(req.Headers))
+	for k, v := range req.Headers {
+		if redactedHeaders[strings.ToLower(k)] {
+			v = "<redacted>"
+		}
+		headers[k] = v
+	}
+	shown, truncated := body, false
+	if len(shown) > maxLoggedBody {
+		shown, truncated = shown[:maxLoggedBody], true
+	}
+	slog.InfoContext(ctx, "inter webhook request",
+		"method", req.RequestContext.HTTP.Method, "path", redactPath(req.RawPath), "query", req.RawQueryString != "",
+		"source_ip", req.RequestContext.HTTP.SourceIP, "headers", headers,
+		"body_bytes", len(body), "body", string(shown), "body_truncated", truncated)
+}
+
 func (h *handler) handle(ctx context.Context, req events.APIGatewayV2HTTPRequest) (events.APIGatewayV2HTTPResponse, error) {
+	body := []byte(req.Body)
+	if req.IsBase64Encoded {
+		if b, err := base64.StdEncoding.DecodeString(req.Body); err == nil {
+			body = b
+		}
+	}
+	logRequest(ctx, req, body)
+	resp, err := h.serve(ctx, req)
+	slog.InfoContext(ctx, "inter webhook response", "status", resp.StatusCode)
+	return resp, err
+}
+
+func (h *handler) serve(ctx context.Context, req events.APIGatewayV2HTTPRequest) (events.APIGatewayV2HTTPResponse, error) {
 	provider, hook, secret, product, ok := splitPath(req.RawPath)
 	if !ok {
 		return status(http.StatusNotFound), nil

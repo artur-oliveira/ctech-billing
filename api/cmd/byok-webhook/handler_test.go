@@ -54,8 +54,11 @@ func TestBothPathVariantsReachBillingWithTheSameBody(t *testing.T) {
 		len(b.calls[0].ChargeRefs) != 1 || b.calls[0].Product != "pix" || b.calls[0].Provider != "inter" {
 		t.Fatalf("%s", a)
 	}
-	if strings.Contains(logs.String(), secret) || strings.Contains(logs.String(), "50.00") {
-		t.Fatal("the secret and the body never reach the logs")
+	if strings.Contains(logs.String(), secret) {
+		t.Fatal("the hook's secret never reaches the logs")
+	}
+	if !strings.Contains(logs.String(), "50.00") || !strings.Contains(logs.String(), "E00000000202603101200abcdefghijk") {
+		t.Fatal("the body Inter sent is kept in full: we have to know what it carries")
 	}
 }
 
@@ -86,5 +89,40 @@ func TestBillingsAnswerPassesThroughAndABadBodyIs400(t *testing.T) {
 	}
 	if r := call(t, newHandler(b.notify), "/w/inter/01HOOK/"+secret+"/pix", "not json"); r.StatusCode != 400 {
 		t.Fatalf("%d", r.StatusCode)
+	}
+}
+
+func TestTheRequestIsLoggedWholeWithItsHeadersButNoCredentials(t *testing.T) {
+	var logs bytes.Buffer
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&logs, nil)))
+	b := &fakeBilling{status: 200}
+	_, err := newHandler(b.notify).handle(context.Background(), events.APIGatewayV2HTTPRequest{
+		RawPath: "/w/inter/01HOOK/" + secret + "/pix", Body: pixBody,
+		Headers:        map[string]string{"x-conta-corrente": "1234567", "Authorization": "Bearer abc", "user-agent": "inter"},
+		RequestContext: events.APIGatewayV2HTTPRequestContext{HTTP: events.APIGatewayV2HTTPRequestContextHTTPDescription{Method: "POST", SourceIP: "198.51.100.7"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := logs.String()
+	for _, want := range []string{"inter webhook request", "inter webhook response", "198.51.100.7", "x-conta-corrente", "1234567", "user-agent", `"method":"POST"`, "/w/inter/01HOOK/<redacted>/pix"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the log lacks %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "Bearer abc") || strings.Contains(out, secret) {
+		t.Fatal("a credential reached the logs")
+	}
+}
+
+func TestEvenARequestThatIsRefusedIsLogged(t *testing.T) {
+	var logs bytes.Buffer
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&logs, nil)))
+	h := newHandler((&fakeBilling{status: 200}).notify)
+	if r := call(t, h, "/x/inter/01HOOK/"+secret+"/pix", `{"pix":[{"txid":"scan"}]}`); r.StatusCode != 404 {
+		t.Fatal(r.StatusCode)
+	}
+	if !strings.Contains(logs.String(), `{\"pix\":[{\"txid\":\"scan\"}]}`) || strings.Contains(logs.String(), secret) {
+		t.Fatalf("a refused request is evidence too, without the secret:\n%s", logs.String())
 	}
 }
