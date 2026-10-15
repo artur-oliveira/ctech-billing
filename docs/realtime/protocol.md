@@ -12,6 +12,9 @@ checkout, the console, the portal and Finanças). Defined in
 |---|---|---|
 | 1 | the first protocol: Auth, Reauth, Ping, Ready, Change, Gap, Pong, Tick, Bye, Hint | R1 |
 
+No version change: `Auth.mode` (field 6, R2) is additive. An older server ignores it and treats the
+connection as live; the console is the only client that sends it.
+
 A version is added only when a client must **not** use a feature against an older
 server. A change that old readers can ignore needs no new version: write the row
 as "no version change" in the pull request instead.

@@ -8,6 +8,7 @@ import (
 	"gopkg.aoctech.app/api-commons/cache"
 
 	"gopkg.aoctech.app/billing/api/internal/middleware"
+	"gopkg.aoctech.app/billing/api/internal/realtime"
 	"gopkg.aoctech.app/billing/api/internal/repositories"
 	"gopkg.aoctech.app/billing/api/internal/services"
 	"gopkg.aoctech.app/billing/api/internal/settlement"
@@ -53,6 +54,11 @@ type Deps struct {
 	// WebhookVerifier proves a new endpoint answers its challenge before it is
 	// registered (hub.subscribe style).
 	WebhookVerifier WebhookVerifier
+	// Realtime and RealtimeChanges are the socket gateway and its cursor fallback
+	// (docs/specs/2026-10-14-realtime.md). Nil (REALTIME_ENABLED off) leaves both
+	// routes unmounted: a 404, exactly as before.
+	Realtime        *realtime.Gateway
+	RealtimeChanges *realtime.ChangesHandler
 	Idempotency     *repositories.IdempotencyRepository
 	Organizations   *repositories.OrganizationRepository
 	// Payouts pays Pix keys out of the tenant's connected bank account (CTech's own
@@ -163,6 +169,14 @@ func Register(app *fiber.App, d Deps) {
 	}
 
 	v1 := app.Group("/v1.0")
+	// Both authenticate themselves (the socket by its first frame, the fallback by
+	// its Authorization header), so they sit outside every authenticated group.
+	if d.Realtime != nil {
+		realtime.RegisterGateway(v1, d.Realtime)
+	}
+	if d.RealtimeChanges != nil {
+		realtime.RegisterChanges(v1, d.RealtimeChanges)
+	}
 	// Both unauthenticated, and neither behind the tenant resolver: a probe has
 	// no credential, and the balancer that runs one is not a tenant. What that
 	// costs is bounded by the payloads — the report publishes latencies,

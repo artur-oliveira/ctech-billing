@@ -41,6 +41,11 @@ run "alpine_forwards_upgrade_with_real_nginx_variables" {
     condition     = !can(regex("\\$\\$[a-z_]", local.bootstrap_sh))
     error_message = "a stray $$ in the rendered bootstrap: nginx rejects $$http_upgrade as an invalid variable name"
   }
+
+  assert {
+    condition     = strcontains(local.bootstrap_sh, "REALTIME_ENABLED=false")
+    error_message = "realtime must be off unless an environment turns it on"
+  }
 }
 
 run "al2023_forwards_upgrade_with_real_nginx_variables" {

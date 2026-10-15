@@ -39,7 +39,7 @@ func main() {
 	fixtures := map[string]proto.Message{
 		"auth_token": client(&wire.ClientFrame{Body: &wire.ClientFrame_Auth{Auth: &wire.Auth{
 			Token: "eyJhbGciOiJSUzI1NiJ9.e30.sig", Space: "org:01a04ed6-1af9-745e-bcf7-d3b66fe52321",
-			ResumeCursor: cursor, ClientProtocolVersion: 1,
+			ResumeCursor: cursor, ClientProtocolVersion: 1, Mode: "live",
 		}}}),
 		"auth_pay_link": client(&wire.ClientFrame{Body: &wire.ClientFrame_Auth{Auth: &wire.Auth{
 			PayLink: "ctech.2.b64payload.b64mac", ClientProtocolVersion: 1,

@@ -68,6 +68,13 @@ type StatusChange struct {
 	Emit []billing.EventType
 	// Subject describes what the events are about. Required when Emit is set.
 	Subject EventSubject
+
+	// Realtime is the change the live screens are told of (docs/specs/2026-10-14-
+	// realtime.md § 4.2), written in this transaction for the same reason the
+	// events and the audit row are. Nil is none: the log is off, or nobody
+	// listens to this entity. It is a pointer because the write fills in its id and
+	// revision, and the caller publishes that very change after the commit.
+	Realtime *Change
 }
 
 // eventSubjectOf renders the routing and payload subject for the two entities
@@ -152,6 +159,11 @@ func commitWithExtraWrites(ctx context.Context, t Tables, c StatusChange, now ti
 		return err
 	}
 	writes = append(writes, events...)
+	changes, err := changeWrites(t.Events, c.Realtime, now)
+	if err != nil {
+		return err
+	}
+	writes = append(writes, changes...)
 	writes = append(writes, extra...)
 
 	err = t.Rows.TransactWrite(ctx, writes)

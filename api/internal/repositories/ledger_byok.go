@@ -128,14 +128,23 @@ func (r *LedgerRepository) PostBankLine(ctx context.Context, sp space.ResolvedSp
 	if err != nil {
 		return "", false, err
 	}
+	// The statement screen learns of the line in the same transaction. It goes
+	// before the lock, which has to stay last.
+	change := r.statementChange(sp, plan.TxID, "")
+	changes, err := changeWrites(r.events, change, now)
+	if err != nil {
+		return "", false, err
+	}
 	// The lock stays last: a concurrent sync is recognised by its condition.
-	items := append(append([]types.TransactWriteItem(nil), plan.Items...), r.txs.BuildPutTxItem(pending), r.imports.BuildPutTxItemIfAbsent(lock))
+	items := append(append([]types.TransactWriteItem(nil), plan.Items...), r.txs.BuildPutTxItem(pending))
+	items = append(append(items, changes...), r.imports.BuildPutTxItemIfAbsent(lock))
 	if err := r.txs.TransactWrite(ctx, items); err != nil {
 		if codes := cancellationCodes(err); len(codes) == len(items) && codes[len(items)-1] == codeConditionFailed {
 			return "", false, nil // a concurrent sync posted it
 		}
 		return "", false, classifyPostCancel(err, plan.MarkerIdx)
 	}
+	r.rt.publish(ctx, change)
 	return plan.TxID, true, nil
 }
 
@@ -162,9 +171,17 @@ func (r *LedgerRepository) LinkBankLine(ctx context.Context, sp space.ResolvedSp
 	if err != nil {
 		return false, err
 	}
-	err = r.imports.TransactWrite(ctx, txItems(r.imports.BuildPutTxItemIfAbsent(lock)))
+	change := r.statementChange(sp, txID, "linked")
+	changes, err := changeWrites(r.events, change, now)
+	if err != nil {
+		return false, err
+	}
+	err = r.imports.TransactWrite(ctx, append(txItems(r.imports.BuildPutTxItemIfAbsent(lock)), changes...))
 	if IsConditionFailed(err) {
 		return false, nil
+	}
+	if err == nil {
+		r.rt.publish(ctx, change)
 	}
 	return err == nil, conflictErr(err)
 }
@@ -333,12 +350,27 @@ func (r *LedgerRepository) Classify(ctx context.Context, bills *BillRepository, 
 		ConditionExpression: aws.String("attribute_exists(pk)"),
 	}}
 	items := mergeAdds(append(append(append([]types.TransactWriteItem{pending}, rev.Items...), next.Items...), extra...))
+	// The line leaves "A classificar" on every open screen, and a bill it settled
+	// changes too: both are told in the same transaction.
+	lineChange := r.statementChange(sp, txID, "classified")
+	toLog := []*Change{lineChange}
+	if c.BillID != "" {
+		toLog = append(toLog, r.rt.space(sp.PK(), "bill", c.BillID, "bill.updated", "settled"))
+	}
+	for _, ch := range toLog {
+		more, err := changeWrites(r.events, ch, now)
+		if err != nil {
+			return "", err
+		}
+		items = append(items, more...)
+	}
 	if err := r.txs.TransactWrite(ctx, items); err != nil {
 		if onlyConditionFailed(err) {
 			return "", ErrNotUnclassified // a concurrent classification reversed it first
 		}
 		return "", classifyPostCancel(err, -1)
 	}
+	r.rt.publish(ctx, toLog...)
 	return next.TxID, nil
 }
 

@@ -333,10 +333,18 @@ func (r *PaymentRepository) SetPayerOnce(ctx context.Context, a *billing.Payment
 			payer[k] = str(v)
 		}
 	}
-	err := r.base.TransactWrite(ctx, txItems(r.base.BuildRawUpdateTxItem(TenantPK(a.OrganizationID, a.Livemode), &sk,
+	writes := txItems(r.base.BuildRawUpdateTxItem(TenantPK(a.OrganizationID, a.Livemode), &sk,
 		"SET payer = :p, payer_match = :m, updated_at = :now", "attribute_exists(pk) AND attribute_not_exists(payer)", nil,
 		map[string]types.AttributeValue{":p": &types.AttributeValueMemberM{Value: payer}, ":m": str(string(m)),
-			":now": str(now.UTC().Format(time.RFC3339Nano))})))
+			":now": str(now.UTC().Format(time.RFC3339Nano))}))
+	// The payer appears on the invoice screens without a reload: written with the
+	// payer, in this transaction.
+	change := r.rt.invoiceRef(a.OrganizationID, a.Livemode, a.InvoiceID, "invoice.payer_recorded", "")
+	changes, err := changeWrites(r.events, change, now)
+	if err != nil {
+		return false, err
+	}
+	err = r.base.TransactWrite(ctx, append(writes, changes...))
 	if IsConditionFailed(err) {
 		return false, nil
 	}
@@ -344,6 +352,7 @@ func (r *PaymentRepository) SetPayerOnce(ctx context.Context, a *billing.Payment
 		return false, conflictErr(err)
 	}
 	a.Payer, a.PayerMatch = &p, m
+	r.rt.publish(ctx, change)
 	return true, nil
 }
 

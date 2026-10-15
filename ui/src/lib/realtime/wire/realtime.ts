@@ -23,6 +23,7 @@ export interface Auth {
   space: string;
   resume_cursor: string;
   client_protocol_version: number;
+  mode: string;
 }
 
 export interface Reauth {
@@ -211,7 +212,7 @@ export const ClientFrame: MessageFns<ClientFrame> = {
 };
 
 function createBaseAuth(): Auth {
-  return { token: "", pay_link: "", space: "", resume_cursor: "", client_protocol_version: 0 };
+  return { token: "", pay_link: "", space: "", resume_cursor: "", client_protocol_version: 0, mode: "" };
 }
 
 export const Auth: MessageFns<Auth> = {
@@ -230,6 +231,9 @@ export const Auth: MessageFns<Auth> = {
     }
     if (message.client_protocol_version !== 0) {
       writer.uint32(40).uint32(message.client_protocol_version);
+    }
+    if (message.mode !== "") {
+      writer.uint32(50).string(message.mode);
     }
     return writer;
   },
@@ -287,6 +291,14 @@ export const Auth: MessageFns<Auth> = {
             message.client_protocol_version = reader.uint32();
             continue;
           }
+          case 6: {
+            if (tag !== 50) {
+              break;
+            }
+
+            message.mode = reader.string();
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -318,6 +330,7 @@ export const Auth: MessageFns<Auth> = {
         : isSet(object.client_protocol_version)
         ? globalThis.Number(object.client_protocol_version)
         : 0,
+      mode: isSet(object.mode) ? globalThis.String(object.mode) : "",
     };
   },
 
@@ -338,6 +351,9 @@ export const Auth: MessageFns<Auth> = {
     if (message.client_protocol_version !== 0) {
       obj.clientProtocolVersion = Math.round(message.client_protocol_version);
     }
+    if (message.mode !== "") {
+      obj.mode = message.mode;
+    }
     return obj;
   },
 
@@ -351,6 +367,7 @@ export const Auth: MessageFns<Auth> = {
     message.space = object.space ?? "";
     message.resume_cursor = object.resume_cursor ?? "";
     message.client_protocol_version = object.client_protocol_version ?? 0;
+    message.mode = object.mode ?? "";
     return message;
   },
 };

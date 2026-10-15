@@ -22,8 +22,10 @@ import (
 // (ADR 0009): an issued invoice is a document and cannot lose its addressee
 // because someone asked to be forgotten, but nothing identifying has to remain.
 type CustomerRepository struct {
-	base  Base
-	audit Base
+	base   Base
+	audit  Base
+	events Base
+	rt     Realtime
 	// seal encrypts the one stored field that is personal data on its own. It
 	// lives here rather than in the domain because it is a storage concern: a
 	// billing.Customer in memory holds a readable tax id, and only the row does
@@ -33,10 +35,23 @@ type CustomerRepository struct {
 
 func NewCustomerRepository(db *dynamodb.Client, cfg *config.Config) *CustomerRepository {
 	return &CustomerRepository{
-		base:  NewBase(db, cfg, TableCustomers),
-		audit: NewBase(db, cfg, TableAudit),
-		seal:  crypto.NewSealer(cfg.FieldEncryptionKey),
+		base:   NewBase(db, cfg, TableCustomers),
+		audit:  NewBase(db, cfg, TableAudit),
+		events: NewBase(db, cfg, TableWebhooks),
+		seal:   crypto.NewSealer(cfg.FieldEncryptionKey),
+		rt:     realtimeDefault(),
 	}
+}
+
+// WithRealtime makes a customer created or anonymized write a change to the
+// realtime log and publish it.
+func (r *CustomerRepository) WithRealtime(rt Realtime) *CustomerRepository {
+	r.rt = rt
+	return r
+}
+
+func (r *CustomerRepository) change(c *billing.Customer, status string) *Change {
+	return r.rt.tenant(c.OrganizationID, c.Livemode, "customer", c.ID, "customer.updated", status)
 }
 
 func (r *CustomerRepository) customerRowOf(c *billing.Customer, now time.Time) (customerRow, error) {
@@ -160,7 +175,16 @@ func (r *CustomerRepository) Create(ctx context.Context, c *billing.Customer, ac
 	if err != nil {
 		return err
 	}
+	change := r.change(c, "")
+	changes, err := changeWrites(r.events, change, now)
+	if err != nil {
+		return err
+	}
+	writes = append(writes, changes...)
 	err = r.base.TransactWrite(ctx, writes)
+	if err == nil {
+		r.rt.publish(ctx, change)
+	}
 	if IsConditionFailed(err) {
 		// The transaction cancels as a unit, so either the id or the subject was
 		// taken. Naming the subject is the useful answer: a caller that generated
@@ -320,6 +344,7 @@ func (r *CustomerRepository) Anonymize(ctx context.Context, c *billing.Customer,
 		return err
 	}
 	*c = anonymized
+	r.rt.announce(ctx, r.events, r.change(c, "anonymized"), now)
 	return nil
 }
 

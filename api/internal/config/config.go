@@ -47,6 +47,13 @@ type Config struct {
 	// (see newFiber); in production Load refuses to boot without it.
 	CorsAllowedOrigins []string `env:"CORS_ALLOWED_ORIGINS" envSeparator:","`
 
+	// RealtimeEnabled turns on the change log, the publisher and GET /v1.0/ws. Off
+	// by default: nothing is written, nothing is published and the routes are not
+	// mounted. RealtimeAllowedOrigins are the browser origins the socket accepts;
+	// empty means the CORS list (see Load).
+	RealtimeEnabled        bool     `env:"REALTIME_ENABLED" envDefault:"false"`
+	RealtimeAllowedOrigins []string `env:"REALTIME_ALLOWED_ORIGINS" envSeparator:","`
+
 	// Auth (ctech-account). ServiceAudience is the `aud` this service accepts;
 	// a token minted for another CTech service must not be usable here.
 	CtechIssuerURL  string `env:"CTECH_ISSUER_URL"`
@@ -177,6 +184,11 @@ func Load() (*Config, error) {
 	// unauthenticated response this API serves.
 	if len(cfg.CorsAllowedOrigins) == 0 && cfg.Env == "prod" {
 		return nil, fmt.Errorf("config: CORS_ALLOWED_ORIGINS must be set in production")
+	}
+	// The socket accepts the same browser origins as the REST API unless told
+	// otherwise: a page that may call the API may open its stream.
+	if len(cfg.RealtimeAllowedOrigins) == 0 {
+		cfg.RealtimeAllowedOrigins = cfg.CorsAllowedOrigins
 	}
 	return &cfg, nil
 }
