@@ -732,7 +732,8 @@ func byokSetup(ctx context.Context, cfg *config.Config, db *dynamodb.Client, c c
 	collector := byokCollection(ctx, cfg, db, conns, st, gates, financeInvoices(db, cfg, orgs, repositories.NewCustomerRepository(db, cfg)), bus)
 	repo := repositories.NewByokRepository(db, cfg)
 	payments := repositories.NewPaymentRepository(db, cfg)
-	webhooks := services.NewByokWebhooks(repo, payments, collector, c)
+	webhooks := services.NewByokWebhooks(repo, payments, collector, c).
+		WithDeliveryKick(services.NewDeliveryKick(services.NewDeliverer(repositories.NewWebhookRepository(db, cfg))).Kick)
 	setup := services.NewByokCollectionSetup(conns, repo, orgs, payments, collector, webhooks, cfg.ByokHooksHost, cfg.PortalOrganizationID).
 		WithSubscriptions(newSubscriptions(db, cfg))
 	return setup, collector, payments, repo
