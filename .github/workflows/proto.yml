@@ -1,0 +1,73 @@
+name: Protobuf contract
+
+# The realtime wire contract (docs/realtime/protocol.md). Cheapest check first:
+# lint, then breaking changes, then the generated code, then the bytes.
+on:
+  pull_request:
+    paths:
+      - 'proto/**'
+      - 'buf.yaml'
+      - 'scripts/generate-proto.sh'
+      - 'api/internal/realtime/wire/**'
+      - 'ui/src/lib/realtime/wire/**'
+      - '.github/workflows/proto.yml'
+  push:
+    branches: [main, staging, dev]
+    paths:
+      - 'proto/**'
+      - 'buf.yaml'
+      - 'scripts/generate-proto.sh'
+      - '.github/workflows/proto.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-26.04-arm
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # buf breaking compares against the base commit
+      - uses: bufbuild/buf-action@v1
+        with:
+          setup_only: true
+      - name: Lint
+        run: buf lint
+      - name: No breaking change against the base
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || github.event.before }}
+        run: |
+          # The first change that adds proto/ has nothing to compare against.
+          if git cat-file -e "$BASE:proto/realtime.proto" 2>/dev/null; then
+            buf breaking --against ".git#ref=$BASE"
+          else
+            echo "::notice::$BASE has no proto/realtime.proto yet; nothing to compare against"
+          fi
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: api/go.mod
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - name: Install protobuf compiler
+        run: |
+          curl -sSL -o /tmp/protoc.zip https://github.com/protocolbuffers/protobuf/releases/download/v36.1/protoc-36.1-linux-aarch_64.zip
+          sudo unzip -o /tmp/protoc.zip -d /usr/local
+          rm /tmp/protoc.zip
+      - name: Install pinned generators
+        run: |
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.12
+          npm ci --prefix ui
+      - name: Regenerate the contract
+        run: ./scripts/generate-proto.sh
+      - name: Generated files are committed
+        run: |
+          git diff --exit-code -- api/internal/realtime/wire ui/src/lib/realtime/wire \
+            || { echo "::error::The generated code is out of date. Run ./scripts/generate-proto.sh and commit the result."; exit 1; }
+      - name: Go and TypeScript agree on the bytes
+        run: |
+          (cd api && go test ./internal/realtime/wire/...)
+          (cd ui && npx vitest run src/lib/realtime/wire)
