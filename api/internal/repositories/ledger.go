@@ -53,6 +53,19 @@ type LedgerRepository struct {
 	audit    Base
 	// imports holds the FITID# locks a synced bank line claims (BYOK § 8.2).
 	imports Base
+	events  Base
+	rt      Realtime
+}
+
+// WithRealtime makes a bank line posted, linked or classified write a change to
+// the realtime log (the space's scope) and publish it after the commit.
+func (r *LedgerRepository) WithRealtime(rt Realtime) *LedgerRepository {
+	r.rt = rt
+	return r
+}
+
+func (r *LedgerRepository) statementChange(sp space.ResolvedSpace, txID, status string) *Change {
+	return r.rt.space(sp.PK(), "statement", txID, "statement.line_posted", status)
 }
 
 func NewLedgerRepository(db *dynamodb.Client, cfg *config.Config) *LedgerRepository {
@@ -61,6 +74,7 @@ func NewLedgerRepository(db *dynamodb.Client, cfg *config.Config) *LedgerReposit
 		txs:      NewBase(db, cfg, TableLedgerTransactions),
 		audit:    NewBase(db, cfg, TableAudit),
 		imports:  NewBase(db, cfg, TableImports),
+		events:   NewBase(db, cfg, TableWebhooks),
 	}
 }
 

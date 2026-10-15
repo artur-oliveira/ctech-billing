@@ -25,14 +25,42 @@ import (
 // own write plan plus the bill's item, so a bill never exists without its
 // recognition and never changes status without the transaction that explains it.
 type BillRepository struct {
-	bills Base
+	bills  Base
+	events Base
+	rt     Realtime
 	// recs is read only by CreateFromOccurrence's ConditionCheck on the recurrence.
 	recs   Base
 	ledger *LedgerRepository
 }
 
 func NewBillRepository(db *dynamodb.Client, cfg *config.Config) *BillRepository {
-	return &BillRepository{bills: NewBase(db, cfg, TableBills), recs: NewBase(db, cfg, TableRecurrences), ledger: NewLedgerRepository(db, cfg)}
+	return &BillRepository{bills: NewBase(db, cfg, TableBills), events: NewBase(db, cfg, TableWebhooks), recs: NewBase(db, cfg, TableRecurrences), ledger: NewLedgerRepository(db, cfg)}
+}
+
+// WithRealtime makes a bill created, settled, canceled, edited or reopened write
+// a change to the realtime log (the space's scope) and publish it after the
+// commit. The ledger the repository posts through is told too, so a bill settled
+// by classifying a bank line is announced once, from there.
+func (r *BillRepository) WithRealtime(rt Realtime) *BillRepository {
+	r.rt = rt
+	r.ledger.WithRealtime(rt)
+	return r
+}
+
+// commit is the one place a bill transaction is written: the bill's own change
+// joins it (after every other item, so the failure indexes the callers read do
+// not move) and is published once it commits.
+func (r *BillRepository) commit(ctx context.Context, sp space.ResolvedSpace, billID, status string, items []types.TransactWriteItem, now time.Time) error {
+	change := r.rt.space(sp.PK(), "bill", billID, "bill.updated", status)
+	changes, err := changeWrites(r.events, change, now)
+	if err != nil {
+		return err
+	}
+	if err := r.bills.TransactWrite(ctx, append(append([]types.TransactWriteItem(nil), items...), changes...)); err != nil {
+		return err
+	}
+	r.rt.publish(ctx, change)
+	return nil
 }
 
 type billItem struct {
@@ -215,7 +243,7 @@ func (r *BillRepository) createWithGuards(ctx context.Context, sp space.Resolved
 	}
 	extraIdx := len(items)
 	items = append(items, extra...)
-	if err := r.bills.TransactWrite(ctx, items); err != nil {
+	if err := r.commit(ctx, sp, b.ID, string(b.Status), items, now); err != nil {
 		codes := cancellationCodes(err)
 		failed := func(i int) bool { return i >= 0 && i < len(codes) && codes[i] == codeConditionFailed }
 		switch {
@@ -499,7 +527,7 @@ func (r *BillRepository) Settle(ctx context.Context, sp space.ResolvedSpace, bil
 	if err != nil {
 		return finance.Bill{}, err
 	}
-	if err := r.bills.TransactWrite(ctx, p.items); err != nil {
+	if err := r.commit(ctx, sp, billID, string(finance.BillPaid), p.items, now); err != nil {
 		return finance.Bill{}, r.settleError(ctx, sp, p.bill, err)
 	}
 	return p.paid(date), nil
@@ -641,7 +669,7 @@ func (r *BillRepository) Cancel(ctx context.Context, sp space.ResolvedSpace, bil
 		"SET #status = :canceled, #n = list_append(#n, :tx), updated_at = :now"+removeSparse,
 		cond, names, values)
 	items := append(append([]types.TransactWriteItem(nil), plan.Items...), update)
-	if err := r.bills.TransactWrite(ctx, items); err != nil {
+	if err := r.commit(ctx, sp, billID, string(finance.BillCanceled), items, now); err != nil {
 		return finance.Bill{}, billCancelError(err)
 	}
 	b.Status = finance.BillCanceled
@@ -686,7 +714,7 @@ func (r *BillRepository) RestoreCancelled(ctx context.Context, sp space.Resolved
 		"SET #status = :forecast, auto_settle = :f, open_pk = :op, open_sk = :os, #n = list_append(#n, :tx), updated_at = :now",
 		"#status = :canceled AND size(#n) = :n", names, values)
 	items := append(append([]types.TransactWriteItem(nil), plan.Items...), update)
-	if err := r.bills.TransactWrite(ctx, items); err != nil {
+	if err := r.commit(ctx, sp, billID, string(finance.BillForecast), items, now); err != nil {
 		if onlyConditionFailed(err) {
 			return finance.Bill{}, finance.ErrBillState
 		}
@@ -833,7 +861,7 @@ func (r *BillRepository) Edit(ctx context.Context, sp space.ResolvedSpace, billI
 	}
 	sk := BillSK(billID)
 	items = append(items, r.bills.BuildRawUpdateTxItem(sp.PK(), &sk, expr, cond, names, values))
-	if err := r.bills.TransactWrite(ctx, items); err != nil {
+	if err := r.commit(ctx, sp, billID, string(next.Status), items, now); err != nil {
 		if onlyConditionFailed(err) {
 			return finance.Bill{}, finance.ErrBillState
 		}
@@ -883,7 +911,7 @@ func (r *BillRepository) Unsettle(ctx context.Context, sp space.ResolvedSpace, b
 		"SET #status = :forecast, auto_settle = :f, open_pk = :op, open_sk = :os, #n = list_append(#n, :tx), updated_at = :now REMOVE paid_date",
 		"#status = :paid AND size(#n) = :n", names, values)
 	items := append(append([]types.TransactWriteItem(nil), plan.Items...), update)
-	if err := r.bills.TransactWrite(ctx, items); err != nil {
+	if err := r.commit(ctx, sp, billID, string(finance.BillForecast), items, now); err != nil {
 		if onlyConditionFailed(err) {
 			return finance.Bill{}, finance.ErrBillState
 		}

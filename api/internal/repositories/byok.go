@@ -31,12 +31,30 @@ type connectionRow struct {
 }
 
 type ByokRepository struct {
-	base  Base
-	audit Base
+	base   Base
+	audit  Base
+	events Base
+	rt     Realtime
 }
 
 func NewByokRepository(db *dynamodb.Client, cfg *config.Config) *ByokRepository {
-	return &ByokRepository{base: NewBase(db, cfg, TableByok), audit: NewBase(db, cfg, TableAudit)}
+	return &ByokRepository{base: NewBase(db, cfg, TableByok), audit: NewBase(db, cfg, TableAudit), events: NewBase(db, cfg, TableWebhooks)}
+}
+
+// WithRealtime makes an audited connection change (connect, renew, disconnect)
+// write a change to the realtime log and publish it after the commit. The hourly
+// health save is deliberately not one: it is a plain put that costs half a
+// transaction, and the health card refreshes on its own schedule.
+func (r *ByokRepository) WithRealtime(rt Realtime) *ByokRepository {
+	r.rt = rt
+	return r
+}
+
+// connectionChange is the change for a connection of an account organization.
+// The scope is the account organization's space, which the merchant console and
+// Finanças both hold.
+func (r *ByokRepository) connectionChange(c *byokconn.Connection) *Change {
+	return r.rt.space(c.AccountOrganizationID+"#"+Mode(c.Livemode), "connection", c.Provider, "connection.updated", "")
 }
 
 // sealedRow holds a connection's sealed bundle apart from the connection row:
@@ -211,12 +229,21 @@ func (r *ByokRepository) CreateConnection(ctx context.Context, c *byokconn.Conne
 		}
 		items = append(items, sp)
 	}
+	change := r.connectionChange(c)
+	changes, err := changeWrites(r.events, change, now)
+	if err != nil {
+		return err
+	}
+	items = append(items, changes...)
 	err = r.base.TransactWrite(ctx, items)
 	if codes := cancellationCodes(err); len(codes) > 2 && codes[2] == codeConditionFailed {
 		return fmt.Errorf("%w: connection guard moved", ErrTransactionConflict)
 	}
 	if IsConditionFailed(err) {
 		return ErrConnectionExists
+	}
+	if err == nil {
+		r.rt.publish(ctx, change)
 	}
 	return conflictErr(err)
 }
@@ -292,12 +319,19 @@ func (r *ByokRepository) SaveConnection(ctx context.Context, c *byokconn.Connect
 		}
 		items = append(items, audit)
 	}
+	change := r.connectionChange(&next)
+	changes, err := changeWrites(r.events, change, now)
+	if err != nil {
+		return err
+	}
+	items = append(items, changes...)
 	if err := r.base.TransactWrite(ctx, items); err != nil {
 		if IsConditionFailed(err) {
 			return ErrConnectionChanged
 		}
 		return conflictErr(err)
 	}
+	defer r.rt.publish(ctx, change)
 	*c = next
 	return nil
 }
@@ -310,7 +344,16 @@ func (r *ByokRepository) DeleteConnection(ctx context.Context, c *byokconn.Conne
 	pk := ByokConnectionPK(c.AccountOrganizationID, c.Livemode)
 	del := r.base.BuildDeleteTxItem(pk, ByokConnectionSK(c.Provider))
 	delSealed := r.base.BuildDeleteTxItem(pk, ByokSealedSK(c.Provider))
-	return conflictErr(r.base.TransactWrite(ctx, txItems(del, delSealed, audit)))
+	change := r.connectionChange(c)
+	changes, err := changeWrites(r.events, change, now)
+	if err != nil {
+		return err
+	}
+	if err := r.base.TransactWrite(ctx, append(txItems(del, delSealed, audit), changes...)); err != nil {
+		return conflictErr(err)
+	}
+	r.rt.publish(ctx, change)
+	return nil
 }
 
 // ConnectionsForJob is cross-organization by design (ADR 0002): cmd/byok only.

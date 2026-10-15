@@ -128,8 +128,14 @@ func (r *PaymentRepository) SettlePayout(ctx context.Context, p *billing.Payout,
 		expr += ", failure_reason = :why"
 		vals[":why"] = str(reason)
 	}
-	err := r.base.TransactWrite(ctx, txItems(r.base.BuildRawUpdateTxItem(TenantPK(p.OrganizationID, p.Livemode), &sk,
-		expr+" REMOVE schedule_pk, schedule_sk", "attribute_exists(pk) AND #st = :processing", map[string]string{"#st": "status"}, vals)))
+	writes := txItems(r.base.BuildRawUpdateTxItem(TenantPK(p.OrganizationID, p.Livemode), &sk,
+		expr+" REMOVE schedule_pk, schedule_sk", "attribute_exists(pk) AND #st = :processing", map[string]string{"#st": "status"}, vals))
+	change := r.rt.tenant(p.OrganizationID, p.Livemode, "payout", p.ID, "payout.updated", string(status))
+	changes, err := changeWrites(r.events, change, now)
+	if err != nil {
+		return err
+	}
+	err = r.base.TransactWrite(ctx, append(writes, changes...))
 	if IsConditionFailed(err) {
 		return fmt.Errorf("%w: payout %s is no longer processing", ErrConcurrentModification, p.ID)
 	}
@@ -137,6 +143,7 @@ func (r *PaymentRepository) SettlePayout(ctx context.Context, p *billing.Payout,
 		return conflictErr(err)
 	}
 	p.Status, p.PaymentID, p.FailureReason = status, paymentID, reason
+	r.rt.publish(ctx, change)
 	return nil
 }
 

@@ -3,6 +3,7 @@ package repositories
 import (
 	"context"
 	"log/slog"
+	"time"
 
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
 )
@@ -20,6 +21,14 @@ type ChangeEmitter interface {
 	ForSubscription(ctx context.Context, sub *billing.Subscription, typ billing.EventType) *Change
 	ForCheckout(ctx context.Context, cs *billing.CheckoutSession, typ billing.EventType) *Change
 	ForCreditNote(ctx context.Context, cn *billing.CreditNote, inv *billing.Invoice) *Change
+
+	// The rest are not transitions of an entity the emitter can read: a payer
+	// recorded, a payout settled, a connection saved, a bank line posted, a bill
+	// settled. The caller says what happened and to whom; the emitter owns the
+	// scope keys, so their format lives in one place.
+	ForInvoiceRef(org string, live bool, invoiceID, typ, status string) *Change
+	ForTenant(org string, live bool, entity, entityID, typ, status string) *Change
+	ForSpace(spaceKey, entity, entityID, typ, status string) *Change
 }
 
 // ChangePublisher sends committed changes to the connections that are listening.
@@ -70,6 +79,47 @@ func (rt Realtime) creditNote(ctx context.Context, cn *billing.CreditNote, inv *
 		return nil
 	}
 	return rt.Emitter.ForCreditNote(ctx, cn, inv)
+}
+
+func (rt Realtime) invoiceRef(org string, live bool, invoiceID, typ, status string) *Change {
+	if rt.Emitter == nil {
+		return nil
+	}
+	return rt.Emitter.ForInvoiceRef(org, live, invoiceID, typ, status)
+}
+
+func (rt Realtime) tenant(org string, live bool, entity, entityID, typ, status string) *Change {
+	if rt.Emitter == nil {
+		return nil
+	}
+	return rt.Emitter.ForTenant(org, live, entity, entityID, typ, status)
+}
+
+func (rt Realtime) space(spaceKey, entity, entityID, typ, status string) *Change {
+	if rt.Emitter == nil || spaceKey == "" {
+		return nil
+	}
+	return rt.Emitter.ForSpace(spaceKey, entity, entityID, typ, status)
+}
+
+// announce is for a mutation that has no transaction of its own (a plain update
+// followed by a separate audit write): the change is written to the log and then
+// published. A failed log write is logged and swallowed. It is the weaker of the
+// two, and it is used only where there was no transaction to join; the screens'
+// own refetch on focus covers the rare lost one.
+func (rt Realtime) announce(ctx context.Context, events Base, c *Change, now time.Time) {
+	if c == nil {
+		return
+	}
+	writes, err := changeWrites(events, c, now)
+	if err == nil && len(writes) > 0 {
+		err = events.TransactWrite(ctx, writes)
+	}
+	if err != nil {
+		slog.WarnContext(ctx, "realtime: change not logged", "type", c.Type, "entity_id", c.EntityID, "error", err)
+		return
+	}
+	rt.publish(ctx, c)
 }
 
 // publish is called after the transaction that wrote the changes returned nil.

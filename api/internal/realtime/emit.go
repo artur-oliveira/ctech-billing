@@ -167,6 +167,28 @@ func (e *Emitter) ForCreditNote(ctx context.Context, cn *billing.CreditNote, inv
 	}
 }
 
+// ForInvoiceRef is for something that happened to an invoice the caller only
+// has the id of (a payer recorded on a payment): the tenant's console and the
+// invoice's own checkout hear it.
+func (e *Emitter) ForInvoiceRef(org string, live bool, invoiceID, typ, status string) *repositories.Change {
+	return &repositories.Change{
+		Type: typ, Entity: EntityInvoice, EntityID: invoiceID, Status: status,
+		Scopes: []string{TenantScope(org, live), InvoiceScope(org, live, invoiceID)},
+	}
+}
+
+// ForTenant is for what only the merchant's console shows: a payout, a bank
+// connection, a customer.
+func (e *Emitter) ForTenant(org string, live bool, entity, entityID, typ, status string) *repositories.Change {
+	return &repositories.Change{Type: typ, Entity: entity, EntityID: entityID, Status: status, Scopes: []string{TenantScope(org, live)}}
+}
+
+// ForSpace is for Finanças: a statement line posted, a bill settled. The space
+// key already carries the mode.
+func (e *Emitter) ForSpace(spaceKey, entity, entityID, typ, status string) *repositories.Change {
+	return &repositories.Change{Type: typ, Entity: entity, EntityID: entityID, Status: status, Scopes: []string{SpaceScope(spaceKey)}}
+}
+
 // Free builds a change that is not a transition: a customer edited, a payer
 // recorded, a bank line posted. The caller names the scopes.
 func Free(entity, entityID, typ, status string, scopes ...string) *repositories.Change {
