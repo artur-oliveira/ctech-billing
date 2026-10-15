@@ -145,7 +145,7 @@ export function applyGap(qc: QueryClient, surface: Surface): void
 - Modify: `ui/src/lib/api/client.ts` only if `subscribeAccessToken` does not exist (add a minimal pub/sub; check first)
 
 - [ ] **Step 1: Failing tests** (with `fakeSocket`, a scripted `WebSocket` replacement installed on `globalThis`, fake timers):
-  1. The URL is `${API_BASE_URL}/v1.0/realtime` mapped to `wss://`; **no query string**; `binaryType` is `arraybuffer`.
+  1. The URL is `${API_BASE_URL}/v1.0/ws` mapped to `wss://`; **no query string**; `binaryType` is `arraybuffer`.
   2. On open the first frame is an `Auth` carrying the token, the selected space (console/finance), or the pay link (checkout), and the stored cursor.
   3. Changes applied to the `QueryClient` through the binding (spy on `invalidateQueries`).
   4. **Principal switch:** changing the space, the organization, the mode or signing out closes the socket, clears the cursor key, and the next `Auth` has no `resumeCursor`.

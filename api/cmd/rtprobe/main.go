@@ -2,7 +2,11 @@
 // holds the connection open answering pings, and reports whether the whole path
 // (Cloudflare, load balancer, HAProxy, nginx, the app) carried it.
 //
-//	go run ./cmd/rtprobe -url wss://billing-api.aoctech.app/v1.0/realtime/probe -origin https://billing.aoctech.app
+//	go run ./cmd/rtprobe -url wss://billing-api.aoctech.app/v1.0/ws -origin https://billing.aoctech.app
+//
+// It sends one frame and expects it echoed, which only a probe route does; the
+// real gateway answers that frame with Bye "unauthorized". The R5 load tool
+// replaces the echo with a real Auth frame.
 //
 // It is also the base for the load tool in docs/plans/2026-10-14-realtime-r5.
 package main
@@ -19,7 +23,7 @@ import (
 )
 
 func main() {
-	url := flag.String("url", "wss://billing-api.aoctech.app/v1.0/realtime/probe", "WebSocket URL")
+	url := flag.String("url", "wss://billing-api.aoctech.app/v1.0/ws", "WebSocket URL")
 	origin := flag.String("origin", "https://billing.aoctech.app", "Origin header (must be an allowed origin)")
 	hold := flag.Duration("hold", 4*time.Minute, "how long to keep the connection open")
 	flag.Parse()

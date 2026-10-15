@@ -49,10 +49,13 @@ balancer, HAProxy, nginx, the app):
 What had to be added: the shared nginx server block (`ctech-cdk`
 `setup-nginx.sh`) sends `Connection ""` and times out at 60 s, so an Upgrade never
 reaches the app. Billing's bootstrap writes `location-ws.conf` with an exact match
-on `/v1.0/realtime` that forwards `Upgrade`/`Connection`, disables buffering and
+on `/v1.0/ws` (the path the wallet and Poker use too) that forwards `Upgrade`/`Connection`, disables buffering and
 allows an hour idle (`terraform/assets/bootstrap*.tftpl`). HAProxy already has
 `timeout tunnel 1h` (`ctech-lbalancer`). Cloudflare closes a WebSocket that is
 idle for about 100 s, so the server pings every 25 s and the client must answer.
+
+The probe ran on a throwaway path with the same kind of location; `/v1.0/ws` itself
+is exercised for the first time when the gateway lands (R2 task 6).
 
 Not measured: a connection held past 4 minutes, and the behaviour with no pings at
 all. Both belong to the soak in R5.
