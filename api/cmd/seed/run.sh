@@ -11,6 +11,7 @@ g() { aws ssm get-parameter --with-decryption --name "$1" --query Parameter.Valu
 export TABLE_PREFIX="${env}_billing"
 export FIELD_ENCRYPTION_KEY=$(g "/ctech-billing/$env/billing/field-encryption-key") || exit 1
 export WEBHOOK_SECRET_DFE=$(g "/ctech-dfe/$env/billing/webhook-secret") || exit 1
+export WEBHOOK_SECRET_WALLET=$(g "/ctech-wallet/$env/billing-event-secret") || exit 1
 cd "$(dirname "$0")/../.."
 for mode in test live; do
   echo "== $mode"
