@@ -31,7 +31,7 @@ Repos: `P_BILL=/home/artur-revgas/Documents/Projects/Ctech/ctech-billing/api`. P
 - A token that expires mid-connection closes the socket (`token_expired`) unless a `Reauth` arrived. Pinned in Task 6.
 - A member removed from the organization stops hearing within 5 minutes. Pinned in Task 6.
 - A checkout link for invoice A never receives a change for invoice B. Pinned in Task 2 and Task 10.
-- With the flag off, `GET /v1.0/realtime` is a 404 and a mutation writes no `RT#` item. Pinned in Task 9.
+- With the flag off, `GET /v1.0/ws` is a 404 and a mutation writes no `RT#` item. Pinned in Task 9.
 
 ---
 
@@ -191,7 +191,7 @@ func (c *Conn) Send(frame []byte) bool                 // false when the queue i
 - Modify: `api/internal/api/v1/router.go`, `api/internal/app/app.go`
 
 **Interfaces:**
-- Produces: `func RegisterGateway(router fiber.Router, gw *Gateway)` mounting `GET /realtime`; `Gateway{Authorizers map[string]Authorizer, Hub *Hub, Log *RealtimeRepository, AllowedOrigins []string, Drain *drain.Tracker, Now func() time.Time}`.
+- Produces: `func RegisterGateway(router fiber.Router, gw *Gateway)` mounting `GET /ws` (the same path as the wallet and Poker); `Gateway{Authorizers map[string]Authorizer, Hub *Hub, Log *RealtimeRepository, AllowedOrigins []string, Drain *drain.Tracker, Now func() time.Time}`.
 
 - [ ] **Step 1: Failing tests** (`gateway_test.go`, a real `fasthttp` server with a `fasthttp/websocket` client; fake authorizer and an in-memory log):
   1. **First-frame auth only:** a connection that sends nothing is closed within 5 s (use a 200 ms deadline in the test config); the upgrade request carries no credential; a first frame over 32 KiB is closed.
@@ -233,7 +233,7 @@ func (c *Conn) Send(frame []byte) bool                 // false when the queue i
 **Files:**
 - Modify: `api/internal/config/config.go` (`REALTIME_ENABLED`, `REALTIME_ALLOWED_ORIGINS` defaults to the CORS list), `api/internal/app/app.go`, `terraform/billing/…` (env var, default off)
 
-- [ ] **Step 1: Failing tests:** with the flag off, `GET /v1.0/realtime` and `/changes` are 404 and a transition writes no `RT#` item (assert by querying the table); with it on, both exist.
+- [ ] **Step 1: Failing tests:** with the flag off, `GET /v1.0/ws` and `GET /v1.0/realtime/changes` are 404 and a transition writes no `RT#` item (assert by querying the table); with it on, both exist.
 - [ ] **Step 2: Implement** and wire the emitter (nil when off) into the repositories.
 - [ ] **Step 3: Commit** `feat(realtime): REALTIME_ENABLED wiring (off by default)`.
 

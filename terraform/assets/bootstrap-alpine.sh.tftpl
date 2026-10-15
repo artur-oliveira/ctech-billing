@@ -91,20 +91,7 @@ ctech_run setup-realip.sh ${vpc_cidr}
 # is cut. $connection_upgrade comes from the map in the shared nginx.conf.
 # `location =` is exact: only the realtime endpoints get the long timeouts.
 cat > /etc/nginx/conf.d/location-ws.conf << 'WSLOC'
-location = /v1.0/realtime {
-    proxy_pass http://app;
-    proxy_http_version 1.1;
-    proxy_set_header Upgrade $http_upgrade;
-    proxy_set_header Connection $connection_upgrade;
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $remote_addr;
-    proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;
-    proxy_read_timeout 3600s;
-    proxy_send_timeout 3600s;
-    proxy_buffering off;
-}
-location = /v1.0/realtime/probe {
+location = /v1.0/ws {
     proxy_pass http://app;
     proxy_http_version 1.1;
     proxy_set_header Upgrade $http_upgrade;

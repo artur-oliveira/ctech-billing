@@ -29,12 +29,12 @@ run "alpine_forwards_upgrade_with_real_nginx_variables" {
 
   assert {
     condition = alltrue([
-      strcontains(local.bootstrap_sh, "location = /v1.0/realtime {"),
+      strcontains(local.bootstrap_sh, "location = /v1.0/ws {"),
       strcontains(local.bootstrap_sh, "proxy_set_header Upgrade $http_upgrade;"),
       strcontains(local.bootstrap_sh, "proxy_set_header Connection $connection_upgrade;"),
       strcontains(local.bootstrap_sh, "proxy_read_timeout 3600s;"),
     ])
-    error_message = "the Alpine bootstrap must forward Upgrade on /v1.0/realtime"
+    error_message = "the Alpine bootstrap must forward Upgrade on /v1.0/ws"
   }
 
   assert {
@@ -51,11 +51,11 @@ run "al2023_forwards_upgrade_with_real_nginx_variables" {
 
   assert {
     condition = alltrue([
-      strcontains(local.bootstrap_sh, "location = /v1.0/realtime {"),
+      strcontains(local.bootstrap_sh, "location = /v1.0/ws {"),
       strcontains(local.bootstrap_sh, "proxy_set_header Upgrade $http_upgrade;"),
       strcontains(local.bootstrap_sh, "proxy_set_header Connection $connection_upgrade;"),
     ])
-    error_message = "the AL2023 bootstrap must forward Upgrade on /v1.0/realtime"
+    error_message = "the AL2023 bootstrap must forward Upgrade on /v1.0/ws"
   }
 
   assert {

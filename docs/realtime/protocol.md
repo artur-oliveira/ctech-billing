@@ -33,6 +33,33 @@ Enforced by CI (`.github/workflows/proto.yml`):
 - Errors are not a frame type: an auth failure is `Bye` with a reason and a close
   code.
 
+## Edge
+
+Proven on 2026-10-14 with a throwaway echo route and `api/cmd/rtprobe`, run from
+outside the VPC against `wss://billing-api.aoctech.app` (Cloudflare, the load
+balancer, HAProxy, nginx, the app):
+
+| Question | Result |
+|---|---|
+| Does the upgrade pass? | Yes, `101`. |
+| Is a connection held? | Yes: 4 min 10 s open with a server ping every 25 s, answered by the client. The run ended on the client's own read deadline, not on the edge. |
+| First frame echo | 463 ms (TLS and upgrade included, from a residential connection). |
+| Is the Origin allow-list enforced? | Yes: an unlisted Origin gets `403`; a plain GET without an upgrade gets `400`. |
+
+What had to be added: the shared nginx server block (`ctech-cdk`
+`setup-nginx.sh`) sends `Connection ""` and times out at 60 s, so an Upgrade never
+reaches the app. Billing's bootstrap writes `location-ws.conf` with an exact match
+on `/v1.0/ws` (the path the wallet and Poker use too) that forwards `Upgrade`/`Connection`, disables buffering and
+allows an hour idle (`terraform/assets/bootstrap*.tftpl`). HAProxy already has
+`timeout tunnel 1h` (`ctech-lbalancer`). Cloudflare closes a WebSocket that is
+idle for about 100 s, so the server pings every 25 s and the client must answer.
+
+The probe ran on a throwaway path with the same kind of location; `/v1.0/ws` itself
+is exercised for the first time when the gateway lands (R2 task 6).
+
+Not measured: a connection held past 4 minutes, and the behaviour with no pings at
+all. Both belong to the soak in R5.
+
 ## Generating
 
 The generated Go (`api/internal/realtime/wire/realtime.pb.go`) and TypeScript
