@@ -3,8 +3,12 @@
 import {useQueryClient} from "@tanstack/react-query";
 import {useState, useSyncExternalStore} from "react";
 
+import {installRealtimeMock} from "@/dev/realtimeMock";
 import {currentScenario, setScenario} from "@/dev/mockRuntime";
 import {DEFAULT_SCENARIO, MOCK_SCENARIOS, USE_MOCK, type MockScenario} from "@/lib/mockConfig";
+
+// The socket must be replaced before any provider connects, so at import, not in an effect.
+if (USE_MOCK) installRealtimeMock();
 
 /**
  * The scenario lives in localStorage, which the server cannot see.
