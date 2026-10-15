@@ -412,3 +412,18 @@ func TestTheDFeCatalogueIsOneProductWithTheSameQuotasAndPrices(t *testing.T) {
 		t.Fatal("prod_dfe stays active and the old internal product is retired")
 	}
 }
+
+func TestAnOwnerWithNoProductCanBeDeclaredAndStillGuardsTypos(t *testing.T) {
+	base := func() *Plan {
+		return &Plan{Organization: Organization{ID: "ctech", DisplayName: "CTech"}, Owners: []string{"wallet"},
+			Credentials: []Credential{{ClientID: "wallet-billing", OwnerKey: "wallet"}}}
+	}
+	if err := base().Validate(); err != nil {
+		t.Fatalf("a declared invoice-only owner: %v", err)
+	}
+	p := base()
+	p.Credentials[0].OwnerKey = "walet"
+	if err := p.Validate(); err == nil {
+		t.Fatal("a typo in an owner key must still be refused")
+	}
+}

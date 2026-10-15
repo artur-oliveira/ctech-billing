@@ -6,6 +6,7 @@
     "owner_user_id": "78fd4d57-88a7-4eec-a997-7d7c09f58a1b",
     "account_organization_id": "01a04ed6-1af9-745e-bcf7-d3b66fe52321"
   },
+  "owners": ["wallet"],
   "credentials": [
     {
       "client_id": "dfe-billing",
@@ -16,6 +17,11 @@
       "client_id": "account-billing",
       "description": "ctech-account — reads Finanças entitlements and reports space and people levels",
       "owner_key": "finance"
+    },
+    {
+      "client_id": "wallet-billing",
+      "description": "CTech Wallet — deposits as one-off invoices and withdrawals as payouts",
+      "owner_key": "wallet"
     }
   ],
   "products": [
@@ -67,6 +73,13 @@
     }
   ],
   "webhook_endpoints": [
+    {
+      "id": "whe_wallet",
+      "url": "https://wallet.internal.aoctech.app/v1.0/internal/billing/events",
+      "owner_key": "wallet",
+      "events": ["invoice.paid"],
+      "secret_env": "WEBHOOK_SECRET_WALLET"
+    },
     {
       "id": "whe_dfe",
       "url": "https://dfe.internal.aoctech.app/v1/internal/webhooks/billing",

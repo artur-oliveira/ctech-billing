@@ -33,10 +33,14 @@ import (
 // sandbox stops matching what they are charged.
 type Plan struct {
 	Organization Organization `json:"organization"`
-	Credentials  []Credential `json:"credentials,omitempty"`
-	Products     []Product    `json:"products,omitempty"`
-	Prices       []Price      `json:"prices,omitempty"`
-	Endpoints    []Endpoint   `json:"webhook_endpoints,omitempty"`
+	// Owners are owner keys that sell through one-off invoices and have no product
+	// (the wallet): declared here so a credential or an endpoint can name them and
+	// a typo in an owner key is still caught.
+	Owners      []string     `json:"owners,omitempty"`
+	Credentials []Credential `json:"credentials,omitempty"`
+	Products    []Product    `json:"products,omitempty"`
+	Prices      []Price      `json:"prices,omitempty"`
+	Endpoints   []Endpoint   `json:"webhook_endpoints,omitempty"`
 }
 
 // Endpoint is one outbound webhook destination (ADR 0016).
@@ -195,6 +199,9 @@ func (p *Plan) Validate() error {
 
 	products := map[string]bool{}
 	owners := map[string]bool{}
+	for _, o := range p.Owners {
+		owners[o] = true
+	}
 	for _, prod := range p.Products {
 		if prod.OwnerKey != "" {
 			owners[prod.OwnerKey] = true
