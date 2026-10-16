@@ -31,6 +31,20 @@ const (
 // characters of [A-Za-z0-9], inside Bacen's 26-35 rule.
 func InterTxid(attemptID string) string { return "ctb" + strings.TrimPrefix(attemptID, "pa_") }
 
+// ImmediateInterTxid is the txid of an attempt whose Pix is an immediate charge: the prefix
+// (byok.ImmediateRefPrefix) is what tells the provider which kind of charge to look for.
+func ImmediateInterTxid(attemptID string) string {
+	return "ctc" + strings.TrimPrefix(attemptID, "pa_")
+}
+
+// Bounds of an invoice's Pix payer message and, when asked, its Pix lifetime. 140 is the
+// Bacen limit on solicitacaoPagador.
+const (
+	MaxPayerMessage = 140
+	MinPixExpiry    = 60
+	MaxPixExpiry    = 86400
+)
+
 // NewRefundID is a provider refund id: "rf" + a ULID (28 characters, inside
 // Inter's [a-zA-Z0-9]{1,35}), stored before the call so a retry is idempotent.
 func NewRefundID() string { return "rf" + id.New() }

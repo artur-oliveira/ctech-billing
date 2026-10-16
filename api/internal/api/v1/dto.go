@@ -32,6 +32,13 @@ type createInvoiceRequest struct {
 	// endpoints that take every owner.
 	OwnerKey string           `json:"owner_key"`
 	Metadata billing.Metadata `json:"metadata"`
+	// PayerMessage is the text the payer reads on the Pix ("aviso ao pagador", at most 140
+	// characters): "Pacote de 10.000 fichas". Optional; the default is "Fatura #N".
+	PayerMessage string `json:"payer_message"`
+	// PixExpiresInSeconds is how long the Pix stays payable (60 to 86400), for a service whose
+	// sale is a quick one; only the one who consumes the invoice knows. Optional; unset, the
+	// Pix is a due-date charge payable through the dunning schedule.
+	PixExpiresInSeconds int `json:"pix_expires_in_seconds"`
 }
 
 type createCustomerRequest struct {

@@ -156,16 +156,23 @@ func (r *PaymentRepository) GetAttempt(ctx context.Context, organizationID strin
 }
 
 // SetByokCharge records the provider's artefact once the charge exists.
-func (r *PaymentRepository) SetByokCharge(ctx context.Context, a *billing.PaymentAttempt, payable string, due, until brcal.Date, now time.Time) error {
+//
+// expiresAt is the exact end of an immediate charge's life; zero for a due-date one.
+func (r *PaymentRepository) SetByokCharge(ctx context.Context, a *billing.PaymentAttempt, payable string, due, until brcal.Date, expiresAt, now time.Time) error {
 	sk := PaymentAttemptSK(a.InvoiceID, a.AttemptNumber)
+	update := "SET payable = :p, due_date = :d, payable_until = :u, updated_at = :now"
+	values := map[string]types.AttributeValue{":p": str(payable), ":d": str(due.String()), ":u": str(until.String()),
+		":now": str(now.UTC().Format(time.RFC3339Nano))}
+	if !expiresAt.IsZero() {
+		update += ", pix_expires_at = :x"
+		values[":x"] = str(expiresAt.UTC().Format(time.RFC3339Nano))
+	}
 	err := r.base.TransactWrite(ctx, txItems(r.base.BuildRawUpdateTxItem(TenantPK(a.OrganizationID, a.Livemode), &sk,
-		"SET payable = :p, due_date = :d, payable_until = :u, updated_at = :now", "attribute_exists(pk)", nil,
-		map[string]types.AttributeValue{":p": str(payable), ":d": str(due.String()), ":u": str(until.String()),
-			":now": str(now.UTC().Format(time.RFC3339Nano))})))
+		update, "attribute_exists(pk)", nil, values)))
 	if err != nil {
 		return conflictErr(err)
 	}
-	a.Payable, a.DueDate, a.PayableUntil = payable, due, until
+	a.Payable, a.DueDate, a.PayableUntil, a.PixExpiresAt = payable, due, until, expiresAt
 	return nil
 }
 

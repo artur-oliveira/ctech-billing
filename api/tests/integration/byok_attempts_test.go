@@ -5,6 +5,7 @@ package integration
 import (
 	"errors"
 	"testing"
+	"time"
 
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
 	"gopkg.aoctech.app/billing/api/internal/domain/brcal"
@@ -44,7 +45,7 @@ func TestABYOKAttemptAndItsPointerAreWrittenTogether(t *testing.T) {
 	if err != nil || len(open.Items) != 1 || open.Items[0].ID != a.ID {
 		t.Fatalf("the open list: %+v %v", open, err)
 	}
-	if err := payments.SetByokCharge(ctx, a, "000201PIX", brcal.New(2026, 3, 20), brcal.New(2026, 4, 19), now()); err != nil {
+	if err := payments.SetByokCharge(ctx, a, "000201PIX", brcal.New(2026, 3, 20), brcal.New(2026, 4, 19), time.Time{}, now()); err != nil {
 		t.Fatal(err)
 	}
 	got, err := payments.GetAttempt(ctx, org.ID, false, a.InvoiceID, 1)

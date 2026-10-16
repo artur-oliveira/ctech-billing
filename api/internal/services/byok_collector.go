@@ -209,6 +209,9 @@ func (c *ByokCollector) open(ctx context.Context, org *billing.Organization, inv
 		Amount: inv.Collectable(), Provider: org.PayoutProvider, Product: billing.ProductPixDue, DueDate: due, CreatedAt: now.UTC(),
 	}
 	a.ChargeRef = billing.InterTxid(a.ID)
+	if c.immediate(ctx, org, inv) {
+		a.ChargeRef = billing.ImmediateInterTxid(a.ID)
+	}
 	if err := c.payments.CreateByokAttempt(ctx, a, org.AccountOrganizationID, limit, now); err != nil {
 		if errors.Is(err, repositories.ErrAttemptExists) || errors.Is(err, repositories.ErrTransactionConflict) {
 			// Two presses (or finalization and a checkout) at once: the other
@@ -224,6 +227,26 @@ func (c *ByokCollector) open(ctx context.Context, org *billing.Organization, inv
 	}
 	slog.InfoContext(ctx, "byok attempt opened", "invoice_id", inv.ID, "attempt", a.AttemptNumber, "actor", actor, "request_id", requestID)
 	return a, c.createCharge(ctx, org, inv, a, now)
+}
+
+// immediate says whether the invoice's Pix is an immediate charge: its service asked for a
+// short lifetime and the connection may create them. Without the capability the invoice
+// keeps the due-date charge it always had, rather than failing to be payable.
+func (c *ByokCollector) immediate(ctx context.Context, org *billing.Organization, inv *billing.Invoice) bool {
+	if inv.PixExpiresInSeconds <= 0 {
+		return false
+	}
+	conn, err := c.connection(ctx, org)
+	return err == nil && conn.Has(byok.CapabilityImmediateCharge)
+}
+
+// capabilityFor is the token a call about this charge needs: an immediate charge's reference
+// asks for the immediate-charge scopes, a due-date one's for the collection scopes.
+func capabilityFor(ref string) byok.Capability {
+	if byok.IsImmediateRef(ref) {
+		return byok.CapabilityImmediateCharge
+	}
+	return byok.CapabilityCollection
 }
 
 // createCharge calls the provider for a written attempt (idempotent by its
@@ -248,21 +271,32 @@ func (c *ByokCollector) createCharge(ctx context.Context, org *billing.Organizat
 		due = inv.DueDate
 	}
 	validity := inv.ValidityDays()
+	var items []billing.InvoiceItem
+	if inv.SubscriptionID != "" && inv.PayerMessage == "" { // the plan's name is on the first line
+		items, _ = c.invoices.ListItems(ctx, inv.OrganizationID, inv.Livemode, inv.ID)
+	}
 	in := byok.DueCharge{
 		Ref: a.ChargeRef, Due: toByok(due), ValidityDays: validity, Amount: int64(a.Amount),
 		FineBasisPoints: inv.Collection.FineBasisPoints, MonthlyInterestBasisPoints: inv.Collection.MonthlyInterestBasisPoints,
-		Debtor: byok.Debtor{Name: customer.Name, TaxID: digitsOf(customer.TaxID)}, Message: invoiceChargeDescription(inv),
+		Debtor: byok.Debtor{Name: customer.Name, TaxID: digitsOf(customer.TaxID)}, Message: invoiceChargeDescription(inv, items),
+	}
+	var expiresAt time.Time
+	payableUntil := billing.PayableUntil(due, validity)
+	if byok.IsImmediateRef(a.ChargeRef) {
+		in.ExpiresInSeconds = inv.PixExpiresInSeconds
+		expiresAt = now.Add(time.Duration(inv.PixExpiresInSeconds) * time.Second)
+		payableUntil = brcal.FromTime(expiresAt)
 	}
 	if err := pix(ctx, sess); err != nil {
 		return err
 	}
-	ch, err := byokrpc.Call(ctx, sess, byok.CapabilityCollection, func(cr byok.Credentials, t byok.Token) (byok.Charge, error) {
+	ch, err := byokrpc.Call(ctx, sess, capabilityFor(a.ChargeRef), func(cr byok.Credentials, t byok.Token) (byok.Charge, error) {
 		return sess.P.CreateDueCharge(ctx, cr, t, in)
 	})
 	if err != nil {
 		return err
 	}
-	return c.payments.SetByokCharge(ctx, a, ch.Payable, due, billing.PayableUntil(due, validity), now)
+	return c.payments.SetByokCharge(ctx, a, ch.Payable, due, payableUntil, expiresAt, now)
 }
 
 // Checkout is Collector.Pay for a BYOK invoice: the attempt's Pix, in a
@@ -275,13 +309,17 @@ func (c *ByokCollector) Checkout(ctx context.Context, org *billing.Organization,
 	if a.Payable == "" {
 		return nil, fmt.Errorf("%w: the charge has no payable artefact yet", byok.ErrUnavailable)
 	}
+	if !a.PixExpiresAt.IsZero() && !now.Before(a.PixExpiresAt) {
+		// The bank will refuse this code: never show it. A new one is the console's explicit act.
+		return nil, fmt.Errorf("%w: the Pix of invoice %s has expired", ErrInvoiceNotPayable, inv.ID)
+	}
 	if s, err := c.payments.LatestSession(ctx, inv.OrganizationID, inv.Livemode, inv.ID); err == nil && s != nil &&
 		s.PaymentAttemptID == a.ID && s.IsUsable(now) {
 		return s, nil
 	}
 	s := &billing.CheckoutSession{
 		ID: id.NewWithPrefix(id.PrefixCheckoutSession), OrganizationID: inv.OrganizationID, Livemode: inv.Livemode,
-		InvoiceID: inv.ID, Status: billing.CheckoutOpen, ExpiresAt: a.PayableUntil.AddDays(1).Time(),
+		InvoiceID: inv.ID, Status: billing.CheckoutOpen, ExpiresAt: sessionEnd(a),
 		PaymentAttemptID: a.ID, PixCode: a.Payable, PayableUntil: a.PayableUntil,
 	}
 	if err := c.payments.CreateSession(ctx, s, now); err != nil {
@@ -325,7 +363,7 @@ func (c *ByokCollector) cancelAt(ctx context.Context, org *billing.Organization,
 	if err := pix(ctx, sess); err != nil {
 		return false, err
 	}
-	_, err = byokrpc.Call(ctx, sess, byok.CapabilityCollection, func(cr byok.Credentials, t byok.Token) (struct{}, error) {
+	_, err = byokrpc.Call(ctx, sess, capabilityFor(a.ChargeRef), func(cr byok.Credentials, t byok.Token) (struct{}, error) {
 		return struct{}{}, sess.P.CancelCharge(ctx, cr, t, a.ChargeRef)
 	})
 	switch {
@@ -375,7 +413,7 @@ func (c *ByokCollector) Credited(ctx context.Context, inv *billing.Invoice, now 
 	if err := pix(ctx, sess); err != nil {
 		return err
 	}
-	_, err = byokrpc.Call(ctx, sess, byok.CapabilityCollection, func(cr byok.Credentials, t byok.Token) (byok.Charge, error) {
+	_, err = byokrpc.Call(ctx, sess, capabilityFor(a.ChargeRef), func(cr byok.Credentials, t byok.Token) (byok.Charge, error) {
 		return sess.P.UpdateCharge(ctx, cr, t, a.ChargeRef, int64(inv.Collectable()))
 	})
 	switch {
@@ -413,7 +451,7 @@ func (c *ByokCollector) SimulatePayment(ctx context.Context, inv *billing.Invoic
 	if err := pix(ctx, sess); err != nil {
 		return err
 	}
-	_, err = byokrpc.Call(ctx, sess, byok.CapabilityCollection, func(cr byok.Credentials, t byok.Token) (struct{}, error) {
+	_, err = byokrpc.Call(ctx, sess, capabilityFor(a.ChargeRef), func(cr byok.Credentials, t byok.Token) (struct{}, error) {
 		return struct{}{}, sess.P.SimulatePayment(ctx, cr, t, a.ChargeRef)
 	})
 	return err
@@ -448,4 +486,13 @@ func (c *ByokCollector) excessNotice(ctx context.Context, conn *byokconn.Connect
 	if err := c.mail.SendByokNotice(ctx, conn.NotifyEmail, n); err != nil {
 		slog.WarnContext(ctx, "byok excess payment notice", "invoice_id", n.InvoiceNumber, "error", err)
 	}
+}
+
+// sessionEnd is when a checkout page for the attempt stops being offered: an immediate Pix's own
+// instant, otherwise the day after the last payable day.
+func sessionEnd(a *billing.PaymentAttempt) time.Time {
+	if !a.PixExpiresAt.IsZero() {
+		return a.PixExpiresAt
+	}
+	return a.PayableUntil.AddDays(1).Time()
 }

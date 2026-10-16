@@ -98,18 +98,21 @@ type PaymentAttempt struct {
 	// (Inter: the txid, InterTxid(ID)), written before the provider call;
 	// Payable is the artefact (Inter: pixCopiaECola), empty until the charge
 	// exists; PaymentID and LateCharges come from the re-query that settled it.
-	Provider      string     `dynamodbav:"provider,omitempty"       json:"provider,omitempty"`
-	Product       string     `dynamodbav:"product,omitempty"        json:"product,omitempty"`
-	ChargeRef     string     `dynamodbav:"charge_ref,omitempty"     json:"charge_ref,omitempty"`
-	Payable       string     `dynamodbav:"payable,omitempty"        json:"payable,omitempty"`
-	DueDate       brcal.Date `dynamodbav:"due_date,omitempty"       json:"due_date,omitzero"`
-	PayableUntil  brcal.Date `dynamodbav:"payable_until,omitempty"  json:"payable_until,omitzero"`
-	CheckedAt     time.Time  `dynamodbav:"checked_at,omitempty"     json:"checked_at,omitzero"`
-	PaymentID     string     `dynamodbav:"payment_id,omitempty"     json:"-"`
-	LateCharges   Cents      `dynamodbav:"late_charges,omitempty"   json:"late_charges,omitempty"`
-	CreatedAt     time.Time  `dynamodbav:"opened_at,omitempty"      json:"created_at,omitzero"`
-	CancelledAt   time.Time  `dynamodbav:"cancelled_at,omitempty"   json:"-"`
-	UsageReported bool       `dynamodbav:"usage_reported,omitempty" json:"-"`
+	Provider     string     `dynamodbav:"provider,omitempty"       json:"provider,omitempty"`
+	Product      string     `dynamodbav:"product,omitempty"        json:"product,omitempty"`
+	ChargeRef    string     `dynamodbav:"charge_ref,omitempty"     json:"charge_ref,omitempty"`
+	Payable      string     `dynamodbav:"payable,omitempty"        json:"payable,omitempty"`
+	DueDate      brcal.Date `dynamodbav:"due_date,omitempty"       json:"due_date,omitzero"`
+	PayableUntil brcal.Date `dynamodbav:"payable_until,omitempty"  json:"payable_until,omitzero"`
+	// PixExpiresAt is the exact instant an immediate Pix stops being payable (PayableUntil is
+	// only its day); zero for a due-date charge.
+	PixExpiresAt  time.Time `dynamodbav:"pix_expires_at,omitempty" json:"-"`
+	CheckedAt     time.Time `dynamodbav:"checked_at,omitempty"     json:"checked_at,omitzero"`
+	PaymentID     string    `dynamodbav:"payment_id,omitempty"     json:"-"`
+	LateCharges   Cents     `dynamodbav:"late_charges,omitempty"   json:"late_charges,omitempty"`
+	CreatedAt     time.Time `dynamodbav:"opened_at,omitempty"      json:"created_at,omitzero"`
+	CancelledAt   time.Time `dynamodbav:"cancelled_at,omitempty"   json:"-"`
+	UsageReported bool      `dynamodbav:"usage_reported,omitempty" json:"-"`
 
 	// Payer is who paid, from the bank's statement line, written once (first
 	// write wins). PayerMatch is computed against the customer's tax id when it

@@ -202,7 +202,7 @@ func (s *FinanceInvoices) Paid(ctx context.Context, inv *billing.Invoice, actor,
 	}
 	org, orgErr := s.orgs.Get(ctx, inv.OrganizationID, inv.Livemode)
 	paid := paidDay(inv, now)
-	charge := invoiceChargeDescription(inv)
+	charge := invoiceChargeDescription(inv, nil)
 	for _, t := range s.targets(ctx, inv, org, orgErr) {
 		if t.skip != nil {
 			out = append(out, *t.skip)
