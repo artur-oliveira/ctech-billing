@@ -13,10 +13,13 @@ registro próprio de aceite/versionamento no serviço; até que esse fluxo exist
 a versão é uma referência documental e não um gate de acesso.
 
 `ctech-billing` owns the **subscription and invoice domain**: plans, subscriptions, billing
-cycles, pro-rata, invoice generation, and dunning. It does not move money itself — every
-charge is collected by delegating to [`ctech-wallet`](../ctech-wallet), which owns the
-current DynamoDB ledger and the PIX integrations. That contract
-([spec](docs/specs/2026-08-15-wallet-invoice-charge.md)) is now implemented on both sides.
+cycles, pro-rata, invoice generation, and dunning. It collects through **its own Inter connection**
+(the BYOK rail, [ADR 0029](docs/adr/0029-byok-phase-1.md)), for CTech's own invoices (tenant zero) as for any
+organization, and since the wallet-ledger P5 it is also CTech's payment rail for the other services: the wallet
+opens deposit invoices and pays withdrawals through it, and Poker sells chip packs through it
+([spec](docs/specs/2026-10-14-wallet-ledger-billing-rail.md)). The wallet collection contract of
+[2026-08-15](docs/specs/2026-08-15-wallet-invoice-charge.md) is **history**: that rail, its client and its webhook were
+removed on 2026-10-15 ([ADR 0004](docs/adr/0004-pix-on-invoice-via-wallet.md) is superseded).
 
 Status: **the MVP is built and unreleased.** Domain, persistence, the four API surfaces, the
 collection path, reconciliation, dunning, outbound webhooks, the consumer portal, the public
@@ -53,7 +56,6 @@ payloads and other unnecessary PII. This adds no OpenTelemetry exporter or custo
 | `api/internal/jobs` | How the four scheduled binaries report a failure to a person: one alert to the account's SNS topic, and the existing exit codes. Not CloudWatch alarms — those are billed per alarm per month to say the one thing every job already knows when it happens. The failure a metric would miss entirely is the one that alerts loudest: a binary that dies on configuration emits no counters and looks like a quiet day. |
 | `api/internal/settlement` | "This invoice was paid", published over the Valkey this service already uses, so the browser holding a PIX code hears it from whichever instance the webhook reached. The payment stream still re-reads the invoice every thirty seconds — pub/sub has no replay, so the publish makes the common case instant and the re-read makes every case correct. |
 | `api/internal/provision` | A tenant as a reviewable JSON file: the organization, the integrations admitted to act for it, the catalogue and the webhook endpoints. It exists because nothing else can create the first row — every write path resolves its tenant from a credential, and a credential is itself a row. |
-| `api/internal/wallet` | The client for `ctech-wallet`'s charge contract, plus the HMAC verification for its notify-back. |
 | `api/internal/api/v1`, `internal/middleware` | Four HTTP surfaces: the M2M API (tenant from the credential, idempotency on every mutating route), the console API (tenant from the signed-in owner, mode from a required header — [ADR 0011](docs/adr/0011-console-session.md)), the portal API (tenant zero, filtered to the signed-in customer — [ADR 0012](docs/adr/0012-portal-serves-tenant-zero.md)), and the public checkout (no session at all; a signed link is the whole credential). The first three verify JWTs against `ctech-account` and gate every route on a scope. |
 | `api/internal/oauthresource` | The 15-scope manifest this service publishes about itself, plus the RFC 9728 `/.well-known/oauth-protected-resource` document derived from it. Billing is a resource server and registers its own vocabulary from its own pipeline — [ADR 0014](docs/adr/0014-billing-publishes-its-own-scopes.md). A test asserts the manifest and `middleware.AllScopes` are the same set, because a scope enforced here and unknown to ctech-account fails silently, at runtime, in one direction. |
 | `api/cmd/server` | The service entry point. |
@@ -61,8 +63,8 @@ payloads and other unnecessary PII. This adds no OpenTelemetry exporter or custo
 | `api/cmd/seed` | Applies a tenant plan (`api/tenants/*.json`) to one mode. Create-or-skip on every row, so it is safe to re-run and safe to extend. A binary and not a route, for the same reason the sweep is one. |
 | `api/cmd/dunning` | The daily pass over invoices nobody has paid, on **the schedule each invoice was issued under** — copied onto it at finalization from the product's policy, the organization's, or the built-in default, so editing a policy never rewrites what happens to a bill already being chased. By default: a reminder before the due date and three after it, then PAST_DUE, then UNCOLLECTIBLE. It is **not** charge retry — PIX is a pull, so there is nothing to retry — which is why the policy is a schedule of messages and state changes rather than a backoff. `-date` re-runs a missed day, safely: each invoice stores the step it is on. |
 | `api/cmd/deliver` | Outbound webhooks, on a one-minute timer. Two passes: match queued events to endpoints, then make one signed HTTP attempt each, with exponential backoff. |
-| `api/cmd/reconcile` | Asks wallet about every charge billing is still waiting on, hourly. A webhook is a delivery and deliveries fail; without this, a lost notification is a customer who paid looking at an invoice that says they did not. Separate from `sweep` because it runs on a different clock — invoicing is a daily fact about a calendar, an unanswered charge is an hourly fact about an integration. |
-| `api/tests/integration` | Repository, API and payment tests against a real DynamoDB (`make test-integration`): subscribe → invoice on the right date with a holiday-adjusted due date, invoice → QR code → webhook → `PAID` against a fake wallet that implements the spec, the four reconciliation outcomes, a tax id proven encrypted by reading the raw item, the dunning policy walked one step per day, and two CTech services in one tenant proven to receive only their own webhooks. |
+| `api/cmd/reconcile` | Replays the finance postings a settlement or a credit note could not write (spec § 3.8), hourly. It used to also chase the wallet's charges; BYOK is the only rail now and its own sweep settles what a webhook missed. |
+| `api/tests/integration` | Repository, API and payment tests against a real DynamoDB (`make test-integration`): subscribe → invoice on the right date with a holiday-adjusted due date, invoice → QR code → Inter webhook → `PAID` against a fake bank, the BYOK confirmation and sweep outcomes, a tax id proven encrypted by reading the raw item, the dunning policy walked one step per day, and two CTech services in one tenant proven to receive only their own webhooks. |
 | `terraform/billing/` | The DynamoDB tables and their indexes — built with `for_each` over `api/internal/repositories/schema.json`, the same file the Go service embeds, so the schema exists once — TTL, the service IAM role (which explicitly **denies** `dynamodb:Scan`), the SSM parameters, the compute (one ASG of private-IPv4-only instances behind the shared HAProxy edge), and the route it registers. Terraform, not CDK — [ADR 0010](docs/adr/0010-infrastructure-as-terraform.md). |
 | `terraform/assets/` | The instance bootstrap, as a shell script rather than a string array: nginx, the realip refresh, the CloudWatch agent, the systemd unit for the API, and the four timers that run `sweep`, `reconcile`, `deliver` and `dunning` on the leader instance. |
 | `terraform/billing/frontend.tf` | The portal's **former** hosting: a private bucket behind CloudFront with an Origin Access Control, a KeyValueStore route manifest read by a CloudFront Function for pretty URLs, a response-headers policy, and a `/v1.0/*` behaviour forwarding to the HAProxy origin. Nothing routes through it any more — `billing.aoctech.app` is served by Cloudflare Workers Static Assets ([ADR 0020](docs/adr/0020-portal-on-cloudflare-workers.md)) and the pages call `billing-api[-env].aoctech.app` directly ([ADR 0013](docs/adr/0013-static-portal-same-origin-api.md)'s amendment). It is still applied only because the teardown has not run; deleting it is Phase 4 of `ctech-cdk/docs/plans/2026-08-20-frontend-cloudflare-migration.md`. |
@@ -317,7 +319,6 @@ bill, and a bill is not the moment to ask somebody to create an account.
 | Route | Authenticated by |
 |---|---|
 | `GET /v1.0/checkout/:token` · `POST /v1.0/checkout/:token/pay` | the signed link token itself |
-| `POST /v1.0/internal/webhooks/wallet` | wallet's `X-Wallet-Signature` HMAC |
 | `GET /.well-known/oauth-protected-resource` | nothing — it is metadata about what this API accepts (RFC 9728, [ADR 0014](docs/adr/0014-billing-publishes-its-own-scopes.md)) |
 
 The token travels in the **query string** — `{CHECKOUT_BASE_URL}?token=…`. The page is one file in a
@@ -336,10 +337,8 @@ The public payload carries no name, no e-mail, no tax id and no other invoice: a
 forwarded link must not become a disclosure, and the way to guarantee that is for
 the data never to be in the response.
 
-The webhook is a **wake-up signal, never payment authority**. Its signature says
-the call came from wallet; the charge is then re-read from wallet before any
-invoice moves. That is wallet's own posture toward its provider, and it does not
-get weaker one layer up.
+The Inter webhook is a **wake-up signal, never payment authority**: the BYOK confirmation re-reads the charge from the bank before an
+invoice moves.
 
 All of these routes are unmounted entirely unless the deployment is fully
 configured. A checkout that 404s is a deployment somebody notices; one that fails
@@ -347,13 +346,9 @@ after showing a QR code is a customer who thinks they paid. The same predicate
 decides whether `checkout_url` appears on an invoice, so the field never points
 at a route this deployment does not serve.
 
-**Collection is live-mode only.** ctech-wallet has no sandbox rail for this charge
-kind — `OpenCharge` reaches a real PIX provider whatever mode billing is in — and
-billing holds one set of wallet credentials, so there is no second client to route
-a test call to. `Collector.Pay` refuses a test-mode invoice outright, and no
-`payable` flag or `checkout_url` is published for one. Everything before
-collection works in test mode; rehearsing a payment would rehearse it with real
-money ([ADR 0004](docs/adr/0004-pix-on-invoice-via-wallet.md), second amendment).
+**Test mode collects against the provider's sandbox.** A BYOK tenant in test mode is collected through Inter's sandbox (spec § 9), so a
+payment can be rehearsed without real money; a tenant with no BYOK connection cannot collect at all (`Collector.Pay` answers the
+"needs a connection" gate error).
 
 ### Terms and privacy
 
