@@ -50,6 +50,7 @@ func main() {
 	creditRef := flag.String("credit-ref", "", "with -tenant-credit: the bank's reference for the return, when there is one")
 	payoutHook := flag.String("tenant-payout-webhook", "", "operator tool: show, register or remove the bank's notice about the Pix payments tenant zero sends (needs -mode=live and -operator)")
 	replaceHook := flag.Bool("replace", false, "with -tenant-payout-webhook=register: take over a notice someone else registered")
+	refundFor := flag.String("tenant-refund-excess", "", "operator tool: finish giving back a tenant-zero excess payment or credit-note refund that is still open (ex_...); needs -mode=live and -operator")
 	voidFor := flag.String("tenant-void-invoice", "", "operator tool: void an open tenant-zero invoice like the console does (removes the open Pix charge first; needs -mode=live and -operator)")
 	moveSub := flag.String("tenant-move-subscription", "", "operator tool: move a tenant-zero subscription's single item to another price of the same cycle (needs -mode=live, -operator, -to-price); idempotent, and a move between prices that cost the same issues no invoice")
 	toPrice := flag.String("to-price", "", "with -tenant-move-subscription: the price id to move to")
@@ -76,6 +77,9 @@ func main() {
 	}
 	if *payoutHook != "" {
 		os.Exit(tenantPayoutWebhook(ctx, cfg, *modeFlag, *operator, *payoutHook, *replaceHook))
+	}
+	if *refundFor != "" {
+		os.Exit(tenantRefundExcess(ctx, cfg, *modeFlag, *operator, *refundFor))
 	}
 	if *voidFor != "" {
 		os.Exit(tenantVoid(ctx, cfg, *modeFlag, *operator, *voidFor))

@@ -581,7 +581,7 @@ func (h *handlers) createInvoice(c fiber.Ctx) error {
 
 func (h *handlers) getInvoice(c fiber.Ctx) error {
 	t := middleware.GetTenant(c)
-	inv, err := h.invoices.Get(c.Context(), t.OrganizationID, t.Livemode, c.Params("id"))
+	inv, err := h.invoices.GetConsistent(c.Context(), t.OrganizationID, t.Livemode, c.Params("id"))
 	if err != nil {
 		return fail(c, err)
 	}
