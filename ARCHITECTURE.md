@@ -56,21 +56,16 @@
                                         └───────────────┘
 ```
 
-`ctech-billing` **never** talks to a payment rail directly. It asks `ctech-wallet` to collect an
-amount and later reconciles the outcome. When this was written that contract did not exist —
-wallet had an internal synchronous real-balance debit and separate PIX-deposit/sandbox-purchase
-flows, and no generic charge, webhook or charge lookup. It exists now, in the narrower shape § 3
-describes: a caller-supplied *amount* on wallet's existing purchase machinery rather than a new
-lifecycle.
-
-One consequence of reusing that machinery rather than building a lifecycle: **it has no test
-mode.** A charge opened in billing's test mode would be a real PIX charge, so collection is
-live-only and billing refuses it before wallet is reached
-([ADR 0004](docs/adr/0004-pix-on-invoice-via-wallet.md), second amendment).
+> **Superseded 2026-10-15.** What follows in § 3 and § 4 is the history of the wallet collection rail: billing asked
+> `ctech-wallet` to open a charge (`POST /internal/wallet/charge`) and learned the outcome from `POST /internal/webhooks/wallet`.
+> That rail, its client, its webhook and its reconciliation were removed. Billing now collects through its own Inter connection
+> (BYOK), and the wallet is the one that asks Billing: it opens deposit invoices and payouts there. See
+> [`docs/specs/2026-10-14-wallet-ledger-billing-rail.md`](docs/specs/2026-10-14-wallet-ledger-billing-rail.md) and
+> [ADR 0004](docs/adr/0004-pix-on-invoice-via-wallet.md) (superseded).
 
 ### BYOK: an organization's own bank account
 
-Besides the wallet rail, an organization may connect **its own** bank account (BYOK, [ADR 0029](docs/adr/0029-byok-phase-1.md),
+An organization may connect **its own** bank account (BYOK, [ADR 0029](docs/adr/0029-byok-phase-1.md),
 Banco Inter first). The money never passes through CTech and **no wallet** is involved: billing keeps what was
 charged, Finanças keeps what the bank holds (a `source: byok` ledger account fed by the statement, its balance the
 bank's). The only code that talks to a bank is the non-VPC arm64 Lambda `{env}-ctech-billing-byok-outbound`: it holds
