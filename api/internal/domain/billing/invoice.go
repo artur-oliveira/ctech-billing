@@ -107,6 +107,15 @@ type Invoice struct {
 	// only reaches endpoints that asked for everything.
 	OwnerKey string `dynamodbav:"owner_key,omitempty" json:"-"`
 
+	// PayerMessage is the text the payer reads on the Pix ("aviso ao pagador"), when the
+	// service that asked for the invoice chose one. Empty: the default text (invoiceChargeDescription).
+	PayerMessage string `dynamodbav:"payer_message,omitempty" json:"-"`
+	// PixExpiresInSeconds, when set, makes the invoice's Pix an immediate charge that stops
+	// being payable that long after it is opened, in place of a due-date one that stays
+	// payable through the dunning schedule. The one who consumes the invoice says how long,
+	// because only it knows what the invoice is for (a quick purchase, not a monthly bill).
+	PixExpiresInSeconds int `dynamodbav:"pix_expires_in_s,omitempty" json:"-"`
+
 	// PDFKey is where this invoice's rendered document lives, set the first time
 	// somebody downloads it and never changed. Its presence is what says "the
 	// document exists"; its absence says "it has not been asked for yet", which

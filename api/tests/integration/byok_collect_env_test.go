@@ -171,7 +171,7 @@ func (e *collectEnv) connect(t *testing.T) {
 	conn := &byokconn.Connection{AccountOrganizationID: e.accountOrg, Livemode: true, Provider: "inter", ID: id.New(),
 		Kind: byokconn.KindMerchant, State: byokconn.StateActive, SyncState: byokconn.SyncActive, Version: 1, Sealed: "b1.fake",
 		AccountNumber: "1234567", PixKey: "evp-" + id.New(), NotifyEmail: "financeiro@example.com",
-		Capabilities: []byok.Capability{byok.CapabilityStatement, byok.CapabilityCollection},
+		Capabilities: []byok.Capability{byok.CapabilityStatement, byok.CapabilityCollection, byok.CapabilityImmediateCharge},
 		FirstDay:     brcal.FromTime(now()), BackfillFrom: brcal.FromTime(now()), BackfillDone: true}
 	conn.LedgerAccountID = services.LedgerAccountID("inter", conn.AccountNumber+conn.ID)
 	ledger := repositories.NewLedgerRepository(testDB, testCfg)
@@ -365,3 +365,20 @@ var _ byokrpc.Session
 func todayPlus(n int) brcal.Date { return brcal.FromTime(now()).AddDays(n) }
 
 func bodyHas(b []byte, s string) bool { return strings.Contains(string(b), s) }
+
+// finalizeOneOff issues an invoice the way the one-off route builds it, with the message and
+// the Pix lifetime its service asked for.
+func (e *collectEnv) finalizeOneOff(t *testing.T, amount billing.Cents, message string, expiresIn int) *billing.Invoice {
+	t.Helper()
+	inv := &billing.Invoice{ID: id.NewWithPrefix(id.PrefixInvoice), OrganizationID: e.tenant.ID, Livemode: e.livemode,
+		CustomerID: e.customer.ID, Status: billing.InvoiceDraft, Period: marchPeriod(), Currency: billing.CurrencyBRL, Total: amount, Subtotal: amount,
+		PayerMessage: message, PixExpiresInSeconds: expiresIn}
+	items := []billing.InvoiceItem{{Description: "Serviço", Period: marchPeriod(), Quantity: 1, UnitAmount: amount, Amount: amount}}
+	if err := e.invoices.Create(ctxT(t), inv, items, "gen_"+id.New(), now()); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.invoicer.Issue(ctxT(t), inv, "user:test", "req", now()); err != nil {
+		t.Fatal(err)
+	}
+	return e.reloadInvoice(t, inv)
+}

@@ -41,6 +41,12 @@ type OneOffInput struct {
 	AmountCents int64
 	OwnerKey    string
 	Metadata    billing.Metadata
+	// PayerMessage is what the payer reads on the Pix ("aviso ao pagador"): "Pacote de 10.000
+	// fichas". Optional; the default is "Fatura #N".
+	PayerMessage string
+	// PixExpiresInSeconds is how long the Pix stays payable, for a service that knows its sale
+	// is a quick one. Optional; unset, the Pix is a due-date charge as for any invoice.
+	PixExpiresInSeconds int
 }
 
 // OneOffInvoices issues invoices that no subscription produced. It is the
@@ -85,6 +91,10 @@ func (in *OneOffInput) validate() error {
 		return fmt.Errorf("%w: description", ErrOneOffInvalid)
 	case !validReference(in.Reference):
 		return fmt.Errorf("%w: reference", ErrOneOffInvalid)
+	case len([]rune(strings.TrimSpace(in.PayerMessage))) > billing.MaxPayerMessage:
+		return fmt.Errorf("%w: payer_message", ErrOneOffInvalid)
+	case in.PixExpiresInSeconds != 0 && (in.PixExpiresInSeconds < billing.MinPixExpiry || in.PixExpiresInSeconds > billing.MaxPixExpiry):
+		return fmt.Errorf("%w: pix_expires_in_seconds", ErrOneOffInvalid)
 	}
 	return nil
 }
@@ -139,6 +149,7 @@ func (s *OneOffInvoices) build(in OneOffInput, now time.Time) (*billing.Invoice,
 		ID: id.NewWithPrefix(id.PrefixInvoice), OrganizationID: in.OrganizationID, Livemode: in.Livemode,
 		CustomerID: in.CustomerID, Status: billing.InvoiceDraft, OwnerKey: in.OwnerKey,
 		Period: period, Currency: oneOffCurrencyBR, Subtotal: amount, Total: amount, Metadata: in.Metadata,
+		PayerMessage: strings.TrimSpace(in.PayerMessage), PixExpiresInSeconds: in.PixExpiresInSeconds,
 	}
 	line := billing.InvoiceItem{Description: in.Description, Period: period, Quantity: 1, UnitAmount: amount, Amount: amount}
 	return inv, []billing.InvoiceItem{line}

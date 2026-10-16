@@ -543,6 +543,10 @@ func (h *handlers) createInvoice(c fiber.Ctx) error {
 	ch.amount("amount_cents", req.AmountCents)
 	ch.text("reference", req.Reference, true, 64)
 	ch.id("owner_key", req.OwnerKey, false)
+	ch.text("payer_message", req.PayerMessage, false, billing.MaxPayerMessage)
+	if req.PixExpiresInSeconds != 0 && (req.PixExpiresInSeconds < billing.MinPixExpiry || req.PixExpiresInSeconds > billing.MaxPixExpiry) {
+		ch.fail("pix_expires_in_seconds", "out_of_range", "between 60 and 86400 seconds", "min", billing.MinPixExpiry, "max", billing.MaxPixExpiry)
+	}
 	if len(req.OwnerKey) > limits.OwnerKey {
 		ch.fail("owner_key", "too_long", "at most 64 characters", "max", limits.OwnerKey)
 	}
@@ -563,6 +567,7 @@ func (h *handlers) createInvoice(c fiber.Ctx) error {
 	inv, lines, created, err := h.oneOff.Create(c.Context(), services.OneOffInput{
 		OrganizationID: t.OrganizationID, Livemode: t.Livemode, CustomerID: req.CustomerID, Description: req.Description,
 		Reference: req.Reference, AmountCents: int64(req.AmountCents), OwnerKey: owner, Metadata: req.Metadata,
+		PayerMessage: req.PayerMessage, PixExpiresInSeconds: req.PixExpiresInSeconds,
 	}, actorOf(c), middleware.GetRequestID(c), h.now())
 	if err != nil {
 		return fail(c, err)

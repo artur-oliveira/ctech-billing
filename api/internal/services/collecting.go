@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
@@ -310,11 +311,24 @@ func (c *Collector) completeSession(ctx context.Context, attempt *billing.Paymen
 	}
 }
 
-// invoiceChargeDescription is the statement text of an invoice charge: the
-// gapless invoice number when it has been finalized, the id otherwise.
-func invoiceChargeDescription(inv *billing.Invoice) string {
-	if inv.Number > 0 {
-		return fmt.Sprintf("Fatura #%d", inv.Number)
+// invoiceChargeDescription is the text the payer reads on the Pix and the statement text
+// of an invoice charge. What the service that asked for the invoice wrote wins. Otherwise
+// it is the gapless invoice number when it has been finalized (the id otherwise), and for a
+// subscription's invoice the plan after it: "Fatura #12 - Assinatura DF-e Ilimitado". items
+// are the invoice's lines; without them the plan cannot be named and the number stands alone.
+func invoiceChargeDescription(inv *billing.Invoice, items []billing.InvoiceItem) string {
+	text := strings.TrimSpace(inv.PayerMessage)
+	if text == "" {
+		text = "Fatura " + inv.ID
+		if inv.Number > 0 {
+			text = fmt.Sprintf("Fatura #%d", inv.Number)
+		}
+		if inv.SubscriptionID != "" && len(items) > 0 && items[0].Description != "" {
+			text += " - Assinatura " + items[0].Description
+		}
 	}
-	return "Fatura " + inv.ID
+	if r := []rune(text); len(r) > billing.MaxPayerMessage {
+		text = string(r[:billing.MaxPayerMessage])
+	}
+	return text
 }

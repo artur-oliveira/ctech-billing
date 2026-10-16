@@ -4,6 +4,7 @@ package integration
 
 import (
 	"errors"
+	"strconv"
 	"testing"
 	"time"
 
@@ -175,5 +176,42 @@ func TestAPaymentOfAStaleAmountAfterACreditIsPartlyExcess(t *testing.T) {
 	}
 	if a := env.attempt(t, inv); a.Amount != 4000 {
 		t.Fatalf("the attempt settles what was owed: %d", a.Amount)
+	}
+}
+
+// A service that asked for a short-lived Pix gets an immediate charge (Inter cob) that expires
+// when it said, with the text it wrote; every other invoice keeps its due-date charge.
+func TestAnInvoiceThatAsksForAShortPixGetsAnImmediateChargeWithItsMessage(t *testing.T) {
+	env := newCollectEnv(t, collectLive)
+	inv := env.finalizeOneOff(t, 5000, "Pacote de 10.000 fichas", 3600)
+	a := env.attempt(t, inv)
+	in, ok := env.fake.Created(a.ChargeRef)
+	if !ok || !byok.IsImmediateRef(a.ChargeRef) || len(a.ChargeRef) != 29 {
+		t.Fatalf("not an immediate charge: %q %+v", a.ChargeRef, in)
+	}
+	if in.ExpiresInSeconds != 3600 || in.Message != "Pacote de 10.000 fichas" {
+		t.Fatalf("created from %+v", in)
+	}
+	if a.PixExpiresAt.IsZero() || a.PixExpiresAt.Sub(now()) != time.Hour {
+		t.Fatalf("the attempt remembers the exact end: %v", a.PixExpiresAt)
+	}
+	if s := env.checkout(t, inv); !s.ExpiresAt.Equal(a.PixExpiresAt) {
+		t.Fatalf("the page is offered only while the Pix lives: %v vs %v", s.ExpiresAt, a.PixExpiresAt)
+	}
+
+	plain := env.finalizeInvoice(t, 5000)
+	pa := env.attempt(t, plain)
+	pin, _ := env.fake.Created(pa.ChargeRef)
+	if byok.IsImmediateRef(pa.ChargeRef) || pin.ExpiresInSeconds != 0 || pin.Message != "Fatura #"+strconv.FormatInt(plain.Number, 10) || !pa.PixExpiresAt.IsZero() {
+		t.Fatalf("an invoice that asked for nothing stays due-date: %q %+v", pa.ChargeRef, pin)
+	}
+}
+
+func TestACheckoutNeverShowsAnImmediatePixThatHasExpired(t *testing.T) {
+	env := newCollectEnv(t, collectLive)
+	inv := env.finalizeOneOff(t, 5000, "", 60)
+	late := now().Add(2 * time.Minute)
+	if _, err := env.byok.Checkout(ctxT(t), env.tenantNow(t), inv, "user:test", "req", late); !errors.Is(err, services.ErrInvoiceNotPayable) {
+		t.Fatalf("an expired Pix must not be offered: %v", err)
 	}
 }

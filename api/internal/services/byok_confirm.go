@@ -67,7 +67,7 @@ func (c *ByokCollector) confirmAttempt(ctx context.Context, org *billing.Organiz
 	if err := pix(ctx, sess); err != nil {
 		return "", err
 	}
-	ch, err := byokrpc.Call(ctx, sess, byok.CapabilityCollection, func(cr byok.Credentials, t byok.Token) (byok.Charge, error) {
+	ch, err := byokrpc.Call(ctx, sess, capabilityFor(a.ChargeRef), func(cr byok.Credentials, t byok.Token) (byok.Charge, error) {
 		return sess.P.GetCharge(ctx, cr, t, a.ChargeRef)
 	})
 	if err != nil {
