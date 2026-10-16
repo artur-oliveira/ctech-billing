@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 
@@ -173,6 +174,30 @@ func (r *InvoiceRepository) Get(ctx context.Context, organizationID string, live
 	return &row.Invoice, nil
 }
 
+// GetConsistent reads an invoice with a strongly consistent read. A service woken by an
+// event about the invoice (invoice.paid) asks within a second of the write, and an
+// eventually consistent read then answers with the invoice as it was before: the event
+// is acted on as if nothing had happened and, answered 200, is not sent again. A
+// query on the exact sort key is the only strongly consistent read this base offers.
+func (r *InvoiceRepository) GetConsistent(ctx context.Context, organizationID string, livemode bool, invoiceID string) (*billing.Invoice, error) {
+	out, err := r.base.QueryRaw(ctx, &dynamodb.QueryInput{
+		KeyConditionExpression:    aws.String("pk = :pk AND sk = :sk"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{":pk": str(TenantPK(organizationID, livemode)), ":sk": str(InvoiceSK(invoiceID))},
+		ConsistentRead:            aws.Bool(true),
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(out.Items) == 0 {
+		return nil, fmt.Errorf("%w: invoice %s", ErrNotFound, invoiceID)
+	}
+	row, err := Decode[invoiceRow](out.Items[0])
+	if err != nil {
+		return nil, err
+	}
+	return &row.Invoice, nil
+}
+
 // GetByGenerationKey is the invoice created under a generation key, or
 // ErrNotFound. The key is the create-only marker Create writes in the invoice's
 // own transaction, so "does this reference already have an invoice?" is one
@@ -189,7 +214,7 @@ func (r *InvoiceRepository) GetByGenerationKey(ctx context.Context, organization
 	if err != nil {
 		return nil, err
 	}
-	return r.Get(ctx, organizationID, livemode, marker.InvoiceID)
+	return r.GetConsistent(ctx, organizationID, livemode, marker.InvoiceID)
 }
 
 // ListItems returns an invoice's lines in order.

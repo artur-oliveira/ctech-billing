@@ -28,6 +28,14 @@ func (c *ByokCollector) RefundExcess(ctx context.Context, organizationID string,
 	if err != nil {
 		return nil, err
 	}
+	return c.refundExcess(ctx, e, actor, requestID, now)
+}
+
+// refundExcess is RefundExcess for a row already in hand. RefundCredit has just written its
+// row, and looking it up by id again goes through an index that is eventually consistent: the
+// refund of a credit note was answered 404 for a row that existed, with the note already issued.
+func (c *ByokCollector) refundExcess(ctx context.Context, e *billing.ExcessPayment, actor, requestID string, now time.Time) (*billing.ExcessPayment, error) {
+	organizationID, livemode := e.OrganizationID, e.Livemode
 	if e.Status != billing.ExcessOpen && e.Status != billing.ExcessRefundFailed {
 		return e, nil // already refunding or refunded
 	}
@@ -43,7 +51,7 @@ func (c *ByokCollector) RefundExcess(ctx context.Context, organizationID string,
 	}
 	if err := c.payments.SetExcessStatus(ctx, e, billing.ExcessRefunding, billing.NewRefundID(), now); err != nil {
 		if errors.Is(err, repositories.ErrConcurrentModification) {
-			return c.payments.GetExcess(ctx, organizationID, livemode, excessID)
+			return c.payments.GetExcessByPayment(ctx, organizationID, livemode, e.InvoiceID, e.PaymentID)
 		}
 		return nil, err
 	}
@@ -120,7 +128,7 @@ func (c *ByokCollector) RefundCredit(ctx context.Context, inv *billing.Invoice, 
 		}
 		e = existing
 	}
-	return c.RefundExcess(ctx, inv.OrganizationID, inv.Livemode, e.ID, actor, requestID, now)
+	return c.refundExcess(ctx, e, actor, requestID, now)
 }
 
 // sendRefund calls the provider for a row already marked refunding.

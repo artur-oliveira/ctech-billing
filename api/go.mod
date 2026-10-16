@@ -32,7 +32,7 @@ require (
 	github.com/oklog/ulid/v2 v2.1.2
 	github.com/valkey-io/valkey-go v1.0.78
 	google.golang.org/protobuf v1.36.12
-	gopkg.aoctech.app/api-commons v1.27.1
+	gopkg.aoctech.app/api-commons v1.27.2
 )
 
 require (

@@ -129,3 +129,5 @@ gopkg.aoctech.app/api-commons v1.27.0 h1:Ukyv7KvJoO+lbfWgjPu0hIT4gxfET7dHsGbOv5s
 gopkg.aoctech.app/api-commons v1.27.0/go.mod h1:CrvKeQweOS+/piP/lLtFJcKyIQjDhzqtPWqN8LwHfog=
 gopkg.aoctech.app/api-commons v1.27.1 h1:/wjLB5LbvPUjgHrxphIvaKTPCB5ul5jYfzEnPGrtkoU=
 gopkg.aoctech.app/api-commons v1.27.1/go.mod h1:CrvKeQweOS+/piP/lLtFJcKyIQjDhzqtPWqN8LwHfog=
+gopkg.aoctech.app/api-commons v1.27.2 h1:FJjey1jXhlaGU8LLdVijUdWUM4KqKOnIDM3KwJwastY=
+gopkg.aoctech.app/api-commons v1.27.2/go.mod h1:CrvKeQweOS+/piP/lLtFJcKyIQjDhzqtPWqN8LwHfog=
