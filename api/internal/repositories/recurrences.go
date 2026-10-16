@@ -777,6 +777,9 @@ func (r *RecurrenceRepository) DueToMaterialise(ctx context.Context, livemode bo
 // never moves it back: a second call with the same or an older cursor is a
 // successful no-op, which is what makes a re-run harmless.
 func (r *RecurrenceRepository) MarkMaterialised(ctx context.Context, sp space.ResolvedSpace, recID string, cursor brcal.Date, now time.Time) error {
+	if cursor.IsZero() {
+		return nil // nothing made yet: writing it would store "0000-00-00", which no read can parse
+	}
 	if err := sp.Require(space.Write); err != nil {
 		return err
 	}
