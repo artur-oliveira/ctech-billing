@@ -19,6 +19,7 @@ import (
 	"github.com/gofiber/fiber/v3/middleware/recover"
 	"gopkg.aoctech.app/api-commons/accountorgs"
 	"gopkg.aoctech.app/api-commons/cache"
+	"gopkg.aoctech.app/api-commons/erasure"
 	"gopkg.aoctech.app/api-commons/oauthclients"
 	"gopkg.aoctech.app/api-commons/ratelimit"
 
@@ -208,7 +209,14 @@ func Build(ctx context.Context, cfg *config.Config, clock func() time.Time, opts
 		}
 	}
 	spaces := space.NewResolver(account, cacheBackend)
-	apiVerifier := middleware.NewVerifier(cfg.CtechJWKSURL, cfg.ServiceAudience, cfg.CtechIssuerURL, cacheBackend)
+	// The account-deletion lock (saga protocol § 4.2) and the token revocation
+	// list (§ 5): two independent layers between a locked person and this API.
+	erasureState := erasure.NewStore(db, cfg.TablePrefix, 0)
+	apiVerifier := middleware.NewVerifier(cfg.CtechJWKSURL, cfg.ServiceAudience, cfg.CtechIssuerURL, cacheBackend).
+		WithErasureLock(erasureState.Blocked)
+	if rev := revocationBackend(cfg); rev != nil {
+		apiVerifier.WithRevocation(rev)
+	}
 	realtimeGateway, realtimeChanges := realtimeServer(ctx, cfg, app, db, apiVerifier, spaces, orgs, links)
 	v1.Register(app, v1.Deps{
 		Realtime:          realtimeGateway,
