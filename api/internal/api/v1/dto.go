@@ -199,11 +199,13 @@ func payerOf(attempts []billing.PaymentAttempt) (*invoicePayer, billing.PayerMat
 }
 
 type invoiceResponse struct {
-	ID             string                `json:"id"`
-	Number         int64                 `json:"number,omitempty"`
-	CustomerID     string                `json:"customer_id"`
-	SubscriptionID string                `json:"subscription_id,omitempty"`
-	Status         billing.InvoiceStatus `json:"status"`
+	ID             string `json:"id"`
+	Number         int64  `json:"number,omitempty"`
+	CustomerID     string `json:"customer_id"`
+	SubscriptionID string `json:"subscription_id,omitempty"`
+	// Reference is the caller's own name for a one-off invoice, as issued.
+	Reference string                `json:"reference,omitempty"`
+	Status    billing.InvoiceStatus `json:"status"`
 	// Overdue is derived on read, never stored — that is why "overdue" is not a
 	// status (assessment § 6.1).
 	Overdue    bool                  `json:"overdue"`
@@ -250,6 +252,7 @@ func newInvoiceResponse(inv *billing.Invoice, lines []billing.InvoiceItem, today
 		Number:         inv.Number,
 		CustomerID:     inv.CustomerID,
 		SubscriptionID: inv.SubscriptionID,
+		Reference:      inv.Reference,
 		Status:         inv.Status,
 		Overdue:        inv.IsOverdue(today),
 		Period:         inv.Period,

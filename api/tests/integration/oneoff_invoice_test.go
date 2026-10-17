@@ -19,6 +19,7 @@ type oneOffInvoice struct {
 	Total       int64  `json:"total"`
 	AmountDue   int64  `json:"amount_due"`
 	CustomerID  string `json:"customer_id"`
+	Reference   string `json:"reference"`
 	CheckoutURL string `json:"checkout_url"`
 	DueDate     string `json:"due_date"`
 	Lines       []struct {

@@ -88,6 +88,17 @@ func TestAnInvoiceIsFoundByTheCallersReference(t *testing.T) {
 	if found.ID != made.ID || found.Total != 5000 {
 		t.Fatalf("%+v vs %+v", found, made)
 	}
+	// A consumer woken by invoice.paid reads the invoice by id and must find out whose
+	// sale it is from the invoice alone (Poker routes its deliveries on this).
+	var byID oneOffInvoice
+	r = e.do(t, http.MethodGet, "/v1.0/invoices/"+made.ID, tok, "", "")
+	if r.status != http.StatusOK {
+		t.Fatalf("%d %s", r.status, r.body)
+	}
+	r.decode(t, &byID)
+	if made.Reference != "dep-by-ref" || found.Reference != "dep-by-ref" || byID.Reference != "dep-by-ref" {
+		t.Fatalf("reference: created %q, by reference %q, by id %q", made.Reference, found.Reference, byID.Reference)
+	}
 	if r = e.do(t, http.MethodGet, "/v1.0/invoices/by-reference/never-issued", tok, "", ""); r.status != http.StatusNotFound {
 		t.Fatalf("an unknown reference is 404: %d", r.status)
 	}
