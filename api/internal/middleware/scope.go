@@ -97,6 +97,12 @@ var AllScopes = []string{
 	ScopePayoutsRead,
 }
 
+// ScopeErasureEligibility is carried only by the token ctech-account mints for
+// itself to ask whether a person may be erased (saga protocol § 4.1). It is NOT
+// in AllScopes or scope-manifest.json: those list what a client can be
+// granted, and no client may be granted this one.
+const ScopeErasureEligibility = "internal:billing:erasure-eligibility"
+
 // RequireM2MScope gates a route on a client_credentials token carrying the
 // scope.
 //

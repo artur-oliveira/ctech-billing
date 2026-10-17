@@ -17,3 +17,15 @@ func TestRevocationURLDropsTheLogicalDB(t *testing.T) {
 		t.Error("a URL with no host must be refused, not turned into a DB 0 connection to nowhere")
 	}
 }
+
+func TestPortalInvoicesURLIsTheCheckoutsOrigin(t *testing.T) {
+	for in, want := range map[string]string{
+		"https://billing.aoctech.app/checkout":     "https://billing.aoctech.app/invoices",
+		"https://billing-dev.aoctech.app/checkout": "https://billing-dev.aoctech.app/invoices",
+		"": "",
+	} {
+		if got := portalInvoicesURL(in); got != want {
+			t.Errorf("portalInvoicesURL(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

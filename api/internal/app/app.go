@@ -271,6 +271,7 @@ func Build(ctx context.Context, cfg *config.Config, clock func() time.Time, opts
 
 		PortalOrganizationID: cfg.PortalOrganizationID,
 		SettlementBus:        bus,
+		Eraser:               newEraser(db, cfg),
 
 		DB:    db,
 		Cache: cacheBackend,

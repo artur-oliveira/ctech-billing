@@ -753,3 +753,55 @@ func (r *recordingBanks) Disconnect(_ context.Context, sp space.ResolvedSpace, p
 	r.disconnected = append(r.disconnected, sp.PK()+"/"+provider)
 	return nil
 }
+
+func TestEligibilityAnswersCtechAccountAboutOnePerson(t *testing.T) {
+	e := newPortal(t)
+	e.withPortal(t)
+	asAccount := e.token(t, "ctech-account", "", middleware.ScopeErasureEligibility)
+	ask := func(sub, token string) (int, erasure.Eligibility) {
+		t.Helper()
+		res := e.do(t, http.MethodGet, "/v1.0/internal/erasure/eligibility/"+sub, token, "", "")
+		var el erasure.Eligibility
+		if res.status == http.StatusOK {
+			res.decode(t, &el)
+		}
+		return res.status, el
+	}
+
+	if code, el := ask(e.userID, asAccount); code != http.StatusOK || !el.Eligible || el.Blockers == nil || len(el.Blockers) != 0 {
+		t.Fatalf("before any invoice: %d %+v; want eligible with blockers []", code, el)
+	}
+	finalizeInvoice(t, newInvoiceFor(t, e.org, e.customer.ID))
+	code, el := ask(e.userID, asAccount)
+	if code != http.StatusOK || el.Eligible || len(el.Blockers) != 1 || el.Blockers[0].Code != services.BlockerInvoiceOpen ||
+		el.Blockers[0].Detail["amount_cents"] != float64(4990) {
+		t.Fatalf("with an open invoice: %d %+v", code, el)
+	}
+	ws := newSpaceOrgID()
+	newLinkedOrg(t, true, ws)
+	if code, el := askAbout(t, e, e.userID, asAccount, ws); code != http.StatusOK || el.Eligible || el.Blockers[0].Code != services.BlockerMerchantTenant {
+		t.Fatalf("a workspace with a tenant: %d %+v; want %s", code, el, services.BlockerMerchantTenant)
+	}
+	if res := e.do(t, http.MethodGet, "/v1.0/internal/erasure/eligibility/"+e.userID+"?workspaces=not-a-workspace", asAccount, "", ""); res.status != http.StatusBadRequest {
+		t.Fatalf("a malformed workspace id: %d, want 400", res.status)
+	}
+	if code, el := ask("usr_"+id.New(), asAccount); code != http.StatusOK || !el.Eligible {
+		t.Fatalf("an unknown sub has nothing to delete: %d %+v", code, el)
+	}
+	if code, _ := ask(e.userID, e.portalToken(t, middleware.ScopeErasureEligibility)); code != http.StatusForbidden {
+		t.Fatalf("a session token: %d, want 403", code)
+	}
+	if code, _ := ask(e.userID, e.token(t, "ctech-account", "", middleware.ScopeProductsRead)); code != http.StatusForbidden {
+		t.Fatalf("a service token without the scope: %d, want 403", code)
+	}
+}
+
+func askAbout(t *testing.T, e *portalEnv, sub, token, workspace string) (int, erasure.Eligibility) {
+	t.Helper()
+	res := e.do(t, http.MethodGet, "/v1.0/internal/erasure/eligibility/"+sub+"?workspaces="+workspace, token, "", "")
+	var el erasure.Eligibility
+	if res.status == http.StatusOK {
+		res.decode(t, &el)
+	}
+	return res.status, el
+}

@@ -5,9 +5,13 @@ import (
 	"log/slog"
 	"net/url"
 
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
+
 	"gopkg.aoctech.app/api-commons/cache"
 
 	"gopkg.aoctech.app/billing/api/internal/config"
+	"gopkg.aoctech.app/billing/api/internal/repositories"
+	"gopkg.aoctech.app/billing/api/internal/services"
 )
 
 // revocationURL is VALKEY_URL with its logical-DB path removed. ctech-account
@@ -47,4 +51,31 @@ func revocationBackend(cfg *config.Config) cache.Backend {
 		return nil
 	}
 	return backend
+}
+
+// portalInvoicesURL is the portal's invoice list, where a person settles what
+// blocks their erasure. Derived from CHECKOUT_BASE_URL's origin, because both
+// pages are the same static site (ADR 0013), and so the userdata carries
+// nothing new.
+func portalInvoicesURL(checkoutBaseURL string) string {
+	u, err := url.Parse(checkoutBaseURL)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return ""
+	}
+	return u.Scheme + "://" + u.Host + "/invoices"
+}
+
+// newEraser is the one way the API and the consumer build the Eraser, so both
+// look for the same customer in the same tenant.
+func newEraser(db *dynamodb.Client, cfg *config.Config) *services.Eraser {
+	return services.NewEraser(
+		repositories.NewCustomerRepository(db, cfg),
+		repositories.NewSubscriptionRepository(db, cfg),
+		repositories.NewInvoiceRepository(db, cfg),
+		repositories.NewOrganizationRepository(db, cfg),
+		repositories.NewCatalogRepository(db, cfg),
+		repositories.NewLevelRepository(db, cfg),
+		cfg.PortalOrganizationID,
+		portalInvoicesURL(cfg.CheckoutBaseURL),
+	)
 }
