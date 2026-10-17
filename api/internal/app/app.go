@@ -19,6 +19,7 @@ import (
 	"github.com/gofiber/fiber/v3/middleware/recover"
 	"gopkg.aoctech.app/api-commons/accountorgs"
 	"gopkg.aoctech.app/api-commons/cache"
+	"gopkg.aoctech.app/api-commons/erasure"
 	"gopkg.aoctech.app/api-commons/oauthclients"
 	"gopkg.aoctech.app/api-commons/ratelimit"
 
@@ -44,7 +45,18 @@ import (
 // otherwise reach the network.
 type Option func(*options)
 
-type options struct{ webhookVerifier v1.WebhookVerifier }
+type options struct {
+	webhookVerifier v1.WebhookVerifier
+	byokOut         **services.ByokConnections
+}
+
+// WithByokConnections hands the bank-connection service Build constructs to the
+// caller, so cmd/server can give the account-erasure consumer the same one the
+// console uses (a purge's disconnect then drops the same cached tokens).
+// *dst is nil when BYOK is not configured.
+func WithByokConnections(dst **services.ByokConnections) Option {
+	return func(o *options) { o.byokOut = dst }
+}
 
 // WithWebhookVerifier replaces the check that a new webhook endpoint answers
 // its challenge (the real one refuses loopback addresses by design).
@@ -178,6 +190,9 @@ func Build(ctx context.Context, cfg *config.Config, clock func() time.Time, opts
 	if err != nil {
 		return nil, err
 	}
+	if o.byokOut != nil {
+		*o.byokOut = byokConns
+	}
 	if byokConns == nil {
 		slog.Warn("BYOK_OUTBOUND_FUNCTION not set — bank connection routes are not mounted")
 	}
@@ -208,7 +223,14 @@ func Build(ctx context.Context, cfg *config.Config, clock func() time.Time, opts
 		}
 	}
 	spaces := space.NewResolver(account, cacheBackend)
-	apiVerifier := middleware.NewVerifier(cfg.CtechJWKSURL, cfg.ServiceAudience, cfg.CtechIssuerURL, cacheBackend)
+	// The account-deletion lock (saga protocol § 4.2) and the token revocation
+	// list (§ 5): two independent layers between a locked person and this API.
+	erasureState := erasure.NewStore(db, cfg.TablePrefix, 0)
+	apiVerifier := middleware.NewVerifier(cfg.CtechJWKSURL, cfg.ServiceAudience, cfg.CtechIssuerURL, cacheBackend).
+		WithErasureLock(erasureState.Blocked)
+	if rev := revocationBackend(cfg); rev != nil {
+		apiVerifier.WithRevocation(rev)
+	}
 	realtimeGateway, realtimeChanges := realtimeServer(ctx, cfg, app, db, apiVerifier, spaces, orgs, links)
 	v1.Register(app, v1.Deps{
 		Realtime:          realtimeGateway,
@@ -263,6 +285,8 @@ func Build(ctx context.Context, cfg *config.Config, clock func() time.Time, opts
 
 		PortalOrganizationID: cfg.PortalOrganizationID,
 		SettlementBus:        bus,
+		Eraser:               newEraser(db, cfg),
+		ErasedRef:            services.ErasedRef(erasureState),
 
 		DB:    db,
 		Cache: cacheBackend,
@@ -766,7 +790,8 @@ func BuildFinanceJobs(ctx context.Context, cfg *config.Config) (*services.Financ
 	return services.NewFinanceJobs(
 		repositories.NewBillRepository(db, cfg),
 		repositories.NewRecurrenceRepository(db, cfg),
-	).WithCards(repositories.NewCardRepository(db, cfg)), nil
+	).WithCards(repositories.NewCardRepository(db, cfg)).
+		WithSpaceGuard(services.ErasedSpace(erasure.NewStore(db, cfg.TablePrefix, 0))), nil
 }
 
 // newSubscriptions is the only constructor of the subscription repository in

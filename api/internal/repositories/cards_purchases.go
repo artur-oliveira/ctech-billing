@@ -344,7 +344,7 @@ func (r *CardRepository) ListPurchases(ctx context.Context, sp space.ResolvedSpa
 	if _, err := r.loadCard(ctx, sp, cardID); err != nil {
 		return nil, err
 	}
-	raw, err := r.ledger.queryPrefix(ctx, r.cards, CardPK(sp, cardID), "PURCHASE#")
+	raw, err := queryPrefix(ctx, r.cards, CardPK(sp, cardID), "PURCHASE#")
 	if err != nil {
 		return nil, err
 	}
@@ -379,7 +379,7 @@ func (r *CardRepository) GetStatement(ctx context.Context, sp space.ResolvedSpac
 }
 
 func (r *CardRepository) statement(ctx context.Context, sp space.ResolvedSpace, card CardRow, m finance.Month) (Statement, error) {
-	raw, err := r.ledger.queryPrefix(ctx, r.cards, CardPK(sp, card.ID), StatementSK(m))
+	raw, err := queryPrefix(ctx, r.cards, CardPK(sp, card.ID), StatementSK(m))
 	if err != nil {
 		return Statement{}, err
 	}

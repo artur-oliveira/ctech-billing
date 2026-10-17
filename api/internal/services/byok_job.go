@@ -74,6 +74,17 @@ type ByokJob struct {
 	// shared sandbox webhook on a test run (spec § 9).
 	finally     []func(ctx context.Context, livemode bool, now time.Time) []error
 	sandboxHook func(ctx context.Context, conn *byokconn.Connection, now time.Time) error
+	// gone reports a space whose owner the account-deletion saga has locked or
+	// erased; its connections are left alone. Nil means no guard.
+	gone func(ctx context.Context, sp space.ResolvedSpace) (bool, error)
+}
+
+// WithSpaceGuard leaves the connections of a space gone reports alone, so a
+// sweep or a sync never writes into a space being or already purged (saga
+// protocol § 4.5). A guard error fails that connection only.
+func (j *ByokJob) WithSpaceGuard(gone func(ctx context.Context, sp space.ResolvedSpace) (bool, error)) *ByokJob {
+	j.gone = gone
+	return j
 }
 
 // WithFinally adds a once-per-run step.
@@ -225,6 +236,15 @@ func (j *ByokJob) runOne(ctx context.Context, conn *byokconn.Connection, now tim
 	sp, err := j.spaceFor(conn)
 	if err != nil {
 		return fmt.Errorf("%s %s: space: %w", conn.AccountOrganizationID, conn.Provider, err)
+	}
+	if j.gone != nil {
+		gone, err := j.gone(ctx, sp)
+		if err != nil {
+			return fmt.Errorf("%s %s: erasure state: %w", conn.AccountOrganizationID, conn.Provider, err)
+		}
+		if gone {
+			return nil
+		}
 	}
 	if err := j.repo.LoadSealed(ctx, conn); err != nil {
 		return fmt.Errorf("%s %s: sealed: %w", conn.AccountOrganizationID, conn.Provider, err)

@@ -130,6 +130,8 @@ rather than silently degrading:
 | `/ctech-billing/{env}/billing/applications-notify-email` (String) | set out of band | the notice of a new merchant application |
 | billing's account client granted `internal:account:company-actor`; ctech-account route `GET /v1.0/internal/organizations/{id}/companies` | ctech-account (granted in prod to `billing-account-membership`; route shipped in ctech-account #56) | the application form's company picker and check |
 | OAuth client `billing` granted `billing:organization:write` | ctech-account (appended by the scopes job's publish) | **sign-in itself** once the UI asks for it |
+| `/ctech/{env}/account/erasure-topic-arn` (the account-deletion topic) | ctech-account (CDK) | `terraform/billing/erasure.tf` |
+| A dedicated confidential client in ctech-account holding only `internal:account:erasure-ack`, its id and secret written to `/ctech-billing/{env}/billing/erasure-client-{id,secret}` (Terraform creates the placeholders), and a `billing` entry in ctech-account's `ERASURE_PARTICIPANTS` (`url` = billing's internal base URL + `/v1.0`, `audience` = billing's `SERVICE_AUDIENCE`, `client_id` = that client). **Deployment check:** the eligibility token ctech-account mints has `iss` = billing's `CTECH_ISSUER_URL` | ctech-account, operator, after legal validation | account deletion |
 
 ## The pipeline does not seed
 

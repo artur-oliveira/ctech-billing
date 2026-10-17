@@ -15,6 +15,14 @@ mock_provider "aws" {
 }
 mock_provider "archive" {}
 
+# The erasure topic ARN is read from ctech-account's SSM parameter; the mock
+# would invent a string that is not an ARN, which the subscription validates.
+override_data {
+  target = data.aws_ssm_parameter.erasure_topic_arn
+  values = { value = "arn:aws:sns:us-east-1:123456789012:dev-account-user-erasure" }
+}
+
+
 variables {
   environment = "prod"
   os_family   = "alpine"

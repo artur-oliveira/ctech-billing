@@ -904,8 +904,8 @@ Finanças; old `/console/finance/*` links redirect. Specs and ADR 0027 amended.
   lines were ruled out of 6.6 with card statement import (see 6.6): they are recorded as a 1× purchase.
 - **Userdata:** AL2023 is at ~15.9 KB of 16,384. The next timer moves the timers to an S3 asset.
 
-Cross-repo: ctech-account's account-deletion spec must emit the personal-space purge trigger
-(ADR 0026). After v1, each with its own spec: billing's own plans and entitlements (decided
+Cross-repo: the personal-space purge trigger exists. Billing consumes ctech-account's `user.erase`
+(see "Account deletion" below). After v1, each with its own spec: billing's own plans and entitlements (decided
 2026-10-07: the subscription belongs to the space — a personal space's to its user, an organization
 space's to the organization, paid and managed by any of its owners or admins, seen in the portal through
 the same space selector as the console — ADR 0025 amendment — and named on the PDF by the designated
@@ -927,6 +927,24 @@ pricing stays a quota inside the organization's plan, counted by dfe.
   webhooks / events / API logs, C16 coupons; on C5, pause/resume and price change with a pro-rata
   preview; P6 in the portal.
 - **Merchant receives money** (assessment phase 6b): still gated by ADR 0005.
+
+### Account deletion (LGPD) — billing as a saga participant
+Plan: [`docs/plans/2026-10-07-account-deletion-participant.md`](docs/plans/2026-10-07-account-deletion-participant.md).
+- [x] api-commons ≥ v1.19.0; `erasure_state` table; lock on every session route; revocation list (DB 0)
+- [x] Eligibility route and blockers (`billing.invoice_open`, `billing.invoice_uncollectible`, `billing.merchant_tenant`), with the `workspaces` query parameter
+- [x] Purge: subscriptions canceled, customers (person and erased workspaces) anonymized, personal and erased-workspace
+      finance spaces deleted across every table (`SpacePurger`, every table classified by a test), level rows and bank
+      connections removed; the finance, BYOK and level paths skip erased owners
+- [x] Consumer in the API process; queue, DLQ, filtered subscription (no alarm, like wallet and poker) (`terraform/billing/erasure.tf`)
+- [ ] Operator:
+  - create billing's dedicated erasure client in ctech-account with only `internal:account:erasure-ack`;
+  - write its id and secret to `/ctech-billing/{env}/billing/erasure-client-{id,secret}` (`aws ssm put-parameter --overwrite`);
+  - confirm in each environment that `cmd/backfill-invoice-lookup` and `cmd/backfill-subscription-lookup` have run (R22: an unfilled customer index hides an open invoice);
+  - check in dev that ctech-account's minted eligibility token has `iss` = billing's `CTECH_ISSUER_URL` and `aud` = `SERVICE_AUDIENCE`;
+  - and add billing to
+      ctech-account's `ERASURE_PARTICIPANTS`, **after** the legal validation of the data inventory
+- [ ] Later: deleting a merchant tenant (credentials, webhook endpoints, customers, BYOK collection), which lifts `billing.merchant_tenant`;
+      service-scoped unlink (`Store.Clear` on re-consent) once ctech-account builds it
 
 ## What is actually left (as of 2026-08-16)
 

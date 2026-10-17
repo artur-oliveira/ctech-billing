@@ -612,7 +612,7 @@ func (r *LedgerRepository) ListAccounts(ctx context.Context, sp space.ResolvedSp
 	if err := sp.Require(space.Read); err != nil {
 		return nil, err
 	}
-	items, err := r.queryPrefix(ctx, r.accounts, sp.PK(), "ACCOUNT#")
+	items, err := queryPrefix(ctx, r.accounts, sp.PK(), "ACCOUNT#")
 	if err != nil {
 		return nil, err
 	}
@@ -631,7 +631,7 @@ func (r *LedgerRepository) ListAccounts(ctx context.Context, sp space.ResolvedSp
 // in ascending order, following continuation keys to the end. A space's chart
 // and a period's entries are bounded by the user's own data, never by a
 // cross-tenant scan.
-func (r *LedgerRepository) queryPrefix(ctx context.Context, b Base, pk, skPrefix string) ([]map[string]types.AttributeValue, error) {
+func queryPrefix(ctx context.Context, b Base, pk, skPrefix string) ([]map[string]types.AttributeValue, error) {
 	var out []map[string]types.AttributeValue
 	var start map[string]types.AttributeValue
 	for {
@@ -1164,7 +1164,7 @@ func (r *LedgerRepository) EntriesFrom(ctx context.Context, sp space.ResolvedSpa
 
 // reversedIDs reads the space's reversal markers: one Query, and markers are few.
 func (r *LedgerRepository) reversedIDs(ctx context.Context, sp space.ResolvedSpace) (map[string]bool, error) {
-	items, err := r.queryPrefix(ctx, r.txs, sp.PK(), "REVERSAL#")
+	items, err := queryPrefix(ctx, r.txs, sp.PK(), "REVERSAL#")
 	if err != nil {
 		return nil, err
 	}
@@ -1517,7 +1517,7 @@ func (r *LedgerRepository) AllTransactions(ctx context.Context, sp space.Resolve
 	if err := sp.Require(space.Read); err != nil {
 		return nil, err
 	}
-	items, err := r.queryPrefix(ctx, r.txs, sp.PK(), "TX#")
+	items, err := queryPrefix(ctx, r.txs, sp.PK(), "TX#")
 	if err != nil {
 		return nil, err
 	}

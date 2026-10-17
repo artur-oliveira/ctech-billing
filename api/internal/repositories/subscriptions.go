@@ -641,6 +641,21 @@ func (r *SubscriptionRepository) ListByCustomer(ctx context.Context, organizatio
 	}
 }
 
+// ClearMetadata removes the subscription's metadata. Account deletion erases
+// what is not tied to an invoice (data inventory § 6). Metadata is free-form,
+// so it is the one place undeclared personal data can sit on a subscription
+// (ADR 0008). Invoices carry their own copy, which stays with the document.
+func (r *SubscriptionRepository) ClearMetadata(ctx context.Context, s *billing.Subscription, now time.Time) error {
+	if _, err := r.base.UpdateItem(ctx, TenantPK(s.OrganizationID, s.Livemode), new(SubscriptionSK(s.ID)), map[string]any{
+		"metadata":   nil,
+		"updated_at": now.UTC().Format(time.RFC3339Nano),
+	}); err != nil {
+		return err
+	}
+	s.Metadata = nil
+	return nil
+}
+
 // List pages the tenant's subscriptions, newest first.
 //
 // This reads the period index, where only subscription

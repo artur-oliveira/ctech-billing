@@ -84,6 +84,17 @@ type Config struct {
 	AccountClientID     string `env:"ACCOUNT_CLIENT_ID"`
 	AccountClientSecret string `env:"ACCOUNT_CLIENT_SECRET"`
 
+	// The confidential client that acks account-deletion purges to ctech-account
+	// (scope internal:account:erasure-ack and nothing else). It is dedicated so
+	// that the membership credential above cannot ack an erasure, and this one
+	// cannot read memberships.
+	//
+	// Empty means "read them from SSM": /ctech-billing/{env}/billing/erasure-client-{id,secret},
+	// declared by terraform/billing/erasure.tf. The consumer reads them at start
+	// rather than through the userdata, which is at its 16 KiB ceiling.
+	ErasureClientID     string `env:"ERASURE_CLIENT_ID"`
+	ErasureClientSecret string `env:"ERASURE_CLIENT_SECRET"`
+
 	// CheckoutLinkSecret signs public payment links. Empty means no public
 	// checkout at all — a forgeable link is worse than no link, so there is no
 	// default and no fallback.

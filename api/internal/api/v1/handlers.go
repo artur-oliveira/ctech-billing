@@ -22,6 +22,10 @@ import (
 
 // handlers bundles what every route closure needs.
 type handlers struct {
+	// erasedRef and tenantZero drop level reports for an erased person or
+	// workspace of tenant zero (levels.go).
+	erasedRef  func(ctx context.Context, customerRef string) (bool, error)
+	tenantZero string
 	// documents renders and serves invoice PDFs, shared by both signed-in
 	// surfaces because they render the same document from the same invoice.
 	// Nil when the deployment has no bucket, and then neither route exists.

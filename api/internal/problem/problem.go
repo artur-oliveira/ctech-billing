@@ -49,6 +49,10 @@ const (
 	// TypeSpaceUnavailable is ctech-account being unreachable: access fails
 	// closed, and the body says nothing about any organization.
 	TypeSpaceUnavailable = "/problems/space-unavailable"
+	// TypeAccountLocked is a signed-in person whose CTech account is being
+	// deleted (ctech-account's erasure saga). Every session request is refused
+	// from the lock to the purge, even with a token that is still valid.
+	TypeAccountLocked = "/problems/account-locked"
 	// TypeProviderUnavailable is a merchant's bank (BYOK) or billing's outbound
 	// Lambda not answering. Retryable; nothing was decided.
 	TypeProviderUnavailable = "/problems/provider-unavailable"

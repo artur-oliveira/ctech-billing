@@ -176,7 +176,7 @@ func (r *CardRepository) CardIDs(ctx context.Context, sp space.ResolvedSpace) ([
 	if err := sp.Require(space.Read); err != nil {
 		return nil, err
 	}
-	items, err := r.ledger.queryPrefix(ctx, r.cards, sp.PK(), "CARD#")
+	items, err := queryPrefix(ctx, r.cards, sp.PK(), "CARD#")
 	if err != nil {
 		return nil, err
 	}
@@ -199,7 +199,7 @@ func (r *CardRepository) ListCards(ctx context.Context, sp space.ResolvedSpace) 
 	if err := sp.Require(space.Read); err != nil {
 		return nil, err
 	}
-	items, err := r.ledger.queryPrefix(ctx, r.cards, sp.PK(), "CARD#")
+	items, err := queryPrefix(ctx, r.cards, sp.PK(), "CARD#")
 	if err != nil {
 		return nil, err
 	}

@@ -548,9 +548,8 @@ The required states of assessment § 15 apply to every screen. Visual design goe
 ## 8. Retention and deletion (ADR 0026)
 
 - Finance rows carry **no TTL**. They live as long as their space.
-- **Personal space** data is purged when the CTech account is deleted. ctech-account's
-  account-deletion spec (in progress) must emit the trigger. **Cross-repo dependency, owner:
-  Artur.**
+- **Personal space** data is purged when the CTech account is deleted: ctech-account's `user.erase`,
+  consumed by billing (`repositories.SpacePurger`, ADR 0026 amendment).
 - **Organization space** data survives a member leaving and is purged when the organization is
   closed.
 - Import lines: TTL 90 days after processing. Raw files: never stored.

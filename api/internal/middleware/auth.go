@@ -9,6 +9,8 @@
 package middleware
 
 import (
+	"context"
+	"errors"
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
@@ -37,10 +39,44 @@ type Claims = jwtverify.Claims
 // this only adds the Fiber wiring and the RFC 7807 responses.
 type Verifier struct {
 	*jwtverify.Verifier
+	// lock is RefuseLocked. Nil when no erasure state is wired (unit tests that
+	// build a bare verifier).
+	lock    fiber.Handler
+	blocked func(ctx context.Context, sub string) (bool, error)
 }
 
 func NewVerifier(jwksURL, audience, issuer string, backend cache.Backend) *Verifier {
-	return &Verifier{jwtverify.NewVerifier(jwksURL, audience, issuer, backend)}
+	return &Verifier{Verifier: jwtverify.NewVerifier(jwksURL, audience, issuer, backend)}
+}
+
+// WithErasureLock refuses session tokens of a locked or erased subject on every
+// route this verifier guards (RefuseLocked).
+func (v *Verifier) WithErasureLock(blocked func(ctx context.Context, sub string) (bool, error)) *Verifier {
+	v.lock = RefuseLocked(blocked)
+	v.blocked = blocked
+	return v
+}
+
+// ErrAccountLocked is VerifyClaims refusing a person whose account is being deleted.
+var ErrAccountLocked = errors.New("account locked")
+
+// VerifyClaims is the embedded verification plus the erasure lock, for callers
+// that do not go through Middleware (the realtime gateway opens its sockets from
+// a token it verifies itself). Without it a locked person could still open a
+// websocket with an unexpired token.
+func (v *Verifier) VerifyClaims(ctx context.Context, token string) (*jwtverify.Claims, error) {
+	claims, err := v.Verifier.VerifyClaims(ctx, token)
+	if err != nil || v.blocked == nil || claims == nil || claims.SID == "" {
+		return claims, err
+	}
+	locked, err := v.blocked(ctx, claims.Sub)
+	if err != nil {
+		return nil, err
+	}
+	if locked {
+		return nil, ErrAccountLocked
+	}
+	return claims, nil
 }
 
 // Middleware validates the Bearer token and stores the claims in locals.
@@ -50,7 +86,7 @@ func (v *Verifier) Middleware() fiber.Handler {
 		if !strings.HasPrefix(header, "Bearer ") {
 			return problem.Unauthorized("token ausente").Send(c)
 		}
-		claims, err := v.VerifyClaims(c.Context(), strings.TrimPrefix(header, "Bearer "))
+		claims, err := v.Verifier.VerifyClaims(c.Context(), strings.TrimPrefix(header, "Bearer "))
 		if err != nil || claims.Sub == "" {
 			// One message for every failure mode. Distinguishing "expired" from
 			// "wrong signature" from "unknown key" tells an attacker which of
@@ -58,6 +94,9 @@ func (v *Verifier) Middleware() fiber.Handler {
 			return problem.Unauthorized("invalid credentials").WithCode("invalid_credentials").Send(c)
 		}
 		c.Locals(ClaimsKey, claims)
+		if v.lock != nil {
+			return v.lock(c)
+		}
 		return c.Next()
 	}
 }

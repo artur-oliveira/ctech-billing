@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"context"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
@@ -113,6 +114,13 @@ type Deps struct {
 	// on a short interval instead of waiting for a notification.
 	SettlementBus settlement.Bus
 
+	// Eraser answers ctech-account's erasure eligibility question. Nil leaves
+	// the route unmounted.
+	Eraser *services.Eraser
+	// ErasedRef reports a level-report customer ref the account-deletion saga
+	// has locked or erased (services.ErasedRef). Nil drops nothing.
+	ErasedRef func(ctx context.Context, customerRef string) (bool, error)
+
 	// The health report's inputs. All four may be zero — a test wires the app
 	// without them and gets a report that says so rather than one that panics.
 	// InvoicesTable is the **physical** name, prefix included, because proving
@@ -149,6 +157,8 @@ func Register(app *fiber.App, d Deps) {
 		payments:   d.Payments,
 		usage:      d.Usage,
 		levels:     d.Levels,
+		erasedRef:  d.ErasedRef,
+		tenantZero: d.PortalOrganizationID,
 		subscriber: d.Subscriber,
 		cat:        d.Catalog,
 		clock:      clock,
@@ -293,6 +303,7 @@ func Register(app *fiber.App, d Deps) {
 	// organization with no billing tenant may connect for statement sync (BYOK
 	// spec § 3.1), so the merchant tenant resolver must never run in front.
 	registerConnections(v1, d, auth, clock)
+	registerErasure(v1, d, auth)
 	registerConsole(v1, d, h, auth)
 	registerPortal(v1, d, h, auth)
 	registerCheckout(v1, d, h)

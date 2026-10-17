@@ -747,3 +747,45 @@ func TestACardRecurrenceOnAnArchivedCardProjectsNothing(t *testing.T) {
 		}
 	}
 }
+
+// Review Focus 4: a work item read before the purge must not write into the
+// space after it.
+func TestTheJobLeavesAnErasedSpaceAlone(t *testing.T) {
+	sp := testSpace(t)
+	bills, recs := newFakeBills(), newFakeRecs(monthly("r1", 10))
+	cards := &fakeCards{due: []repositories.DueCard{{Space: sp, CardID: "c1"}}}
+	bills.autoDue = []repositories.DueBill{dueBill("b1", day(2026, time.March, 10))}
+	asked := 0
+	jobs := NewFinanceJobs(bills, recs).WithCards(cards).WithSpaceGuard(func(context.Context, space.ResolvedSpace) (bool, error) {
+		asked++
+		return true, nil
+	})
+	today, now := day(2026, time.March, 20), time.Now()
+
+	m := jobs.Materialise(context.Background(), true, today, now)
+	a := jobs.AutoSettle(context.Background(), true, today, now)
+	c := jobs.CloseStatements(context.Background(), true, today, now)
+	if m.Done != 0 || m.Skipped != 1 || bills.created != 0 || recs.marks != 0 {
+		t.Fatalf("materialise = %+v, created %d, cursor moves %d; want the erased space skipped", m, bills.created, recs.marks)
+	}
+	if a.Done != 0 || a.Skipped != 1 || len(bills.settled) != 0 {
+		t.Fatalf("auto-settle = %+v, settled %v; want the erased space skipped", a, bills.settled)
+	}
+	if c.Done != 0 || c.Skipped != 1 || len(cards.closed) != 0 {
+		t.Fatalf("close = %+v, closed %v; want the erased space skipped", c, cards.closed)
+	}
+	if asked != 3 {
+		t.Fatalf("guard asked %d times, want once per item", asked)
+	}
+}
+
+func TestAGuardErrorFailsTheItemNotTheRun(t *testing.T) {
+	bills, recs := newFakeBills(), newFakeRecs(monthly("r1", 10), monthly("r2", 12))
+	jobs := NewFinanceJobs(bills, recs).WithSpaceGuard(func(context.Context, space.ResolvedSpace) (bool, error) {
+		return false, errors.New("dynamodb: boom")
+	})
+	res := jobs.Materialise(context.Background(), true, day(2026, time.March, 20), time.Now())
+	if res.Failed != 2 || res.Done != 0 || bills.created != 0 {
+		t.Fatalf("res = %+v; an unknown erasure state is a failure, never a write", res)
+	}
+}

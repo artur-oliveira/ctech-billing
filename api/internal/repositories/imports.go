@@ -510,7 +510,7 @@ func (r *ImportRepository) List(ctx context.Context, sp space.ResolvedSpace, acc
 	if err := sp.Require(space.Read); err != nil {
 		return nil, err
 	}
-	raw, err := r.ledger.queryPrefix(ctx, r.imports, sp.PK(), "IMPORT#")
+	raw, err := queryPrefix(ctx, r.imports, sp.PK(), "IMPORT#")
 	if err != nil {
 		return nil, err
 	}
@@ -542,7 +542,7 @@ func (r *ImportRepository) Get(ctx context.Context, sp space.ResolvedSpace, impo
 	if err != nil {
 		return Import{}, nil, err
 	}
-	raw, err := r.ledger.queryPrefix(ctx, r.imports, ImportPK(sp, importID), "LINE#")
+	raw, err := queryPrefix(ctx, r.imports, ImportPK(sp, importID), "LINE#")
 	if err != nil {
 		return Import{}, nil, err
 	}

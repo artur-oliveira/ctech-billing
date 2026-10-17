@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"gopkg.aoctech.app/api-commons/erasure"
 )
 
 // schema.json is read by two things that cannot check each other at compile
@@ -33,6 +34,7 @@ var allTables = []string{
 	TableCards,
 	TableImports,
 	TableByok,
+	TableErasureState,
 }
 
 func TestEveryTableConstantHasASchema(t *testing.T) {
@@ -174,5 +176,21 @@ func TestTableDefinitionRejectsAnUnknownTable(t *testing.T) {
 func TestPhysicalNameFollowsTheCompanyStandard(t *testing.T) {
 	if got := PhysicalName("prod_billing", TableInvoices); got != "prod_billing_invoices" {
 		t.Errorf("got %q, want prod_billing_invoices", got)
+	}
+}
+
+// The saga's state store (api-commons/erasure.Store) addresses
+// {prefix}_erasure_state by partition key "pk" alone. A range key here would
+// make every one of its GetItem calls fail with a validation error.
+func TestTheErasureStateTableIsTheOneTheSagaStoreAddresses(t *testing.T) {
+	if TableErasureState != erasure.TableSuffix {
+		t.Fatalf("TableErasureState = %q, the store uses %q", TableErasureState, erasure.TableSuffix)
+	}
+	s, ok := Schemas()[TableErasureState]
+	if !ok {
+		t.Fatal("erasure_state is not in schema.json, so Terraform would not create it")
+	}
+	if s.HashKey != "pk" || s.RangeKey != "" || len(s.Indexes) != 0 {
+		t.Fatalf("erasure_state schema = %+v, want hash key pk only", s)
 	}
 }
