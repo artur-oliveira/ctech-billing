@@ -175,3 +175,12 @@ that would otherwise grant it.
 
 An access pattern that genuinely needs a full-table read — an export, a migration — gets its own
 role, deliberately.
+
+## Account-deletion queue
+
+`billing/erasure.tf` subscribes `{env}-ctech-billing-erasure` (+ `-dlq`) to ctech-account's
+`{env}-account-user-erasure` topic. The ARN is read from `/ctech/{env}/account/erasure-topic-arn`, so a
+plan fails until ctech-account's stack has created it. The subscription filters on the `services`
+message attribute (`["billing"]`) with raw delivery. The service derives the queue name from
+`ENVIRONMENT`, and the userdata gained nothing. There is no alarm on the DLQ (wallet and poker declined theirs); check its depth when a deletion stays in `purging`.
+The state table is `schema.json`'s `erasure_state`.

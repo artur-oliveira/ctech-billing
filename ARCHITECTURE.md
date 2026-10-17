@@ -274,6 +274,11 @@ convention is that a service sends what it is responsible for saying.
   Card data, PIX keys and bank accounts are still **never** stored — those belong to
   wallet/PSP and are referenced by opaque id. Retention per record type is fixed in
   [`ADR 0009`](docs/adr/0009-retention-and-ttl.md).
+- **Account deletion is a saga billing takes part in, not a delete button.** ctech-account locks the
+  person (a 403 on every session route here, plus the jwtverify revocation list), asks billing for
+  blockers, and sends `user.erase`. Billing cancels the person's subscriptions, anonymizes the customer
+  in place, deletes their finance spaces, and acks. The invoice aggregate stays: it is a document. The
+  details and the rulings are in [`docs/plans/2026-10-07-account-deletion-participant.md`](docs/plans/2026-10-07-account-deletion-participant.md).
 - Webhook signature verification (§ 3) is mandatory, not optional-with-a-TODO.
 - **This service is an OAuth resource server and nothing else.** It verifies tokens against
   ctech-account's JWKS, publishes the scopes it accepts from its own repository and pipeline

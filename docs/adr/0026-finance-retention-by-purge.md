@@ -49,3 +49,16 @@ completion (ADR 0009's "explicit job", now with a caller).
 
 A legal floor attaches to finance records, for example if the module ever issues documents to third
 parties. Then the affected rows get ADR 0009 treatment and the purge skips them.
+
+## Amendment, 2026-10-07 — implemented
+
+The trigger is ctech-account's `user.erase`. `repositories.SpacePurger.PurgeSpace` deletes every row
+under the space key `S` in `ledger_accounts`, `ledger_transactions`, `bills`, `recurrences`, `cards`,
+`imports`, `byok`, `idempotency` and `audit`, plus every `S#ACCOUNT#{id}`, `S#CARD#{id}` and
+`S#IMPORT#{id}` partition and the `HOOK#{id}` rows the connections name. Audit rows go for every space
+it purges, personal or workspace: the workspace itself is gone (decision 2026-10-13). It runs for
+`USER#{sub}#live|test` and for every workspace in the message's `workspaces[]` (erased with their only
+member). Child partitions go first, so a run that dies anywhere is finished by the next.
+`TestEveryTableIsClassifiedForThePurge` is the "a test lists the tables" consequence: every table in
+`schema.json` is either purged under the space or listed with the reason it is not. A workspace that
+has a billing tenant blocks the deletion (`billing.merchant_tenant`) until a tenant deletion flow exists.

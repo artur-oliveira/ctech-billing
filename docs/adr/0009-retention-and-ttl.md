@@ -48,3 +48,9 @@ Two technical caveats that are not cosmetic:
 ## Reopen if
 
 A hard legal deadline appears. The answer is an explicit purge job, not tighter TTLs.
+
+## Amendment, 2026-10-07 — the soft-delete has a caller
+
+`CustomerRepository.Anonymize` is now called by the account-deletion saga (`services.Eraser.Purge`)
+for the tenant-zero customer of a deleted CTech account. The customer's subscriptions are canceled and
+their metadata cleared; the invoice aggregate is untouched.

@@ -370,6 +370,34 @@ is the server's, and a client that could name one could accept a document it cho
 wall: the person there has no session to record an answer against, and a consent screen in front of
 a payment refuses money over a document nobody needs to have read in order to owe the bill.
 
+### Account deletion (LGPD)
+
+Billing is a participant in ctech-account's erasure saga
+(ctech-account `docs/specs/2026-10-06-account-deletion-saga-protocol.md`; plan
+[`docs/plans/2026-10-07-account-deletion-participant.md`](docs/plans/2026-10-07-account-deletion-participant.md)).
+
+| Piece | Where |
+|---|---|
+| Eligibility: `GET /v1.0/internal/erasure/eligibility/:sub`, scope `internal:billing:erasure-eligibility` (minted by ctech-account only; not in the scope manifest) | `internal/api/v1/erasure.go` |
+| Blockers: `billing.invoice_open` (a live tenant-zero invoice still owed, with `count`, `overdue` and `amount_cents`, and the portal's `/invoices` as `action_url`), `billing.invoice_uncollectible` (a written-off invoice still owed, with `count` and `amount_cents` and no `action_url`, because support records that payment), `billing.merchant_tenant` (a workspace being erased has a billing tenant; `detail.workspace_ids`) | `services.Eraser.Blockers` |
+| Lock: every session token of a locked or erased `sub` gets 403 `/problems/account-locked`, on every route | `middleware.RefuseLocked`, inside `Verifier.Middleware` |
+| Token cut-off: the jwtverify revocation list, read from Valkey **DB 0** (`VALKEY_URL` without its DB path) | `internal/app/erasure.go` |
+| Purge: re-checks the blockers; cancels the tenant-zero subscriptions of the person and of every erased workspace now, clears their metadata, anonymizes those customers in place; deletes the level rows of `USER_{sub}` / `ORG_{id}`; disconnects bank connections; deletes the personal finance space and those of every workspace in `workspaces[]`, across every space-keyed table (ledger, bills, recurrences, cards, imports, byok, idempotency, audit) | `services.Eraser.Purge`, `repositories.SpacePurger` |
+| Kept: invoices, lines, payment attempts, credit notes, invoice PDFs, the canceled subscriptions, audit rows (except those of a purged finance space) | ADR 0009, ADR 0026 |
+| Consumer: SQS `{env}-ctech-billing-erasure` (+ `-dlq`), run in the API process, acks to `{ACCOUNT_BASE_URL}/v1.0/internal/erasure/ack` with a **dedicated** client holding only `internal:account:erasure-ack` (`ERASURE_CLIENT_ID`/`SECRET`, or the SecureStrings `/ctech-billing/{env}/billing/erasure-client-{id,secret}`) | `app.BuildErasureConsumer`, `terraform/billing/erasure.tf` |
+| State and tombstones: `{env}_billing_erasure_state` | `api-commons/erasure.Store` |
+
+The daily finance job (recurrences, auto-settle, card close), the BYOK job and level reports skip any owner that is locked or erased (`services.ErasedSpace`, `ErasedRef`).
+No payment gateway is involved: billing stores no card, PIX key or gateway customer, and the PIX
+rail is ctech-wallet's.
+
+There is no CloudWatch alarm on the DLQ (the family declined them: ctech-wallet #103, ctech-poker #427).
+When a deletion stays in `purging` in ctech-account, check the depth of `{env}-ctech-billing-erasure-dlq`.
+
+**After restoring any billing table from PITR**, replay `user.erase` for every request purged after
+the restore point (ctech-account README, "Account deletion" → backup-restore runbook). The purge is
+idempotent.
+
 ### Telling other services what happened
 
 Every consuming product needs to react to `invoice.paid` and
