@@ -1,7 +1,7 @@
 package app
 
 import (
-	"fmt"
+	"errors"
 	"log/slog"
 	"net/url"
 
@@ -16,12 +16,14 @@ import (
 // invisible. Derived rather than configured: the userdata is at its 16 KiB
 // ceiling (terraform/README).
 func revocationURL(valkeyURL string) (string, error) {
+	// The URL can carry the password, so no error here quotes it, and url.Parse's
+	// own error (which does) is dropped.
 	u, err := url.Parse(valkeyURL)
 	if err != nil {
-		return "", err
+		return "", errors.New("valkey url is not parseable")
 	}
 	if u.Host == "" {
-		return "", fmt.Errorf("valkey url %q has no host", valkeyURL)
+		return "", errors.New("valkey url has no host")
 	}
 	u.Path, u.RawPath = "", ""
 	return u.String(), nil
