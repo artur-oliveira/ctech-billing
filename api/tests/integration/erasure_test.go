@@ -13,6 +13,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 
+	"gopkg.aoctech.app/api-commons/byok/byoktest"
 	"gopkg.aoctech.app/api-commons/erasure"
 
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
@@ -312,7 +313,18 @@ func seedByokConnectionWithHook(t *testing.T, sp space.ResolvedSpace) {
 		Kind: byokconn.KindMerchant, State: byokconn.StateActive, SyncState: byokconn.SyncActive, Version: 1,
 		Sealed: "b1.fake", AccountNumber: "1234567", HookID: hook,
 	}
+	// Disconnect also flips the connection's ledger account to disconnected.
+	conn.LedgerAccountID = services.LedgerAccountID("inter", conn.AccountNumber)
+	if _, err := repositories.NewLedgerRepository(testDB, testCfg).EnsureByokAccount(ctx, sp, conn.LedgerAccountID, "Inter ···4567", "inter", seedNow); err != nil {
+		t.Fatal(err)
+	}
 	if err := repo.CreateConnection(ctx, conn, "u", "r", seedNow); err != nil {
+		t.Fatal(err)
+	}
+	// A real connection has been saved by the hourly job many times; the
+	// disconnect's change event is keyed by the revision, so revision 1 would
+	// collide with the one written at creation.
+	if err := repo.SaveConnection(ctx, conn, "job", "r", "", seedNow.Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -830,4 +842,27 @@ func TestALevelReportForAnErasedRefWritesNothing(t *testing.T) {
 	if err != nil || l == nil || l.IdempotencyKey != "before" {
 		t.Fatalf("latest = %+v, %v; the report after the lock must not have been written", l, err)
 	}
+}
+
+// The purge disconnects through the real ByokConnections, which deletes the
+// connection row, and that row is the only thing naming the HOOK#{id} and
+// HOOK#{id}-payout partitions. With the fake banks above this was invisible.
+func TestPurgeLeavesNoBankHookBehindWhenTheConnectionIsDisconnectedFirst(t *testing.T) {
+	ctx := ctxT(t)
+	e := newPortal(t)
+	_, _, _, conns := byokServices(t, newFakeInvoker(byoktest.New()))
+	ws := newSpaceOrgID() // only organization workspaces connect banks
+	workspace := jobSpace(t, ws, true)
+	seedFinance(t, workspace)
+	// The person's own space is purged in the same run and the real service
+	// refuses it: the purge must not ask.
+	personal := jobSpace(t, "USER#"+e.userID, true)
+	seedFinance(t, personal)
+
+	er := eraserFor(e).WithPurge(repositories.NewSpacePurger(testDB, testCfg), space.ForJob, conns)
+	if ack, err := er.Purge(ctx, eraseMessage(e.userID, ws)); err != nil || ack.Result != erasure.ResultDone {
+		t.Fatalf("ack = %+v, %v", ack, err)
+	}
+	assertSpaceGone(t, workspace) // includes HOOK#{id} and HOOK#{id}-payout
+	assertSpaceGone(t, personal)
 }

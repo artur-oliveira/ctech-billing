@@ -350,13 +350,22 @@ func (e *Eraser) eraseLevels(ctx context.Context, live bool, sub string, workspa
 	return nil
 }
 
-// disconnectBanks disconnects every BYOK connection of the space (R23).
+// disconnectBanks disconnects every BYOK connection of the space (R23). A
+// personal space cannot have one (ByokConnections refuses it), so it is skipped
+// rather than asked. The hooks go first: Disconnect deletes the connection row,
+// the only thing that names them.
 func (e *Eraser) disconnectBanks(ctx context.Context, sp space.ResolvedSpace, m erasure.Message, counts map[string]int, now time.Time) error {
+	if sp.Personal() {
+		return nil
+	}
 	conns, err := e.banks.List(ctx, sp)
 	if err != nil {
 		return err
 	}
 	for _, c := range conns {
+		if _, err := e.purger.DeleteConnectionHooks(ctx, c.HookID); err != nil {
+			return fmt.Errorf("deleting hooks of %s in %s: %w", c.Provider, sp.PK(), err)
+		}
 		if err := e.banks.Disconnect(ctx, sp, c.Provider, erasureActor, m.RequestID, now); err != nil {
 			return fmt.Errorf("disconnecting %s in %s: %w", c.Provider, sp.PK(), err)
 		}

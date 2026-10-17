@@ -394,6 +394,12 @@ rail is ctech-wallet's.
 There is no CloudWatch alarm on the DLQ (the family declined them: ctech-wallet #103, ctech-poker #427).
 When a deletion stays in `purging` in ctech-account, check the depth of `{env}-ctech-billing-erasure-dlq`.
 
+**Operating notes (independent review, 2026-10-17).**
+- The lock is written by the consumer. If `erasure-client-id`/`-secret` hold `SET-OUT-OF-BAND` the consumer does not start, billing never records the lock, and a person in grace is not locked here. That is only safe while billing is out of `ERASURE_PARTICIPANTS`: set the client first (it is set in prod).
+- There is no CloudWatch alarm on the erasure DLQ (the family declined them; the saga spec § 7 asks for one). Read `{env}-ctech-billing-erasure-dlq` when a deletion stays in `purging`.
+- An invoice issued for a monthly subscriber during the grace period is caught at the end of grace (`billing.invoice_open`, the request goes to `blocked`): the person cancels from the e-mail, pays it, and asks again. Subscriptions are not request-time blockers (R3).
+- A websocket opened before the lock keeps streaming opaque change ids until it reconnects (the lock is checked at connect). Closing them on lock (`Consumer.OnLock`) is not wired.
+
 **After restoring any billing table from PITR**, replay `user.erase` for every request purged after
 the restore point (ctech-account README, "Account deletion" → backup-restore runbook). The purge is
 idempotent.

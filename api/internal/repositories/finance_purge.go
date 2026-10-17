@@ -144,6 +144,26 @@ func (p *SpacePurger) PurgeSpace(ctx context.Context, sp space.ResolvedSpace) (m
 	return counts, nil
 }
 
+// DeleteConnectionHooks deletes the HOOK#{id} and HOOK#{id}-payout partitions a
+// bank connection names. The purge calls it before the connection is
+// disconnected: Disconnect deletes the connection row, and that row is the only
+// thing that names the hooks (PurgeSpace's own step 4 reads it too, so it is
+// kept as the safety net for a connection that was never disconnected).
+func (p *SpacePurger) DeleteConnectionHooks(ctx context.Context, hookID string) (int, error) {
+	if hookID == "" {
+		return 0, nil
+	}
+	total := 0
+	for _, id := range []string{hookID, hookID + PayoutHookSuffix} {
+		n, err := p.deletePartition(ctx, TableByok, hookPK(id))
+		total += n
+		if err != nil {
+			return total, err
+		}
+	}
+	return total, nil
+}
+
 // eachID calls fn with the id of every row under pk whose sort key starts with
 // prefix (the sort key is prefix + id).
 func (p *SpacePurger) eachID(ctx context.Context, table, pk, prefix string, fn func(id string) error) error {
