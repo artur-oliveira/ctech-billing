@@ -450,7 +450,7 @@ func (r *RecurrenceRepository) List(ctx context.Context, sp space.ResolvedSpace)
 	if err := sp.Require(space.Read); err != nil {
 		return nil, err
 	}
-	items, err := r.ledger.queryPrefix(ctx, r.recs, sp.PK(), "RECURRENCE#")
+	items, err := queryPrefix(ctx, r.recs, sp.PK(), "RECURRENCE#")
 	if err != nil {
 		return nil, err
 	}
@@ -490,7 +490,7 @@ func (r *RecurrenceRepository) ListWithCursors(ctx context.Context, sp space.Res
 	if err := sp.Require(space.Read); err != nil {
 		return nil, err
 	}
-	items, err := r.ledger.queryPrefix(ctx, r.recs, sp.PK(), "RECURRENCE#")
+	items, err := queryPrefix(ctx, r.recs, sp.PK(), "RECURRENCE#")
 	if err != nil {
 		return nil, err
 	}
