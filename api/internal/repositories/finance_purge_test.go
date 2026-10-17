@@ -52,3 +52,31 @@ func TestPurgeSpaceRefusesTheZeroSpace(t *testing.T) {
 		t.Fatalf("err = %v, want space.ErrNoSpace", err)
 	}
 }
+
+func TestEveryTableIsClassifiedForTheExport(t *testing.T) {
+	for _, name := range TableNames() {
+		_, skipped := notExported[name]
+		exported := slices.Contains(exportedFinanceTables, name)
+		if skipped == exported {
+			t.Errorf("table %q must be in exactly one of exportedFinanceTables or notExported (with the reason it is not)", name)
+		}
+	}
+	for _, name := range exportedFinanceTables {
+		if !slices.Contains(TableNames(), name) {
+			t.Errorf("exportedFinanceTables names %q, which is not a table", name)
+		}
+	}
+}
+
+func TestScrubSecretsDropsAtAnyDepth(t *testing.T) {
+	got := ScrubSecrets(map[string]any{"a": 1, "hook_secret": "x", "n": map[string]any{"api_key_hash": "y", "ok": true}, "l": []any{map[string]any{"token": "z"}}}).(map[string]any)
+	if _, ok := got["hook_secret"]; ok || len(got["n"].(map[string]any)) != 1 || len(got["l"].([]any)[0].(map[string]any)) != 0 {
+		t.Fatalf("scrub=%v", got)
+	}
+}
+
+func TestReadRefusesTheZeroSpace(t *testing.T) {
+	if _, err := (&SpaceReader{}).Read(context.Background(), space.ResolvedSpace{}); !errors.Is(err, space.ErrNoSpace) {
+		t.Fatalf("err = %v, want space.ErrNoSpace", err)
+	}
+}
