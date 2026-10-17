@@ -68,6 +68,10 @@ const (
 	// TypeTenantSuspended is a live tenant whose prod_billing entitlement ended:
 	// writes refused, reads served (spec § 4.3).
 	TypeTenantSuspended = "/problems/tenant-suspended"
+	// TypeTenantClosing is a tenant whose owner confirmed closing the billing
+	// account: read-only from the confirmation until the closure is cancelled
+	// (docs/specs/2026-10-17-merchant-tenant-deletion.md T2).
+	TypeTenantClosing = "/problems/tenant-closing"
 	// TypeCompaniesUnavailable is ctech-account not answering about an
 	// organization's companies: the application form cannot be filled now.
 	TypeCompaniesUnavailable = "/problems/companies-unavailable"

@@ -34,12 +34,23 @@ type Invoicer struct {
 	// levels and customers bill prices aggregated by max (WithLevels).
 	levels    *repositories.LevelRepository
 	customers *repositories.CustomerRepository
+	// tenantGuard skips the subscriptions of a tenant the sweep must leave alone
+	// (WithTenantGuard). Nil: none.
+	tenantGuard func(ctx context.Context, tenantOrgID string) (bool, error)
 	// charges creates a BYOK tenant's due-date charge after an invoice is
 	// issued (spec 2026-10-11 § 7.2). Nil: nothing to create.
 	charges ChargeCreator
 }
 
 // WithCharges attaches the BYOK rail's hook after every issue.
+// WithTenantGuard makes the daily sweep skip (and count as suspended) the
+// subscriptions of a tenant for which skip answers true: a tenant being closed
+// issues no new invoices during its read-only grace.
+func (s *Invoicer) WithTenantGuard(skip func(ctx context.Context, tenantOrgID string) (bool, error)) *Invoicer {
+	s.tenantGuard = skip
+	return s
+}
+
 func (s *Invoicer) WithCharges(c ChargeCreator) *Invoicer {
 	s.charges = c
 	return s
@@ -401,6 +412,18 @@ func (s *Invoicer) RunDailySweep(ctx context.Context, livemode bool, date brcal.
 			} else if skip {
 				result.Suspended++
 				continue
+			}
+			if s.tenantGuard != nil {
+				skip, err := s.tenantGuard(ctx, sub.OrganizationID)
+				if err != nil {
+					result.Failed++
+					result.Errors = append(result.Errors, fmt.Errorf("subscription %s: reading the closure flag: %w", sub.ID, err))
+					continue
+				}
+				if skip {
+					result.Suspended++
+					continue
+				}
 			}
 			switch err := s.invoiceOne(ctx, &sub, actor, now); {
 			case err == nil:
