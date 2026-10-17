@@ -8,6 +8,7 @@ import finance from "./finance.json";
 import bills from "./bills.json";
 import errors from "./errors.json";
 import connections from "./connections.json";
+import closure from "./closure.json";
 
 const catalog = {
   common,
@@ -20,6 +21,7 @@ const catalog = {
   bills,
   errors,
   connections,
+  closure,
 };
 
 export default catalog;

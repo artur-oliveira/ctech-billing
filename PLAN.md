@@ -950,7 +950,8 @@ Plan: [`docs/plans/2026-10-07-account-deletion-participant.md`](docs/plans/2026-
 Spec `docs/specs/2026-10-17-merchant-tenant-deletion.md`, plan `docs/plans/2026-10-17-merchant-tenant-closure.md`.
 - [x] Phase 1 — lifecycle: state machine, `tenant_closures` table, service (blockers, request/confirm/cancel, worker step), read-only gate on M2M and console writes, sweep skip
 - [x] Phase 2 — purge: `TenantPurger` over every tenant-keyed table and the pointer rows, dry-run, classification test, tombstone, application rows, `cmd/closure-residue` (operator Scan) for the sub-partitions; behind `TENANT_CLOSURE_PURGE_ENABLED`. The finance space and BYOK connections stay (they are the workspace's)
-- [ ] Phase 3 — surfaces: owner e-mail (account route), console routes, public confirm/cancel links, console UI, `cmd/closure` worker
+- [x] Phase 3a — backend surfaces: account contact route (ctech-account #82), console and public-link routes, e-mails, worker in the API process
+- [x] Phase 3b — console UI: the Settings card and the `/closure/confirm`, `/closure/cancel` pages
 - [ ] Phase 4 — export: job-built zip and presigned link
 
 ## What is actually left (as of 2026-08-16)

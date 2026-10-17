@@ -5,12 +5,18 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/url"
+	"strings"
 	"time"
+
+	"gopkg.aoctech.app/billing/api/internal/accountclient"
+	"gopkg.aoctech.app/billing/api/internal/email"
 
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
 	"gopkg.aoctech.app/billing/api/internal/domain/closure"
 	"gopkg.aoctech.app/billing/api/internal/domain/id"
 	"gopkg.aoctech.app/billing/api/internal/repositories"
+	"gopkg.aoctech.app/billing/api/internal/space"
 )
 
 // Blocker codes of a tenant closure (spec T3), stable and translated by the
@@ -43,7 +49,10 @@ type ClosureFacts interface {
 	RefundsOpen(ctx context.Context, tenantID string) (int64, error)
 }
 
-// ClosureOwners answers whether a ctech-account user owns a workspace, live.
+// ClosureOwners answers, live and uncached, whether a ctech-account user is an
+// owner of a workspace. The console's space resolver caches membership for a
+// minute, which is fine for a read and not for an irreversible closure: the
+// request, the confirmation and the purge each ask again.
 type ClosureOwners interface {
 	IsOwner(ctx context.Context, sub, accountOrgID string) (bool, error)
 }
@@ -82,13 +91,25 @@ type TenantClosures struct {
 	newID      func() string
 }
 
-func NewTenantClosures(repo *repositories.ClosureRepository, tenants ClosureTenants, owners ClosureOwners, facts ClosureFacts, mail ClosureMailer, tenantZero string) *TenantClosures {
-	return &TenantClosures{repo: repo, tenants: tenants, owners: owners, facts: facts, mail: mail, tenantZero: tenantZero,
+func NewTenantClosures(repo *repositories.ClosureRepository, tenants ClosureTenants, facts ClosureFacts, mail ClosureMailer, tenantZero string) *TenantClosures {
+	return &TenantClosures{repo: repo, tenants: tenants, facts: facts, mail: mail, tenantZero: tenantZero,
 		now: time.Now, newID: func() string { return id.NewWithPrefix("clo") }}
 }
 
 // WithClock replaces the clock (tests pin the grace period with it).
 func (s *TenantClosures) WithClock(now func() time.Time) *TenantClosures { s.now = now; return s }
+
+// WithOwners adds the live owner check at the request, the confirmation and
+// before the purge. Nil (not wired): only the role the caller passes is trusted.
+func (s *TenantClosures) WithOwners(o ClosureOwners) *TenantClosures { s.owners = o; return s }
+
+// stillOwner is the live check; true when no check is wired.
+func (s *TenantClosures) stillOwner(ctx context.Context, sub, acct string) (bool, error) {
+	if s.owners == nil {
+		return true, nil
+	}
+	return s.owners.IsOwner(ctx, sub, acct)
+}
 
 // WithPurger enables the purge step of the worker.
 func (s *TenantClosures) WithPurger(p ClosurePurger) *TenantClosures { s.purger = p; return s }
@@ -142,12 +163,18 @@ func (s *TenantClosures) Blockers(ctx context.Context, acct string) ([]ClosureBl
 	return out, nil
 }
 
-// Request opens a closure awaiting the owner's e-mail confirmation. An earlier
-// unconfirmed request is replaced, so a lost e-mail never blocks the owner.
-func (s *TenantClosures) Request(ctx context.Context, sub, acct string) (*closure.Closure, error) {
-	if owner, err := s.owners.IsOwner(ctx, sub, acct); err != nil {
+// Request opens a closure awaiting the owner's e-mail confirmation. owner is
+// whether the caller holds the owner role in the workspace, as the console's
+// space resolver just read it from ctech-account (the service never trusts a
+// role it did not just see). An earlier unconfirmed request is replaced, so a
+// lost e-mail never blocks the owner.
+func (s *TenantClosures) Request(ctx context.Context, sub, acct string, owner bool) (*closure.Closure, error) {
+	if !owner {
+		return nil, closure.ErrNotOwner
+	}
+	if live, err := s.stillOwner(ctx, sub, acct); err != nil {
 		return nil, err
-	} else if !owner {
+	} else if !live {
 		return nil, closure.ErrNotOwner
 	}
 	blockers, err := s.Blockers(ctx, acct)
@@ -220,6 +247,11 @@ func (s *TenantClosures) Confirm(ctx context.Context, requestID, token string) (
 	now := s.now()
 	if c.State == closure.Closing {
 		return c, s.repo.SetReadOnly(ctx, tenantIDs(ts), c.ID, true, now)
+	}
+	if live, err := s.stillOwner(ctx, c.RequestedBy, c.AccountOrganizationID); err != nil {
+		return nil, err
+	} else if !live {
+		return nil, closure.ErrNotOwner // the requester lost the role since asking: the request lapses
 	}
 	if err := c.Confirm(now); err != nil {
 		if errors.Is(err, closure.ErrExpired) {
@@ -358,6 +390,23 @@ func (s *TenantClosures) step(ctx context.Context, c *closure.Closure) error {
 func (s *TenantClosures) purge(ctx context.Context, c *closure.Closure) error {
 	now := s.now()
 	if c.State == closure.ReadyToPurge {
+		// The last look before an irreversible step: the person who asked must
+		// still own the workspace. If not, the closure is cancelled, never run.
+		live, err := s.stillOwner(ctx, c.RequestedBy, c.AccountOrganizationID)
+		if err != nil {
+			return err
+		}
+		if !live {
+			if err := c.Cancel(now); err != nil {
+				return err
+			}
+			if err := s.repo.Save(ctx, c, closure.ReadyToPurge, now); err != nil {
+				return err
+			}
+			s.liftFlags(ctx, c)
+			slog.WarnContext(ctx, "closure: cancelled before the purge, the requester is no longer an owner", "closure", c.ID)
+			return nil
+		}
 		if err := c.StartPurge(now); err != nil {
 			return err
 		}
@@ -443,4 +492,99 @@ func (o *OrganizationTenants) TenantsOf(ctx context.Context, accountOrgID string
 		}
 	}
 	return out, nil
+}
+
+// ClosureFactsRepo is ClosureFacts over the repositories.
+type ClosureFactsRepo struct {
+	subs     *repositories.SubscriptionRepository
+	payments *repositories.PaymentRepository
+}
+
+func NewClosureFacts(subs *repositories.SubscriptionRepository, payments *repositories.PaymentRepository) *ClosureFactsRepo {
+	return &ClosureFactsRepo{subs: subs, payments: payments}
+}
+
+func (f *ClosureFactsRepo) ActiveSubscriptions(ctx context.Context, tenantID string) (int64, error) {
+	return f.subs.CountOpen(ctx, tenantID, true)
+}
+
+func (f *ClosureFactsRepo) PaymentsInFlight(ctx context.Context, tenantID string) (int64, error) {
+	return f.payments.PendingAttemptsOf(ctx, tenantID, true)
+}
+
+func (f *ClosureFactsRepo) PayoutsProcessing(ctx context.Context, tenantID string) (int64, error) {
+	return f.payments.PayoutsProcessingOf(ctx, tenantID, true)
+}
+
+func (f *ClosureFactsRepo) RefundsOpen(ctx context.Context, tenantID string) (int64, error) {
+	return f.payments.RefundsInFlightOf(ctx, tenantID, true)
+}
+
+// ContactReader reads a person's verified contact (accountclient.Contacts).
+type ContactReader interface {
+	Contact(ctx context.Context, sub string) (accountclient.Contact, error)
+}
+
+// ClosureNoticeSender sends one closure e-mail (email.Client).
+type ClosureNoticeSender interface {
+	SendClosureNotice(ctx context.Context, to string, n email.ClosureNotice) error
+}
+
+// ClosureEmails is the ClosureMailer: it reads the owner's verified address from
+// ctech-account (never one a requester typed) and sends the notice. The links
+// point at the console's closure pages under baseURL.
+type ClosureEmails struct {
+	contacts ContactReader
+	send     ClosureNoticeSender
+	baseURL  string
+}
+
+func NewClosureEmails(contacts ContactReader, send ClosureNoticeSender, consoleBaseURL string) *ClosureEmails {
+	return &ClosureEmails{contacts: contacts, send: send, baseURL: strings.TrimSuffix(consoleBaseURL, "/")}
+}
+
+func (m *ClosureEmails) link(page, requestID, token string) string {
+	return m.baseURL + "/closure/" + page + "?request=" + url.QueryEscape(requestID) + "&token=" + url.QueryEscape(token)
+}
+
+func (m *ClosureEmails) notify(ctx context.Context, sub string, n email.ClosureNotice) error {
+	c, err := m.contacts.Contact(ctx, sub)
+	if err != nil {
+		return err
+	}
+	if !c.EmailVerified || c.Email == "" {
+		return errors.New("closure: the owner has no verified e-mail")
+	}
+	n.FirstName = c.FirstName
+	return m.send.SendClosureNotice(ctx, c.Email, n)
+}
+
+func (m *ClosureEmails) SendClosureConfirm(ctx context.Context, sub, requestID, token string) error {
+	return m.notify(ctx, sub, email.ClosureNotice{Kind: "confirm", Link: m.link("confirm", requestID, token)})
+}
+
+func (m *ClosureEmails) SendClosureScheduled(ctx context.Context, sub, requestID, cancelToken string, graceUntil time.Time) error {
+	return m.notify(ctx, sub, email.ClosureNotice{Kind: "scheduled", Link: m.link("cancel", requestID, cancelToken), GraceUntil: graceUntil})
+}
+
+func (m *ClosureEmails) SendClosureBlocked(ctx context.Context, sub, requestID, cancelToken string, blockers []string) error {
+	return m.notify(ctx, sub, email.ClosureNotice{Kind: "blocked", Link: m.link("cancel", requestID, cancelToken), Blockers: blockers})
+}
+
+func (m *ClosureEmails) SendClosureCancelled(ctx context.Context, sub string) error {
+	return m.notify(ctx, sub, email.ClosureNotice{Kind: "cancelled"})
+}
+
+// AccountOwners is ClosureOwners over ctech-account's membership route, with no
+// cache in between.
+type AccountOwners struct{ src space.MembershipSource }
+
+func NewAccountOwners(src space.MembershipSource) *AccountOwners { return &AccountOwners{src: src} }
+
+func (a *AccountOwners) IsOwner(ctx context.Context, sub, accountOrgID string) (bool, error) {
+	m, err := a.src.Membership(ctx, accountOrgID, sub)
+	if err != nil {
+		return false, err
+	}
+	return m.Member && m.Role == "owner", nil
 }

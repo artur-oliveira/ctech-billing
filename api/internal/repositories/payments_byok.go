@@ -3,6 +3,7 @@ package repositories
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -417,4 +418,73 @@ func (r *PaymentRepository) GetExcessByPayment(ctx context.Context, organization
 		return nil, err
 	}
 	return &row.ExcessPayment, nil
+}
+
+// PendingAttemptsOf counts a tenant's payment attempts still PENDING: a charge
+// created and neither settled nor expired. A merchant tenant cannot be closed
+// while one is in flight (merchant tenant closure, spec T3). Attempts are the
+// only rows under the invoice range with a PENDING status.
+func (r *PaymentRepository) PendingAttemptsOf(ctx context.Context, organizationID string, livemode bool) (int64, error) {
+	var n int64
+	var start map[string]types.AttributeValue
+	for {
+		res, err := r.base.Query(ctx, QueryOpts{PK: TenantPK(organizationID, livemode), SKPrefix: skInvoice,
+			FilterField: "status", FilterValue: string(billing.AttemptPending), ConsistentRead: true,
+			Limit: 100, ExclusiveStartKey: start, ScanIndexForward: true})
+		if err != nil {
+			return 0, err
+		}
+		for _, it := range res.Items {
+			if strings.Contains(strAttrOf(it, "sk"), "#ATTEMPT#") {
+				n++
+			}
+		}
+		if len(res.LastEvaluatedKey) == 0 {
+			return n, nil
+		}
+		start = res.LastEvaluatedKey
+	}
+}
+
+// RefundsInFlightOf counts a tenant's excess-payment refunds not yet settled
+// (the cross-tenant queue is small: the pages are filtered by tenant).
+func (r *PaymentRepository) RefundsInFlightOf(ctx context.Context, organizationID string, livemode bool) (int64, error) {
+	var n int64
+	var start map[string]types.AttributeValue
+	for {
+		page, err := r.Refunding(ctx, livemode, start, 100)
+		if err != nil {
+			return 0, err
+		}
+		for _, e := range page.Items {
+			if e.OrganizationID == organizationID {
+				n++
+			}
+		}
+		if len(page.LastEvaluatedKey) == 0 {
+			return n, nil
+		}
+		start = page.LastEvaluatedKey
+	}
+}
+
+// PayoutsProcessingOf counts a tenant's payouts still being processed.
+func (r *PaymentRepository) PayoutsProcessingOf(ctx context.Context, organizationID string, livemode bool) (int64, error) {
+	var n int64
+	var start map[string]types.AttributeValue
+	for {
+		page, err := r.ProcessingPayouts(ctx, livemode, start, 100)
+		if err != nil {
+			return 0, err
+		}
+		for _, p := range page.Items {
+			if p.OrganizationID == organizationID {
+				n++
+			}
+		}
+		if len(page.LastEvaluatedKey) == 0 {
+			return n, nil
+		}
+		start = page.LastEvaluatedKey
+	}
 }

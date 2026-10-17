@@ -115,6 +115,9 @@ type Problem struct {
 	commonproblem.Problem
 	Code   string       `json:"code"`
 	Errors []FieldError `json:"errors,omitempty"`
+	// Blockers goes with a closure refused for what is still open (merchant
+	// tenant closure): the console lists and translates them by code.
+	Blockers any `json:"blockers,omitempty"`
 	// UpgradePlan and Quota go with a plan limit (BYOK part C): the console
 	// links to the plan screen.
 	UpgradePlan bool   `json:"upgrade_plan,omitempty"`
@@ -134,6 +137,12 @@ func slugCode(typ string) string {
 // WithCode names the specific failure, overriding the type-derived default.
 func (p *Problem) WithCode(code string) *Problem {
 	p.Code = code
+	return p
+}
+
+// WithBlockers attaches the list of what blocks the request.
+func (p *Problem) WithBlockers(b any) *Problem {
+	p.Blockers = b
 	return p
 }
 

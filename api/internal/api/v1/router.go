@@ -114,6 +114,9 @@ type Deps struct {
 	// on a short interval instead of waiting for a notification.
 	SettlementBus settlement.Bus
 
+	// Closures serves the merchant tenant closure routes. Nil leaves them
+	// unmounted (the feature off).
+	Closures *services.TenantClosures
 	// ClosureFlags is the read-only gate of a tenant being closed (merchant
 	// tenant closure). Nil leaves the gate off.
 	ClosureFlags middleware.ClosingFlags
@@ -421,6 +424,8 @@ func registerConsole(v1 fiber.Router, d Deps, h *handlers, auth fiber.Handler) {
 		v1.Get("/console/merchant/companies", auth, middleware.RequireUserSession(), middleware.ResolveSpace(spaces),
 			middleware.RequireMerchantRole(), middleware.RequireUserScope(middleware.ScopeOrganizationRead), ch.merchantCompanies)
 	}
+
+	registerClosure(v1, d, auth, middleware.ResolveSpace(spaces))
 
 	console := v1.Group("/console", auth,
 		middleware.RequireUserSession(),

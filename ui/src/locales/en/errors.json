@@ -128,7 +128,15 @@
     "subscription_limit_reached": "Active subscriptions are at the plan's limit. Change plans to create more.",
     "bank_connection_limit_reached": "Bank connections are at the plan's limit. Change plans to connect another bank.",
     "plan_not_found": "This organization has no plan yet.",
-    "plan_live_only": "The plan is changed in live mode."
+    "plan_live_only": "The plan is changed in live mode.",
+    "owner_required": "Only an owner of the organization can close its billing account.",
+    "step_up_required": "Confirm with a recent MFA proof (sign in again with your authenticator) to close the billing account.",
+    "closure_blocked": "Resolve what is still open before closing the billing account.",
+    "closure_open": "A closure request is already in progress.",
+    "phrase_mismatch": "Type the phrase exactly as shown.",
+    "closure_state": "This request can no longer be changed.",
+    "closure_not_allowed": "This billing account cannot be closed.",
+    "tenant_closing": "This billing account is being closed and only accepts reads."
   },
   "field": {
     "required": "Required.",

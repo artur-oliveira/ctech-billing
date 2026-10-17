@@ -36,7 +36,8 @@ func main() {
 	}
 
 	var banks *services.ByokConnections
-	server, err := app.Build(context.Background(), cfg, time.Now, app.WithByokConnections(&banks))
+	var closures *services.TenantClosures
+	server, err := app.Build(context.Background(), cfg, time.Now, app.WithByokConnections(&banks), app.WithClosures(&closures))
 	if err != nil {
 		slog.Error("startup", "error", err)
 		os.Exit(1)
@@ -56,6 +57,8 @@ func main() {
 	case consumer != nil:
 		go func() { _ = consumer.Run(shutdownCtx) }()
 	}
+
+	go app.RunClosureWorker(shutdownCtx, closures) // a no-op when the feature is off
 
 	addr := fmt.Sprintf(":%d", cfg.Port)
 	slog.Info("billing api listening", "addr", addr, "env", cfg.Env, "version", cfg.AppVersion)

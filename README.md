@@ -395,7 +395,22 @@ Spec [`docs/specs/2026-10-17-merchant-tenant-deletion.md`](docs/specs/2026-10-17
 | **`cmd/closure-residue -tenant <id> [-apply]`**: an operator command that Scans (the service role may not) for what the online purge cannot enumerate: the `{tenant}#{mode}#USAGE#…`, `#GEN#…` and `#LEVEL…` sub-partitions of references nobody listed. Run it after a closure reaches `closed`, until its dry run reports nothing. Refuses tenant zero | `TenantPurger.SweepResidue` |
 | The workspace's **finance space and BYOK connections are not erased**: they belong to the workspace (Finanças), not to the billing tenant (corrects spec T4, which listed the finance space) | |
 
-Not yet: the owner's e-mail (needs an account route), the console and public-link routes and the worker binary (phase 3), the export (phase 4).
+**Phase 3, the surfaces (this release, still behind `TENANT_CLOSURE_ENABLED`):**
+
+| Piece | Where |
+|---|---|
+| Console routes (owner of the workspace only, outside the closing gate): `GET /v1.0/console/closure` (status), `GET /v1.0/console/closure/blockers`, `POST /v1.0/console/closure {confirmation_phrase}` (typed phrase `ENCERRAR CONTA DE COBRANÇA` and an MFA proof under 15 minutes old: billing cannot check a password, so an owner without MFA enrols one first; `409 closure_blocked` carries the blockers) | `internal/api/v1/closure.go` |
+| Public e-mail-link routes (the token is the credential): `POST /v1.0/closure/confirm`, `POST /v1.0/closure/cancel` | same |
+| E-mails go to the owner's **verified account address**, read from ctech-account (`GET /v1.0/internal/users/:sub/contact`, scope `internal:account:user-contact-read`), never an address a requester typed; links point at `{app origin}/closure/{confirm,cancel}` | `services.ClosureEmails`, `accountclient.Contacts`, `email/closure.go` |
+| The worker runs in the API process (`app.RunClosureWorker`, every minute; no new timer, the userdata is at its ceiling) | `cmd/server` |
+| The service is mounted only when ctech-account's contact client, the e-mail sender and tenant zero are configured: a closure whose confirmation can never be sent must not exist | `app.tenantClosures` |
+
+**To enable:** deploy ctech-account's contact route; publish its scope manifest; `createclient -grant -client-id <billing's account client> -scopes internal:account:user-contact-read`; set `TENANT_CLOSURE_ENABLED=true`; later `TENANT_CLOSURE_PURGE_ENABLED=true`.
+**Phase 3b, the UI:** a "Close the billing account" card at the bottom of the console's Settings (`ClosureCard`: renders nothing for a non-owner; the blockers; the typed phrase; the open closure's state instead of the form) and the public `/closure/confirm` and `/closure/cancel` pages the e-mails link to (`ClosureLinkPage`, which acts only when the button is pressed, so a mail scanner that prefetches a link never confirms or cancels).
+
+**Live owner check:** the console's role comes from a membership cache of up to a minute, which is fine for a read and not for an irreversible closure, so the request, the confirmation and the step before the purge each ask ctech-account again (uncached). A requester who lost the owner role is refused at the confirmation, and a closure whose requester lost it during the grace period is **cancelled** before the purge. The e-mails go to the requester only.
+
+Not yet: the export (phase 4).
 Tenant zero can never be closed.
 
 ### Account deletion (LGPD)

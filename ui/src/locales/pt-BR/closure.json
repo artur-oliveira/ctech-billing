@@ -1,0 +1,44 @@
+{
+  "title": "Encerrar a conta de cobrança",
+  "intro": "Encerrar apaga os dados de cobrança desta organização no CTech Billing: credenciais, clientes, assinaturas, faturas, webhooks. Os documentos não podem ser recuperados depois; guardá-los é dever do contribuinte, então exporte o que precisar antes. Sua conta CTech e os outros produtos não são afetados.",
+  "steps": [
+    "Ao confirmar pelo e-mail, a conta fica somente para leitura na hora.",
+    "Você pode cancelar pelos links dos e-mails durante 7 dias.",
+    "Depois disso os dados são apagados e não há como desfazer."
+  ],
+  "blockedTitle": "Antes de encerrar, resolva:",
+  "blockers": {
+    "billing": {
+      "tenant_active_subscriptions": "{{count}} assinatura(s) de clientes ativa(s): cancele-as no console.",
+      "tenant_payment_in_flight": "{{count}} cobrança(s) em andamento: aguarde o pagamento ou a expiração.",
+      "tenant_payout_processing": "{{count}} repasse(s) em processamento: aguarde a conclusão.",
+      "tenant_refund_open": "{{count}} reembolso(s) em andamento: aguarde a conclusão."
+    }
+  },
+  "phraseLabel": "Digite {{phrase}} para confirmar",
+  "submit": "Pedir encerramento",
+  "checkEmail": "Enviamos um link de confirmação para o e-mail do titular. Ele vale até {{date}}.",
+  "state": {
+    "awaiting_confirmation": "Aguardando a confirmação por e-mail até {{date}}.",
+    "closing": "Somente leitura. Encerra em {{date}}; use o link do e-mail para cancelar.",
+    "blocked": "O encerramento está bloqueado: {{blockers}}. Use o link do e-mail para cancelar e tentar de novo.",
+    "ready_to_purge": "Encerrando: os dados estão prestes a ser apagados.",
+    "purging": "Apagando os dados."
+  },
+  "link": {
+    "confirm": {
+      "title": "Confirmar o encerramento da conta de cobrança",
+      "description": "A conta fica somente para leitura agora e é encerrada de vez em 7 dias.",
+      "button": "Confirmar encerramento",
+      "done": "Confirmado. A conta está somente para leitura e será encerrada em {{date}}. Enviamos um link para cancelar até lá."
+    },
+    "cancel": {
+      "title": "Cancelar o encerramento da conta de cobrança",
+      "description": "A conta volta a aceitar alterações.",
+      "button": "Cancelar encerramento",
+      "done": "Cancelado. A conta de cobrança aceita alterações de novo."
+    },
+    "invalid": "Este link é inválido ou expirou.",
+    "tooLate": "Já não é possível alterar."
+  }
+}
