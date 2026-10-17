@@ -158,6 +158,22 @@ func invoiceRowOf(inv *billing.Invoice, generationKey string, now time.Time) inv
 	}
 }
 
+// OneOffKeyPrefix starts the generation key of a one-off invoice; the rest is its reference.
+const OneOffKeyPrefix = "oneoff:"
+
+// entity is the invoice with its Reference filled in. A one-off invoice issued before the
+// field was stored still has it, as the suffix of its generation key.
+func (row invoiceRow) entity() *billing.Invoice {
+	inv := row.Invoice
+	if inv.Reference == "" {
+		inv.Reference = strings.TrimPrefix(row.GenerationKey, OneOffKeyPrefix)
+		if inv.Reference == row.GenerationKey {
+			inv.Reference = "" // a subscription's key, not a reference
+		}
+	}
+	return &inv
+}
+
 // Get reads an invoice.
 func (r *InvoiceRepository) Get(ctx context.Context, organizationID string, livemode bool, invoiceID string) (*billing.Invoice, error) {
 	item, err := r.base.GetItem(ctx, TenantPK(organizationID, livemode), InvoiceSK(invoiceID))
@@ -171,7 +187,7 @@ func (r *InvoiceRepository) Get(ctx context.Context, organizationID string, live
 	if err != nil {
 		return nil, err
 	}
-	return &row.Invoice, nil
+	return row.entity(), nil
 }
 
 // GetConsistent reads an invoice with a strongly consistent read. A service woken by an
@@ -195,7 +211,7 @@ func (r *InvoiceRepository) GetConsistent(ctx context.Context, organizationID st
 	if err != nil {
 		return nil, err
 	}
-	return &row.Invoice, nil
+	return row.entity(), nil
 }
 
 // GetByGenerationKey is the invoice created under a generation key, or

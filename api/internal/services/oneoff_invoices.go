@@ -23,7 +23,7 @@ var (
 
 const (
 	maxReferenceLen  = 64
-	oneOffKeyPrefix  = "oneoff:"
+	oneOffKeyPrefix  = repositories.OneOffKeyPrefix
 	oneOffCurrencyBR = "BRL"
 )
 
@@ -147,7 +147,7 @@ func (s *OneOffInvoices) build(in OneOffInput, now time.Time) (*billing.Invoice,
 	amount := billing.Cents(in.AmountCents)
 	inv := &billing.Invoice{
 		ID: id.NewWithPrefix(id.PrefixInvoice), OrganizationID: in.OrganizationID, Livemode: in.Livemode,
-		CustomerID: in.CustomerID, Status: billing.InvoiceDraft, OwnerKey: in.OwnerKey,
+		CustomerID: in.CustomerID, Status: billing.InvoiceDraft, OwnerKey: in.OwnerKey, Reference: in.Reference,
 		Period: period, Currency: oneOffCurrencyBR, Subtotal: amount, Total: amount, Metadata: in.Metadata,
 		PayerMessage: strings.TrimSpace(in.PayerMessage), PixExpiresInSeconds: in.PixExpiresInSeconds,
 	}

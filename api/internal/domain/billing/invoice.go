@@ -107,6 +107,11 @@ type Invoice struct {
 	// only reaches endpoints that asked for everything.
 	OwnerKey string `dynamodbav:"owner_key,omitempty" json:"-"`
 
+	// Reference is the caller's own name for a one-off invoice, the one it issued it
+	// under. Empty on a subscription's invoice. Invoices issued before the field existed
+	// get it from their generation key when read (repositories.invoiceRow.entity).
+	Reference string `dynamodbav:"reference,omitempty" json:"-"`
+
 	// PayerMessage is the text the payer reads on the Pix ("aviso ao pagador"), when the
 	// service that asked for the invoice chose one. Empty: the default text (invoiceChargeDescription).
 	PayerMessage string `dynamodbav:"payer_message,omitempty" json:"-"`
