@@ -429,3 +429,33 @@ func deleteRowsWithPrefix(t *testing.T, logical, pk, skPrefix string) {
 }
 
 func deleteRows(t *testing.T, logical, pk string) { deleteRowsWithPrefix(t, logical, pk, "") }
+
+func TestEraseRefDeletesHistoryAndLatestOfThatRefOnly(t *testing.T) {
+	ctx := ctxT(t)
+	e := newPortal(t)
+	levels := repositories.NewLevelRepository(testDB, testCfg)
+	mine, other := "USER_"+id.New(), "USER_"+id.New()
+	for _, ref := range []string{mine, other} {
+		for _, meter := range []string{"finance_spaces", "finance_people"} {
+			if err := levels.Append(ctx, &billing.LevelRecord{
+				OrganizationID: e.org.ID, Livemode: true, CustomerRef: ref, Meter: meter, Value: 2,
+				OccurredAt: seedNow, IdempotencyKey: "k-" + id.New(),
+			}, seedNow); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	n, err := levels.EraseRef(ctx, e.org.ID, true, mine, []string{"finance_spaces", "finance_people", "never_reported"})
+	if err != nil || n != 4 { // one history + one latest row per reported meter
+		t.Fatalf("EraseRef = %d, %v; want 4", n, err)
+	}
+	if l, err := levels.Latest(ctx, e.org.ID, true, mine, "finance_spaces"); err == nil && l != nil {
+		t.Fatalf("latest of the erased ref survives: %+v", l)
+	}
+	if l, err := levels.Latest(ctx, e.org.ID, true, other, "finance_spaces"); err != nil || l == nil {
+		t.Fatalf("another ref's latest was touched: %+v, %v", l, err)
+	}
+	if n, err := levels.EraseRef(ctx, e.org.ID, true, mine, []string{"finance_spaces"}); err != nil || n != 0 {
+		t.Fatalf("second run = %d, %v; want 0", n, err)
+	}
+}

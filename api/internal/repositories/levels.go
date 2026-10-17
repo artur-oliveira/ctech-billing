@@ -298,3 +298,27 @@ func (r *LevelRepository) CarriedIn(ctx context.Context, organizationID string, 
 	}
 	return latest.Value, nil
 }
+
+// EraseRef deletes the level history and the latest level of customerRef for
+// each meter (account deletion, R21). The LEVEL_KEY# idempotency markers hold a
+// hash only and expire with the 13-month TTL, so they stay.
+func (r *LevelRepository) EraseRef(ctx context.Context, organizationID string, livemode bool, customerRef string, meters []string) (int, error) {
+	total := 0
+	for _, meter := range meters {
+		for _, pk := range []string{
+			LevelPK(organizationID, livemode, customerRef, meter),
+			LevelLatestPK(organizationID, livemode, customerRef, meter),
+		} {
+			items, err := queryPrefix(ctx, r.base, pk, "")
+			if err != nil {
+				return total, err
+			}
+			n, err := deleteKeys(ctx, r.base, items)
+			total += n
+			if err != nil {
+				return total, err
+			}
+		}
+	}
+	return total, nil
+}
