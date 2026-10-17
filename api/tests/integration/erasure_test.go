@@ -909,3 +909,24 @@ func TestSpaceReaderExportsOnlyThePersonsOwnSpace(t *testing.T) {
 		}
 	}
 }
+
+// The cap bounds what is read, not just what is written out, and counts across
+// every partition of a table (the ledger entries live in one per account).
+func TestSpaceReaderStopsAtItsCapAndSaysSo(t *testing.T) {
+	sp := jobSpace(t, "USER#"+id.New(), true)
+	seedFinance(t, sp)
+	full, err := repositories.NewSpaceReader(testDB, testCfg).Read(context.Background(), sp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(full["ledger_transactions"].Items) < 3 || full["ledger_transactions"].Truncated {
+		t.Fatalf("the seed should hold more than 2 ledger rows, untruncated: %d", len(full["ledger_transactions"].Items))
+	}
+	cut, err := repositories.NewSpaceReader(testDB, testCfg).WithLimit(2).Read(context.Background(), sp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cut["ledger_transactions"]; len(got.Items) != 2 || !got.Truncated {
+		t.Fatalf("ledger_transactions = %d items, truncated=%v; want exactly 2 and truncated", len(got.Items), got.Truncated)
+	}
+}

@@ -37,7 +37,7 @@ var notExported = map[string]string{
 	TableTenantClosures: "merchant tenant closure, not a person",
 }
 
-// exportMaxItems bounds one table of one space. A ledger past it is cut and the
+// exportMaxItems bounds one table of one space, across all its partitions. A ledger past it is cut and the
 // result says so.
 // ponytail: 200k rows covers any personal space; stream pages to the part's zip
 // if one ever outgrows memory.
@@ -47,6 +47,17 @@ const exportMaxItems = 200_000
 // ledger has no edit path and the export is not one.
 type SpaceReader struct {
 	bases map[string]Base
+	max   int
+}
+
+// WithLimit lowers the per-table cap (tests; the default is exportMaxItems).
+func (r *SpaceReader) WithLimit(n int) *SpaceReader { r.max = n; return r }
+
+func (r *SpaceReader) limit() int {
+	if r.max > 0 {
+		return r.max
+	}
+	return exportMaxItems
 }
 
 func NewSpaceReader(db *dynamodb.Client, cfg *config.Config) *SpaceReader {
@@ -64,25 +75,46 @@ type SpaceRows struct {
 	Truncated bool
 }
 
-func (r *SpaceReader) readInto(ctx context.Context, rows map[string]*SpaceRows, table, pk, prefix string) error {
-	got, err := queryPrefix(ctx, r.bases[table], pk, prefix)
-	if err != nil {
-		return err
+// queryBounded is queryPrefix that stops paging once limit rows are read, so
+// the cap bounds memory, not just the output. truncated says it stopped early.
+func queryBounded(ctx context.Context, b Base, pk, skPrefix string, limit int) (items []map[string]types.AttributeValue, truncated bool, err error) {
+	var start map[string]types.AttributeValue
+	for limit > 0 {
+		res, err := b.Query(ctx, QueryOpts{
+			PK: pk, SKPrefix: skPrefix, ScanIndexForward: true, Limit: min(limit, 100), ExclusiveStartKey: start, ConsistentRead: true,
+		})
+		if err != nil {
+			return nil, false, err
+		}
+		items = append(items, res.Items...)
+		limit -= len(res.Items)
+		if len(res.LastEvaluatedKey) == 0 {
+			return items, false, nil
+		}
+		start = res.LastEvaluatedKey
 	}
-	return appendRows(rows, table, got)
+	return items, true, nil
 }
 
-func appendRows(rows map[string]*SpaceRows, table string, items []map[string]types.AttributeValue) error {
+// readInto adds one partition's rows to table, within the table's budget of
+// exportMaxItems across every partition of the space.
+func (r *SpaceReader) readInto(ctx context.Context, rows map[string]*SpaceRows, table, pk, prefix string) error {
 	out := rows[table]
 	if out == nil {
 		out = &SpaceRows{}
 		rows[table] = out
 	}
-	for _, it := range items {
-		if len(out.Items) >= exportMaxItems {
-			out.Truncated = true
-			return nil
-		}
+	remaining := r.limit() - len(out.Items)
+	if remaining <= 0 {
+		out.Truncated = true
+		return nil
+	}
+	got, truncated, err := queryBounded(ctx, r.bases[table], pk, prefix, remaining)
+	if err != nil {
+		return err
+	}
+	out.Truncated = out.Truncated || truncated
+	for _, it := range got {
 		var m map[string]any
 		if err := attributevalue.UnmarshalMap(it, &m); err != nil {
 			return fmt.Errorf("export: decode %s: %w", table, err)
@@ -103,7 +135,7 @@ func (r *SpaceReader) Read(ctx context.Context, sp space.ResolvedSpace) (map[str
 	s := sp.PK()
 
 	accounts := map[string]bool{}
-	chart, err := queryPrefix(ctx, r.bases[TableLedgerAccounts], s, "ACCOUNT#")
+	chart, _, err := queryBounded(ctx, r.bases[TableLedgerAccounts], s, "ACCOUNT#", r.limit())
 	if err != nil {
 		return nil, err
 	}
@@ -112,7 +144,7 @@ func (r *SpaceReader) Read(ctx context.Context, sp space.ResolvedSpace) (map[str
 			accounts[strings.TrimPrefix(sk.Value, "ACCOUNT#")] = true
 		}
 	}
-	headers, err := queryPrefix(ctx, r.bases[TableLedgerTransactions], s, "TX#")
+	headers, _, err := queryBounded(ctx, r.bases[TableLedgerTransactions], s, "TX#", r.limit())
 	if err != nil {
 		return nil, err
 	}
@@ -131,7 +163,7 @@ func (r *SpaceReader) Read(ctx context.Context, sp space.ResolvedSpace) (map[str
 		}
 	}
 	for _, c := range []struct{ table, prefix string }{{TableCards, "CARD#"}, {TableImports, "IMPORT#"}} {
-		ids, err := queryPrefix(ctx, r.bases[c.table], s, c.prefix)
+		ids, _, err := queryBounded(ctx, r.bases[c.table], s, c.prefix, r.limit())
 		if err != nil {
 			return nil, err
 		}
