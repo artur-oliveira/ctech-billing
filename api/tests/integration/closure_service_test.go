@@ -18,7 +18,6 @@ type closureFakes struct {
 	owner                 bool
 	tenants               []*billing.Organization
 	subs                  int64
-	confirmTo             string
 	rawConfirm, rawCancel string
 	blockedMail           []string
 	cancelledMail         int
