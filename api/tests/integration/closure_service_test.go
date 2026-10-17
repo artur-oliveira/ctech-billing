@@ -201,3 +201,57 @@ func TestAReadyClosureIsPurgedOnceWhenAPurgerIsWired(t *testing.T) {
 		t.Fatalf("a closed closure holds no open marker: %v", err)
 	}
 }
+
+// The whole closure over real tenants: apply (creates the test tenant, the
+// application and the customer), request, confirm, grace, purge, closed.
+func TestAClosureErasesTheTenantsTheApplicationAndLeavesATombstone(t *testing.T) {
+	ctx := ctxT(t)
+	tz, acct := "org_"+newSpaceOrgID(), newSpaceOrgID()
+	apps := appRepo(t, tz)
+	if _, _, err := apply(t, apps, tz, acct, true); err != nil {
+		t.Fatal(err)
+	}
+	orgs := repositories.NewOrganizationRepository(testDB, testCfg)
+	test, err := orgs.GetByAccountOrganization(ctx, acct, false)
+	if err != nil {
+		t.Fatalf("the application must create a test tenant: %v", err)
+	}
+	f := &closureFakes{owner: true}
+	repo := repositories.NewClosureRepository(testDB, testCfg)
+	clock := seedNow
+	cfg := *testCfg
+	cfg.PortalOrganizationID = tz
+	svc := services.NewTenantClosures(repo, services.NewOrganizationTenants(orgs), f, f, f, tz).
+		WithClock(func() time.Time { return clock }).
+		WithPurger(services.NewTenantPurge(repositories.NewTenantPurger(testDB, &cfg), repositories.NewApplicationRepository(testDB, &cfg), repo))
+
+	c, err := svc.Request(ctx, "usr_x", acct)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Confirm(ctx, c.ID, f.rawConfirm); err != nil {
+		t.Fatal(err)
+	}
+	if on, _ := repo.ReadOnly(ctx, test.ID); !on {
+		t.Fatal("the test tenant must be read-only during the grace")
+	}
+	clock = clock.Add(closure.GracePeriod)
+	svc.ProcessDue(ctx) // ready
+	svc.ProcessDue(ctx) // purge
+
+	if _, err := orgs.GetByAccountOrganization(ctx, acct, false); !errors.Is(err, repositories.ErrNotFound) {
+		t.Fatalf("the tenant row survived: %v (billing.merchant_tenant would still block)", err)
+	}
+	if cur, _ := apps.Current(ctx, acct); cur != nil {
+		t.Fatalf("the application survived: %+v", cur)
+	}
+	if closed, err := repo.Closed(ctx, test.ID); err != nil || !closed {
+		t.Fatalf("tombstone: %v %v", closed, err)
+	}
+	if on, _ := repo.ReadOnly(ctx, test.ID); on {
+		t.Fatal("the flag must be lifted once the tenant is gone")
+	}
+	if got, err := repo.Get(ctx, c.ID); err != nil || got.State != closure.Closed {
+		t.Fatalf("closure = %+v, %v", got, err)
+	}
+}

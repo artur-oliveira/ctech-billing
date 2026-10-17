@@ -98,6 +98,11 @@ type Config struct {
 	// purge worker. Off by default: nothing destructive is reachable until the
 	// owner enables it.
 	TenantClosureEnabled bool `env:"TENANT_CLOSURE_ENABLED"`
+	// TenantClosurePurgeEnabled additionally lets the closure worker run the
+	// irreversible purge. Separate from TenantClosureEnabled so a closure can
+	// reach ready_to_purge (and be inspected with cmd/closure-residue -dry-run)
+	// long before anything is deleted.
+	TenantClosurePurgeEnabled bool `env:"TENANT_CLOSURE_PURGE_ENABLED"`
 
 	ErasureClientID     string `env:"ERASURE_CLIENT_ID"`
 	ErasureClientSecret string `env:"ERASURE_CLIENT_SECRET"`

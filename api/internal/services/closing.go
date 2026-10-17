@@ -375,3 +375,72 @@ func (s *TenantClosures) purge(ctx context.Context, c *closure.Closure) error {
 	c.Finish(s.now())
 	return s.repo.Save(ctx, c, closure.Purging, s.now())
 }
+
+// TenantPurge is the ClosurePurger: it erases both modes of every tenant of the
+// closure, the merchant's applications, and records the tombstone.
+type TenantPurge struct {
+	purger       *repositories.TenantPurger
+	applications *repositories.ApplicationRepository
+	repo         *repositories.ClosureRepository
+	now          func() time.Time
+}
+
+func NewTenantPurge(p *repositories.TenantPurger, apps *repositories.ApplicationRepository, repo *repositories.ClosureRepository) *TenantPurge {
+	return &TenantPurge{purger: p, applications: apps, repo: repo, now: time.Now}
+}
+
+func (p *TenantPurge) Purge(ctx context.Context, c *closure.Closure, tenants []*billing.Organization) error {
+	closed := map[string]bool{}
+	for _, t := range tenants {
+		rep, err := p.purger.PurgeTenant(ctx, t, false)
+		if err != nil {
+			return fmt.Errorf("purging tenant %s (%s): %w", t.ID, modeName(t.Livemode), err)
+		}
+		slog.InfoContext(ctx, "closure: tenant purged", "closure", c.ID, "tenant", t.ID, "livemode", t.Livemode, "counts", rep)
+		closed[t.ID] = true
+	}
+	if _, err := p.applications.DeleteForOrganization(ctx, c.AccountOrganizationID); err != nil {
+		return fmt.Errorf("deleting the applications of %s: %w", c.AccountOrganizationID, err)
+	}
+	ids := make([]string, 0, len(closed))
+	for id := range closed {
+		if err := p.repo.Tombstone(ctx, id, c.ID, p.now()); err != nil {
+			return err
+		}
+		ids = append(ids, id)
+	}
+	// The tenant rows are gone: the read-only flags have nothing left to protect.
+	return p.repo.SetReadOnly(ctx, ids, c.ID, false, p.now())
+}
+
+func modeName(live bool) string {
+	if live {
+		return "live"
+	}
+	return "test"
+}
+
+// OrganizationTenants is ClosureTenants over the organizations repository: the
+// workspace's billing tenant rows, live and test.
+type OrganizationTenants struct {
+	orgs *repositories.OrganizationRepository
+}
+
+func NewOrganizationTenants(orgs *repositories.OrganizationRepository) *OrganizationTenants {
+	return &OrganizationTenants{orgs: orgs}
+}
+
+func (o *OrganizationTenants) TenantsOf(ctx context.Context, accountOrgID string) ([]*billing.Organization, error) {
+	var out []*billing.Organization
+	for _, live := range []bool{true, false} {
+		org, err := o.orgs.GetByAccountOrganization(ctx, accountOrgID, live)
+		switch {
+		case errors.Is(err, repositories.ErrNotFound):
+		case err != nil:
+			return nil, err
+		default:
+			out = append(out, org)
+		}
+	}
+	return out, nil
+}

@@ -866,3 +866,13 @@ func closureFlags(db *dynamodb.Client, cfg *config.Config) middleware.ClosingFla
 	}
 	return repositories.NewClosureRepository(db, cfg)
 }
+
+// BuildTenantPurger is the tenant purger for the operator command
+// cmd/closure-residue (and the closure worker).
+func BuildTenantPurger(ctx context.Context, cfg *config.Config) (*repositories.TenantPurger, error) {
+	db, err := newDynamoDB(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+	return repositories.NewTenantPurger(db, cfg), nil
+}

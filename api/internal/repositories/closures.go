@@ -275,3 +275,25 @@ func (r *ClosureRepository) Due(ctx context.Context, now time.Time) ([]DueClosur
 		start = res.LastEvaluatedKey
 	}
 }
+
+// Tombstone records that a billing tenant was closed and erased: no personal
+// data, only the id and the closure, so late webhooks and retries can be
+// recognised and dropped. It never expires and never blocks a new tenant for the
+// same workspace (a new tenant has a new id).
+func (r *ClosureRepository) Tombstone(ctx context.Context, tenantID, closureID string, now time.Time) error {
+	item, err := Encode(struct {
+		keys
+		ClosureID string `dynamodbav:"closure_id"`
+		ClosedAt  string `dynamodbav:"closed_at"`
+	}{newKeys("TENANT#"+tenantID, "TOMBSTONE", RetentionPermanent, now), closureID, ts(now)})
+	if err != nil {
+		return err
+	}
+	return r.base.PutItem(ctx, item)
+}
+
+// Closed reports whether a billing tenant id was closed and erased.
+func (r *ClosureRepository) Closed(ctx context.Context, tenantID string) (bool, error) {
+	item, err := r.base.GetItem(ctx, "TENANT#"+tenantID, "TOMBSTONE")
+	return item != nil, err
+}

@@ -350,3 +350,40 @@ func (r *ApplicationRepository) Decide(ctx context.Context, app *billing.Applica
 	}
 	return nil
 }
+
+// DeleteForOrganization erases every application of a ctech-account workspace and
+// its pointer (closing the merchant tenant erases the applicant's text and tax
+// id too). The rows are tenant zero's, found through the status index; the
+// pointer is keyed by the workspace. Idempotent.
+func (r *ApplicationRepository) DeleteForOrganization(ctx context.Context, accountOrgID string) (int, error) {
+	if r.tenantZero == "" {
+		return 0, ErrNoTenantZero
+	}
+	deleted := 0
+	for _, status := range []billing.ApplicationStatus{billing.ApplicationPending, billing.ApplicationApproved, billing.ApplicationRejected} {
+		var start map[string]types.AttributeValue
+		for {
+			page, err := r.List(ctx, status, 100, start)
+			if err != nil {
+				return deleted, err
+			}
+			for _, a := range page.Items {
+				if a.AccountOrganizationID != accountOrgID {
+					continue
+				}
+				if _, err := r.rows.DeleteItem(ctx, r.pk(), ApplicationSK(a.ID)); err != nil {
+					return deleted, err
+				}
+				deleted++
+			}
+			if len(page.LastEvaluatedKey) == 0 {
+				break
+			}
+			start = page.LastEvaluatedKey
+		}
+	}
+	if _, err := r.rows.DeleteItem(ctx, r.pk(), ApplicationOrgSK(accountOrgID)); err != nil {
+		return deleted, err
+	}
+	return deleted, nil
+}
