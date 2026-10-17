@@ -117,15 +117,18 @@ func (p *SpacePurger) PurgeSpace(ctx context.Context, sp space.ResolvedSpace) (m
 		return counts, err
 	}
 
-	// 4. BYOK hooks HOOK#{id}, named by the connection rows' hook_id.
+	// 4. BYOK hooks HOOK#{id} and HOOK#{id}-payout, named by the connection rows' hook_id.
 	conns, err := queryPrefix(ctx, p.bases[TableByok], s, "")
 	if err != nil {
 		return counts, err
 	}
 	for _, it := range conns {
 		if v, ok := it[attrHookID].(*types.AttributeValueMemberS); ok && v.Value != "" {
-			if err := child(TableByok, hookPK(v.Value)); err != nil {
-				return counts, err
+			// The receiving hook and the payout hook, each with its own secret.
+			for _, hook := range []string{v.Value, v.Value + PayoutHookSuffix} {
+				if err := child(TableByok, hookPK(hook)); err != nil {
+					return counts, err
+				}
 			}
 		}
 	}

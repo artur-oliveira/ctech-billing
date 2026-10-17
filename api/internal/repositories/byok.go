@@ -424,6 +424,11 @@ type hookRow struct {
 
 func hookPK(id string) string { return "HOOK#" + id }
 
+// PayoutHookSuffix names a connection's outgoing-payment hook: HOOK#{hook_id}-payout,
+// its own row and secret. Only the connection row's hook_id is stored, so the
+// purge derives this one from it.
+const PayoutHookSuffix = "-payout"
+
 func (r *ByokRepository) PutHook(ctx context.Context, h *Hook, now time.Time) error {
 	item, err := Encode(hookRow{keys: newKeys(hookPK(h.ID), "HOOK", RetentionByokConnection, now), Hook: *h})
 	if err != nil {

@@ -412,7 +412,9 @@ func (s *ByokCollectionSetup) openCharges(ctx context.Context, tenant *billing.O
 // payoutHookID is the hook of a connection's outgoing-payment notices: its own
 // row and secret, beside the one of the Pix it receives, so rotating or removing
 // either never touches the other.
-func payoutHookID(conn *byokconn.Connection) string { return hookIDOf(conn) + "-payout" }
+func payoutHookID(conn *byokconn.Connection) string {
+	return hookIDOf(conn) + repositories.PayoutHookSuffix
+}
 
 // PayoutWebhook reports what is registered at the bank for the Pix payments this
 // connection sends.

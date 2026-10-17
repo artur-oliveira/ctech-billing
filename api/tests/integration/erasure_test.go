@@ -299,10 +299,12 @@ func seedByokConnectionWithHook(t *testing.T, sp space.ResolvedSpace) {
 	ctx := context.Background()
 	repo := repositories.NewByokRepository(testDB, testCfg)
 	hook := id.New()
-	if err := repo.PutHook(ctx, &repositories.Hook{
-		ID: hook, Provider: "inter", AccountOrganizationID: sp.Owner(), Livemode: sp.Livemode(), SecretHash: "h",
-	}, seedNow); err != nil {
-		t.Fatal(err)
+	for _, hookID := range []string{hook, hook + repositories.PayoutHookSuffix} {
+		if err := repo.PutHook(ctx, &repositories.Hook{
+			ID: hookID, Provider: "inter", AccountOrganizationID: sp.Owner(), Livemode: sp.Livemode(), SecretHash: "h",
+		}, seedNow); err != nil {
+			t.Fatal(err)
+		}
 	}
 	conn := &byokconn.Connection{
 		AccountOrganizationID: sp.Owner(), Livemode: sp.Livemode(), Provider: "inter", ID: id.New(),
@@ -379,6 +381,7 @@ func recordSeed(t *testing.T, sp space.ResolvedSpace) {
 	for _, it := range itemsUnder(t, "byok", s) {
 		if h := strAttr(it, "hook_id"); h != "" {
 			add("byok", "HOOK#"+h)
+			add("byok", "HOOK#"+h+repositories.PayoutHookSuffix)
 		}
 	}
 	for k, n := range parts {
