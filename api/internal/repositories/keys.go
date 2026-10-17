@@ -86,6 +86,11 @@ const (
 	// Its schema and transitions are api-commons/erasure.Store's; it is here so
 	// schema.json, and therefore Terraform, declares it.
 	TableErasureState = erasure.TableSuffix
+	// TableTenantClosures holds merchant-tenant closure requests, their open
+	// markers and the per-tenant read-only flags
+	// (docs/specs/2026-10-17-merchant-tenant-deletion.md). Its sparse
+	// schedule-index is the closure worker's queue.
+	TableTenantClosures = "tenant_closures"
 )
 
 // Index names.
@@ -664,3 +669,7 @@ func ByokConnectionPK(accountOrgID string, livemode bool) string {
 }
 func ByokConnectionSK(provider string) string { return "CONNECTION#" + provider }
 func byokJobPK(livemode bool) string          { return Mode(livemode) + "#" + JobByokConnections }
+
+// JobTenantClosures is the sparse partition cmd/closure walks: every closure
+// that has a next action due.
+const JobTenantClosures = "TENANT_CLOSURES"

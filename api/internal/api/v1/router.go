@@ -114,6 +114,10 @@ type Deps struct {
 	// on a short interval instead of waiting for a notification.
 	SettlementBus settlement.Bus
 
+	// ClosureFlags is the read-only gate of a tenant being closed (merchant
+	// tenant closure). Nil leaves the gate off.
+	ClosureFlags middleware.ClosingFlags
+
 	// Eraser answers ctech-account's erasure eligibility question. Nil leaves
 	// the route unmounted.
 	Eraser *services.Eraser
@@ -209,7 +213,8 @@ func Register(app *fiber.App, d Deps) {
 	// A suspended live tenant's writes are refused on every M2M route,
 	// including those added later (spec § 4.3).
 	suspended := middleware.RefuseSuspendedWrites(d.Organizations)
-	m2m := func(prefix string) fiber.Router { return v1.Group(prefix, auth, tenant, suspended) }
+	closing := middleware.RefuseClosingWrites(d.ClosureFlags)
+	m2m := func(prefix string) fiber.Router { return v1.Group(prefix, auth, tenant, suspended, closing) }
 
 	customers := m2m("/customers")
 	customers.Post("",
@@ -421,6 +426,8 @@ func registerConsole(v1 fiber.Router, d Deps, h *handlers, auth fiber.Handler) {
 		middleware.RequireUserSession(),
 		middleware.ResolveSpace(spaces),
 		middleware.ResolveMerchantTenant(d.Organizations),
+		// A tenant being closed refuses every write, whoever makes it.
+		middleware.RefuseClosingWrites(d.ClosureFlags),
 		// Every write in the console needs an Idempotency-Key, the M2M rule:
 		// a double click or a retried timeout must not void, charge or refund
 		// twice, whatever process each request lands on.

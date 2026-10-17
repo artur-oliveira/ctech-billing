@@ -16,18 +16,19 @@ import (
 // imports: S#IMPORT#{id}, byok: HOOK#{id}) also needs its own step in
 // PurgeSpace, as the S#ACCOUNT# entries have.
 var notSpaceScoped = map[string]string{
-	TableOrganizations: "merchant tenants (ADR 0007) and applications; a workspace with a tenant blocks erasure (billing.merchant_tenant), so none is purged until a tenant deletion flow exists",
-	TableCredentials:   "belongs to a merchant tenant, which blocks erasure",
-	TableCustomers:     "tenant-zero customers are anonymized in place by services.Eraser (ADR 0009); merchants' customers are their controller's",
-	TableProducts:      "catalogue, no person",
-	TablePrices:        "catalogue, no person",
-	TableSubscriptions: "canceled by services.Eraser and retained: it explains invoices (ADR 0009)",
-	TableInvoices:      "fiscal documents, retained (ADR 0009)",
-	TableUsage:         "level rows of USER_/ORG_ refs are deleted by LevelRepository.EraseRef; raw usage records expire in 24 months and carry no person",
-	TableWebhooks:      "tenant endpoints belong to a merchant tenant (blocks erasure); events and deliveries expire in 90 days",
-	TableErasureState:  "the saga's own state and tombstones",
-	TableAudit:         "purged under S by PurgeSpace, outside financeTables; a surviving space's audit keeps ADR 0009's five-year TTL",
-	TableIdempotency:   "purged under S by PurgeSpace, outside financeTables",
+	TableOrganizations:  "merchant tenants (ADR 0007) and applications; a workspace with a tenant blocks erasure (billing.merchant_tenant), so none is purged until a tenant deletion flow exists",
+	TableCredentials:    "belongs to a merchant tenant, which blocks erasure",
+	TableCustomers:      "tenant-zero customers are anonymized in place by services.Eraser (ADR 0009); merchants' customers are their controller's",
+	TableProducts:       "catalogue, no person",
+	TablePrices:         "catalogue, no person",
+	TableSubscriptions:  "canceled by services.Eraser and retained: it explains invoices (ADR 0009)",
+	TableInvoices:       "fiscal documents, retained (ADR 0009)",
+	TableUsage:          "level rows of USER_/ORG_ refs are deleted by LevelRepository.EraseRef; raw usage records expire in 24 months and carry no person",
+	TableWebhooks:       "tenant endpoints belong to a merchant tenant (blocks erasure); events and deliveries expire in 90 days",
+	TableErasureState:   "the saga's own state and tombstones",
+	TableTenantClosures: "closure requests and flags of a merchant tenant; not a finance space",
+	TableAudit:          "purged under S by PurgeSpace, outside financeTables; a surviving space's audit keeps ADR 0009's five-year TTL",
+	TableIdempotency:    "purged under S by PurgeSpace, outside financeTables",
 }
 
 func TestEveryTableIsClassifiedForThePurge(t *testing.T) {

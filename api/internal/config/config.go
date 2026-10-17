@@ -92,6 +92,13 @@ type Config struct {
 	// Empty means "read them from SSM": /ctech-billing/{env}/billing/erasure-client-{id,secret},
 	// declared by terraform/billing/erasure.tf. The consumer reads them at start
 	// rather than through the userdata, which is at its 16 KiB ceiling.
+	// TenantClosureEnabled turns on closing a merchant tenant
+	// (docs/specs/2026-10-17-merchant-tenant-deletion.md): the read-only gate on
+	// every write, the sweep's skip and, in later phases, the routes and the
+	// purge worker. Off by default: nothing destructive is reachable until the
+	// owner enables it.
+	TenantClosureEnabled bool `env:"TENANT_CLOSURE_ENABLED"`
+
 	ErasureClientID     string `env:"ERASURE_CLIENT_ID"`
 	ErasureClientSecret string `env:"ERASURE_CLIENT_SECRET"`
 

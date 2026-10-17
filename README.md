@@ -370,6 +370,25 @@ is the server's, and a client that could name one could accept a document it cho
 wall: the person there has no session to record an answer against, and a consent screen in front of
 a payment refuses money over a document nobody needs to have read in order to owe the bill.
 
+### Closing a merchant tenant (in progress, dark)
+
+Spec [`docs/specs/2026-10-17-merchant-tenant-deletion.md`](docs/specs/2026-10-17-merchant-tenant-deletion.md), plan
+[`docs/plans/2026-10-17-merchant-tenant-closure.md`](docs/plans/2026-10-17-merchant-tenant-closure.md). Behind
+`TENANT_CLOSURE_ENABLED` (default off: nothing below is wired and no route exists).
+
+**Phase 1, the lifecycle (this release):**
+
+| Piece | Where |
+|---|---|
+| State machine: `awaiting_confirmation` → `closing` (7-day read-only grace) → `ready_to_purge` / `blocked`; cancel until the purge starts | `internal/domain/closure` |
+| Table `{env}_billing_tenant_closures`: the request (`CLOSURE_REQ#{id}`), one open marker per workspace (`CLOSURE#{account org}`), a read-only flag per billing tenant row (`CLOSING#{tenant id}`), and the worker's `schedule-index` queue | `repositories.ClosureRepository` |
+| Service: owner check, tenant zero refused, blockers (`billing.tenant_active_subscriptions`, `_payment_in_flight`, `_payout_processing`, `_refund_open`; live mode only, re-checked at the end of grace), request/confirm/cancel, worker step | `services.TenantClosures` |
+| The gate: every write of a closing tenant, in either mode, answers `403 tenant_closing` (M2M and console); reads pass | `middleware.RefuseClosingWrites` |
+| The daily sweep skips a closing tenant (counted with the suspended ones) | `Invoicer.WithTenantGuard` |
+
+Not yet: the owner's e-mail (needs an account route), the console and public-link routes, the purge and the export (phases 2-4).
+Tenant zero can never be closed.
+
 ### Account deletion (LGPD)
 
 Billing is a participant in ctech-account's erasure saga

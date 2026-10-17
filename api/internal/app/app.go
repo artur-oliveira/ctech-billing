@@ -286,6 +286,7 @@ func Build(ctx context.Context, cfg *config.Config, clock func() time.Time, opts
 		PortalOrganizationID: cfg.PortalOrganizationID,
 		SettlementBus:        bus,
 		Eraser:               newEraser(db, cfg),
+		ClosureFlags:         closureFlags(db, cfg),
 		ErasedRef:            services.ErasedRef(erasureState),
 
 		DB:    db,
@@ -331,6 +332,9 @@ func BuildInvoicer(ctx context.Context, cfg *config.Config) (*services.Invoicer,
 		repositories.NewUsageRepository(db, cfg),
 	).WithOrganizations(repositories.NewOrganizationRepository(db, cfg)).
 		WithLevels(repositories.NewLevelRepository(db, cfg), repositories.NewCustomerRepository(db, cfg))
+	if flags := closureFlags(db, cfg); flags != nil {
+		invoicer.WithTenantGuard(flags.ReadOnly)
+	}
 	// The sweep issues most invoices: a BYOK tenant's charge is created right
 	// after, as the console's issue does (spec § 7.2).
 	c := newCache(cfg)
@@ -852,4 +856,13 @@ func billingPlanScreen(db *dynamodb.Client, cfg *config.Config, subscriber *serv
 func newBillingPlans(db *dynamodb.Client, cfg *config.Config) *services.BillingPlans {
 	return services.NewBillingPlans(repositories.NewCustomerRepository(db, cfg), newSubscriptions(db, cfg),
 		repositories.NewCatalogRepository(db, cfg), cfg.PortalOrganizationID)
+}
+
+// closureFlags is the read-only gate of a tenant being closed, or nil (the
+// feature off). A nil interface, not a typed nil: the middleware tests for it.
+func closureFlags(db *dynamodb.Client, cfg *config.Config) middleware.ClosingFlags {
+	if !cfg.TenantClosureEnabled {
+		return nil
+	}
+	return repositories.NewClosureRepository(db, cfg)
 }
