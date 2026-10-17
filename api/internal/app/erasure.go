@@ -16,6 +16,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
 	"gopkg.aoctech.app/api-commons/cache"
+	"gopkg.aoctech.app/api-commons/dataexport"
 	"gopkg.aoctech.app/api-commons/erasure"
 	"gopkg.aoctech.app/api-commons/oauth2client"
 
@@ -109,6 +110,10 @@ const erasureService = "billing"
 // erasureAckScope is what ctech-account's ack route requires.
 const erasureAckScope = "internal:account:erasure-ack"
 
+// exportAckScope is the extra scope the same client needs for the personal-data
+// export. Until an operator grants it, ctech-account does not ask billing.
+const exportAckScope = "internal:account:export-ack"
+
 // erasureQueueName is terraform/billing/erasure.tf's queue. It is derived from
 // ENVIRONMENT rather than configured, because the userdata is at its 16 KiB
 // ceiling (terraform/README).
@@ -189,6 +194,17 @@ func BuildErasureConsumer(ctx context.Context, cfg *config.Config, spaceFor func
 		strings.TrimSuffix(cfg.AccountBaseURL, "/")+"/v1.0/internal/erasure/ack",
 		oauth2client.New(hc, newCache(cfg), cfg.AccountTokenURL, clientID, clientSecret, erasureAckScope))
 	eraser := newEraser(db, cfg).WithPurge(repositories.NewSpacePurger(db, cfg), spaceFor, banks)
+	// The personal-data export rides the same queue (ctech-account
+	// docs/specs/2026-10-17-data-export.md): the part is PUT to a presigned S3 URL
+	// and acked. A longer timeout than the saga's, because the upload is data.
+	uc := &http.Client{Timeout: 60 * time.Second}
+	exporter := services.NewDataExporter(
+		repositories.NewCustomerRepository(db, cfg), repositories.NewSubscriptionRepository(db, cfg),
+		repositories.NewInvoiceRepository(db, cfg), repositories.NewSpaceReader(db, cfg),
+		cfg.PortalOrganizationID, spaceFor)
+	handler := dataexport.NewHandler(erasureService, exporter.Part, uc, dataexport.NewAckClient(uc,
+		strings.TrimSuffix(cfg.AccountBaseURL, "/")+"/v1.0/internal/export/ack",
+		oauth2client.New(hc, newCache(cfg), cfg.AccountTokenURL, clientID, clientSecret, exportAckScope)))
 	return erasure.NewConsumer(queues, aws.ToString(q.QueueUrl), erasureService,
-		erasure.NewStore(db, cfg.TablePrefix, 0), eraser.Purge, acks), nil
+		erasure.NewStore(db, cfg.TablePrefix, 0), eraser.Purge, acks).WithExporter(handler.Handle), nil
 }

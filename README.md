@@ -437,6 +437,22 @@ rail is ctech-wallet's.
 There is no CloudWatch alarm on the DLQ (the family declined them: ctech-wallet #103, ctech-poker #427).
 When a deletion stays in `purging` in ctech-account, check the depth of `{env}-ctech-billing-erasure-dlq`.
 
+### Personal-data export (LGPD art. 18, V)
+
+The erasure queue also carries `user.export` from ctech-account (spec ctech-account
+`docs/specs/2026-10-17-data-export.md`; `api-commons` ≥ v1.29.1, `dataexport.Handler` plugged in with
+`erasure.Consumer.WithExporter` in `app.BuildErasureConsumer`). `services.DataExporter` builds one zip, PUT straight to the
+presigned S3 URL in the message and acked to `/v1.0/internal/export/ack` with the same dedicated client, which needs the extra
+scope `internal:account:export-ack` (operator grant) before ctech-account is told `"export": true` for billing.
+
+- **Included:** the person as a customer of CTech itself (customer record with their own tax id, subscriptions, invoices;
+  `customer-{live,test}.json`) and their **personal** finance space (`USER#sub`, live and test: ledger accounts, transactions and
+  entries, bills, recurrences, cards, imports and the space's audit, `finance-{live,test}/{table}.json`).
+- **Not included:** workspaces' data (the workspace's), merchants' customers (the merchant's), bank-connection credentials, and
+  idempotency keys. `repositories.TestEveryTableIsClassifiedForTheExport` fails for a table that is neither exported nor excluded
+  with a reason, so **a new table decides its export next to its purge**. Attributes that look like secrets are dropped at any depth.
+- Read-only: `repositories.SpaceReader` walks the same child partitions as `SpacePurger` (integration-tested against DynamoDB Local).
+
 **Operating notes (independent review, 2026-10-17).**
 - The lock is written by the consumer. If `erasure-client-id`/`-secret` hold `SET-OUT-OF-BAND` the consumer does not start, billing never records the lock, and a person in grace is not locked here. That is only safe while billing is out of `ERASURE_PARTICIPANTS`: set the client first (it is set in prod).
 - There is no CloudWatch alarm on the erasure DLQ (the family declined them; the saga spec § 7 asks for one). Read `{env}-ctech-billing-erasure-dlq` when a deletion stays in `purging`.

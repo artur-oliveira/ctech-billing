@@ -866,3 +866,46 @@ func TestPurgeLeavesNoBankHookBehindWhenTheConnectionIsDisconnectedFirst(t *test
 	assertSpaceGone(t, workspace) // includes HOOK#{id} and HOOK#{id}-payout
 	assertSpaceGone(t, personal)
 }
+
+// The personal-data export reads the same spaces the purge deletes: every
+// exported table of a seeded personal space comes back, nothing of another
+// person's, and the bank-connection table (credentials) never does.
+func TestSpaceReaderExportsOnlyThePersonsOwnSpace(t *testing.T) {
+	ctx := context.Background()
+	sp := jobSpace(t, "USER#"+id.New(), true)
+	other := jobSpace(t, "USER#"+id.New(), true)
+	seedFinance(t, sp)
+	seedFinance(t, other)
+
+	rows, err := repositories.NewSpaceReader(testDB, testCfg).Read(ctx, sp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, table := range []string{"ledger_accounts", "ledger_transactions", "bills", "recurrences", "cards", "imports", "audit"} {
+		if rows[table] == nil || len(rows[table].Items) == 0 {
+			t.Errorf("nothing exported from %s; the seed or the reader skips it", table)
+		}
+	}
+	for _, skipped := range []string{"byok", "idempotency"} {
+		if rows[skipped] != nil {
+			t.Errorf("%s must not be exported", skipped)
+		}
+	}
+	// Ledger entries live in child partitions S#ACCOUNT#{id}: they must come along.
+	var entries int
+	for _, it := range rows["ledger_transactions"].Items {
+		if pk, _ := it["pk"].(string); strings.Contains(pk, "#ACCOUNT#") {
+			entries++
+		}
+	}
+	if entries == 0 {
+		t.Error("no ledger entries (child partitions) in the export")
+	}
+	for table, r := range rows {
+		for _, it := range r.Items {
+			if pk, _ := it["pk"].(string); !strings.HasPrefix(pk, sp.PK()) {
+				t.Errorf("%s: a row of another partition leaked: %s", table, pk)
+			}
+		}
+	}
+}
