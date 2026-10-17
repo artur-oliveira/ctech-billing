@@ -8,10 +8,12 @@
   ],
   "blockedTitle": "Before closing, resolve:",
   "blockers": {
-    "billing.tenant_active_subscriptions": "{{count}} customer subscription(s) are active: cancel them in the console.",
-    "billing.tenant_payment_in_flight": "{{count}} charge(s) are in flight: wait for payment or expiry.",
-    "billing.tenant_payout_processing": "{{count}} payout(s) are being processed: wait for them to finish.",
-    "billing.tenant_refund_open": "{{count}} refund(s) are in progress: wait for them to finish."
+    "billing": {
+      "tenant_active_subscriptions": "{{count}} customer subscription(s) are active: cancel them in the console.",
+      "tenant_payment_in_flight": "{{count}} charge(s) are in flight: wait for payment or expiry.",
+      "tenant_payout_processing": "{{count}} payout(s) are being processed: wait for them to finish.",
+      "tenant_refund_open": "{{count}} refund(s) are in progress: wait for them to finish."
+    }
   },
   "phraseLabel": "Type {{phrase}} to confirm",
   "submit": "Request closure",

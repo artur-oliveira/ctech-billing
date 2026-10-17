@@ -8,10 +8,12 @@
   ],
   "blockedTitle": "Antes de encerrar, resolva:",
   "blockers": {
-    "billing.tenant_active_subscriptions": "{{count}} assinatura(s) de clientes ativa(s): cancele-as no console.",
-    "billing.tenant_payment_in_flight": "{{count}} cobrança(s) em andamento: aguarde o pagamento ou a expiração.",
-    "billing.tenant_payout_processing": "{{count}} repasse(s) em processamento: aguarde a conclusão.",
-    "billing.tenant_refund_open": "{{count}} reembolso(s) em andamento: aguarde a conclusão."
+    "billing": {
+      "tenant_active_subscriptions": "{{count}} assinatura(s) de clientes ativa(s): cancele-as no console.",
+      "tenant_payment_in_flight": "{{count}} cobrança(s) em andamento: aguarde o pagamento ou a expiração.",
+      "tenant_payout_processing": "{{count}} repasse(s) em processamento: aguarde a conclusão.",
+      "tenant_refund_open": "{{count}} reembolso(s) em andamento: aguarde a conclusão."
+    }
   },
   "phraseLabel": "Digite {{phrase}} para confirmar",
   "submit": "Pedir encerramento",
