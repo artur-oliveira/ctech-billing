@@ -5,7 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/url"
+	"strings"
 	"time"
+
+	"gopkg.aoctech.app/billing/api/internal/accountclient"
+	"gopkg.aoctech.app/billing/api/internal/email"
 
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
 	"gopkg.aoctech.app/billing/api/internal/domain/closure"
@@ -43,11 +48,6 @@ type ClosureFacts interface {
 	RefundsOpen(ctx context.Context, tenantID string) (int64, error)
 }
 
-// ClosureOwners answers whether a ctech-account user owns a workspace, live.
-type ClosureOwners interface {
-	IsOwner(ctx context.Context, sub, accountOrgID string) (bool, error)
-}
-
 // ClosureTenants finds the billing tenant rows (live and test) of a workspace.
 type ClosureTenants interface {
 	TenantsOf(ctx context.Context, accountOrgID string) ([]*billing.Organization, error)
@@ -73,7 +73,6 @@ type ClosurePurger interface {
 type TenantClosures struct {
 	repo       *repositories.ClosureRepository
 	tenants    ClosureTenants
-	owners     ClosureOwners
 	facts      ClosureFacts
 	mail       ClosureMailer
 	purger     ClosurePurger
@@ -82,8 +81,8 @@ type TenantClosures struct {
 	newID      func() string
 }
 
-func NewTenantClosures(repo *repositories.ClosureRepository, tenants ClosureTenants, owners ClosureOwners, facts ClosureFacts, mail ClosureMailer, tenantZero string) *TenantClosures {
-	return &TenantClosures{repo: repo, tenants: tenants, owners: owners, facts: facts, mail: mail, tenantZero: tenantZero,
+func NewTenantClosures(repo *repositories.ClosureRepository, tenants ClosureTenants, facts ClosureFacts, mail ClosureMailer, tenantZero string) *TenantClosures {
+	return &TenantClosures{repo: repo, tenants: tenants, facts: facts, mail: mail, tenantZero: tenantZero,
 		now: time.Now, newID: func() string { return id.NewWithPrefix("clo") }}
 }
 
@@ -142,12 +141,13 @@ func (s *TenantClosures) Blockers(ctx context.Context, acct string) ([]ClosureBl
 	return out, nil
 }
 
-// Request opens a closure awaiting the owner's e-mail confirmation. An earlier
-// unconfirmed request is replaced, so a lost e-mail never blocks the owner.
-func (s *TenantClosures) Request(ctx context.Context, sub, acct string) (*closure.Closure, error) {
-	if owner, err := s.owners.IsOwner(ctx, sub, acct); err != nil {
-		return nil, err
-	} else if !owner {
+// Request opens a closure awaiting the owner's e-mail confirmation. owner is
+// whether the caller holds the owner role in the workspace, as the console's
+// space resolver just read it from ctech-account (the service never trusts a
+// role it did not just see). An earlier unconfirmed request is replaced, so a
+// lost e-mail never blocks the owner.
+func (s *TenantClosures) Request(ctx context.Context, sub, acct string, owner bool) (*closure.Closure, error) {
+	if !owner {
 		return nil, closure.ErrNotOwner
 	}
 	blockers, err := s.Blockers(ctx, acct)
@@ -443,4 +443,85 @@ func (o *OrganizationTenants) TenantsOf(ctx context.Context, accountOrgID string
 		}
 	}
 	return out, nil
+}
+
+// ClosureFactsRepo is ClosureFacts over the repositories.
+type ClosureFactsRepo struct {
+	subs     *repositories.SubscriptionRepository
+	payments *repositories.PaymentRepository
+}
+
+func NewClosureFacts(subs *repositories.SubscriptionRepository, payments *repositories.PaymentRepository) *ClosureFactsRepo {
+	return &ClosureFactsRepo{subs: subs, payments: payments}
+}
+
+func (f *ClosureFactsRepo) ActiveSubscriptions(ctx context.Context, tenantID string) (int64, error) {
+	return f.subs.CountOpen(ctx, tenantID, true)
+}
+
+func (f *ClosureFactsRepo) PaymentsInFlight(ctx context.Context, tenantID string) (int64, error) {
+	return f.payments.PendingAttemptsOf(ctx, tenantID, true)
+}
+
+func (f *ClosureFactsRepo) PayoutsProcessing(ctx context.Context, tenantID string) (int64, error) {
+	return f.payments.PayoutsProcessingOf(ctx, tenantID, true)
+}
+
+func (f *ClosureFactsRepo) RefundsOpen(ctx context.Context, tenantID string) (int64, error) {
+	return f.payments.RefundsInFlightOf(ctx, tenantID, true)
+}
+
+// ContactReader reads a person's verified contact (accountclient.Contacts).
+type ContactReader interface {
+	Contact(ctx context.Context, sub string) (accountclient.Contact, error)
+}
+
+// ClosureNoticeSender sends one closure e-mail (email.Client).
+type ClosureNoticeSender interface {
+	SendClosureNotice(ctx context.Context, to string, n email.ClosureNotice) error
+}
+
+// ClosureEmails is the ClosureMailer: it reads the owner's verified address from
+// ctech-account (never one a requester typed) and sends the notice. The links
+// point at the console's closure pages under baseURL.
+type ClosureEmails struct {
+	contacts ContactReader
+	send     ClosureNoticeSender
+	baseURL  string
+}
+
+func NewClosureEmails(contacts ContactReader, send ClosureNoticeSender, consoleBaseURL string) *ClosureEmails {
+	return &ClosureEmails{contacts: contacts, send: send, baseURL: strings.TrimSuffix(consoleBaseURL, "/")}
+}
+
+func (m *ClosureEmails) link(page, requestID, token string) string {
+	return m.baseURL + "/closure/" + page + "?request=" + url.QueryEscape(requestID) + "&token=" + url.QueryEscape(token)
+}
+
+func (m *ClosureEmails) notify(ctx context.Context, sub string, n email.ClosureNotice) error {
+	c, err := m.contacts.Contact(ctx, sub)
+	if err != nil {
+		return err
+	}
+	if !c.EmailVerified || c.Email == "" {
+		return errors.New("closure: the owner has no verified e-mail")
+	}
+	n.FirstName = c.FirstName
+	return m.send.SendClosureNotice(ctx, c.Email, n)
+}
+
+func (m *ClosureEmails) SendClosureConfirm(ctx context.Context, sub, requestID, token string) error {
+	return m.notify(ctx, sub, email.ClosureNotice{Kind: "confirm", Link: m.link("confirm", requestID, token)})
+}
+
+func (m *ClosureEmails) SendClosureScheduled(ctx context.Context, sub, requestID, cancelToken string, graceUntil time.Time) error {
+	return m.notify(ctx, sub, email.ClosureNotice{Kind: "scheduled", Link: m.link("cancel", requestID, cancelToken), GraceUntil: graceUntil})
+}
+
+func (m *ClosureEmails) SendClosureBlocked(ctx context.Context, sub, requestID, cancelToken string, blockers []string) error {
+	return m.notify(ctx, sub, email.ClosureNotice{Kind: "blocked", Link: m.link("cancel", requestID, cancelToken), Blockers: blockers})
+}
+
+func (m *ClosureEmails) SendClosureCancelled(ctx context.Context, sub string) error {
+	return m.notify(ctx, sub, email.ClosureNotice{Kind: "cancelled"})
 }

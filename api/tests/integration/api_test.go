@@ -83,7 +83,7 @@ func (e *apiEnv) useAccount(cfg *config.Config) {
 
 // newAPIWith is newAPI with a change to its configuration before the server is
 // built — a fake ctech-account behind the real client, for instance.
-func newAPIWith(t *testing.T, configure func(*config.Config)) *apiEnv {
+func newAPIWith(t *testing.T, configure func(*config.Config), opts ...app.Option) *apiEnv {
 	t.Helper()
 	ctx := ctxT(t)
 
@@ -106,7 +106,7 @@ func newAPIWith(t *testing.T, configure func(*config.Config)) *apiEnv {
 	clock := func() time.Time { return now() }
 
 	verifier := &fakeVerifier{}
-	server, err := app.Build(ctx, &cfg, clock, app.WithWebhookVerifier(verifier))
+	server, err := app.Build(ctx, &cfg, clock, append([]app.Option{app.WithWebhookVerifier(verifier)}, opts...)...)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,6 +149,12 @@ func newAPIWith(t *testing.T, configure func(*config.Config)) *apiEnv {
 // token mints an access token. sid empty means an M2M client_credentials token.
 func (e *apiEnv) token(t *testing.T, clientID, sid string, scopes ...string) string {
 	t.Helper()
+	return e.tokenWith(t, nil, clientID, sid, scopes...)
+}
+
+// tokenWith is token plus extra claims (last_mfa_at, for instance).
+func (e *apiEnv) tokenWith(t *testing.T, extra map[string]any, clientID, sid string, scopes ...string) string {
+	t.Helper()
 	claims := jwt.MapClaims{
 		// token_use is part of ctech-account's contract: the verifier rejects
 		// anything that is not an access token, so an id token or a refresh token
@@ -166,6 +172,9 @@ func (e *apiEnv) token(t *testing.T, clientID, sid string, scopes ...string) str
 	}
 	if sid != "" {
 		claims["sid"] = sid
+	}
+	for k, v := range extra {
+		claims[k] = v
 	}
 	tok := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
 	tok.Header["kid"] = "test-key"

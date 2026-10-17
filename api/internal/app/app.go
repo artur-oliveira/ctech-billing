@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -48,6 +49,21 @@ type Option func(*options)
 type options struct {
 	webhookVerifier v1.WebhookVerifier
 	byokOut         **services.ByokConnections
+	closuresOut     **services.TenantClosures
+	closureMail     services.ClosureMailer
+}
+
+// WithClosureMailer replaces the closure e-mails (which read the owner's address
+// from ctech-account and send through SES): tests only.
+func WithClosureMailer(m services.ClosureMailer) Option {
+	return func(o *options) { o.closureMail = m }
+}
+
+// WithClosures hands the tenant closure service Build wires to the caller, so
+// cmd/server can run its worker in the API process (no new timer: the userdata
+// is at its ceiling). *dst is nil when the feature is off.
+func WithClosures(dst **services.TenantClosures) Option {
+	return func(o *options) { o.closuresOut = dst }
 }
 
 // WithByokConnections hands the bank-connection service Build constructs to the
@@ -223,6 +239,10 @@ func Build(ctx context.Context, cfg *config.Config, clock func() time.Time, opts
 		}
 	}
 	spaces := space.NewResolver(account, cacheBackend)
+	closures := tenantClosures(ctx, cfg, db, cacheBackend, o.closureMail)
+	if o.closuresOut != nil {
+		*o.closuresOut = closures
+	}
 	// The account-deletion lock (saga protocol § 4.2) and the token revocation
 	// list (§ 5): two independent layers between a locked person and this API.
 	erasureState := erasure.NewStore(db, cfg.TablePrefix, 0)
@@ -287,6 +307,7 @@ func Build(ctx context.Context, cfg *config.Config, clock func() time.Time, opts
 		SettlementBus:        bus,
 		Eraser:               newEraser(db, cfg),
 		ClosureFlags:         closureFlags(db, cfg),
+		Closures:             closures,
 		ErasedRef:            services.ErasedRef(erasureState),
 
 		DB:    db,
@@ -875,4 +896,54 @@ func BuildTenantPurger(ctx context.Context, cfg *config.Config) (*repositories.T
 		return nil, err
 	}
 	return repositories.NewTenantPurger(db, cfg), nil
+}
+
+// tenantClosures wires the merchant tenant closure service, or nil (the feature
+// off). The irreversible purge is wired only with TENANT_CLOSURE_PURGE_ENABLED.
+// Without the account contact client or an e-mail sender the service is not
+// wired either: a closure whose confirmation can never be sent must not exist.
+func tenantClosures(ctx context.Context, cfg *config.Config, db *dynamodb.Client, c cache.Backend, override services.ClosureMailer) *services.TenantClosures {
+	if !cfg.TenantClosureEnabled {
+		return nil
+	}
+	mail := override
+	if mail == nil {
+		contacts := accountclient.NewContacts(accountclient.Config{
+			BaseURL: cfg.AccountBaseURL, TokenURL: cfg.AccountTokenURL,
+			ClientID: cfg.AccountClientID, ClientSecret: cfg.AccountClientSecret, Cache: c,
+		})
+		if contacts == nil || cfg.EmailFrom == "" {
+			slog.Warn("TENANT_CLOSURE_ENABLED but the account contact client or the e-mail sender is not configured: closures are not mounted")
+			return nil
+		}
+		sender, err := email.New(ctx, cfg.AWSRegion, cfg.EmailFrom)
+		if err != nil {
+			slog.Warn("TENANT_CLOSURE_ENABLED but the e-mail client failed: closures are not mounted", "error", err)
+			return nil
+		}
+		mail = services.NewClosureEmails(contacts, sender, appOrigin(cfg.CheckoutBaseURL))
+	}
+	if cfg.PortalOrganizationID == "" {
+		slog.Warn("TENANT_CLOSURE_ENABLED but tenant zero is not configured: closures are not mounted")
+		return nil
+	}
+	repo := repositories.NewClosureRepository(db, cfg)
+	svc := services.NewTenantClosures(repo,
+		services.NewOrganizationTenants(repositories.NewOrganizationRepository(db, cfg)),
+		services.NewClosureFacts(newSubscriptions(db, cfg), repositories.NewPaymentRepository(db, cfg)),
+		mail, cfg.PortalOrganizationID)
+	if cfg.TenantClosurePurgeEnabled {
+		svc = svc.WithPurger(services.NewTenantPurge(repositories.NewTenantPurger(db, cfg), repositories.NewApplicationRepository(db, cfg), repo))
+	}
+	return svc
+}
+
+// appOrigin is the origin of the app (the checkout base URL's), where the
+// console and its closure pages live.
+func appOrigin(checkoutBase string) string {
+	u, err := url.Parse(checkoutBase)
+	if err != nil || u.Host == "" {
+		return ""
+	}
+	return u.Scheme + "://" + u.Host
 }

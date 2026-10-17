@@ -74,14 +74,16 @@ type Client struct {
 
 // New returns nil when the credential is incomplete. A nil client is not
 // permissive: every call errors.
-func New(cfg Config) *Client {
+func New(cfg Config) *Client { return newWithScope(cfg, CompanyScope) }
+
+func newWithScope(cfg Config, scope string) *Client {
 	if cfg.BaseURL == "" || cfg.TokenURL == "" || cfg.ClientID == "" || cfg.ClientSecret == "" {
 		return nil
 	}
 	hc := &http.Client{Timeout: requestTimeout}
 	return &Client{
 		http:    hc,
-		tokens:  oauth2client.New(hc, cfg.Cache, cfg.TokenURL, cfg.ClientID, cfg.ClientSecret, CompanyScope),
+		tokens:  oauth2client.New(hc, cfg.Cache, cfg.TokenURL, cfg.ClientID, cfg.ClientSecret, scope),
 		baseURL: strings.TrimSuffix(cfg.BaseURL, "/"),
 	}
 }
