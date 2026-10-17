@@ -518,6 +518,11 @@ flow exists and is tested.** In the same change:
 
 A pull request that adds person-linked data without this is incomplete, whatever else passes.
 
+**Leaving a single product (`scope: service`).** ctech-account lets a person leave one CTech product without closing the
+account. The message arrives with no workspaces, so the purge removes the person's own data only and leaves the
+workspaces' data alone; the same consumer clears the tombstone on `user.relinked` when the person comes back (`api-commons`
+≥ v1.28.0, `Store.Relink`). Nothing in this repo changes for it. Spec: ctech-account `docs/specs/2026-10-17-service-unlink.md`.
+
 ## Relationship to other CTech services
 
 - **ctech-account** — issues the M2M (client-credentials) tokens that authorize external
