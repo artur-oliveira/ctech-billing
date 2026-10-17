@@ -386,7 +386,16 @@ Spec [`docs/specs/2026-10-17-merchant-tenant-deletion.md`](docs/specs/2026-10-17
 | The gate: every write of a closing tenant, in either mode, answers `403 tenant_closing` (M2M and console); reads pass | `middleware.RefuseClosingWrites` |
 | The daily sweep skips a closing tenant (counted with the suspended ones) | `Invoicer.WithTenantGuard` |
 
-Not yet: the owner's e-mail (needs an account route), the console and public-link routes, the purge and the export (phases 2-4).
+**Phase 2, the purge (behind `TENANT_CLOSURE_PURGE_ENABLED`, a second flag, so a closure can reach `ready_to_purge` long before anything is deleted):**
+
+| Piece | Where |
+|---|---|
+| `TenantPurger.PurgeTenant(tenant, dryRun)`: clears the tenant's partition in every tenant-keyed table (credentials, customers, products, prices, subscriptions, invoices with items, attempts, sessions, credit notes, payouts, usage, webhooks, audit, idempotency), the tenant row last; first the pointer rows its rows name (`CLIENT#` guards, BYOK `CHARGEREF#`, `PAYREF#` markers), the BYOK counters, and the level rows derivable from the catalogue and the customers. Idempotent and resumable (the tenant row goes last); every table is classified by `TestEveryTableIsClassifiedForTheTenantPurge` | `repositories.TenantPurger` |
+| The merchant's applications (tenant zero's rows) and a tombstone `TENANT#{id}` (no personal data, never expires, never blocks a new tenant for the same workspace) | `ApplicationRepository.DeleteForOrganization`, `ClosureRepository.Tombstone` |
+| **`cmd/closure-residue -tenant <id> [-apply]`**: an operator command that Scans (the service role may not) for what the online purge cannot enumerate: the `{tenant}#{mode}#USAGE#…`, `#GEN#…` and `#LEVEL…` sub-partitions of references nobody listed. Run it after a closure reaches `closed`, until its dry run reports nothing. Refuses tenant zero | `TenantPurger.SweepResidue` |
+| The workspace's **finance space and BYOK connections are not erased**: they belong to the workspace (Finanças), not to the billing tenant (corrects spec T4, which listed the finance space) | |
+
+Not yet: the owner's e-mail (needs an account route), the console and public-link routes and the worker binary (phase 3), the export (phase 4).
 Tenant zero can never be closed.
 
 ### Account deletion (LGPD)
