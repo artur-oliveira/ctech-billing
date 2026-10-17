@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"context"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
@@ -116,6 +117,9 @@ type Deps struct {
 	// Eraser answers ctech-account's erasure eligibility question. Nil leaves
 	// the route unmounted.
 	Eraser *services.Eraser
+	// ErasedRef reports a level-report customer ref the account-deletion saga
+	// has locked or erased (services.ErasedRef). Nil drops nothing.
+	ErasedRef func(ctx context.Context, customerRef string) (bool, error)
 
 	// The health report's inputs. All four may be zero — a test wires the app
 	// without them and gets a report that says so rather than one that panics.
@@ -153,6 +157,8 @@ func Register(app *fiber.App, d Deps) {
 		payments:   d.Payments,
 		usage:      d.Usage,
 		levels:     d.Levels,
+		erasedRef:  d.ErasedRef,
+		tenantZero: d.PortalOrganizationID,
 		subscriber: d.Subscriber,
 		cat:        d.Catalog,
 		clock:      clock,

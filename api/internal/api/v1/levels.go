@@ -74,6 +74,18 @@ func (h *handlers) reportLevel(c fiber.Ctx) error {
 		return problem.Forbidden("this credential may not report this meter").WithCode("meter_not_allowed").Send(c)
 	}
 
+	if h.erasedRef != nil && h.tenantZero != "" && t.OrganizationID == h.tenantZero {
+		gone, err := h.erasedRef(c.Context(), req.CustomerRef)
+		if err != nil {
+			return fail(c, err) // unknown erasure state: never write
+		}
+		if gone {
+			// Accepted and dropped: the reporter must not retry forever for a
+			// person who no longer exists here.
+			return c.Status(fiber.StatusOK).JSON(fiber.Map{"recorded": false, "dropped": "account_erased"})
+		}
+	}
+
 	rec := &billing.LevelRecord{
 		OrganizationID: t.OrganizationID, Livemode: t.Livemode, CustomerRef: req.CustomerRef, Meter: req.Meter,
 		Value: *req.Value, OccurredAt: at, IdempotencyKey: req.IdempotencyKey,

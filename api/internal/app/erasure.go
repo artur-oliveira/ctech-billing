@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"net/url"
@@ -8,10 +9,12 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 
 	"gopkg.aoctech.app/api-commons/cache"
+	"gopkg.aoctech.app/api-commons/erasure"
 
 	"gopkg.aoctech.app/billing/api/internal/config"
 	"gopkg.aoctech.app/billing/api/internal/repositories"
 	"gopkg.aoctech.app/billing/api/internal/services"
+	"gopkg.aoctech.app/billing/api/internal/space"
 )
 
 // revocationURL is VALKEY_URL with its logical-DB path removed. ctech-account
@@ -78,4 +81,15 @@ func newEraser(db *dynamodb.Client, cfg *config.Config) *services.Eraser {
 		cfg.PortalOrganizationID,
 		portalInvoicesURL(cfg.CheckoutBaseURL),
 	)
+}
+
+// ErasedSpaceGuard is the guard the cmd/ jobs that write into a finance space
+// from a work list read earlier (cmd/byok) chain with WithSpaceGuard. The API
+// and BuildFinanceJobs wire the same services.ErasedSpace.
+func ErasedSpaceGuard(ctx context.Context, cfg *config.Config) (func(context.Context, space.ResolvedSpace) (bool, error), error) {
+	db, err := newDynamoDB(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+	return services.ErasedSpace(erasure.NewStore(db, cfg.TablePrefix, 0)), nil
 }

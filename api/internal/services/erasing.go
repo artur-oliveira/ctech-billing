@@ -378,3 +378,17 @@ func ErasedSpace(store *erasure.Store) func(context.Context, space.ResolvedSpace
 		return store.OrgErased(ctx, sp.OrganizationID())
 	}
 }
+
+// ErasedRef reports a level-report customer ref whose person or workspace the
+// saga has locked or erased: USER_{sub} by sub, ORG_{id} by workspace id.
+func ErasedRef(store *erasure.Store) func(context.Context, string) (bool, error) {
+	return func(ctx context.Context, ref string) (bool, error) {
+		switch {
+		case strings.HasPrefix(ref, "USER_"):
+			return store.Blocked(ctx, strings.TrimPrefix(ref, "USER_"))
+		case strings.HasPrefix(ref, repositories.OrgRefPrefix):
+			return store.OrgErased(ctx, strings.TrimPrefix(ref, repositories.OrgRefPrefix))
+		}
+		return false, nil
+	}
+}

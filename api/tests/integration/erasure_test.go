@@ -805,3 +805,29 @@ func askAbout(t *testing.T, e *portalEnv, sub, token, workspace string) (int, er
 	}
 	return res.status, el
 }
+
+// A level report for an erased ref is accepted and dropped, so the reporter
+// stops retrying, and it writes nothing (R21).
+func TestALevelReportForAnErasedRefWritesNothing(t *testing.T) {
+	e := newPortal(t)
+	e.withPortal(t)
+	addMeteredPrice(t, e.org, "finance_spaces")
+	tok := e.token(t, e.client, "", middleware.ScopeUsageWrite)
+	ref := "USER_" + e.userID
+	post := func(key string) apiResponse {
+		return e.do(t, http.MethodPost, "/v1.0/usage/levels", tok, "", levelBody(ref, "finance_spaces", key, "2026-03-10T11:00:00Z", 3))
+	}
+	if res := post("before"); res.status != http.StatusCreated {
+		t.Fatalf("before the lock: %d %s, want 201 (the guard must not touch a live person)", res.status, res.body)
+	}
+
+	lockSubject(t, e.userID)
+
+	if res := post("after"); res.status != http.StatusOK || !strings.Contains(string(res.body), "account_erased") {
+		t.Fatalf("after the lock: %d %s, want 200 dropped", res.status, res.body)
+	}
+	l, err := repositories.NewLevelRepository(testDB, testCfg).Latest(ctxT(t), e.org.ID, true, ref, "finance_spaces")
+	if err != nil || l == nil || l.IdempotencyKey != "before" {
+		t.Fatalf("latest = %+v, %v; the report after the lock must not have been written", l, err)
+	}
+}

@@ -206,3 +206,32 @@ func TestAnExpiredCertificateIsHandledEvenWhenTheSyncFails(t *testing.T) {
 		t.Fatalf("state %s, mail %v", repo.conns[0].State, mail.kinds())
 	}
 }
+
+func TestTheByokJobLeavesAnErasedWorkspaceAlone(t *testing.T) {
+	repo := &memJobRepo{conns: []byokconn.Connection{liveConn("c1")}}
+	steps := 0
+	count := func(context.Context, space.ResolvedSpace, *byokconn.Connection, time.Time) error { steps++; return nil }
+
+	open := NewByokJob(repo, nil, nil, &recordingMailer{}, alerts.Nop{}, jobSpaces)
+	open.Register(StepSync, count)
+	open.Run(context.Background(), true, time.Now())
+	if steps != 1 {
+		t.Fatalf("without a guard the step ran %d times, want 1 (the test would prove nothing)", steps)
+	}
+
+	steps = 0
+	guarded := NewByokJob(repo, nil, nil, &recordingMailer{}, alerts.Nop{}, jobSpaces).
+		WithSpaceGuard(func(context.Context, space.ResolvedSpace) (bool, error) { return true, nil })
+	guarded.Register(StepSync, count)
+	guarded.Run(context.Background(), true, time.Now())
+	if steps != 0 {
+		t.Fatalf("a step ran %d times for an erased workspace", steps)
+	}
+
+	failing := NewByokJob(repo, nil, nil, &recordingMailer{}, alerts.Nop{}, jobSpaces).
+		WithSpaceGuard(func(context.Context, space.ResolvedSpace) (bool, error) { return false, errors.New("dynamodb: boom") })
+	failing.Register(StepSync, count)
+	if res := failing.Run(context.Background(), true, time.Now()); steps != 0 || len(res.Errors) == 0 {
+		t.Fatalf("an unreadable erasure state ran %d steps with errors %v; want none and an error", steps, res.Errors)
+	}
+}

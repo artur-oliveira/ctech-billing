@@ -121,9 +121,16 @@ func main() {
 	if *retry {
 		os.Exit(retryCallbacks(ctx, repo, sweep, *since))
 	}
+	// A workspace the account-deletion saga erased must not be written into by a
+	// sync or a sweep that listed its connection before the purge.
+	erased, err := app.ErasedSpaceGuard(ctx, cfg)
+	if err != nil {
+		jobs.Startup(ctx, alerter, "byok", err)
+	}
 	job := services.NewByokJob(repo, conns, statement, mailer, alerter, spaceFor).
 		WithConsoleURL(consoleURL(cfg.CheckoutBaseURL)).
-		WithSandboxCertificate(conns.SandboxCertNotAfter, guard)
+		WithSandboxCertificate(conns.SandboxCertNotAfter, guard).
+		WithSpaceGuard(erased)
 	if sweep != nil {
 		sweep.WithMail(mailer).WithAlerts(alerter).Register(job)
 	}
