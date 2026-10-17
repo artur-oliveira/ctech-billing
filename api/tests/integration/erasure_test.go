@@ -24,6 +24,7 @@ import (
 	"gopkg.aoctech.app/billing/api/internal/middleware"
 	"gopkg.aoctech.app/billing/api/internal/problem"
 	"gopkg.aoctech.app/billing/api/internal/repositories"
+	"gopkg.aoctech.app/billing/api/internal/services"
 	"gopkg.aoctech.app/billing/api/internal/space"
 )
 
@@ -461,4 +462,294 @@ func TestEraseRefDeletesHistoryAndLatestOfThatRefOnly(t *testing.T) {
 	if n, err := levels.EraseRef(ctx, e.org.ID, true, mine, []string{"finance_spaces"}); err != nil || n != 0 {
 		t.Fatalf("second run = %d, %v; want 0", n, err)
 	}
+}
+
+func eraserFor(e *portalEnv) *services.Eraser {
+	return services.NewEraser(
+		repositories.NewCustomerRepository(testDB, testCfg),
+		repositories.NewSubscriptionRepository(testDB, testCfg),
+		repositories.NewInvoiceRepository(testDB, testCfg),
+		repositories.NewOrganizationRepository(testDB, testCfg),
+		repositories.NewCatalogRepository(testDB, testCfg),
+		repositories.NewLevelRepository(testDB, testCfg),
+		e.org.ID, "https://billing.test/invoices",
+	).WithPurge(repositories.NewSpacePurger(testDB, testCfg), space.ForJob, noBanks{})
+}
+
+// noBanks is a BankConnections with no connections; the BYOK path has its own
+// test (TestPurgeDisconnectsBankConnections).
+type noBanks struct{}
+
+func (noBanks) List(context.Context, space.ResolvedSpace) ([]byokconn.Connection, error) {
+	return nil, nil
+}
+func (noBanks) Disconnect(context.Context, space.ResolvedSpace, string, string, string, time.Time) error {
+	return nil
+}
+
+func eraseMessage(sub string, workspaces ...string) erasure.Message {
+	m := erasure.Message{
+		Version: erasure.Version, Type: erasure.TypeErase, RequestID: "req_" + id.New(), Sub: sub,
+		Scope: erasure.ScopeAccount, Services: []string{"billing"}, Attempt: 1, IssuedAt: time.Now(),
+	}
+	for _, w := range workspaces {
+		m.Workspaces = append(m.Workspaces, erasure.Workspace{ID: w, Kind: erasure.WorkspaceKindPersonal})
+	}
+	return m
+}
+
+// newOrgCustomer is the tenant-zero customer of a ctech-account workspace: the
+// ORG_{id} reference and its CUSTOMER_ORG# pointer (ADR 0025 amendment).
+func newOrgCustomer(t *testing.T, e *portalEnv, workspaceID string) *billing.Customer {
+	t.Helper()
+	c := &billing.Customer{
+		ID: id.NewWithPrefix(id.PrefixCustomer), OrganizationID: e.org.ID, Livemode: true,
+		Name: "Empresa MEI de Fulano", Email: "mei@example.com", TaxID: "12345678000199",
+		ExternalRef: repositories.OrgRefPrefix + workspaceID,
+	}
+	if err := repositories.NewCustomerRepository(testDB, testCfg).Create(ctxT(t), c, "test", "req_setup", now()); err != nil {
+		t.Fatal(err)
+	}
+	return c
+}
+
+func finalizeInvoice(t *testing.T, inv *billing.Invoice) {
+	t.Helper()
+	due := brcal.New(2026, time.March, 20)
+	if _, err := repositories.NewInvoiceRepository(testDB, testCfg).
+		Finalize(ctxT(t), inv, due, due, billing.CauseScheduler, "test", "req_setup", now()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Review Focus 2: an invoice issued while the account was locked is caught by
+// the purge's own re-check, and nothing is half-erased.
+func TestPurgeIsRefusedWhileAnInvoiceIsOpenAndChangesNothing(t *testing.T) {
+	ctx := ctxT(t)
+	e := newPortal(t)
+	sub := newSubscriptionIn(t, e.org, e.customer.ID, e.priceID, billing.SubscriptionActive)
+	finalizeInvoice(t, newSubscriptionInvoice(t, e.org, sub))
+	personal := jobSpace(t, "USER#"+e.userID, true)
+	seedFinance(t, personal)
+
+	ack, err := eraserFor(e).Purge(ctx, eraseMessage(e.userID))
+	if err != nil || ack.Result != erasure.ResultBlocked || len(ack.Blockers) != 1 || ack.Blockers[0].Code != services.BlockerInvoiceOpen {
+		t.Fatalf("ack = %+v, %v; want blocked by %s", ack, err, services.BlockerInvoiceOpen)
+	}
+	if ack.Blockers[0].ActionURL != "https://billing.test/invoices" || ack.Blockers[0].Detail["overdue"] != 1 {
+		t.Fatalf("blocker = %+v", ack.Blockers[0])
+	}
+	if c, err := repositories.NewCustomerRepository(testDB, testCfg).Get(ctx, e.org.ID, true, e.customer.ID); err != nil || c.Anonymized {
+		t.Fatalf("customer anonymized by a blocked purge: %+v, %v", c, err)
+	}
+	if s, err := repositories.NewSubscriptionRepository(testDB, testCfg).Get(ctx, e.org.ID, true, sub.ID); err != nil || s.Status != billing.SubscriptionActive {
+		t.Fatalf("subscription touched by a blocked purge: %+v, %v", s, err)
+	}
+	assertSpaceUntouched(t, personal)
+}
+
+// Review Focus 5: the person goes; the documents, another customer's debt and a
+// surviving organization's space stay.
+func TestPurgeErasesThePersonAndKeepsTheDocuments(t *testing.T) {
+	ctx := ctxT(t)
+	e := newPortal(t)
+	sub := newSubscriptionWithMetadata(t, e.org, e.customer.ID, e.priceID)
+	inv := newSubscriptionInvoice(t, e.org, sub)
+	paid(t, inv) // a settled invoice does not block
+	personal := jobSpace(t, "USER#"+e.userID, true)
+	seedFinance(t, personal)
+	surviving := jobSpace(t, newSpaceOrgID(), true)
+	seedFinance(t, surviving)
+
+	ack, err := eraserFor(e).Purge(ctx, eraseMessage(e.userID))
+	if err != nil || ack.Result != erasure.ResultDone {
+		t.Fatalf("ack = %+v, %v", ack, err)
+	}
+	if ack.Counts["subscriptions_canceled"] != 1 || ack.Counts["customers_anonymized"] != 1 || ack.Counts["invoices_retained"] != 1 {
+		t.Fatalf("counts = %v", ack.Counts)
+	}
+	c, _ := repositories.NewCustomerRepository(testDB, testCfg).Get(ctx, e.org.ID, true, e.customer.ID)
+	if !c.Anonymized || c.Email != "" || c.TaxID != "" {
+		t.Fatalf("customer = %+v; want anonymized", c)
+	}
+	s, _ := repositories.NewSubscriptionRepository(testDB, testCfg).Get(ctx, e.org.ID, true, sub.ID)
+	if s.Status != billing.SubscriptionCanceled || len(s.Metadata) != 0 {
+		t.Fatalf("subscription = %+v; want canceled, no metadata", s)
+	}
+	if got, _ := repositories.NewInvoiceRepository(testDB, testCfg).Get(ctx, e.org.ID, true, inv.ID); got == nil {
+		t.Fatal("the invoice is a document and must stay")
+	}
+	assertSpaceGone(t, personal)
+	assertSpaceUntouched(t, surviving)
+
+	again, err := eraserFor(e).Purge(ctx, eraseMessage(e.userID)) // idempotent
+	if err != nil || again.Result != erasure.ResultDone || again.Counts["subscriptions_canceled"] != 0 || again.Counts["customers_anonymized"] != 0 {
+		t.Fatalf("second purge = %+v, %v", again, err)
+	}
+}
+
+// R19, R12: an erased workspace takes its organization customer, that
+// customer's DF-e subscription and its whole finance space with it.
+func TestPurgeErasesAnErasedWorkspaceCustomerSubscriptionAndSpace(t *testing.T) {
+	ctx := ctxT(t)
+	e := newPortal(t)
+	ws := newSpaceOrgID()
+	c := newOrgCustomer(t, e, ws)
+	sub := newSubscriptionIn(t, e.org, c.ID, e.priceID, billing.SubscriptionActive)
+	space := jobSpace(t, ws, true)
+	seedFinance(t, space)
+
+	ack, err := eraserFor(e).Purge(ctx, eraseMessage(e.userID, ws))
+	if err != nil || ack.Result != erasure.ResultDone {
+		t.Fatalf("ack = %+v, %v", ack, err)
+	}
+	got, _ := repositories.NewCustomerRepository(testDB, testCfg).Get(ctx, e.org.ID, true, c.ID)
+	if !got.Anonymized || got.TaxID != "" || got.ExternalRef != "" {
+		t.Fatalf("organization customer = %+v; want anonymized", got)
+	}
+	if s, _ := repositories.NewSubscriptionRepository(testDB, testCfg).Get(ctx, e.org.ID, true, sub.ID); s.Status != billing.SubscriptionCanceled {
+		t.Fatalf("organization subscription = %s; want canceled", s.Status)
+	}
+	assertSpaceGone(t, space) // including its audit rows, whatever its kind (decision 2)
+}
+
+// R3, Review Focus 6: a workspace with a billing tenant is never erased
+// silently. Nothing is touched, in either mode.
+func TestAWorkspaceWithAMerchantTenantBlocksErasure(t *testing.T) {
+	ctx := ctxT(t)
+	e := newPortal(t)
+	ws := newSpaceOrgID()
+	newLinkedOrg(t, false, ws) // a test-mode tenant is enough
+	space := jobSpace(t, ws, true)
+	seedFinance(t, space)
+
+	blockers, err := eraserFor(e).Blockers(ctx, e.userID, []string{ws})
+	if err != nil || len(blockers) != 1 || blockers[0].Code != services.BlockerMerchantTenant {
+		t.Fatalf("blockers = %+v, %v; want %s", blockers, err, services.BlockerMerchantTenant)
+	}
+	if ids, _ := blockers[0].Detail["workspace_ids"].([]string); len(ids) != 1 || ids[0] != ws {
+		t.Fatalf("detail = %v", blockers[0].Detail)
+	}
+	ack, err := eraserFor(e).Purge(ctx, eraseMessage(e.userID, ws))
+	if err != nil || ack.Result != erasure.ResultBlocked {
+		t.Fatalf("purge = %+v, %v; want blocked", ack, err)
+	}
+	assertSpaceUntouched(t, space)
+}
+
+// An unpaid invoice of an erased workspace's customer blocks like the person's.
+func TestAnOrganizationInvoiceBlocksErasure(t *testing.T) {
+	ctx := ctxT(t)
+	e := newPortal(t)
+	ws := newSpaceOrgID()
+	c := newOrgCustomer(t, e, ws)
+	finalizeInvoice(t, newInvoiceFor(t, e.org, c.ID))
+
+	blockers, err := eraserFor(e).Blockers(ctx, e.userID, []string{ws})
+	if err != nil || len(blockers) != 1 || blockers[0].Code != services.BlockerInvoiceOpen ||
+		blockers[0].Detail["amount_cents"] != int64(4990) {
+		t.Fatalf("blockers = %+v, %v", blockers, err)
+	}
+	if got, _ := eraserFor(e).Blockers(ctx, e.userID, nil); len(got) != 0 {
+		t.Fatalf("without the workspace in the question the person is clear: %+v", got)
+	}
+}
+
+// A written-off CTech debt still blocks (user decision 2026-10-08). It has its
+// own code and no action_url, because the portal cannot collect it.
+func TestAWrittenOffInvoiceBlocksErasure(t *testing.T) {
+	ctx := ctxT(t)
+	e := newPortal(t)
+	inv := newInvoiceFor(t, e.org, e.customer.ID)
+	finalizeInvoice(t, inv)
+	if _, err := repositories.NewInvoiceRepository(testDB, testCfg).Transition(ctx, inv, billing.InvoiceUncollectible,
+		billing.CauseDunningExhausted, "test", "req_setup", now()); err != nil {
+		t.Fatal(err)
+	}
+	blockers, err := eraserFor(e).Blockers(ctx, e.userID, nil)
+	if err != nil || len(blockers) != 1 || blockers[0].Code != services.BlockerInvoiceUncollectible ||
+		blockers[0].ActionURL != "" || blockers[0].Detail["amount_cents"] != int64(4990) || blockers[0].Detail["count"] != 1 {
+		t.Fatalf("blockers = %+v, %v; want one %s for 4990 with no action_url", blockers, err, services.BlockerInvoiceUncollectible)
+	}
+	if ack, err := eraserFor(e).Purge(ctx, eraseMessage(e.userID)); err != nil || ack.Result != erasure.ResultBlocked {
+		t.Fatalf("purge = %+v, %v; want blocked", ack, err)
+	}
+}
+
+// R21: the person's level rows go with them.
+func TestPurgeErasesTheLevelRowsOfTheErasedRefs(t *testing.T) {
+	ctx := ctxT(t)
+	e := newPortal(t)
+	levels := repositories.NewLevelRepository(testDB, testCfg)
+	ref := "USER_" + e.userID
+	addMeteredPrice(t, e.org, "finance_spaces")
+	if err := levels.Append(ctx, &billing.LevelRecord{OrganizationID: e.org.ID, Livemode: true, CustomerRef: ref,
+		Meter: "finance_spaces", Value: 3, OccurredAt: seedNow, IdempotencyKey: "k-" + id.New()}, seedNow); err != nil {
+		t.Fatal(err)
+	}
+	ack, err := eraserFor(e).Purge(ctx, eraseMessage(e.userID))
+	if err != nil || ack.Result != erasure.ResultDone || ack.Counts["level_rows"] != 2 {
+		t.Fatalf("ack = %+v, %v; want done with 2 level rows", ack, err)
+	}
+	if l, err := levels.Latest(ctx, e.org.ID, true, ref, "finance_spaces"); err == nil && l != nil {
+		t.Fatalf("latest level survives: %+v", l)
+	}
+}
+
+// R23: a workspace's bank connections are disconnected before its space goes.
+func TestPurgeDisconnectsBankConnections(t *testing.T) {
+	ctx := ctxT(t)
+	e := newPortal(t)
+	ws := newSpaceOrgID()
+	banks := &recordingBanks{conns: map[string][]byokconn.Connection{ws + "#live": {{Provider: "inter", AccountOrganizationID: ws, Livemode: true}}}}
+	er := eraserFor(e).WithPurge(repositories.NewSpacePurger(testDB, testCfg), space.ForJob, banks)
+	ack, err := er.Purge(ctx, eraseMessage(e.userID, ws))
+	if err != nil || ack.Result != erasure.ResultDone || ack.Counts["bank_connections_disconnected"] != 1 || len(banks.disconnected) != 1 {
+		t.Fatalf("ack = %+v, %v, disconnected %v", ack, err, banks.disconnected)
+	}
+}
+
+// paid finalizes an invoice and settles it, as a wallet webhook would.
+func paid(t *testing.T, inv *billing.Invoice) {
+	t.Helper()
+	finalizeInvoice(t, inv)
+	if _, err := repositories.NewInvoiceRepository(testDB, testCfg).
+		Transition(ctxT(t), inv, billing.InvoicePaid, billing.CauseWalletWebhook, "test", "req_setup", now()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// addMeteredPrice declares a max-aggregated level meter in org's catalogue, the
+// way the Finanças plan does, so the purge knows which meters to look for.
+func addMeteredPrice(t *testing.T, org *billing.Organization, meter string) {
+	t.Helper()
+	catalog := repositories.NewCatalogRepository(testDB, testCfg)
+	product := &billing.Product{ID: id.NewWithPrefix(id.PrefixProduct), OrganizationID: org.ID, Livemode: true, Name: "Finanças " + meter, Active: true}
+	if err := catalog.CreateProduct(ctxT(t), product, "test", "req_setup", now()); err != nil {
+		t.Fatal(err)
+	}
+	price := &billing.Price{
+		ID: id.NewWithPrefix(id.PrefixPrice), OrganizationID: org.ID, Livemode: true, ProductID: product.ID,
+		Type: billing.PriceMetered, Currency: billing.CurrencyBRL, UnitAmount: 100,
+		Recurrence: billing.Recurrence{Interval: billing.IntervalMonth, Count: 1}, Timing: billing.BillArrears,
+		Aggregation: billing.AggregationMax, Meter: meter,
+	}
+	if err := catalog.CreatePrice(ctxT(t), price, "test", "req_setup", now()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// recordingBanks is services.BankConnections over a fixed list per space.
+type recordingBanks struct {
+	conns        map[string][]byokconn.Connection
+	disconnected []string
+}
+
+func (r *recordingBanks) List(_ context.Context, sp space.ResolvedSpace) ([]byokconn.Connection, error) {
+	return r.conns[sp.PK()], nil
+}
+
+func (r *recordingBanks) Disconnect(_ context.Context, sp space.ResolvedSpace, provider, _, _ string, _ time.Time) error {
+	r.disconnected = append(r.disconnected, sp.PK()+"/"+provider)
+	return nil
 }
