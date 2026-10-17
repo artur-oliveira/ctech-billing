@@ -1,0 +1,42 @@
+{
+  "title": "Close the billing account",
+  "intro": "Closing erases this organization's billing data in CTech Billing: credentials, customers, subscriptions, invoices, webhooks. The documents cannot be recovered afterwards; keeping them is the taxpayer's duty, so export what you need first. Your CTech account and the other products are not affected.",
+  "steps": [
+    "When you confirm by e-mail the account becomes read-only right away.",
+    "You can cancel through the e-mail links for 7 days.",
+    "After that the data is erased and this cannot be undone."
+  ],
+  "blockedTitle": "Before closing, resolve:",
+  "blockers": {
+    "billing.tenant_active_subscriptions": "{{count}} customer subscription(s) are active: cancel them in the console.",
+    "billing.tenant_payment_in_flight": "{{count}} charge(s) are in flight: wait for payment or expiry.",
+    "billing.tenant_payout_processing": "{{count}} payout(s) are being processed: wait for them to finish.",
+    "billing.tenant_refund_open": "{{count}} refund(s) are in progress: wait for them to finish."
+  },
+  "phraseLabel": "Type {{phrase}} to confirm",
+  "submit": "Request closure",
+  "checkEmail": "We sent a confirmation link to the owner's e-mail. It is valid until {{date}}.",
+  "state": {
+    "awaiting_confirmation": "Waiting for the e-mail confirmation until {{date}}.",
+    "closing": "Read-only. Closing on {{date}}; use the e-mail link to cancel.",
+    "blocked": "Closing is blocked: {{blockers}}. Use the e-mail link to cancel and try again.",
+    "ready_to_purge": "Closing: the data is about to be erased.",
+    "purging": "Erasing the data."
+  },
+  "link": {
+    "confirm": {
+      "title": "Confirm closing the billing account",
+      "description": "The account becomes read-only now and is closed for good in 7 days.",
+      "button": "Confirm closure",
+      "done": "Confirmed. The account is read-only and will be closed on {{date}}. We e-mailed you a link to cancel until then."
+    },
+    "cancel": {
+      "title": "Cancel closing the billing account",
+      "description": "The account goes back to accepting changes.",
+      "button": "Cancel closure",
+      "done": "Cancelled. The billing account accepts changes again."
+    },
+    "invalid": "This link is invalid or has expired.",
+    "tooLate": "This can no longer be changed."
+  }
+}

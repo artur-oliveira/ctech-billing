@@ -128,7 +128,15 @@
     "subscription_limit_reached": "As assinaturas ativas chegaram ao limite do plano. Mude de plano para criar mais.",
     "bank_connection_limit_reached": "As conexões bancárias chegaram ao limite do plano. Mude de plano para conectar outro banco.",
     "plan_not_found": "Esta organização ainda não tem um plano.",
-    "plan_live_only": "O plano é mudado no modo de produção."
+    "plan_live_only": "O plano é mudado no modo de produção.",
+    "owner_required": "Só um titular da organização pode encerrar a conta de cobrança.",
+    "step_up_required": "Confirme com uma prova de MFA recente (entre de novo com o autenticador) para encerrar a conta de cobrança.",
+    "closure_blocked": "Resolva o que ainda está em aberto antes de encerrar a conta de cobrança.",
+    "closure_open": "Já há um pedido de encerramento em andamento.",
+    "phrase_mismatch": "Digite a frase exatamente como mostrada.",
+    "closure_state": "Este pedido não pode mais ser alterado.",
+    "closure_not_allowed": "Esta conta de cobrança não pode ser encerrada.",
+    "tenant_closing": "Esta conta de cobrança está sendo encerrada e só aceita leituras."
   },
   "field": {
     "required": "Obrigatório.",

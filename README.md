@@ -406,7 +406,11 @@ Spec [`docs/specs/2026-10-17-merchant-tenant-deletion.md`](docs/specs/2026-10-17
 | The service is mounted only when ctech-account's contact client, the e-mail sender and tenant zero are configured: a closure whose confirmation can never be sent must not exist | `app.tenantClosures` |
 
 **To enable:** deploy ctech-account's contact route; publish its scope manifest; `createclient -grant -client-id <billing's account client> -scopes internal:account:user-contact-read`; set `TENANT_CLOSURE_ENABLED=true`; later `TENANT_CLOSURE_PURGE_ENABLED=true`.
-Not yet: the console screens and the confirm/cancel pages (UI), the export (phase 4).
+**Phase 3b, the UI:** a "Close the billing account" card at the bottom of the console's Settings (`ClosureCard`: renders nothing for a non-owner; the blockers; the typed phrase; the open closure's state instead of the form) and the public `/closure/confirm` and `/closure/cancel` pages the e-mails link to (`ClosureLinkPage`, which acts only when the button is pressed, so a mail scanner that prefetches a link never confirms or cancels).
+
+**Live owner check:** the console's role comes from a membership cache of up to a minute, which is fine for a read and not for an irreversible closure, so the request, the confirmation and the step before the purge each ask ctech-account again (uncached). A requester who lost the owner role is refused at the confirmation, and a closure whose requester lost it during the grace period is **cancelled** before the purge. The e-mails go to the requester only.
+
+Not yet: the export (phase 4).
 Tenant zero can never be closed.
 
 ### Account deletion (LGPD)

@@ -7,6 +7,7 @@ import {useState} from "react";
 import {useTranslation} from "react-i18next";
 import {toast} from "sonner";
 
+import {ClosureCard} from "@/components/console/ClosureCard";
 import {DunningPolicyCard} from "@/components/console/DunningPolicyCard";
 import {ErrorBlock} from "@/components/portal/ErrorBlock";
 import {messageFor} from "@/lib/api/client";
@@ -79,6 +80,8 @@ export default function ConsoleSettingsPage() {
         inheritLabel={t("console.settings.inherit")}
         onSave={steps => save.mutateAsync(steps)}
       />
+
+      <ClosureCard/>
     </div>
   );
 }
