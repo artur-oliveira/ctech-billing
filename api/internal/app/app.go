@@ -239,7 +239,7 @@ func Build(ctx context.Context, cfg *config.Config, clock func() time.Time, opts
 		}
 	}
 	spaces := space.NewResolver(account, cacheBackend)
-	closures := tenantClosures(ctx, cfg, db, cacheBackend, o.closureMail)
+	closures := tenantClosures(ctx, cfg, db, cacheBackend, o.closureMail, account)
 	if o.closuresOut != nil {
 		*o.closuresOut = closures
 	}
@@ -902,7 +902,7 @@ func BuildTenantPurger(ctx context.Context, cfg *config.Config) (*repositories.T
 // off). The irreversible purge is wired only with TENANT_CLOSURE_PURGE_ENABLED.
 // Without the account contact client or an e-mail sender the service is not
 // wired either: a closure whose confirmation can never be sent must not exist.
-func tenantClosures(ctx context.Context, cfg *config.Config, db *dynamodb.Client, c cache.Backend, override services.ClosureMailer) *services.TenantClosures {
+func tenantClosures(ctx context.Context, cfg *config.Config, db *dynamodb.Client, c cache.Backend, override services.ClosureMailer, members space.MembershipSource) *services.TenantClosures {
 	if !cfg.TenantClosureEnabled {
 		return nil
 	}
@@ -932,6 +932,9 @@ func tenantClosures(ctx context.Context, cfg *config.Config, db *dynamodb.Client
 		services.NewOrganizationTenants(repositories.NewOrganizationRepository(db, cfg)),
 		services.NewClosureFacts(newSubscriptions(db, cfg), repositories.NewPaymentRepository(db, cfg)),
 		mail, cfg.PortalOrganizationID)
+	if members != nil {
+		svc = svc.WithOwners(services.NewAccountOwners(members))
+	}
 	if cfg.TenantClosurePurgeEnabled {
 		svc = svc.WithPurger(services.NewTenantPurge(repositories.NewTenantPurger(db, cfg), repositories.NewApplicationRepository(db, cfg), repo))
 	}

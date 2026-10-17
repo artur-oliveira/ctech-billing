@@ -16,6 +16,7 @@ import (
 
 type closureFakes struct {
 	owner                 bool
+	notOwnerNow           bool // the live check says the requester lost the role
 	tenants               []*billing.Organization
 	subs                  int64
 	rawConfirm, rawCancel string
@@ -24,6 +25,9 @@ type closureFakes struct {
 	purged                int
 }
 
+func (f *closureFakes) IsOwner(context.Context, string, string) (bool, error) {
+	return !f.notOwnerNow, nil
+}
 func (f *closureFakes) TenantsOf(context.Context, string) ([]*billing.Organization, error) {
 	return f.tenants, nil
 }
@@ -61,7 +65,7 @@ func newClosureService(t *testing.T) (*services.TenantClosures, *closureFakes, *
 	f := &closureFakes{owner: true, tenants: []*billing.Organization{live, test}}
 	repo := repositories.NewClosureRepository(testDB, testCfg)
 	clock := seedNow
-	svc := services.NewTenantClosures(repo, f, f, f, "ten_zero").WithClock(func() time.Time { return clock })
+	svc := services.NewTenantClosures(repo, f, f, f, "ten_zero").WithOwners(f).WithClock(func() time.Time { return clock })
 	return svc, f, repo, &clock
 }
 
@@ -284,5 +288,49 @@ func TestTheClosureFactsCountWhatBlocks(t *testing.T) {
 	}
 	if n, err := facts.RefundsOpen(ctx, e.org.ID); err != nil || n != 0 {
 		t.Fatalf("refunds = %d, %v", n, err)
+	}
+}
+
+// The role the console resolved can be a minute stale: the request, the
+// confirmation and the purge each ask ctech-account again.
+func TestALiveOwnerCheckGuardsTheRequestTheConfirmationAndThePurge(t *testing.T) {
+	ctx := ctxT(t)
+
+	svc, f, _, _ := newClosureService(t)
+	f.notOwnerNow = true
+	if _, err := svc.Request(ctx, "usr_x", newSpaceOrgID(), true); !errors.Is(err, closure.ErrNotOwner) {
+		t.Fatalf("request with a stale owner role: %v, want ErrNotOwner", err)
+	}
+
+	svc, f, _, _ = newClosureService(t)
+	acct := newSpaceOrgID()
+	c, err := svc.Request(ctx, "usr_x", acct, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.notOwnerNow = true // demoted after asking
+	if _, err := svc.Confirm(ctx, c.ID, f.rawConfirm); !errors.Is(err, closure.ErrNotOwner) {
+		t.Fatalf("confirm after losing the role: %v, want ErrNotOwner", err)
+	}
+
+	svc, f, repo, clock := newClosureService(t)
+	svc = svc.WithPurger(f)
+	acct = newSpaceOrgID()
+	c, _ = svc.Request(ctx, "usr_x", acct, true)
+	if _, err := svc.Confirm(ctx, c.ID, f.rawConfirm); err != nil {
+		t.Fatal(err)
+	}
+	*clock = clock.Add(closure.GracePeriod)
+	svc.ProcessDue(ctx)  // grace over -> ready
+	f.notOwnerNow = true // demoted during the grace
+	svc.ProcessDue(ctx)  // would purge
+	if f.purged != 0 {
+		t.Fatal("the purge ran for a requester who is no longer an owner")
+	}
+	if _, err := svc.Status(ctx, acct); !errors.Is(err, closure.ErrNotFound) {
+		t.Fatalf("the closure must be cancelled, not left open: %v", err)
+	}
+	if on, _ := repo.ReadOnly(ctx, f.tenants[0].ID); on {
+		t.Fatal("a cancelled closure lifts the read-only flag")
 	}
 }

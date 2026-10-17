@@ -16,6 +16,7 @@ import (
 	"gopkg.aoctech.app/billing/api/internal/domain/closure"
 	"gopkg.aoctech.app/billing/api/internal/domain/id"
 	"gopkg.aoctech.app/billing/api/internal/repositories"
+	"gopkg.aoctech.app/billing/api/internal/space"
 )
 
 // Blocker codes of a tenant closure (spec T3), stable and translated by the
@@ -48,6 +49,14 @@ type ClosureFacts interface {
 	RefundsOpen(ctx context.Context, tenantID string) (int64, error)
 }
 
+// ClosureOwners answers, live and uncached, whether a ctech-account user is an
+// owner of a workspace. The console's space resolver caches membership for a
+// minute, which is fine for a read and not for an irreversible closure: the
+// request, the confirmation and the purge each ask again.
+type ClosureOwners interface {
+	IsOwner(ctx context.Context, sub, accountOrgID string) (bool, error)
+}
+
 // ClosureTenants finds the billing tenant rows (live and test) of a workspace.
 type ClosureTenants interface {
 	TenantsOf(ctx context.Context, accountOrgID string) ([]*billing.Organization, error)
@@ -73,6 +82,7 @@ type ClosurePurger interface {
 type TenantClosures struct {
 	repo       *repositories.ClosureRepository
 	tenants    ClosureTenants
+	owners     ClosureOwners
 	facts      ClosureFacts
 	mail       ClosureMailer
 	purger     ClosurePurger
@@ -88,6 +98,18 @@ func NewTenantClosures(repo *repositories.ClosureRepository, tenants ClosureTena
 
 // WithClock replaces the clock (tests pin the grace period with it).
 func (s *TenantClosures) WithClock(now func() time.Time) *TenantClosures { s.now = now; return s }
+
+// WithOwners adds the live owner check at the request, the confirmation and
+// before the purge. Nil (not wired): only the role the caller passes is trusted.
+func (s *TenantClosures) WithOwners(o ClosureOwners) *TenantClosures { s.owners = o; return s }
+
+// stillOwner is the live check; true when no check is wired.
+func (s *TenantClosures) stillOwner(ctx context.Context, sub, acct string) (bool, error) {
+	if s.owners == nil {
+		return true, nil
+	}
+	return s.owners.IsOwner(ctx, sub, acct)
+}
 
 // WithPurger enables the purge step of the worker.
 func (s *TenantClosures) WithPurger(p ClosurePurger) *TenantClosures { s.purger = p; return s }
@@ -148,6 +170,11 @@ func (s *TenantClosures) Blockers(ctx context.Context, acct string) ([]ClosureBl
 // lost e-mail never blocks the owner.
 func (s *TenantClosures) Request(ctx context.Context, sub, acct string, owner bool) (*closure.Closure, error) {
 	if !owner {
+		return nil, closure.ErrNotOwner
+	}
+	if live, err := s.stillOwner(ctx, sub, acct); err != nil {
+		return nil, err
+	} else if !live {
 		return nil, closure.ErrNotOwner
 	}
 	blockers, err := s.Blockers(ctx, acct)
@@ -220,6 +247,11 @@ func (s *TenantClosures) Confirm(ctx context.Context, requestID, token string) (
 	now := s.now()
 	if c.State == closure.Closing {
 		return c, s.repo.SetReadOnly(ctx, tenantIDs(ts), c.ID, true, now)
+	}
+	if live, err := s.stillOwner(ctx, c.RequestedBy, c.AccountOrganizationID); err != nil {
+		return nil, err
+	} else if !live {
+		return nil, closure.ErrNotOwner // the requester lost the role since asking: the request lapses
 	}
 	if err := c.Confirm(now); err != nil {
 		if errors.Is(err, closure.ErrExpired) {
@@ -358,6 +390,23 @@ func (s *TenantClosures) step(ctx context.Context, c *closure.Closure) error {
 func (s *TenantClosures) purge(ctx context.Context, c *closure.Closure) error {
 	now := s.now()
 	if c.State == closure.ReadyToPurge {
+		// The last look before an irreversible step: the person who asked must
+		// still own the workspace. If not, the closure is cancelled, never run.
+		live, err := s.stillOwner(ctx, c.RequestedBy, c.AccountOrganizationID)
+		if err != nil {
+			return err
+		}
+		if !live {
+			if err := c.Cancel(now); err != nil {
+				return err
+			}
+			if err := s.repo.Save(ctx, c, closure.ReadyToPurge, now); err != nil {
+				return err
+			}
+			s.liftFlags(ctx, c)
+			slog.WarnContext(ctx, "closure: cancelled before the purge, the requester is no longer an owner", "closure", c.ID)
+			return nil
+		}
 		if err := c.StartPurge(now); err != nil {
 			return err
 		}
@@ -524,4 +573,18 @@ func (m *ClosureEmails) SendClosureBlocked(ctx context.Context, sub, requestID, 
 
 func (m *ClosureEmails) SendClosureCancelled(ctx context.Context, sub string) error {
 	return m.notify(ctx, sub, email.ClosureNotice{Kind: "cancelled"})
+}
+
+// AccountOwners is ClosureOwners over ctech-account's membership route, with no
+// cache in between.
+type AccountOwners struct{ src space.MembershipSource }
+
+func NewAccountOwners(src space.MembershipSource) *AccountOwners { return &AccountOwners{src: src} }
+
+func (a *AccountOwners) IsOwner(ctx context.Context, sub, accountOrgID string) (bool, error) {
+	m, err := a.src.Membership(ctx, accountOrgID, sub)
+	if err != nil {
+		return false, err
+	}
+	return m.Member && m.Role == "owner", nil
 }
