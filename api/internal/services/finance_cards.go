@@ -85,6 +85,9 @@ func (j *FinanceJobs) CloseStatements(ctx context.Context, livemode bool, today 
 	}
 	for _, d := range due {
 		res.Examined++
+		if j.skip(ctx, d.Space, &res, "card "+d.CardID) {
+			continue
+		}
 		n, err := j.cards.CloseDue(ctx, d.Space, d.CardID, today, now)
 		res.Done += n
 		if err != nil {

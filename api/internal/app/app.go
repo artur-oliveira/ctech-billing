@@ -775,7 +775,8 @@ func BuildFinanceJobs(ctx context.Context, cfg *config.Config) (*services.Financ
 	return services.NewFinanceJobs(
 		repositories.NewBillRepository(db, cfg),
 		repositories.NewRecurrenceRepository(db, cfg),
-	).WithCards(repositories.NewCardRepository(db, cfg)), nil
+	).WithCards(repositories.NewCardRepository(db, cfg)).
+		WithSpaceGuard(services.ErasedSpace(erasure.NewStore(db, cfg.TablePrefix, 0))), nil
 }
 
 // newSubscriptions is the only constructor of the subscription repository in

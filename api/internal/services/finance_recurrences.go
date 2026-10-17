@@ -54,10 +54,37 @@ type FinanceJobs struct {
 	bills billStore
 	recs  recurrenceStore
 	cards cardStore
+	// gone reports a space whose owner the account-deletion saga has locked or
+	// erased. Nil means no guard (the console's projection read).
+	gone func(ctx context.Context, sp space.ResolvedSpace) (bool, error)
 }
 
 func NewFinanceJobs(bills billStore, recs recurrenceStore) *FinanceJobs {
 	return &FinanceJobs{bills: bills, recs: recs}
+}
+
+// WithSpaceGuard skips every work item in a space gone reports, so the daily
+// job never writes into a space being or already purged (saga protocol § 4.5).
+// A guard error fails that item; the job carries on with the rest.
+func (j *FinanceJobs) WithSpaceGuard(gone func(ctx context.Context, sp space.ResolvedSpace) (bool, error)) *FinanceJobs {
+	j.gone = gone
+	return j
+}
+
+// skip reports whether sp must be left alone, recording why in res.
+func (j *FinanceJobs) skip(ctx context.Context, sp space.ResolvedSpace, res *JobResult, what string) bool {
+	if j.gone == nil {
+		return false
+	}
+	gone, err := j.gone(ctx, sp)
+	if err != nil {
+		res.fail("%s: reading the space's erasure state: %v", what, err)
+		return true
+	}
+	if gone {
+		res.Skipped++
+	}
+	return gone
 }
 
 // JobResult reports one pass. Done is bills created (Materialise) or settled
@@ -92,6 +119,9 @@ func (j *FinanceJobs) Materialise(ctx context.Context, livemode bool, today brca
 	for _, d := range due {
 		res.Examined++
 		rec := d.Recurrence
+		if j.skip(ctx, d.Space, &res, "recurrence "+rec.ID) {
+			continue
+		}
 		if rec.IsCard() {
 			j.materialiseCard(ctx, d, today, now, meta, &res)
 			continue
@@ -255,6 +285,9 @@ func (j *FinanceJobs) AutoSettle(ctx context.Context, livemode bool, today brcal
 	meta := repositories.PostMeta{Origin: repositories.OriginAutoSettle, Actor: financeActor}
 	for _, d := range due {
 		res.Examined++
+		if j.skip(ctx, d.Space, &res, "bill "+d.Bill.ID) {
+			continue
+		}
 		_, err := j.bills.Settle(ctx, d.Space, d.Bill.ID, d.Bill.Amount, "", d.Bill.Due, meta, now)
 		switch {
 		case err == nil:

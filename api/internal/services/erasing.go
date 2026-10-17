@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"gopkg.aoctech.app/api-commons/erasure"
@@ -365,3 +366,15 @@ func (e *Eraser) disconnectBanks(ctx context.Context, sp space.ResolvedSpace, m 
 }
 
 var _ BankConnections = (*ByokConnections)(nil)
+
+// ErasedSpace reports a space whose owner is locked or erased in the
+// account-deletion saga: a personal space by its user, a workspace's space by
+// the workspace's tombstone. It is the daily job's guard.
+func ErasedSpace(store *erasure.Store) func(context.Context, space.ResolvedSpace) (bool, error) {
+	return func(ctx context.Context, sp space.ResolvedSpace) (bool, error) {
+		if sp.Personal() {
+			return store.Blocked(ctx, strings.TrimPrefix(sp.Owner(), "USER#"))
+		}
+		return store.OrgErased(ctx, sp.OrganizationID())
+	}
+}
