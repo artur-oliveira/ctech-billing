@@ -367,6 +367,18 @@ func (e *Eraser) disconnectBanks(ctx context.Context, sp space.ResolvedSpace, m 
 
 var _ BankConnections = (*ByokConnections)(nil)
 
+// NoBankConnections is BankConnections where BYOK is not configured: no
+// connection can exist, so a purge has none to disconnect.
+type NoBankConnections struct{}
+
+func (NoBankConnections) List(context.Context, space.ResolvedSpace) ([]byokconn.Connection, error) {
+	return nil, nil
+}
+
+func (NoBankConnections) Disconnect(context.Context, space.ResolvedSpace, string, string, string, time.Time) error {
+	return nil
+}
+
 // ErasedSpace reports a space whose owner is locked or erased in the
 // account-deletion saga: a personal space by its user, a workspace's space by
 // the workspace's tombstone. It is the daily job's guard.

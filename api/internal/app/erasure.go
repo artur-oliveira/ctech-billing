@@ -3,13 +3,21 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
+	"net/http"
 	"net/url"
+	"strings"
+	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	awscfg "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
-
+	"github.com/aws/aws-sdk-go-v2/service/sqs"
+	"github.com/aws/aws-sdk-go-v2/service/ssm"
 	"gopkg.aoctech.app/api-commons/cache"
 	"gopkg.aoctech.app/api-commons/erasure"
+	"gopkg.aoctech.app/api-commons/oauth2client"
 
 	"gopkg.aoctech.app/billing/api/internal/config"
 	"gopkg.aoctech.app/billing/api/internal/repositories"
@@ -92,4 +100,95 @@ func ErasedSpaceGuard(ctx context.Context, cfg *config.Config) (func(context.Con
 		return nil, err
 	}
 	return services.ErasedSpace(erasure.NewStore(db, cfg.TablePrefix, 0)), nil
+}
+
+// erasureService is billing's participant id in the saga: the SNS filter
+// value, the consumer's target check and the ack's service field.
+const erasureService = "billing"
+
+// erasureAckScope is what ctech-account's ack route requires.
+const erasureAckScope = "internal:account:erasure-ack"
+
+// erasureQueueName is terraform/billing/erasure.tf's queue. It is derived from
+// ENVIRONMENT rather than configured, because the userdata is at its 16 KiB
+// ceiling (terraform/README).
+func erasureQueueName(env string) string { return env + "-ctech-billing-erasure" }
+
+// erasureClientParams are terraform/billing/erasure.tf's SecureStrings for the
+// dedicated ack client.
+func erasureClientParams(env string) (id, secret string) {
+	prefix := "/ctech-billing/" + env + "/billing/erasure-client-"
+	return prefix + "id", prefix + "secret"
+}
+
+// usableErasureClient refuses an empty pair or Terraform's placeholder.
+func usableErasureClient(id, secret string) error {
+	if id == "" || secret == "" || id == "SET-OUT-OF-BAND" || secret == "SET-OUT-OF-BAND" {
+		return errors.New("the erasure client is not set (ERASURE_CLIENT_ID/SECRET or its SSM parameters)")
+	}
+	return nil
+}
+
+// erasureCredentials returns the dedicated ack client: from the environment
+// when set, otherwise from its two SSM SecureStrings.
+func erasureCredentials(ctx context.Context, awsConf aws.Config, cfg *config.Config) (string, string, error) {
+	if cfg.ErasureClientID != "" || cfg.ErasureClientSecret != "" {
+		return cfg.ErasureClientID, cfg.ErasureClientSecret, usableErasureClient(cfg.ErasureClientID, cfg.ErasureClientSecret)
+	}
+	idName, secretName := erasureClientParams(cfg.Env)
+	out, err := ssm.NewFromConfig(awsConf).GetParameters(ctx, &ssm.GetParametersInput{
+		Names:          []string{idName, secretName},
+		WithDecryption: aws.Bool(true),
+	})
+	if err != nil {
+		return "", "", fmt.Errorf("reading the erasure client from SSM: %w", err)
+	}
+	values := map[string]string{}
+	for _, p := range out.Parameters {
+		values[aws.ToString(p.Name)] = aws.ToString(p.Value)
+	}
+	id, secret := values[idName], values[secretName]
+	return id, secret, usableErasureClient(id, secret)
+}
+
+// BuildErasureConsumer wires billing's side of the account-deletion saga: the
+// SQS consumer that locks, purges and acks (api-commons/erasure).
+//
+// spaceFor is space.ForJob, passed in from cmd/server. A finance space is built
+// from the saga message, which is an operator-grade decision, and ForJob is
+// forbidden under internal/ (TestForJobIsNotCalledFromInternal).
+//
+// It returns (nil, nil) where there is nothing to consume for: no ctech-account
+// URLs (a laptop, the integration tests), or a local DynamoDB. It returns an
+// error, which the caller logs, for a missing queue or an unset erasure client.
+func BuildErasureConsumer(ctx context.Context, cfg *config.Config, spaceFor func(owner string, livemode bool) (space.ResolvedSpace, error), banks services.BankConnections) (*erasure.Consumer, error) {
+	if cfg.AccountBaseURL == "" || cfg.AccountTokenURL == "" || cfg.DynamoDBEndpoint != "" {
+		slog.Warn("account erasure consumer not started: no ctech-account URLs, or a local DynamoDB")
+		return nil, nil
+	}
+	awsConf, err := awscfg.LoadDefaultConfig(ctx, awscfg.WithRegion(cfg.AWSRegion))
+	if err != nil {
+		return nil, fmt.Errorf("aws config: %w", err)
+	}
+	clientID, clientSecret, err := erasureCredentials(ctx, awsConf, cfg)
+	if err != nil {
+		return nil, err
+	}
+	queues := sqs.NewFromConfig(awsConf)
+	name := erasureQueueName(cfg.Env)
+	q, err := queues.GetQueueUrl(ctx, &sqs.GetQueueUrlInput{QueueName: aws.String(name)})
+	if err != nil {
+		return nil, fmt.Errorf("erasure queue %s: %w", name, err)
+	}
+	db, err := newDynamoDB(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+	hc := &http.Client{Timeout: 10 * time.Second}
+	acks := erasure.NewAckClient(hc,
+		strings.TrimSuffix(cfg.AccountBaseURL, "/")+"/v1.0/internal/erasure/ack",
+		oauth2client.New(hc, newCache(cfg), cfg.AccountTokenURL, clientID, clientSecret, erasureAckScope))
+	eraser := newEraser(db, cfg).WithPurge(repositories.NewSpacePurger(db, cfg), spaceFor, banks)
+	return erasure.NewConsumer(queues, aws.ToString(q.QueueUrl), erasureService,
+		erasure.NewStore(db, cfg.TablePrefix, 0), eraser.Purge, acks), nil
 }

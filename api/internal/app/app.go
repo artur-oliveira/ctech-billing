@@ -45,7 +45,18 @@ import (
 // otherwise reach the network.
 type Option func(*options)
 
-type options struct{ webhookVerifier v1.WebhookVerifier }
+type options struct {
+	webhookVerifier v1.WebhookVerifier
+	byokOut         **services.ByokConnections
+}
+
+// WithByokConnections hands the bank-connection service Build constructs to the
+// caller, so cmd/server can give the account-erasure consumer the same one the
+// console uses (a purge's disconnect then drops the same cached tokens).
+// *dst is nil when BYOK is not configured.
+func WithByokConnections(dst **services.ByokConnections) Option {
+	return func(o *options) { o.byokOut = dst }
+}
 
 // WithWebhookVerifier replaces the check that a new webhook endpoint answers
 // its challenge (the real one refuses loopback addresses by design).
@@ -178,6 +189,9 @@ func Build(ctx context.Context, cfg *config.Config, clock func() time.Time, opts
 	byokConns, byokStatement, err := BuildByok(ctx, cfg, db, cacheBackend, ledgerRepo)
 	if err != nil {
 		return nil, err
+	}
+	if o.byokOut != nil {
+		*o.byokOut = byokConns
 	}
 	if byokConns == nil {
 		slog.Warn("BYOK_OUTBOUND_FUNCTION not set — bank connection routes are not mounted")

@@ -21,6 +21,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.70.3
 	github.com/aws/aws-sdk-go-v2/service/lambda v1.112.2
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.114.3
+	github.com/aws/aws-sdk-go-v2/service/sqs v1.52.2
 	github.com/aws/aws-sdk-go-v2/service/ssm v1.79.3
 	github.com/aws/smithy-go v1.28.5
 	github.com/caarlos0/env/v11 v11.4.1
@@ -51,7 +52,6 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sesv2 v1.79.1 // indirect
 	github.com/aws/aws-sdk-go-v2/service/signin v1.10.4 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sns v1.47.5 // indirect
-	github.com/aws/aws-sdk-go-v2/service/sqs v1.52.2 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sso v1.38.4 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.43.4 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.51.4 // indirect
