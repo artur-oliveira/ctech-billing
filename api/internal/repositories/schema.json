@@ -240,5 +240,10 @@
     "indexes": [
       { "name": "schedule-index", "hash_key": "schedule_pk", "range_key": "schedule_sk" }
     ]
+  },
+  "erasure_state": {
+    "hash_key": "pk",
+    "attributes": { "pk": "S" },
+    "indexes": []
   }
 }

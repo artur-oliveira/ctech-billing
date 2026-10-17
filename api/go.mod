@@ -31,6 +31,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/oklog/ulid/v2 v2.1.2
 	github.com/valkey-io/valkey-go v1.0.78
+	github.com/valyala/fasthttp v1.75.0
 	google.golang.org/protobuf v1.36.12
 	gopkg.aoctech.app/api-commons v1.27.2
 )
@@ -50,6 +51,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sesv2 v1.79.1 // indirect
 	github.com/aws/aws-sdk-go-v2/service/signin v1.10.4 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sns v1.47.5 // indirect
+	github.com/aws/aws-sdk-go-v2/service/sqs v1.52.2 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sso v1.38.4 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.43.4 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.51.4 // indirect
@@ -63,7 +65,6 @@ require (
 	github.com/savsgio/gotils v0.0.0-20240704082632-aef3928b8a38 // indirect
 	github.com/tinylib/msgp v1.6.5 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
-	github.com/valyala/fasthttp v1.75.0 // indirect
 	golang.org/x/crypto v0.58.0 // indirect
 	golang.org/x/image v0.47.0 // indirect
 	golang.org/x/net v0.61.0 // indirect

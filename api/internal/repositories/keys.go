@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"gopkg.aoctech.app/api-commons/erasure"
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
 	"gopkg.aoctech.app/billing/api/internal/domain/brcal"
 	"gopkg.aoctech.app/billing/api/internal/space"
@@ -80,6 +81,11 @@ const (
 	// pointers (spec 2026-10-11 § 12.2). Partition of a connection = the
 	// organization's finance space key, so the space resolver guards it.
 	TableByok = "byok"
+	// TableErasureState holds ctech-account's erasure saga state for this
+	// participant: one row per SUB#{sub} / ORG#{id} (lock, unlock, tombstone).
+	// Its schema and transitions are api-commons/erasure.Store's; it is here so
+	// schema.json, and therefore Terraform, declares it.
+	TableErasureState = erasure.TableSuffix
 )
 
 // Index names.
