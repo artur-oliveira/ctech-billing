@@ -107,12 +107,14 @@ function Lower() {
   const {t} = useTranslation();
   const [tab, setTab] = useState<LowerTab>("projection");
   const month = todayIso().slice(0, 7);
+  const narrow = useMediaQuery(NARROW);
   return (
     <div className="space-y-4">
       <Segmented
         label={t("finance.overview.lowerLabel")}
         value={tab}
         onValueChange={setTab}
+        fill={narrow}
         options={[
           {value: "projection", label: t("finance.overview.projection")},
           {value: "category", label: t("finance.categoryMonth.title")},

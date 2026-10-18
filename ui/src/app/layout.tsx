@@ -67,6 +67,9 @@ export const viewport: Viewport = {
   // of it. Without it the inset reads 0 and the bar's labels sit under the
   // indicator.
   viewportFit: "cover",
+  // The on-screen keyboard shrinks the layout viewport (Chrome Android) instead
+  // of covering it, so a bottom-sheet drawer's max-height follows what is left.
+  interactiveWidget: "resizes-content",
 };
 
 export default function RootLayout({children}: LayoutProps<"/">) {

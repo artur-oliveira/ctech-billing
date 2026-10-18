@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "@aoctech/auth-client": "^1.4.1",
-    "@aoctech/ui": "^0.8.1",
+    "@aoctech/ui": "^0.8.2",
     "@aoctech/ws-client": "^1.4.0",
     "@base-ui/react": "^1",
     "@bufbuild/protobuf": "^2.16.0",
