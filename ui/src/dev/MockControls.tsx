@@ -49,8 +49,8 @@ export function MockControls() {
   }
 
   return (
-    // Above Finanças' bottom bar on a phone, so the dev chip never covers a tab.
-    <div className="fixed bottom-4 left-4 z-[60] max-md:bottom-[calc(5.25rem+env(safe-area-inset-bottom))] print:hidden">
+    // Docked to the left edge, small, above the phone's bottom bar: never over a tab or a page's content.
+    <div className="fixed bottom-2 left-0 z-[60] max-md:bottom-[calc(4.75rem+env(safe-area-inset-bottom))] print:hidden">
       {open && (
         <ul className="mb-2 w-64 overflow-hidden rounded-lg border border-border bg-background shadow-modal">
           {MOCK_SCENARIOS.map(s => (
@@ -73,7 +73,8 @@ export function MockControls() {
         type="button"
         onClick={() => setOpen(o => !o)}
         aria-expanded={open}
-        className="rounded-full border border-border bg-background px-3 py-1.5 font-mono text-xs text-muted-foreground shadow-card transition-colors hover:text-foreground"
+        title={`mock · ${scenario}`}
+        className="rounded-r-full border border-l-0 border-border bg-background/80 py-0.5 pr-2 pl-1.5 font-mono text-[10px] text-muted-foreground opacity-60 shadow-card transition hover:text-foreground hover:opacity-100 focus-visible:opacity-100 max-md:max-w-12 max-md:truncate"
       >
         mock · {scenario}
       </button>

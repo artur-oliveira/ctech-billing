@@ -51,4 +51,38 @@ describe("finance action inbox", () => {
     await userEvent.click(screen.getByRole("button",{name:"Confirmar valor"}));
     expect(confirm).toHaveBeenCalledWith(expect.anything(),"food","2026-10-12",2800,expect.any(String));
   });
+
+  it("says all is clear when nothing waits, and draws only the sections that have something", async () => {
+    vi.spyOn(finance, "getFinanceSpaces").mockResolvedValue({spaces: [{selector: "personal", kind: "personal_default", display_name: "Pessoal", verbs, manage_people: false}], organizations_unavailable: false});
+    vi.spyOn(finance, "listBills").mockResolvedValue({data: [], has_more: false});
+    vi.spyOn(finance, "listRecurrences").mockResolvedValue({data: [], has_more: false});
+    vi.spyOn(finance, "listImports").mockResolvedValue({data: [], has_more: false});
+    vi.spyOn(finance, "listPendingOccurrences").mockResolvedValue({data: [], has_more: false});
+    renderWithQuery(<ActionInboxView/>);
+    expect(await screen.findByText("Tudo em dia")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", {name: /Contas em aberto/})).toBeNull();
+  });
+
+  it("counts what is waiting in the header and points to the agenda when the page was capped", async () => {
+    vi.spyOn(finance, "getFinanceSpaces").mockResolvedValue({spaces: [{selector: "personal", kind: "personal_default", display_name: "Pessoal", verbs, manage_people: false}], organizations_unavailable: false});
+    vi.spyOn(finance, "listBills").mockImplementation(async (_ctx, direction) => ({data: direction === "payable" ? [openBill] : [], has_more: direction === "payable"}));
+    vi.spyOn(finance, "listRecurrences").mockResolvedValue({data: [], has_more: false});
+    vi.spyOn(finance, "listImports").mockResolvedValue({data: [], has_more: false});
+    vi.spyOn(finance, "listPendingOccurrences").mockResolvedValue({data: [], has_more: false});
+    renderWithQuery(<ActionInboxView/>);
+    expect(await screen.findByText("1 pendência para resolver.")).toBeInTheDocument();
+    expect(screen.getByRole("link", {name: "Ver todas na Agenda"})).toHaveAttribute("href", "/finance/bills");
+    expect(screen.getByText("Vencida")).toBeInTheDocument();
+  });
+
+  it("does not claim all is clear when a read failed", async () => {
+    vi.spyOn(finance, "getFinanceSpaces").mockResolvedValue({spaces: [{selector: "personal", kind: "personal_default", display_name: "Pessoal", verbs, manage_people: false}], organizations_unavailable: false});
+    vi.spyOn(finance, "listBills").mockRejectedValue(new Error("boom"));
+    vi.spyOn(finance, "listRecurrences").mockResolvedValue({data: [], has_more: false});
+    vi.spyOn(finance, "listImports").mockResolvedValue({data: [], has_more: false});
+    vi.spyOn(finance, "listPendingOccurrences").mockResolvedValue({data: [], has_more: false});
+    renderWithQuery(<ActionInboxView/>);
+    await screen.findByRole("alert");
+    expect(screen.queryByText("Tudo em dia")).toBeNull();
+  });
 });

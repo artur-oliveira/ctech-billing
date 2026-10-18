@@ -65,6 +65,8 @@ export interface Recurrence {
   business_day_adjust: Adjust
   auto_settle: boolean
   archived: boolean
+  /** The day of the next occurrence not yet past (list only); absent when none is left. */
+  next_due?: IsoDate
 }
 
 export interface PendingOccurrence {
@@ -452,6 +454,30 @@ export interface CardSpending {
   total: Cents
   categories: SpendRow[]
   cards: SpendRow[]
+}
+
+/** One category's month by firmness; `total` is the three added. Amounts are magnitudes (an expense of R$ 10 is +1000 under `expense`). */
+export interface CategoryAmounts {
+  category_id?: string
+  /** Recognised and settled (or a card purchase, an imported line). */
+  realised: Cents
+  /** An open bill competent in the month: owed, not paid. */
+  scheduled: Cents
+  /** Recurrence occurrences the job has not materialised yet, card recurrences included. */
+  forecast: Cents
+  total: Cents
+}
+
+export interface CategorySide {
+  totals: CategoryAmounts
+  categories: CategoryAmounts[]
+}
+
+/** A month by category, income and expense apart: realised, scheduled and forecast. */
+export interface CategoryMonth {
+  month: string
+  income: CategorySide
+  expense: CategorySide
 }
 
 export interface StatementPage {

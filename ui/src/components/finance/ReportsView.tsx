@@ -1,12 +1,18 @@
 "use client";
 
-import {Field, Select, Skeleton} from "@aoctech/ui";
+import {EmptyState, Field, Select, Skeleton} from "@aoctech/ui";
 import {useQuery} from "@tanstack/react-query";
+import {BarChart3} from "lucide-react";
 import {useState} from "react";
 import {useTranslation} from "react-i18next";
 
+import {CategoryMonthPanel} from "@/components/finance/CategoryMonthPanel";
 import {ErrorBlock} from "@/components/portal/ErrorBlock";
-import {segmentHit} from "@/components/ui/segmentHit";
+import {MonthField} from "@/components/ui/MonthField";
+import {Amount, AmountRow} from "@/components/ui/Amount";
+import {ContainerSwitch} from "@/components/ui/ContainerSwitch";
+import {Section} from "@/components/ui/Section";
+import {panelId, Tabs, tabId} from "@/components/ui/Tabs";
 import {financeKeys, getCardSpending, getCashFlow, getDRE, listAccounts, listCards} from "@/lib/api/finance";
 import type {Account, Card, CardSpending, CashFlow, DRE, DREGroup, SpendRow} from "@/lib/api/financeTypes";
 import {dreGroupLabel} from "@/lib/finance/labels";
@@ -16,11 +22,15 @@ import {selectCopy} from "@/lib/selectCopy";
 import {useFinanceCtx} from "@/lib/finance/useFinanceSpaces";
 import {money, signedMoney} from "@/lib/format";
 import {currentLocale, t as tr} from "@/lib/i18n";
-import {accountName} from "@/lib/finance/accountName";
+import {nameOf} from "@/lib/finance/accountName";
 
-export type ReportView = "dre" | "cash" | "cards" | "review"
+export type ReportView = "dre" | "cash" | "cards" | "review" | "category"
 
-const TABS: ReportView[] = ["dre", "cash", "cards", "review"];
+/**
+ * "Where does my money go, and what is coming" first: the by-category month is
+ * the question a person brings; the DRE is the accountant's and goes last.
+ */
+const TABS: ReportView[] = ["category", "review", "cash", "cards", "dre"];
 
 /** The subtotal a DRE reader expects after each of these groups, cumulative. */
 const SUBTOTAL_AFTER: Partial<Record<DREGroup, "netRevenue" | "grossProfit" | "operatingResult">> = {
@@ -31,22 +41,13 @@ const SUBTOTAL_AFTER: Partial<Record<DREGroup, "netRevenue" | "grossProfit" | "o
 
 const sum = (xs: number[]) => xs.reduce((acc, x) => acc + x, 0);
 
-function nameOf(accounts: Account[], id: string): string {
-  if (id === "") return tr("finance.reports.uncategorized");
-  // Paying a card's statement: one cash-flow line per card (6.5).
-  if (id.startsWith("card:")) return tr("finance.reports.statementOf", {name: (() => {const c = accounts.find(a => a.id === id.slice(5)); return c ? accountName(c) : undefined;})() ?? tr("finance.reports.theCard")});
-  const a = accounts.find(x => x.id === id);
-  if (!a) return tr("finance.reports.removed");
-  return a.archived ? tr("finance.reports.archivedName", {name: accountName(a)}) : accountName(a);
-}
-
 /**
  * F7 — the two reports read side by side. The DRE is accrual (each income and
  * expense in the month it belongs to); the cash flow is cash (the month the
  * money moved). One line under the tabs says so, because the difference between
  * the two is the first question anybody asks.
  */
-export function ReportsView({view: initial = "dre"}: {view?: ReportView}) {
+export function ReportsView({view: initial = "category"}: {view?: ReportView}) {
   const {t} = useTranslation();
   const ctx = useFinanceCtx();
   const [view, setView] = useState<ReportView>(initial);
@@ -54,6 +55,9 @@ export function ReportsView({view: initial = "dre"}: {view?: ReportView}) {
   const latestComplete = shiftMonth(todayIso().slice(0, 7), -1);
   const [reviewMonth, setReviewMonth] = useState(latestComplete);
   const selectedReviewMonth = reviewMonth > latestComplete ? latestComplete : reviewMonth;
+  // The by-category month spans the window the API serves: 23 months back, 11 ahead.
+  const thisMonth = todayIso().slice(0, 7);
+  const [categoryMonth, setCategoryMonth] = useState(thisMonth);
   const {from, to} = monthRange(preset, todayIso());
   const accounts = useQuery({queryKey: financeKeys.accounts(ctx.mode, ctx.space), queryFn: () => listAccounts(ctx)});
   const names = accounts.data?.data ?? [];
@@ -67,27 +71,16 @@ export function ReportsView({view: initial = "dre"}: {view?: ReportView}) {
   return (
     <div className="space-y-4">
       <div className="space-y-3">
-        <div role="tablist" aria-label={t("finance.reports.report")} className="flex w-max max-w-full min-w-0 items-center gap-0.5 overflow-x-auto whitespace-nowrap rounded-lg border border-border bg-surface p-0.5 [scrollbar-width:none]">
-          {TABS.map(tab => (
-            <button
-              key={tab}
-              type="button"
-              role="tab"
-              data-slot="segmented-item"
-              id={`tab-${tab}`}
-              aria-selected={view === tab}
-              aria-controls="report-panel"
-              onClick={() => choose(tab)}
-              className={`${segmentHit} shrink-0 rounded-md px-3 py-1 text-sm transition-colors ${view === tab ? "bg-background font-medium text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
-            >
-              {t(`finance.reports.tabs.${tab}`)}
-            </button>
-          ))}
-        </div>
-        <div className="flex min-h-10 justify-end">
-          {view === "review" ? (
+        <Tabs label={t("finance.reports.report")} idBase="report" value={view} onValueChange={choose}
+          options={TABS.map(tab => ({value: tab, label: t(`finance.reports.tabs.${tab}`)}))}/>
+        <div className="flex min-h-11">
+          {view === "category" ? (
+            <Field label={t("finance.categoryMonth.month")} htmlFor="category-month">
+              <MonthField id="category-month" min={shiftMonth(thisMonth, -23)} max={shiftMonth(thisMonth, 11)} value={categoryMonth} onValueChange={setCategoryMonth}/>
+            </Field>
+          ) : view === "review" ? (
             <Field label={t("finance.reports.review.month")} htmlFor="review-month">
-              <input id="review-month" type="month" lang={currentLocale()} max={latestComplete} value={selectedReviewMonth} onChange={event => setReviewMonth(event.target.value)} className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"/>
+              <MonthField id="review-month" max={latestComplete} value={selectedReviewMonth} onValueChange={setReviewMonth}/>
             </Field>
           ) : (
             <Field label={t("finance.reports.period")} htmlFor="rp-period">
@@ -96,11 +89,12 @@ export function ReportsView({view: initial = "dre"}: {view?: ReportView}) {
           )}
         </div>
       </div>
-      <div role="tabpanel" id="report-panel" aria-labelledby={`tab-${view}`}>
+      <div role="tabpanel" id={panelId("report")} aria-labelledby={tabId("report", view)} tabIndex={-1} className="outline-none">
         {view === "dre" ? <DRETable from={from} to={to} accounts={names}/>
           : view === "cash" ? <CashTable from={from} to={to} accounts={names}/>
             : view === "cards" ? <CardSpendingView key={`${ctx.mode}-${ctx.space}`} from={from} to={to} accounts={names}/>
-              : <MonthlyReview month={selectedReviewMonth}/>}
+              : view === "category" ? <div className="space-y-4"><p className="text-sm text-muted-foreground">{t("finance.reports.category.description")}</p><CategoryMonthPanel month={categoryMonth}/></div>
+                : <MonthlyReview month={selectedReviewMonth}/>}
       </div>
     </div>
   );
@@ -112,7 +106,7 @@ function Loading() {
 
 function Empty() {
   const {t} = useTranslation();
-  return <p className="py-6 text-center text-sm text-muted-foreground">{t("finance.reports.empty")}</p>;
+  return <EmptyState icon={<BarChart3/>} title={t("finance.reports.empty")} className="py-8"/>;
 }
 
 function shiftMonth(month: string, offset: number): string {
@@ -140,18 +134,18 @@ function MonthlyReview({month}: {month: string}) {
     {key: "out", current: cashAt(month)?.out ?? 0, prior: cashAt(previous)?.out ?? 0},
     {key: "cards", current: cardAt(month), prior: cardAt(previous)},
   ];
-  return <section className="space-y-4" aria-label={t("finance.reports.review.title")}>
-    <header className="space-y-1"><h2 className="text-base font-medium">{t("finance.reports.review.title")}</h2><p className="text-sm text-muted-foreground">{t("finance.reports.review.description")}</p></header>
+  return <Section title={t("finance.reports.review.title")} hideTitle className="space-y-4">
+    <p className="text-sm text-muted-foreground">{t("finance.reports.review.description")}</p>
     {failed ? <ErrorBlock error={failed} onRetry={retry}/> : dre.isLoading || cash.isLoading || cards.isLoading ? <Loading/> : (
       <div className="grid gap-3 sm:grid-cols-2">
         {metrics.map(metric => <article key={metric.key} className="rounded-lg border border-border p-4">
           <h3 className="text-sm text-muted-foreground">{t(`finance.reports.review.${metric.key}`)}</h3>
-          <p className="mt-2 text-lg font-semibold tabular-nums">{money(metric.current)}</p>
+          <p className="mt-2 text-lg font-semibold"><Amount>{money(metric.current)}</Amount></p>
           <p className="mt-1 text-xs text-muted-foreground">{t("finance.reports.review.previous", {month: monthShort(previous), amount: money(metric.prior), delta: signedMoney(metric.current - metric.prior)})}</p>
         </article>)}
       </div>
     )}
-  </section>;
+  </Section>;
 }
 
 /** Wide tables scroll inside their box on a phone; the label column stays put. */
@@ -162,7 +156,7 @@ function Table({months, children}: {months: string[]; children: React.ReactNode}
       <table className="w-full min-w-max text-sm tabular-nums">
         <thead>
           <tr className="border-b border-border text-muted-foreground">
-            <th className="sticky left-0 bg-background py-2 pr-4 text-left font-normal">&nbsp;</th>
+            <th className="sticky left-0 bg-background py-2 pr-4 text-left font-normal"><span className="sr-only">{t("finance.reports.line")}</span></th>
             {months.map(m => <th key={m} className="py-2 pl-4 text-right font-normal">{monthShort(m)}</th>)}
             <th className="py-2 pl-4 text-right font-normal">{t("finance.reports.total")}</th>
           </tr>
@@ -256,12 +250,7 @@ function CashTable({from, to, accounts}: {from: string; to: string; accounts: Ac
 }
 
 function Figure({label, amount}: {label: string; amount: number}) {
-  return (
-    <div className="flex items-baseline justify-between text-sm">
-      <span className="text-muted-foreground">{label}</span>
-      <span data-numeric className="font-medium tabular-nums text-foreground">{signedMoney(amount)}</span>
-    </div>
-  );
+  return <dl className="text-sm"><AmountRow label={<span className="text-muted-foreground">{label}</span>}><Amount strong tone="foreground">{signedMoney(amount)}</Amount></AmountRow></dl>;
 }
 
 const ALL_CARDS = "all";
@@ -303,11 +292,10 @@ function CardSpendingView({from, to, accounts}: {from: string; to: string; accou
           <SpendTable months={r.months} rows={r.categories} label={row => nameOf(accounts, row.category_id ?? "")} byMonth={r.by_month} total={r.total}
             head={t("finance.reports.spending.category")} listLabel={t("finance.reports.spending.byCategoryList")}/>
           {!cardId && r.cards.length > 1 && (
-            <section aria-label={t("finance.reports.spending.byCard")} className="space-y-2 pt-2">
-              <h2 className="text-sm font-medium text-foreground">{t("finance.reports.spending.byCard")}</h2>
+            <Section title={t("finance.reports.spending.byCard")} className="space-y-2 pt-2">
               <SpendTable months={r.months} rows={r.cards} label={row => cardName(list, row.card_id ?? "")} byMonth={r.by_month} total={r.total}
                 head={t("finance.reports.spending.card")} listLabel={t("finance.reports.spending.byCardList")}/>
-            </section>
+            </Section>
           )}
         </>
       )}
@@ -322,49 +310,53 @@ function SpendTable({months, rows, label, byMonth, total, head, listLabel}: {
   const pct = new Intl.NumberFormat(currentLocale(), {style: "percent", maximumFractionDigits: 0});
   const share = (n: number) => (total > 0 ? pct.format(n / total) : "");
   return (
-    <>
-    {/* A phone reads the ranking first: each row's total and share, then the months below. */}
-    <ul data-ranking aria-label={listLabel} className="divide-y divide-border border-y border-border sm:hidden">
-      {rows.map(row => (
-        <li key={row.category_id ?? row.card_id} className="flex items-baseline justify-between gap-3 py-2 text-sm">
-          <span className="min-w-0 [overflow-wrap:anywhere] text-foreground">{label(row)}</span>
-          <span className="shrink-0 text-right tabular-nums">
-            <span className="font-medium text-foreground">{money(row.total)}</span>
-            <span className="ml-2 text-muted-foreground">{share(row.total)}</span>
-          </span>
-        </li>
-      ))}
-    </ul>
-    <div className="overflow-x-auto">
-      <table className="w-full min-w-max text-sm tabular-nums">
-        <thead>
-          <tr className="border-b border-border text-muted-foreground">
-            <th className="sticky left-0 bg-background py-2 pr-4 text-left font-normal"><span className="sr-only">{head}</span></th>
-            {months.map(m => <th key={m} className="py-2 pl-4 text-right font-normal">{monthShort(m)}</th>)}
-            <th className="py-2 pl-4 text-right font-normal">{t("finance.reports.total")}</th>
-            <th className="py-2 pl-4 text-right font-normal">{t("finance.reports.spending.share")}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map(row => (
-            <tr key={row.category_id ?? row.card_id}>
-              <th scope="row" className="sticky left-0 bg-background py-1.5 pr-4 text-left font-normal text-foreground">
-                <span className="block max-w-[45vw] truncate sm:max-w-none" title={label(row)}>{label(row)}</span>
-              </th>
-              {row.amounts.map((a, i) => <td key={i} className="py-1.5 pl-4 text-right text-muted-foreground">{money(a)}</td>)}
-              <td className="py-1.5 pl-4 text-right font-medium text-foreground">{money(row.total)}</td>
-              <td className="py-1.5 pl-4 text-right text-muted-foreground">{share(row.total)}</td>
-            </tr>
-          ))}
-          <tr className="border-t border-border">
-            <th scope="row" className="sticky left-0 bg-background py-1.5 pr-4 text-left font-semibold text-foreground">{t("finance.reports.total")}</th>
-            {byMonth.map((a, i) => <td key={i} className="py-1.5 pl-4 text-right font-semibold text-foreground">{money(a)}</td>)}
-            <td className="py-1.5 pl-4 text-right font-semibold text-foreground">{money(total)}</td>
-            <td className="py-1.5 pl-4 text-right text-muted-foreground">{share(total)}</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-    </>
+    // The ranking comes first where the months will not fit beside each other: the box, not the window, decides.
+    <ContainerSwitch min={640}>{narrow => (
+      <>
+        {narrow && (
+          <ul data-ranking aria-label={listLabel} className="divide-y divide-border border-y border-border">
+            {rows.map(row => (
+              <li key={row.category_id ?? row.card_id} className="flex items-baseline justify-between gap-3 py-2 text-sm">
+                <span className="min-w-0 [overflow-wrap:anywhere] text-foreground">{label(row)}</span>
+                <span className="shrink-0 text-right">
+                  <Amount strong tone="foreground">{money(row.total)}</Amount>
+                  <span className="ml-2 text-muted-foreground">{share(row.total)}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+        <div className={narrow ? "mt-3 overflow-x-auto" : "overflow-x-auto"}>
+          <table className="w-full min-w-max text-sm tabular-nums">
+            <thead>
+              <tr className="border-b border-border text-muted-foreground">
+                <th className="sticky left-0 bg-background py-2 pr-4 text-left font-normal"><span className="sr-only">{head}</span></th>
+                {months.map(m => <th key={m} className="py-2 pl-4 text-right font-normal">{monthShort(m)}</th>)}
+                <th className="py-2 pl-4 text-right font-normal">{t("finance.reports.total")}</th>
+                <th className="py-2 pl-4 text-right font-normal">{t("finance.reports.spending.share")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map(row => (
+                <tr key={row.category_id ?? row.card_id}>
+                  <th scope="row" className="sticky left-0 bg-background py-1.5 pr-4 text-left font-normal text-foreground">
+                    <span className="block max-w-[45vw] truncate sm:max-w-none" title={label(row)}>{label(row)}</span>
+                  </th>
+                  {row.amounts.map((a, i) => <td key={i} className="py-1.5 pl-4 text-right text-muted-foreground">{money(a)}</td>)}
+                  <td className="py-1.5 pl-4 text-right font-medium text-foreground">{money(row.total)}</td>
+                  <td className="py-1.5 pl-4 text-right text-muted-foreground">{share(row.total)}</td>
+                </tr>
+              ))}
+              <tr className="border-t border-border">
+                <th scope="row" className="sticky left-0 bg-background py-1.5 pr-4 text-left font-semibold text-foreground">{t("finance.reports.total")}</th>
+                {byMonth.map((a, i) => <td key={i} className="py-1.5 pl-4 text-right font-semibold text-foreground">{money(a)}</td>)}
+                <td className="py-1.5 pl-4 text-right font-semibold text-foreground">{money(total)}</td>
+                <td className="py-1.5 pl-4 text-right text-muted-foreground">{share(total)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </>
+    )}</ContainerSwitch>
   );
 }

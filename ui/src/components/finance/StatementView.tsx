@@ -1,34 +1,33 @@
 "use client";
 
-import {Badge, Button, Drawer, EmptyState, Select, Skeleton} from "@aoctech/ui";
+import {Button, EmptyState, Select, Skeleton} from "@aoctech/ui";
+
+import {LEDGER_STATUS, StatusBadge} from "@/components/finance/StatusBadge";
+import {PanelDrawer} from "@/components/finance/PanelDrawer";
 import {useQuery} from "@tanstack/react-query";
 import {Landmark} from "lucide-react";
 import Link from "next/link";
 import {useState} from "react";
 import {useTranslation} from "react-i18next";
 
+import {InlineConfirm} from "@/components/finance/InlineConfirm";
 import {LedgerRow} from "@/components/finance/LedgerRow";
 import {ErrorBlock} from "@/components/portal/ErrorBlock";
 import {TransferPanel, wholeSpace} from "@/components/finance/TransferPanel";
-import {messageFor} from "@/lib/api/client";
+import {Amount, AmountRow} from "@/components/ui/Amount";
+import {Section} from "@/components/ui/Section";
+import {FormErrorText} from "@/components/finance/FormError";
 import {selectCopy} from "@/lib/selectCopy";
 import {type FinanceCtx, financeKeys, getStatement, listAccounts, reverseTransaction, unsettleBill} from "@/lib/api/finance";
-import type {Account, StatementEntry} from "@/lib/api/financeTypes";
+import type {Account, Statement, StatementEntry} from "@/lib/api/financeTypes";
 import {dateRange, type PresetId, PRESETS} from "@/lib/finance/periods";
-import {todayIso} from "@/lib/finance/today";
+import {addDaysIso, todayIso} from "@/lib/finance/today";
 import {useFinanceMutation} from "@/lib/finance/useFinanceMutation";
 import {useCreateRequest} from "@/lib/createRequest";
 import {useFinanceCtx, useFinanceSpaces} from "@/lib/finance/useFinanceSpaces";
 import {shortDate, signedMoney} from "@/lib/format";
 import {currentLocale, t as tr} from "@/lib/i18n";
 import {accountName} from "@/lib/finance/accountName";
-
-/** The day before a civil date, without reading it as UTC. */
-function dayBefore(iso: string): string {
-  const [y, m, d] = iso.split("-").map(Number);
-  const t = new Date(y, m - 1, d - 1, 12);
-  return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`;
-}
 
 function memoOf(e: StatementEntry): string {
   if (e.memo) return e.memo;
@@ -114,9 +113,9 @@ export function StatementView({account: initial = ""}: {account?: string}) {
         )}
       </div>
 
-      <Drawer open={transferring && can("finance.write")} onClose={() => setTransferring(false)} title={t("finance.statement.newTransfer")}>
+      <PanelDrawer open={transferring} allowed={can("finance.write")} onClose={() => setTransferring(false)} title={t("finance.statement.newTransfer")}>
         <TransferPanel accounts={all} from={accountId} onDone={() => setTransferring(false)}/>
-      </Drawer>
+      </PanelDrawer>
 
       {statement.isLoading || !s ? (
         statement.error ? (
@@ -125,30 +124,47 @@ export function StatementView({account: initial = ""}: {account?: string}) {
           <div className="space-y-2" aria-busy><Skeleton className="h-5 w-48"/><Skeleton className="h-4 w-full"/><Skeleton className="h-4 w-4/5"/></div>
         )
       ) : (
-        <section aria-label={t("finance.statement.entries")} className="space-y-2">
-          <BalanceLine label={t("finance.statement.balanceOn", {date: shortDate(from)})} amount={s.opening}/>
-          {s.entries.length === 0 ? (
-            <p className="py-6 text-center text-sm text-muted-foreground">{t("finance.statement.empty")}</p>
-          ) : (
-            <ul className="divide-y divide-border border-y border-border">
-              {s.entries.map(e => (
-                <EntryRow key={`${e.transaction_id}-${e.reversal}`} entry={e} category={e.category_id ? names.get(e.category_id) : undefined}/>
-              ))}
-            </ul>
-          )}
-          <BalanceLine label={t("finance.statement.balanceOn", {date: shortDate(dayBefore(to))})} amount={s.closing}/>
-        </section>
+        <>
+          <Summary s={s} from={from} to={to}/>
+          <section aria-label={t("finance.statement.entries")}>
+            {s.entries.length === 0 ? (
+              <EmptyState title={t("finance.statement.empty")} className="py-8"/>
+            ) : (
+              <ul className="divide-y divide-border border-y border-border">
+                {s.entries.map(e => (
+                  <EntryRow key={`${e.transaction_id}-${e.reversal}`} entry={e} category={e.category_id ? names.get(e.category_id) : undefined}/>
+                ))}
+              </ul>
+            )}
+          </section>
+        </>
       )}
     </div>
   );
 }
 
-function BalanceLine({label, amount}: {label: string; amount: number}) {
+/**
+ * The period above its lines: where it started, what came in and went out, where
+ * it ended. A reversed line and its reversal cancel, so neither counts. A period
+ * that reaches past today closes "hoje": nothing is posted after it.
+ */
+function Summary({s, from, to}: {s: Statement; from: string; to: string}) {
+  const {t} = useTranslation();
+  const live = s.entries.filter(e => !e.reversal && !e.reversed);
+  const moneyIn = live.filter(e => e.amount > 0).reduce((n, e) => n + e.amount, 0);
+  const moneyOut = live.filter(e => e.amount < 0).reduce((n, e) => n - e.amount, 0);
+  const last = addDaysIso(to, -1);
   return (
-    <div className="flex items-baseline justify-between text-sm">
-      <span className="text-muted-foreground">{label}</span>
-      <span data-numeric className="font-medium tabular-nums text-foreground">{signedMoney(amount)}</span>
-    </div>
+    <Section title={t("finance.statement.summary")} hideTitle>
+      <dl className="divide-y divide-border border-y border-border text-sm">
+        <AmountRow label={<span className="text-muted-foreground">{t("finance.statement.openingOn", {date: shortDate(from)})}</span>}><Amount>{signedMoney(s.opening)}</Amount></AmountRow>
+        <AmountRow label={<span className="text-muted-foreground">{t("finance.statement.in")}</span>}><Amount>{signedMoney(moneyIn, true)}</Amount></AmountRow>
+        <AmountRow label={<span className="text-muted-foreground">{t("finance.statement.out")}</span>}><Amount>{signedMoney(moneyOut === 0 ? 0 : -moneyOut)}</Amount></AmountRow>
+        <AmountRow strong label={last >= todayIso() ? t("finance.statement.closingToday") : t("finance.statement.closingOn", {date: shortDate(last)})}>
+          <Amount strong tone={s.closing < 0 ? "danger" : "foreground"}>{signedMoney(s.closing)}</Amount>
+        </AmountRow>
+      </dl>
+    </Section>
   );
 }
 
@@ -170,11 +186,11 @@ function EntryRow({entry: e, category}: {entry: StatementEntry; category?: strin
       title={memoOf(e)}
       meta={<>{shortDate(e.date)}{category ? ` • ${category}` : ""}</>}
       aside={(e.reversal || e.reversed) && <>
-        {e.reversal && <Badge tone="neutral">{t("finance.statement.reversal")}</Badge>}
-        {e.reversed && <Badge tone="neutral">{t("finance.statement.reversed")}</Badge>}
+        {e.reversal && <StatusBadge status={LEDGER_STATUS.reversal}>{t("finance.statement.reversal")}</StatusBadge>}
+        {e.reversed && <StatusBadge status={LEDGER_STATUS.reversed}>{t("finance.statement.reversed")}</StatusBadge>}
       </>}
-      amount={<span data-numeric className={e.reversed ? "text-muted-foreground line-through" : undefined}>{signedMoney(e.amount)}</span>}
-      balance={<span data-numeric>{signedMoney(e.balance)}</span>}
+      amount={<Amount struck={e.reversed}>{signedMoney(e.amount, true)}</Amount>}
+      balance={<Amount>{signedMoney(e.balance)}</Amount>}
       balanceLabel={t("finance.statement.balance")}
       more={[
         ...(canReverse ? [{key: "reverse", label: t("finance.statement.reverse"), destructive: true, expanded: action === "reverse", onSelect: toggle("reverse")}] : []),
@@ -203,11 +219,7 @@ function Confirm({text, run, onDone}: {text: string; run: (c: FinanceCtx, key: s
   const {t} = useTranslation();
   const m = useFinanceMutation((c, _: void, key) => run(c, key), wholeSpace, onDone);
   return (
-    <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg bg-surface p-3 text-sm motion-safe:animate-in motion-safe:fade-in">
-      <p className="text-muted-foreground">{text}</p>
-      <Button size="sm" variant="outline" onClick={onDone}>{t("finance.statement.back")}</Button>
-      <Button size="sm" variant="brand" disabled={m.isPending} onClick={() => m.mutate()}>{t("finance.statement.confirm")}</Button>
-      {m.error ? <p role="alert" className="w-full text-sm text-danger">{messageFor(m.error)}</p> : null}
-    </div>
+    <InlineConfirm text={text} cancelLabel={t("finance.statement.back")} confirmLabel={t("finance.statement.confirm")} tone="brand"
+      pending={m.isPending} error={m.error ? <FormErrorText error={m.error}/> : null} onCancel={onDone} onConfirm={() => m.mutate()}/>
   );
 }

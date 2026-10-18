@@ -14,6 +14,7 @@ import {toast} from "sonner";
 import {SubscriptionStatusBadge} from "@/components/console/SubscriptionStatusBadge";
 import {Timeline} from "@/components/console/Timeline";
 import {ErrorBlock} from "@/components/portal/ErrorBlock";
+import {Section} from "@/components/ui/Section";
 import {messageFor, statusOf} from "@/lib/api/client";
 import {consoleKeys, getConsoleCustomer, revealTaxID} from "@/lib/api/console";
 import {useConsoleScope} from "@/lib/console/scope";
@@ -89,10 +90,7 @@ function Detail() {
         </div>
       </dl>
 
-      <section aria-labelledby="assinaturas" className="space-y-3">
-        <h2 id="assinaturas" className="text-sm font-medium text-muted-foreground">
-          {t("console.customer.subscriptions")}
-        </h2>
+      <Section title={t("console.customer.subscriptions")} tone="muted">
         {subscriptions.length === 0 ? (
           <p className="text-sm text-muted-foreground">{t("console.customer.noSubscriptions")}</p>
         ) : (
@@ -120,7 +118,7 @@ function Detail() {
             ))}
           </ul>
         )}
-      </section>
+      </Section>
 
       <Timeline entries={timeline}/>
     </div>

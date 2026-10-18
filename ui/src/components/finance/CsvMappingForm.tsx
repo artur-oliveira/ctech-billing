@@ -5,11 +5,15 @@ import {useQuery} from "@tanstack/react-query";
 import {useState} from "react";
 import {useTranslation} from "react-i18next";
 
+import {statusOf} from "@/lib/api/client";
 import {financeKeys, getCsvMapping, putCsvMapping} from "@/lib/api/finance";
 import type {CsvDateFormat, CsvDelimiter, CsvMapping} from "@/lib/api/financeTypes";
 import {selectCopy} from "@/lib/selectCopy";
 import {useFinanceMutation} from "@/lib/finance/useFinanceMutation";
 import {useFinanceCtx} from "@/lib/finance/useFinanceSpaces";
+import {FormError} from "@/components/finance/FormError";
+import {PanelActions, PanelForm} from "@/components/finance/PanelForm";
+import {ErrorBlock} from "@/components/portal/ErrorBlock";
 import {useFieldErrors} from "@/lib/useFieldErrors";
 
 /** The usual Brazilian bank export: "Data;Histórico;Valor", one header row. */
@@ -18,6 +22,31 @@ export const DEFAULT_MAPPING: CsvMapping = {
 };
 
 const COLUMNS = ["date_column", "description_column", "amount_column", "debit_column"] as const;
+type NumField = (typeof COLUMNS)[number] | "skip_rows"
+
+const RANGE: Record<NumField, [number, number]> = {
+  skip_rows: [0, 20], date_column: [1, 50], description_column: [1, 50], amount_column: [1, 50], debit_column: [0, 50],
+};
+
+/**
+ * What is wrong with the typed numbers before anything is sent: a whole number
+ * inside the field's range, and no two columns pointing at the same position
+ * (the debit column is optional: 0 is "none"). Maps a field to its problem.
+ */
+export function mappingProblems(text: Record<string, string>): Partial<Record<NumField, "range" | "duplicate">> {
+  const out: Partial<Record<NumField, "range" | "duplicate">> = {};
+  const value = (k: NumField) => (text[k] === "" || text[k] === undefined ? (k === "debit_column" || k === "skip_rows" ? 0 : NaN) : Number(text[k]));
+  for (const k of Object.keys(RANGE) as NumField[]) {
+    const v = value(k);
+    if (!Number.isInteger(v) || v < RANGE[k][0] || v > RANGE[k][1]) out[k] = "range";
+  }
+  for (const k of COLUMNS) {
+    const v = value(k);
+    if (out[k] || v === 0) continue;
+    if (COLUMNS.some(o => o !== k && value(o) === v)) out[k] = "duplicate";
+  }
+  return out;
+}
 
 /**
  * How this account's CSV is read: saved once per account, then every CSV
@@ -28,8 +57,9 @@ export function CsvMappingForm({accountId, onDone}: {accountId: string; onDone: 
   // A 404 is "never saved": the form starts from the usual layout.
   const saved = useQuery({
     queryKey: financeKeys.csvMapping(ctx.mode, ctx.space, accountId),
-    queryFn: () => getCsvMapping(ctx, accountId).catch(() => DEFAULT_MAPPING),
+    queryFn: () => getCsvMapping(ctx, accountId).catch(e => { if (statusOf(e) === 404) return DEFAULT_MAPPING; throw e; }),
   });
+  if (saved.error) return <ErrorBlock error={saved.error} onRetry={() => void saved.refetch()}/>;
   if (saved.isLoading || !saved.data) return <Skeleton className="h-24 w-full"/>;
   return <MappingFields accountId={accountId} initial={saved.data} onDone={onDone}/>;
 }
@@ -46,19 +76,26 @@ function MappingFields({accountId, initial, onDone}: {accountId: string; initial
     onDone, fe.set,
   );
   const num = (k: string) => Number(text[k] || 0);
-  const number = (k: (typeof COLUMNS)[number] | "skip_rows", label: string, hint?: string) => (
-    <Field key={k} label={label} htmlFor={`csv-${k}`} error={fe.of(k)} hint={hint}>
-      <Input id={`csv-${k}`} type="number" inputMode="numeric" min={k === "skip_rows" || k === "debit_column" ? 0 : 1} max={k === "skip_rows" ? 20 : 50}
-        value={text[k]} {...fe.props(k, `csv-${k}`)} onChange={e => { setText(s => ({...s, [k]: e.target.value})); fe.clear(k); }}/>
+  // The form's own checks speak after the first try, so typing is not scolded half-way.
+  const [tried, setTried] = useState(false);
+  const problems = tried ? mappingProblems(text) : {};
+  const local = (k: NumField) => problems[k] === "range" ? t("errors.field.out_of_range", {min: RANGE[k][0], max: RANGE[k][1]})
+    : problems[k] === "duplicate" ? t("finance.import.mapping.duplicateColumn") : undefined;
+  const number = (k: NumField, label: string, hint?: string) => (
+    <Field key={k} label={label} htmlFor={`csv-${k}`} error={fe.of(k) ?? local(k)} hint={hint}>
+      <Input id={`csv-${k}`} type="number" inputMode="numeric" min={RANGE[k][0]} max={RANGE[k][1]}
+        value={text[k]} {...fe.props(k, `csv-${k}`, local(k))} onChange={e => { setText(s => ({...s, [k]: e.target.value})); fe.clear(k); }}/>
     </Field>
   );
   return (
-    <form
+    <PanelForm
       aria-label={t("finance.import.columns")}
-      className="grid items-start gap-x-4 gap-y-3 rounded-lg border border-border p-3 sm:grid-cols-3 [&>*]:min-w-0"
+      columns="sm:grid-cols-3"
       onSubmit={e => {
         e.preventDefault();
         fe.reset();
+        setTried(true);
+        if (Object.keys(mappingProblems(text)).length > 0) return;
         save.mutate({...m, skip_rows: num("skip_rows"), date_column: num("date_column"), description_column: num("description_column"),
           amount_column: num("amount_column"), debit_column: num("debit_column")});
       }}
@@ -80,11 +117,11 @@ function MappingFields({accountId, initial, onDone}: {accountId: string; initial
       {number("description_column", t("finance.import.mapping.descriptionColumn"))}
       {number("amount_column", t("finance.import.mapping.amountColumn"))}
       {number("debit_column", t("finance.import.mapping.debitColumn"), t("finance.import.mapping.debitHint"))}
-      <div className="flex flex-wrap items-center gap-2 sm:col-span-3">
+      <PanelActions>
         <Button type="submit" variant="brand" size="sm" disabled={save.isPending}>{t("finance.import.mapping.save")}</Button>
         <Button type="button" variant="outline" size="sm" onClick={onDone}>{t("finance.import.back")}</Button>
-        {fe.general ? <p role="alert" className="text-sm text-danger">{fe.general}</p> : null}
-      </div>
-    </form>
+        <FormError error={save.error} fe={fe} className=""/>
+      </PanelActions>
+    </PanelForm>
   );
 }

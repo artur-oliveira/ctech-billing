@@ -100,7 +100,7 @@ export function FinanceBottomNav() {
     }
     : null;
 
-  const sheet = (href: string, key: string, icon: React.ReactNode, group: string) => ({
+  const sheet = (href: string, key: string, icon: React.ReactNode, group?: string) => ({
     label: t(`finance.nav.${key}`), icon, href, active: is(href), group,
   });
   const launch = t("finance.nav.groupLaunch");
@@ -121,7 +121,7 @@ export function FinanceBottomNav() {
           title: t("finance.nav.moreTitle"),
           icon: <Ellipsis/>,
           items: [
-            sheet(`${BASE}/inbox`, "inbox", <ListTodo/>, launch),
+            sheet(`${BASE}/inbox`, "inbox", <ListTodo/>),
             sheet(`${BASE}/recurrences`, "recurrences", <Repeat/>, launch),
             sheet(`${BASE}/cards`, "cards", <CreditCard/>, launch),
             sheet(`${BASE}/import`, "import", <Upload/>, launch),

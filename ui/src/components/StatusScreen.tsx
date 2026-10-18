@@ -24,7 +24,7 @@ export function StatusScreen({
 }) {
   return (
     <>
-    <div className="absolute right-4 top-3"><LanguageSwitcher/></div>
+    <div className="absolute right-[max(1rem,env(safe-area-inset-right))] top-3"><LanguageSwitcher/></div>
     <main className="mx-auto flex min-h-dvh max-w-md flex-col items-center justify-center gap-4 px-6 py-16 text-center">
       <Link href="/" className="flex flex-col items-center gap-3">
         <Image

@@ -9,7 +9,9 @@
     "income": "Sem categoria de receita. Crie em Contas."
   },
   "noAccount": "Sem conta. Crie em Contas.",
-  "suggestions": {"title": "Sugestões do histórico"},
+  "suggestions": {
+    "title": "Sugestões do histórico"
+  },
   "common": {
     "description": "Descrição",
     "noDescription": "Sem descrição",
@@ -28,6 +30,10 @@
     "auto": {
       "payable": "Pagar automaticamente no vencimento",
       "receivable": "Receber automaticamente no vencimento"
+    },
+    "error": {
+      "amount": "Informe um valor maior que zero.",
+      "required": "Obrigatório."
     }
   },
   "list": {
@@ -41,7 +47,14 @@
       "overdue": "Vencidas",
       "today": "Vencem hoje",
       "upcoming": "A vencer"
-    }
+    },
+    "total": "Em aberto",
+    "overdueTotal": "Vencidas",
+    "emptyAction": {
+      "payable": "Adicionar conta a pagar",
+      "receivable": "Adicionar conta a receber"
+    },
+    "loading": "Carregando contas"
   },
   "row": {
     "due": "Vence {{date}}",
@@ -55,7 +68,13 @@
       "payable": "Pagamento automático",
       "receivable": "Recebimento automático"
     },
-    "delete": "Excluir"
+    "delete": "Excluir",
+    "overdueBy_one": "Venceu há {{count}} dia",
+    "overdueBy_other": "Venceu há {{count}} dias",
+    "dueToday": "Vence hoje",
+    "dueTomorrow": "Vence amanhã",
+    "dueIn_one": "Vence em {{count}} dia",
+    "dueIn_other": "Vence em {{count}} dias"
   },
   "delete": {
     "confirm": "Excluir “{{name}}”? Sai da lista e do resultado de {{month}}.",
@@ -64,7 +83,6 @@
     "undone": "Cancelamento desfeito.",
     "undoFailed": "Não foi possível desfazer o cancelamento."
   },
-  "conflict": "Esta conta mudou. Atualizamos a lista; tente de novo.",
   "settle": {
     "confirm": {
       "payable": "Confirmar pagamento",
@@ -122,7 +140,13 @@
   "rec": {
     "title": "Recorrências",
     "new": "Nova recorrência",
-    "amountMode": {"label": "O valor é", "fixed": "Sempre o mesmo", "expected": "Muda a cada mês", "fixedHint": "O mesmo valor em toda ocorrência; o lançamento é criado sozinho.", "expectedHint": "Usamos como previsão. A cada mês você informa o valor real, e só então o lançamento é criado."},
+    "amountMode": {
+      "label": "O valor é",
+      "fixed": "Sempre o mesmo",
+      "expected": "Muda a cada mês",
+      "fixedHint": "O mesmo valor em toda ocorrência; o lançamento é criado sozinho.",
+      "expectedHint": "Usamos como previsão. A cada mês você informa o valor real, e só então o lançamento é criado."
+    },
     "expectedAmount": "Valor estimado",
     "expectedShort": "estimativa",
     "edit": "Editar recorrência",
@@ -130,7 +154,7 @@
     "emptyHint": "O que se repete vira conta sozinho.",
     "customRule": "Regra personalizada",
     "end": "Encerrar",
-    "endConfirm": "Encerrar? Para de gerar contas; as já geradas ficam.",
+    "endConfirm": "Encerrar? Para de gerar contas e cancela as ainda em aberto; o que já foi pago fica.",
     "confirm": "Confirmar",
     "startsOn": "Começa em",
     "endsOn": "Termina em",
@@ -139,7 +163,7 @@
     "reopenNote": "A recorrência continua a partir deste mês; as datas entre o fim anterior e hoje não são criadas.",
     "editNote": "{{rule}}. Para mudar a regra, encerre e crie outra.",
     "next": "Próximas datas",
-    "fixRule": "regra inválida.",
+    "fixRule": "Corrija a regra para ver as próximas datas.",
     "calculating": "calculando…",
     "paidOn": "(paga em {{date}})",
     "moreOptions": "Mais opções",
@@ -199,7 +223,22 @@
       "category_archived": "Categoria arquivada; escolha outra categoria",
       "fix": "Corrigir"
     },
-    "onStatement": "fatura de {{month}}"
+    "onStatement": "fatura de {{month}}",
+    "nextOn": "Próxima: {{when}}",
+    "noNext": "Sem próximas datas",
+    "monthly": "≈ {{amount}} por mês",
+    "estimatedBadge": "Estimativa",
+    "pendingBadge_one": "{{count}} aguardando valor real",
+    "pendingBadge_other": "{{count}} aguardando valor real",
+    "listTitle": "Recorrências ativas",
+    "loading": "Carregando recorrências",
+    "summary": {
+      "title": "Por mês",
+      "in": "Entram",
+      "out": "Saem",
+      "net": "Resultado",
+      "hint": "Média estimada: cada mês pode variar."
+    }
   },
   "editor": {
     "repeat": "Repetição",
@@ -275,6 +314,7 @@
     "from": "De",
     "to": "Para",
     "placeholder": "Transferência",
+    "needTwo": "Uma transferência precisa de duas contas que não sejam sincronizadas com o banco. Crie outra conta antes.",
     "submit": "Transferir"
   },
   "periods": {

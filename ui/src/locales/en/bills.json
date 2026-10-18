@@ -9,7 +9,9 @@
     "income": "No income category. Create one in Accounts."
   },
   "noAccount": "No account. Create one in Accounts.",
-  "suggestions": {"title": "History suggestions"},
+  "suggestions": {
+    "title": "History suggestions"
+  },
   "common": {
     "description": "Description",
     "noDescription": "No description",
@@ -28,6 +30,10 @@
     "auto": {
       "payable": "Pay automatically on the due date",
       "receivable": "Receive automatically on the due date"
+    },
+    "error": {
+      "amount": "Enter an amount greater than zero.",
+      "required": "Required."
     }
   },
   "list": {
@@ -41,7 +47,14 @@
       "overdue": "Overdue",
       "today": "Due today",
       "upcoming": "Upcoming"
-    }
+    },
+    "total": "Open",
+    "overdueTotal": "Overdue",
+    "emptyAction": {
+      "payable": "Add a payable",
+      "receivable": "Add a receivable"
+    },
+    "loading": "Loading bills"
   },
   "row": {
     "due": "Due {{date}}",
@@ -55,7 +68,13 @@
       "payable": "Automatic payment",
       "receivable": "Automatic receipt"
     },
-    "delete": "Delete"
+    "delete": "Delete",
+    "overdueBy_one": "Overdue by {{count}} day",
+    "overdueBy_other": "Overdue by {{count}} days",
+    "dueToday": "Due today",
+    "dueTomorrow": "Due tomorrow",
+    "dueIn_one": "Due in {{count}} day",
+    "dueIn_other": "Due in {{count}} days"
   },
   "delete": {
     "confirm": "Delete “{{name}}”? It leaves the list and the {{month}} result.",
@@ -64,7 +83,6 @@
     "undone": "Cancellation undone.",
     "undoFailed": "Could not undo the cancellation."
   },
-  "conflict": "This bill changed. We refreshed the list; try again.",
   "settle": {
     "confirm": {
       "payable": "Confirm payment",
@@ -122,7 +140,13 @@
   "rec": {
     "title": "Recurrences",
     "new": "New recurrence",
-    "amountMode": {"label": "The amount is", "fixed": "Always the same", "expected": "Changes each month", "fixedHint": "The same amount every time; the bill is created on its own.", "expectedHint": "Used as a forecast. Each month you enter the real amount, and only then is the bill created."},
+    "amountMode": {
+      "label": "The amount is",
+      "fixed": "Always the same",
+      "expected": "Changes each month",
+      "fixedHint": "The same amount every time; the bill is created on its own.",
+      "expectedHint": "Used as a forecast. Each month you enter the real amount, and only then is the bill created."
+    },
     "expectedAmount": "Estimated amount",
     "expectedShort": "estimate",
     "edit": "Edit recurrence",
@@ -130,7 +154,7 @@
     "emptyHint": "Whatever repeats becomes a bill on its own.",
     "customRule": "Custom rule",
     "end": "End",
-    "endConfirm": "End it? It stops creating bills; existing ones stay.",
+    "endConfirm": "End it? It stops making bills and cancels the ones still open; what was already paid stays.",
     "confirm": "Confirm",
     "startsOn": "Starts on",
     "endsOn": "Ends on",
@@ -139,7 +163,7 @@
     "reopenNote": "The recurrence continues from this month; the dates between the old end and today are not created.",
     "editNote": "{{rule}}. To change the rule, end this one and create another.",
     "next": "Next dates",
-    "fixRule": "invalid rule.",
+    "fixRule": "Fix the rule to see the next dates.",
     "calculating": "calculating…",
     "paidOn": "(paid on {{date}})",
     "moreOptions": "More options",
@@ -199,7 +223,22 @@
       "category_archived": "Category archived; choose another category",
       "fix": "Fix"
     },
-    "onStatement": "statement of {{month}}"
+    "onStatement": "statement of {{month}}",
+    "nextOn": "Next: {{when}}",
+    "noNext": "No dates left",
+    "monthly": "≈ {{amount}} a month",
+    "estimatedBadge": "Estimate",
+    "pendingBadge_one": "{{count}} awaiting the real amount",
+    "pendingBadge_other": "{{count}} awaiting the real amount",
+    "listTitle": "Active recurrences",
+    "loading": "Loading recurrences",
+    "summary": {
+      "title": "Per month",
+      "in": "Coming in",
+      "out": "Going out",
+      "net": "Net",
+      "hint": "Estimated average: each month can differ."
+    }
   },
   "editor": {
     "repeat": "Repeat",
@@ -275,6 +314,7 @@
     "from": "From",
     "to": "To",
     "placeholder": "Transfer",
+    "needTwo": "A transfer needs two accounts that are not bank-synced. Create another account first.",
     "submit": "Transfer"
   },
   "periods": {

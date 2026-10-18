@@ -44,6 +44,7 @@ function serve(verbs: Verb[], accounts = ACCOUNTS) {
   vi.spyOn(finance, "listAccounts").mockResolvedValue({data: accounts, has_more: false});
   vi.spyOn(finance, "getSettings").mockResolvedValue({});
   vi.spyOn(finance, "listCards").mockResolvedValue({data: [], has_more: false});
+  vi.spyOn(finance, "getProjection").mockResolvedValue({data: [{month: "2026-03", receivable: 50000, payable: 20000, virtual: 0}], has_more: false});
 }
 
 beforeEach(() => window.localStorage.clear());
@@ -58,7 +59,27 @@ describe("F8 — accounts", () => {
     expect(screen.getAllByRole("heading", {name: "Contas"})).toHaveLength(2);
     expect(screen.getByRole("heading", {name: "Receitas"})).toBeInTheDocument();
     expect(screen.getByRole("heading", {name: "Despesas"})).toBeInTheDocument();
-    expect(screen.getByText("R$ 8.423,15")).toBeInTheDocument();
+    expect(within(await row("Conta corrente")).getByText("R$ 8.423,15")).toBeInTheDocument();
+    // Each cash account opens its statement.
+    expect(within(await row("Conta corrente")).getByRole("link", {name: "Extrato"})).toHaveAttribute("href", "/finance/statement?account=cc");
+  });
+
+  it("answers \"quanto vou ter?\": today's total and the balance the forecast leaves at month end", async () => {
+    serve(ALL);
+    renderWithQuery(<AccountsView/>);
+    const today = await screen.findByText("Hoje");
+    // 8.423,15 + (500,00 − 200,00) to receive/pay in the first projected month.
+    expect(within(today.closest("dl") as HTMLElement).getByText("R$ 8.423,15")).toBeInTheDocument();
+    expect(await within(today.closest("dl") as HTMLElement).findByText("R$ 8.723,15")).toBeInTheDocument();
+    expect(screen.getByText(/previsto no fim de/i)).toBeInTheDocument();
+  });
+
+  it("offers the first account from the empty state to a role that can create", async () => {
+    serve(ALL, []);
+    renderWithQuery(<AccountsView/>);
+    await screen.findByText(/nenhuma conta ainda/i);
+    await userEvent.click(screen.getAllByRole("button", {name: "Nova conta"}).at(-1)!);
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
   });
 
   it("hides archived items until asked", async () => {

@@ -52,7 +52,7 @@ afterEach(() => vi.restoreAllMocks());
 describe("F7 — relatórios", () => {
   it("lays the DRE out in the group order, with the derived subtotals", async () => {
     serve();
-    renderWithQuery(<ReportsView/>);
+    renderWithQuery(<ReportsView view="dre"/>);
     await screen.findByRole("rowheader", {name: "Receita bruta"});
     const heads = screen.getAllByRole("rowheader").map(h => h.textContent);
     expect(heads).toEqual([
@@ -67,13 +67,21 @@ describe("F7 — relatórios", () => {
 
   it("keeps the period when switching to the cash flow", async () => {
     const {cash} = serve();
-    renderWithQuery(<ReportsView/>);
+    renderWithQuery(<ReportsView view="dre"/>);
     await screen.findByRole("rowheader", {name: "Receita bruta"});
     await pick("Período", "Este mês");
     await userEvent.click(screen.getByRole("tab", {name: "Fluxo de caixa"}));
     const {from, to} = monthRange("this_month", todayIso());
     await waitFor(() => expect(cash).toHaveBeenCalledWith(expect.anything(), from, to));
     expect(screen.getByRole("combobox", {name: "Período"})).toHaveTextContent("Este mês");
+  });
+
+  it("opens on the by-category month, listed first, and the DRE is the last tab", () => {
+    serve();
+    vi.spyOn(finance, "getCategoryMonth").mockResolvedValue({month: "2026-10", income: {totals: {realised: 0, scheduled: 0, forecast: 0, total: 0}, categories: []}, expense: {totals: {realised: 0, scheduled: 0, forecast: 0, total: 0}, categories: []}});
+    renderWithQuery(<ReportsView/>);
+    expect(screen.getByRole("tab", {name: "Por categoria"})).toHaveAttribute("aria-selected", "true");
+    expect(screen.getAllByRole("tab").map(t => t.textContent)).toEqual(["Por categoria", "Revisão mensal", "Fluxo de caixa", "Cartões", "DRE"]);
   });
 
   it("opens on the cash flow when the link says so, and names what it leaves out", async () => {
@@ -90,25 +98,29 @@ describe("F7 — relatórios", () => {
 
   it("says so when nothing was posted in the period", async () => {
     serve().dre.mockResolvedValue({months: ["2026-01"], groups: [], result: [0], total: 0});
-    renderWithQuery(<ReportsView/>);
+    renderWithQuery(<ReportsView view="dre"/>);
     expect(await screen.findByText("Nada neste período.")).toBeInTheDocument();
   });
 
   it("opens the monthly review on the last closed month and loads it only on demand", async () => {
     serve();
     const spend = vi.spyOn(finance, "getCardSpending").mockResolvedValue({basis: "statement", months: [], by_month: [], total: 0, categories: [], cards: []});
-    renderWithQuery(<ReportsView/>);
+    renderWithQuery(<ReportsView view="dre"/>);
     expect(spend).not.toHaveBeenCalled();
     await userEvent.click(screen.getByRole("tab", {name: "Revisão mensal"}));
     expect(await screen.findByRole("heading", {name: "Revisão mensal"})).toBeInTheDocument();
     expect(spend).toHaveBeenCalledWith(expect.anything(), expect.any(String), expect.any(String));
-    expect(screen.getByLabelText("Mês revisado")).toHaveAttribute("max", expect.stringMatching(/^\d{4}-\d{2}$/));
-    expect(screen.getByLabelText("Mês revisado")).toHaveAttribute("lang", "pt-BR");
+    // The month shows in the app's language (a native month input showed English), capped at the last closed month.
+    const trigger = screen.getByLabelText("Mês revisado");
+    expect(trigger).toHaveTextContent(/^[a-zç]+ de \d{4}$/);
+    await userEvent.click(trigger);
+    expect(await screen.findByRole("button", {name: /^jan\.? \d{4}$/i})).toBeInTheDocument();
+    expect(screen.getByRole("button", {name: "Próximo ano"})).toBeDisabled();
   });
 
   it("keeps report navigation and its filter in stable rows when switching tabs", async () => {
     serve();
-    renderWithQuery(<ReportsView/>);
+    renderWithQuery(<ReportsView view="dre"/>);
     const tablist = screen.getByRole("tablist", {name: "Relatório"});
     const controls = tablist.parentElement!;
     expect(tablist).not.toHaveClass("w-full");
@@ -124,11 +136,12 @@ describe("F7 — relatórios", () => {
     await userEvent.click(screen.getByRole("tab", {name: "Revisão mensal"}));
     expect(controls.children[0]).toBe(tablist);
     expect(controls.children).toHaveLength(2);
-    expect(within(controls.children[1] as HTMLElement).getByLabelText("Mês revisado")).toHaveAttribute("lang", "pt-BR");
+    expect(within(controls.children[1] as HTMLElement).getByLabelText("Mês revisado")).toHaveTextContent(/de \d{4}/);
   });
 });
 
 describe("card spending (Gastos com cartão)", () => {
+  afterEach(() => vi.unstubAllGlobals());
   const CARDS = [
     {id: "visa", name: "Visa", closing_day: 3, due_day: 10, paying_account_id: "cc", open_month: "2026-03", balance: 0, archived: false},
     {id: "master", name: "Master", closing_day: 3, due_day: 10, paying_account_id: "cc", open_month: "2026-03", balance: 0, archived: true},
@@ -158,7 +171,15 @@ describe("card spending (Gastos com cartão)", () => {
     expect(spend).toHaveBeenCalledWith(expect.anything(), from, to, undefined);
     // Every card's total too, archived ones included.
     expect(screen.getByRole("rowheader", {name: "Master (arquivado)"})).toBeInTheDocument();
-    // A phone reads the ranking first: total and share per category.
+    // On a narrow box the ranking comes first: total and share per category (the table alone when wide).
+    expect(document.querySelector("[data-ranking]")).toBeNull();
+  });
+
+  it("reads the ranking first when the viewport is narrow and the box cannot be measured", async () => {
+    vi.stubGlobal("matchMedia", (q: string) => ({matches: q.includes("max-width"), media: q, addEventListener() {}, removeEventListener() {}}));
+    serveCards();
+    renderWithQuery(<ReportsView view="cards"/>);
+    await screen.findByRole("rowheader", {name: "Aluguel (arquivada)"});
     const ranking = document.querySelector("[data-ranking]") as HTMLElement;
     expect(within(ranking).getAllByRole("listitem").map(li => li.textContent?.replace(/\s/g, " "))).toEqual(["Aluguel (arquivada)R$ 750,0075%", "ImpostosR$ 250,0025%"]);
   });
@@ -175,5 +196,22 @@ describe("card spending (Gastos com cartão)", () => {
     serveCards().mockResolvedValue({...SPEND, by_month: [0, 0], total: 0, categories: [], cards: []});
     renderWithQuery(<ReportsView view="cards"/>);
     expect(await screen.findByText("Nada neste período.")).toBeInTheDocument();
+  });
+
+  it("shows the month by category, with the forecast apart, and asks the API for that month", async () => {
+    serve();
+    const month = vi.spyOn(finance, "getCategoryMonth").mockResolvedValue({
+      month: "2026-10",
+      income: {totals: {realised: 500000, scheduled: 0, forecast: 0, total: 500000}, categories: [{category_id: "sal", realised: 500000, scheduled: 0, forecast: 0, total: 500000}]},
+      expense: {totals: {realised: 30000, scheduled: 150000, forecast: 20000, total: 200000}, categories: [
+        {category_id: "alu", realised: 0, scheduled: 150000, forecast: 0, total: 150000},
+        {category_id: "alu2", realised: 30000, scheduled: 0, forecast: 20000, total: 50000},
+      ]},
+    });
+    renderWithQuery(<ReportsView view="category"/>);
+    expect(await screen.findByRole("heading", {name: "Receitas"})).toBeInTheDocument();
+    expect(month).toHaveBeenCalledWith(expect.anything(), todayIso().slice(0, 7));
+    expect(screen.getByRole("heading", {name: "Despesas"})).toBeInTheDocument();
+    expect(screen.getByText("Resultado esperado do mês")).toBeInTheDocument();
   });
 });

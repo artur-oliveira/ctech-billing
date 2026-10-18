@@ -103,6 +103,8 @@
       "cards": "Cartões"
     },
     "hideArchived": "Ocultar arquivadas",
+    "summary": "Saldo das contas",
+    "forecast": "Previsto no fim de {{month}}",
     "showArchived": "Mostrar arquivadas",
     "owed": "Deve {{amount}}",
     "open": "Abrir",
@@ -205,26 +207,40 @@
     "noRecurringForecast": "Nenhuma compra recorrente prevista para esta fatura.",
     "awaitingConfirmation": "aguardando confirmação",
     "recurringPurchase": "Compra recorrente",
-    "forecastNotInTotal": "Estimativas não fazem parte do total da fatura até serem lançadas.",
     "openRecurrence": "Abrir a recorrência de {{name}}",
     "closedShort": "Fechou {{date}}",
     "closesShort": "Fecha {{date}}",
     "dueShort": "Vence {{date}}",
-    "forecastLine": "+ {{amount}} em recorrências",
-    "forecastLineEstimated": "+ ~{{amount}} em recorrências",
-    "forecastLineTitle": "Recorrências ainda não lançadas nesta fatura; não estão no total.",
-    "summaryLabelForecast": "{{label}}, mais {{amount}} em recorrências previstas",
+    "summaryLabelForecast": "{{label}}: já lançado {{posted}} mais {{amount}} em recorrências previstas{{estimated}}",
     "forecastSubtotal": "Recorrências previstas",
-    "forecastExpectedTotal": "Total previsto da fatura"
+    "forecastInTotal": "Já somadas ao total da fatura acima; viram compra quando a recorrência for lançada.",
+    "total": {
+      "posted": "já lançado {{amount}}",
+      "forecast": "recorrências previstas {{amount}}",
+      "forecastEstimated": "recorrências previstas ~{{amount}} (estimado)",
+      "estimatedWord": " (estimado)",
+      "credit": "crédito a seu favor",
+      "forecastLoading": "lendo recorrências previstas…",
+      "forecastError": "recorrências previstas indisponíveis"
+    },
+    "upcoming": "Próximos meses",
+    "upcomingLabel": "Ver a fatura de {{month}} • {{total}}",
+    "next": {
+      "owed": "A pagar · {{month}}",
+      "open": "Aberta · {{month}}"
+    }
   },
   "inbox": {
     "description": "O que precisa da sua atenção em contas e recorrências.",
     "bills": "Contas em aberto ({{count}})",
-    "noBills": "Nenhuma conta em aberto.",
+    "total_one": "{{count}} pendência para resolver.",
+    "total_other": "{{count}} pendências para resolver.",
     "recurrences": "Recorrências para corrigir ({{count}})",
-    "noRecurrences": "Nenhuma recorrência precisa de correção.",
+    "allClear": "Tudo em dia",
+    "allClearBody": "Contas, valores a confirmar, importações e recorrências aparecem aqui quando pedirem sua atenção.",
     "confirmations": "Valores para confirmar ({{count}})",
-    "noConfirmations": "Nenhum valor aguardando confirmação.",
+    "waitingValue": "Aguardando valor real",
+    "amountInvalid": "Informe um valor maior que zero.",
     "expectedOccurrence": "Previsto {{amount}} para {{date}}",
     "actualAmount": "Valor efetivo",
     "confirmAmount": "Confirmar valor",
@@ -232,9 +248,10 @@
     "skipConfirm": "Esta ocorrência não será lançada.",
     "skipYes": "Ignorar ocorrência",
     "skipNo": "Voltar",
-    "actionFailed": "Não foi possível concluir a ação. Atualize e tente novamente.",
+    "deltaMore": "{{amount}} acima do previsto: o mês fica mais pesado nesse valor.",
+    "deltaLess": "{{amount}} abaixo do previsto: o mês fica mais leve nesse valor.",
     "imports": "Importações para revisar ({{count}})",
-    "noImports": "Nenhuma importação precisa de revisão.",
+    "seeAll": "Ver todas na Agenda",
     "pendingImport_one": "{{count}} lançamento aguardando conciliação",
     "pendingImport_other": "{{count}} lançamentos aguardando conciliação",
     "reconcile": "Conciliar",
@@ -294,15 +311,23 @@
     "legendNet": "Resultado",
     "flowChartLabel_one": "Entradas e saídas previstas do próximo mês",
     "flowChartLabel_other": "Entradas e saídas previstas dos próximos {{count}} meses",
-    "flowTitle": "{{month}}: entradas {{inflow}}, saídas {{outflow}}, resultado {{net}} (recorrências: entradas {{recIn}}, saídas {{recOut}})"
+    "flowTitle": "{{month}}: entradas {{inflow}}, saídas {{outflow}}, resultado {{net}} (recorrências: entradas {{recIn}}, saídas {{recOut}})",
+    "future": "Quanto vou ter",
+    "futureEnd": "Saldo previsto ao fim de {{month}}",
+    "today": "Hoje",
+    "futureLater": "Em {{month}}",
+    "lowerLabel": "Ver",
+    "categoryNote": "Em {{month}}: o que já aconteceu e o que as recorrências ainda vão lançar."
   },
   "reports": {
+    "line": "Linha",
     "report": "Relatório",
     "tabs": {
       "dre": "DRE",
       "cash": "Fluxo de caixa",
       "cards": "Cartões",
-      "review": "Revisão mensal"
+      "review": "Revisão mensal",
+      "category": "Por categoria"
     },
     "review": {
       "title": "Revisão mensal",
@@ -343,6 +368,9 @@
       "category": "Categoria",
       "byCategoryList": "Gastos por categoria",
       "byCardList": "Gastos por cartão"
+    },
+    "category": {
+      "description": "Receitas e despesas do mês por categoria, com o que já aconteceu e o que as recorrências ainda vão lançar."
     }
   },
   "statement": {
@@ -358,7 +386,12 @@
     "period": "Período",
     "newTransfer": "Nova transferência",
     "entries": "Lançamentos",
-    "balanceOn": "Saldo em {{date}}",
+    "openingOn": "Saldo inicial em {{date}}",
+    "closingOn": "Saldo final em {{date}}",
+    "closingToday": "Saldo hoje",
+    "summary": "Resumo do período",
+    "in": "Entradas",
+    "out": "Saídas",
     "balance": "Saldo",
     "empty": "Nada neste período.",
     "reversal": "Estorno",
@@ -409,6 +442,16 @@
     "file": "Arquivo do extrato",
     "fileHint": "OFX ou CSV, até 1 MB. O arquivo não fica guardado; os lançamentos ficam 90 dias para você conciliar.",
     "submit": "Importar",
+    "sending": "Importando…",
+    "choose": "Escolher arquivo",
+    "replace": "Trocar",
+    "remove": "Remover",
+    "tooLarge": "Arquivo maior que 1 MB.",
+    "wrongType": "Envie um arquivo .ofx, .qfx ou .csv do seu banco.",
+    "ignoredUndo": "Lançamento ignorado.",
+    "undo": "Desfazer",
+    "undone": "Lançamento reaberto.",
+    "undoFailed": "Não foi possível desfazer. Reabra pela aba Ignoradas.",
     "columns": "Colunas do CSV",
     "opening": {
       "ask": "Usar o saldo do extrato como saldo inicial?",
@@ -497,6 +540,7 @@
       "amountColumn": "Coluna do valor",
       "debitColumn": "Coluna das saídas",
       "debitHint": "Só se o banco separa entradas e saídas em duas colunas.",
+      "duplicateColumn": "Outra coluna já usa este número.",
       "save": "Salvar colunas"
     }
   },
@@ -512,7 +556,32 @@
       "free": "Free",
       "basic": "Basic",
       "pro": "Pro",
-      "ondemand": "Sob demanda"
+      "ondemand": "Sob demanda",
+      "other": "Outro plano"
+    },
+    "summary": "Seu plano",
+    "all": "Planos disponíveis",
+    "row": {
+      "plan": "Plano",
+      "price": "Valor",
+      "metered": "Pelo uso, cobrado no fim do mês",
+      "projected": "Previsão do mês",
+      "renewsOn": "Próxima cobrança",
+      "endsOn": "Termina em"
+    },
+    "status": {
+      "pendingPayment": "Aguardando pagamento",
+      "pastDue": "Pagamento atrasado",
+      "trial": "Em teste",
+      "ends": "Termina no fim do período"
+    },
+    "endsNote": "Depois dessa data você volta ao Free. Nada é removido.",
+    "owing": {
+      "title": "Fatura do plano em aberto",
+      "body": "{{amount}} com vencimento em {{date}}. Enquanto estiver em aberto, não dá para mudar de plano.",
+      "bodyBare": "Pague a fatura em aberto antes de mudar de plano.",
+      "payAmount": "Pagar fatura de {{amount}}",
+      "blocked": "Disponível depois de pagar a fatura."
     },
     "current": "Seu plano",
     "perMonth": "{{amount}} por mês",
@@ -526,13 +595,11 @@
     "meteredSpaces": "{{amount}} por espaço além do 1º",
     "meteredPeople": "{{amount}} por pessoa além da 1ª",
     "meteredNote": "Cobrado no fim do mês pelo maior uso.",
-    "projected": "Previsão do mês: {{amount}}",
     "subscribe": "Assinar",
     "changeTo": "Mudar para {{plan}}",
     "backToFree": "Voltar ao Free",
     "pay": "Pagar fatura",
     "keep": "Manter {{plan}}",
-    "endsOn": "Termina em {{date}}",
     "changesOn": "Muda para {{plan}} em {{date}}",
     "startsOn": "Começa em {{date}}",
     "usage": {
@@ -554,20 +621,21 @@
     },
     "suggest": "Este mês o Sob demanda deve custar {{projected}}. O Basic custa {{basic}}. Quer mudar?",
     "suggestAction": "Mudar para Basic",
+    "confirm": {
+      "back": "Voltar"
+    },
+    "confirmChange": {
+      "body": "Você vai pagar {{amount}} por mês pelo {{plan}}. Faturas anteriores não mudam.",
+      "bodyMetered": "O {{plan}} é cobrado no fim de cada mês pelo maior uso. Faturas anteriores não mudam.",
+      "pay": "Ir para o pagamento"
+    },
     "confirmFree": {
-      "title": "Voltar ao Free?",
       "body": "Seu plano continua até {{date}}. Nada é removido.",
       "submit": "Voltar ao Free"
     },
     "confirmSchedule": {
-      "title": "Mudar para Sob demanda?",
       "body": "Seu plano {{plan}} continua até {{date}}. O Sob demanda começa nesse dia e é cobrado no fim de cada mês pelo maior uso.",
-      "submit": "Confirmar"
-    },
-    "pending": {
-      "title": "Há uma fatura em aberto do seu plano.",
-      "body": "Pague a fatura aberta antes de mudar de plano.",
-      "submit": "Pagar"
+      "submit": "Agendar mudança"
     },
     "name": {
       "title": "Nome na fatura",
@@ -582,9 +650,30 @@
       "freeScheduled": "Seu plano termina em {{date}}."
     },
     "outside": {
-      "title": "O plano é da pessoa.",
-      "description": "Abra Pessoal para vê-lo.",
+      "title": "O plano é pessoal.",
+      "description": "Abra Pessoal para ver e mudar o seu plano.",
       "action": "Abrir Pessoal"
     }
-  }
+  },
+  "categoryMonth": {
+    "title": "Por categoria",
+    "income": "Receitas",
+    "expense": "Despesas",
+    "category": "Categoria",
+    "realised": "Realizado",
+    "scheduled": "Agendado",
+    "forecast": "Previsto",
+    "total": "Total",
+    "shareHead": "Parcela do total",
+    "share": "{{pct}}% do total",
+    "realisedLower": "realizado",
+    "scheduledLower": "agendado",
+    "forecastLower": "previsto",
+    "net": "Resultado esperado do mês",
+    "netParts": "Já lançado {{booked}} · previsto {{forecast}}",
+    "legend": "Realizado: já pago ou recebido. Agendado: contas em aberto do mês. Previsto: recorrências que ainda não viraram conta ou compra (barra tracejada).",
+    "empty": "Nada neste mês.",
+    "month": "Mês"
+  },
+  "conflict": "Isto mudou enquanto você editava. Atualizamos; tente de novo."
 }

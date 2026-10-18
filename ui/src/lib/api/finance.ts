@@ -7,7 +7,7 @@ import {t} from "@/lib/i18n";
 import {apiClient, isSpaceNotFound} from "@/lib/api/client";
 import type {
   Account, AccountPatch, Bill, BillPatch, Card, CardPatch, CardStatement, CardRecurringForecast, CashFlow, CurrentSpace, Direction, DRE, FinanceSpaces, ListResponse, NewAccount, NewBill,
-  CardSpending, NewCard, NewPurchase, NewRecurrence, PurchasePatch, NewTransfer, Purchase, Occurrence, OpeningBalance, PreviewInput, ProjectionMonth, Recurrence, RecurrenceOccurrences, RecurrencePatch,
+  CardSpending, CategoryMonth, NewCard, NewPurchase, NewRecurrence, PurchasePatch, NewTransfer, Purchase, Occurrence, OpeningBalance, PreviewInput, ProjectionMonth, Recurrence, RecurrenceOccurrences, RecurrencePatch,
   StatementDirection, StatementPage, PendingOccurrence,
   ChoosePlan, PlanState, Settings, Settlement, Statement, CsvMapping, ImportDetail, ImportSummary, LineResult, NewImport,
 } from "@/lib/api/financeTypes";
@@ -101,6 +101,7 @@ export const financeKeys = {
     ["finance", mode, spaceHeader(space), "statement", accountId, from, to] as const,
   cardSpending: (mode: Mode, space: Space, from: string, to: string, cardId: string) =>
     ["finance", mode, spaceHeader(space), "card-spending", from, to, cardId] as const,
+  categoryMonth: (mode: Mode, space: Space, month: string) => ["finance", mode, spaceHeader(space), "category-month", month] as const,
   cashFlow: (mode: Mode, space: Space, from: string, to: string) => ["finance", mode, spaceHeader(space), "cash-flow", from, to] as const,
   dre: (mode: Mode, space: Space, from: string, to: string) => ["finance", mode, spaceHeader(space), "dre", from, to] as const,
   cards: (mode: Mode, space: Space) => ["finance", mode, spaceHeader(space), "cards"] as const,
@@ -211,6 +212,8 @@ export const reverseTransaction = (c: FinanceCtx, txId: string, idempotencyKey: 
 /** What the cards billed per category and month, by statement month; `cardId` narrows it to one card. */
 export const getCardSpending = (c: FinanceCtx, from: string, to: string, cardId?: string) =>
   read<CardSpending>(c, "/reports/card-spending", {from, to, ...(cardId ? {card_id: cardId} : {})});
+/** One month `YYYY-MM` by category: realised, scheduled (open bills) and forecast (recurrences not yet made). */
+export const getCategoryMonth = (c: FinanceCtx, month: string) => read<CategoryMonth>(c, "/reports/category-month", {month});
 /** Months `YYYY-MM`, both inclusive. */
 export const getCashFlow = (c: FinanceCtx, from: string, to: string) => read<CashFlow>(c, "/reports/cash-flow", {from, to});
 export const getDRE = (c: FinanceCtx, from: string, to: string) => read<DRE>(c, "/reports/dre", {from, to});

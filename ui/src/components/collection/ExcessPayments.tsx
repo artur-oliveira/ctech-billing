@@ -8,6 +8,7 @@ import {toast} from "sonner";
 import {messageFor} from "@/lib/api/client";
 import type {ExcessPayment} from "@/lib/api/consoleTypes";
 import {instantShortDate, money} from "@/lib/format";
+import {Section} from "@/components/ui/Section";
 
 const TONE = {open: "attention", refunding: "neutral", refunded: "positive", refund_failed: "urgent"} as const;
 
@@ -43,8 +44,7 @@ export function ExcessPayments({rows, currency, onRefund}: {
   }
 
   return (
-    <section aria-labelledby="excess" className="space-y-3">
-      <h2 id="excess" className="text-sm font-medium text-muted-foreground">{t("connections.pix.excessTitle")}</h2>
+    <Section title={t("connections.pix.excessTitle")} tone="muted">
       <ul className="divide-y divide-border border-y border-border">
         {list.map(r => (
           <li key={r.id} className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between">
@@ -67,6 +67,6 @@ export function ExcessPayments({rows, currency, onRefund}: {
         title={asking ? t("connections.pix.refundTitle", {amount: money(asking.amount, currency)}) : ""}
         description={t("connections.pix.refundBody")} danger loading={busy}
         submitLabel={t("connections.pix.refundConfirm")} cancelLabel={t("connections.pix.refundKeep")} onSubmit={() => void refund()}/>
-    </section>
+    </Section>
   );
 }

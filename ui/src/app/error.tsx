@@ -1,6 +1,7 @@
 "use client";
 
 import {Button} from "@aoctech/ui";
+import Link from "next/link";
 import {useEffect} from "react";
 import {useTranslation} from "react-i18next";
 
@@ -40,6 +41,7 @@ export default function Error({
       action={
         <div className="flex flex-col items-center gap-3">
           <Button onClick={reset}>{t("auth.error.retry")}</Button>
+          <Button variant="ghost" render={<Link href="/"/>}>{t("auth.notFound.home")}</Button>
           {error.digest && (
             <code className="font-mono text-xs text-muted-foreground">{error.digest}</code>
           )}

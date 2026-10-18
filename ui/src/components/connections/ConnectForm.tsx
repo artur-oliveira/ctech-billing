@@ -1,9 +1,10 @@
 "use client";
 
-import {Button, Checkbox, Field, FileDrop, Input, Select} from "@aoctech/ui";
+import {Button, Field, FileDrop, Input, Select} from "@aoctech/ui";
 import {useState, type FormEvent} from "react";
 import {useTranslation} from "react-i18next";
 
+import {Checkbox} from "@/components/ui/Checkbox";
 import {codeMessage} from "@/lib/errors";
 import {messageFor, problemCode} from "@/lib/api/client";
 import type {ConnectForm as ConnectFormValues} from "@/lib/api/connectionsTypes";

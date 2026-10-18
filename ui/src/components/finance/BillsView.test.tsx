@@ -97,8 +97,11 @@ describe("F2 — a pagar e a receber", () => {
     await userEvent.clear(amount);
     await userEvent.type(amount, "1.520,00");
     expect(within(row).getByText(/R\$ 20,00 a mais/)).toBeInTheDocument();
-    expect(confirm).toBeDisabled();
+    // Not silently disabled: submitting names what is missing.
+    await userEvent.click(confirm);
+    expect(within(row).getByText("Obrigatório.")).toBeInTheDocument();
     await pick("Categoria da diferença", "Juros", row);
+    expect(within(row).queryByText("Obrigatório.")).toBeNull();
     expect(confirm).toBeEnabled();
     await userEvent.clear(amount);
     await userEvent.type(amount, "1.495,00");
@@ -359,5 +362,26 @@ describe("Agenda — a bill's secondary actions", () => {
     const toastOptions = toast.success.mock.calls.at(-1)?.[1] as {action: {onClick: () => void}};
     await act(async () => toastOptions.action.onClick());
     await waitFor(() => expect(restore).toHaveBeenCalledWith(expect.anything(), "b-mercado", expect.any(String)));
+  });
+
+  it("says how late a bill is, totals what is open, and offers to add when there is none", async () => {
+    const d = new Date(); d.setDate(d.getDate() - 5);
+    const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    serve(ALL, [bill({id: "late", bucket: "overdue", due_date: iso, amount: 50000}), bill({id: "next", description: "Internet", amount: 10000, due_date: todayIso()})]);
+    renderWithQuery(<BillsView/>);
+    expect(await screen.findByText(/Venceu há 5 dias/)).toBeInTheDocument();
+    expect(screen.getByText("Em aberto").closest("div")).toHaveTextContent("R$ 600,00");
+    expect(screen.getByText("Vencidas", {selector: "dt"}).closest("div")).toHaveTextContent("R$ 500,00");
+  });
+
+  it("an empty list offers the add action only to who may write", async () => {
+    serve(ALL, []);
+    const {unmount} = renderWithQuery(<BillsView/>);
+    expect(await screen.findByRole("button", {name: "Adicionar conta a pagar"})).toBeInTheDocument();
+    unmount();
+    serve(["finance.read"], []);
+    renderWithQuery(<BillsView/>);
+    await screen.findByText("Nada a pagar em aberto.");
+    expect(screen.queryByRole("button", {name: "Adicionar conta a pagar"})).toBeNull();
   });
 });

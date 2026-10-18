@@ -11,6 +11,7 @@ import {toast} from "sonner";
 
 import {DunningPolicyCard} from "@/components/console/DunningPolicyCard";
 import {ErrorBlock} from "@/components/portal/ErrorBlock";
+import {Section} from "@/components/ui/Section";
 import {messageFor, statusOf} from "@/lib/api/client";
 import {useFieldErrors} from "@/lib/useFieldErrors";
 import {
@@ -134,8 +135,7 @@ function Detail() {
         </p>
       </header>
 
-      <section aria-labelledby="precos" className="space-y-3">
-        <h2 id="precos" className="text-sm font-medium text-muted-foreground">{t("console.product.prices")}</h2>
+      <Section title={t("console.product.prices")} tone="muted">
         {prices.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             {t("console.product.empty")}
@@ -193,7 +193,7 @@ function Detail() {
             </table>
           </div>
         )}
-      </section>
+      </Section>
 
       {product.dunning && (
         <DunningPolicyCard

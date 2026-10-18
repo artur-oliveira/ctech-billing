@@ -8,7 +8,7 @@ import {RecurrencesView} from "@/components/finance/RecurrencesView";
 import {optionsOf, pick, renderWithQuery, selectByLabel} from "@/components/finance/finance.test-utils";
 import * as finance from "@/lib/api/finance";
 import * as createRequest from "@/lib/createRequest";
-import type {Account, Card, Recurrence, RecurrenceOccurrences, Verb} from "@/lib/api/financeTypes";
+import type {Account, Card, PendingOccurrence, Recurrence, RecurrenceOccurrences, Verb} from "@/lib/api/financeTypes";
 
 const ALL: Verb[] = ["finance.read", "finance.write", "finance.settle", "finance.import", "finance.configure"];
 const ACCOUNTS: Account[] = [
@@ -22,11 +22,12 @@ const REC: Recurrence = {
   start: "2026-01-01", business_day_adjust: "roll_forward", auto_settle: false, archived: false,
 };
 
-function serve(verbs: Verb[], recs: Recurrence[] = [REC]) {
+function serve(verbs: Verb[], recs: Recurrence[] = [REC], pending: PendingOccurrence[] = []) {
   vi.spyOn(finance, "getFinanceSpaces").mockResolvedValue({spaces: [{selector: "personal", kind: "personal_default", display_name: "Pessoal", verbs, manage_people: false}], organizations_unavailable: false});
   vi.spyOn(finance, "listAccounts").mockResolvedValue({data: ACCOUNTS, has_more: false});
   vi.spyOn(finance, "listRecurrences").mockResolvedValue({data: recs, has_more: false});
   vi.spyOn(finance, "listCards").mockResolvedValue({data: [], has_more: false});
+  vi.spyOn(finance, "listPendingOccurrences").mockResolvedValue({data: pending, has_more: false});
   return vi.spyOn(finance, "previewRecurrence").mockResolvedValue({
     data: [{nominal: "2026-10-31", due: "2026-11-03"}, {nominal: "2026-11-30", due: "2026-11-30"}], has_more: false,
   });
@@ -68,6 +69,49 @@ describe("F4 — recorrências", () => {
     renderWithQuery(<RecurrencesView/>);
     expect(await screen.findByText("Aluguel do apartamento")).toBeInTheDocument();
     expect(screen.getByText(/Todo dia 10; exceto em dezembro/)).toBeInTheDocument();
+  });
+
+  it("leads each row with its next date, signed amount, what it weighs on a month and what waits for a value", async () => {
+    const today = new Date();
+    const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    const in3 = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 3);
+    const weekly: Recurrence = {...REC, id: "r2", description: "Feira", amount: 12000, amount_mode: "expected",
+      expression: {kind: "weekly", weekday: 6, every: 1, anchor: "2026-01-03"}, next_due: iso(in3)};
+    const salary: Recurrence = {...REC, id: "r3", description: "Salário", direction: "receivable", amount: 500000, category_id: "sal",
+      expression: {kind: "workday_of_month", n: 5}};
+    serve(ALL, [salary, REC, weekly], [{recurrence_id: "r2", nominal: iso(today), due: iso(today), direction: "payable", expected_amount: 12000, category_id: "alu"}]);
+    renderWithQuery(<RecurrencesView/>);
+    const feira = (await screen.findByText("Feira")).closest("li")!;
+    const sal = screen.getByText("Salário").closest("li")!;
+    // The one with something to confirm leads, then the soonest; the one with no next date is last.
+    expect(feira.parentElement!.children[0]).toBe(feira);
+    expect(feira.parentElement!.children[1]).toBe(sal);
+    expect(within(feira).getByText(/Próxima: .*Vence em 3 dias/)).toBeInTheDocument();
+    expect(within(feira).getByText(/≈ R\$\s521,79 por mês/)).toBeInTheDocument();
+    expect(within(feira).getByText("Estimativa")).toBeInTheDocument();
+    expect(within(feira).getByText("1 aguardando valor real")).toBeInTheDocument();
+    // The real amount is asked in the row itself: no trip to the inbox.
+    expect(within(feira).getByRole("button", {name: "Confirmar valor"})).toBeEnabled();
+    expect(within(feira).getByText(/−\s*R\$\s120,00/)).toBeInTheDocument();
+    expect(within(sal).getByText("Sem próximas datas")).toBeInTheDocument();
+    expect(within(sal).queryByText(/por mês/)).toBeNull();
+    // The month at a glance: in, out, net, said to be an average.
+    const summary = screen.getByRole("region", {name: "Por mês"});
+    expect(within(summary).getByText("Entram")).toBeInTheDocument();
+    expect(within(summary).getByText(/aguardando valor real/)).toBeInTheDocument();
+    expect(within(summary).getByText("Média estimada: cada mês pode variar.")).toBeInTheDocument();
+  });
+
+  it("names what ending a recurrence cancels in its row, from its own history", async () => {
+    serve(ALL);
+    vi.spyOn(finance, "getRecurrenceOccurrences").mockResolvedValue({upcoming: [], history: [
+      {nominal: "2099-01-10", due: "2099-01-10", bill_id: "b1", amount: 180000, state: "forecast"},
+    ]});
+    renderWithQuery(<RecurrencesView/>);
+    const row = (await screen.findByText("Aluguel do apartamento")).closest("li")!;
+    await userEvent.click(within(row).getByRole("button", {name: "Encerrar"}));
+    expect(await within(row).findByText(/será cancelado/)).toBeInTheDocument();
+    expect(within(row).getByText(/cancela as ainda em aberto/)).toBeInTheDocument();
   });
 
   it("previews the next occurrences while editing, showing the rolled due date", async () => {
@@ -166,13 +210,14 @@ describe("F4 — recorrências", () => {
     expect(within(dialog).queryByText(/continua a partir deste mês/)).toBeNull();
   });
 
-  it("asks before archiving and says the generated bills stay", async () => {
+  it("asks before archiving and says what is paid stays", async () => {
     serve(ALL);
+    vi.spyOn(finance, "getRecurrenceOccurrences").mockResolvedValue({history: [], upcoming: []});
     const archive = vi.spyOn(finance, "archiveRecurrence").mockResolvedValue(undefined);
     renderWithQuery(<RecurrencesView/>);
     const row = (await screen.findByText("Aluguel do apartamento")).closest("li") as HTMLElement;
     await userEvent.click(within(row).getByRole("button", {name: "Encerrar"}));
-    expect(within(row).getByText(/as já geradas ficam/i)).toBeInTheDocument();
+    expect(within(row).getByText(/o que já foi pago fica/i)).toBeInTheDocument();
     await userEvent.click(within(row).getByRole("button", {name: "Confirmar"}));
     await waitFor(() => expect(archive).toHaveBeenCalledWith(expect.anything(), "r1", expect.any(String)));
   });

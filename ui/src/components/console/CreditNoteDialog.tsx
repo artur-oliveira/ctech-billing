@@ -1,7 +1,8 @@
 "use client";
 
+import {Checkbox} from "@/components/ui/Checkbox";
 import limits from "@/lib/limits.json";
-import {Checkbox, Field, Input, Modal} from "@aoctech/ui";
+import {Field, Input, Modal} from "@aoctech/ui";
 import {useMutation} from "@tanstack/react-query";
 import {useState} from "react";
 import {useTranslation} from "react-i18next";

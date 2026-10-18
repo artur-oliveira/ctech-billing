@@ -91,8 +91,8 @@ export function countdown(secondsLeft: number): string {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
-/** "−R$ 300,00" (a real minus sign) for a negative amount, "R$ 300,00" otherwise. */
-export const signedMoney = (cents: Cents) => (cents < 0 ? `−${money(-cents)}` : money(cents));
+/** "−R$ 300,00" (a real minus sign) for a negative amount, "R$ 300,00" otherwise; `plus` writes "+R$ 300,00" for a credit. */
+export const signedMoney = (cents: Cents, plus = false) => (cents < 0 ? `−${money(-cents)}` : plus && cents > 0 ? `+${money(cents)}` : money(cents));
 
 /**
  * A CPF ("000.000.000-00") or CNPJ ("00.000.000/0000-00") by the length of what

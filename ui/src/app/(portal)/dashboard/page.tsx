@@ -185,7 +185,7 @@ function ActiveList({subscriptions}: { subscriptions: Subscription[] }) {
         </h2>
         <Link
           href="/subscriptions"
-          className="inline-flex items-center gap-1 text-sm text-brand-600 underline-offset-4 hover:underline"
+          className="inline-flex items-center gap-1 text-sm text-brand-600 underline-offset-4 hover:underline touch:min-h-11"
         >
           {t("portal.dashboard.seeAll")}
           <ArrowRight aria-hidden className="size-3.5"/>

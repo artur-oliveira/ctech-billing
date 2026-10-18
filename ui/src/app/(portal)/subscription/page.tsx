@@ -13,6 +13,7 @@ import {ErrorBlock} from "@/components/portal/ErrorBlock";
 import {InvoiceRow} from "@/components/portal/InvoiceRow";
 import {Money} from "@/components/portal/Money";
 import {StatusBadge} from "@/components/portal/StatusBadge";
+import {Section} from "@/components/ui/Section";
 import {messageFor, statusOf} from "@/lib/api/client";
 import {cancelSubscription, getSubscription, portalKeys} from "@/lib/api/portal";
 import {longDate, period} from "@/lib/format";
@@ -140,10 +141,7 @@ function Detail() {
         </dl>
       </section>
 
-      <section aria-labelledby="historico" className="space-y-4">
-        <h2 id="historico" className="text-sm font-medium text-muted-foreground">
-          {t("portal.subscription.invoices")}
-        </h2>
+      <Section title={t("portal.subscription.invoices")} tone="muted" className="space-y-4">
         {invoices.length === 0 ? (
           // Not an illustrated empty state: this block is one section of a
           // screen that is working fine, and a panel with an icon would make a
@@ -166,7 +164,7 @@ function Detail() {
             {t("portal.subscription.seeInvoices")}
           </Link>
         )}
-      </section>
+      </Section>
 
       {/* Last, and plainly. A subscription whose exit a person cannot find is
           one they cancel by disputing the charge with their bank. */}

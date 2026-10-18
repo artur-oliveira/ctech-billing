@@ -59,6 +59,18 @@ describe("F1 — visão geral", () => {
     expect(within(block).getByText("R$ 20.923,15")).toBeInTheDocument();
   });
 
+  it("leads with what the person will have, today's balance beside it", async () => {
+    serve();
+    renderWithQuery(<OverviewView/>);
+    const block = await screen.findByRole("region", {name: "Quanto vou ter"});
+    await within(block).findByText("R$ 18.668,25"); // today minus October's net
+    expect(within(block).getByText(/Saldo previsto ao fim de/)).toBeInTheDocument();
+    expect(within(block).getByText("R$ 20.923,15")).toBeInTheDocument();
+    expect(within(block).getByText("R$ 20.268,25")).toBeInTheDocument(); // end of the window
+    const page = document.body.textContent ?? "";
+    expect(page.indexOf("Quanto vou ter")).toBeLessThan(page.indexOf("Saldos"));
+  });
+
   it("puts overdue items first in due soon", async () => {
     serve();
     renderWithQuery(<OverviewView/>);
@@ -220,5 +232,22 @@ describe("F1 — visão geral", () => {
     renderWithQuery(<OverviewView/>);
     await screen.findByRole("region", {name: "Saldos"});
     expect(screen.queryByText(/resultado realizado/i)).toBeNull();
+  });
+
+  it("switches the lower block to this month by category", async () => {
+    serve();
+    const month = vi.spyOn(finance, "getCategoryMonth").mockResolvedValue({
+      month: todayIso().slice(0, 7),
+      income: {totals: {realised: 0, scheduled: 0, forecast: 100000, total: 100000}, categories: [{category_id: "alu", realised: 0, scheduled: 0, forecast: 100000, total: 100000}]},
+      expense: {totals: {realised: 0, scheduled: 0, forecast: 0, total: 0}, categories: []},
+    });
+    renderWithQuery(<OverviewView/>);
+    await loadProjection();
+    expect(month).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole("button", {name: "Por categoria"}));
+    const block = await screen.findByRole("region", {name: "Por categoria"});
+    await within(block).findByRole("region", {name: "Receitas"});
+    expect(month).toHaveBeenCalledWith(expect.anything(), todayIso().slice(0, 7));
+    expect(screen.queryByRole("region", {name: "Projeção"})).toBeNull();
   });
 });

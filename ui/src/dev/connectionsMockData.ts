@@ -49,6 +49,10 @@ function seedLines(): UnclassifiedLine[] {
     {tx_id: "tx_mock_1", date: "2026-10-09", amount: 125000, direction: "credit", memo: "Pix recebido · Cliente Alfa"},
     {tx_id: "tx_mock_2", date: "2026-10-08", amount: 4590, direction: "debit", memo: "Tarifa Pix"},
     {tx_id: "tx_mock_3", date: "2026-10-05", amount: 89900, direction: "debit", memo: "Pagamento de boleto · Aluguel"},
+    ...Array.from({length: 9}, (_, i) => ({
+      tx_id: `tx_mock_${i + 4}`, date: `2026-10-0${(i % 4) + 1}`, amount: 1990 + i * 310, direction: (i % 3 === 0 ? "credit" : "debit") as "credit" | "debit",
+      memo: i === 2 ? "Compra no débito · Supermercado Central da Avenida Paulista, loja 14 e anexo" : `Compra no débito · Loja ${i + 1}`,
+    })),
   ];
 }
 unclassified = seedLines();

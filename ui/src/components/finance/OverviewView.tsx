@@ -7,13 +7,18 @@ import Link from "next/link";
 import {useRef, useState} from "react";
 import {useTranslation} from "react-i18next";
 
+import {CategoryMonthPanel} from "@/components/finance/CategoryMonthPanel";
 import {ErrorBlock} from "@/components/portal/ErrorBlock";
+import {Amount, AmountRow} from "@/components/ui/Amount";
+import {ContainerSwitch} from "@/components/ui/ContainerSwitch";
 import {quietLink} from "@/components/ui/quietLink";
-import {financeKeys, getCashFlow, getProjection, listAccounts, listBills} from "@/lib/api/finance";
-import type {Bill, ProjectionMonth} from "@/lib/api/financeTypes";
+import {Section} from "@/components/ui/Section";
+import {financeKeys, getCashFlow, listAccounts, listBills} from "@/lib/api/finance";
+import type {Bill} from "@/lib/api/financeTypes";
 import {bucketLabel, directionLabel} from "@/lib/finance/labels";
 import {currentLocale} from "@/lib/i18n";
-import {monthShort, todayIso} from "@/lib/finance/today";
+import {PROJECTION_HORIZON, type ProjectedMonth, project, useProjection} from "@/lib/finance/projection";
+import {monthLabel, monthShort, todayIso} from "@/lib/finance/today";
 import {useFinanceCtx} from "@/lib/finance/useFinanceSpaces";
 import {useElementWidth} from "@/lib/hooks/useElementWidth";
 import {NARROW, useMediaQuery} from "@/lib/hooks/useMediaQuery";
@@ -32,26 +37,94 @@ export function OverviewView() {
   return (
     <div className="space-y-8">
       <h1 className="text-lg font-semibold tracking-[-0.01em] text-foreground">{t("finance.overview.title")}</h1>
-      <div className="grid items-start gap-8 lg:grid-cols-3">
+      <Future/>
+      <Lower/>
+      <div className="grid items-start gap-8 xl:grid-cols-3">
         <Balances/>
         <Realised/>
         <DueSoon/>
       </div>
-      <Projection/>
     </div>
   );
 }
 
-function Block({title, children, action}: {title: string; children: React.ReactNode; action?: React.ReactNode}) {
-  const id = `blk-${title.replace(/\W+/g, "-")}`;
+/** The accounts' summed balance: what the person has today. */
+function useStart() {
+  const ctx = useFinanceCtx();
+  const q = useQuery({queryKey: financeKeys.accounts(ctx.mode, ctx.space), queryFn: () => listAccounts(ctx)});
+  const start = (q.data?.data ?? []).filter(a => a.class === "asset" && !a.system && !a.archived).reduce((s, a) => s + a.balance, 0);
+  return {q, start};
+}
+
+/**
+ * "Quanto vou ter?" first: the balance the forecast leaves at the end of this
+ * month and at the end of the window, with today's balance beside them so the
+ * present is one glance away, not gone. The page's one large figure.
+ */
+function Future() {
+  const {t} = useTranslation();
+  const proj = useProjection(PROJECTION_HORIZON);
+  const {q: accounts, start} = useStart();
+  const data = project(start, proj.data?.data ?? []);
+  const first = data[0], last = data[data.length - 1];
+  const tone = (cents: number) => (cents < 0 ? "text-danger" : "text-foreground");
   return (
-    <section aria-labelledby={id} className="space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 id={id} className="text-sm font-medium text-foreground">{title}</h2>
-        {action}
-      </div>
-      {children}
-    </section>
+    <Section title={t("finance.overview.future")}>
+      {proj.isLoading || accounts.isLoading ? <Skeleton className="h-16 w-full"/> : proj.error || accounts.error || !first || !last ? (
+        <ErrorBlock error={proj.error ?? accounts.error} onRetry={() => { void proj.refetch(); void accounts.refetch(); }}/>
+      ) : (
+        <div className="flex flex-wrap items-end justify-between gap-x-8 gap-y-3">
+          <div>
+            <p data-numeric className={`text-3xl font-semibold tabular-nums tracking-[-0.02em] ${tone(first.balance)}`}>{signedMoney(first.balance)}</p>
+            <p className="text-sm text-muted-foreground">{t("finance.overview.futureEnd", {month: monthLabel(`${first.month}-01`)})}</p>
+          </div>
+          <dl className="flex gap-x-8 text-sm">
+            <div>
+              <dt className="text-muted-foreground">{t("finance.overview.today")}</dt>
+              <dd data-numeric className="tabular-nums">{signedMoney(start)}</dd>
+            </div>
+            {data.length > 1 && (
+              <div>
+                <dt className="text-muted-foreground">{t("finance.overview.futureLater", {month: monthShort(last.month)})}</dt>
+                <dd data-numeric className={`tabular-nums ${tone(last.balance)}`}>{signedMoney(last.balance)}</dd>
+              </div>
+            )}
+          </dl>
+        </div>
+      )}
+    </Section>
+  );
+}
+
+type LowerTab = "projection" | "category"
+
+/**
+ * The block under the three: the projection (what will I have?) or this month by
+ * category, actual and forecast. A Segmented, not routes: both read the same
+ * month window and the choice is a view of it, not a place.
+ */
+function Lower() {
+  const {t} = useTranslation();
+  const [tab, setTab] = useState<LowerTab>("projection");
+  const month = todayIso().slice(0, 7);
+  return (
+    <div className="space-y-4">
+      <Segmented
+        label={t("finance.overview.lowerLabel")}
+        value={tab}
+        onValueChange={setTab}
+        options={[
+          {value: "projection", label: t("finance.overview.projection")},
+          {value: "category", label: t("finance.categoryMonth.title")},
+        ]}
+      />
+      {tab === "projection" ? <Projection/> : (
+        <Section title={t("finance.categoryMonth.title")} hideTitle action={<Link href="/finance/reports?view=category" className={quietLink}>{t("finance.overview.seeReports")}</Link>}>
+          <p className="text-sm text-muted-foreground">{t("finance.overview.categoryNote", {month: monthLabel(`${month}-01`)})}</p>
+          <CategoryMonthPanel month={month}/>
+        </Section>
+      )}
+    </div>
   );
 }
 
@@ -62,7 +135,7 @@ function Balances() {
   const assets = (q.data?.data ?? []).filter(a => a.class === "asset" && !a.system && !a.archived);
   const total = assets.reduce((s, a) => s + a.balance, 0);
   return (
-    <Block title={t("finance.overview.balances")}>
+    <Section title={t("finance.overview.balances")}>
       {q.isLoading ? <Skeleton className="h-20 w-full"/> : q.error ? (
         <ErrorBlock error={q.error} onRetry={() => void q.refetch()}/>
       ) : assets.length === 0 ? (
@@ -71,18 +144,12 @@ function Balances() {
       ) : (
         <ul className="divide-y divide-border border-y border-border text-sm">
           {assets.map(a => (
-            <li key={a.id} className="flex items-center justify-between py-2">
-              <span className="text-foreground">{accountName(a)}</span>
-              <span data-numeric className="tabular-nums">{money(a.balance)}</span>
-            </li>
+            <AmountRow as="li" key={a.id} label={<span className="text-foreground">{accountName(a)}</span>}><Amount>{money(a.balance)}</Amount></AmountRow>
           ))}
-          <li className="flex items-center justify-between py-2 font-medium">
-            <span>{t("finance.overview.total")}</span>
-            <span data-numeric className="tabular-nums">{money(total)}</span>
-          </li>
+          <AmountRow as="li" strong label={t("finance.overview.total")}><Amount>{money(total)}</Amount></AmountRow>
         </ul>
       )}
-    </Block>
+    </Section>
   );
 }
 
@@ -95,19 +162,19 @@ function Realised() {
   const ctx = useFinanceCtx();
   const month = todayIso().slice(0, 7);
   const q = useQuery({queryKey: financeKeys.cashFlow(ctx.mode, ctx.space, month, month), queryFn: () => getCashFlow(ctx, month, month)});
-  const m = q.data?.months[0];
+  const m = q.data?.months[0] ?? {in: 0, out: 0};
   return (
-    <Block title={t("finance.overview.monthResult")} action={<Link href="/finance/reports?view=cash" className={quietLink}>{t("finance.overview.seeReports")}</Link>}>
-      {q.isLoading ? <Skeleton className="h-20 w-full"/> : q.error || !m ? (
+    <Section title={t("finance.overview.monthResult")} action={<Link href="/finance/reports?view=cash" className={quietLink}>{t("finance.overview.seeReports")}</Link>}>
+      {q.isLoading ? <Skeleton className="h-20 w-full"/> : q.error ? (
         <ErrorBlock error={q.error} onRetry={() => void q.refetch()}/>
       ) : (
         <dl className="divide-y divide-border border-y border-border text-sm">
-          <div className="flex items-center justify-between py-2"><dt>{t("finance.overview.in")}</dt><dd data-numeric className="tabular-nums">{money(m.in)}</dd></div>
-          <div className="flex items-center justify-between py-2"><dt>{t("finance.overview.out")}</dt><dd data-numeric className="tabular-nums">{money(m.out)}</dd></div>
-          <div className="flex items-center justify-between py-2 font-medium"><dt>{t("finance.overview.result")}</dt><dd data-numeric className="tabular-nums">{signedMoney(m.in - m.out)}</dd></div>
+          <AmountRow label={t("finance.overview.in")}><Amount>{money(m.in)}</Amount></AmountRow>
+          <AmountRow label={t("finance.overview.out")}><Amount>{money(m.out)}</Amount></AmountRow>
+          <AmountRow strong label={t("finance.overview.result")}><Amount>{signedMoney(m.in - m.out)}</Amount></AmountRow>
         </dl>
       )}
-    </Block>
+    </Section>
   );
 }
 
@@ -124,11 +191,11 @@ function DueSoon() {
     .slice(0, DUE_SOON);
   const error = pay.error ?? rec.error;
   return (
-    <Block title={t("finance.overview.dueSoon")} action={<Link href="/finance/bills" className={quietLink}>{t("finance.overview.seeAll")}</Link>}>
+    <Section title={t("finance.overview.dueSoon")} action={<Link href="/finance/bills" className={quietLink}>{t("finance.overview.seeAll")}</Link>}>
       {pay.isLoading || rec.isLoading ? <Skeleton className="h-20 w-full"/> : error ? (
         <ErrorBlock error={error} onRetry={() => { void pay.refetch(); void rec.refetch(); }}/>
       ) : items.length === 0 ? (
-        <p className="text-sm text-muted-foreground">{t("finance.overview.nothingOpen")}</p>
+        <EmptyState title={t("finance.overview.nothingOpen")} className="py-8"/>
       ) : (
         <ul className="divide-y divide-border border-y border-border text-sm">
           {items.map(b => (
@@ -139,40 +206,13 @@ function DueSoon() {
                   {directionLabel(b.direction)} • {bucketLabel(b.bucket ?? "upcoming")} • {shortDate(b.due_date)}
                 </p>
               </div>
-              <span data-numeric className={`tabular-nums ${b.bucket === "overdue" ? "text-danger" : ""}`}>{money(b.amount)}</span>
+              <Amount tone={b.bucket === "overdue" ? "danger" : "default"} className="shrink-0">{money(b.amount)}</Amount>
             </li>
           ))}
         </ul>
       )}
-    </Block>
+    </Section>
   );
-}
-
-/** One month of the projection, with the balance it leaves. */
-interface ProjectedMonth extends ProjectionMonth {
-  result: number
-  balance: number
-  /** Money in and out, forecast bills plus recurrences not yet generated. */
-  inflow: number
-  outflow: number
-  recIn: number
-  recOut: number
-}
-
-/**
- * Today's balance plus each month's result (to receive − to pay + recurrences
- * not yet generated), accumulated: what the person will have at the end of each
- * month if everything happens as forecast.
- */
-function project(start: number, data: ProjectionMonth[]): ProjectedMonth[] {
-  let balance = start;
-  return data.map(m => {
-    const result = m.receivable - m.payable + m.virtual;
-    balance += result;
-    const recIn = m.virtual_receivable ?? Math.max(m.virtual, 0);
-    const recOut = m.virtual_payable ?? Math.max(-m.virtual, 0);
-    return {...m, result, balance, recIn, recOut, inflow: m.receivable + recIn, outflow: m.payable + recOut};
-  });
 }
 
 type View = "balance" | "flow"
@@ -190,18 +230,16 @@ type Display = "chart" | "rows"
  */
 function Projection() {
   const {t} = useTranslation();
-  const ctx = useFinanceCtx();
   const narrow = useMediaQuery(NARROW);
   const [months, setMonths] = useState("6");
   const [chosen, setDisplay] = useState<Display | null>(null);
   const display: Display = chosen ?? (narrow ? "rows" : "chart");
   const [view, setView] = useState<View>("balance");
-  const q = useQuery({queryKey: financeKeys.projection(ctx.mode, ctx.space, Number(months)), queryFn: () => getProjection(ctx, Number(months))});
-  const accounts = useQuery({queryKey: financeKeys.accounts(ctx.mode, ctx.space), queryFn: () => listAccounts(ctx)});
-  const start = (accounts.data?.data ?? []).filter(a => a.class === "asset" && !a.system && !a.archived).reduce((s, a) => s + a.balance, 0);
+  const q = useProjection(Number(months));
+  const {q: accounts, start} = useStart();
   const data = project(start, q.data?.data ?? []);
   return (
-    <Block title={t("finance.overview.projection")}>
+    <Section title={t("finance.overview.projection")} hideTitle>
       <div className="flex flex-wrap items-center gap-2">
         <Segmented
           label={t("finance.overview.viewLabel")}
@@ -234,12 +272,12 @@ function Projection() {
       {q.isLoading || accounts.isLoading ? <Skeleton className="h-40 w-full"/> : q.error || accounts.error ? (
         <ErrorBlock error={q.error ?? accounts.error} onRetry={() => { void q.refetch(); void accounts.refetch(); }}/>
       ) : display === "rows" ? (
-        narrow ? <MonthList data={data} view={view}/> : <ProjectionTable data={data} view={view}/>
+        <ContainerSwitch min={640}>{small => small ? <MonthList data={data} view={view}/> : <ProjectionTable data={data} view={view}/>}</ContainerSwitch>
       ) : view === "flow" ? <FlowChart data={data}/> : <ProjectionChart data={data}/>}
       <p className="text-xs text-muted-foreground">
         {t("finance.overview.projectionNote", {balance: signedMoney(start)})}
       </p>
-    </Block>
+    </Section>
   );
 }
 

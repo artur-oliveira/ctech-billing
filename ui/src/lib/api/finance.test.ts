@@ -34,6 +34,7 @@ describe("every finance call", () => {
     ["getCurrentSpace", () => finance.getCurrentSpace(ctx)],
     ["getStatement", () => finance.getStatement(ctx, "a1", "2026-03-01", "2026-04-01")],
     ["getCashFlow", () => finance.getCashFlow(ctx, "2026-01", "2026-03")],
+    ["getCategoryMonth", () => finance.getCategoryMonth(ctx, "2026-03")],
     ["getDRE", () => finance.getDRE(ctx, "2026-01", "2026-03")],
     ["listCards", () => finance.listCards(ctx)],
     ["getCardStatement", () => finance.getCardStatement(ctx, "c1", "2026-03")],
@@ -240,5 +241,14 @@ describe("the plan calls", () => {
     expect(finance.isPlanPaymentPending(pending)).toMatchObject({checkout_url: "https://pay/x", invoice_id: "in_1"});
     expect(finance.isPlanPaymentPending({response: {status: 409, data: {code: "concurrent_update"}}})).toBeNull();
     expect(finance.isPlanPaymentPending(new Error("x"))).toBeNull();
+  });
+});
+
+describe("getCategoryMonth", () => {
+  it("asks for one month by its own endpoint", async () => {
+    await finance.getCategoryMonth(ctx, "2026-03");
+    expect(seen[0].url).toContain("/reports/category-month");
+    expect(seen[0].params).toEqual({month: "2026-03"});
+    expect(financeKeys.categoryMonth("test", org, "2026-03")).not.toEqual(financeKeys.categoryMonth("test", org, "2026-04"));
   });
 });

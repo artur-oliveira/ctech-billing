@@ -1,6 +1,7 @@
 "use client";
 
 import {type QueryKey, useMutation, useQueryClient} from "@tanstack/react-query";
+import {toast} from "sonner";
 
 import {type FinanceCtx} from "@/lib/api/finance";
 import {useIntent} from "@/lib/api/idempotency";
@@ -17,6 +18,21 @@ import {useFinanceCtx} from "@/lib/finance/useFinanceSpaces";
  * created already paid flashed in the open list until its settle landed).
  * The 404 space-not-found fallback is in finance.ts and needs nothing here.
  */
+/**
+ * A write that can be taken back for a few seconds: after it lands, a toast
+ * offers `actionLabel`; pressing it runs `run` (with its own Idempotency-Key),
+ * refreshes the same keys and says `done`, or `failed`.
+ */
+export interface UndoOptions<V, R> {
+  message: string
+  actionLabel: string
+  done: string
+  failed: string
+  run: (ctx: FinanceCtx, vars: V, result: R, idempotencyKey: string) => Promise<unknown>
+  /** Milliseconds the offer stays. */
+  duration?: number
+}
+
 export function useFinanceMutation<V, R>(
   run: (ctx: FinanceCtx, vars: V, idempotencyKey: string) => Promise<R>,
   invalidate: (ctx: FinanceCtx, result: R | undefined, vars: V) => QueryKey[],
@@ -29,6 +45,8 @@ export function useFinanceMutation<V, R>(
      * cache must show what is now true.
      */
     invalidateOnError?: boolean
+    /** Offer to take the write back (see UndoOptions). */
+    undo?: UndoOptions<V, R>
   } = {},
 ) {
   const ctx = useFinanceCtx();
@@ -40,6 +58,21 @@ export function useFinanceMutation<V, R>(
       intent.done();
       for (const key of invalidate(ctx, result, vars)) void client.invalidateQueries({queryKey: key});
       onSuccess?.(result, vars);
+      const undo = options.undo;
+      if (undo) {
+        toast.success(undo.message, {
+          duration: undo.duration ?? 10000,
+          action: {
+            label: undo.actionLabel,
+            onClick: () => {
+              void undo.run(ctx, vars, result, crypto.randomUUID()).then(async () => {
+                await Promise.all(invalidate(ctx, result, vars).map(queryKey => client.invalidateQueries({queryKey})));
+                toast.success(undo.done);
+              }).catch(() => toast.error(undo.failed));
+            },
+          },
+        });
+      }
     },
     onError: (error, vars) => {
       if (options.invalidateOnError) for (const key of invalidate(ctx, undefined, vars)) void client.invalidateQueries({queryKey: key});

@@ -103,6 +103,8 @@
       "cards": "Cards"
     },
     "hideArchived": "Hide archived",
+    "summary": "Balance of your accounts",
+    "forecast": "Forecast at end of {{month}}",
     "showArchived": "Show archived",
     "owed": "Owes {{amount}}",
     "open": "Open",
@@ -205,26 +207,40 @@
     "noRecurringForecast": "No recurring purchases are forecast for this statement.",
     "awaitingConfirmation": "awaiting confirmation",
     "recurringPurchase": "Recurring purchase",
-    "forecastNotInTotal": "Estimates are excluded from the statement total until posted.",
     "openRecurrence": "Open the recurrence of {{name}}",
     "closedShort": "Closed {{date}}",
     "closesShort": "Closes {{date}}",
     "dueShort": "Due {{date}}",
-    "forecastLine": "+ {{amount}} in recurrences",
-    "forecastLineEstimated": "+ ~{{amount}} in recurrences",
-    "forecastLineTitle": "Recurrences not yet posted to this statement; not in the total.",
-    "summaryLabelForecast": "{{label}}, plus {{amount}} in expected recurrences",
+    "summaryLabelForecast": "{{label}}: {{posted}} posted plus {{amount}} in expected recurrences{{estimated}}",
     "forecastSubtotal": "Expected recurrences",
-    "forecastExpectedTotal": "Expected statement total"
+    "forecastInTotal": "Already added to the statement total above; each becomes a purchase when its recurrence posts.",
+    "total": {
+      "posted": "posted {{amount}}",
+      "forecast": "expected recurrences {{amount}}",
+      "forecastEstimated": "expected recurrences ~{{amount}} (estimated)",
+      "estimatedWord": " (estimated)",
+      "credit": "credit in your favor",
+      "forecastLoading": "reading expected recurrences…",
+      "forecastError": "expected recurrences unavailable"
+    },
+    "upcoming": "Coming months",
+    "upcomingLabel": "Show the {{month}} statement • {{total}}",
+    "next": {
+      "owed": "To pay · {{month}}",
+      "open": "Open · {{month}}"
+    }
   },
   "inbox": {
     "description": "Items needing your attention across bills and recurring entries.",
     "bills": "Open bills ({{count}})",
-    "noBills": "No open bills.",
+    "total_one": "{{count}} item to resolve.",
+    "total_other": "{{count}} items to resolve.",
     "recurrences": "Recurring entries to fix ({{count}})",
-    "noRecurrences": "No recurring entries need fixing.",
+    "allClear": "All caught up",
+    "allClearBody": "Bills, amounts to confirm, imports and recurring entries show up here when they need your attention.",
     "confirmations": "Amounts to confirm ({{count}})",
-    "noConfirmations": "No amounts are waiting for confirmation.",
+    "waitingValue": "Waiting for actual amount",
+    "amountInvalid": "Enter an amount greater than zero.",
     "expectedOccurrence": "Expected {{amount}} on {{date}}",
     "actualAmount": "Actual amount",
     "confirmAmount": "Confirm amount",
@@ -232,9 +248,10 @@
     "skipConfirm": "This occurrence will not be posted.",
     "skipYes": "Skip occurrence",
     "skipNo": "Back",
-    "actionFailed": "Could not complete the action. Refresh and try again.",
+    "deltaMore": "{{amount}} above the expected: the month gets that much heavier.",
+    "deltaLess": "{{amount}} below the expected: the month gets that much lighter.",
     "imports": "Imports to review ({{count}})",
-    "noImports": "No imports need review.",
+    "seeAll": "See all in Agenda",
     "pendingImport_one": "{{count}} line awaiting reconciliation",
     "pendingImport_other": "{{count}} lines awaiting reconciliation",
     "reconcile": "Reconcile",
@@ -294,15 +311,23 @@
     "legendNet": "Net",
     "flowChartLabel_one": "Forecast money in and out for the next month",
     "flowChartLabel_other": "Forecast money in and out for each of the next {{count}} months",
-    "flowTitle": "{{month}}: in {{inflow}}, out {{outflow}}, net {{net}} (recurring: in {{recIn}}, out {{recOut}})"
+    "flowTitle": "{{month}}: in {{inflow}}, out {{outflow}}, net {{net}} (recurring: in {{recIn}}, out {{recOut}})",
+    "future": "What I will have",
+    "futureEnd": "Forecast balance at the end of {{month}}",
+    "today": "Today",
+    "futureLater": "By {{month}}",
+    "lowerLabel": "View",
+    "categoryNote": "In {{month}}: what already happened and what recurrences will still post."
   },
   "reports": {
+    "line": "Line",
     "report": "Report",
     "tabs": {
       "dre": "DRE",
       "cash": "Cash flow",
       "cards": "Cards",
-      "review": "Monthly review"
+      "review": "Monthly review",
+      "category": "By category"
     },
     "review": {
       "title": "Monthly review",
@@ -343,6 +368,9 @@
       "category": "Category",
       "byCategoryList": "Spending by category",
       "byCardList": "Spending by card"
+    },
+    "category": {
+      "description": "The month's income and expenses by category: what already happened and what recurrences will still post."
     }
   },
   "statement": {
@@ -358,7 +386,12 @@
     "period": "Period",
     "newTransfer": "New transfer",
     "entries": "Entries",
-    "balanceOn": "Balance on {{date}}",
+    "openingOn": "Opening balance on {{date}}",
+    "closingOn": "Closing balance on {{date}}",
+    "closingToday": "Balance today",
+    "summary": "Period summary",
+    "in": "Money in",
+    "out": "Money out",
     "balance": "Balance",
     "empty": "Nothing in this period.",
     "reversal": "Reversal",
@@ -409,6 +442,16 @@
     "file": "Statement file",
     "fileHint": "OFX or CSV, up to 1 MB. The file is not kept; its lines stay 90 days for you to reconcile.",
     "submit": "Import",
+    "sending": "Importing…",
+    "choose": "Choose file",
+    "replace": "Replace",
+    "remove": "Remove",
+    "tooLarge": "File is larger than 1 MB.",
+    "wrongType": "Upload an .ofx, .qfx or .csv file from your bank.",
+    "ignoredUndo": "Line ignored.",
+    "undo": "Undo",
+    "undone": "Line reopened.",
+    "undoFailed": "Could not undo. Reopen it from the Ignored tab.",
     "columns": "CSV columns",
     "opening": {
       "ask": "Use the statement's balance as the opening balance?",
@@ -497,6 +540,7 @@
       "amountColumn": "Amount column",
       "debitColumn": "Money-out column",
       "debitHint": "Only if the bank splits money in and money out into two columns.",
+      "duplicateColumn": "Another column already uses this number.",
       "save": "Save columns"
     }
   },
@@ -512,7 +556,32 @@
       "free": "Free",
       "basic": "Basic",
       "pro": "Pro",
-      "ondemand": "On demand"
+      "ondemand": "On demand",
+      "other": "Other plan"
+    },
+    "summary": "Your plan",
+    "all": "Available plans",
+    "row": {
+      "plan": "Plan",
+      "price": "Price",
+      "metered": "By use, billed at month end",
+      "projected": "This month, projected",
+      "renewsOn": "Next charge",
+      "endsOn": "Ends on"
+    },
+    "status": {
+      "pendingPayment": "Awaiting payment",
+      "pastDue": "Payment overdue",
+      "trial": "On trial",
+      "ends": "Ends at period end"
+    },
+    "endsNote": "After that date you go back to Free. Nothing is removed.",
+    "owing": {
+      "title": "Plan invoice open",
+      "body": "{{amount}} due {{date}}. While it is open, you cannot change plan.",
+      "bodyBare": "Pay the open invoice before changing plan.",
+      "payAmount": "Pay invoice of {{amount}}",
+      "blocked": "Available after you pay the invoice."
     },
     "current": "Your plan",
     "perMonth": "{{amount}} per month",
@@ -526,13 +595,11 @@
     "meteredSpaces": "{{amount}} per space after the 1st",
     "meteredPeople": "{{amount}} per person after the 1st",
     "meteredNote": "Billed at the end of the month on the highest use.",
-    "projected": "This month so far: {{amount}}",
     "subscribe": "Subscribe",
     "changeTo": "Change to {{plan}}",
     "backToFree": "Back to Free",
     "pay": "Pay invoice",
     "keep": "Keep {{plan}}",
-    "endsOn": "Ends on {{date}}",
     "changesOn": "Changes to {{plan}} on {{date}}",
     "startsOn": "Starts on {{date}}",
     "usage": {
@@ -554,20 +621,21 @@
     },
     "suggest": "On demand should cost {{projected}} this month. Basic costs {{basic}}. Switch?",
     "suggestAction": "Change to Basic",
+    "confirm": {
+      "back": "Back"
+    },
+    "confirmChange": {
+      "body": "You will pay {{amount}} a month for {{plan}}. Past invoices do not change.",
+      "bodyMetered": "{{plan}} is billed at the end of each month on the highest use. Past invoices do not change.",
+      "pay": "Go to payment"
+    },
     "confirmFree": {
-      "title": "Back to Free?",
       "body": "Your plan continues until {{date}}. Nothing is removed.",
       "submit": "Back to Free"
     },
     "confirmSchedule": {
-      "title": "Change to On demand?",
       "body": "Your {{plan}} plan continues until {{date}}. On demand starts that day and is billed at the end of each month on the highest use.",
-      "submit": "Confirm"
-    },
-    "pending": {
-      "title": "There is an open invoice for your plan.",
-      "body": "Pay the open invoice before changing plan.",
-      "submit": "Pay"
+      "submit": "Schedule change"
     },
     "name": {
       "title": "Name on the invoice",
@@ -582,9 +650,30 @@
       "freeScheduled": "Your plan ends on {{date}}."
     },
     "outside": {
-      "title": "The plan is the person's.",
-      "description": "Open Personal to see it.",
+      "title": "The plan is personal.",
+      "description": "Open Personal to see and change your plan.",
       "action": "Open Personal"
     }
-  }
+  },
+  "categoryMonth": {
+    "title": "By category",
+    "income": "Income",
+    "expense": "Expenses",
+    "category": "Category",
+    "realised": "Realised",
+    "scheduled": "Scheduled",
+    "forecast": "Forecast",
+    "total": "Total",
+    "shareHead": "Share of total",
+    "share": "{{pct}}% of total",
+    "realisedLower": "realised",
+    "scheduledLower": "scheduled",
+    "forecastLower": "forecast",
+    "net": "Expected result for the month",
+    "netParts": "Already booked {{booked}} · forecast {{forecast}}",
+    "legend": "Realised: already paid or received. Scheduled: the month's open bills. Forecast: recurrences that have not become a bill or purchase yet (dashed bar).",
+    "empty": "Nothing this month.",
+    "month": "Month"
+  },
+  "conflict": "This changed while you were editing. We refreshed it; try again."
 }

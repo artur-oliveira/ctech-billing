@@ -2,8 +2,10 @@ import type {StatementDirection, StatementPage, StatementSummary} from "@/lib/ap
 
 /** Statements fetched per step beyond the loaded edge (spec D5). */
 export const PAGE_SIZE = 3;
-/** Statements each side of the open one on opening. */
-export const AROUND = 3;
+/** Statements shown before the open one on opening: the future is the point of a card, so one. */
+export const BEFORE = 1;
+/** Statements loaded in the opening request: BEFORE, the open one, then the future. */
+export const OPENING = 7;
 
 export interface PageParam {from: string; direction: StatementDirection; count: number}
 /** A page as the API answered it, with the request that asked for it. */
@@ -15,9 +17,39 @@ export function shiftMonth(ym: string, n: number): string {
   return `${Math.floor(i / 12)}-${String((i % 12) + 1).padStart(2, "0")}`;
 }
 
-/** One request opens the timeline: forward from 3 before the open month, 7 statements.
- *  The API starts a forward page at the card's first month when `from` is earlier. */
-export const initialParam = (open: string): PageParam => ({from: shiftMonth(open, -AROUND), direction: "forward", count: 2 * AROUND + 1});
+/** One request opens the timeline: forward from 1 before the open month, 7 statements
+ *  (the open one and the 5 after it). The API starts a forward page at the card's
+ *  first month when `from` is earlier. */
+export const initialParam = (open: string): PageParam => ({from: shiftMonth(open, -BEFORE), direction: "forward", count: OPENING});
+
+/** The widest a summary can be squeezed (badge, a six-figure total, its forecast line). */
+const MIN_ITEM = 148;
+/** The two step buttons and the gaps around the row. */
+const CHROME = 96;
+
+/**
+ * How many summaries fit the box the timeline is in, from its width and not
+ * the window's: the sidebar takes 240px at tablet widths. 1 means the swipe
+ * strip, one summary per screen. Before the box is measured the viewport
+ * stands in (`fallback`: 1, 5 or 7).
+ */
+export function timelineSize(width: number, fallback: number): number {
+  if (width <= 0) return fallback;
+  const fit = Math.floor((width - CHROME) / MIN_ITEM);
+  return fit < 2 ? 1 : Math.min(7, fit);
+}
+
+/**
+ * What the card owes next and what follows: the statement to pay (closed, with a
+ * bill, owing) or, when none, the open one; then up to `ahead` statements after
+ * the open month. Totals include the recurrences' forecast, so "quanto vou ter".
+ */
+export function outlook(all: StatementSummary[], open: string, ahead = 3): {next?: StatementSummary; upcoming: StatementSummary[]} {
+  const owed = all.find(s => s.status === "closed" && !!s.bill_id && s.total > 0);
+  const next = owed ?? all.find(s => s.month === open);
+  const upcoming = all.filter(s => s.month > open && s !== next).slice(0, ahead);
+  return {next, upcoming};
+}
 
 /** Next pages are always forward, after the last loaded month. */
 export function nextParam(last: TimelinePage): PageParam | undefined {
@@ -60,7 +92,7 @@ export function windowAt(months: string[], start: string, size: number): {from: 
 /** The window's start a page earlier or later, within what is loaded. */
 export function stepWindow(months: string[], start: string, size: number, dir: -1 | 1): string {
   if (months.length === 0) return start;
-  const i = startIndex(months, start, size) + dir * PAGE_SIZE;
+  const i = startIndex(months, start, size) + dir * Math.max(1, Math.min(PAGE_SIZE, size));
   return months[Math.max(0, Math.min(i, Math.max(0, months.length - size)))];
 }
 

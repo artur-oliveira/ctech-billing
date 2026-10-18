@@ -1,17 +1,21 @@
 "use client";
 
-import {Button, Field, Input, Skeleton} from "@aoctech/ui";
+import {Button, EmptyState, Skeleton} from "@aoctech/ui";
 import {useQuery} from "@tanstack/react-query";
+import {CircleCheck} from "lucide-react";
 import Link from "next/link";
-import {useState} from "react";
 import {useTranslation} from "react-i18next";
 
+import {LedgerRow} from "@/components/finance/LedgerRow";
+import {PendingOccurrenceAction} from "@/components/finance/PendingOccurrenceAction";
+import {BUCKET_STATUS, RECURRENCE_STATUS, StatusBadge} from "@/components/finance/StatusBadge";
 import {ErrorBlock} from "@/components/portal/ErrorBlock";
-import {confirmExpectedOccurrence, financeKeys, listBills, listImports, listPendingOccurrences, listRecurrences, skipExpectedOccurrence, type FinanceCtx} from "@/lib/api/finance";
-import type {Bill, ImportSummary, PendingOccurrence} from "@/lib/api/financeTypes";
+import {Amount} from "@/components/ui/Amount";
+import {Section} from "@/components/ui/Section";
+import {financeKeys, listBills, listImports, listPendingOccurrences, listRecurrences} from "@/lib/api/finance";
+import type {Bill, ImportSummary} from "@/lib/api/financeTypes";
+import {bucketLabel} from "@/lib/finance/labels";
 import {useFinanceCtx} from "@/lib/finance/useFinanceSpaces";
-import {useFinanceMutation} from "@/lib/finance/useFinanceMutation";
-import {formatMoneyInput, maskMoney, moneyPlaceholder, parseMoney} from "@/lib/money";
 import {money, shortDate} from "@/lib/format";
 
 const INBOX_LIMIT = 20;
@@ -29,91 +33,77 @@ export function ActionInboxView() {
   const bills = [...(payable.data?.data ?? []), ...(receivable.data?.data ?? [])]
     .filter(bill => bill.status === "forecast")
     .sort((a, b) => (a.bucket === "overdue" ? 0 : 1) - (b.bucket === "overdue" ? 0 : 1) || a.due_date.localeCompare(b.due_date));
+  // The agenda holds more than the inbox's page: say so instead of dropping them silently.
+  const moreBills = Boolean(payable.data?.has_more || receivable.data?.has_more);
   const needsAttention = (recurrences.data?.data ?? []).filter(recurrence => recurrence.needs_attention && !recurrence.archived);
   const pendingImports = (imports.data?.data ?? []).filter(imp => imp.pending > 0);
-  const pendingOccurrences = (pending.data?.data ?? []).slice().sort((a,b) => a.due.localeCompare(b.due));
+  const pendingOccurrences = (pending.data?.data ?? []).slice().sort((a, b) => a.due.localeCompare(b.due));
   const loading = payable.isLoading || receivable.isLoading || recurrences.isLoading || imports.isLoading || pending.isLoading;
+  const total = bills.length + pendingImports.length + pendingOccurrences.length + needsAttention.length;
+  const list = "divide-y divide-border border-y border-border";
 
   return (
     <div className="space-y-6">
       <header>
         <h1 className="text-lg font-semibold tracking-[-0.01em] text-foreground">{t("finance.nav.inbox")}</h1>
-        <p className="mt-1 text-sm text-muted-foreground">{t("finance.inbox.description")}</p>
+        <p className="mt-1 text-sm text-muted-foreground" aria-live="polite">{loading || error ? t("finance.inbox.description") : total > 0 ? t("finance.inbox.total", {count: total}) : t("finance.inbox.description")}</p>
       </header>
       {error ? <ErrorBlock error={error} onRetry={retry}/> : null}
-      {loading ? <Skeleton className="h-24 w-full"/> : (
+      {loading ? <div className="space-y-2" aria-busy><Skeleton className="h-5 w-40"/><Skeleton className="h-16 w-full"/><Skeleton className="h-16 w-full"/></div> : total === 0 ? (
+        error ? null : <EmptyState icon={<CircleCheck aria-hidden/>} title={t("finance.inbox.allClear")} description={t("finance.inbox.allClearBody")}/>
+      ) : (
         <div className="space-y-8">
-          <section aria-labelledby="inbox-bills" className="space-y-3">
-            <h2 id="inbox-bills" className="text-sm font-medium">{t("finance.inbox.bills", {count: bills.length})}</h2>
-            {bills.length ? <ul className="divide-y divide-border border-y border-border">
-              {bills.map(bill => <BillAction key={bill.id} bill={bill}/>) }
-            </ul> : <p className="text-sm text-muted-foreground">{t("finance.inbox.noBills")}</p>}
-          </section>
-          <section aria-labelledby="inbox-imports" className="space-y-3">
-            <h2 id="inbox-imports" className="text-sm font-medium">{t("finance.inbox.imports", {count: pendingImports.length})}</h2>
-            {pendingImports.length ? <ul className="divide-y divide-border border-y border-border">
-              {pendingImports.map(imp => <ImportAction key={imp.id} item={imp}/>) }
-            </ul> : <p className="text-sm text-muted-foreground">{t("finance.inbox.noImports")}</p>}
-          </section>
-          <section aria-labelledby="inbox-confirmations" className="space-y-3">
-            <h2 id="inbox-confirmations" className="text-sm font-medium">{t("finance.inbox.confirmations", {count: pendingOccurrences.length})}</h2>
-            {pendingOccurrences.length ? <ul className="divide-y divide-border border-y border-border">
-              {pendingOccurrences.map(item => <PendingAction key={`${item.recurrence_id}-${item.nominal}`} item={item}/>)}
-            </ul> : <p className="text-sm text-muted-foreground">{t("finance.inbox.noConfirmations")}</p>}
-          </section>
-          <section aria-labelledby="inbox-recurrences" className="space-y-3">
-            <h2 id="inbox-recurrences" className="text-sm font-medium">{t("finance.inbox.recurrences", {count: needsAttention.length})}</h2>
-            {needsAttention.length ? <ul className="divide-y divide-border border-y border-border">
-              {needsAttention.map(recurrence => <li key={recurrence.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
-                <div><p className="text-sm font-medium">{recurrence.description || t("finance.inbox.unnamedRecurrence")}</p><p className="text-sm text-muted-foreground">{t(`finance.inbox.attention.${recurrence.needs_attention}`)}</p></div>
-                <Button size="sm" variant="outline" render={<Link href={`/finance/recurrences?recurrence=${encodeURIComponent(recurrence.id)}`}/>}>{t("finance.inbox.fix")}</Button>
-              </li>)}
-            </ul> : <p className="text-sm text-muted-foreground">{t("finance.inbox.noRecurrences")}</p>}
-          </section>
+          {/* Only what waits is drawn: a section that is empty is one line less to read. */}
+          {pendingOccurrences.length > 0 && <Section title={t("finance.inbox.confirmations", {count: pendingOccurrences.length})}>
+            <ul className={list}>
+              {pendingOccurrences.map(item => (
+                <LedgerRow key={`${item.recurrence_id}-${item.nominal}`} title={item.description || t("finance.inbox.unnamedRecurrence")}
+                  aside={<StatusBadge status={RECURRENCE_STATUS.pending}>{t("finance.inbox.waitingValue")}</StatusBadge>}
+                  amount={<Amount tone={item.direction === "receivable" ? "success" : "default"}>{money(item.expected_amount)}</Amount>}>
+                  <PendingOccurrenceAction item={item}/>
+                </LedgerRow>
+              ))}
+            </ul>
+          </Section>}
+          {bills.length > 0 && <Section title={t("finance.inbox.bills", {count: bills.length})}
+            action={moreBills ? <Link href="/finance/bills" className="inline-flex items-center text-sm text-foreground underline underline-offset-4 touch-target">{t("finance.inbox.seeAll")}</Link> : undefined}>
+            <ul className={list}>{bills.map(bill => <BillAction key={bill.id} bill={bill}/>)}</ul>
+          </Section>}
+          {pendingImports.length > 0 && <Section title={t("finance.inbox.imports", {count: pendingImports.length})}>
+            <ul className={list}>{pendingImports.map(imp => <ImportAction key={imp.id} item={imp}/>)}</ul>
+          </Section>}
+          {needsAttention.length > 0 && <Section title={t("finance.inbox.recurrences", {count: needsAttention.length})}>
+            <ul className={list}>
+              {needsAttention.map(recurrence => (
+                <LedgerRow key={recurrence.id} title={recurrence.description || t("finance.inbox.unnamedRecurrence")}
+                  meta={t(`finance.inbox.attention.${recurrence.needs_attention}`)} amount={null}
+                  actions={<Button size="sm" variant="outline" render={<Link href={`/finance/recurrences?recurrence=${encodeURIComponent(recurrence.id)}`}/>}>{t("finance.inbox.fix")}</Button>}/>
+              ))}
+            </ul>
+          </Section>}
         </div>
       )}
     </div>
   );
 }
 
-function PendingAction({item}: {item: PendingOccurrence}) {
-  const {t} = useTranslation();
-  const [amountText, setAmountText] = useState(formatMoneyInput(item.expected_amount));
-  const [askingSkip, setAskingSkip] = useState(false);
-  const amount = parseMoney(amountText);
-  const invalidate = (c: FinanceCtx) => [financeKeys.all(c.mode,c.space)];
-  const confirm = useFinanceMutation((c, value: number, key) => confirmExpectedOccurrence(c,item.recurrence_id,item.nominal,value,key), invalidate);
-  const skip = useFinanceMutation((c, _: void, key) => skipExpectedOccurrence(c,item.recurrence_id,item.nominal,key), invalidate, () => setAskingSkip(false));
-  return <li className="flex flex-wrap items-end justify-between gap-3 py-3">
-    <div className="min-w-0"><p className="truncate text-sm font-medium">{item.description || t("finance.inbox.unnamedRecurrence")}</p><p className="text-sm text-muted-foreground">{t("finance.inbox.expectedOccurrence", {date:shortDate(item.due),amount:money(item.expected_amount)})}</p></div>
-    <div className="flex flex-wrap items-end gap-2">
-      <Field label={t("finance.inbox.actualAmount")} htmlFor={`pending-${item.recurrence_id}-${item.nominal}`}>
-        <Input id={`pending-${item.recurrence_id}-${item.nominal}`} inputMode="decimal" placeholder={moneyPlaceholder()} value={amountText} onChange={event=>setAmountText(maskMoney(event.target.value))} className="w-32"/>
-      </Field>
-      <Button size="sm" variant="brand" disabled={amount === null || amount <= 0 || confirm.isPending} onClick={()=>amount !== null && confirm.mutate(amount)}>{t("finance.inbox.confirmAmount")}</Button>
-      {!askingSkip ? <Button size="sm" variant="ghost" onClick={()=>setAskingSkip(true)}>{t("finance.inbox.skip")}</Button> : <>
-        <span className="text-xs text-muted-foreground">{t("finance.inbox.skipConfirm")}</span>
-        <Button size="sm" variant="danger" disabled={skip.isPending} onClick={()=>skip.mutate()}>{t("finance.inbox.skipYes")}</Button>
-        <Button size="sm" variant="ghost" onClick={()=>setAskingSkip(false)}>{t("finance.inbox.skipNo")}</Button>
-      </>}
-      {(confirm.error || skip.error) && <p role="alert" className="w-full text-sm text-danger">{t("finance.inbox.actionFailed")}</p>}
-    </div>
-  </li>;
-}
-
 function ImportAction({item}: {item: ImportSummary}) {
   const {t} = useTranslation();
-  return <li className="flex flex-wrap items-center justify-between gap-3 py-3">
-    <div><p className="text-sm font-medium">{t("finance.inbox.pendingImport", {count: item.pending})}</p><p className="text-sm text-muted-foreground">{item.from && item.to ? `${shortDate(item.from)} – ${shortDate(item.to)}` : shortDate(item.created_at.slice(0, 10))}</p></div>
-    <Button size="sm" variant="outline" render={<Link href={`/finance/import?account=${encodeURIComponent(item.account_id)}`}/>}>{t("finance.inbox.reconcile")}</Button>
-  </li>;
+  return (
+    <LedgerRow title={t("finance.inbox.pendingImport", {count: item.pending})}
+      meta={item.from && item.to ? `${shortDate(item.from)} – ${shortDate(item.to)}` : shortDate(item.created_at.slice(0, 10))} amount={null}
+      actions={<Button size="sm" variant="outline" render={<Link href={`/finance/import?account=${encodeURIComponent(item.account_id)}`}/>}>{t("finance.inbox.reconcile")}</Button>}/>
+  );
 }
 
 function BillAction({bill}: {bill: Bill}) {
   const {t} = useTranslation();
   const overdue = bill.bucket === "overdue";
-  return <li className="flex flex-wrap items-center justify-between gap-3 py-3">
-    <div className="min-w-0"><p className="truncate text-sm font-medium">{bill.description || t("finance.inbox.unnamedBill")}</p><p className={`text-sm ${overdue ? "text-danger" : "text-muted-foreground"}`}>{t(overdue ? "finance.inbox.overdue" : "finance.inbox.due", {date: shortDate(bill.due_date)})}</p></div>
-    <div className="flex items-center gap-3"><span className="text-sm tabular-nums">{money(bill.amount)}</span><Button size="sm" variant="outline" render={<Link href={`/finance/bills?direction=${bill.direction}&bill=${encodeURIComponent(bill.id)}`}/>}>{t(bill.direction === "payable" ? "finance.inbox.openPayable" : "finance.inbox.openReceivable")}</Button></div>
-  </li>;
+  return (
+    <LedgerRow title={bill.description || t("finance.inbox.unnamedBill")}
+      meta={t(overdue ? "finance.inbox.overdue" : "finance.inbox.due", {date: shortDate(bill.due_date)})}
+      aside={overdue ? <StatusBadge status={BUCKET_STATUS.overdue}>{bucketLabel("overdue")}</StatusBadge> : undefined}
+      amount={<Amount tone={bill.direction === "receivable" ? "success" : "default"}>{money(bill.amount)}</Amount>}
+      actions={<Button size="sm" variant="outline" render={<Link href={`/finance/bills?direction=${bill.direction}&bill=${encodeURIComponent(bill.id)}`}/>}>{t(bill.direction === "payable" ? "finance.inbox.openPayable" : "finance.inbox.openReceivable")}</Button>}/>
+  );
 }

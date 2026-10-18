@@ -1,7 +1,7 @@
 import {describe, expect, it} from "vitest";
 
 import type {PlanPrice, PlanState} from "@/lib/api/financeTypes";
-import {currentOption, overLimits, pendingOption, planOptions, quota, suggestBasic} from "./plan";
+import {currentOption, overLimits, pendingOption, planOptions, planStatus, quota, suggestBasic} from "./plan";
 
 const P = (id: string, plan: string, amount: number, extra: Partial<PlanPrice> = {}, md: Record<string, string> = {}): PlanPrice => ({
   id, type: "fixed", unit_amount: amount, aggregation: "", meter: "", included_quantity: 0, metadata: {plan, ...md}, ...extra,
@@ -91,5 +91,19 @@ describe("Sob demanda above Basic", () => {
     const under = state({subscription: onDemand, projected_ondemand_cents: 1990});
     expect(suggestBasic(under, o, currentOption(under, o))).toBeNull();
     expect(suggestBasic(state({projected_ondemand_cents: 9999}), o, o[0])).toBeNull();
+  });
+});
+
+describe("planStatus", () => {
+  const sub = (status: string, cancel = false) => state({subscription: {id: "s", status, cancel_at_period_end: cancel, price_ids: [], period: {period_start: "2026-10-01", period_end: "2026-11-01"}, pending_change: null}});
+  it("is null with no subscription or a plain active one", () => {
+    expect(planStatus(state())).toBeNull();
+    expect(planStatus(sub("ACTIVE"))).toBeNull();
+  });
+  it("orders unpaid, late, ending, trial", () => {
+    expect(planStatus(sub("INCOMPLETE", true))).toBe("pendingPayment");
+    expect(planStatus(sub("PAST_DUE"))).toBe("pastDue");
+    expect(planStatus(sub("TRIALING", true))).toBe("ends");
+    expect(planStatus(sub("TRIALING"))).toBe("trial");
   });
 });

@@ -3,6 +3,7 @@
 import type {ReactNode} from "react";
 import {useTranslation} from "react-i18next";
 
+import {Amount} from "@/components/ui/Amount";
 import {shortDate, weekdayShort} from "@/lib/format";
 
 /**
@@ -69,7 +70,7 @@ export function OccurrenceTimeline({label, entries}: {label: string; entries: Ti
             {(e.amount || e.action) && (
               <div className="flex shrink-0 items-baseline gap-3">
                 {e.action}
-                {e.amount && <span data-numeric className={`text-sm tabular-nums ${e.kind === "upcoming" || e.kind === "skipped" ? "text-muted-foreground" : "text-foreground"}`}>{e.amount}</span>}
+                {e.amount && <Amount tone={e.kind === "upcoming" || e.kind === "skipped" ? "muted" : "foreground"} struck={e.kind === "skipped"} className="text-sm">{e.amount}</Amount>}
               </div>
             )}
           </div>

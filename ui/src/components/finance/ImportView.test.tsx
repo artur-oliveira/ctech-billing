@@ -1,9 +1,10 @@
 import "@testing-library/jest-dom/vitest";
 
-import {screen, waitFor, within} from "@testing-library/react";
+import {fireEvent, screen, waitFor, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest";
 
+import {mappingProblems} from "@/components/finance/CsvMappingForm";
 import {ImportView} from "@/components/finance/ImportView";
 import {pick, renderWithQuery} from "@/components/finance/finance.test-utils";
 import * as finance from "@/lib/api/finance";
@@ -302,5 +303,61 @@ describe("F6 — the statement's balance as the opening balance", () => {
   it("is not offered to someone who cannot configure accounts", async () => {
     await uploadWith(ALL.filter(v => v !== "finance.configure"), {opening_proposal: PROPOSAL});
     expect(screen.queryByRole("region", {name: /saldo inicial/})).toBeNull();
+  });
+});
+
+describe("upload guards and CSV columns", () => {
+  it("refuses a file that is not a statement before anything is sent", async () => {
+    serve(ALL);
+    const upload = vi.spyOn(finance, "uploadImport");
+    renderWithQuery(<ImportView/>);
+    await screen.findByText("Pagamento aluguel");
+    fireEvent.change(screen.getByLabelText("Arquivo do extrato"), {target: {files: [new File(["x"], "foto.png", {type: "image/png"})]}});
+    expect(await screen.findByRole("alert")).toHaveTextContent("Envie um arquivo .ofx, .qfx ou .csv do seu banco.");
+    expect(screen.getByRole("button", {name: "Importar"})).toBeDisabled();
+    expect(upload).not.toHaveBeenCalled();
+  });
+
+  it("refuses a file over 1 MB", async () => {
+    serve(ALL);
+    renderWithQuery(<ImportView/>);
+    await screen.findByText("Pagamento aluguel");
+    fireEvent.change(screen.getByLabelText("Arquivo do extrato"), {target: {files: [new File([new Uint8Array(1024 * 1024 + 1)], "grande.ofx")]}});
+    expect(await screen.findByRole("alert")).toHaveTextContent("Arquivo maior que 1 MB.");
+  });
+
+  it("says each import's state with a badge, never colour alone", async () => {
+    serve(ALL);
+    renderWithQuery(<ImportView/>);
+    expect(await screen.findByText("2 a conciliar")).toBeInTheDocument();
+  });
+
+  it("shows an empty state when the account has no import yet", async () => {
+    serve(ALL, ACCOUNTS, []);
+    renderWithQuery(<ImportView/>);
+    expect(await screen.findByText("Nenhuma importação nesta conta ainda.")).toBeInTheDocument();
+  });
+
+  it("checks the CSV columns before saving: ranges and no two columns on one position", () => {
+    const ok = {skip_rows: "1", date_column: "1", description_column: "2", amount_column: "3", debit_column: ""};
+    expect(mappingProblems(ok)).toEqual({});
+    expect(mappingProblems({...ok, amount_column: "2"})).toEqual({description_column: "duplicate", amount_column: "duplicate"});
+    expect(mappingProblems({...ok, date_column: "0"}).date_column).toBe("range");
+    expect(mappingProblems({...ok, skip_rows: "21"}).skip_rows).toBe("range");
+    expect(mappingProblems({...ok, amount_column: "1.5"}).amount_column).toBe("range");
+    expect(mappingProblems({...ok, debit_column: "4"})).toEqual({});
+  });
+
+  it("does not save mapping that repeats a column, and says which", async () => {
+    serve(ALL);
+    vi.spyOn(finance, "getCsvMapping").mockResolvedValue({delimiter: ";", decimal: ",", date_format: "dd/mm/yyyy", skip_rows: 1, date_column: 1, description_column: 1, amount_column: 3, debit_column: 0});
+    const save = vi.spyOn(finance, "putCsvMapping");
+    renderWithQuery(<ImportView/>);
+    await screen.findByText("Pagamento aluguel");
+    await userEvent.click(screen.getByRole("button", {name: "Colunas do CSV"}));
+    const form = await screen.findByRole("form", {name: "Colunas do CSV"});
+    await userEvent.click(within(form).getByRole("button", {name: "Salvar colunas"}));
+    expect(await within(form).findAllByText("Outra coluna já usa este número.")).toHaveLength(2);
+    expect(save).not.toHaveBeenCalled();
   });
 });

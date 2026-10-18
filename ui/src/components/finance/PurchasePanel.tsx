@@ -1,11 +1,13 @@
 "use client";
 
-import {Button, Field, Input, Select} from "@aoctech/ui";
+import {Button, Field, Select} from "@aoctech/ui";
 import {useQuery} from "@tanstack/react-query";
 import {useState} from "react";
 import {useTranslation} from "react-i18next";
 
 import {wholeSpace} from "@/components/finance/TransferPanel";
+import {FormError} from "@/components/finance/FormError";
+import {DrawerForm, PanelActions} from "@/components/finance/PanelForm";
 import {SuggestingInput} from "@/components/finance/HistorySuggestions";
 import {DateField} from "@/components/ui/DateField";
 import {selectCopy} from "@/lib/selectCopy";
@@ -17,7 +19,8 @@ import {useFinanceMutation} from "@/lib/finance/useFinanceMutation";
 import {money} from "@/lib/format";
 import {t} from "@/lib/i18n";
 import limits from "@/lib/limits.json";
-import {formatMoneyInput, maskMoney, moneyPlaceholder, parseMoney} from "@/lib/money";
+import {formatMoneyInput, parseMoney} from "@/lib/money";
+import {MoneyInput} from "@/components/ui/MoneyInput";
 import {accountName} from "@/lib/finance/accountName";
 import {useFinanceCtx} from "@/lib/finance/useFinanceSpaces";
 
@@ -56,9 +59,8 @@ export function PurchasePanel({cardId, accounts, history = [], onDone}: {cardId:
   const n = Number(count);
   const ready = description.trim() !== "" && total !== null && total >= n && category !== "" && date !== "" && !create.isPending;
   return (
-    <form
+    <DrawerForm
       aria-label={t("bills.purchase.title")}
-      className="grid items-start gap-x-4 gap-y-3 sm:grid-cols-2 [&>*]:min-w-0"
       onSubmit={e => {
         e.preventDefault();
         if (!ready) return;
@@ -76,7 +78,7 @@ export function PurchasePanel({cardId, accounts, history = [], onDone}: {cardId:
           }}/>
       </Field>
       <Field label={t("bills.common.amount")} htmlFor="pu-amount" required error={fe.of("total")} hint={total ? installmentsPreview(total, n) : undefined}>
-        <Input id="pu-amount" inputMode="decimal" placeholder={moneyPlaceholder()} value={amountText} {...fe.props("total", "pu-amount")} onChange={e => { setAmountText(maskMoney(e.target.value)); fe.clear("total"); }}/>
+        <MoneyInput id="pu-amount" value={amountText} {...fe.props("total", "pu-amount")} onValueChange={v => { setAmountText(v); fe.clear("total"); }}/>
       </Field>
       <Field label={t("bills.purchase.installments")} htmlFor="pu-count" error={fe.of("installments")}>
         <Select {...selectCopy()} id="pu-count" aria-label={t("bills.purchase.installments")} value={count} {...fe.props("installments", "pu-count")} onValueChange={v => { setCount(v); fe.clear("installments"); }} options={installmentOptions()}/>
@@ -87,11 +89,11 @@ export function PurchasePanel({cardId, accounts, history = [], onDone}: {cardId:
       <Field label={t("bills.common.category")} htmlFor="pu-cat" required error={fe.of("category_id")} hint={cats.length === 0 ? t("bills.noCategory.expense") : undefined}>
         <Select {...selectCopy()} id="pu-cat" aria-label={t("bills.common.category")} value={category} {...fe.props("category_id", "pu-cat")} onValueChange={v => { setCategory(v); fe.clear("category_id"); }} options={cats.map(a => ({value: a.id, label: accountName(a)}))}/>
       </Field>
-      <div className="flex flex-wrap items-center gap-2 sm:col-span-2">
+      <PanelActions>
         <Button type="submit" variant="brand" size="sm" disabled={!ready}>{t("bills.purchase.save")}</Button>
         <Button type="button" variant="outline" size="sm" onClick={onDone}>{t("bills.common.close")}</Button>
-        {fe.general ? <p role="alert" className="text-sm text-danger">{fe.general}</p> : null}
-      </div>
-    </form>
+        <FormError error={create.error} fe={fe} className=""/>
+      </PanelActions>
+    </DrawerForm>
   );
 }

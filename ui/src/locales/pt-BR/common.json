@@ -3,6 +3,7 @@
   "loading": "Carregando…",
   "tryAgain": "Tentar novamente",
   "close": "Fechar",
+  "language": "Idioma",
   "changeLanguage": "Mudar idioma para {{language}}",
   "periodRange": "{{start}} a {{end}}",
   "account": {

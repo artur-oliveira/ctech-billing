@@ -10,7 +10,9 @@ import {t} from "@/lib/i18n";
  * marks are trademarks of their owners, shown only to identify which card is
  * which (nominative use), never as an endorsement.
  *
- * Always decoration: the brand's name is written beside it wherever it appears,
+ * Every mark carries its own dark ground (no white card: it vanished on the
+ * page's white, and the app has no dark theme to re-colour it for), so each reads
+ * the same on any surface. Always decoration: the brand's name is written beside it wherever it appears,
  * so the SVG is aria-hidden.
  */
 export const CARD_BRANDS: CardBrand[] = ["visa", "mastercard", "elo", "amex", "hipercard", "diners", "other"];
@@ -73,9 +75,9 @@ function Mark({brand}: {brand: CardBrand}) {
     case "diners":
       return (
         <>
-          <rect width="32" height="20" rx="3" fill="#fff" stroke="#c7ccd1" strokeWidth="1"/>
-          <circle cx="16" cy="10" r="6.5" fill="#0079be"/>
-          <path d="M13.6 6.3a4.3 4.3 0 0 0 0 7.4z M18.4 6.3a4.3 4.3 0 0 1 0 7.4z" fill="#fff"/>
+          <rect width="32" height="20" rx="3" fill="#0079be"/>
+          <circle cx="16" cy="10" r="6.5" fill="#fff"/>
+          <path d="M13.6 6.3a4.3 4.3 0 0 0 0 7.4z M18.4 6.3a4.3 4.3 0 0 1 0 7.4z" fill="#0079be"/>
         </>
       );
     default:

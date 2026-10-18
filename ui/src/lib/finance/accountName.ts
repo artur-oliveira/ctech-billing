@@ -48,3 +48,13 @@ export function accountName(a: Named): string {
 
 /** Sort comparator by display name in the current locale. */
 export const byAccountName = (locale: string) => (a: Named, b: Named): number => accountName(a).localeCompare(accountName(b), locale);
+
+/** A report row's label from its category id: "" is no category, `card:{id}` a card statement's payment, an unknown id a deleted category. */
+export function nameOf(accounts: Account[], id: string): string {
+  if (id === "") return t("finance.reports.uncategorized");
+  // Paying a card's statement: one cash-flow line per card (6.5).
+  if (id.startsWith("card:")) return t("finance.reports.statementOf", {name: (() => {const c = accounts.find(a => a.id === id.slice(5)); return c ? accountName(c) : undefined;})() ?? t("finance.reports.theCard")});
+  const a = accounts.find(x => x.id === id);
+  if (!a) return t("finance.reports.removed");
+  return a.archived ? t("finance.reports.archivedName", {name: accountName(a)}) : accountName(a);
+}

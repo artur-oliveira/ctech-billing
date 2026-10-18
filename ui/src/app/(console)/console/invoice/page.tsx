@@ -16,6 +16,7 @@ import {DownloadPDF} from "@/components/DownloadPDF";
 import {InvoiceStatusBadge} from "@/components/console/InvoiceStatusBadge";
 import {Timeline} from "@/components/console/Timeline";
 import {ErrorBlock} from "@/components/portal/ErrorBlock";
+import {Section} from "@/components/ui/Section";
 import {messageFor, statusOf} from "@/lib/api/client";
 import {
   consoleKeys,
@@ -202,11 +203,10 @@ function Detail() {
       </section>
 
       {query.data.byok && (
-        <section aria-labelledby="pix" className="space-y-3">
-          <h2 id="pix" className="text-sm font-medium text-muted-foreground">{t("connections.pix.title")}</h2>
+        <Section title={t("connections.pix.title")} tone="muted">
           <InvoicePix byok={query.data.byok} currency={invoice.currency} busy={newPix.isPending || simulate.isPending}
             onSimulate={() => simulate.mutate()} onNewPix={() => newPix.mutate()}/>
-        </section>
+        </Section>
       )}
 
       {query.data.byok && (
@@ -218,8 +218,7 @@ function Detail() {
           }}/>
       )}
 
-      <section aria-labelledby="linhas" className="space-y-3">
-        <h2 id="linhas" className="text-sm font-medium text-muted-foreground">{t("console.invoice.lines")}</h2>
+      <Section title={t("console.invoice.lines")} tone="muted">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[36rem] border-collapse text-sm">
             <thead>
@@ -262,13 +261,10 @@ function Detail() {
             </tbody>
           </table>
         </div>
-      </section>
+      </Section>
 
       {notes.length > 0 && (
-        <section aria-labelledby="creditos" className="space-y-3">
-          <h2 id="creditos" className="text-sm font-medium text-muted-foreground">
-            {t("console.invoice.creditNotes")}
-          </h2>
+        <Section title={t("console.invoice.creditNotes")} tone="muted">
           <ul className="divide-y divide-border border-y border-border">
             {notes.map(note => (
               <li key={note.id} className="flex flex-wrap items-baseline justify-between gap-3 py-2">
@@ -285,7 +281,7 @@ function Detail() {
               </li>
             ))}
           </ul>
-        </section>
+        </Section>
       )}
 
       <Timeline entries={query.data.timeline}/>

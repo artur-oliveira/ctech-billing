@@ -132,7 +132,7 @@ export function ExceptionsFields({model, errors, onChange}: Omit<EditorProps, "s
     <div className="space-y-3">
       <fieldset className="space-y-2">
         <legend className="text-sm font-medium text-foreground">{t("bills.editor.exceptMonths")}</legend>
-        <div className="flex flex-wrap gap-1">
+        <div className="flex flex-wrap gap-2">
           {monthOptions().map(({label}, i) => {
             const month = i + 1;
             const on = model.exceptions.months.includes(month);
@@ -142,7 +142,7 @@ export function ExceptionsFields({model, errors, onChange}: Omit<EditorProps, "s
                 type="button"
                 aria-pressed={on}
                 onClick={() => onChange({...model, exceptions: {...model.exceptions, months: on ? model.exceptions.months.filter(x => x !== month) : [...model.exceptions.months, month]}})}
-                className={`rounded-md border px-2 py-1 text-xs capitalize transition-colors ${on ? "border-brand-600 bg-brand-50 text-brand-700" : "border-border text-muted-foreground hover:text-foreground"}`}
+                className={`touch-target inline-flex items-center rounded-md border px-2 py-1 text-xs capitalize outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring/50 ${on ? "border-brand-600 bg-brand-50 text-brand-700" : "border-border text-muted-foreground hover:text-foreground"}`}
               >
                 {label.slice(0, 3)}
               </button>
@@ -171,7 +171,7 @@ export function ExceptionsFields({model, errors, onChange}: Omit<EditorProps, "s
           </div>
         </Field>
         {model.exceptions.dates.length > 0 && (
-          <ul className="flex flex-wrap gap-1">
+          <ul className="flex flex-wrap gap-2">
             {[...model.exceptions.dates].sort().map(d => (
               <li key={d} className="flex items-center gap-1 rounded-md border border-border px-2 py-0.5 text-xs">
                 {shortDate(d)}
@@ -179,7 +179,7 @@ export function ExceptionsFields({model, errors, onChange}: Omit<EditorProps, "s
                   type="button"
                   aria-label={t("bills.editor.remove", {date: shortDate(d)})}
                   onClick={() => onChange({...model, exceptions: {...model.exceptions, dates: model.exceptions.dates.filter(x => x !== d)}})}
-                  className="text-muted-foreground hover:text-foreground"
+                  className="touch-target inline-flex items-center rounded-sm text-muted-foreground outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
                 >
                   <X aria-hidden className="size-3"/>
                 </button>

@@ -5,6 +5,8 @@ import {useState} from "react";
 import {useTranslation} from "react-i18next";
 
 import {brandName, CARD_BRANDS, CardBrandMark} from "@/components/finance/CardBrandMark";
+import {FormError} from "@/components/finance/FormError";
+import {DrawerForm, PanelActions} from "@/components/finance/PanelForm";
 import {wholeSpace} from "@/components/finance/TransferPanel";
 import {createCard, patchCard} from "@/lib/api/finance";
 import type {Account, Card, CardBrand} from "@/lib/api/financeTypes";
@@ -51,9 +53,8 @@ export function CardForm({card, accounts, onDone}: {card?: Card; accounts: Accou
   );
   const ready = name.trim() !== "" && closing !== "" && due !== "" && payer !== "" && !save.isPending;
   return (
-    <form
+    <DrawerForm
       aria-label={card ? t("finance.cards.edit") : t("finance.cards.new")}
-      className="grid items-start gap-x-4 gap-y-3 sm:grid-cols-2 [&>*]:min-w-0"
       onSubmit={e => {
         e.preventDefault();
         if (!ready) return;
@@ -84,11 +85,11 @@ export function CardForm({card, accounts, onDone}: {card?: Card; accounts: Accou
       <Field label={t("finance.cards.payWith")} htmlFor="cd-payer" required error={fe.of("paying_account_id")} hint={assets.length === 0 ? t("finance.cards.noAccounts") : undefined}>
         <Select {...selectCopy()} id="cd-payer" aria-label={t("finance.cards.payWith")} value={payer} {...fe.props("paying_account_id", "cd-payer")} onValueChange={v => { setPayer(v); fe.clear("paying_account_id"); }} options={assets.map(a => ({value: a.id, label: accountName(a)}))}/>
       </Field>
-      <div className="flex flex-wrap items-center gap-2 sm:col-span-2">
+      <PanelActions>
         <Button type="submit" variant="brand" size="sm" disabled={!ready}>{card ? t("finance.cards.save") : t("finance.cards.create")}</Button>
         <Button type="button" variant="outline" size="sm" onClick={() => onDone()}>{t("finance.cards.close")}</Button>
-        {fe.general ? <p role="alert" className="text-sm text-danger">{fe.general}</p> : null}
-      </div>
-    </form>
+        <FormError error={save.error} fe={fe} className=""/>
+      </PanelActions>
+    </DrawerForm>
   );
 }
