@@ -36,6 +36,29 @@ type recurrenceDTO struct {
 	CardID         string `json:"card_id,omitempty"`
 	Installments   int    `json:"installments,omitempty"`
 	NeedsAttention string `json:"needs_attention,omitempty"`
+	// NextDue is the day of the next occurrence not yet past (list only): the
+	// "when is it next" a row answers without a request per recurrence.
+	NextDue *brcal.Date `json:"next_due,omitempty"`
+}
+
+// nextDue is the first due date on or after today, nil for an archived or
+// finished recurrence. The window opens a few days early because a weekend
+// roll-forward can land today from an earlier nominal day.
+func nextDue(r finance.Recurrence, today brcal.Date) *brcal.Date {
+	if r.Archived {
+		return nil
+	}
+	occ, err := finance.Preview(r.Schedule, today.AddDays(-7), 3)
+	if err != nil {
+		return nil
+	}
+	for _, o := range occ {
+		if !o.Due.Before(today) {
+			due := o.Due
+			return &due
+		}
+	}
+	return nil
 }
 
 func newRecurrenceDTO(r finance.Recurrence) (recurrenceDTO, error) {
@@ -187,11 +210,13 @@ func (h *financeHandlers) listRecurrences(c fiber.Ctx) error {
 		return fail(c, err)
 	}
 	out := listResponse[recurrenceDTO]{Data: make([]recurrenceDTO, 0, len(recs))}
+	today := h.today()
 	for _, r := range recs {
 		dto, err := newRecurrenceDTO(r)
 		if err != nil {
 			return fail(c, err)
 		}
+		dto.NextDue = nextDue(r, today)
 		out.Data = append(out.Data, dto)
 	}
 	return c.JSON(out)

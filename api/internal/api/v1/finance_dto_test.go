@@ -10,6 +10,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 
 	"gopkg.aoctech.app/billing/api/internal/domain/brcal"
+	"gopkg.aoctech.app/billing/api/internal/domain/finance"
 )
 
 func decodeProbe(t *testing.T, body string, dst any) int {
@@ -241,5 +242,26 @@ func TestCardValidationBoundsTheDays(t *testing.T) {
 	}
 	if !got["closing_day"] || !got["due_day"] || len(got) != 2 {
 		t.Fatalf("errors = %v", got)
+	}
+}
+
+func TestNextDueIsTheFirstOccurrenceNotPast(t *testing.T) {
+	today := brcal.New(2026, time.October, 8)
+	expr, err := finance.ParseSchedule([]byte(`{"kind":"day_of_month","day":10}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := finance.Recurrence{Schedule: finance.Schedule{Expression: expr, Start: brcal.New(2026, time.January, 1), Adjust: finance.AdjustNone}}
+	if got := nextDue(r, today); got == nil || *got != brcal.New(2026, time.October, 10) {
+		t.Fatalf("next = %v", got)
+	}
+	r.Schedule.End = brcal.New(2026, time.October, 1)
+	if got := nextDue(r, today); got != nil {
+		t.Fatalf("ended: next = %v", got)
+	}
+	r.Schedule.End = brcal.Date{}
+	r.Archived = true
+	if got := nextDue(r, today); got != nil {
+		t.Fatalf("archived: next = %v", got)
 	}
 }

@@ -249,3 +249,73 @@ func (h *financeHandlers) cardSpending(c fiber.Ctx) error {
 	}
 	return c.JSON(out)
 }
+
+type categoryAmountsDTO struct {
+	CategoryID string        `json:"category_id,omitempty"` // empty on a side's totals row
+	Realised   billing.Cents `json:"realised"`
+	Scheduled  billing.Cents `json:"scheduled"`
+	Forecast   billing.Cents `json:"forecast"`
+	Total      billing.Cents `json:"total"`
+}
+
+type categorySideDTO struct {
+	Totals     categoryAmountsDTO   `json:"totals"`
+	Categories []categoryAmountsDTO `json:"categories"`
+}
+
+type categoryMonthDTO struct {
+	Month   string          `json:"month"`
+	Income  categorySideDTO `json:"income"`
+	Expense categorySideDTO `json:"expense"`
+}
+
+func categorySide(total finance.CategoryAmounts, rows []finance.CategoryAmounts) categorySideDTO {
+	dto := func(a finance.CategoryAmounts) categoryAmountsDTO {
+		return categoryAmountsDTO{CategoryID: a.CategoryID, Realised: a.Realised, Scheduled: a.Scheduled, Forecast: a.Forecast, Total: a.Total}
+	}
+	out := categorySideDTO{Totals: dto(total), Categories: make([]categoryAmountsDTO, len(rows))}
+	for i, r := range rows {
+		out.Categories[i] = dto(r)
+	}
+	return out
+}
+
+// categoryMonth is one month by category and by side, split into realised
+// (settled), scheduled (open bills) and forecast (recurrence occurrences not yet
+// materialised, card recurrences included). The realised and scheduled halves
+// are the DRE's cached summaries of that month (one Query) minus the open
+// bills; the forecast half is what the projection already reads. Nothing here
+// is per category.
+func (h *financeHandlers) categoryMonth(c fiber.Ctx) error {
+	month, err := finance.ParseMonth(c.Query("month"))
+	if err != nil {
+		return problem.Validation([]problem.FieldError{fieldErr("month", "invalid_format", "use YYYY-MM", "format", "YYYY-MM")}).Send(c)
+	}
+	today := h.today()
+	if first := finance.MonthOf(today); month.Compare(first.Add(-(maxReportMonths-1))) < 0 || month.Compare(first.Add(11)) > 0 {
+		return problem.Validation([]problem.FieldError{fieldErr("month", "out_of_range", "between 23 months back and 11 months ahead", "min", -(maxReportMonths-1), "max", 11)}).Send(c)
+	}
+	sp := middleware.GetSpace(c)
+	rows, err := h.ledger.Summaries(c.Context(), sp, month, month)
+	if err != nil {
+		return fail(c, err)
+	}
+	accounts, err := h.ledger.ListAccounts(c.Context(), sp)
+	if err != nil {
+		return fail(c, err)
+	}
+	open, forecast, err := h.jobs.MonthFlows(c.Context(), sp, today, month)
+	if err != nil {
+		return fail(c, err)
+	}
+	sums := make(map[finance.SummaryKey]finance.Totals, len(rows))
+	for _, r := range rows {
+		sums[finance.SummaryKey{Month: r.Month, AccountID: r.AccountID}] = r.Totals
+	}
+	info := make(map[string]finance.CategoryInfo, len(accounts))
+	for _, a := range accounts {
+		info[a.ID] = finance.CategoryInfo{Class: a.Class, Group: a.Group}
+	}
+	r := finance.CategoryMonth(month, sums, info, open, forecast)
+	return c.JSON(categoryMonthDTO{Month: month.String(), Income: categorySide(r.IncomeTotal, r.Income), Expense: categorySide(r.ExpenseTotal, r.Expense)})
+}
