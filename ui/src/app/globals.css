@@ -27,6 +27,15 @@
   }
 }
 
+/* iOS (Safari and Chrome) zooms the page when a focused field is under 16px, and
+   a zoomed page pushes the fixed top bar and bottom menu out of view. @aoctech/ui
+   draws its own Input at 16px; this covers billing's local fields. */
+@media (pointer: coarse), (max-width: 39.999rem) {
+  input:not([type="checkbox"], [type="radio"]), select, textarea {
+    font-size: 1rem;
+  }
+}
+
 @theme {
     --font-sans: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
 
