@@ -7,6 +7,8 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
 	"gopkg.aoctech.app/billing/api/internal/domain/brcal"
 	"gopkg.aoctech.app/billing/api/internal/email"
@@ -31,6 +33,19 @@ type Dunner struct {
 	mail      email.Sender
 	// orgs lets a run skip a suspended live tenant (spec § 4.3). Optional.
 	orgs *repositories.OrganizationRepository
+	// pageSize is how many due invoices one read of the queue returns.
+	pageSize int
+}
+
+// dunningPageSize is the read size of the dunning queue. A run follows the
+// cursor to the end, so it only bounds memory and round trips, not how many
+// invoices a day can hold.
+const dunningPageSize = 200
+
+// WithPageSize overrides the queue read size (tests force several pages).
+func (d *Dunner) WithPageSize(n int) *Dunner {
+	d.pageSize = n
+	return d
 }
 
 // dunningActor is the audit actor for everything this job does. It matches the
@@ -45,7 +60,7 @@ func NewDunner(
 	links *PayLink,
 	mail email.Sender,
 ) *Dunner {
-	return &Dunner{invoices: invoices, subs: subs, customers: customers, links: links, mail: mail}
+	return &Dunner{invoices: invoices, subs: subs, customers: customers, links: links, mail: mail, pageSize: dunningPageSize}
 }
 
 // DunningResult is what one run did.
@@ -79,28 +94,35 @@ func (r *DunningResult) fail(format string, args ...any) {
 func (d *Dunner) Run(ctx context.Context, livemode bool, date brcal.Date, now time.Time) DunningResult {
 	var res DunningResult
 
-	page, err := d.invoices.DueForDunning(ctx, livemode, date, 200, nil)
-	if err != nil {
-		res.fail("reading the dunning queue for %s: %v", date, err)
-		return res
-	}
-	res.Examined = len(page.Items)
-
 	suspended := newSuspensionCache(d.orgs)
-	for i := range page.Items {
-		inv := &page.Items[i]
-		if skip, err := suspended.skip(ctx, inv.OrganizationID, inv.Livemode); err != nil {
-			res.fail("invoice %s: reading its tenant: %v", inv.ID, err)
-			continue
-		} else if skip {
-			res.Suspended++
-			continue
+	var startKey map[string]types.AttributeValue
+	for {
+		page, err := d.invoices.DueForDunning(ctx, livemode, date, d.pageSize, startKey)
+		if err != nil {
+			res.fail("reading the dunning queue for %s: %v", date, err)
+			return res
 		}
-		if err := d.step(ctx, inv, &res, now); err != nil {
-			res.fail("invoice %s: %v", inv.ID, err)
+		res.Examined += len(page.Items)
+		for i := range page.Items {
+			inv := &page.Items[i]
+			if skip, err := suspended.skip(ctx, inv.OrganizationID, inv.Livemode); err != nil {
+				res.fail("invoice %s: reading its tenant: %v", inv.ID, err)
+				continue
+			} else if skip {
+				res.Suspended++
+				continue
+			}
+			if err := d.step(ctx, inv, &res, now); err != nil {
+				res.fail("invoice %s: %v", inv.ID, err)
+			}
+		}
+		// The cursor, not a fresh read from the top: an invoice that failed stays
+		// armed and would be the head of every new read, a poison row that
+		// starves the rest of the queue.
+		if startKey = page.LastEvaluatedKey; startKey == nil {
+			return res
 		}
 	}
-	return res
 }
 
 // step performs the one action this invoice is due for.

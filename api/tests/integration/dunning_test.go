@@ -331,3 +331,27 @@ func TestDunningNeverRestrictsAServiceNobodyHad(t *testing.T) {
 		t.Fatalf("nothing records that activation never happened: %+v", trail)
 	}
 }
+
+// TestDunningFollowsTheQueuePastOnePage: a day holding more invoices than one
+// read returns must still chase all of them. The run used to read one page and
+// stop, so everything after the first 200 invoices of a day was never reminded,
+// escalated or abandoned, and nothing said so.
+func TestDunningFollowsTheQueuePastOnePage(t *testing.T) {
+	var invoices []*billing.Invoice
+	var addresses []string
+	for range 3 {
+		inv, _, address := dunnableInvoice(t, newOrg(t, true))
+		invoices, addresses = append(invoices, inv), append(addresses, address)
+	}
+
+	box := &mailbox{}
+	day, _ := invoices[0].Schedule().DunningDate(invoices[0].DueDate, 0)
+	if res := newDunner(t, box).WithPageSize(1).Run(context.Background(), true, day, now()); len(res.Errors) > 0 {
+		t.Fatalf("dunning: %v", res.Errors)
+	}
+	for _, address := range addresses {
+		if got := len(box.to(address)); got != 1 {
+			t.Fatalf("%s got %d reminders, want 1: the run stopped after one page", address, got)
+		}
+	}
+}
