@@ -12,6 +12,7 @@ import {toast} from "sonner";
 import {SubscriptionStatusBadge} from "@/components/console/SubscriptionStatusBadge";
 import {Timeline} from "@/components/console/Timeline";
 import {ErrorBlock} from "@/components/portal/ErrorBlock";
+import {Section} from "@/components/ui/Section";
 import {messageFor, statusOf} from "@/lib/api/client";
 import {cancelConsoleSubscription, consoleKeys, getConsoleSubscription} from "@/lib/api/console";
 import {useConsoleScope} from "@/lib/console/scope";
@@ -120,8 +121,7 @@ function Detail() {
         />
       </dl>
 
-      <section aria-labelledby="itens" className="space-y-3">
-        <h2 id="itens" className="text-sm font-medium text-muted-foreground">{t("console.subscription.items")}</h2>
+      <Section title={t("console.subscription.items")} tone="muted">
         <ul className="divide-y divide-border border-y border-border">
           {items.map(item => (
             <li key={item.id} className="flex flex-wrap items-baseline justify-between gap-3 py-2">
@@ -141,7 +141,7 @@ function Detail() {
             </li>
           ))}
         </ul>
-      </section>
+      </Section>
 
       <Timeline entries={timeline}/>
 

@@ -69,12 +69,12 @@ export function BillingShell({
   );
 }
 
-/** The mark, "CTech Billing" and the area. On a phone the mark alone: the bar needs the room. */
+/** The mark, "CTech Billing" and the area. Under `md` the mark alone: the bar needs the room. */
 function Wordmark({href, area}: {href: string; area: string}) {
   return (
     <Link href={href} className="flex min-w-0 items-center gap-2.5 rounded-md outline-none focus-visible:ring-3 focus-visible:ring-ring/50 touch:min-h-11">
       <Image src="/android-chrome-192x192.png" alt="" width={24} height={24} className="size-6 shrink-0 rounded-md"/>
-      <span className="truncate text-sm tracking-[-0.02em] max-sm:sr-only">
+      <span className="truncate text-sm tracking-[-0.02em] max-md:sr-only">
         <span className="font-semibold text-brand-600">CTech Billing</span>
         <span aria-hidden className="mx-1.5 text-muted-foreground">•</span>
         <span className="text-muted-foreground">{area}</span>
@@ -86,7 +86,7 @@ function Wordmark({href, area}: {href: string; area: string}) {
 /** The test-mode band, the loudest thing on the page after the danger colour. */
 export function TestBanner({children}: {children: ReactNode}) {
   return (
-    <p className="z-20 border-b border-warning/30 bg-[color-mix(in_oklab,var(--color-warning)_12%,var(--color-background))] px-4 py-2 text-center text-xs text-foreground md:sticky md:top-0">
+    <p className="z-20 border-b border-warning/30 bg-[color-mix(in_oklab,var(--color-warning)_12%,var(--color-background))] px-4 py-2 text-center text-xs text-foreground">
       {children}
     </p>
   );

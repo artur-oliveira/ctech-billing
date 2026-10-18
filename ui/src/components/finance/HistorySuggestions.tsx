@@ -4,6 +4,7 @@ import {Input} from "@aoctech/ui";
 import {type ComponentProps, type KeyboardEvent, useId, useState} from "react";
 import {useTranslation} from "react-i18next";
 
+import {Amount} from "@/components/ui/Amount";
 import {money} from "@/lib/format";
 
 export interface HistoryEntry {
@@ -116,7 +117,7 @@ export function SuggestingInput({value, onValueChange, entries, onSelect, onKeyD
               className="flex min-h-9 cursor-pointer items-center justify-between gap-3 rounded-md px-2.5 py-1.5 text-sm aria-selected:bg-surface touch:min-h-11"
             >
               <span className="min-w-0 truncate">{entry.description}</span>
-              <span data-numeric className="shrink-0 text-muted-foreground">{money(entry.amount)}</span>
+              <Amount tone="muted" className="shrink-0">{money(entry.amount)}</Amount>
             </li>
           ))}
         </ul>

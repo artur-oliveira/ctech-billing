@@ -88,14 +88,14 @@ export function LedgerRow({
             </div>
           </div>
           {aside && <div className={cn("col-span-full flex-wrap items-center gap-1.5 sm:flex", asideOnPhone ? "flex" : "hidden")}>{aside}</div>}
-          <div className="col-start-2 row-start-1 shrink-0 text-right text-sm tabular-nums text-foreground sm:w-28">
+          <div className="col-start-2 row-start-1 shrink-0 text-right text-sm tabular-nums text-foreground sm:min-w-28">
             {amount}
             {balance !== undefined && (
               <p className="text-xs text-muted-foreground sm:hidden">{balanceLabel ? `${balanceLabel} ` : ""}{balance}</p>
             )}
           </div>
           {balance !== undefined && (
-            <div className="hidden shrink-0 text-right text-sm tabular-nums text-muted-foreground sm:block sm:w-28">
+            <div className="hidden shrink-0 text-right text-sm tabular-nums text-muted-foreground sm:block sm:min-w-28">
               {balanceLabel && <span className="sr-only">{balanceLabel} </span>}{balance}
             </div>
           )}

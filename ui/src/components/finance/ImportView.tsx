@@ -1,15 +1,18 @@
 "use client";
 
-import {Button, EmptyState, Field, Select, Skeleton} from "@aoctech/ui";
+import {Button, EmptyState, Field, FileDrop, Select, Skeleton} from "@aoctech/ui";
 import {useQuery} from "@tanstack/react-query";
 import {FileUp} from "lucide-react";
 import {useId, useState} from "react";
 import {useTranslation} from "react-i18next";
 
 import {CsvMappingForm} from "@/components/finance/CsvMappingForm";
+import {FormError} from "@/components/finance/FormError";
 import {ImportLines} from "@/components/finance/ImportLines";
+import {IMPORT_STATUS, StatusBadge} from "@/components/finance/StatusBadge";
 import {ErrorBlock} from "@/components/portal/ErrorBlock";
-import {messageFor, problemCode} from "@/lib/api/client";
+import {Section} from "@/components/ui/Section";
+import {problemCode} from "@/lib/api/client";
 import {selectCopy} from "@/lib/selectCopy";
 import {type FinanceCtx, fileToBase64, financeKeys, listAccounts, listImports, postImportOpening, uploadImport} from "@/lib/api/finance";
 import type {ImportFormat, ImportSummary, OpeningProposal} from "@/lib/api/financeTypes";
@@ -18,6 +21,9 @@ import {useFinanceMutation} from "@/lib/finance/useFinanceMutation";
 import {useFinanceCtx, useFinanceSpaces} from "@/lib/finance/useFinanceSpaces";
 import {money, shortDate} from "@/lib/format";
 import {currentLocale, t as tr} from "@/lib/i18n";
+
+/** The API's limit for one statement file (the hint says "até 1 MB"). */
+const MAX_STATEMENT_BYTES = 1024 * 1024;
 
 /** OFX by its extension; anything else is read as CSV with the account's columns. */
 export const formatOf = (name: string): ImportFormat => (/\.(ofx|qfx)$/i.test(name) ? "ofx" : "csv");
@@ -78,25 +84,26 @@ function AccountImports({accountId, canImport, canConfigure}: {accountId: string
         <Upload accountId={accountId} canConfigure={canConfigure} onImported={id => setSelected(id)} onNeedsColumns={() => setMapping(true)} onColumns={() => setMapping(m => !m)}/>
       )}
       {canImport && mapping && <CsvMappingForm accountId={accountId} onDone={() => setMapping(false)}/>}
-      <section aria-label={t("finance.import.history")} className="space-y-3">
-        <h2 className="text-sm font-medium text-foreground">{t("finance.import.history")}</h2>
+      <Section title={t("finance.import.history")}>
         {imports.isLoading ? <Skeleton className="h-10 w-full"/> : imports.error ? (
           <ErrorBlock error={imports.error} onRetry={() => void imports.refetch()}/>
         ) : list.length === 0 ? (
-          <p className="text-sm text-muted-foreground">{t("finance.import.noImports")}</p>
+          <EmptyState icon={<FileUp aria-hidden/>} title={t("finance.import.noImports")} className="py-8"/>
         ) : (
           <ul className="flex flex-wrap gap-2">
             {list.map(i => (
               <li key={i.id}>
                 <Button size="sm" variant={i.id === current?.id ? "outline" : "ghost"} aria-pressed={i.id === current?.id} onClick={() => setSelected(i.id ?? null)}>
                   {i.from && i.to ? t("finance.import.period", {from: shortDate(i.from), to: shortDate(i.to)}) : shortDate(i.created_at.slice(0, 10))}
-                  <span className="text-muted-foreground">· {i.pending > 0 ? t("finance.import.waiting", {count: i.pending}) : t("finance.import.allDone")}</span>
+                  {i.pending > 0
+                    ? <StatusBadge status={IMPORT_STATUS.waiting}>{t("finance.import.waiting", {count: i.pending})}</StatusBadge>
+                    : <StatusBadge status={IMPORT_STATUS.done}>{t("finance.import.allDone")}</StatusBadge>}
                 </Button>
               </li>
             ))}
           </ul>
         )}
-      </section>
+      </Section>
       {current?.id && <ImportLines key={current.id} importId={current.id}/>}
     </>
   );
@@ -133,17 +140,19 @@ function Upload({accountId, canConfigure, onImported, onNeedsColumns, onColumns}
         upload.mutate(file);
       }}
     >
-      <Field label={t("finance.import.file")} htmlFor="im-file" hint={t("finance.import.fileHint")}>
-        <input id="im-file" type="file" accept=".ofx,.qfx,.csv,.txt"
-          className="block w-full max-w-md text-sm text-muted-foreground file:mr-3 file:rounded-md file:border file:border-border file:bg-surface file:px-3 file:py-1.5 file:text-sm file:text-foreground touch:file:min-h-11"
-          onChange={e => { setFile(e.target.files?.[0] ?? null); setDone(null); setOffer(null); upload.reset(); upload.newIntent(); }}/>
-      </Field>
+      <div className="max-w-md">
+        {/* Type and size are checked before anything is read or sent. */}
+        <FileDrop id="im-file" label={t("finance.import.file")} hint={t("finance.import.fileHint")} accept=".ofx,.qfx,.csv,.txt" maxBytes={MAX_STATEMENT_BYTES} file={file}
+          onFile={f => { setFile(f); setDone(null); setOffer(null); upload.reset(); upload.newIntent(); }}
+          chooseLabel={t("finance.import.choose")} replaceLabel={t("finance.import.replace")} removeLabel={t("finance.import.remove")}
+          tooLargeLabel={t("finance.import.tooLarge")} wrongTypeLabel={t("finance.import.wrongType")}/>
+      </div>
       <div className="flex flex-wrap items-center gap-2">
-        <Button type="submit" variant="brand" size="sm" disabled={!file || upload.isPending}>{t("finance.import.submit")}</Button>
+        <Button type="submit" variant="brand" size="sm" disabled={!file || upload.isPending}>{upload.isPending ? t("finance.import.sending") : t("finance.import.submit")}</Button>
         <Button type="button" variant="ghost" size="sm" onClick={onColumns}>{t("finance.import.columns")}</Button>
       </div>
       {done && <p role="status" className="text-sm text-foreground">{done}</p>}
-      {upload.error ? <p role="alert" className="text-sm text-danger">{messageFor(upload.error)}</p> : null}
+      <FormError error={upload.error} className=""/>
       {offer && <OpeningOffer {...offer} onClose={() => setOffer(null)}/>}
     </form>
   );
@@ -178,7 +187,7 @@ function OpeningOffer({importId, proposal: p, rejected, onClose}: {importId: str
         {t("finance.import.opening.ignored")}
         {rejected > 0 && <> {t("finance.import.opening.unread", {count: rejected})}</>}
       </p>
-      {post.error ? <p role="alert" className="text-danger">{messageFor(post.error)}</p> : null}
+      <FormError error={post.error} className=""/>
       <div className="flex flex-wrap gap-2 pt-1">
         <Button type="button" variant="brand" size="sm" disabled={post.isPending} onClick={() => post.mutate()}>{t("finance.import.opening.confirm")}</Button>
         <Button type="button" variant="outline" size="sm" disabled={post.isPending} onClick={onClose}>{t("finance.import.opening.decline")}</Button>

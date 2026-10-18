@@ -47,13 +47,28 @@ describe("F3 — extrato", () => {
     serve(ALL, {cc: () => statement([entry({})])});
     renderWithQuery(<StatementView/>);
     const {from} = dateRange("this_month", todayIso());
-    expect(await screen.findByText(`Saldo em ${shortDate(from)}`)).toBeInTheDocument();
+    expect(await screen.findByText(`Saldo inicial em ${shortDate(from)}`)).toBeInTheDocument();
     expect(screen.getByText("R$ 1.000,00")).toBeInTheDocument();
     const row = await rowOf("Aluguel");
     expect(within(row).getByText("−R$ 300,00")).toBeInTheDocument();
     expect(within(row).getAllByText("R$ 700,00").length).toBeGreaterThan(0);
     // The first non-system asset is the default account; system rows are not offered.
     expect(screen.getByRole("combobox", {name: "Conta"})).toHaveTextContent("Conta corrente");
+  });
+
+  it("sums the period above its lines: in, out, a reversed pair counting for neither, credits marked with a plus", async () => {
+    serve(ALL, {cc: () => statement([
+      entry({transaction_id: "a", amount: -30000, balance: 70000}),
+      entry({transaction_id: "b", memo: "Salário", category_id: undefined, bill_id: undefined, amount: 50000, balance: 120000}),
+      entry({transaction_id: "c", kind: "transfer", memo: "Troca", category_id: undefined, bill_id: undefined, amount: -9900, balance: 110100, reversed: true}),
+      entry({transaction_id: "d", kind: "transfer", memo: "Troca", category_id: undefined, bill_id: undefined, amount: 9900, balance: 120000, reversal: true}),
+    ])});
+    renderWithQuery(<StatementView/>);
+    const dl = (await screen.findByText("Entradas")).closest("dl") as HTMLElement;
+    expect(within(dl).getByText("+R$ 500,00")).toBeInTheDocument();
+    expect(within(dl).getByText("−R$ 300,00")).toBeInTheDocument();
+    expect(within(dl).getByText("Saldo hoje")).toBeInTheDocument();
+    expect(within(dl).getByText("R$ 1.200,00")).toBeInTheDocument();
   });
 
   it("reverses a transfer after confirming", async () => {
@@ -163,7 +178,7 @@ describe("F3 — the statement with memos, as a phone reads it", () => {
     const pix = await rowOf("Pix mãe");
     expect(within(pix).getByText("Pix mãe")).toHaveAttribute("title", "Pix mãe");
     expect(within(pix).getByText("09/10/2026 • Outras receitas")).toBeInTheDocument();
-    expect(within(pix).getByText(/^R\$\s210,00$/)).toBeInTheDocument();
+    expect(within(pix).getByText(/^\+R\$\s210,00$/)).toBeInTheDocument();
     // Under the amount on a phone, and its own column from sm (named for a screen reader there).
     expect(within(pix).getByText((_, el) => el?.tagName === "P" && el.textContent?.replace(/\s+/g, " ").trim() === "Saldo R$ 8.939,00")).toBeInTheDocument();
     expect(within(pix).getByText("Saldo", {selector: ".sr-only"}).parentElement).toHaveTextContent(/8\.939,00/);

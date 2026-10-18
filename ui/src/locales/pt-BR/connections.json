@@ -173,6 +173,7 @@
     "transfer": "Transferência",
     "kind": "Classificar como",
     "save": "Classificar",
+    "choose": "Classificar…",
     "empty": "Tudo classificado",
     "emptyBody": "Os lançamentos novos do banco aparecem aqui até você dizer o que são.",
     "updatedAt": "Saldo do Inter, atualizado às {{time}}",

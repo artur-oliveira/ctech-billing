@@ -173,6 +173,7 @@
     "transfer": "Transfer",
     "kind": "Classify as",
     "save": "Classify",
+    "choose": "Classify…",
     "empty": "All classified",
     "emptyBody": "New bank entries appear here until you say what they are.",
     "updatedAt": "Inter balance, updated at {{time}}",

@@ -197,6 +197,22 @@ function seed(kind: "personal" | "org", mode: string): SpaceState {
         id: "r-streaming", direction: "payable" as const, amount: 3_990, category_id: "assinaturas", account_id: "", card_id: "card-nubank", installments: 1,
         description: "Streaming", expression: {kind: "day_of_month" as const, day: 2}, start: "2026-01-01", business_day_adjust: "none" as const,
         auto_settle: false, archived: false,
+      }, {
+        id: "r-energia", direction: "payable" as const, amount: 18_000, amount_mode: "expected" as const, category_id: "aluguel", account_id: "conta-corrente",
+        description: "Conta de luz", expression: {kind: "day_of_month" as const, day: 15}, start: "2026-01-01", business_day_adjust: "roll_forward" as const,
+        auto_settle: false, archived: false,
+      }, {
+        id: "r-agua", direction: "payable" as const, amount: 9_500, amount_mode: "expected" as const, category_id: "aluguel", account_id: "conta-corrente",
+        description: "Conta de água e esgoto da casa de praia com nome bem comprido", expression: {kind: "day_of_month" as const, day: 20}, start: "2026-01-01", business_day_adjust: "roll_forward" as const,
+        auto_settle: false, archived: false,
+      }, {
+        id: "r-feira", direction: "payable" as const, amount: 12_000, category_id: "mercado", account_id: "conta-corrente",
+        description: "Feira da semana", expression: {kind: "weekly" as const, weekday: 6, every: 1, anchor: "2026-01-03"}, start: "2026-01-01", business_day_adjust: "none" as const,
+        auto_settle: false, archived: false,
+      }, {
+        id: "r-salario", direction: "receivable" as const, amount: 520_000, category_id: "salario", account_id: "conta-corrente",
+        description: "Salário", expression: {kind: "workday_of_month" as const, n: 5}, start: "2026-01-01", business_day_adjust: "roll_forward" as const,
+        auto_settle: false, archived: false,
       }] : [])],
     };
   }
@@ -229,7 +245,11 @@ function withScenario(s: SpaceState, scenario: FinanceScenario, personalLive: bo
 const state = new Map<string, SpaceState>();
 const replays = new Map<string, Res>();
 
+/** Expected-amount occurrences the person already confirmed or skipped ("recurrence|nominal"). */
+const resolvedPending = new Set<string>();
+
 export function resetFinanceMock() {
+  resolvedPending.clear();
   state.clear();
   replays.clear();
   plans.clear();
@@ -286,7 +306,9 @@ function applyPatch(target: object, patch: object) {
  * Produção.
  */
 export type FinanceScenario = "padrao" | "extrato_memos" | "plan_basic" | "plan_over" | "plan_ondemand" | "plan_no_usage"
-const FINANCE_SCENARIOS: FinanceScenario[] = ["padrao", "extrato_memos", "plan_basic", "plan_over", "plan_ondemand", "plan_no_usage"];
+  | "plan_pending" | "plan_ends" | "plan_pastdue" | "plan_trial"
+const FINANCE_SCENARIOS: FinanceScenario[] = ["padrao", "extrato_memos", "plan_basic", "plan_over", "plan_ondemand", "plan_no_usage",
+  "plan_pending", "plan_ends", "plan_pastdue", "plan_trial"];
 const SCENARIO_KEY = "ctech-billing-finance-scenario";
 let scenarioOverride: FinanceScenario | null = null;
 
@@ -539,7 +561,28 @@ function route(method: string, path: string, r: Req, s: SpaceState, can: (v: Ver
   }
 
   // recurrences
-  if (path === "/recurrences" && method === "get") return ok({data: s.recurrences, has_more: false});
+  if (path === "/recurrences" && method === "get") {
+    const withNext = s.recurrences.map(rec => {
+      const next = rec.archived ? undefined : occurrences(rec.expression, rec.start > today ? rec.start : today, 1).find(o => !rec.end || o.nominal <= rec.end);
+      return next ? {...rec, next_due: next.due} : rec;
+    });
+    return ok({data: withNext, has_more: false});
+  }
+  if (path === "/pending-occurrences" && method === "get") {
+    // Mock-grade: every expected-amount recurrence has its last occurrence waiting for the real value.
+    const waiting = s.recurrences.filter(x => x.amount_mode === "expected" && !x.archived).flatMap(rec => {
+      const nominal = occurrences(rec.expression, addDays(today, -20), 1)[0];
+      return nominal && !resolvedPending.has(`${rec.id}|${nominal.nominal}`) ? [{recurrence_id: rec.id, nominal: nominal.nominal, due: nominal.due, direction: rec.direction,
+        expected_amount: rec.amount, account_id: rec.account_id, category_id: rec.category_id, description: rec.description}] : [];
+    });
+    return ok({data: waiting, has_more: false});
+  }
+  const resolve = path.match(/^\/recurrences\/([^/]+)\/occurrences\/([^/]+)\/(confirm|skip)$/);
+  if (resolve && method === "post") {
+    if (!can("finance.write")) return forbidden();
+    resolvedPending.add(`${decodeURIComponent(resolve[1])}|${decodeURIComponent(resolve[2])}`);
+    return ok(resolve[3] === "skip" ? {state: "skipped"} : {state: "confirmed", amount: body<{amount: number}>(r).amount, bill_id: "b-confirmed"});
+  }
   if (path === "/recurrences/preview" && method === "post") {
     const p = body<{expression: ExpressionJSON; start: string; end?: string; from?: string; count: number}>(r);
     if (!(p.count >= 1 && p.count <= 24)) {
@@ -646,6 +689,29 @@ function route(method: string, path: string, r: Req, s: SpaceState, can: (v: Ver
       data.push({month, receivable: sum("receivable"), payable: sum("payable"), virtual: virtual_receivable - virtual_payable, virtual_receivable, virtual_payable});
     }
     return ok({data, has_more: false});
+  }
+
+  // One month by category: settled and open bills by competence, card lines by
+  // statement month (realised), and recurrences from the third month on (forecast;
+  // the mock has no horizon cursor, so every recurrence counts monthly).
+  if (path === "/reports/category-month") {
+    const month = String(r.params?.month);
+    if (!/^\d{4}-\d{2}$/.test(month)) return problem(422, "about:blank", "Unprocessable Entity", "validation failed", "validation_failed", [{field: "month", code: "invalid_format", message: "use YYYY-MM"}]);
+    const rows = (d: Direction) => {
+      const by = new Map<string, {realised: number; scheduled: number; forecast: number}>();
+      const row = (id: string) => by.get(id) ?? by.set(id, {realised: 0, scheduled: 0, forecast: 0}).get(id)!;
+      for (const b of s.bills.filter(x => x.direction === d && x.status !== "canceled" && x.competence_date.slice(0, 7) === month)) {
+        row(b.category_id)[b.status === "paid" ? "realised" : "scheduled"] += b.amount;
+      }
+      if (d === "payable") for (const i of s.items.filter(x => x.kind !== "carry" && x.month === month && x.amount > 0)) row(i.category_id ?? "").realised += i.amount;
+      let ahead = 0;
+      for (let k = 0; k < 12; k++) { const [y, m] = monthOffset(today, k); if (`${y}-${String(m).padStart(2, "0")}` === month) ahead = k; }
+      if (ahead >= 2) for (const x of s.recurrences.filter(x => !x.archived && x.direction === d)) row(x.category_id).forecast += x.amount;
+      const categories = [...by.entries()].map(([category_id, v]) => ({category_id, ...v, total: v.realised + v.scheduled + v.forecast})).sort((a, b) => b.total - a.total);
+      const sum = (k: "realised" | "scheduled" | "forecast" | "total") => categories.reduce((a, c) => a + c[k], 0);
+      return {totals: {realised: sum("realised"), scheduled: sum("scheduled"), forecast: sum("forecast"), total: sum("total")}, categories};
+    };
+    return ok({month, income: rows("receivable"), expense: rows("payable")});
   }
 
   // accounts and settings
@@ -1189,7 +1255,7 @@ function route(method: string, path: string, r: Req, s: SpaceState, can: (v: Ver
 // ---- plan (Finanças → Plano): Pessoal only, tenant zero, live ----------------------
 
 type PlanSub = {
-  id: string; status: "ACTIVE" | "INCOMPLETE"; cancel_at_period_end: boolean; price_ids: string[]
+  id: string; status: "ACTIVE" | "INCOMPLETE" | "PAST_DUE" | "TRIALING"; cancel_at_period_end: boolean; price_ids: string[]
   period: {period_start: string; period_end: string}
   pending_change: {price_ids: string[]; at: string} | null
 }
@@ -1222,6 +1288,17 @@ function planFor(scenario: FinanceScenario): PlanMock {
     const base = (ids: string[]): PlanSub => ({id: "sub-plan", status: "ACTIVE", cancel_at_period_end: false, price_ids: ids, period: planPeriod(), pending_change: null});
     p = {subscription: null, openInvoice: null};
     if (scenario === "plan_basic") p.subscription = base(["price_finance_basic_monthly"]);
+    // An unpaid first invoice; a plan that ends at the period's close; a late renewal; a trial.
+    if (scenario === "plan_pending") {
+      p.subscription = {...base(["price_finance_basic_monthly"]), status: "INCOMPLETE"};
+      p.openInvoice = {id: "in-plan", total_cents: 1990, due_date: todayIso(), checkout_url: "/checkout?token=mock"};
+    }
+    if (scenario === "plan_ends") p.subscription = {...base(["price_finance_pro_monthly"]), cancel_at_period_end: true};
+    if (scenario === "plan_pastdue") {
+      p.subscription = {...base(["price_finance_basic_monthly"]), status: "PAST_DUE"};
+      p.openInvoice = {id: "in-plan", total_cents: 1990, due_date: planPeriod().period_start, checkout_url: "/checkout?token=mock"};
+    }
+    if (scenario === "plan_trial") p.subscription = {...base(["price_finance_basic_monthly"]), status: "TRIALING"};
     if (scenario === "plan_ondemand") p.subscription = base(["price_finance_ondemand_spaces", "price_finance_ondemand_people"]);
     plans.set(scenario, p);
   }

@@ -127,3 +127,29 @@
     display: none;
   }
 }
+
+/*
+ * The bottom bar's focus: the lib draws a 50%-alpha brand ring round the icon
+ * pill, which is faint on white (and the centre button's is an outline of the
+ * same alpha). A keyboard user gets the full-strength ring, with a gap, on the
+ * shape that carries "active". Candidate for @aoctech/ui.
+ */
+[data-slot="bottom-nav"] :is(a, button):focus-visible {
+  outline: none;
+}
+[data-slot="bottom-nav"] :is(a, button):focus-visible > span:first-child {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
+  box-shadow: none;
+}
+
+/* A notched phone on its side: the page and the bar keep clear of the cut-out
+   (the viewport is `cover`, see layout.tsx). */
+@media (orientation: landscape) and (max-height: 32rem) {
+  body {
+    padding-inline: env(safe-area-inset-left) env(safe-area-inset-right);
+  }
+  [data-slot="bottom-nav"] {
+    padding-inline: env(safe-area-inset-left) env(safe-area-inset-right);
+  }
+}

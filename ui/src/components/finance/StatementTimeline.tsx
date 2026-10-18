@@ -1,41 +1,49 @@
 "use client";
 
-import {Badge, Button, Skeleton} from "@aoctech/ui";
-import {useQueries} from "@tanstack/react-query";
+import {Button, Skeleton} from "@aoctech/ui";
+import {useQueries, useQuery} from "@tanstack/react-query";
 import {ChevronLeft, ChevronRight} from "lucide-react";
 import {useCallback, useEffect, useLayoutEffect, useRef, useState} from "react";
 import {useTranslation} from "react-i18next";
 
+import {StatementTotal} from "@/components/finance/StatementTotal";
+import {StatusBadge} from "@/components/finance/StatusBadge";
 import {STATUS, statementState} from "@/components/finance/statementStatus";
 import {ErrorBlock} from "@/components/portal/ErrorBlock";
 import {financeKeys, listCardStatements} from "@/lib/api/finance";
 import type {Card, StatementSummary} from "@/lib/api/financeTypes";
 import {
-  edges, flatten, initialParam, keepVisible, nextParam, type PageParam, previousParam, shiftMonth, stepWindow, type TimelinePage, windowAt,
+  BEFORE, edges, flatten, initialParam, keepVisible, nextParam, outlook, type PageParam, previousParam, shiftMonth, stepWindow, timelineSize, type TimelinePage, windowAt,
 } from "@/lib/finance/statementTimeline";
 import {monthShort, todayIso} from "@/lib/finance/today";
 import {useFinanceCtx} from "@/lib/finance/useFinanceSpaces";
 import {dayMonth, money, signedMoney} from "@/lib/format";
+import {useElementWidth} from "@/lib/hooks/useElementWidth";
 import {NARROW, useMediaQuery} from "@/lib/hooks/useMediaQuery";
 
-/** Under lg the row shows five statements; from lg, seven (spec D5: 3 + open + 3). */
+/** Before the box is measured: five statements under lg, seven from lg. */
 const MID = "(max-width: 63.999rem)";
 
 /**
  * The card's statements as a row of summaries (spec § 4.2): on opening, the open
  * one selected with three before and three after; previous/next step a page and
  * load the next page beyond what is loaded, prefetching as the window reaches an
- * edge. On a phone, one summary per screen in a strip that is swiped.
+ * edge. How many fit is read from the box's own width (the sidebar eats 240px at
+ * tablet widths); when only one fits, a strip that is swiped, with the next months'
+ * totals under it so the card's future is visible without swiping.
  */
 export function StatementTimeline({card, selected, onSelect}: {card: Card; selected: string; onSelect: (month: string) => void}) {
   const {t} = useTranslation();
-  const phone = useMediaQuery(NARROW);
+  const box = useRef<HTMLDivElement>(null);
+  const width = useElementWidth(box);
+  const narrow = useMediaQuery(NARROW);
   const mid = useMediaQuery(MID);
-  const size = phone ? 1 : mid ? 5 : 7;
+  const size = timelineSize(width, narrow ? 1 : mid ? 5 : 7);
+  const phone = size === 1;
   const q = useTimelinePages(card);
   const all = flatten(q.pages);
   const months = all.map(s => s.month);
-  const [start, setStart] = useState(() => shiftMonth(card.open_month, -3));
+  const [start, setStart] = useState(() => shiftMonth(card.open_month, -BEFORE));
   const {from, to} = windowAt(months, phone ? selected : start, size);
   const {before, after} = edges(months, phone ? selected : start, size);
 
@@ -83,7 +91,7 @@ export function StatementTimeline({card, selected, onSelect}: {card: Card; selec
     const i = months.indexOf(selected);
     if (i >= 0 && Math.round(el.scrollLeft / (el.clientWidth || 1)) !== i) el.scrollLeft = i * el.clientWidth;
     // months.length: the strip mounts only once the first page arrives, after the selection was set.
-  }, [phone, selected, months.length > 0]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [phone, selected, width, months.length > 0]); // eslint-disable-line react-hooks/exhaustive-deps
   const onScroll = () => {
     const el = strip.current;
     if (!phone || !el || !el.clientWidth) return;
@@ -100,23 +108,25 @@ export function StatementTimeline({card, selected, onSelect}: {card: Card; selec
     requestAnimationFrame(() => strip.current?.querySelector<HTMLButtonElement>(`[data-month="${next}"]`)?.focus());
   };
 
-  if (q.isLoading) return <div className="flex gap-2" aria-busy>{Array.from({length: 3}, (_, i) => <Skeleton key={i} className="h-24 flex-1"/>)}</div>;
-  if (q.error) return <ErrorBlock error={q.error} onRetry={q.refetch}/>;
+  if (q.isLoading) return <div ref={box} className="flex gap-2" aria-busy>{Array.from({length: phone ? 1 : 3}, (_, i) => <Skeleton key={i} className="h-24 flex-1"/>)}</div>;
+  if (q.error) return <div ref={box}><ErrorBlock error={q.error} onRetry={q.refetch}/></div>;
+  const {upcoming} = outlook(all, card.open_month);
 
   const atStart = phone ? months.indexOf(selected) <= 0 : before === 0;
   const atEnd = phone ? months.indexOf(selected) >= months.length - 1 : after === 0;
   return (
+    <div ref={box} className="space-y-2">
     <div className="flex items-stretch gap-1">
       <Button variant="ghost" size="sm" aria-label={t("finance.cards.earlier")} className="self-center"
         disabled={atStart && !q.hasPreviousPage} aria-busy={q.isFetchingPreviousPage || undefined} onClick={() => step(-1)}>
         <ChevronLeft aria-hidden className="size-4"/>
       </Button>
       <ol ref={strip} aria-label={t("finance.cards.timeline")} onKeyDown={onKeyDown} onScroll={onScroll}
-        className="flex min-w-0 flex-1 gap-2 max-sm:gap-0 max-sm:snap-x max-sm:snap-mandatory max-sm:overflow-x-auto max-sm:[scrollbar-width:none]">
+        className={`flex min-w-0 flex-1 ${phone ? "snap-x snap-mandatory gap-0 overflow-x-auto [scrollbar-width:none]" : "gap-2"}`}>
         {all.map((s, i) => (
           <li key={s.month} data-in-window={i >= from && i < to ? "" : undefined}
-            className={`max-sm:w-full max-sm:shrink-0 max-sm:snap-center max-sm:px-0.5 sm:min-w-0 sm:flex-1 ${i >= from && i < to ? "" : "sm:hidden"}`}>
-            <SummaryCard summary={s} pressed={s.month === selected} onPress={() => select(s.month)}/>
+            className={phone ? "w-full shrink-0 snap-center px-0.5" : `min-w-0 flex-1 ${i >= from && i < to ? "" : "hidden"}`}>
+            <SummaryCard summary={s} pressed={s.month === selected} onPress={() => select(s.month)} tabbable={!phone || s.month === selected}/>
           </li>
         ))}
       </ol>
@@ -125,7 +135,42 @@ export function StatementTimeline({card, selected, onSelect}: {card: Card; selec
         <ChevronRight aria-hidden className="size-4"/>
       </Button>
     </div>
+    {phone && upcoming.length > 0 && (
+      <div>
+        <p className="mb-1 text-xs text-muted-foreground">{t("finance.cards.upcoming")}</p>
+        <ul className="grid grid-cols-3 gap-2">
+          {upcoming.map(s => {
+            const total = s.total + (s.forecast_total ?? 0);
+            return (
+              <li key={s.month} className="min-w-0">
+                <button type="button" onClick={() => select(s.month)} aria-pressed={s.month === selected}
+                  aria-label={t("finance.cards.upcomingLabel", {month: monthShort(s.month), total: `${s.forecast_estimated ? "~" : ""}${signedMoney(total)}`})}
+                  className={`flex min-h-11 w-full flex-col items-start justify-center rounded-lg border px-2 py-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2
+                    ${s.month === selected ? "border-brand-600 bg-brand-50" : "border-border hover:bg-surface"}`}>
+                  <span className="text-xs tabular-nums text-muted-foreground">{monthShort(s.month)}</span>
+                  <span data-numeric className="text-sm font-medium tabular-nums [overflow-wrap:anywhere]">
+                    {s.forecast_estimated ? "~" : ""}{signedMoney(total)}
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+    )}
+    </div>
   );
+}
+
+/** The opening page on its own, under the key the timeline's first page uses: the
+ *  card header reads it without a second request. */
+export function useOpeningPage(card: Card) {
+  const ctx = useFinanceCtx();
+  const p = initialParam(card.open_month);
+  return useQuery({
+    queryKey: [...financeKeys.cardStatements(ctx.mode, ctx.space, card.id, card.open_month), p.direction, p.from, p.count],
+    queryFn: async (): Promise<TimelinePage> => ({...(await listCardStatements(ctx, card.id, p.from, p.count, p.direction)), param: p}),
+  });
 }
 
 /**
@@ -183,31 +228,24 @@ function useTimelinePages(card: Card) {
  * hairline card; the selected one takes the brand border and the selected-row
  * tint, the only colour besides its status badge.
  */
-function SummaryCard({summary: s, pressed, onPress}: {summary: StatementSummary; pressed: boolean; onPress: () => void}) {
+function SummaryCard({summary: s, pressed, onPress, tabbable}: {summary: StatementSummary; pressed: boolean; onPress: () => void; tabbable: boolean}) {
   const {t} = useTranslation();
   const state = statementState(s, todayIso());
-  const {tone, icon: Icon} = STATUS[state];
   const closed = s.status === "closed" || s.status === "paid";
   const forecast = s.forecast_total ?? 0;
-  const base = t("finance.cards.summaryLabel", {month: monthShort(s.month), state: t(`finance.cards.status.${state}`), total: signedMoney(s.total)});
-  const label = forecast > 0 ? t("finance.cards.summaryLabelForecast", {label: base, amount: money(forecast)}) : base;
+  const base = t("finance.cards.summaryLabel", {month: monthShort(s.month), state: t(`finance.cards.status.${state}`), total: signedMoney(s.total + forecast)});
+  const label = forecast > 0 ? t("finance.cards.summaryLabelForecast", {label: base, posted: signedMoney(s.total), amount: money(forecast), estimated: s.forecast_estimated ? t("finance.cards.total.estimatedWord") : ""}) : base;
   return (
-    <button type="button" data-month={s.month} aria-pressed={pressed} onClick={onPress}
+    <button type="button" data-month={s.month} aria-pressed={pressed} onClick={onPress} tabIndex={tabbable ? undefined : -1}
       aria-label={label}
       className={`flex h-full w-full flex-col items-start gap-1.5 rounded-lg border p-3 text-left outline-none transition-colors duration-150 ease-out
         focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 motion-reduce:transition-none
         ${pressed ? "border-brand-600 bg-brand-50" : "border-border hover:bg-surface"}`}>
       <span className="flex w-full flex-wrap items-center justify-between gap-x-2 gap-y-1">
         <span className="text-sm font-semibold tabular-nums text-foreground">{monthShort(s.month)}</span>
-        <Badge tone={tone}><Icon aria-hidden/>{t(`finance.cards.status.${state}`)}</Badge>
+        <StatusBadge status={STATUS[state]}>{t(`finance.cards.status.${state}`)}</StatusBadge>
       </span>
-      <span data-numeric className="text-base font-semibold tabular-nums text-foreground [overflow-wrap:anywhere]">{signedMoney(s.total)}</span>
-      {/* What recurrences will still add: next to the total, never in it, and quieter than it. */}
-      {forecast > 0 && (
-        <span data-numeric title={t("finance.cards.forecastLineTitle")} className="-mt-1 text-balance text-xs tabular-nums text-muted-foreground">
-          {t(s.forecast_estimated ? "finance.cards.forecastLineEstimated" : "finance.cards.forecastLine", {amount: money(forecast)})}
-        </span>
-      )}
+      <StatementTotal posted={s.total} forecast={forecast} estimated={s.forecast_estimated}/>
       <span className="grid gap-0.5 text-xs text-muted-foreground tabular-nums">
         <span>{t(closed ? "finance.cards.closedShort" : "finance.cards.closesShort", {date: dayMonth(s.closing_date)})}</span>
         <span>{t("finance.cards.dueShort", {date: dayMonth(s.due_date)})}</span>

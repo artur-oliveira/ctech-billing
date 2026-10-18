@@ -1,15 +1,18 @@
 "use client";
 
-import {Badge, Button, Field, Input, Select, Skeleton} from "@aoctech/ui";
+import {Button, EmptyState, Field, Input, Select, Skeleton} from "@aoctech/ui";
 import {useQuery, useQueryClient} from "@tanstack/react-query";
 import {useState} from "react";
 import {useTranslation} from "react-i18next";
 
 import {wholeSpace} from "@/components/finance/TransferPanel";
+import {FormError} from "@/components/finance/FormError";
+import {PanelActions, PanelForm} from "@/components/finance/PanelForm";
 import {LedgerRow} from "@/components/finance/LedgerRow";
+import {IMPORT_STATUS, StatusBadge} from "@/components/finance/StatusBadge";
 import {ErrorBlock} from "@/components/portal/ErrorBlock";
-import {segmentHit} from "@/components/ui/segmentHit";
-import {messageFor} from "@/lib/api/client";
+import {Amount} from "@/components/ui/Amount";
+import {panelId, tabId, Tabs} from "@/components/ui/Tabs";
 import {financeKeys, getImport, ignoreLine, linkLine, listAccounts, matchLine, newFromLine, reopenLine} from "@/lib/api/finance";
 import type {Account, Bill, ImportLine} from "@/lib/api/financeTypes";
 import {accountName} from "@/lib/finance/accountName";
@@ -47,22 +50,12 @@ export function ImportLines({importId}: {importId: string}) {
 
   return (
     <section aria-label={t("finance.import.lines")} className="space-y-3">
-      {/* One row at every width (UX batch 5): on a phone the three tabs share
-          it, a label wrapping before its count rather than the row wrapping,
-          since two rows 2px apart would share their 44px targets. No
-          `segmented-item` slot: touch.css would pin a wrapped tab to 30px. */}
-      <div role="tablist" aria-label={t("finance.import.lines")} className="grid w-full grid-cols-3 items-stretch gap-0.5 rounded-lg border border-border bg-surface p-0.5 sm:flex sm:w-max sm:max-w-full">
-        {TABS.map(x => (
-          <button key={x} type="button" role="tab" id={`im-tab-${x}`} aria-selected={tab === x} aria-controls="im-panel" onClick={() => setTab(x)}
-            className={`${segmentHit} min-h-6.5 touch:min-h-7.5 rounded-md px-1.5 py-1 text-center text-sm leading-tight transition-colors sm:px-3 ${tab === x ? "bg-background font-medium text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>
-            {t(`finance.import.tabs.${x}`)} <span className="tabular-nums">({lines.filter(l => tabOf(l) === x).length})</span>
-          </button>
-        ))}
-      </div>
-      <div role="tabpanel" id="im-panel" aria-labelledby={`im-tab-${tab}`}>
+      <Tabs label={t("finance.import.lines")} idBase="im" value={tab} onValueChange={setTab}
+        options={TABS.map(x => ({value: x, label: <>{t(`finance.import.tabs.${x}`)} <span className="tabular-nums">({lines.filter(l => tabOf(l) === x).length})</span></>}))}/>
+      <div role="tabpanel" id={panelId("im")} aria-labelledby={tabId("im", tab)}>
         {tab === "pending" && <p className="pb-2 text-xs text-muted-foreground">{t("finance.import.pendingKept")}</p>}
         {shown.length === 0 ? (
-          <p className="py-6 text-center text-sm text-muted-foreground">{t(`finance.import.empty.${tab}`)}</p>
+          <EmptyState title={t(`finance.import.empty.${tab}`)} className="py-8"/>
         ) : (
           <ul className="divide-y divide-border border-y border-border">
             {shown.map(l => <LineRow key={l.n} importId={importId} line={l} accounts={accounts.data?.data ?? []}/>)}
@@ -97,7 +90,11 @@ function LineRow({importId, line, accounts}: {importId: string; line: ImportLine
   const refresh = () => void client.invalidateQueries({queryKey: financeKeys.importDetail(ctx.mode, ctx.space, importId)});
   const match = useFinanceMutation((c, _: void, key) => matchLine(c, importId, line.n, {bill_id: billId}, key), wholeSpace, undefined, refresh);
   const link = useFinanceMutation((c, _: void, key) => linkLine(c, importId, line.n, {bill_id: billId}, key), wholeSpace, undefined, refresh);
-  const ignore = useFinanceMutation((c, _: void, key) => ignoreLine(c, importId, line.n, key), wholeSpace, undefined, refresh);
+  // Ignoring is one tap, so it can be taken back for a few seconds (the line also waits in "Ignoradas").
+  const ignore = useFinanceMutation((c, _: void, key) => ignoreLine(c, importId, line.n, key), wholeSpace, undefined, refresh, {
+    undo: {message: t("finance.import.ignoredUndo"), actionLabel: t("finance.import.undo"), done: t("finance.import.undone"), failed: t("finance.import.undoFailed"),
+      run: (c, _v, _r, key) => reopenLine(c, importId, line.n, key)},
+  });
   const reopen = useFinanceMutation((c, _: void, key) => reopenLine(c, importId, line.n, key), wholeSpace, undefined, refresh);
   const error = match.error ?? link.error ?? ignore.error ?? reopen.error;
   const busy = match.isPending || link.isPending || ignore.isPending || reopen.isPending;
@@ -117,12 +114,12 @@ function LineRow({importId, line, accounts}: {importId: string; line: ImportLine
       title={line.description || t("finance.import.noDescription")}
       meta={shortDate(line.date)}
       aside={(expiring || line.status === "matched" || line.status === "created" || line.status === "linked") && <>
-        {expiring && <Badge tone="attention">{daysLeft === 0 ? t("finance.import.expiresToday") : t("finance.import.expiresIn", {count: daysLeft})}</Badge>}
-        {line.status === "matched" && <Badge tone="neutral">{t("finance.import.matched")}</Badge>}
-        {line.status === "created" && <Badge tone="neutral">{t("finance.import.created")}</Badge>}
-        {line.status === "linked" && <Badge tone="neutral">{t("finance.import.linked")}</Badge>}
+        {expiring && <StatusBadge status={IMPORT_STATUS.expiring}>{daysLeft === 0 ? t("finance.import.expiresToday") : t("finance.import.expiresIn", {count: daysLeft})}</StatusBadge>}
+        {line.status === "matched" && <StatusBadge status={IMPORT_STATUS.done}>{t("finance.import.matched")}</StatusBadge>}
+        {line.status === "created" && <StatusBadge status={IMPORT_STATUS.done}>{t("finance.import.created")}</StatusBadge>}
+        {line.status === "linked" && <StatusBadge status={IMPORT_STATUS.done}>{t("finance.import.linked")}</StatusBadge>}
       </>}
-      amount={<span data-numeric>{signedMoney(line.amount)}</span>}
+      amount={<Amount>{signedMoney(line.amount)}</Amount>}
       actions={line.status === "ignored" && canImport && (
         <Button size="sm" variant="ghost" disabled={busy} onClick={() => reopen.mutate()}>{t("finance.import.reopen")}</Button>
       )}
@@ -151,7 +148,7 @@ function LineRow({importId, line, accounts}: {importId: string; line: ImportLine
           {creating && <NewBillForm importId={importId} line={line} accounts={accounts} onDone={() => setCreating(false)} onRefused={refresh}/>}
         </div>
       )}
-      {error ? <p role="alert" className="mt-1 text-sm text-danger">{messageFor(error)}</p> : null}
+      <FormError error={error} className="mt-1"/>
     </LedgerRow>
   );
 }
@@ -171,9 +168,8 @@ function NewBillForm({importId, line, accounts, onDone, onRefused}: {
     wholeSpace, onDone, onRefused,
   );
   return (
-    <form
+    <PanelForm
       aria-label={t("finance.import.new")}
-      className="grid items-start gap-x-4 gap-y-3 rounded-lg bg-surface p-3 sm:grid-cols-2 [&>*]:min-w-0"
       onSubmit={e => {
         e.preventDefault();
         if (!category || create.isPending) return;
@@ -187,11 +183,11 @@ function NewBillForm({importId, line, accounts, onDone, onRefused}: {
       <Field label={t("finance.import.description")} htmlFor={`im-desc-${line.n}`}>
         <Input id={`im-desc-${line.n}`} maxLength={limits.text.description} value={description} onChange={e => setDescription(e.target.value)}/>
       </Field>
-      <div className="flex flex-wrap items-center gap-2 sm:col-span-2">
+      <PanelActions>
         <Button type="submit" variant="brand" size="sm" disabled={!category || create.isPending}>{t("finance.import.create")}</Button>
         <Button type="button" variant="outline" size="sm" onClick={onDone}>{t("finance.import.back")}</Button>
-        {create.error ? <p role="alert" className="text-sm text-danger">{messageFor(create.error)}</p> : null}
-      </div>
-    </form>
+        <FormError error={create.error} className=""/>
+      </PanelActions>
+    </PanelForm>
   );
 }

@@ -14,6 +14,7 @@ import {ErrorBlock} from "@/components/portal/ErrorBlock";
 import {Money} from "@/components/portal/Money";
 import {PixPanel} from "@/components/portal/PixPanel";
 import {StatusBadge} from "@/components/portal/StatusBadge";
+import {Section} from "@/components/ui/Section";
 import {messageFor, statusOf} from "@/lib/api/client";
 import {getInvoice, getInvoicePDF, payInvoice, portalKeys} from "@/lib/api/portal";
 import type {Invoice, PixPayment} from "@/lib/api/types";
@@ -224,10 +225,7 @@ function Lines({invoice}: { invoice: Invoice }) {
   if (!invoice.lines?.length) return null;
 
   return (
-    <section aria-labelledby="linhas" className="space-y-4">
-      <h2 id="linhas" className="text-sm font-medium text-muted-foreground">
-        {t("portal.invoice.lines")}
-      </h2>
+    <Section title={t("portal.invoice.lines")} tone="muted" className="space-y-4">
       <ul className="space-y-3">
         {invoice.lines.map((line, i) => (
           <li key={i} className="flex items-baseline justify-between gap-4">
@@ -256,7 +254,7 @@ function Lines({invoice}: { invoice: Invoice }) {
           </span>
         </div>
       )}
-    </section>
+    </Section>
   );
 }
 
@@ -272,10 +270,7 @@ function Lines({invoice}: { invoice: Invoice }) {
 function Facts({invoice}: { invoice: Invoice }) {
   const {t} = useTranslation();
   return (
-    <section aria-labelledby="detalhes" className="space-y-4 border-t border-border pt-6">
-      <h2 id="detalhes" className="text-sm font-medium text-muted-foreground">
-        {t("portal.invoice.details")}
-      </h2>
+    <Section title={t("portal.invoice.details")} tone="muted" className="space-y-4 border-t border-border pt-6">
       <dl className="grid gap-x-6 gap-y-4 sm:grid-cols-2">
         {invoice.number != null && <Fact label={t("portal.invoice.number")} value={String(invoice.number)} numeric/>}
         <Fact label={t("portal.invoice.period")} value={period(invoice.period.start, invoice.period.end)}/>
@@ -291,7 +286,7 @@ function Facts({invoice}: { invoice: Invoice }) {
           invoice.payable && <Fact label={t("portal.invoice.method")} value="PIX"/>
         )}
       </dl>
-    </section>
+    </Section>
   );
 }
 

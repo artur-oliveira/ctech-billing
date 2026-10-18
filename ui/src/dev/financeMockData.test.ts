@@ -385,3 +385,15 @@ describe("statement ranges and card recurrences", () => {
     expect(both.status).toBe(422);
   });
 });
+
+describe("the finance mock's category month", () => {
+  it("splits a month into realised, scheduled and forecast, and refuses a bad month", () => {
+    const ok = call({url: "/reports/category-month", headers: personal, params: {month: new Date().toISOString().slice(0, 7)}});
+    expect(ok.status).toBe(200);
+    const body = ok.data as {income: {totals: {total: number}}; expense: {totals: {realised: number; scheduled: number; forecast: number; total: number}; categories: {total: number}[]}};
+    const t = body.expense.totals;
+    expect(t.realised + t.scheduled + t.forecast).toBe(t.total);
+    expect(body.expense.categories.reduce((a, c) => a + c.total, 0)).toBe(t.total);
+    expect(call({url: "/reports/category-month", headers: personal, params: {month: "oops"}}).status).toBe(422);
+  });
+});

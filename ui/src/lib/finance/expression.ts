@@ -122,9 +122,8 @@ export function validate(m: EditorModel): ModelError[] {
     case "weekly":
       if (!int(p.weekday) || p.weekday < 0 || p.weekday > 6) errs.push({field: "weekday", message: t("bills.err.weekday")});
       if (!int(p.every) || p.every < 1 || p.every > 52) errs.push({field: "every", message: t("bills.err.every")});
-      if (!isCivilDate(p.anchor) || weekdayOf(p.anchor) !== p.weekday) {
-        errs.push({field: "anchor", message: `A primeira data precisa cair numa ${weekdayLabel(p.weekday) ?? "data válida"}.`});
-      }
+      if (!isCivilDate(p.anchor)) errs.push({field: "anchor", message: t("bills.err.anchorDate")});
+      else if (weekdayOf(p.anchor) !== p.weekday) errs.push({field: "anchor", message: t("bills.err.anchor", {day: weekdayLabel(p.weekday)})});
       break;
     case "yearly":
       if (!int(p.month) || p.month < 1 || p.month > 12) errs.push({field: "month", message: t("bills.err.month")});

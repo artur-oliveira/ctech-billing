@@ -6,7 +6,7 @@ import {useTranslation} from "react-i18next";
 
 import {useSpace} from "@/lib/console/useSpace";
 import {useFinanceSpaces} from "@/lib/finance/useFinanceSpaces";
-import {renderLink} from "@/components/shell/renderLink";
+import {renderNavLink} from "@/components/shell/renderLink";
 import {currentFinanceSection, visibleFinanceSections} from "@/lib/finance/nav";
 
 /**
@@ -31,7 +31,7 @@ export function FinanceNav({canConfigure = false}: {canConfigure?: boolean}) {
     group(["recurrences", "cards", "import"], t("finance.nav.groupLaunch")),
     group(["reports", "accounts", "plan", "connections"], t("finance.nav.groupManage")),
   ].filter(g => g.items.length > 0);
-  return <SidebarNav label={t("finance.nav.label")} groups={groups} renderLink={renderLink}/>;
+  return <SidebarNav label={t("finance.nav.label")} groups={groups} renderLink={renderNavLink}/>;
 }
 
 /** FinanceNav with the space's own verbs (the shell's: the spaces query is cached). */

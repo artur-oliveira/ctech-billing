@@ -63,4 +63,10 @@ describe("useFieldErrors", () => {
     expect(result.current.of("amount")).toBeUndefined();
     expect(result.current.general).toBeUndefined();
   });
+
+  it("puts a control in error for the form's own message too, not only the API's", () => {
+    const {result} = renderHook(() => useFieldErrors(["amount"]));
+    expect(result.current.props("amount", "x", "Informe o valor.")).toEqual({"aria-invalid": true, "aria-describedby": "x-error"});
+    expect(result.current.props("amount", "x", undefined)).toEqual({});
+  });
 });

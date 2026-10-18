@@ -1,6 +1,6 @@
 "use client";
 
-import {Badge, Button, Drawer, EmptyState, Field, Input, Select, Skeleton} from "@aoctech/ui";
+import {Button, EmptyState, Field, Input, Select, Skeleton} from "@aoctech/ui";
 import {useQuery} from "@tanstack/react-query";
 import {CreditCard, Repeat} from "lucide-react";
 import Link from "next/link";
@@ -10,27 +10,35 @@ import {useTranslation} from "react-i18next";
 import {SettleForm} from "@/components/finance/BillsView";
 import {CardBrandMark, cardLabel, maskedLast4} from "@/components/finance/CardBrandMark";
 import {CardForm} from "@/components/finance/CardForm";
+import {InlineConfirm} from "@/components/finance/InlineConfirm";
 import {LedgerRow} from "@/components/finance/LedgerRow";
+import {PanelActions, PanelForm} from "@/components/finance/PanelForm";
+import {PanelDrawer} from "@/components/finance/PanelDrawer";
+import {StatusBadge} from "@/components/finance/StatusBadge";
 import {PurchasePanel} from "@/components/finance/PurchasePanel";
-import {StatementTimeline} from "@/components/finance/StatementTimeline";
+import {StatementTotal} from "@/components/finance/StatementTotal";
+import {StatementTimeline, useOpeningPage} from "@/components/finance/StatementTimeline";
 import {STATUS, statementState} from "@/components/finance/statementStatus";
+import {FormError, FormErrorText} from "@/components/finance/FormError";
 import {wholeSpace} from "@/components/finance/TransferPanel";
 import {ErrorBlock} from "@/components/portal/ErrorBlock";
-import {messageFor} from "@/lib/api/client";
+import {Amount} from "@/components/ui/Amount";
+import {Section} from "@/components/ui/Section";
 import {
   advancePurchase, closeStatement, type FinanceCtx, financeKeys, getBill, getCardStatement, getCardStatementForecast, listAccounts, listCards, listPurchases,
   patchPurchase, refundPurchase,
 } from "@/lib/api/finance";
-import type {Account, Card, CardStatement, Purchase, PurchasePatch, StatementItem} from "@/lib/api/financeTypes";
+import type {Account, Card, CardStatement, Purchase, PurchasePatch, StatementItem, StatementSummary} from "@/lib/api/financeTypes";
 import limits from "@/lib/limits.json";
 import {useFieldErrors} from "@/lib/useFieldErrors";
 import {currentLocale} from "@/lib/i18n";
-import {monthShort, todayIso} from "@/lib/finance/today";
+import {flatten, outlook} from "@/lib/finance/statementTimeline";
+import {dueLabel, monthShort, todayIso} from "@/lib/finance/today";
 import {selectCopy} from "@/lib/selectCopy";
 import {useFinanceMutation} from "@/lib/finance/useFinanceMutation";
 import {useCreateRequest} from "@/lib/createRequest";
 import {useFinanceCtx, useFinanceSpaces} from "@/lib/finance/useFinanceSpaces";
-import {money, shortDate, signedMoney} from "@/lib/format";
+import {dayMonth, money, shortDate, signedMoney} from "@/lib/format";
 import {accountName} from "@/lib/finance/accountName";
 
 export {statementState} from "@/components/finance/statementStatus";
@@ -74,6 +82,13 @@ export function CardsView({card: initial = ""}: {card?: string}) {
   const panel = chosen ?? requested;
   const setPanel = (p: Panel) => { setChosen(p); setAsked(false); };
 
+  // One new-card drawer for both the empty state and the card on screen.
+  const newCardDrawer = (
+    <PanelDrawer open={panel === "new-card"} allowed={can("finance.configure")} onClose={() => setPanel(null)} title={t("finance.cards.new")}>
+      <CardForm accounts={all} onDone={id => { setPanel(null); if (id) { setPicked(id); setMonth(null); } }}/>
+    </PanelDrawer>
+  );
+
   if (cards.isLoading || accounts.isLoading) {
     return <div className="space-y-2" aria-busy><Skeleton className="h-8 w-64"/><Skeleton className="h-4 w-full"/></div>;
   }
@@ -83,9 +98,7 @@ export function CardsView({card: initial = ""}: {card?: string}) {
   if (!card) {
     return (
       <div className="space-y-4">
-        <Drawer open={panel === "new-card"} onClose={() => setPanel(null)} title={t("finance.cards.new")}>
-          <CardForm accounts={all} onDone={id => { setPanel(null); if (id) setPicked(id); }}/>
-        </Drawer>
+        {newCardDrawer}
         {(
           <EmptyState
             icon={<CreditCard/>}
@@ -101,8 +114,8 @@ export function CardsView({card: initial = ""}: {card?: string}) {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
-        <Field label={t("finance.cards.card")} htmlFor="cd-pick">
-          <Select {...selectCopy()} id="cd-pick" aria-label={t("finance.cards.card")} value={card.id} className="w-56"
+        <Field label={t("finance.cards.card")} htmlFor="cd-pick" className="max-sm:w-full">
+          <Select {...selectCopy()} id="cd-pick" aria-label={t("finance.cards.card")} value={card.id} className="w-full sm:w-64"
             onValueChange={v => { setPicked(v); setMonth(null); setPanel(null); }}
             options={active.map(c => ({value: c.id, label: cardLabel(c), icon: <CardBrandMark brand={c.brand ?? "other"}/>}))}/>
         </Field>
@@ -117,17 +130,15 @@ export function CardsView({card: initial = ""}: {card?: string}) {
         </div>
       </div>
 
-      <Drawer open={panel === "purchase"} onClose={() => setPanel(null)} title={t("finance.cards.newPurchase")} description={card.name}>
+      <PanelDrawer open={panel === "purchase"} allowed={can("finance.write")} onClose={() => setPanel(null)} title={t("finance.cards.newPurchase")} description={card.name}>
         <PurchasePanel cardId={card.id} accounts={all} history={purchases.data?.data ?? []} onDone={() => setPanel(null)}/>
-      </Drawer>
-      <Drawer open={panel === "edit-card"} onClose={() => setPanel(null)} title={t("finance.cards.editNamed", {name: card.name})}>
+      </PanelDrawer>
+      <PanelDrawer open={panel === "edit-card"} allowed={can("finance.configure")} onClose={() => setPanel(null)} title={t("finance.cards.editNamed", {name: card.name})}>
         <CardForm key={card.id} card={card} accounts={all} onDone={() => setPanel(null)}/>
-      </Drawer>
-      <Drawer open={panel === "new-card"} onClose={() => setPanel(null)} title={t("finance.cards.new")}>
-        <CardForm accounts={all} onDone={id => { setPanel(null); if (id) { setPicked(id); setMonth(null); } }}/>
-      </Drawer>
+      </PanelDrawer>
+      {newCardDrawer}
 
-      <CardHeader card={card}/>
+      <CardHeader card={card} selected={shown} onSelect={setMonth}/>
 
       <StatementTimeline key={financeKeys.cardStatements(ctx.mode, ctx.space, card.id, card.open_month).join("|")} card={card} selected={shown} onSelect={setMonth}/>
 
@@ -139,21 +150,54 @@ export function CardsView({card: initial = ""}: {card?: string}) {
 }
 
 
-/** The card on screen: its mark, name and last digits, and when it closes and is due. */
-function CardHeader({card}: {card: Card}) {
+/**
+ * The card on screen: its mark, name and last digits, the cycle days, and what it
+ * owes next: the statement to pay or else the open one, with its total (forecast
+ * included), when it closes and when it is due in a person's words.
+ */
+function CardHeader({card, selected, onSelect}: {card: Card; selected: string; onSelect: (month: string) => void}) {
   const {t} = useTranslation();
+  const opening = useOpeningPage(card);
+  const {next} = outlook(flatten(opening.data ? [opening.data] : []), card.open_month);
   return (
-    <div data-card-header className="flex items-center gap-3 border-b border-border pb-3">
-      <CardBrandMark brand={card.brand ?? "other"} className="h-7 w-auto text-muted-foreground"/>
-      <div className="min-w-0">
-        <h2 className="flex flex-wrap items-baseline gap-x-2 text-base font-semibold tracking-[-0.01em] text-foreground">
-          <span className="min-w-0 [overflow-wrap:anywhere]">{card.name}</span>
-          {card.last4 && <span className="text-sm font-normal tabular-nums text-muted-foreground">{maskedLast4(card.last4)}</span>}
-        </h2>
-        <p className="text-xs text-muted-foreground">{t("finance.cards.cycle", {closing: card.closing_day, due: card.due_day})}</p>
+    <div data-card-header className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3 border-b border-border pb-3">
+      <div className="flex min-w-0 items-center gap-3">
+        <CardBrandMark brand={card.brand ?? "other"} className="text-muted-foreground"/>
+        <div className="min-w-0">
+          <h2 className="flex flex-wrap items-baseline gap-x-2 text-base font-semibold tracking-[-0.01em] text-foreground">
+            <span className="min-w-0 [overflow-wrap:anywhere]">{card.name}</span>
+            {card.last4 && <span className="text-sm font-normal tabular-nums text-muted-foreground">{maskedLast4(card.last4)}</span>}
+          </h2>
+          <p className="text-xs text-muted-foreground">{t("finance.cards.cycle", {closing: card.closing_day, due: card.due_day})}</p>
+        </div>
       </div>
+      {next && <NextStatement statement={next} owed={next.status === "closed"} open={selected === next.month} onSelect={() => onSelect(next.month)}/>}
     </div>
   );
+}
+
+/** What is due next, as one block: the figure first, then the dates. Pressing it shows that statement. */
+function NextStatement({statement: s, owed, open, onSelect}: {statement: StatementSummary; owed: boolean; open: boolean; onSelect: () => void}) {
+  const {t} = useTranslation();
+  const rel = !owed && s.due_date < todayIso() ? null : dueLabel(s.due_date, todayIso());
+  const late = owed && s.due_date < todayIso();
+  const body = (
+    <>
+      <span className="text-xs text-muted-foreground">{t(owed ? "finance.cards.next.owed" : "finance.cards.next.open", {month: monthShort(s.month)})}</span>
+      <StatementTotal posted={s.total} forecast={s.forecast_total ?? 0} estimated={s.forecast_estimated} size="lg"/>
+      <span className="text-xs tabular-nums text-muted-foreground">
+        {!owed && <>{t("finance.cards.closesShort", {date: dayMonth(s.closing_date)})}{" · "}</>}
+        <span className={rel ? `font-medium ${late ? "text-danger" : "text-foreground"}` : undefined}>
+          {rel ? `${rel} · ${dayMonth(s.due_date)}` : t("finance.cards.dueShort", {date: dayMonth(s.due_date)})}
+        </span>
+      </span>
+    </>
+  );
+  const cls = "flex min-w-0 flex-col items-start gap-0.5 text-left";
+  // Selected, from `sm` the statement's own summary below the strip says the same: it is not repeated.
+  return open
+    ? <div data-next-statement className={`${cls} sm:hidden`}>{body}</div>
+    : <button type="button" data-next-statement onClick={onSelect} className={`${cls} touch-target -m-1 rounded-lg p-1 outline-none hover:bg-surface focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2`}>{body}</button>;
 }
 
 function StatementBlock({card, month, accounts, purchases, purchasesError, retryPurchases, onNeedPurchases}: {
@@ -180,33 +224,8 @@ function StatementBlock({card, month, accounts, purchases, purchasesError, retry
         <ErrorBlock error={q.error} onRetry={() => void q.refetch()}/>
       ) : (
         <>
-          <Summary statement={s}/>
-          <section aria-labelledby="card-recurring-forecast" className="space-y-2 border-t border-border pt-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h3 id="card-recurring-forecast" className="text-sm font-medium">{t("finance.cards.recurringForecast")}</h3>
-            </div>
-            {forecast.isLoading ? <Skeleton className="h-12 w-full"/> : forecast.error ? <ErrorBlock error={forecast.error} onRetry={() => void forecast.refetch()}/> : (forecast.data?.data.length ?? 0) === 0 ? (
-              <p className="text-sm text-muted-foreground">{t("finance.cards.noRecurringForecast")}</p>
-            ) : <>
-              <ul className="divide-y divide-border border-y border-border">
-                {forecast.data!.data.map((item, index) => <li key={`${item.recurrence_id}-${item.nominal}-${item.installment}-${index}`} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
-                  <span className="min-w-0 truncate">{item.description || t("finance.cards.recurringPurchase")} · {shortDate(item.nominal)}{item.of > 1 ? ` · ${item.installment}/${item.of}` : ""}{item.pending_confirmation ? ` · ${t("finance.cards.awaitingConfirmation")}` : ""}</span>
-                  <span className="tabular-nums">{money(item.amount)}</span>
-                </li>)}
-              </ul>
-              <dl className="grid gap-1 text-sm">
-                <div className="flex items-baseline justify-between gap-3">
-                  <dt className="text-muted-foreground">{t("finance.cards.forecastSubtotal")}</dt>
-                  <dd data-numeric className="tabular-nums">{money(forecastSum)}</dd>
-                </div>
-                <div className="flex items-baseline justify-between gap-3 font-semibold">
-                  <dt>{t("finance.cards.forecastExpectedTotal")}</dt>
-                  <dd data-numeric className="tabular-nums">{signedMoney(s.total + forecastSum)}</dd>
-                </div>
-              </dl>
-              <p className="text-xs text-muted-foreground">{t("finance.cards.forecastNotInTotal")}</p>
-            </>}
-          </section>
+          <Summary statement={s} forecast={forecastSum} estimated={(forecast.data?.data ?? []).some(item => item.pending_confirmation)}
+            forecastState={forecast.isLoading ? "loading" : forecast.error ? "error" : undefined}/>
           {s.status === "open" && can("finance.write") && action !== "close" && (
             <Button variant="outline" size="sm" onClick={() => setAction("close")}>{t("finance.cards.closeNow")}</Button>
           )}
@@ -221,8 +240,32 @@ function StatementBlock({card, month, accounts, purchases, purchasesError, retry
             />
           )}
           {action === "pay" && s.bill_id && <PayStatement billId={s.bill_id} accounts={accounts} onDone={() => setAction(null)}/>}
+          <Section title={t("finance.cards.recurringForecast")} className="space-y-2 border-t border-border pt-3">
+            {forecast.isLoading ? <Skeleton className="h-12 w-full"/> : forecast.error ? <ErrorBlock error={forecast.error} onRetry={() => void forecast.refetch()}/> : (forecast.data?.data.length ?? 0) === 0 ? (
+              <p className="text-sm text-muted-foreground">{t("finance.cards.noRecurringForecast")}</p>
+            ) : <>
+              <ul className="divide-y divide-border border-y border-border">
+                {forecast.data!.data.map((item, index) => <li key={`${item.recurrence_id}-${item.nominal}-${item.installment}-${index}`} className="flex items-start justify-between gap-3 py-2 text-sm">
+                  <span className="min-w-0">
+                    <span className="block [overflow-wrap:anywhere]">{item.description || t("finance.cards.recurringPurchase")}</span>
+                    <span className="block text-xs text-muted-foreground">
+                      {shortDate(item.nominal)}{item.of > 1 ? ` · ${item.installment}/${item.of}` : ""}{item.pending_confirmation ? ` · ${t("finance.cards.awaitingConfirmation")}` : ""}
+                    </span>
+                  </span>
+                  <Amount>{money(item.amount)}</Amount>
+                </li>)}
+              </ul>
+              <dl className="grid gap-1 text-sm">
+                <div className="flex items-baseline justify-between gap-3">
+                  <dt className="text-muted-foreground">{t("finance.cards.forecastSubtotal")}</dt>
+                  <dd data-numeric className="tabular-nums">{money(forecastSum)}</dd>
+                </div>
+              </dl>
+              <p className="text-xs text-muted-foreground">{t("finance.cards.forecastInTotal")}</p>
+            </>}
+          </Section>
           {s.items.length === 0 ? (
-            <p className="py-6 text-center text-sm text-muted-foreground">{t("finance.cards.noPurchases")}</p>
+            <EmptyState title={t("finance.cards.noPurchases")} className="py-8"/>
           ) : (
             <ul className="divide-y divide-border border-y border-border">
               {s.items.map(it => (
@@ -238,20 +281,24 @@ function StatementBlock({card, month, accounts, purchases, purchasesError, retry
   );
 }
 
-function Summary({statement: s}: {statement: CardStatement}) {
+function Summary({statement: s, forecast, estimated, forecastState}: {statement: CardStatement; forecast: number; estimated: boolean; forecastState?: "loading" | "error"}) {
   const {t} = useTranslation();
   const closed = s.status === "closed" || s.status === "paid";
-  const state = statementState(s, todayIso());
-  const {tone, icon: Icon} = STATUS[state];
+  const today = todayIso();
+  const state = statementState(s, today);
+  // Words only while it is still to be paid: a paid or future statement's "vence em" is noise.
+  // An open statement's due date is still ahead; a "venceu há" belongs only to an overdue one.
+  const rel = (s.status === "open" && s.due_date >= today) || s.status === "closed" ? dueLabel(s.due_date, today) : null;
   return (
     // On a phone the summary card above says all of this, one per screen.
     <div className="flex flex-wrap items-baseline justify-between gap-3 text-sm max-sm:hidden">
-      <div className="flex flex-wrap items-center gap-3">
-        <Badge tone={tone}><Icon aria-hidden/>{t(`finance.cards.status.${state}`)}</Badge>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <StatusBadge status={STATUS[state]}>{t(`finance.cards.status.${state}`)}</StatusBadge>
         <span className="text-muted-foreground">{t(closed ? "finance.cards.closedOn" : "finance.cards.closesOn", {date: shortDate(s.closing_date)})}</span>
         <span className="text-muted-foreground">{t("finance.cards.dueOn", {date: shortDate(s.due_date)})}</span>
+        {rel && <span className={`font-medium ${state === "overdue" ? "text-danger" : "text-foreground"}`}>{rel}</span>}
       </div>
-      <span data-numeric className="text-base font-semibold tabular-nums">{signedMoney(s.total)}</span>
+      <StatementTotal posted={s.total} forecast={forecast} estimated={estimated} forecastState={forecastState} size="lg" className="items-end text-right"/>
     </div>
   );
 }
@@ -292,7 +339,7 @@ function ItemRow({item, card, accounts, purchase, category, purchasesError, retr
           </>
         )}
       </>}
-      amount={<span data-numeric>{signedMoney(item.amount)}</span>}
+      amount={<Amount>{signedMoney(item.amount)}</Amount>}
       more={[
         ...(editable ? [{key: "edit", label: t("finance.cards.editPurchase"), expanded: action === "edit", onSelect: () => { onNeedPurchases(); setAction("edit"); }}] : []),
         ...(canAdvance ? [{key: "advance", label: t("finance.cards.advance"), expanded: action === "advance", onSelect: () => { onNeedPurchases(); setAction("advance"); }}] : []),
@@ -337,9 +384,8 @@ function PurchaseEditForm({card, purchase, accounts, onDone}: {card: Card; purch
   const id = `pe-${purchase.id}`;
   const moved = category !== purchase.category_id;
   return (
-    <form
+    <PanelForm
       aria-label={t("finance.cards.editPurchase")}
-      className="mt-3 grid items-start gap-3 rounded-lg bg-surface p-3 sm:grid-cols-2 motion-safe:animate-in motion-safe:fade-in [&>*]:min-w-0"
       onSubmit={e => {
         e.preventDefault();
         const body: PurchasePatch = {};
@@ -361,12 +407,12 @@ function PurchaseEditForm({card, purchase, accounts, onDone}: {card: Card; purch
         <Select {...selectCopy()} id={`${id}-c`} aria-label={t("bills.common.category")} value={category} {...fe.props("category_id", `${id}-c`)}
           onValueChange={v => { setCategory(v); fe.clear("category_id"); }} options={cats.map(a => ({value: a.id, label: accountName(a)}))}/>
       </Field>
-      <div className="flex flex-wrap items-center gap-2 sm:col-span-2">
+      <PanelActions>
         <Button type="submit" variant="brand" size="sm" disabled={description.trim() === "" || edit.isPending}>{t("bills.common.save")}</Button>
         <Button type="button" variant="outline" size="sm" onClick={onDone}>{t("finance.cards.back")}</Button>
-        {fe.general ? <p role="alert" className="text-sm text-danger">{fe.general}</p> : null}
-      </div>
-    </form>
+        <FormError error={edit.error} fe={fe} className=""/>
+      </PanelActions>
+    </PanelForm>
   );
 }
 
@@ -374,11 +420,7 @@ function Confirm({text, run, onDone}: {text: string; run: (c: FinanceCtx, key: s
   const {t} = useTranslation();
   const m = useFinanceMutation((c, _: void, key) => run(c, key), wholeSpace, onDone);
   return (
-    <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg bg-surface p-3 text-sm motion-safe:animate-in motion-safe:fade-in">
-      <p className="text-muted-foreground">{text}</p>
-      <Button size="sm" variant="outline" onClick={onDone}>{t("finance.cards.back")}</Button>
-      <Button size="sm" variant="brand" disabled={m.isPending} onClick={() => m.mutate()}>{t("finance.cards.confirm")}</Button>
-      {m.error ? <p role="alert" className="w-full text-sm text-danger">{messageFor(m.error)}</p> : null}
-    </div>
+    <InlineConfirm text={text} cancelLabel={t("finance.cards.back")} confirmLabel={t("finance.cards.confirm")} tone="brand"
+      pending={m.isPending} error={m.error ? <FormErrorText error={m.error}/> : null} onCancel={onDone} onConfirm={() => m.mutate()}/>
   );
 }

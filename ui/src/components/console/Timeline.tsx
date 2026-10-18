@@ -2,6 +2,7 @@ import {useTranslation} from "react-i18next";
 
 import type {AuditEntry} from "@/lib/api/consoleTypes";
 import {currentLocale} from "@/lib/i18n";
+import {Section} from "@/components/ui/Section";
 
 /**
  * The audit trail, as the screen an operator actually reads during an incident.
@@ -27,8 +28,7 @@ export function Timeline({entries}: { entries: AuditEntry[] }) {
   if (entries.length === 0) return null;
 
   return (
-    <section aria-labelledby="historico" className="space-y-3">
-      <h2 id="historico" className="text-sm font-medium text-muted-foreground">{t("console.timeline.title")}</h2>
+    <Section title={t("console.timeline.title")} tone="muted">
       <ul className="divide-y divide-border border-y border-border">
         {entries.map(entry => (
           <li key={entry.id} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 py-2">
@@ -61,6 +61,6 @@ export function Timeline({entries}: { entries: AuditEntry[] }) {
           </li>
         ))}
       </ul>
-    </section>
+    </Section>
   );
 }

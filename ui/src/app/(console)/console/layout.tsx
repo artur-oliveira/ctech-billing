@@ -7,7 +7,7 @@ import {useEffect} from "react";
 import {useTranslation} from "react-i18next";
 
 import {BillingShell, ShellContext, TestBanner} from "@/components/shell/BillingShell";
-import {renderLink} from "@/components/shell/renderLink";
+import {renderNavLink} from "@/components/shell/renderLink";
 import {MerchantInvitation} from "@/components/console/MerchantInvitation";
 import {MerchantStatusBand} from "@/components/console/MerchantStatusBand";
 import {OrganizationSwitch} from "@/components/console/OrganizationSwitch";
@@ -114,7 +114,7 @@ export default function ConsoleLayout({children}: LayoutProps<"/console">) {
       view="console"
       home="/console/overview"
       density="compact"
-      nav={groups.length > 0 && <SidebarNav label={t("console.nav.label")} groups={groups} renderLink={renderLink}/>}
+      nav={groups.length > 0 && <SidebarNav label={t("console.nav.label")} groups={groups} renderLink={renderNavLink}/>}
       // Whose billing, and the test mark beside it; the mode is switched in
       // the account menu and announced by the band above the page.
       context={selected && (

@@ -2,7 +2,7 @@
 
 import {type RenderLink, UserMenu} from "@aoctech/ui";
 import {useQuery, useQueryClient} from "@tanstack/react-query";
-import {FlaskConical, LayoutGrid, Radio, Receipt, Wallet} from "lucide-react";
+import {FlaskConical, Languages, LayoutGrid, Radio, Receipt, Wallet} from "lucide-react";
 import Link from "next/link";
 import {useTranslation} from "react-i18next";
 
@@ -10,6 +10,8 @@ import {consoleKeys, getConsoleSession} from "@/lib/api/console";
 import {isNoBillingAccount} from "@/lib/api/client";
 import {getSession, portalKeys} from "@/lib/api/portal";
 import {useAuth} from "@/lib/auth/AuthContext";
+import {changeAppLanguage} from "@/lib/i18n";
+import {normalizeLocale, persistLocalePreference} from "@/lib/locale";
 import {setMode} from "@/lib/console/mode";
 import {useMerchantOrg} from "@/lib/console/useMerchantOrg";
 import {useMode} from "@/lib/console/useMode";
@@ -94,13 +96,28 @@ export function AccountMenu({view}: {view: "portal" | "console" | "finance"}) {
           : []),
         {label: t("common.account.finance"), icon: <Wallet/>, href: FINANCE_HREF, current: view === "finance"},
       ]}
-      groups={view === "portal" ? [] : [{
-        label: t("console.mode.label"),
-        options: [
-          {label: t("console.mode.live"), icon: <Radio/>, current: mode === "live", onClick: () => chooseMode("live")},
-          {label: t("console.mode.test"), icon: <FlaskConical/>, current: mode === "test", onClick: () => chooseMode("test")},
-        ],
-      }]}
+      groups={[
+        ...(view === "portal" ? [] : [{
+          label: t("console.mode.label"),
+          options: [
+            {label: t("console.mode.live"), icon: <Radio/>, current: mode === "live", onClick: () => chooseMode("live")},
+            {label: t("console.mode.test"), icon: <FlaskConical/>, current: mode === "test", onClick: () => chooseMode("test")},
+          ],
+        }]),
+        // The bar's switch is hidden under `sm`; on a phone the language lives here.
+        {
+          label: t("common.language"),
+          options: (["pt-BR", "en"] as const).map(l => ({
+            label: l === "en" ? "English" : "Português",
+            icon: <Languages/>,
+            current: normalizeLocale(i18n.language) === normalizeLocale(l),
+            onClick: () => {
+              persistLocalePreference(l);
+              void changeAppLanguage(l);
+            },
+          })),
+        },
+      ]}
       onSignOut={logout}
     />
   );

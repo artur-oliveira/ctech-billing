@@ -1,7 +1,7 @@
 "use client";
 
 import limits from "@/lib/limits.json";
-import {Button, buttonVariants, Drawer, EmptyState, Field, Input, Select, Skeleton, Switch} from "@aoctech/ui";
+import {Button, buttonVariants, EmptyState, Field, Input, Select, Skeleton, Switch} from "@aoctech/ui";
 import {useQuery} from "@tanstack/react-query";
 import {CircleCheck, FileUp, Landmark} from "lucide-react";
 import Link from "next/link";
@@ -9,10 +9,16 @@ import {useState} from "react";
 import {useTranslation} from "react-i18next";
 
 import {CardBrandMark, maskedLast4} from "@/components/finance/CardBrandMark";
+import {MoneyInput} from "@/components/ui/MoneyInput";
+import {FormError, FormErrorText} from "@/components/finance/FormError";
+import {InlineConfirm} from "@/components/finance/InlineConfirm";
 import {LedgerRow} from "@/components/finance/LedgerRow";
+import {PanelForm} from "@/components/finance/PanelForm";
+import {PanelDrawer} from "@/components/finance/PanelDrawer";
 import {ErrorBlock} from "@/components/portal/ErrorBlock";
+import {Amount, AmountRow} from "@/components/ui/Amount";
 import {DateField} from "@/components/ui/DateField";
-import {messageFor} from "@/lib/api/client";
+import {Section} from "@/components/ui/Section";
 import {archiveAccount, createAccount, financeKeys, getSettings, listAccounts, listCards, listRecurrences, postOpeningBalance, renameAccount, setDefaultReceivingAccount, setPostCTechInvoices} from "@/lib/api/finance";
 import type {Account, AccountClass, AccountPatch, Card, DREGroup, OpeningBalance} from "@/lib/api/financeTypes";
 import {classLabel, dreGroupLabel, groupsForClass} from "@/lib/finance/labels";
@@ -20,10 +26,11 @@ import {selectCopy} from "@/lib/selectCopy";
 import {useFinanceMutation} from "@/lib/finance/useFinanceMutation";
 import {useCreateRequest} from "@/lib/createRequest";
 import {useFinanceCtx, useFinanceSpaces} from "@/lib/finance/useFinanceSpaces";
-import {money} from "@/lib/format";
-import {todayIso} from "@/lib/finance/today";
+import {money, signedMoney} from "@/lib/format";
+import {monthShort, timeHm, todayIso} from "@/lib/finance/today";
+import {PROJECTION_HORIZON, project, useProjection} from "@/lib/finance/projection";
 import {useFieldErrors} from "@/lib/useFieldErrors";
-import {maskMoney, moneyPlaceholder, parseSignedMoney} from "@/lib/money";
+import {parseSignedMoney} from "@/lib/money";
 import {accountName} from "@/lib/finance/accountName";
 
 const SECTIONS: {key: "accounts" | "income" | "expense" | "cards"; classes: AccountClass[]}[] = [
@@ -70,9 +77,9 @@ export function AccountsView() {
         )}
       </div>
 
-      <Drawer open={creating && configure} onClose={() => setCreating(false)} title={t("finance.accounts.new")}>
+      <PanelDrawer open={creating} allowed={configure} onClose={() => setCreating(false)} title={t("finance.accounts.new")}>
         {creating && <AccountForm onDone={() => setCreating(false)} offerImport={can("finance.import")}/>}
-      </Drawer>
+      </PanelDrawer>
 
       {q.isLoading ? (
         <div className="space-y-2" aria-busy><Skeleton className="h-5 w-40"/><Skeleton className="h-4 w-full"/><Skeleton className="h-4 w-5/6"/></div>
@@ -82,19 +89,20 @@ export function AccountsView() {
         <EmptyState
           icon={<Landmark/>}
           title={t("finance.accounts.empty")}
+          action={configure ? <Button variant="brand" size="sm" onClick={() => setCreating(true)}>{t("finance.accounts.new")}</Button> : undefined}
         />
       ) : (
         <>
+          <Summary accounts={accounts}/>
           {SECTIONS.map(section => {
             const rows = visible.filter(a => section.classes.includes(a.class));
             if (rows.length === 0) return null;
             return (
-              <section key={section.key} className="space-y-2" aria-labelledby={`sec-${section.key}`}>
-                <h2 id={`sec-${section.key}`} className="text-sm font-medium text-foreground">{t(`finance.accounts.sections.${section.key}`)}</h2>
+              <Section key={section.key} title={t(`finance.accounts.sections.${section.key}`)}>
                 <ul className="divide-y divide-border border-y border-border">
                   {rows.map(a => <AccountRow key={a.id} account={a} card={cardOf.get(a.id)} configure={configure}/>)}
                 </ul>
-              </section>
+              </Section>
             );
           })}
           {hasArchived && (
@@ -109,6 +117,34 @@ export function AccountsView() {
         </>
       )}
     </div>
+  );
+}
+
+/**
+ * "Quanto vou ter?" above the lists: what the cash accounts hold today and what
+ * the forecast leaves at the end of this month. The projection is the space's
+ * (receivable, payable, recurrences), never split per account, and is the cache
+ * entry the overview already reads.
+ */
+function Summary({accounts}: {accounts: Account[]}) {
+  const {t} = useTranslation();
+  const assets = accounts.filter(a => a.class === "asset" && !a.archived);
+  const proj = useProjection(PROJECTION_HORIZON);
+  if (assets.length === 0) return null;
+  const today = assets.reduce((n, a) => n + a.balance, 0);
+  const first = project(today, proj.data?.data ?? [])[0];
+  const tone = (cents: number) => (cents < 0 ? "danger" : "foreground");
+  return (
+    <Section title={t("finance.accounts.summary")} hideTitle>
+      <dl className="divide-y divide-border border-y border-border text-sm">
+        <AmountRow label={<span className="text-muted-foreground">{t("finance.overview.today")}</span>}><Amount tone={tone(today)}>{signedMoney(today)}</Amount></AmountRow>
+        <AmountRow strong label={first ? t("finance.accounts.forecast", {month: monthShort(first.month).toLowerCase()}) : t("finance.overview.future")}>
+          {proj.isLoading ? <Skeleton className="h-4 w-24"/> : first ? <Amount strong tone={tone(first.balance)}>{signedMoney(first.balance)}</Amount> : (
+            <Button variant="ghost" size="sm" onClick={() => void proj.refetch()}>{t("common.tryAgain")}</Button>
+          )}
+        </AmountRow>
+      </dl>
+    </Section>
   );
 }
 
@@ -144,12 +180,15 @@ function AccountRow({account, card, configure}: {account: Account; card?: Card; 
       leading={isCard ? <CardBrandMark brand={card?.brand ?? "other"} className="text-muted-foreground"/> : undefined}
       meta={meta.length > 0 ? <span className="tabular-nums">{meta.join(" • ")}</span> : undefined}
       // A card's balance is a credit: negative is what is owed.
-      amount={synced && account.provider_balance ? <span data-numeric>{money(account.provider_balance.available)}</span>
-        : account.class === "asset" ? <span data-numeric>{money(account.balance)}</span>
-        : isCard ? <span data-numeric>{account.balance < 0 ? t("finance.accounts.owed", {amount: money(-account.balance)}) : money(account.balance)}</span>
+      amount={synced && account.provider_balance ? <Amount>{signedMoney(account.provider_balance.available)}</Amount>
+        : account.class === "asset" ? <Amount tone={account.balance < 0 ? "danger" : "default"}>{signedMoney(account.balance)}</Amount>
+        : isCard ? <Amount>{account.balance < 0 ? t("finance.accounts.owed", {amount: money(-account.balance)}) : money(account.balance)}</Amount>
           : null}
-      actions={isCard && (
-        <Link href={`/finance/cards?card=${encodeURIComponent(account.id)}`} className="inline-flex items-center px-2.5 text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline touch-target">{t("finance.accounts.open")}</Link>
+      actions={(isCard || (account.class === "asset" && !account.archived)) && (
+        <Link href={isCard ? `/finance/cards?card=${encodeURIComponent(account.id)}` : `/finance/statement?account=${encodeURIComponent(account.id)}`}
+          className="inline-flex items-center px-2.5 text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline touch-target">
+          {isCard ? t("finance.accounts.open") : t("finance.nav.statement")}
+        </Link>
       )}
       more={configure && !account.archived ? [
         {key: "rename", label: t("finance.accounts.rename"), expanded: renaming, onSelect: () => setRenaming(v => !v)},
@@ -161,13 +200,14 @@ function AccountRow({account, card, configure}: {account: Account; card?: Card; 
       {synced && <SyncedFacts account={account}/>}
       {renaming && <RenameForm account={account} onDone={() => setRenaming(false)}/>}
       {confirming && (
-        <div className="mt-2 flex flex-wrap items-center gap-2 text-sm motion-safe:animate-in motion-safe:fade-in">
-          {paidByCard > 0 && <p className="w-full text-foreground">{t("finance.accounts.archiveCardWarning", {count: paidByCard})}</p>}
-          <p className="text-muted-foreground">{t("finance.accounts.archiveConfirm", {name: accountName(account)})}</p>
-          <Button size="sm" variant="outline" onClick={() => setConfirming(false)}>{t("finance.accounts.cancel")}</Button>
-          <Button size="sm" variant="brand" disabled={archive.isPending} onClick={() => archive.mutate(account.id)}>{t("finance.accounts.archive")}</Button>
-          {archive.error && <p role="alert" className="w-full text-danger">{messageFor(archive.error)}</p>}
-        </div>
+        <InlineConfirm className="mt-2" tone="brand"
+          text={<>
+            {paidByCard > 0 && <span className="mb-1 block">{t("finance.accounts.archiveCardWarning", {count: paidByCard})}</span>}
+            {t("finance.accounts.archiveConfirm", {name: accountName(account)})}
+          </>}
+          cancelLabel={t("finance.accounts.cancel")} confirmLabel={t("finance.accounts.archive")}
+          pending={archive.isPending} error={archive.error ? <FormErrorText error={archive.error}/> : null}
+          onCancel={() => setConfirming(false)} onConfirm={() => archive.mutate(account.id)}/>
       )}
       {opening && <OpeningForm account={account} onDone={() => setOpening(false)}/>}
     </LedgerRow>
@@ -196,9 +236,9 @@ function RenameForm({account, onDone}: {account: Account; onDone: () => void}) {
   const ready = next !== "" && next !== shown && !save.isPending;
   const id = `rn-${account.id}`;
   return (
-    <form
+    <PanelForm
       aria-label={t("finance.accounts.renameNamed", {name: shown})}
-      className="mt-2 grid items-start gap-3 rounded-lg bg-surface p-3 sm:grid-cols-[minmax(0,24rem)_auto] motion-safe:animate-in motion-safe:fade-in"
+      columns="sm:grid-cols-[minmax(0,24rem)_auto]"
       onSubmit={e => {
         e.preventDefault();
         if (!ready) return;
@@ -215,8 +255,8 @@ function RenameForm({account, onDone}: {account: Account; onDone: () => void}) {
         <Button type="button" variant="outline" size="sm" onClick={onDone}>{t("finance.accounts.cancel")}</Button>
         <Button type="submit" variant="brand" size="sm" disabled={!ready}>{t("finance.accounts.save")}</Button>
       </div>
-      {fe.general ? <p role="alert" className="text-sm text-danger sm:col-span-2">{fe.general}</p> : null}
-    </form>
+      <FormError error={save.error} fe={fe} className="sm:col-span-2"/>
+    </PanelForm>
   );
 }
 
@@ -238,8 +278,7 @@ function OpeningForm({account, onDone}: {account: Account; onDone: () => void}) 
   );
   const amount = parseSignedMoney(text);
   return (
-    <form
-      className="mt-2 grid items-start gap-3 rounded-lg bg-surface p-3 sm:grid-cols-[1fr_1fr_auto] motion-safe:animate-in motion-safe:fade-in"
+    <PanelForm columns="sm:grid-cols-[1fr_1fr_auto]"
       onSubmit={e => {
         e.preventDefault();
         if (amount === null) return;
@@ -248,7 +287,7 @@ function OpeningForm({account, onDone}: {account: Account; onDone: () => void}) 
       }}
     >
       <Field label={t("finance.accounts.amount")} htmlFor={`ob-${account.id}`} error={fe.of("amount")}>
-        <Input id={`ob-${account.id}`} inputMode="decimal" placeholder={moneyPlaceholder()} value={text} {...fe.props("amount", `ob-${account.id}`)} onChange={e => { setText(maskMoney(e.target.value, {signed: true})); fe.clear("amount"); }} autoFocus/>
+        <MoneyInput id={`ob-${account.id}`} signed value={text} {...fe.props("amount", `ob-${account.id}`)} onValueChange={v => { setText(v); fe.clear("amount"); }} autoFocus/>
       </Field>
       <Field label={t("finance.accounts.on")} htmlFor={`obd-${account.id}`} error={fe.of("date")}>
         <DateField id={`obd-${account.id}`} min={limits.minDate} max={todayIso()} value={date} invalid={!!fe.of("date")} onValueChange={v => { setDate(v); fe.clear("date"); }}/>
@@ -257,8 +296,8 @@ function OpeningForm({account, onDone}: {account: Account; onDone: () => void}) 
         <Button type="button" variant="outline" size="sm" onClick={onDone}>{t("finance.accounts.close")}</Button>
         <Button type="submit" variant="brand" size="sm" disabled={amount === null || post.isPending}>{t("finance.accounts.save")}</Button>
       </div>
-      {fe.general ? <p role="alert" className="text-sm text-danger sm:col-span-3">{fe.general}</p> : null}
-    </form>
+      <FormError error={post.error} fe={fe} className="sm:col-span-3"/>
+    </PanelForm>
   );
 }
 
@@ -326,7 +365,7 @@ function AccountForm({onDone, offerImport}: {onDone: () => void; offerImport: bo
       ) : asset ? (
         <>
           <Field label={t("finance.accounts.openingOptional")} htmlFor="acc-opening">
-            <Input id="acc-opening" inputMode="decimal" placeholder={moneyPlaceholder()} value={openingText} onChange={e => setOpeningText(maskMoney(e.target.value, {signed: true}))} aria-invalid={openingInvalid}/>
+            <MoneyInput id="acc-opening" signed value={openingText} onValueChange={setOpeningText} aria-invalid={openingInvalid}/>
           </Field>
           {openingText.trim() !== "" && (
             <Field label={t("finance.accounts.on")} htmlFor="acc-opening-date">
@@ -339,7 +378,7 @@ function AccountForm({onDone, offerImport}: {onDone: () => void; offerImport: bo
         <Button type="button" variant="outline" size="sm" onClick={onDone}>{t("finance.accounts.cancel")}</Button>
         <Button type="submit" variant="brand" size="sm" disabled={create.isPending || opening.isPending || create.isSuccess || !name.trim() || openingInvalid}>{t("finance.accounts.create")}</Button>
       </div>
-      {fe.general && <p role="alert" className="text-sm text-danger sm:col-span-2">{fe.general}</p>}
+      <FormError error={create.error} fe={fe} className="sm:col-span-2"/>
       {opening.error && opening.variables && (
         <div role="alert" className="flex flex-wrap items-center gap-2 text-sm sm:col-span-2">
           <p className="text-danger">{t("finance.accounts.openingFailed")}</p>
@@ -400,7 +439,7 @@ function DefaultReceiving({accounts}: {accounts: Account[]}) {
           />
         </div>
       </Field>
-      {save.error && <p role="alert" className="text-sm text-danger">{messageFor(save.error)}</p>}
+      <FormError error={save.error} className=""/>
     </section>
   );
 }
@@ -417,7 +456,7 @@ function PostCTechInvoices() {
   const on = save.isPending ? save.variables : settings.data?.post_ctech_invoices !== false;
   return (
     <section className="space-y-1 border-t border-border pt-4">
-      <div className="flex items-center gap-3">
+      <div className="flex min-h-11 items-center gap-3">
         <Switch
           id="post-ctech-invoices"
           aria-labelledby="post-ctech-invoices-label"
@@ -429,14 +468,10 @@ function PostCTechInvoices() {
         <span id="post-ctech-invoices-label" className="text-sm font-medium">{t("finance.accounts.postCTechInvoices")}</span>
       </div>
       <p id="post-ctech-invoices-help" className="text-sm text-muted-foreground">{t("finance.accounts.postCTechInvoicesHelp")}</p>
-      {save.error && <p role="alert" className="text-sm text-danger">{messageFor(save.error)}</p>}
+      <FormError error={save.error} className=""/>
     </section>
   );
 }
-
-/** "14:05" in São Paulo, the clock the person reads. */
-const hhmm = (instant: string) =>
-  new Intl.DateTimeFormat("pt-BR", {hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo"}).format(new Date(instant));
 
 /**
  * Under a bank-synced account (BYOK spec § 8.1, § 11.3): whose balance this
@@ -451,7 +486,7 @@ function SyncedFacts({account}: {account: Account}) {
   const diff = pb ? account.balance - pb.available : 0;
   return (
     <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
-      {pb && <span className="text-muted-foreground">{t("connections.unclassified.updatedAt", {time: hhmm(pb.synced_at)})}</span>}
+      {pb && <span className="text-muted-foreground">{t("connections.unclassified.updatedAt", {time: timeHm(pb.synced_at)})}</span>}
       {count > 0 && (
         <Link href={`/finance/unclassified?account=${encodeURIComponent(account.id)}`} className="text-brand-600 underline-offset-4 hover:underline touch-target">
           {t("connections.unclassified.count", {count})}

@@ -26,6 +26,13 @@ describe("TransferPanel", () => {
     expect(await optionsOf("Para")).toEqual(["Poupança"]);
   });
 
+  it("says why when fewer than two accounts can take a transfer, and ignores an origin that is not offered", () => {
+    const synced: Account = {id: "bk", name: "Banco", class: "asset", system: false, archived: false, balance: 0, source: "byok"};
+    renderWithQuery(<TransferPanel accounts={[ACCOUNTS[0], synced]} from="bk" onDone={() => {}}/>);
+    expect(screen.getByRole("note")).toHaveTextContent(/duas contas/i);
+    expect(screen.getByRole("combobox", {name: "De"})).not.toHaveTextContent("Banco");
+  });
+
   it("refuses a transfer to the same account", async () => {
     renderWithQuery(<TransferPanel accounts={ACCOUNTS} onDone={() => {}}/>);
     await pick("De", "Conta corrente");

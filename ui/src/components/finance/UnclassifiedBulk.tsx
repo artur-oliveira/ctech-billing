@@ -1,18 +1,18 @@
 "use client";
 
-import {Button, Checkbox, Field, Modal, Select} from "@aoctech/ui";
+import {Button, Field, Modal, Select} from "@aoctech/ui";
 import {useQueryClient} from "@tanstack/react-query";
-import {useRef, useState} from "react";
+import {useEffect, useRef, useState} from "react";
 import {useTranslation} from "react-i18next";
 import {toast} from "sonner";
 
+import {Checkbox} from "@/components/ui/Checkbox";
 import {classify, connectionKeys} from "@/lib/api/connections";
 import type {UnclassifiedLine} from "@/lib/api/connectionsTypes";
-import {messageFor, problemCode} from "@/lib/api/client";
+import {messageFor} from "@/lib/api/client";
 import {financeKeys} from "@/lib/api/finance";
 import type {Account} from "@/lib/api/financeTypes";
 import type {Intent} from "@/lib/api/idempotency";
-import {codeMessage} from "@/lib/errors";
 import {accountName} from "@/lib/finance/accountName";
 import {directionOf, runBulk, type BulkBody, type BulkProgress} from "@/lib/finance/bulkClassify";
 import {useFinanceCtx} from "@/lib/finance/useFinanceSpaces";
@@ -33,12 +33,14 @@ interface Failure {
  * dropped. A category has a direction (income or expense), so entradas and saídas
  * together can only go to a transfer.
  */
-export function UnclassifiedBulk({lines, selected, onSelected, account, accounts}: {
+export function UnclassifiedBulk({lines, selected, onSelected, account, accounts, onFinished}: {
   lines: UnclassifiedLine[]
   selected: ReadonlySet<string>
   onSelected: (update: (cur: ReadonlySet<string>) => ReadonlySet<string>) => void
   account: string
   accounts: Account[]
+  /** A run ended: lines left the list, so focus must not fall to <body>. */
+  onFinished?: () => void
 }) {
   const {t} = useTranslation();
   const ctx = useFinanceCtx();
@@ -63,6 +65,7 @@ export function UnclassifiedBulk({lines, selected, onSelected, account, accounts
   const body = (): BulkBody => (kind === "category" ? {category_id: target} : {transfer_account_id: target});
 
   const allSelected = lines.length > 0 && lines.every(l => selected.has(l.tx_id));
+  const someSelected = chosen.length > 0 && !allSelected;
   const toggleAll = () => onSelected(() => (allSelected ? new Set() : new Set(lines.map(l => l.tx_id))));
 
   async function run(ids: string[]) {
@@ -82,8 +85,9 @@ export function UnclassifiedBulk({lines, selected, onSelected, account, accounts
     });
     stop.current = null;
     setProgress(null);
+    onFinished?.();
     void qc.invalidateQueries({queryKey: financeKeys.all(ctx.mode, ctx.space)});
-    const failed = res.failed.map(f => ({id: f.id, message: reason(f.error)}));
+    const failed = res.failed.map(f => ({id: f.id, message: messageFor(f.error)}));
     setFailures(failed);
     if (failed.length === 0 && !res.cancelled) {
       toast.success(t("connections.unclassified.bulk.finished", {count: res.done.length}));
@@ -93,11 +97,27 @@ export function UnclassifiedBulk({lines, selected, onSelected, account, accounts
     }
   }
 
+  const panel = useRef<HTMLElement>(null);
+  // The bar rides along only while the controls are out of sight (no observer, no hiding).
+  const [panelSeen, setPanelSeen] = useState(false);
+  useEffect(() => {
+    const el = panel.current;
+    if (!el || typeof IntersectionObserver === "undefined") return undefined;
+    const io = new IntersectionObserver(([e]) => setPanelSeen(e.isIntersecting));
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+  const jump = () => {
+    panel.current?.scrollIntoView?.({block: "start", behavior: "smooth"});
+    panel.current?.querySelector<HTMLElement>("#bulk-target, #bulk-kind")?.focus({preventScroll: true});
+  };
+
   return (
-    <section aria-label={t("connections.unclassified.bulk.title")} className="space-y-3 rounded-lg border border-border bg-muted/30 p-3">
+    <>
+    <section ref={panel} aria-label={t("connections.unclassified.bulk.title")} className="scroll-mt-20 space-y-3 rounded-lg border border-border bg-muted/30 p-3">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <label className="flex items-center gap-2 text-sm text-foreground touch:min-h-11">
-          <Checkbox checked={allSelected} disabled={running} onCheckedChange={toggleAll}/>
+          <Checkbox checked={allSelected} indeterminate={someSelected} disabled={running} onCheckedChange={toggleAll}/>
           <span>{t("connections.unclassified.bulk.selectAll")}</span>
         </label>
         <p className="text-sm text-muted-foreground" aria-live="polite">{t("connections.unclassified.bulk.selected", {count: chosen.length})}</p>
@@ -107,7 +127,7 @@ export function UnclassifiedBulk({lines, selected, onSelected, account, accounts
       </div>
 
       {chosen.length > 0 && !running && (
-        <div className="grid gap-2 sm:grid-cols-[12rem_minmax(0,16rem)_auto] sm:items-end">
+        <div className="grid gap-2 lg:grid-cols-[12rem_minmax(0,16rem)_auto] lg:items-end">
           <Field label={t("connections.unclassified.bulk.kind")} htmlFor="bulk-kind">
             <Select {...selectCopy()} id="bulk-kind" value={kind} onValueChange={v => { setKind(v as Kind); setTarget(""); }}
               options={[...(direction === "mixed" ? [] : [{value: "category", label: t("connections.unclassified.category")}]),
@@ -116,10 +136,10 @@ export function UnclassifiedBulk({lines, selected, onSelected, account, accounts
           <Field label={kind === "category" ? t("connections.unclassified.bulk.category") : t("connections.unclassified.bulk.account")} htmlFor="bulk-target">
             <Select {...selectCopy()} id="bulk-target" value={target} onValueChange={setTarget} options={options}/>
           </Field>
-          <Button variant="brand" size="sm" disabled={!target} onClick={() => setConfirming(true)} className="max-sm:w-full">
+          <Button variant="brand" size="sm" disabled={!target} onClick={() => setConfirming(true)} className="max-lg:w-full">
             {t("connections.unclassified.bulk.apply", {count: chosen.length})}
           </Button>
-          {direction === "mixed" && <p className="text-sm text-muted-foreground sm:col-span-3">{t("connections.unclassified.bulk.mixed")}</p>}
+          {direction === "mixed" && <p className="text-sm text-muted-foreground lg:col-span-3">{t("connections.unclassified.bulk.mixed")}</p>}
         </div>
       )}
 
@@ -152,13 +172,16 @@ export function UnclassifiedBulk({lines, selected, onSelected, account, accounts
 
       <Modal open={confirming} onClose={() => setConfirming(false)} title={t("connections.unclassified.bulk.confirmTitle", {count: chosen.length})}
         description={t("connections.unclassified.bulk.confirmBody", {target: targetLabel})}
-        submitLabel={t("connections.unclassified.save")} cancelLabel={t("connections.unclassified.bulk.cancel")}
+        submitLabel={t("connections.unclassified.bulk.apply", {count: chosen.length})} cancelLabel={t("connections.unclassified.bulk.cancel")}
         onSubmit={() => { setConfirming(false); void run(chosen.map(l => l.tx_id)); }}/>
     </section>
+    {/* Choosing is done at the bottom of a long list: the count and the way back to the controls ride along. */}
+    {chosen.length > 0 && !running && !panelSeen && (
+      <div className="z-20 -mx-1 flex items-center justify-between gap-3 rounded-lg border border-border bg-background px-3 py-1.5 shadow-sm [@media(min-height:500px)]:sticky [@media(min-height:500px)]:top-(--app-shell-bar)">
+        <span aria-hidden className="text-sm text-foreground">{t("connections.unclassified.bulk.selected", {count: chosen.length})}</span>
+        <Button variant="brand" size="sm" onClick={jump}>{t("connections.unclassified.bulk.apply", {count: chosen.length})}…</Button>
+      </div>
+    )}
+    </>
   );
-}
-
-function reason(error: unknown): string {
-  const code = problemCode(error);
-  return code ? codeMessage(code) : messageFor(error);
 }

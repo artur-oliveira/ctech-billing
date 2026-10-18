@@ -31,3 +31,35 @@ export function addYearsIso(iso: string, n: number): string {
   const last = new Date(year, m, 0).getDate();
   return `${year}-${String(m).padStart(2, "0")}-${String(Math.min(d, last)).padStart(2, "0")}`;
 }
+
+/** `iso` moved by n days (negative goes back), civil arithmetic only: no UTC read, no DST. */
+export function addDaysIso(iso: string, n: number): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  return todayIso(new Date(y, m - 1, d + n, 12));
+}
+
+/** "14:05" for an instant, on the São Paulo clock the whole product keeps, whatever the browser's zone. */
+export function timeHm(instant: string): string {
+  return new Intl.DateTimeFormat(currentLocale(), {hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo"}).format(new Date(instant));
+}
+
+/** Whole civil days from `from` to `to` (negative when `to` is earlier); no clock, no DST. */
+export function daysBetween(from: string, to: string): number {
+  const [fy, fm, fd] = from.split("-").map(Number);
+  const [ty, tm, td] = to.split("-").map(Number);
+  return Math.round((Date.UTC(ty, tm - 1, td) - Date.UTC(fy, fm - 1, fd)) / 86_400_000);
+}
+
+/**
+ * A due date as a person says it: "venceu há 5 dias", "vence hoje", "vence
+ * amanhã", "vence em 3 dias". Null beyond 30 days either way, where the date
+ * itself says more than a count.
+ */
+export function dueLabel(due: string, today: string): string | null {
+  const d = daysBetween(today, due);
+  if (Math.abs(d) > 30) return null;
+  if (d < 0) return t("bills.row.overdueBy", {count: -d});
+  if (d === 0) return t("bills.row.dueToday");
+  if (d === 1) return t("bills.row.dueTomorrow");
+  return t("bills.row.dueIn", {count: d});
+}

@@ -74,7 +74,7 @@ describe("F5 — cartões", () => {
     const row = (await screen.findByText("Geladeira")).closest("li") as HTMLElement;
     expect(within(row).getByText(/1\/3/)).toBeInTheDocument();
   });
-  it("loads recurring installment estimates with the statement and keeps them outside its total", async () => {
+  it("loads recurring installment estimates with the statement and adds them to its headline total", async () => {
     serve(ALL);
     const forecast = vi.spyOn(finance, "getCardStatementForecast").mockResolvedValue({data: [
       {recurrence_id: "r-food", description: "Mercado mensal", nominal: "2026-10-20", installment: 2, of: 3, amount: 10000},
@@ -85,12 +85,13 @@ describe("F5 — cartões", () => {
     await waitFor(() => expect(forecast).toHaveBeenCalledWith(expect.anything(), "visa", "2026-03"));
     const forecastBlock = within(block).getByRole("region", {name: "Previsão de recorrências"});
     expect(await within(forecastBlock).findByText(/Mercado mensal/)).toBeInTheDocument();
-    expect(within(forecastBlock).getByText(/Café.*aguardando confirmação/)).toBeInTheDocument();
+    expect(within(forecastBlock).getByText(/Café/)).toBeInTheDocument();
+    expect(within(forecastBlock).getByText(/aguardando confirmação/)).toBeInTheDocument();
     expect(within(forecastBlock).getByText(/R\$\s*100,00/)).toBeInTheDocument();
-    expect(within(forecastBlock).getByText("Estimativas não fazem parte do total da fatura até serem lançadas.")).toBeInTheDocument();
+    expect(within(forecastBlock).getByText(/Já somadas ao total da fatura acima/)).toBeInTheDocument();
     expect(forecast).toHaveBeenCalledWith(expect.anything(), "visa", "2026-03");
   });
-  it("shows what recurrences will still add under a statement's total, without touching the total", async () => {
+  it("shows posted plus forecast as the statement's one figure, the parts beneath it", async () => {
     const {range} = serve(ALL);
     const original = range.getMockImplementation()!;
     range.mockImplementation(async (...args) => {
@@ -99,16 +100,18 @@ describe("F5 — cartões", () => {
     });
     renderWithQuery(<CardsView/>);
     const march = await screen.findByRole("button", {name: /^Fatura de Mar\/26/});
-    expect(within(march).getByText(/R\$\s*100,00/)).toBeInTheDocument();
-    const line = within(march).getByText(/em recorrências/);
-    expect(line).toHaveTextContent(/\+\s*~R\$\s*340,00 em recorrências/);
-    expect(march).toHaveAccessibleName(/mais R\$\s*340,00 em recorrências previstas/);
-    expect(within(screen.getByRole("button", {name: /^Fatura de Abr\/26/})).getByText(/\+\s*R\$\s*120,00 em recorrências/)).toBeInTheDocument();
+    // 100,00 posted + 340,00 forecast: the headline is the sum, never the posted part alone.
+    expect(within(march).getByText("R$ 440,00")).toBeInTheDocument();
+    expect(within(march).getByText(/já lançado R\$\s*100,00 · recorrências previstas ~R\$\s*340,00 \(estimado\)/)).toBeInTheDocument();
+    expect(march).toHaveAccessibleName(/R\$\s*440,00: já lançado R\$\s*100,00 mais R\$\s*340,00 em recorrências previstas \(estimado\)/);
+    const april = screen.getByRole("button", {name: /^Fatura de Abr\/26/});
+    expect(within(april).getByText(/recorrências previstas R\$\s*120,00$/)).toBeInTheDocument();
+    expect(within(april).queryByText(/estimado/)).toBeNull();
     // A statement with nothing forecast says nothing about recurrences.
     expect(within(screen.getByRole("button", {name: /^Fatura de Fev\/26/})).queryByText(/recorrências/)).toBeNull();
   });
 
-  it("gives the expected total of the statement beside the recurrences' subtotal", async () => {
+  it("carries the expected total in the statement header, beside the recurrences' subtotal", async () => {
     serve(ALL);
     vi.spyOn(finance, "getCardStatementForecast").mockResolvedValue({data: [
       {recurrence_id: "r-food", description: "Mercado mensal", nominal: "2026-10-20", installment: 2, of: 3, amount: 10000},
@@ -119,18 +122,32 @@ describe("F5 — cartões", () => {
     const forecastBlock = await within(block).findByRole("region", {name: "Previsão de recorrências"});
     await within(forecastBlock).findByText(/Mercado mensal/);
     expect(within(forecastBlock).getByText("Recorrências previstas").parentElement).toHaveTextContent(/R\$\s*128,00/);
-    expect(within(forecastBlock).getByText("Total previsto da fatura").parentElement).toHaveTextContent(/R\$\s*228,00/);
+    // The same statement's header carries posted + forecast as one figure.
+    expect(within(block).getByText("R$ 228,00")).toBeInTheDocument();
+    expect(within(block).getByText(/já lançado R\$\s*100,00 · recorrências previstas ~R\$\s*128,00 \(estimado\)/)).toBeInTheDocument();
   });
 
   // Spec § 6.6.
-  it("opens on the open statement with three before and three after, selected", async () => {
+  it("opens on the open statement with one before and five after, selected", async () => {
     serve(ALL);
     renderWithQuery(<CardsView/>);
-    await waitFor(() => expect(inWindow()).toEqual(["2025-12", "2026-01", "2026-02", "2026-03", "2026-04", "2026-05", "2026-06"]));
+    await waitFor(() => expect(inWindow()).toEqual(["2026-02", "2026-03", "2026-04", "2026-05", "2026-06", "2026-07", "2026-08"]));
     const open = screen.getByRole("button", {name: /^Fatura de Mar\/26/});
     expect(open).toHaveAttribute("aria-pressed", "true");
     expect(within(open).getByText("Aberta")).toBeInTheDocument();
     expect(await screen.findByText("Geladeira")).toBeInTheDocument(); // the open statement's items, below
+  });
+
+  it("heads the card with what it owes next: the open statement, its total and its dates", async () => {
+    serve(ALL);
+    renderWithQuery(<CardsView/>);
+    const header = await waitFor(() => {
+      const el = document.querySelector<HTMLElement>("[data-card-header]")!;
+      expect(within(el).getByText("Aberta · Mar/26")).toBeInTheDocument();
+      return el;
+    });
+    expect(within(header).getByText("R$ 100,00")).toBeInTheDocument();
+    expect(header.textContent).toMatch(/Fecha 03\/03 · Vence 10\/03/);
   });
 
   it("pages beyond the loaded edge in both directions without asking for a loaded month again", async () => {
@@ -206,6 +223,14 @@ describe("F5 — cartões", () => {
       el.dispatchEvent(new Event("scroll"));
       await waitFor(() => expect(screen.getByRole("button", {name: /^Fatura de Abr\/26/})).toHaveAttribute("aria-pressed", "true"));
       await waitFor(() => expect(items).toHaveBeenCalledWith(expect.anything(), "visa", "2026-04"));
+    });
+
+    it("shows the next months' totals under the strip, so the future needs no swipe", async () => {
+      serve(ALL);
+      renderWithQuery(<CardsView/>);
+      const label = await screen.findByText("Próximos meses");
+      const row = label.parentElement!;
+      expect(within(row).getAllByRole("button").map(b => b.textContent?.replace(/\s/g, " "))).toEqual(["Abr/26R$ 100,00", "Mai/26R$ 100,00", "Jun/26R$ 100,00"]);
     });
 
     it("opens the strip on the open statement once the statements arrive", async () => {
@@ -369,7 +394,7 @@ describe("F5 — cartões", () => {
     await userEvent.click(within(form).getByRole("button", {name: "Salvar"}));
     // Bought after this month's closing day or not, one of the next two statements gains R$ 100,00.
     const totals = () => screen.getAllByRole("button", {name: /^Fatura de /}).map(b => b.getAttribute("aria-label"));
-    await waitFor(() => expect(totals().some(n => /(433|400),00(,|$)/.test(n ?? ""))).toBe(true));
+    await waitFor(() => expect(totals().some(n => /(433|400),00(,|$| mais)/.test(n ?? ""))).toBe(true));
     expect(inWindow()).toEqual(before);
     expect(screen.getByRole("button", {name: /Aberta/})).toHaveAttribute("data-month", month);
   });

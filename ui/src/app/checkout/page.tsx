@@ -15,6 +15,7 @@ import {Money} from "@/components/portal/Money";
 import {PixPanel} from "@/components/portal/PixPanel";
 import {LiveIndicator} from "@/components/realtime/LiveIndicator";
 import {StatusBadge} from "@/components/portal/StatusBadge";
+import {Section} from "@/components/ui/Section";
 import {checkoutKeys, getCheckout, payCheckout} from "@/lib/api/checkout";
 import {messageFor, statusOf} from "@/lib/api/client";
 import type {PixPayment} from "@/lib/api/types";
@@ -165,10 +166,7 @@ function CheckoutScreen() {
       )}
 
       {invoice.lines && invoice.lines.length > 0 && (
-        <section aria-labelledby="linhas" className="space-y-4">
-          <h2 id="linhas" className="text-sm font-medium text-muted-foreground">
-            {t("checkout.lines")}
-          </h2>
+        <Section title={t("checkout.lines")} tone="muted" className="space-y-4">
           <ul className="space-y-3">
             {invoice.lines.map((line, i) => (
               <li key={i} className="flex items-baseline justify-between gap-4">
@@ -189,7 +187,7 @@ function CheckoutScreen() {
             <span className="text-sm font-medium text-foreground">{t("checkout.total")}</span>
             <Money cents={invoice.amount_due} currency={invoice.currency}/>
           </div>
-        </section>
+        </Section>
       )}
     </Shell>
   );

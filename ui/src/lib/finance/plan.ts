@@ -87,3 +87,20 @@ export function suggestBasic(state: PlanState, options: PlanOption[], current: P
   const basic = options.find(o => o.key === "basic");
   return basic && basic.monthly !== null && state.projected_ondemand_cents > basic.monthly ? basic : null;
 }
+
+export type PlanStatus = "pendingPayment" | "pastDue" | "trial" | "ends"
+
+/**
+ * The one thing about the subscription worth a badge, in order of urgency: an
+ * unpaid first invoice, a late renewal, a trial, an ending. Null for a plan that
+ * is simply running (or no subscription): that is the unmarked case.
+ */
+export function planStatus(state: PlanState): PlanStatus | null {
+  const sub = state.subscription;
+  if (!sub) return null;
+  if (sub.status === "INCOMPLETE") return "pendingPayment";
+  if (sub.status === "PAST_DUE") return "pastDue";
+  if (sub.cancel_at_period_end) return "ends";
+  if (sub.status === "TRIALING") return "trial";
+  return null;
+}

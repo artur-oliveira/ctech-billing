@@ -1,7 +1,7 @@
 import {describe, expect, it} from "vitest";
 
 import type {StatementSummary} from "@/lib/api/financeTypes";
-import {edges, flatten, initialParam, keepVisible, nextParam, previousParam, shiftMonth, stepWindow, type TimelinePage, windowAt} from "@/lib/finance/statementTimeline";
+import {edges, flatten, initialParam, keepVisible, nextParam, outlook, previousParam, shiftMonth, stepWindow, timelineSize, type TimelinePage, windowAt} from "@/lib/finance/statementTimeline";
 
 const s = (month: string): StatementSummary => ({card_id: "c", month, status: "future", closing_date: `${month}-03`, due_date: `${month}-10`, total: 0, items_count: 0});
 const page = (direction: "forward" | "backward", months: string[], has_more: boolean, from = months[0]): TimelinePage =>
@@ -13,8 +13,8 @@ describe("statement timeline paging", () => {
     expect(shiftMonth("2026-11", 3)).toBe("2027-02");
   });
 
-  it("opens with one request for 3 before, the open one and 3 after", () => {
-    expect(initialParam("2026-03")).toEqual({from: "2025-12", direction: "forward", count: 7});
+  it("opens with one request for 1 before, the open one and the 5 after", () => {
+    expect(initialParam("2026-03")).toEqual({from: "2026-02", direction: "forward", count: 7});
   });
 
   it("asks beyond the loaded edge in each direction, and stops when there is no more", () => {
@@ -44,5 +44,26 @@ describe("statement timeline paging", () => {
     expect(keepVisible(months, "2026-03", 7, "2026-01")).toBe("2026-01");
     expect(edges(months, "2025-12", 7)).toEqual({before: 0, after: 3});
     expect(edges(months, "2026-03", 7)).toEqual({before: 3, after: 0});
+  });
+});
+
+describe("timeline size and outlook", () => {
+  it("sizes the row by the box, not the window", () => {
+    expect(timelineSize(0, 5)).toBe(5); // not measured yet: the viewport's guess
+    expect(timelineSize(330, 7)).toBe(1); // a phone: the swipe strip
+    expect(timelineSize(480, 5)).toBe(2); // tablet with the sidebar open
+    expect(timelineSize(720, 7)).toBe(4);
+    expect(timelineSize(1400, 5)).toBe(7);
+  });
+
+  it("puts what is owed first, else the open one, then the months after the open one", () => {
+    const m = (month: string, status: StatementSummary["status"], total = 0, bill_id?: string): StatementSummary => ({...s(month), status, total, bill_id});
+    const all = [m("2026-02", "closed", 500, "b1"), m("2026-03", "open", 100), m("2026-04", "future"), m("2026-05", "future"), m("2026-06", "future"), m("2026-07", "future")];
+    expect(outlook(all, "2026-03").next?.month).toBe("2026-02");
+    expect(outlook(all, "2026-03").upcoming.map(x => x.month)).toEqual(["2026-04", "2026-05", "2026-06"]);
+    const settled = [m("2026-02", "paid", 500, "b1"), ...all.slice(1)];
+    expect(outlook(settled, "2026-03").next?.month).toBe("2026-03");
+    expect(outlook(settled, "2026-03").upcoming.map(x => x.month)).toEqual(["2026-04", "2026-05", "2026-06"]);
+    expect(outlook([], "2026-03")).toEqual({next: undefined, upcoming: []});
   });
 });

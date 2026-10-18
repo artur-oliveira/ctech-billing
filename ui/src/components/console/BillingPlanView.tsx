@@ -7,6 +7,7 @@ import {useTranslation} from "react-i18next";
 import {toast} from "sonner";
 
 import {ErrorBlock} from "@/components/portal/ErrorBlock";
+import {Section} from "@/components/ui/Section";
 import {messageFor} from "@/lib/api/client";
 import {changeBillingPlan, consoleKeys, getBillingPlan} from "@/lib/api/console";
 import type {BillingPlanOption, BillingPlanState} from "@/lib/api/consoleTypes";
@@ -158,14 +159,13 @@ function Usage({state}: {state: BillingPlanState}) {
   const line = (key: string, used: number, quota: number) =>
     quota < 0 ? t(`console.plan.usage.${key}Unlimited`, {used}) : t(`console.plan.usage.${key}`, {used, quota});
   return (
-    <section aria-labelledby="plan-usage" className="space-y-2">
-      <h2 id="plan-usage" className="text-sm font-medium text-muted-foreground">{t("console.plan.usage.title")}</h2>
+    <Section title={t("console.plan.usage.title")} tone="muted" className="space-y-2">
       <p className="text-lg font-semibold tabular-nums">{line("charges", u.charges_this_month, u.quota)}</p>
       <ul className="space-y-0.5 text-sm tabular-nums text-muted-foreground">
         <li>{line("subscriptions", u.subscriptions_active, u.subscriptions_quota)}</li>
         <li>{line("connections", u.bank_connections, u.bank_connections_quota)}</li>
       </ul>
-    </section>
+    </Section>
   );
 }
 

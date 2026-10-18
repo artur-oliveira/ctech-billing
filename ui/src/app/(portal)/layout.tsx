@@ -11,7 +11,7 @@ import {PortalSpaceScope} from "@/components/portal/PortalSpaceScope";
 import {PortalSpaceSwitch} from "@/components/portal/PortalSpaceSwitch";
 import {PortalBottomNav} from "@/components/portal/PortalBottomNav";
 import {BillingShell} from "@/components/shell/BillingShell";
-import {renderLink} from "@/components/shell/renderLink";
+import {renderNavLink} from "@/components/shell/renderLink";
 import {TermsGate} from "@/components/portal/TermsGate";
 import {isNoBillingAccount} from "@/lib/api/client";
 import {getSession, portalKeys} from "@/lib/api/portal";
@@ -79,7 +79,7 @@ export default function PortalLayout({children}: LayoutProps<"/">) {
       view="portal"
       home="/dashboard"
       density="comfortable"
-      nav={!noAccount && <SidebarNav label={t("portal.nav.label")} renderLink={renderLink}
+      nav={!noAccount && <SidebarNav label={t("portal.nav.label")} renderLink={renderNavLink}
         groups={[{items: PORTAL_NAV.map(item => ({href: item.href, label: t(item.labelKey), active: active(item.href)}))}]}/>}
       // Whose bills, for a person who also runs an organization; renders
       // nothing for everybody else. Stays with no billing account, since an

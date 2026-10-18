@@ -88,7 +88,7 @@ describe("Classificar em massa", () => {
     await userEvent.click(within(bulk()).getByRole("button", {name: "Classificar 2 lançamentos"}));
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByText(/Aluguel/)).toBeInTheDocument();
-    await userEvent.click(within(dialog).getByRole("button", {name: "Classificar"}));
+    await userEvent.click(within(dialog).getByRole("button", {name: /^Classificar \d+ lançamentos?$/}));
 
     await waitFor(() => expect(calls).toHaveLength(2));
     expect(calls.map(c => c.id).sort()).toEqual(["tx1", "tx2"]);
@@ -106,7 +106,7 @@ describe("Classificar em massa", () => {
     await check("Tarifa B");
     await pick("Categoria dos selecionados", "Aluguel", bulk());
     await userEvent.click(within(bulk()).getByRole("button", {name: "Classificar 2 lançamentos"}));
-    await userEvent.click(within(await screen.findByRole("dialog")).getByRole("button", {name: "Classificar"}));
+    await userEvent.click(within(await screen.findByRole("dialog")).getByRole("button", {name: /^Classificar \d+ lançamentos?$/}));
 
     const bar = await within(bulk()).findByRole("progressbar");
     expect(bar).toHaveAttribute("aria-valuemax", "2");
@@ -123,6 +123,46 @@ describe("Classificar em massa", () => {
     await screen.findByText("Tarifa A");
     await userEvent.click(await screen.findByRole("checkbox", {name: "Selecionar todos"}));
     expect(within(bulk()).getByText("3 selecionados")).toBeInTheDocument();
+  });
+
+  it("keeps a bar with the count and the way to the controls once something is chosen", async () => {
+    renderUnclassified(MANY);
+    await screen.findByText("Tarifa A");
+    expect(screen.queryByRole("button", {name: /^Classificar 1 lançamento…$/})).toBeNull();
+    await check("Tarifa A");
+    expect(screen.getByRole("button", {name: "Classificar 1 lançamento…"})).toBeInTheDocument();
+  });
+
+  it("marks select-all as partly checked when only some lines are", async () => {
+    renderUnclassified(MANY);
+    await screen.findByText("Tarifa A");
+    const all = screen.getByRole("checkbox", {name: "Selecionar todos"});
+    expect(all).toHaveAttribute("aria-checked", "false");
+    await check("Tarifa A");
+    expect(all).toHaveAttribute("aria-checked", "mixed");
+    await userEvent.click(all);
+    expect(all).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("picks the one open bill of the same amount, so one tap classifies", async () => {
+    const classify = vi.spyOn(connections, "classify").mockResolvedValue({tx_id: "x"});
+    renderUnclassified([{tx_id: "tx1", date: "2026-10-01", amount: 1500, direction: "debit", memo: "Tarifa"}]);
+    vi.spyOn(finance, "listBills").mockResolvedValue({data: [{id: "b1", direction: "payable", amount: 1500, account_id: "caixa", category_id: "cat-aluguel", description: "Tarifa mensal",
+      competence_date: "2026-10-02", due_date: "2026-10-02", status: "forecast", origin: "manual", auto_settle: false}], has_more: false});
+    await screen.findByText("Tarifa");
+    await pick("Classificar como", "Conta em aberto");
+    await waitFor(() => expect(screen.getByRole("button", {name: "Classificar"})).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", {name: "Classificar"}));
+    await waitFor(() => expect(classify).toHaveBeenCalledWith(expect.anything(), "tx1", {bill_id: "b1"}, expect.any(String)));
+  });
+
+  it("says a failed classification in the API's own words, under the row", async () => {
+    vi.spyOn(connections, "classify").mockRejectedValue({response: {status: 409, data: {status: 409, code: "unclassified_gone", title: "x"}}});
+    renderUnclassified([{tx_id: "tx1", date: "2026-10-01", amount: 1500, direction: "credit", memo: "Pix"}]);
+    await screen.findByText("Pix");
+    await pick("Categoria", "Outras receitas");
+    fireEvent.click(screen.getByRole("button", {name: "Classificar"}));
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
   });
 
   it("offers only a transfer for entradas and saídas together", async () => {
@@ -148,7 +188,7 @@ describe("Classificar em massa", () => {
     await check("Tarifa B");
     await pick("Categoria dos selecionados", "Aluguel", bulk());
     await userEvent.click(within(bulk()).getByRole("button", {name: "Classificar 2 lançamentos"}));
-    await userEvent.click(within(await screen.findByRole("dialog")).getByRole("button", {name: "Classificar"}));
+    await userEvent.click(within(await screen.findByRole("dialog")).getByRole("button", {name: /^Classificar \d+ lançamentos?$/}));
 
     expect(await within(bulk()).findByText("1 não foi classificado")).toBeInTheDocument();
     expect(within(bulk()).getByText(/Tarifa B/)).toBeInTheDocument();

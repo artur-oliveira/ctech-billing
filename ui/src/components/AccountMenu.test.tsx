@@ -44,6 +44,14 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe("AccountMenu", () => {
+  it("offers the language, which the bar's switch hides on a phone", async () => {
+    person({operator: false});
+    renderWithQuery(<AccountMenu view="portal"/>);
+    const menu = await open();
+    expect(within(menu).getByRole("menuitem", {name: "Português"})).toBeInTheDocument();
+    expect(within(menu).getByRole("menuitem", {name: "English"})).toBeInTheDocument();
+  });
+
   it("shows the whole name and the e-mail, never cut", async () => {
     person({operator: false});
     renderWithQuery(<AccountMenu view="portal"/>);

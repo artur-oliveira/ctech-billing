@@ -1,11 +1,12 @@
 "use client";
 
-import {Button, Checkbox} from "@aoctech/ui";
+import {Button} from "@aoctech/ui";
 import {useMutation, useQueryClient} from "@tanstack/react-query";
 import {useState} from "react";
 import {Trans, useTranslation} from "react-i18next";
 import {toast} from "sonner";
 
+import {Checkbox} from "@/components/ui/Checkbox";
 import {messageFor} from "@/lib/api/client";
 import {acceptTerms, portalKeys} from "@/lib/api/portal";
 import type {Session} from "@/lib/api/types";

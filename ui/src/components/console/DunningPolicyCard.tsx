@@ -1,6 +1,6 @@
 "use client";
 
-import {Button, Input, Modal} from "@aoctech/ui";
+import {Button, Input, Modal, Select} from "@aoctech/ui";
 import {useMutation} from "@tanstack/react-query";
 import {Plus, X} from "lucide-react";
 import {useState} from "react";
@@ -9,6 +9,7 @@ import type {TFunction} from "i18next";
 import {toast} from "sonner";
 
 import {messageFor} from "@/lib/api/client";
+import {selectCopy} from "@/lib/selectCopy";
 import {useFieldErrors} from "@/lib/useFieldErrors";
 import type {DunningAction, DunningPolicy, DunningStep} from "@/lib/api/consoleTypes";
 
@@ -152,18 +153,14 @@ function PolicyEditor({
                 }}
                 className="w-24"
               />
-              <select
+              <Select
+                {...selectCopy()}
                 aria-label={t("console.dunning.stepAction", {n: i + 1})}
                 value={step.action}
-                onChange={event =>
-                  setSteps(replace(steps, i, {...step, action: event.target.value as DunningAction}))
-                }
-                className="h-9 min-w-40 max-w-full rounded-lg border border-border bg-background px-2 text-sm text-foreground"
-              >
-                {ACTIONS.map(action => (
-                  <option key={action} value={action}>{t(`console.dunning.${action}`)}</option>
-                ))}
-              </select>
+                onValueChange={action => setSteps(replace(steps, i, {...step, action: action as DunningAction}))}
+                options={ACTIONS.map(action => ({value: action, label: t(`console.dunning.${action}`)}))}
+                className="min-w-40 max-w-full"
+              />
               <span className="text-xs text-muted-foreground">{dayLabel(t, step.offset)}</span>
               <Button
                 variant="ghost"

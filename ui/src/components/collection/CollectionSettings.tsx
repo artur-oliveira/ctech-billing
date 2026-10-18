@@ -3,6 +3,7 @@
 import {Button, Field, Input} from "@aoctech/ui";
 import {useState, type FormEvent} from "react";
 import {useTranslation} from "react-i18next";
+import {currentLocale} from "@/lib/i18n";
 
 import type {CollectionSettings as Settings} from "@/lib/api/consoleTypes";
 
@@ -15,7 +16,7 @@ export function percentToBasisPoints(raw: string): number {
 }
 
 function bpToText(bp: number): string {
-  return (bp / 100).toLocaleString("pt-BR", {maximumFractionDigits: 2});
+  return (bp / 100).toLocaleString(currentLocale(), {maximumFractionDigits: 2});
 }
 
 /**
