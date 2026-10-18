@@ -39,10 +39,13 @@ func main() {
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
 
 	dateFlag := flag.String("date", "", "civil date to sweep (YYYY-MM-DD, America/Sao_Paulo); defaults to today")
+	catchUp := flag.Int("catch-up-days", defaultCatchUpDays, "also re-sweep this many days before today (ignored with -date)")
 	flag.Parse()
 
 	date := brcal.Today()
+	back := *catchUp
 	if *dateFlag != "" {
+		back = 0
 		parsed, err := brcal.Parse(*dateFlag)
 		if err != nil {
 			slog.Error("invalid -date", "value", *dateFlag, "error", err)
@@ -65,21 +68,42 @@ func main() {
 	}
 
 	now := time.Now()
-	live := run(ctx, invoicer, true, date, now)
-	// Test mode is swept too, and on the same schedule: a sandbox subscription
-	// that never produces an invoice cannot be built against, which defeats the
-	// point of having a test mode at all.
-	run(ctx, invoicer, false, date, now)
+	var liveErrors []error
+	for _, day := range sweepDates(date, back) {
+		live := run(ctx, invoicer, true, day, now)
+		liveErrors = append(liveErrors, live.Errors...)
+		// Test mode is swept too, and on the same schedule: a sandbox subscription
+		// that never produces an invoice cannot be built against, which defeats the
+		// point of having a test mode at all.
+		run(ctx, invoicer, false, day, now)
+	}
 
 	// Only live failures fail the job. Sandbox data is deliberately
 	// low-quality — merchants create broken plans there on purpose — so paging
 	// someone at 04:00 for a test-mode subscription would train them to ignore
 	// the alarm that matters.
-	if len(live.Errors) > 0 {
+	if len(liveErrors) > 0 {
 		jobs.Fail(ctx, alerter, "sweep",
-			fmt.Sprintf("%d subscription(s) were not invoiced for %s", len(live.Errors), date),
-			jobs.Rendered(live.Errors))
+			fmt.Sprintf("%d subscription(s) were not invoiced up to %s", len(liveErrors), date),
+			jobs.Rendered(liveErrors))
 	}
+}
+
+// defaultCatchUpDays is how far back a scheduled run looks for subscriptions a
+// previous run left behind. The due index is read by exact date, and a
+// subscription leaves its date only when it is renewed, so an earlier date holds
+// exactly what failed, was suspended, or was never reached because a run died or
+// overran. Without this, that work waited for somebody to notice and run -date.
+const defaultCatchUpDays = 7
+
+// sweepDates is date and the back days before it, oldest first so the longest
+// overdue period is billed first.
+func sweepDates(date brcal.Date, back int) []brcal.Date {
+	dates := make([]brcal.Date, 0, back+1)
+	for i := back; i >= 0; i-- {
+		dates = append(dates, date.AddDays(-i))
+	}
+	return dates
 }
 
 func run(ctx context.Context, invoicer *services.Invoicer, livemode bool, date brcal.Date, now time.Time) services.SweepResult {
