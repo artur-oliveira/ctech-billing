@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
@@ -483,4 +484,97 @@ func (j *FinanceJobs) Project(ctx context.Context, sp space.ResolvedSpace, today
 		}
 	}
 	return Projection{Months: window}, nil
+}
+
+// MonthFlows is what the ledger cannot say about one month, by category: the
+// open bills competent in it (scheduled) and the recurrence occurrences nominal
+// in it that nobody has materialised yet (forecast), card recurrences included
+// — a card occurrence counts whole, in the month of the purchase, as the
+// accrual DRE does, not spread over its statements. It reads what Project
+// reads (the open-bill index, the recurrences, the cards, the pending
+// occurrences), once, and nothing per category. Reads only.
+// ponytail: the open index is ordered by due date, so competence cannot narrow
+// the Query; it is the sparse index of open bills only. A competence-ordered
+// index if one space ever holds thousands of open bills.
+func (j *FinanceJobs) MonthFlows(ctx context.Context, sp space.ResolvedSpace, today brcal.Date, month finance.Month) (open, forecast []finance.CategoryFlow, err error) {
+	first := finance.MonthOf(today)
+	if month.Compare(first.Add(maxProjectionMonths-1)) > 0 {
+		return nil, nil, fmt.Errorf("%w: the forecast covers up to %d months ahead", finance.ErrInvalidRecurrence, maxProjectionMonths-1)
+	}
+	for _, dir := range []finance.Direction{finance.Receivable, finance.Payable} {
+		var start map[string]types.AttributeValue
+		for {
+			page, err := j.bills.ListOpen(ctx, sp, dir, 200, start)
+			if err != nil {
+				return nil, nil, err
+			}
+			for _, b := range page.Items {
+				// A statement bill is not recognised (the purchases already are).
+				if b.Origin != finance.OriginCardStatement && finance.MonthOf(b.Competence) == month {
+					open = append(open, finance.CategoryFlow{CategoryID: b.CategoryID, Direction: dir, Amount: b.Amount})
+				}
+			}
+			if len(page.LastEvaluatedKey) == 0 {
+				break
+			}
+			start = page.LastEvaluatedKey
+		}
+	}
+
+	cards, err := j.activeCards(ctx, sp)
+	if err != nil {
+		return nil, nil, err
+	}
+	recs, err := j.recs.ListWithCursors(ctx, sp)
+	if err != nil {
+		return nil, nil, err
+	}
+	end := month.Last().AddDays(1)
+	for _, due := range recs {
+		r := due.Recurrence
+		if r.Archived {
+			continue
+		}
+		from := r.Schedule.Start
+		if !due.Cursor.IsZero() {
+			from = due.Cursor.AddDays(1)
+		}
+		if from.Before(month.First()) {
+			from = month.First() // nothing earlier can be in this month
+		}
+		occ, err := r.Schedule.Occurrences(from, end)
+		if err != nil {
+			return nil, nil, fmt.Errorf("forecasting recurrence %s: %w", r.ID, err)
+		}
+		dir := r.Direction
+		if r.IsCard() {
+			card, ok := cards[r.CardID]
+			if !ok {
+				continue
+			}
+			dir = finance.Payable
+			occ = slices.DeleteFunc(occ, func(o finance.Occurrence) bool { return o.Nominal.Before(card.FirstMonth.First()) })
+		}
+		for range occ {
+			forecast = append(forecast, finance.CategoryFlow{CategoryID: r.CategoryID, Direction: dir, Amount: r.Amount})
+		}
+	}
+	pending, err := j.recs.ListPendingOccurrences(ctx, sp, 5000)
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, p := range pending {
+		if finance.MonthOf(p.Nominal) != month {
+			continue
+		}
+		dir := p.Direction
+		if p.CardID != "" {
+			if _, ok := cards[p.CardID]; !ok {
+				continue
+			}
+			dir = finance.Payable
+		}
+		forecast = append(forecast, finance.CategoryFlow{CategoryID: p.CategoryID, Direction: dir, Amount: p.Expected})
+	}
+	return open, forecast, nil
 }

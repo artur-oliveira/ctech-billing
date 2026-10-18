@@ -789,3 +789,48 @@ func TestAGuardErrorFailsTheItemNotTheRun(t *testing.T) {
 		t.Fatalf("res = %+v; an unknown erasure state is a failure, never a write", res)
 	}
 }
+
+// ---- MonthFlows ----------------------------------------------------------------
+
+func sumFlows(ls []finance.CategoryFlow) map[string]billing.Cents {
+	out := map[string]billing.Cents{}
+	for _, l := range ls {
+		out[string(l.Direction)+":"+l.CategoryID] += l.Amount
+	}
+	return out
+}
+
+// The month's open bills are scheduled (by competence, never a statement bill);
+// the occurrences after the cursor are forecast, card recurrences too, whole and
+// on the payable side; the ones the job already made are not counted twice.
+func TestMonthFlowsSplitsOpenBillsFromUnmaterialisedOccurrences(t *testing.T) {
+	bills := newFakeBills()
+	bills.open[finance.Payable] = []finance.Bill{
+		{ID: "a", Direction: finance.Payable, Amount: 40000, CategoryID: "rent", Competence: day(2026, time.May, 10), Due: day(2026, time.May, 10)},
+		{ID: "other-month", Direction: finance.Payable, Amount: 1, CategoryID: "rent", Competence: day(2026, time.June, 10)},
+		{ID: "stmt", Direction: finance.Payable, Amount: 99, CategoryID: "card", Origin: finance.OriginCardStatement, Competence: day(2026, time.May, 5)},
+	}
+	rent := monthly("rent", 10) // cursor in April: May's occurrence is not a bill yet
+	recs := newFakeRecs(rent, onCard("s", 28, 3))
+	recs.cursors["rent"] = day(2026, time.April, 10)
+	jobs := NewFinanceJobs(bills, recs).WithCards(newRecCards(visa25()))
+
+	open, forecast, err := jobs.MonthFlows(context.Background(), testSpace(t), day(2026, time.March, 20), finance.Month{Year: 2026, Month: time.May})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := sumFlows(open); len(got) != 1 || got["payable:rent"] != 40000 {
+		t.Errorf("open = %v, want only the May bill of rent", got)
+	}
+	got := sumFlows(forecast)
+	if got["payable:rent"] != 150000 || got["payable:subs"] != 30000 || len(got) != 2 {
+		t.Errorf("forecast = %v, want rent 150000 and the card recurrence whole (30000, not 3 installments)", got)
+	}
+}
+
+func TestMonthFlowsRefusesAMonthBeyondTheProjectionHorizon(t *testing.T) {
+	jobs := NewFinanceJobs(newFakeBills(), newFakeRecs())
+	if _, _, err := jobs.MonthFlows(context.Background(), testSpace(t), day(2026, time.March, 20), finance.Month{Year: 2027, Month: time.March}); err == nil {
+		t.Fatal("a month 12 ahead was accepted")
+	}
+}
