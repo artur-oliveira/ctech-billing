@@ -293,7 +293,7 @@ func (h *financeHandlers) categoryMonth(c fiber.Ctx) error {
 	}
 	today := h.today()
 	if first := finance.MonthOf(today); month.Compare(first.Add(-(maxReportMonths-1))) < 0 || month.Compare(first.Add(11)) > 0 {
-		return problem.Validation([]problem.FieldError{fieldErr("month", "out_of_range", "between 23 months back and 11 months ahead", "min", -(maxReportMonths-1), "max", 11)}).Send(c)
+		return problem.Validation([]problem.FieldError{fieldErr("month", "out_of_range", "between 23 months back and 11 months ahead", "min", -(maxReportMonths - 1), "max", 11)}).Send(c)
 	}
 	sp := middleware.GetSpace(c)
 	rows, err := h.ledger.Summaries(c.Context(), sp, month, month)
