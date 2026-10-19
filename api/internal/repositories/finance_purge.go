@@ -3,9 +3,12 @@ package repositories
 import (
 	"context"
 	"fmt"
+	"math"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 
@@ -25,7 +28,7 @@ var financeTables = []string{
 // batchDeleteAttempts bounds the retries of a BatchWriteItem's unprocessed
 // keys. Running out is an error. The saga redelivers, and the purge restarts
 // from a fresh read.
-const batchDeleteAttempts = 5
+const batchDeleteAttempts = 8
 
 // attrHookID is the connection row's pointer to its HOOK#{id} partition.
 const attrHookID = "hook_id"
@@ -82,18 +85,21 @@ func (p *SpacePurger) PurgeSpace(ctx context.Context, sp space.ResolvedSpace) (m
 			accounts[strings.TrimPrefix(sk.Value, "ACCOUNT#")] = true
 		}
 	}
-	headers, err := queryPrefix(ctx, p.bases[TableLedgerTransactions], s, "TX#")
-	if err != nil {
-		return nil, err
-	}
-	txs, err := DecodeItems[txItem](headers)
-	if err != nil {
-		return nil, err
-	}
-	for _, tx := range txs {
-		for _, leg := range tx.Legs {
-			accounts[leg.Account] = true
+	// The headers are paged through just to learn which accounts they touch: a
+	// space with hundreds of thousands of transactions is never held in memory.
+	if _, err := eachPage(ctx, p.bases[TableLedgerTransactions], s, "TX#", math.MaxInt32, func(page []map[string]types.AttributeValue) error {
+		txs, err := DecodeItems[txItem](page)
+		if err != nil {
+			return err
 		}
+		for _, tx := range txs {
+			for _, leg := range tx.Legs {
+				accounts[leg.Account] = true
+			}
+		}
+		return nil
+	}); err != nil {
+		return nil, err
 	}
 	for account := range accounts {
 		if err := child(TableLedgerTransactions, LedgerEntryPK(sp, account)); err != nil {
@@ -181,14 +187,79 @@ func (p *SpacePurger) eachID(ctx context.Context, table, pk, prefix string, fn f
 	return nil
 }
 
-// deletePartition deletes every row under pk.
+// purgeWorkers is how many BatchWriteItem calls of one partition are in flight.
+// DynamoDB serves about 1000 writes a second from one partition key, so more would
+// only make the batches come back unprocessed; the pool is there to hide latency.
+const purgeWorkers = 4
+
+// deletePartition deletes every row under pk, a page at a time: it reads only the
+// keys, deletes that page in parallel batches, and continues from where it was.
+// Rows deleted behind the continuation key do not move it, so nothing is skipped,
+// and a partition of any size costs one page of keys in memory, not all of them.
 func (p *SpacePurger) deletePartition(ctx context.Context, logical, pk string) (int, error) {
 	b := p.bases[logical]
-	items, err := queryPrefix(ctx, b, pk, "")
-	if err != nil {
-		return 0, err
+	deleted := 0
+	var start map[string]types.AttributeValue
+	for {
+		out, err := b.QueryRaw(ctx, &dynamodb.QueryInput{
+			KeyConditionExpression:    aws.String("pk = :pk"),
+			ExpressionAttributeValues: map[string]types.AttributeValue{":pk": &types.AttributeValueMemberS{Value: pk}},
+			ProjectionExpression:      aws.String("pk, sk"),
+			Limit:                     aws.Int32(queryPrefixPage),
+			ConsistentRead:            aws.Bool(true),
+			ExclusiveStartKey:         start,
+		})
+		if err != nil {
+			return deleted, err
+		}
+		n, err := deleteKeysParallel(ctx, b, out.Items, purgeWorkers)
+		deleted += n
+		if err != nil {
+			return deleted, err
+		}
+		if len(out.LastEvaluatedKey) == 0 {
+			return deleted, nil
+		}
+		start = out.LastEvaluatedKey
 	}
-	return deleteKeys(ctx, b, items)
+}
+
+// deleteKeysParallel is deleteKeys with up to workers batches in flight. It stops
+// at the first error and returns how many keys were deleted before it.
+func deleteKeysParallel(ctx context.Context, b Base, items []map[string]types.AttributeValue, workers int) (int, error) {
+	if len(items) == 0 {
+		return 0, nil
+	}
+	var (
+		wg      sync.WaitGroup
+		mu      sync.Mutex
+		deleted int
+		first   error
+	)
+	sem := make(chan struct{}, max(workers, 1))
+	for start := 0; start < len(items); start += 25 {
+		mu.Lock()
+		failed := first != nil
+		mu.Unlock()
+		if failed {
+			break
+		}
+		chunk := items[start:min(start+25, len(items))]
+		sem <- struct{}{}
+		wg.Add(1)
+		go func() {
+			defer func() { <-sem; wg.Done() }()
+			n, err := deleteKeys(ctx, b, chunk)
+			mu.Lock()
+			deleted += n
+			if err != nil && first == nil {
+				first = err
+			}
+			mu.Unlock()
+		}()
+	}
+	wg.Wait()
+	return deleted, first
 }
 
 // deleteKeys deletes the given items by key, 25 per BatchWriteItem, retrying
