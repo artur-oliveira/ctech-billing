@@ -358,8 +358,9 @@ func BuildInvoicer(ctx context.Context, cfg *config.Config) (*services.Invoicer,
 	if flags := closureFlags(db, cfg); flags != nil {
 		invoicer.WithTenantGuard(flags.ReadOnly)
 	}
-	// The sweep issues most invoices: a BYOK tenant's charge is created right
-	// after, as the console's issue does (spec § 7.2).
+	// The sweep issues most invoices: a BYOK tenant's attempt is written right
+	// after, and the hourly byok sweep creates its charge at the bank, so a slow
+	// bank never holds a sweep worker (spec § 7.2).
 	c := newCache(cfg)
 	conns, st, err := BuildByok(ctx, cfg, db, c, repositories.NewLedgerRepository(db, cfg))
 	if err != nil {
@@ -367,7 +368,7 @@ func BuildInvoicer(ctx context.Context, cfg *config.Config) (*services.Invoicer,
 	}
 	if bc := byokCollection(ctx, cfg, db, conns, st, newChargeGates(db, cfg), financeInvoices(db, cfg,
 		repositories.NewOrganizationRepository(db, cfg), repositories.NewCustomerRepository(db, cfg)), nil); bc != nil {
-		invoicer.WithCharges(bc)
+		invoicer.WithCharges(bc.Deferred())
 	}
 	return invoicer, nil
 }

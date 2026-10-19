@@ -58,6 +58,9 @@ type ByokCollector struct {
 	// invoice, subscription, settlement bus, Finanças): built with no wallet.
 	settler *Collector
 	mail    ByokMailer
+	// deferCreate leaves a new attempt written but without its provider charge
+	// (Deferred): the hourly byok sweep creates it.
+	deferCreate bool
 }
 
 func NewByokCollector(invoices *repositories.InvoiceRepository, payments *repositories.PaymentRepository,
@@ -69,6 +72,16 @@ func NewByokCollector(invoices *repositories.InvoiceRepository, payments *reposi
 
 // WithMail sends the excess-payment notice to the connection's address.
 func (c *ByokCollector) WithMail(m ByokMailer) *ByokCollector { c.mail = m; return c }
+
+// Deferred is a collector whose new attempts are only written: the provider
+// call is left to the byok sweep, which creates the charge of every attempt
+// still without one. The daily invoice sweep uses it so a slow bank never holds
+// one of its workers; a checkout still gets its charge at once (Ensure).
+func (c *ByokCollector) Deferred() *ByokCollector {
+	d := *c
+	d.deferCreate = true
+	return &d
+}
 
 // connection is the tenant's collecting connection.
 func (c *ByokCollector) connection(ctx context.Context, org *billing.Organization) (*byokconn.Connection, error) {
@@ -226,6 +239,9 @@ func (c *ByokCollector) open(ctx context.Context, org *billing.Organization, inv
 		return nil, err
 	}
 	slog.InfoContext(ctx, "byok attempt opened", "invoice_id", inv.ID, "attempt", a.AttemptNumber, "actor", actor, "request_id", requestID)
+	if c.deferCreate {
+		return a, nil
+	}
 	return a, c.createCharge(ctx, org, inv, a, now)
 }
 

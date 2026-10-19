@@ -54,6 +54,20 @@ func TestAFailedCreationLeavesTheInvoiceIssuedAndCheckoutRetries(t *testing.T) {
 	}
 }
 
+func TestTheDailySweepOnlyWritesTheAttemptAndTheByokJobCreatesTheCharge(t *testing.T) {
+	env := newCollectEnv(t, collectLive)
+	env.invoicer.WithCharges(env.byok.Deferred())
+	inv := env.finalizeInvoice(t, 5000)
+	if a := env.attempt(t, inv); a.Payable != "" || env.fake.Calls(byok.OpCreateDueCharge) != 0 {
+		t.Fatalf("the invoice sweep never calls the bank: %+v", a)
+	}
+	env.runJob(t, now().Add(10*time.Minute))
+	a := env.attempt(t, inv)
+	if ch, _ := env.fake.Charge(a.ChargeRef); a.Payable == "" || ch.Amount != 5000 || env.fake.Calls(byok.OpCreateDueCharge) != 1 {
+		t.Fatalf("the byok job creates the charge once: %+v %+v", a, ch)
+	}
+}
+
 func TestACustomerWithoutTaxIDGetsNoCharge(t *testing.T) {
 	env := newCollectEnv(t, collectLive)
 	inv := env.finalizeInvoiceFor(t, env.customerWithoutTaxID(t), 5000)
