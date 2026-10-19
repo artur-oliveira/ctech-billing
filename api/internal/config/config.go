@@ -41,6 +41,14 @@ type Config struct {
 	// (tests that build a Config literal).
 	RequestTimeout time.Duration `env:"REQUEST_TIMEOUT" envDefault:"8s"`
 
+	// GateMemoryTTL is how long a process remembers what the M2M gates read on every
+	// request: the credential of an OAuth client, the tenant row (suspension) and the
+	// closing flag. It is the delay between a change made elsewhere (a credential
+	// disconnected, a tenant suspended or closing) and this process acting on it;
+	// a change made by this process is seen at once for the credential. Zero
+	// disables it (tests).
+	GateMemoryTTL time.Duration `env:"GATE_MEMORY_TTL" envDefault:"10s"`
+
 	// DeliverWorkers is how many webhook endpoints one delivery pass posts to at
 	// once. One endpoint's deliveries stay serial and in order.
 	DeliverWorkers int `env:"DELIVER_WORKERS" envDefault:"16"`
