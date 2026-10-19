@@ -751,6 +751,22 @@ func (r *RecurrenceRepository) DueToMaterialise(ctx context.Context, livemode bo
 	if err != nil {
 		return nil, skipped, err
 	}
+	due, sk, err := r.hydrateDue(ctx, entries)
+	return due, skipped + sk, err
+}
+
+// DueToMaterialisePage is one page of that list (up to limit index rows from
+// start) and the key to continue from, nil at its end.
+func (r *RecurrenceRepository) DueToMaterialisePage(ctx context.Context, livemode bool, today brcal.Date, limit int, start map[string]types.AttributeValue) (due []DueRecurrence, skipped int, next map[string]types.AttributeValue, err error) {
+	entries, skipped, next, err := scanSchedulePage(ctx, r.recs, MaterialisePK(livemode), livemode, today, limit, start)
+	if err != nil {
+		return nil, skipped, nil, err
+	}
+	due, sk, err := r.hydrateDue(ctx, entries)
+	return due, skipped + sk, next, err
+}
+
+func (r *RecurrenceRepository) hydrateDue(ctx context.Context, entries []scheduleEntry) (due []DueRecurrence, skipped int, err error) {
 	for _, e := range entries {
 		row, err := r.load(ctx, e.Space, e.ID)
 		if errors.Is(err, ErrNotFound) {

@@ -373,6 +373,23 @@ func (r *BillRepository) DueForAutoSettle(ctx context.Context, livemode bool, to
 	if err != nil {
 		return nil, skipped, err
 	}
+	due, sk, err := r.hydrateDue(ctx, entries)
+	return due, skipped + sk, err
+}
+
+// DueForAutoSettlePage is one page of that list (up to limit index rows from
+// start) and the key to continue from, nil at its end. The daily job walks the
+// whole list with it.
+func (r *BillRepository) DueForAutoSettlePage(ctx context.Context, livemode bool, today brcal.Date, limit int, start map[string]types.AttributeValue) (due []DueBill, skipped int, next map[string]types.AttributeValue, err error) {
+	entries, skipped, next, err := scanSchedulePage(ctx, r.bills, AutoSettlePK(livemode), livemode, today, limit, start)
+	if err != nil {
+		return nil, skipped, nil, err
+	}
+	due, sk, err := r.hydrateDue(ctx, entries)
+	return due, skipped + sk, next, err
+}
+
+func (r *BillRepository) hydrateDue(ctx context.Context, entries []scheduleEntry) (due []DueBill, skipped int, err error) {
 	for _, e := range entries {
 		b, err := r.get(ctx, e.Space, e.ID)
 		if errors.Is(err, ErrNotFound) {

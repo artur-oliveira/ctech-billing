@@ -28,54 +28,72 @@ type scheduleEntry struct {
 func scanSchedule(ctx context.Context, b Base, schedulePK string, livemode bool, today brcal.Date, limit int) (entries []scheduleEntry, skipped int, err error) {
 	var start map[string]types.AttributeValue
 	for len(entries) < limit {
-		out, qerr := b.QueryRaw(ctx, &dynamodb.QueryInput{
-			IndexName:              aws.String(IndexSchedule),
-			KeyConditionExpression: aws.String("schedule_pk = :pk AND schedule_sk BETWEEN :lo AND :hi"),
-			ExpressionAttributeValues: map[string]types.AttributeValue{
-				":pk": str(schedulePK),
-				":lo": str("0"),
-				// "~" sorts after every character an owner or id uses, so every row
-				// of today is included.
-				":hi": str(today.String() + "#~"),
-			},
-			Limit:             aws.Int32(int32(limit)),
-			ExclusiveStartKey: start,
-		})
-		if qerr != nil {
-			return nil, skipped, qerr
+		page, sk, next, perr := scanSchedulePage(ctx, b, schedulePK, livemode, today, limit, start)
+		if perr != nil {
+			return nil, skipped, perr
 		}
-		for _, item := range out.Items {
-			skAttr, ok := item["schedule_sk"].(*types.AttributeValueMemberS)
-			if !ok {
-				skipped++
-				continue
-			}
-			_, owner, id, perr := ParseScheduleSK(skAttr.Value)
-			if perr != nil {
-				skipped++
-				continue
-			}
-			// The ONE call to space.ForJob in internal/: the daily job has no request to
-			// resolve a space from, so it rebuilds each row's space from the owner in its
-			// schedule key. ForJob validates the owner; a forged or malformed one is
-			// counted as skipped, never trusted. (TestForJobIsNotCalledFromInternal names
-			// this file; the call is inlined so no other file here can reuse it.)
-			sp, serr := space.ForJob(owner, livemode)
-			if serr != nil {
-				skipped++
-				continue
-			}
-			entries = append(entries, scheduleEntry{Space: sp, ID: id})
-		}
-		if len(out.LastEvaluatedKey) == 0 {
+		entries, skipped = append(entries, page...), skipped+sk
+		if next == nil {
 			break
 		}
-		start = out.LastEvaluatedKey
+		start = next
 	}
 	if len(entries) > limit {
 		entries = entries[:limit]
 	}
 	return entries, skipped, nil
+}
+
+// scanSchedulePage is one query of the work list: up to limit index rows from
+// start, and the key to continue from (nil at the end of the list). A job that
+// must see the whole list pages with it, so a row that keeps failing is passed
+// over instead of being the head of every read. The continuation key stays valid
+// while the rows before it leave the index, which is what working through the
+// list does.
+func scanSchedulePage(ctx context.Context, b Base, schedulePK string, livemode bool, today brcal.Date, limit int, start map[string]types.AttributeValue) (entries []scheduleEntry, skipped int, next map[string]types.AttributeValue, err error) {
+	out, qerr := b.QueryRaw(ctx, &dynamodb.QueryInput{
+		IndexName:              aws.String(IndexSchedule),
+		KeyConditionExpression: aws.String("schedule_pk = :pk AND schedule_sk BETWEEN :lo AND :hi"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":pk": str(schedulePK),
+			":lo": str("0"),
+			// "~" sorts after every character an owner or id uses, so every row
+			// of today is included.
+			":hi": str(today.String() + "#~"),
+		},
+		Limit:             aws.Int32(int32(limit)),
+		ExclusiveStartKey: start,
+	})
+	if qerr != nil {
+		return nil, 0, nil, qerr
+	}
+	for _, item := range out.Items {
+		skAttr, ok := item["schedule_sk"].(*types.AttributeValueMemberS)
+		if !ok {
+			skipped++
+			continue
+		}
+		_, owner, id, perr := ParseScheduleSK(skAttr.Value)
+		if perr != nil {
+			skipped++
+			continue
+		}
+		// The ONE call to space.ForJob in internal/: the daily job has no request to
+		// resolve a space from, so it rebuilds each row's space from the owner in its
+		// schedule key. ForJob validates the owner; a forged or malformed one is
+		// counted as skipped, never trusted. (TestForJobIsNotCalledFromInternal names
+		// this file; the call is inlined so no other file here can reuse it.)
+		sp, serr := space.ForJob(owner, livemode)
+		if serr != nil {
+			skipped++
+			continue
+		}
+		entries = append(entries, scheduleEntry{Space: sp, ID: id})
+	}
+	if len(out.LastEvaluatedKey) > 0 {
+		next = out.LastEvaluatedKey
+	}
+	return entries, skipped, next, nil
 }
 
 func (e scheduleEntry) String() string { return fmt.Sprintf("%s/%s", e.Space.PK(), e.ID) }

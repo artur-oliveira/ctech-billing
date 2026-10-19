@@ -49,6 +49,11 @@ type Config struct {
 	// disables it (tests).
 	GateMemoryTTL time.Duration `env:"GATE_MEMORY_TTL" envDefault:"10s"`
 
+	// FinanceWorkers is how many rows of its work lists the daily finance job works
+	// at once (recurrences to materialise, bills to auto-settle, cards to close).
+	// Rows of one space are always worked one at a time.
+	FinanceWorkers int `env:"FINANCE_WORKERS" envDefault:"8"`
+
 	// DeliverWorkers is how many webhook endpoints one delivery pass posts to at
 	// once. One endpoint's deliveries stay serial and in order.
 	DeliverWorkers int `env:"DELIVER_WORKERS" envDefault:"16"`
