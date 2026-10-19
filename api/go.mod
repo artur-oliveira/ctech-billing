@@ -21,7 +21,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.70.3
 	github.com/aws/aws-sdk-go-v2/service/lambda v1.112.2
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.114.3
-	github.com/aws/aws-sdk-go-v2/service/sqs v1.52.2
+	github.com/aws/aws-sdk-go-v2/service/sqs v1.52.4
 	github.com/aws/aws-sdk-go-v2/service/ssm v1.79.3
 	github.com/aws/smithy-go v1.28.5
 	github.com/caarlos0/env/v11 v11.4.1
