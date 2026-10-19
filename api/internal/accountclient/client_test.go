@@ -151,3 +151,28 @@ func TestADownAccountOpensTheCircuitAndTheNextCallIsRefusedAtOnce(t *testing.T) 
 		t.Fatal("the refused call still reached ctech-account")
 	}
 }
+
+// A read that hits one 5xx is retried and succeeds: a blip in ctech-account is
+// not an outage for the caller.
+func TestAReadIsRetriedAfterATransient5xx(t *testing.T) {
+	var apiHits atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/token" {
+			_, _ = w.Write([]byte(`{"access_token":"tok","expires_in":3600}`))
+			return
+		}
+		if apiHits.Add(1) == 1 {
+			http.Error(w, "blip", http.StatusServiceUnavailable)
+			return
+		}
+		_, _ = w.Write([]byte(`{"organization_kind":"organization","companies":[]}`))
+	}))
+	t.Cleanup(srv.Close)
+	c := New(Config{BaseURL: srv.URL, TokenURL: srv.URL + "/token", ClientID: "id", ClientSecret: "secret"})
+	if _, err := c.Companies(context.Background(), org); err != nil {
+		t.Fatalf("err = %v, want the retry to succeed", err)
+	}
+	if apiHits.Load() != 2 {
+		t.Fatalf("hits = %d, want 2", apiHits.Load())
+	}
+}
