@@ -627,6 +627,11 @@ func (r *LedgerRepository) ListAccounts(ctx context.Context, sp space.ResolvedSp
 	return out, nil
 }
 
+// queryPrefixPage is how many items one round trip asks for. It follows
+// continuation keys to the end anyway, so a larger page only means fewer round
+// trips (1000 small items is far under the 1 MB response cap).
+const queryPrefixPage = 1000
+
 // queryPrefix returns every item under pk whose sort key begins with skPrefix,
 // in ascending order, following continuation keys to the end. A space's chart
 // and a period's entries are bounded by the user's own data, never by a
@@ -636,7 +641,7 @@ func queryPrefix(ctx context.Context, b Base, pk, skPrefix string) ([]map[string
 	var start map[string]types.AttributeValue
 	for {
 		res, err := b.Query(ctx, QueryOpts{
-			PK: pk, SKPrefix: skPrefix, ScanIndexForward: true, Limit: 100, ExclusiveStartKey: start, ConsistentRead: true,
+			PK: pk, SKPrefix: skPrefix, ScanIndexForward: true, Limit: queryPrefixPage, ExclusiveStartKey: start, ConsistentRead: true,
 		})
 		if err != nil {
 			return nil, err
@@ -1129,22 +1134,47 @@ func (r *LedgerRepository) planReplace(ctx context.Context, sp space.ResolvedSpa
 }
 
 // EntriesFrom returns an account's entries dated from onward, in key order, with
-// Reversed set on those whose transaction has been reversed. It is what a
-// statement and the cash flow fold: the entries since from give the period's
-// rows and, subtracted from the cached balance, the opening balance.
+// Reversed set on those whose transaction has been reversed. It reads to the end
+// of the account's history; the statement and the cash flow use EntriesThrough,
+// which stops at the end of the window they report.
 func (r *LedgerRepository) EntriesFrom(ctx context.Context, sp space.ResolvedSpace, accountID string, from brcal.Date) ([]finance.Entry, error) {
 	if err := sp.Require(space.Read); err != nil {
 		return nil, err
 	}
-	items, err := r.queryRange(ctx, r.txs, LedgerEntryPK(sp, accountID), "ENTRY#"+from.String(), "ENTRY#~")
+	reversed, err := r.reversedIDs(ctx, sp)
+	if err != nil {
+		return nil, err
+	}
+	return r.entriesRange(ctx, sp, accountID, "ENTRY#"+from.String(), "ENTRY#~", reversed)
+}
+
+// EntriesThrough returns an account's entries dated from..last inclusive, in key
+// order, with Reversed set from the space's reversal markers (read once by the
+// caller with ReversedIDs, not once per account). Reading to a bound is what keeps
+// a statement of last quarter from reading every entry since, for an account with
+// a hundred thousand of them.
+func (r *LedgerRepository) EntriesThrough(ctx context.Context, sp space.ResolvedSpace, accountID string, from, last brcal.Date, reversed map[string]bool) ([]finance.Entry, error) {
+	if err := sp.Require(space.Read); err != nil {
+		return nil, err
+	}
+	// "#~" sorts after the "#txid#leg" that follows the date, so the last day is included.
+	return r.entriesRange(ctx, sp, accountID, "ENTRY#"+from.String(), "ENTRY#"+last.String()+"#~", reversed)
+}
+
+// ReversedIDs is the set of reversed transaction ids of a space.
+func (r *LedgerRepository) ReversedIDs(ctx context.Context, sp space.ResolvedSpace) (map[string]bool, error) {
+	if err := sp.Require(space.Read); err != nil {
+		return nil, err
+	}
+	return r.reversedIDs(ctx, sp)
+}
+
+func (r *LedgerRepository) entriesRange(ctx context.Context, sp space.ResolvedSpace, accountID, lo, hi string, reversed map[string]bool) ([]finance.Entry, error) {
+	items, err := r.queryRange(ctx, r.txs, LedgerEntryPK(sp, accountID), lo, hi)
 	if err != nil {
 		return nil, err
 	}
 	rows, err := DecodeItems[entryItem](items)
-	if err != nil {
-		return nil, err
-	}
-	reversed, err := r.reversedIDs(ctx, sp)
 	if err != nil {
 		return nil, err
 	}
@@ -1157,6 +1187,31 @@ func (r *LedgerRepository) EntriesFrom(ctx context.Context, sp space.ResolvedSpa
 		out[i] = finance.Entry{
 			AccountID: accountID, TxID: e.TxID, Leg: e.Leg, Date: d, Amount: billing.Cents(e.Amount),
 			Kind: e.Kind, Flow: e.Flow, Memo: e.Memo, Ref: e.Ref, Reversal: e.Reversal, Reversed: reversed[e.TxID],
+		}
+	}
+	return out, nil
+}
+
+// BalancesThrough is each account's balance as of the last day of month: the
+// cached balance minus what the months after it posted, which the monthly
+// summaries hold (one range Query, however many entries those months have). A
+// statement or a cash flow that reads entries only through that day feeds this
+// to the fold instead of the current balance, and gets the same opening.
+func (r *LedgerRepository) BalancesThrough(ctx context.Context, sp space.ResolvedSpace, current map[string]billing.Cents, month finance.Month) (map[string]billing.Cents, error) {
+	if err := sp.Require(space.Read); err != nil {
+		return nil, err
+	}
+	rows, err := r.summaryRange(ctx, sp, "SUMMARY#"+month.Add(1).String(), "SUMMARY#~")
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]billing.Cents, len(current))
+	for id, bal := range current {
+		out[id] = bal
+	}
+	for _, row := range rows {
+		if _, ok := out[row.AccountID]; ok {
+			out[row.AccountID] -= row.Debits - row.Credits
 		}
 	}
 	return out, nil
