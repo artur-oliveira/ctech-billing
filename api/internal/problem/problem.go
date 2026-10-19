@@ -1,16 +1,13 @@
-// Package problem is billing's RFC 7807 layer, built on the shared
-// api-commons/problem constructors so every CTech service emits the same error
-// shape. Only the Fiber-facing part and the billing-specific type URIs live here.
+// Package problem is billing's problem-type registry and domain-error mapping on
+// top of api-commons/problem, which owns the body, the sender and the field errors.
 package problem
 
 import (
 	"context"
 	"errors"
-	"strings"
 
 	"github.com/gofiber/fiber/v3"
 	"gopkg.aoctech.app/api-commons/byok"
-	fiberobs "gopkg.aoctech.app/api-commons/observability/fiber"
 	commonproblem "gopkg.aoctech.app/api-commons/problem"
 
 	"gopkg.aoctech.app/billing/api/internal/byokrpc"
@@ -21,8 +18,6 @@ import (
 	"gopkg.aoctech.app/billing/api/internal/services"
 	"gopkg.aoctech.app/billing/api/internal/space"
 )
-
-const ContentType = "application/problem+json"
 
 // Billing-specific problem types. Constants, never string literals at call
 // sites: a client that branches on `type` is broken by a typo nobody notices.
@@ -82,116 +77,53 @@ const (
 	TypeCompaniesUnavailable = "/problems/companies-unavailable"
 )
 
-// FieldError is a single field-level validation failure.
-//
-// Code is the stable, machine-readable reason ("required", "too_long", ...) the
-// client maps to its own translated text; Params carries the numbers the old
-// prose used to embed (e.g. {"max": 64}). Message is an English fallback for
-// logs and API integrators, never meant for end users.
-type FieldError struct {
-	Field   string         `json:"field"` // dotted JSON path, e.g. "items[0].quantity"
-	Code    string         `json:"code"`
-	Message string         `json:"message"`
-	Params  map[string]any `json:"params,omitempty"`
-}
+// FieldError and Field are the shared field-level validation failure: a stable
+// machine code the client translates, params for the numbers, and an English
+// message that is only a fallback for logs and integrators.
+type FieldError = commonproblem.FieldError
 
 // Field builds a FieldError. params is an alternating key, value list.
-func Field(field, code, message string, params ...any) FieldError {
-	fe := FieldError{Field: field, Code: code, Message: message}
-	for i := 0; i+1 < len(params); i += 2 {
-		if fe.Params == nil {
-			fe.Params = map[string]any{}
-		}
-		fe.Params[params[i].(string)] = params[i+1]
-	}
-	return fe
-}
+var Field = commonproblem.Field
 
-// Problem is an RFC 7807 body that knows how to write itself to a Fiber
-// response.
-//
-// Code is the stable machine-readable identifier of the specific failure. It is
-// always present; when a call site does not name one it defaults to the type's
-// slug ("/problems/not-found" -> "not_found"). Title and Detail are English
-// and are not meant to be shown to end users: the client translates by Code.
-// Errors (validation only) shadows the shared body's field list so each entry
-// can carry a code and params.
-type Problem struct {
-	commonproblem.Problem
-	Code   string       `json:"code"`
-	Errors []FieldError `json:"errors,omitempty"`
-	// Blockers goes with a closure refused for what is still open (merchant
-	// tenant closure): the console lists and translates them by code.
-	Blockers any `json:"blockers,omitempty"`
-	// UpgradePlan and Quota go with a plan limit (BYOK part C): the console
-	// links to the plan screen.
-	UpgradePlan bool   `json:"upgrade_plan,omitempty"`
-	Quota       *int64 `json:"quota,omitempty"`
-}
+// Problem is the shared RFC 7807 body. Billing's extension members (blockers,
+// upgrade_plan, quota) travel as WithExtra members.
+type Problem = commonproblem.Problem
 
-func wrap(p *commonproblem.Problem) *Problem {
-	return &Problem{Problem: *p, Code: slugCode(p.Type)}
-}
+// Extension member names the console reads.
+const (
+	// ExtraBlockers lists what blocks a closure refused for what is still open;
+	// the console lists and translates the entries by code.
+	ExtraBlockers    = "blockers"
+	extraUpgradePlan = "upgrade_plan"
+	extraQuota       = "quota"
+)
 
-// slugCode derives the default code from a type URI.
-func slugCode(typ string) string {
-	i := strings.LastIndexByte(typ, '/')
-	return strings.ReplaceAll(typ[i+1:], "-", "_")
-}
+// coded gives a problem its default code (the type's slug, "/problems/not-found"
+// -> "not_found"). Billing has always sent a code on every problem; a call
+// site that names a more specific one overrides it with WithCode.
+func coded(p *Problem) *Problem { return p.WithCode(commonproblem.CodeFromType(p.Type)) }
 
-// WithCode names the specific failure, overriding the type-derived default.
-func (p *Problem) WithCode(code string) *Problem {
-	p.Code = code
-	return p
-}
-
-// WithBlockers attaches the list of what blocks the request.
-func (p *Problem) WithBlockers(b any) *Problem {
-	p.Blockers = b
-	return p
-}
-
-func (p *Problem) WithCause(err error) *Problem {
-	p.Problem.WithCause(err)
-	return p
-}
-
-// Send writes the problem with the correct content type.
-//
-// The content type is passed to JSON rather than set beforehand: Fiber's JSON
-// helper sets it itself, so a Set() before the call is silently overwritten and
-// every error goes out as plain application/json. A client that branches on the
-// problem content type would never see one.
-func (p *Problem) Send(c fiber.Ctx) error {
-	fiberobs.LogHTTPError(c, p.Status, p.Type, p.Cause())
-	return c.Status(p.Status).JSON(p, ContentType)
-}
-
-func BadRequest(detail string) *Problem   { return wrap(commonproblem.BadRequest(detail)) }
-func Unauthorized(detail string) *Problem { return wrap(commonproblem.Unauthorized(detail)) }
-func Forbidden(detail string) *Problem    { return wrap(commonproblem.Forbidden(detail)) }
-func NotFound(detail string) *Problem     { return wrap(commonproblem.NotFound(detail)) }
-func Conflict(detail string) *Problem     { return wrap(commonproblem.Conflict(detail)) }
+func BadRequest(detail string) *Problem   { return coded(commonproblem.BadRequest(detail)) }
+func Unauthorized(detail string) *Problem { return coded(commonproblem.Unauthorized(detail)) }
+func Forbidden(detail string) *Problem    { return coded(commonproblem.Forbidden(detail)) }
+func NotFound(detail string) *Problem     { return coded(commonproblem.NotFound(detail)) }
+func Conflict(detail string) *Problem     { return coded(commonproblem.Conflict(detail)) }
 func Unprocessable(detail string) *Problem {
-	return wrap(commonproblem.UnprocessableEntity(detail))
+	return coded(commonproblem.UnprocessableEntity(detail))
 }
-func Internal(detail string) *Problem { return wrap(commonproblem.InternalServer(detail)) }
+func Internal(detail string) *Problem { return coded(commonproblem.InternalServer(detail)) }
 
 // TooManyRequestsAfter is a 429 that tells the caller how long to wait.
 func TooManyRequestsAfter(detail string, retryAfterSeconds int) *Problem {
-	return wrap(commonproblem.TooManyRequestsAfter(detail, retryAfterSeconds))
+	return coded(commonproblem.TooManyRequestsAfter(detail, retryAfterSeconds))
 }
 
 // Validation returns a 422 carrying field-level failures.
-func Validation(errs []FieldError) *Problem {
-	p := wrap(commonproblem.Validation(nil))
-	p.Errors = errs
-	return p
-}
+func Validation(errs []FieldError) *Problem { return coded(commonproblem.Validation(errs)) }
 
 // New builds a problem with an explicit type URI.
 func New(status int, typ, title, detail string) *Problem {
-	return wrap(commonproblem.New(status, typ, title, detail))
+	return coded(commonproblem.New(status, typ, title, detail))
 }
 
 // FromError maps a domain or repository error to the right status.
@@ -246,9 +178,9 @@ func FromError(err error) *Problem {
 			code, detail = "bank_connection_limit_reached", "the plan's bank connections are at its quota; upgrade to add more"
 		}
 		p := Conflict(detail).WithCode(code)
-		p.UpgradePlan = true
+		p.WithExtra(extraUpgradePlan, true)
 		if le := (*billing.LimitError)(nil); errors.As(err, &le) {
-			p.Quota = &le.Quota
+			p.WithExtra(extraQuota, le.Quota)
 		}
 		return p
 	case errors.Is(err, services.ErrUnknownPlan):
@@ -257,8 +189,7 @@ func FromError(err error) *Problem {
 		return Conflict("the organization has no plan to change").WithCode("plan_not_found")
 	case errors.Is(err, billing.ErrByokQuotaExceeded):
 		p := Conflict("the plan's charges are used up this month; upgrade to keep collecting").WithCode("byok_quota_exceeded")
-		p.UpgradePlan = true
-		return p
+		return p.WithExtra(extraUpgradePlan, true)
 	case errors.Is(err, services.ErrByokSpaceKind):
 		return New(404, TypeSpaceNotFound, "Space not found", "space not found")
 	case errors.Is(err, services.ErrByokNotConnected):

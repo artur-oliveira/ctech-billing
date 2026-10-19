@@ -17,7 +17,7 @@ import (
 
 func decode(t *testing.T, p *Problem) map[string]any {
 	t.Helper()
-	b, err := json.Marshal(p)
+	b, err := p.MarshalBody()
 	if err != nil {
 		t.Fatal(err)
 	}
