@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"errors"
+	"sync"
 
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
 	"gopkg.aoctech.app/billing/api/internal/repositories"
@@ -17,6 +18,7 @@ type tenantReader interface {
 // suspended and is never read.
 type suspensionCache struct {
 	orgs tenantReader
+	mu   sync.Mutex // the sweep's workers share one cache
 	seen map[string]bool
 }
 
@@ -32,17 +34,25 @@ func (c *suspensionCache) skip(ctx context.Context, organizationID string, livem
 	if !livemode || c.orgs == nil {
 		return false, nil
 	}
-	if v, ok := c.seen[organizationID]; ok {
+	c.mu.Lock()
+	v, ok := c.seen[organizationID]
+	c.mu.Unlock()
+	if ok {
 		return v, nil
 	}
+	// The read is outside the lock: two workers asking about the same tenant at the
+	// same moment both read it, which costs one extra read and cannot disagree.
 	org, err := c.orgs.Get(ctx, organizationID, true)
+	suspended := false
 	switch {
 	case errors.Is(err, repositories.ErrNotFound):
-		c.seen[organizationID] = false
-		return false, nil
 	case err != nil:
 		return false, err
+	default:
+		suspended = org.Suspended()
 	}
-	c.seen[organizationID] = org.Suspended()
-	return c.seen[organizationID], nil
+	c.mu.Lock()
+	c.seen[organizationID] = suspended
+	c.mu.Unlock()
+	return suspended, nil
 }
