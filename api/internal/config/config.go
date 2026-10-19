@@ -49,6 +49,13 @@ type Config struct {
 	// disables it (tests).
 	GateMemoryTTL time.Duration `env:"GATE_MEMORY_TTL" envDefault:"10s"`
 
+	// ErasureQueueVisibility is the erasure queue's own visibility timeout
+	// (terraform/billing/erasure.tf, 900 s). While a purge or an export runs, the
+	// consumer keeps the message invisible by setting that timeout again every third
+	// of it, so a long one is not delivered to another replica half done. Keep it equal
+	// to the queue's. Zero turns the heartbeat off.
+	ErasureQueueVisibility time.Duration `env:"ERASURE_QUEUE_VISIBILITY" envDefault:"15m"`
+
 	// FinanceWorkers is how many rows of its work lists the daily finance job works
 	// at once (recurrences to materialise, bills to auto-settle, cards to close).
 	// Rows of one space are always worked one at a time.

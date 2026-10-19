@@ -206,7 +206,8 @@ func BuildErasureConsumer(ctx context.Context, cfg *config.Config, spaceFor func
 		strings.TrimSuffix(cfg.AccountBaseURL, "/")+"/v1.0/internal/export/ack",
 		oauth2client.New(hc, newCache(cfg), cfg.AccountTokenURL, clientID, clientSecret, exportAckScope)))
 	return erasure.NewConsumer(queues, aws.ToString(q.QueueUrl), erasureService,
-		newErasureStore(db, cfg), eraser.Purge, acks).WithExporter(handler.Handle), nil
+		newErasureStore(db, cfg), eraser.Purge, acks).WithExporter(handler.Handle).
+		WithVisibilityHeartbeat(cfg.ErasureQueueVisibility), nil
 }
 
 // newErasureStore is the one place the state table is opened, so the memory of
