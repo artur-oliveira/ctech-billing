@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"strconv"
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
@@ -34,7 +35,23 @@ type statementDTO struct {
 	Opening   billing.Cents `json:"opening"`
 	Closing   billing.Cents `json:"closing"`
 	Entries   []entryDTO    `json:"entries"`
+	// MoneyIn and MoneyOut (a magnitude) total the whole window's lines, a
+	// reversed line and its reversal cancelling out, so a screen that holds one
+	// page still summarises the period.
+	MoneyIn  billing.Cents `json:"money_in"`
+	MoneyOut billing.Cents `json:"money_out"`
+	// HasMore and Cursor page the lines; Opening and Closing are the whole window's.
+	HasMore bool   `json:"has_more"`
+	Cursor  string `json:"cursor,omitempty"`
 }
+
+// statementPage is the lines of a statement sent per response (?limit= up to
+// statementPageMax). The window is still read whole, for its opening and
+// closing balances; what the page bounds is the response and the screen.
+const (
+	statementPage    = 200
+	statementPageMax = 500
+)
 
 // statement is one cash account's lines for a period with its running balance.
 // A category or a system account has no statement: 404, like an unknown id.
@@ -68,8 +85,38 @@ func (h *financeHandlers) statement(c fiber.Ctx) error {
 		return fail(c, err)
 	}
 	s := finance.BuildStatement(through[id], es, from, to)
-	out := statementDTO{AccountID: id, From: from.String(), To: to.String(), Opening: s.Opening, Closing: s.Closing, Entries: make([]entryDTO, len(s.Lines))}
-	for i, l := range s.Lines {
+	// shortcut: the cursor is the count of lines already sent, so a line posted
+	// meanwhile shifts the next page by one; fine for a period read once, revisit
+	// if a live-tailing view appears.
+	start, limit := 0, statementPage
+	if v := c.Query("cursor"); v != "" {
+		if start, err = strconv.Atoi(v); err != nil || start < 0 {
+			return problem.BadRequest("invalid cursor").WithCode("invalid_cursor").Send(c)
+		}
+	}
+	if v := c.Query("limit"); v != "" {
+		if limit, err = strconv.Atoi(v); err != nil || limit < 1 || limit > statementPageMax {
+			return problem.Validation([]problem.FieldError{fieldErr("limit", "out_of_range", "between 1 and 500", "min", 1, "max", statementPageMax)}).Send(c)
+		}
+	}
+	var in, outTotal billing.Cents
+	for _, l := range s.Lines {
+		switch {
+		case l.Reversal || l.Reversed:
+		case l.Amount > 0:
+			in += l.Amount
+		default:
+			outTotal -= l.Amount
+		}
+	}
+	start = min(start, len(s.Lines))
+	end := min(start+limit, len(s.Lines))
+	lines := s.Lines[start:end]
+	out := statementDTO{AccountID: id, From: from.String(), To: to.String(), Opening: s.Opening, Closing: s.Closing, MoneyIn: in, MoneyOut: outTotal, Entries: make([]entryDTO, len(lines))}
+	if end < len(s.Lines) {
+		out.HasMore, out.Cursor = true, strconv.Itoa(end)
+	}
+	for i, l := range lines {
 		d := entryDTO{
 			TransactionID: l.TxID, Date: l.Date.String(), Amount: l.Amount, Balance: l.Balance,
 			Kind: string(l.Kind), Memo: l.Memo, Reversal: l.Reversal, Reversed: l.Reversed,

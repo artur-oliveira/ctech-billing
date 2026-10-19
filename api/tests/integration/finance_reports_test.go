@@ -35,6 +35,10 @@ func seedReports(t *testing.T, f financeEnv) reportsFixture {
 
 type statementBody struct {
 	Opening, Closing int64
+	MoneyIn          int64 `json:"money_in"`
+	MoneyOut         int64 `json:"money_out"`
+	HasMore          bool  `json:"has_more"`
+	Cursor           string
 	Entries          []struct {
 		TransactionID string `json:"transaction_id"`
 		Amount        int64
@@ -148,5 +152,25 @@ func TestReversingASettlementFromTheStatementIsRefused(t *testing.T) {
 	f.must(t, 200, "GET", "/accounts/"+fx.bank+"/statement?from=2026-03-01&to=2026-04-01", "", &s)
 	if s.Closing != 100000 {
 		t.Fatalf("bank after undoing the payment and the transfer = %d, want 100000", s.Closing)
+	}
+}
+
+func TestStatementPagesItsLinesAndKeepsTheWindowsBalances(t *testing.T) {
+	f := newFinanceEnv(t)
+	fx := seedReports(t, f)
+	base := "/accounts/" + fx.bank + "/statement?from=2026-03-01&to=2027-03-01&limit=2"
+	var first, second statementBody
+	f.must(t, 200, "GET", base, "", &first)
+	if !first.HasMore || first.Cursor == "" || len(first.Entries) != 2 || first.Opening != 0 || first.Closing != 60000 || first.MoneyIn != 100000 || first.MoneyOut != 40000 {
+		t.Fatalf("first page = %+v", first)
+	}
+	f.must(t, 200, "GET", base+"&cursor="+first.Cursor, "", &second)
+	if second.HasMore || second.Cursor != "" || len(second.Entries) != 1 || second.Entries[0].Balance != 60000 {
+		t.Fatalf("second page = %+v (the running balance carries over)", second)
+	}
+	for _, q := range []string{"&limit=0", "&limit=501", "&cursor=-1", "&cursor=x"} {
+		if st := f.call(t, "GET", "/accounts/"+fx.bank+"/statement?from=2026-03-01&to=2027-03-01"+q, "").status; st != 422 && st != 400 {
+			t.Fatalf("%s accepted: %d", q, st)
+		}
 	}
 }

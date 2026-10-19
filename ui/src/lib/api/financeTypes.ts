@@ -294,7 +294,13 @@ export interface Statement {
   to: IsoDate
   opening: Cents
   closing: Cents
+  /** The whole period's, not the page's: a reversed line and its reversal cancel. */
+  money_in: Cents
+  /** A magnitude. */
+  money_out: Cents
   entries: StatementEntry[]
+  has_more: boolean
+  cursor?: string
 }
 
 export interface CashFlowMonth {

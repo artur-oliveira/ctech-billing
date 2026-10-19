@@ -32,10 +32,16 @@ function serve(verbs: Verb[], statements: Record<string, () => Statement>) {
   return vi.spyOn(finance, "getStatement").mockImplementation(async (_c, id) => statements[id]());
 }
 
-const statement = (entries: StatementEntry[], opening = 100000): Statement => ({
-  account_id: "cc", from: "2026-03-01", to: "2026-04-01", opening,
-  closing: entries.reduce((b, e) => b + e.amount, opening), entries,
-});
+// What the server totals over the whole period: a reversed line and its reversal count for neither.
+const statement = (entries: StatementEntry[], opening = 100000): Statement => {
+  const live = entries.filter(e => !e.reversal && !e.reversed);
+  return {
+    account_id: "cc", from: "2026-03-01", to: "2026-04-01", opening,
+    closing: entries.reduce((b, e) => b + e.amount, opening), entries, has_more: false,
+    money_in: live.filter(e => e.amount > 0).reduce((n, e) => n + e.amount, 0),
+    money_out: live.filter(e => e.amount < 0).reduce((n, e) => n - e.amount, 0),
+  };
+};
 
 const rowOf = async (text: string) => (await screen.findByText(text)).closest("li") as HTMLElement;
 
@@ -54,6 +60,22 @@ describe("F3 — extrato", () => {
     expect(within(row).getAllByText("R$ 700,00").length).toBeGreaterThan(0);
     // The first non-system asset is the default account; system rows are not offered.
     expect(screen.getByRole("combobox", {name: "Conta"})).toHaveTextContent("Conta corrente");
+  });
+
+  it("loads the next page of lines on demand and keeps the period's totals from the first", async () => {
+    const page1 = {...statement([entry({transaction_id: "a", memo: "Primeira", amount: -30000, balance: 70000})]), has_more: true, cursor: "1", money_out: 50000};
+    const page2 = {...statement([entry({transaction_id: "b", memo: "Segunda", amount: -20000, balance: 50000})]), money_out: 50000};
+    const spy = serve(ALL, {cc: () => page1});
+    spy.mockImplementation(async (_c, _id, _f, _t, _s, cursor) => (cursor === "1" ? page2 : page1));
+    renderWithQuery(<StatementView/>);
+    await rowOf("Primeira");
+    expect(screen.queryByText("Segunda")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", {name: "Carregar mais lançamentos"}));
+    await rowOf("Segunda");
+    expect(spy).toHaveBeenLastCalledWith(expect.anything(), "cc", expect.any(String), expect.any(String), expect.anything(), "1");
+    expect(screen.queryByRole("button", {name: "Carregar mais lançamentos"})).not.toBeInTheDocument();
+    const dl = screen.getByText("Saídas").closest("dl") as HTMLElement;
+    expect(within(dl).getByText("−R$ 500,00")).toBeInTheDocument();
   });
 
   it("sums the period above its lines: in, out, a reversed pair counting for neither, credits marked with a plus", async () => {
