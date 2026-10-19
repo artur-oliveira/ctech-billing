@@ -5,7 +5,10 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
+
+	"gopkg.aoctech.app/api-commons/resilient"
 )
 
 const org = "0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b"
@@ -115,5 +118,36 @@ func TestANilClientRefuses(t *testing.T) {
 	}
 	if New(Config{BaseURL: "x"}) != nil {
 		t.Fatal("an incomplete config built a client")
+	}
+}
+
+// While ctech-account is down, five failures in a row open the circuit and the next
+// call is refused at once, without touching the host: a request no longer holds a
+// goroutine for the whole timeout.
+func TestADownAccountOpensTheCircuitAndTheNextCallIsRefusedAtOnce(t *testing.T) {
+	var apiHits atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/token" {
+			_, _ = w.Write([]byte(`{"access_token":"tok","expires_in":3600}`))
+			return
+		}
+		apiHits.Add(1)
+		http.Error(w, "down", http.StatusServiceUnavailable)
+	}))
+	t.Cleanup(srv.Close)
+	c := New(Config{BaseURL: srv.URL, TokenURL: srv.URL + "/token", ClientID: "id", ClientSecret: "secret"})
+
+	for i := 0; i < 5; i++ {
+		if _, err := c.Companies(context.Background(), org); err == nil {
+			t.Fatalf("call %d against a down account succeeded", i)
+		}
+	}
+	hits := apiHits.Load()
+	_, err := c.Companies(context.Background(), org)
+	if !errors.Is(err, resilient.ErrCircuitOpen) {
+		t.Fatalf("err = %v, want the open-circuit error", err)
+	}
+	if apiHits.Load() != hits {
+		t.Fatal("the refused call still reached ctech-account")
 	}
 }
