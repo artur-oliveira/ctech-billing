@@ -221,3 +221,50 @@ func TestTheAutoSettleJobSkipsBillsOfASyncedAccount(t *testing.T) {
 		t.Fatalf("%v", res.Errors)
 	}
 }
+
+// A line posted twice in effect (a payment already counted by its settlement) is
+// discarded: the balance drops by it on the line's own date, it leaves "A classificar",
+// it cannot be discarded again, and reading the same statement line later does not
+// bring it back. A classified line is not discardable.
+func TestADuplicateBankLineIsDiscardedAndStaysGone(t *testing.T) {
+	ctx := ctxT(t)
+	ledger, sp := byokSpace(t)
+	bills := repositories.NewBillRepository(testDB, testCfg)
+	keep := repositories.BankLine{Provider: "inter", LineID: "K1", Date: brcal.MustParse("2026-10-01"), Credit: true, Amount: 500}
+	dup := repositories.BankLine{Provider: "inter", LineID: "D1", Date: brcal.MustParse("2026-10-02"), Credit: true, Amount: 100, Memo: "Pix recebido"}
+	classified := repositories.BankLine{Provider: "inter", LineID: "C1", Date: brcal.MustParse("2026-10-03"), Credit: true, Amount: 70}
+	_, _, _ = ledger.PostBankLine(ctx, sp, "byok-inter-abc", keep, repositories.PostMeta{}, now())
+	dupTx, _, _ := ledger.PostBankLine(ctx, sp, "byok-inter-abc", dup, repositories.PostMeta{}, now())
+	clTx, _, _ := ledger.PostBankLine(ctx, sp, "byok-inter-abc", classified, repositories.PostMeta{}, now())
+	if _, err := ledger.Classify(ctx, bills, sp, clTx, repositories.Classification{CategoryID: "cat-vendas"}, repositories.PostMeta{Actor: "u"}, now()); err != nil {
+		t.Fatal(err)
+	}
+	if got := byokBalance(t, ledger, sp, "byok-inter-abc"); got != 670 {
+		t.Fatalf("setup balance %d", got)
+	}
+
+	if _, err := ledger.DiscardBankLine(ctx, sp, dupTx, repositories.PostMeta{Actor: "operator"}, now()); err != nil {
+		t.Fatal(err)
+	}
+	if got := byokBalance(t, ledger, sp, "byok-inter-abc"); got != 570 {
+		t.Fatalf("balance %d, want 570", got)
+	}
+	un, _ := ledger.Unclassified(ctx, sp, "byok-inter-abc")
+	for _, u := range un {
+		if u.TxID == dupTx {
+			t.Fatalf("the discarded line is still on A classificar: %+v", un)
+		}
+	}
+	if _, err := ledger.DiscardBankLine(ctx, sp, dupTx, repositories.PostMeta{}, now()); err == nil {
+		t.Fatal("a line is discarded once")
+	}
+	if _, err := ledger.DiscardBankLine(ctx, sp, clTx, repositories.PostMeta{}, now()); !errors.Is(err, repositories.ErrNotUnclassified) {
+		t.Fatalf("a classified line is not discardable: %v", err)
+	}
+	if _, posted, err := ledger.PostBankLine(ctx, sp, "byok-inter-abc", dup, repositories.PostMeta{}, now()); err != nil || posted {
+		t.Fatalf("the same statement line must not post again: posted=%v err=%v", posted, err)
+	}
+	if got := byokBalance(t, ledger, sp, "byok-inter-abc"); got != 570 {
+		t.Fatalf("balance %d after re-reading the line", got)
+	}
+}

@@ -374,6 +374,60 @@ func (r *LedgerRepository) Classify(ctx context.Context, bills *BillRepository, 
 	return next.TxID, nil
 }
 
+// DiscardBankLine undoes a bank line that was posted when it should not have been
+// (a payment the ledger already counted through its settlement): the line is
+// reversed on its own date, so the account's balance and history read as if it had
+// never posted, and it leaves "A classificar", in one transaction. Only a line still
+// unclassified can be discarded; one already classified is ErrNotUnclassified. The
+// line's lock stays, so a later read of the same statement line does not post it again.
+func (r *LedgerRepository) DiscardBankLine(ctx context.Context, sp space.ResolvedSpace, txID string, meta PostMeta, now time.Time) (string, error) {
+	if err := sp.Require(space.Import | space.Write); err != nil {
+		return "", err
+	}
+	orig, err := r.GetTransaction(ctx, sp, txID)
+	if err != nil {
+		return "", err
+	}
+	if orig.Tx.Kind != finance.KindBankLine {
+		return "", ErrNotUnclassified
+	}
+	var cashAccount string
+	pendingCat := false
+	for _, l := range orig.Tx.Legs {
+		if l.AccountID == finance.UnclassifiedInID || l.AccountID == finance.UnclassifiedOutID {
+			pendingCat = true
+		} else {
+			cashAccount = l.AccountID
+		}
+	}
+	if !pendingCat || cashAccount == "" {
+		return "", ErrNotUnclassified
+	}
+	rev, err := r.planReverse(ctx, sp, txID, orig.Tx.Date, meta, now)
+	if err != nil {
+		return "", err
+	}
+	pending := types.TransactWriteItem{Delete: &types.Delete{
+		TableName:           aws.String(r.txs.TableName),
+		Key:                 map[string]types.AttributeValue{"pk": str(sp.PK()), "sk": str(UnclassifiedSK(cashAccount, txID))},
+		ConditionExpression: aws.String("attribute_exists(pk)"),
+	}}
+	items := mergeAdds(append([]types.TransactWriteItem{pending}, rev.Items...))
+	change := r.statementChange(sp, txID, "classified")
+	more, err := changeWrites(r.events, change, now)
+	if err != nil {
+		return "", err
+	}
+	if err := r.txs.TransactWrite(ctx, append(items, more...)); err != nil {
+		if onlyConditionFailed(err) {
+			return "", ErrNotUnclassified
+		}
+		return "", classifyPostCancel(err, -1)
+	}
+	r.rt.publish(ctx, change)
+	return rev.TxID, nil
+}
+
 // SetSyncState marks a BYOK account's sync ("active" on reconnect,
 // "disconnected" on disconnect). It writes the account row only.
 func (r *LedgerRepository) SetSyncState(ctx context.Context, sp space.ResolvedSpace, accountID, state string) error {
