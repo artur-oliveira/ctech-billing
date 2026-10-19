@@ -954,30 +954,24 @@ Spec `docs/specs/2026-10-17-merchant-tenant-deletion.md`, plan `docs/plans/2026-
 - [x] Phase 3b — console UI: the Settings card and the `/closure/confirm`, `/closure/cancel` pages
 - [ ] Phase 4 — export: job-built zip and presigned link
 
-## What is actually left (as of 2026-08-16)
+## What is actually left (as of 2026-10-18)
 
-The MVP is built and unreleased. In the order it blocks things:
+The service is in production and has moved real money (wallet deposits and Poker chip packs, live mode;
+checked against AWS on 2026-10-18). The first-deploy blockers listed here until 2026-08-16 are all cleared:
+the pipeline has deployed `main` repeatedly, `email-from` is set, the alert topic's e-mail subscription is
+confirmed, and Billing's wallet client entry and `ctech-charge` exist. What remains:
 
-1. **The first deploy.** Never run. `terraform/github` has to be applied once from a workstation
-   (`export AWS_PROFILE=ctech` — neither root names a profile in source, see
-   [`terraform/README.md`](terraform/README.md)) before any workflow has an identity to assume, and
-   the whole pipeline is untested against real AWS — it is verified by `terraform validate`, `fmt`,
-   and reading, which is not the same thing. Re-applying that root is also what picks up a trust
-   policy fix, since the pipeline cannot repair the role it needs in order to run.
-2. **The alert topic's e-mail subscription.** `ALERT_EMAIL=… ENVIRONMENT={env} npx cdk deploy
-   Ctech-{Env}-Alerts` in ctech-cdk, then confirm the subscription from the mail AWS sends. Until
-   it is confirmed the topic accepts publishes and delivers them nowhere, which looks identical
-   from this side.
-3. **The `email-from` SSM parameter**, set to the same address as `var.email_from`
-   (`billing@aoctech.app`). Verifying the *domain* in SES is necessary and not sufficient: the
-   role's policy pins `ses:FromAddress` to the Terraform variable on purpose, so that dunning
-   cannot send as ctech-account's address. The two are copies of one fact, nothing checks they
-   agree, and a mismatch is discovered when the first reminder is refused at send time rather than
-   at deploy time.
-4. **Console writes, then the console** (Phase 2). In that order, for the reason each item gives.
+1. **Wallet-ledger P5 leftovers** ([plan](docs/plans/2026-10-14-wallet-ledger-p5-cleanup.md)). The game wallet,
+   `BILLING_RAIL` and `PURCHASES_VIA` are gone from Wallet and Poker. Not re-checked on 2026-10-18: the two
+   on-demand `pre-game-merge-*` backups and Wallet's unused responsible-export route.
+2. **Which BYOK connections in prod are real.** Every `prod_billing_byok` row is Inter, and only
+   `inter-sandbox` parameters exist in SSM; the rail's live collection is tenant zero's own.
+3. **Tenant closure, Phase 4** (export), listed above. The feature is dark behind `TENANT_CLOSURE_ENABLED`.
+4. **Merchant terms acceptance.** Billing has no acceptance record of its own (README).
 
-Cleared on 2026-08-16, recorded so the cost of re-deriving them is not paid twice:
+Cleared, recorded so the cost of re-deriving them is not paid twice:
 
+- ~~**The first deploy, `email-from`, the alert topic subscription**~~ — done; verified 2026-10-18.
 - ~~**Billing's entry in `/ctech-wallet/{env}/m2m-clients`**~~ — set. Two naming traps, both of
   which fail by returning a zero value rather than an error. The **blob key is the OAuth client
   id** (`ctech-charge`), because wallet looks up `s.m2mClients[claims.AZP]`; an entry under
@@ -1011,8 +1005,8 @@ Not blockers, worth naming so they are not rediscovered as surprises:
   somebody looking for a line of configuration and the other for an attacker.
   Losing every key still makes every stored tax id unreadable, so they belong wherever the
   account's break-glass material lives.
-- **No environment holds invoices**, which is what makes the `lookup_pk` caveat above harmless and
-  is the last moment it will be.
+- **Production now holds invoices** (105 on 2026-10-18), so the `lookup_pk` caveat above is no longer harmless:
+  check the backfills ran before relying on the customer index.
 
 ## Explicitly deferred (post-MVP, do not build now)
 - ~~Invoice PDF generation/storage~~ — **built** (`internal/invoicepdf`, `services/documents.go`).

@@ -21,16 +21,11 @@ opens deposit invoices and pays withdrawals through it, and Poker sells chip pac
 [2026-08-15](docs/specs/2026-08-15-wallet-invoice-charge.md) is **history**: that rail, its client and its webhook were
 removed on 2026-10-15 ([ADR 0004](docs/adr/0004-pix-on-invoice-via-wallet.md) is superseded).
 
-Status: **the MVP is built and unreleased.** Domain, persistence, the four API surfaces, the
-collection path, reconciliation, dunning, outbound webhooks, the consumer portal, the public
-checkout, the infrastructure they run on and the pipeline that deploys them are implemented and
-green locally. The prerequisites in
-[`.github/workflows/README.md`](.github/workflows/README.md) that gate payments are now in place:
-wallet's `m2m-clients` entry, keyed by the OAuth client id `ctech-charge`, and that client holding
-`internal:wallet:charge-amount`. `@aoctech/ui` is on npm at `0.1.1` and the front end builds from
-the registry. What is left is **the first deploy, which has never run**, and the `email-from` SSM
-parameter. Nothing is deployed, nothing is committed, and nothing has moved real money.
-[PLAN.md § What is actually left](PLAN.md) is the ordered list.
+Status: **in production** (checked against AWS on 2026-10-18). The API runs on the `prod-ctech-billing` ASG
+and deploys from `main`; the portal and console are served at `billing.aoctech.app`. Real money has moved
+on the rail: the wallet's deposit invoices and Poker's chip-pack invoices, in live mode, are paid. The
+alert topic's e-mail subscription is confirmed and `email-from` is set. Open items are in
+[PLAN.md § What is actually left](PLAN.md).
 
 **BYOK (bank connections):** an organization connects its own bank account (Banco Inter first) for statement
 sync into Finanças and, in part B, collection; operations in [`docs/runbooks/byok.md`](docs/runbooks/byok.md),
