@@ -11,6 +11,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
@@ -40,12 +41,24 @@ type Invoicer struct {
 	// charges creates a BYOK tenant's due-date charge after an invoice is
 	// issued (spec 2026-10-11 § 7.2). Nil: nothing to create.
 	charges ChargeCreator
+	// workers and perOrg bound the daily sweep's concurrency (WithConcurrency).
+	workers, perOrg int
 }
 
 // WithCharges attaches the BYOK rail's hook after every issue.
 // WithTenantGuard makes the daily sweep skip (and count as suspended) the
 // subscriptions of a tenant for which skip answers true: a tenant being closed
 // issues no new invoices during its read-only grace.
+// WithConcurrency sets how many subscriptions the daily sweep bills at once
+// overall, and at most how many of one tenant. The default is 1 and 1: serial, as
+// the sweep always was. Raising it divides the run time of a renewal wave by about
+// the number of workers; perOrg stays low because one tenant's invoices share a
+// gapless counter whose compare-and-set retries do not scale with contenders.
+func (s *Invoicer) WithConcurrency(workers, perOrg int) *Invoicer {
+	s.workers, s.perOrg = max(workers, 1), max(perOrg, 1)
+	return s
+}
+
 func (s *Invoicer) WithTenantGuard(skip func(ctx context.Context, tenantOrgID string) (bool, error)) *Invoicer {
 	s.tenantGuard = skip
 	return s
@@ -90,7 +103,7 @@ func NewInvoicer(
 	catalog *repositories.CatalogRepository,
 	usage *repositories.UsageRepository,
 ) *Invoicer {
-	return &Invoicer{subs: subs, invoices: invoices, catalog: catalog, usage: usage}
+	return &Invoicer{subs: subs, invoices: invoices, catalog: catalog, usage: usage, workers: 1, perOrg: 1}
 }
 
 // WithOrganizations supplies the tenant's default dunning policy.
@@ -399,54 +412,123 @@ func (s *Invoicer) Issue(
 // It is cross-tenant by design (ADR 0002) and must only ever be called from a
 // scheduled job, never from a request.
 func (s *Invoicer) RunDailySweep(ctx context.Context, livemode bool, date brcal.Date, actor string, now time.Time) SweepResult {
-	var result SweepResult
-	var startKey map[string]types.AttributeValue
+	var (
+		mu     sync.Mutex
+		result SweepResult
+	)
+	record := func(f func(*SweepResult)) {
+		mu.Lock()
+		f(&result)
+		mu.Unlock()
+	}
 
 	suspended := newSuspensionCache(s.orgs)
+	limit := newOrgLimiter(s.perOrg)
+	work := make(chan billing.Subscription)
+	var wg sync.WaitGroup
+	for i := 0; i < max(s.workers, 1); i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for sub := range work {
+				s.sweepOne(ctx, &sub, actor, now, suspended, limit, record)
+			}
+		}()
+	}
+
+	var startKey map[string]types.AttributeValue
+produce:
 	for {
 		page, err := s.subs.DueOn(ctx, livemode, date, 100, startKey)
 		if err != nil {
-			result.Errors = append(result.Errors, fmt.Errorf("read due subscriptions for %s: %w", date, err))
-			return result
+			record(func(r *SweepResult) {
+				r.Errors = append(r.Errors, fmt.Errorf("read due subscriptions for %s: %w", date, err))
+			})
+			break
 		}
 		for i := range page.Items {
-			sub := page.Items[i]
-			result.Examined++
-			if skip, err := suspended.skip(ctx, sub.OrganizationID, sub.Livemode); err != nil {
-				result.Failed++
-				result.Errors = append(result.Errors, fmt.Errorf("subscription %s: reading its tenant: %w", sub.ID, err))
-				continue
-			} else if skip {
-				result.Suspended++
-				continue
-			}
-			if s.tenantGuard != nil {
-				skip, err := s.tenantGuard(ctx, sub.OrganizationID)
-				if err != nil {
-					result.Failed++
-					result.Errors = append(result.Errors, fmt.Errorf("subscription %s: reading the closure flag: %w", sub.ID, err))
-					continue
-				}
-				if skip {
-					result.Suspended++
-					continue
-				}
-			}
-			switch err := s.invoiceOne(ctx, &sub, actor, now); {
-			case err == nil:
-				result.Invoiced++
-			case errors.Is(err, repositories.ErrAlreadyGenerated):
-				result.Skipped++
-			default:
-				result.Failed++
-				result.Errors = append(result.Errors, fmt.Errorf("subscription %s: %w", sub.ID, err))
+			record(func(r *SweepResult) { r.Examined++ })
+			select {
+			case work <- page.Items[i]:
+			case <-ctx.Done():
+				record(func(r *SweepResult) {
+					r.Errors = append(r.Errors, fmt.Errorf("sweep for %s interrupted: %w", date, ctx.Err()))
+				})
+				break produce
 			}
 		}
 		if page.LastEvaluatedKey == nil {
-			return result
+			break
 		}
 		startKey = page.LastEvaluatedKey
 	}
+	close(work)
+	wg.Wait()
+	return result
+}
+
+// sweepOne invoices one due subscription and records what happened. At most
+// perOrg subscriptions of one tenant are in flight: they all number their invoices
+// from one gapless counter, and more contenders than that only burn its retries.
+func (s *Invoicer) sweepOne(ctx context.Context, sub *billing.Subscription, actor string, now time.Time,
+	suspended *suspensionCache, limit *orgLimiter, record func(func(*SweepResult))) {
+	fail := func(format string, err error) {
+		record(func(r *SweepResult) {
+			r.Failed++
+			r.Errors = append(r.Errors, fmt.Errorf(format, sub.ID, err))
+		})
+	}
+	if skip, err := suspended.skip(ctx, sub.OrganizationID, sub.Livemode); err != nil {
+		fail("subscription %s: reading its tenant: %w", err)
+		return
+	} else if skip {
+		record(func(r *SweepResult) { r.Suspended++ })
+		return
+	}
+	if s.tenantGuard != nil {
+		skip, err := s.tenantGuard(ctx, sub.OrganizationID)
+		if err != nil {
+			fail("subscription %s: reading the closure flag: %w", err)
+			return
+		}
+		if skip {
+			record(func(r *SweepResult) { r.Suspended++ })
+			return
+		}
+	}
+	release := limit.acquire(sub.OrganizationID)
+	defer release()
+	switch err := s.invoiceOne(ctx, sub, actor, now); {
+	case err == nil:
+		record(func(r *SweepResult) { r.Invoiced++ })
+	case errors.Is(err, repositories.ErrAlreadyGenerated):
+		record(func(r *SweepResult) { r.Skipped++ })
+	default:
+		fail("subscription %s: %w", err)
+	}
+}
+
+// orgLimiter caps how many subscriptions of one tenant the sweep bills at once.
+type orgLimiter struct {
+	per  int
+	mu   sync.Mutex
+	sems map[string]chan struct{}
+}
+
+func newOrgLimiter(per int) *orgLimiter {
+	return &orgLimiter{per: max(per, 1), sems: map[string]chan struct{}{}}
+}
+
+func (l *orgLimiter) acquire(org string) (release func()) {
+	l.mu.Lock()
+	sem, ok := l.sems[org]
+	if !ok {
+		sem = make(chan struct{}, l.per)
+		l.sems[org] = sem
+	}
+	l.mu.Unlock()
+	sem <- struct{}{}
+	return func() { <-sem }
 }
 
 // invoiceOne bills a subscription and then advances it to the next period.

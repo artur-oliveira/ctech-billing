@@ -67,6 +67,8 @@ func main() {
 		jobs.Startup(ctx, alerter, "sweep", err)
 	}
 
+	invoicer.WithConcurrency(cfg.SweepWorkers, cfg.SweepPerOrg)
+
 	now := time.Now()
 	var liveErrors []error
 	for _, day := range sweepDates(date, back) {
