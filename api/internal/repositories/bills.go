@@ -347,16 +347,15 @@ func (r *BillRepository) ConfirmExpectedOccurrence(ctx context.Context, sp space
 }
 
 func (r *BillRepository) expectedRecurrenceUnchanged(sp space.ResolvedSpace, p PendingOccurrence) types.TransactWriteItem {
-	condition := "attribute_exists(pk) AND (attribute_not_exists(archived) OR archived = :f) AND amount_mode = :mode AND amount = :amount AND category_id = :category"
-	values := map[string]types.AttributeValue{":f": &types.AttributeValueMemberBOOL{Value: false}, ":mode": str(string(finance.AmountExpected)), ":amount": numberValue(int64(p.Expected)), ":category": str(p.CategoryID)}
+	// Every attribute goes through a #name (reserved words, as in CreatePendingOccurrence).
+	condition := "attribute_exists(pk) AND (attribute_not_exists(#arch) OR #arch = :f) AND #mode = :mode AND #amount = :amount AND #category = :category AND #target = :target"
+	names := map[string]string{"#arch": "archived", "#mode": "amount_mode", "#amount": "amount", "#category": "category_id", "#target": "account_id"}
+	values := map[string]types.AttributeValue{":f": &types.AttributeValueMemberBOOL{Value: false}, ":mode": str(string(finance.AmountExpected)), ":amount": numberValue(int64(p.Expected)), ":category": str(p.CategoryID), ":target": str(p.AccountID)}
 	if p.CardID != "" {
-		condition += " AND card_id = :target"
+		names["#target"] = "card_id"
 		values[":target"] = str(p.CardID)
-	} else {
-		condition += " AND account_id = :target"
-		values[":target"] = str(p.AccountID)
 	}
-	return types.TransactWriteItem{ConditionCheck: &types.ConditionCheck{TableName: aws.String(r.recs.TableName), Key: map[string]types.AttributeValue{"pk": str(sp.PK()), "sk": str(RecurrenceSK(p.RecurrenceID))}, ConditionExpression: aws.String(condition), ExpressionAttributeValues: values}}
+	return types.TransactWriteItem{ConditionCheck: &types.ConditionCheck{TableName: aws.String(r.recs.TableName), Key: map[string]types.AttributeValue{"pk": str(sp.PK()), "sk": str(RecurrenceSK(p.RecurrenceID))}, ConditionExpression: aws.String(condition), ExpressionAttributeNames: names, ExpressionAttributeValues: values}}
 }
 
 // DueBill is an auto-settle bill the daily job should settle.
