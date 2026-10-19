@@ -3,6 +3,7 @@ package repositories
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
@@ -97,3 +98,55 @@ func scanSchedulePage(ctx context.Context, b Base, schedulePK string, livemode b
 }
 
 func (e scheduleEntry) String() string { return fmt.Sprintf("%s/%s", e.Space.PK(), e.ID) }
+
+// batchGetEntries reads the row of every entry in as few calls as DynamoDB
+// allows (100 keys each), in the order of entries; a row that is gone is nil.
+// It is the hydration of a due list: a page of up to a few hundred rows used to
+// cost one GetItem round trip each. Eventually consistent, as the GetItem it
+// replaces; unprocessed keys are retried a few times, then the page fails whole.
+func batchGetEntries(ctx context.Context, b Base, entries []scheduleEntry, sk func(id string) string) ([]map[string]types.AttributeValue, error) {
+	const perCall, attempts = 100, 6
+	rows := make(map[string]map[string]types.AttributeValue, len(entries))
+	keyOf := func(pk, sk string) string { return pk + "\x00" + sk }
+	for lo := 0; lo < len(entries); lo += perCall {
+		var keys []map[string]types.AttributeValue
+		seen := map[string]bool{}
+		for _, e := range entries[lo:min(lo+perCall, len(entries))] {
+			k := keyOf(e.Space.PK(), sk(e.ID))
+			if !seen[k] {
+				seen[k] = true
+				keys = append(keys, map[string]types.AttributeValue{"pk": str(e.Space.PK()), "sk": str(sk(e.ID))})
+			}
+		}
+		req := map[string]types.KeysAndAttributes{b.TableName: {Keys: keys}}
+		for attempt := 0; len(req) > 0; attempt++ {
+			if attempt == attempts {
+				return nil, fmt.Errorf("%s: %d keys still unprocessed after retries", b.TableName, len(req[b.TableName].Keys))
+			}
+			if attempt > 0 {
+				select {
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				case <-time.After(time.Duration(attempt) * 25 * time.Millisecond):
+				}
+			}
+			res, err := b.BatchGetItemRaw(ctx, &dynamodb.BatchGetItemInput{RequestItems: req})
+			if err != nil {
+				return nil, err
+			}
+			for _, item := range res.Responses[b.TableName] {
+				pk, _ := item["pk"].(*types.AttributeValueMemberS)
+				k, _ := item["sk"].(*types.AttributeValueMemberS)
+				if pk != nil && k != nil {
+					rows[keyOf(pk.Value, k.Value)] = item
+				}
+			}
+			req = res.UnprocessedKeys
+		}
+	}
+	out := make([]map[string]types.AttributeValue, len(entries))
+	for i, e := range entries {
+		out[i] = rows[keyOf(e.Space.PK(), sk(e.ID))]
+	}
+	return out, nil
+}

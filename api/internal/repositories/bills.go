@@ -390,16 +390,24 @@ func (r *BillRepository) DueForAutoSettlePage(ctx context.Context, livemode bool
 }
 
 func (r *BillRepository) hydrateDue(ctx context.Context, entries []scheduleEntry) (due []DueBill, skipped int, err error) {
-	for _, e := range entries {
-		b, err := r.get(ctx, e.Space, e.ID)
-		if errors.Is(err, ErrNotFound) {
+	raws, err := batchGetEntries(ctx, r.bills, entries, BillSK)
+	if err != nil {
+		return nil, 0, err
+	}
+	for i, e := range entries {
+		if raws[i] == nil {
 			skipped++
 			continue
 		}
+		it, err := Decode[billItem](raws[i])
 		if err != nil {
 			return due, skipped, err
 		}
-		due = append(due, DueBill{Space: e.Space, Bill: *b})
+		b, err := it.bill()
+		if err != nil {
+			return due, skipped, err
+		}
+		due = append(due, DueBill{Space: e.Space, Bill: b})
 	}
 	return due, skipped, nil
 }
