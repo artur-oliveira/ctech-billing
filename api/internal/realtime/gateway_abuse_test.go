@@ -36,16 +36,24 @@ func TestAFloodOfFramesClosesTheConnectionAndNobodyElse(t *testing.T) {
 			}
 		}
 	}()
-	limited := false
-	for i := 0; i < 2100 && !limited; i++ {
+	// The flooder is cut off. Whether it still reads the Bye is the kernel's call: a
+	// server that closes with the rest of the flood unread resets the connection, and
+	// the reset discards what the client had not read yet. So what is asserted is the
+	// server's decision (a Bye limit counted) and that the connection ended.
+	for i := 0; i < 2100; i++ {
 		f, err := next(t, flooder, 2*time.Second)
-		if err != nil {
+		if err != nil || f.GetBye().GetReason() == ByeLimit {
 			break
 		}
-		limited = f.GetBye().GetReason() == ByeLimit
 	}
-	if !limited {
+	for until := time.Now().Add(2 * time.Second); e.metrics.Count("bye", ByeLimit) == 0 && time.Now().Before(until); {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if e.metrics.Count("bye", ByeLimit) != 1 {
 		t.Fatal("2,000 pings in a burst were not answered with Bye limit")
+	}
+	if _, err := next(t, flooder, 2*time.Second); err == nil {
+		t.Fatal("the flooder is still connected after the limit")
 	}
 
 	// The bystander is untouched and still answered.
