@@ -3,6 +3,7 @@ package repositories
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
@@ -38,9 +39,8 @@ var notExported = map[string]string{
 }
 
 // exportMaxItems bounds one table of one space, across all its partitions. A ledger past it is cut and the
-// result says so.
-// ponytail: 200k rows covers any personal space; stream pages to the part's zip
-// if one ever outgrows memory.
+// result says so. The export streams, so the bound no longer protects memory; it bounds the time (one
+// delivery of the queue message) and the size of the spooled zip.
 const exportMaxItems = 200_000
 
 // SpaceReader reads a finance space for the personal-data export. Read-only: the
@@ -75,64 +75,63 @@ type SpaceRows struct {
 	Truncated bool
 }
 
-// queryBounded is queryPrefix that stops paging once limit rows are read, so
-// the cap bounds memory, not just the output. truncated says it stopped early.
-func queryBounded(ctx context.Context, b Base, pk, skPrefix string, limit int) (items []map[string]types.AttributeValue, truncated bool, err error) {
+// exportPage is how many rows one round trip asks for (1000 small rows are far
+// under the 1 MB response cap).
+const exportPage = 1000
+
+// eachPage pages through pk's rows under skPrefix and hands each page to fn, stopping
+// once limit rows were read, so the cap bounds the work and fn never holds more than
+// one page. truncated says it stopped early.
+func eachPage(ctx context.Context, b Base, pk, skPrefix string, limit int, fn func([]map[string]types.AttributeValue) error) (truncated bool, err error) {
 	var start map[string]types.AttributeValue
 	for limit > 0 {
 		res, err := b.Query(ctx, QueryOpts{
-			PK: pk, SKPrefix: skPrefix, ScanIndexForward: true, Limit: min(limit, 100), ExclusiveStartKey: start, ConsistentRead: true,
+			PK: pk, SKPrefix: skPrefix, ScanIndexForward: true, Limit: min(limit, exportPage), ExclusiveStartKey: start, ConsistentRead: true,
 		})
 		if err != nil {
-			return nil, false, err
+			return false, err
 		}
-		items = append(items, res.Items...)
+		if err := fn(res.Items); err != nil {
+			return false, err
+		}
 		limit -= len(res.Items)
 		if len(res.LastEvaluatedKey) == 0 {
-			return items, false, nil
+			return false, nil
 		}
 		start = res.LastEvaluatedKey
 	}
-	return items, true, nil
+	return true, nil
 }
 
-// readInto adds one partition's rows to table, within the table's budget of
-// exportMaxItems across every partition of the space.
-func (r *SpaceReader) readInto(ctx context.Context, rows map[string]*SpaceRows, table, pk, prefix string) error {
-	out := rows[table]
-	if out == nil {
-		out = &SpaceRows{}
-		rows[table] = out
-	}
-	remaining := r.limit() - len(out.Items)
-	if remaining <= 0 {
-		out.Truncated = true
+// queryBounded is eachPage collected into a slice, for the small lists (a space's
+// chart, its card and import ids) the walk needs to know before it streams.
+func queryBounded(ctx context.Context, b Base, pk, skPrefix string, limit int) (items []map[string]types.AttributeValue, truncated bool, err error) {
+	truncated, err = eachPage(ctx, b, pk, skPrefix, limit, func(page []map[string]types.AttributeValue) error {
+		items = append(items, page...)
 		return nil
-	}
-	got, truncated, err := queryBounded(ctx, r.bases[table], pk, prefix, remaining)
-	if err != nil {
-		return err
-	}
-	out.Truncated = out.Truncated || truncated
-	for _, it := range got {
-		var m map[string]any
-		if err := attributevalue.UnmarshalMap(it, &m); err != nil {
-			return fmt.Errorf("export: decode %s: %w", table, err)
-		}
-		out.Items = append(out.Items, ScrubSecrets(m).(map[string]any))
-	}
-	return nil
+	})
+	return items, truncated, err
 }
 
-// Read returns the rows of sp per logical table, omitting tables with none. It
-// walks the same child partitions PurgeSpace does (ledger entries, card and
-// import partitions).
-func (r *SpaceReader) Read(ctx context.Context, sp space.ResolvedSpace) (map[string]*SpaceRows, error) {
-	if sp.IsZero() {
-		return nil, space.ErrNoSpace
-	}
-	rows := map[string]*SpaceRows{}
+// TableSink receives the rows of a space one table at a time, in table order. Begin
+// is called at a table's first row (a table with no rows is never begun), Item for
+// each row, End when the table is done. A zip entry can only be written
+// sequentially, which is why the walk groups a table's partitions together.
+type TableSink interface {
+	Begin(table string) error
+	Item(item map[string]any) error
+	End(truncated bool) error
+}
+
+type exportPartition struct{ pk, prefix string }
+
+// plan lists, per table, the partitions of the space to read: the child
+// partitions (ledger entries per account, card and import partitions) and then
+// the space's own. Only ids are kept in memory, never rows; the transaction
+// headers are paged through just to learn which accounts they touch.
+func (r *SpaceReader) plan(ctx context.Context, sp space.ResolvedSpace) (map[string][]exportPartition, error) {
 	s := sp.PK()
+	parts := map[string][]exportPartition{}
 
 	accounts := map[string]bool{}
 	chart, _, err := queryBounded(ctx, r.bases[TableLedgerAccounts], s, "ACCOUNT#", r.limit())
@@ -144,24 +143,26 @@ func (r *SpaceReader) Read(ctx context.Context, sp space.ResolvedSpace) (map[str
 			accounts[strings.TrimPrefix(sk.Value, "ACCOUNT#")] = true
 		}
 	}
-	headers, _, err := queryBounded(ctx, r.bases[TableLedgerTransactions], s, "TX#", r.limit())
-	if err != nil {
-		return nil, err
-	}
-	txs, err := DecodeItems[txItem](headers)
-	if err != nil {
-		return nil, err
-	}
-	for _, tx := range txs {
-		for _, leg := range tx.Legs {
-			accounts[leg.Account] = true
+	if _, err := eachPage(ctx, r.bases[TableLedgerTransactions], s, "TX#", r.limit(), func(page []map[string]types.AttributeValue) error {
+		txs, err := DecodeItems[txItem](page)
+		if err != nil {
+			return err
 		}
+		for _, tx := range txs {
+			for _, leg := range tx.Legs {
+				accounts[leg.Account] = true
+			}
+		}
+		return nil
+	}); err != nil {
+		return nil, err
 	}
 	for account := range accounts {
-		if err := r.readInto(ctx, rows, TableLedgerTransactions, LedgerEntryPK(sp, account), ""); err != nil {
-			return nil, err
-		}
+		parts[TableLedgerTransactions] = append(parts[TableLedgerTransactions], exportPartition{LedgerEntryPK(sp, account), ""})
 	}
+	// A stable order, so two runs of the same export give the same file.
+	slices.SortFunc(parts[TableLedgerTransactions], func(a, b exportPartition) int { return strings.Compare(a.pk, b.pk) })
+
 	for _, c := range []struct{ table, prefix string }{{TableCards, "CARD#"}, {TableImports, "IMPORT#"}} {
 		ids, _, err := queryBounded(ctx, r.bases[c.table], s, c.prefix, r.limit())
 		if err != nil {
@@ -177,17 +178,92 @@ func (r *SpaceReader) Read(ctx context.Context, sp space.ResolvedSpace) (map[str
 			if c.table == TableImports {
 				pk = ImportPK(sp, id)
 			}
-			if err := r.readInto(ctx, rows, c.table, pk, ""); err != nil {
-				return nil, err
-			}
+			parts[c.table] = append(parts[c.table], exportPartition{pk, ""})
 		}
 	}
 	for _, t := range exportedFinanceTables {
-		if err := r.readInto(ctx, rows, t, s, ""); err != nil {
-			return nil, err
+		parts[t] = append(parts[t], exportPartition{s, ""})
+	}
+	return parts, nil
+}
+
+// Stream walks the space table by table (in name order) and feeds sink, holding at
+// most one page of rows at a time: the memory of an export no longer grows with
+// the person's data. Each table is capped at the reader's limit across all its
+// partitions.
+func (r *SpaceReader) Stream(ctx context.Context, sp space.ResolvedSpace, sink TableSink) error {
+	if sp.IsZero() {
+		return space.ErrNoSpace
+	}
+	parts, err := r.plan(ctx, sp)
+	if err != nil {
+		return err
+	}
+	tables := slices.Clone(exportedFinanceTables)
+	slices.Sort(tables)
+	for _, table := range tables {
+		count, begun, truncated := 0, false, false
+		for _, p := range parts[table] {
+			remaining := r.limit() - count
+			if remaining <= 0 {
+				truncated = true
+				break
+			}
+			cut, err := eachPage(ctx, r.bases[table], p.pk, p.prefix, remaining, func(page []map[string]types.AttributeValue) error {
+				for _, it := range page {
+					var m map[string]any
+					if err := attributevalue.UnmarshalMap(it, &m); err != nil {
+						return fmt.Errorf("export: decode %s: %w", table, err)
+					}
+					if !begun {
+						if err := sink.Begin(table); err != nil {
+							return err
+						}
+						begun = true
+					}
+					if err := sink.Item(ScrubSecrets(m).(map[string]any)); err != nil {
+						return err
+					}
+					count++
+				}
+				return nil
+			})
+			if err != nil {
+				return err
+			}
+			truncated = truncated || cut
+		}
+		if begun {
+			if err := sink.End(truncated); err != nil {
+				return err
+			}
 		}
 	}
-	return rows, nil
+	return nil
+}
+
+// collectSink gathers a stream into memory, for tests and small callers.
+type collectSink struct {
+	rows map[string]*SpaceRows
+	cur  *SpaceRows
+}
+
+func (c *collectSink) Begin(table string) error {
+	c.cur = &SpaceRows{}
+	c.rows[table] = c.cur
+	return nil
+}
+func (c *collectSink) Item(m map[string]any) error { c.cur.Items = append(c.cur.Items, m); return nil }
+func (c *collectSink) End(truncated bool) error    { c.cur.Truncated = truncated; return nil }
+
+// Read returns the rows of sp per logical table, omitting tables with none, all in
+// memory. It is Stream collected: the export itself uses Stream.
+func (r *SpaceReader) Read(ctx context.Context, sp space.ResolvedSpace) (map[string]*SpaceRows, error) {
+	c := &collectSink{rows: map[string]*SpaceRows{}}
+	if err := r.Stream(ctx, sp, c); err != nil {
+		return nil, err
+	}
+	return c.rows, nil
 }
 
 // secretFragments name attributes that never leave in an export, at any depth: a

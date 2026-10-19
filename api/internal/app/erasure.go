@@ -202,7 +202,7 @@ func BuildErasureConsumer(ctx context.Context, cfg *config.Config, spaceFor func
 		repositories.NewCustomerRepository(db, cfg), repositories.NewSubscriptionRepository(db, cfg),
 		repositories.NewInvoiceRepository(db, cfg), repositories.NewSpaceReader(db, cfg),
 		cfg.PortalOrganizationID, spaceFor)
-	handler := dataexport.NewHandler(erasureService, exporter.Part, uc, dataexport.NewAckClient(uc,
+	handler := dataexport.NewStreamHandler(erasureService, exporter.WritePart, uc, dataexport.NewAckClient(uc,
 		strings.TrimSuffix(cfg.AccountBaseURL, "/")+"/v1.0/internal/export/ack",
 		oauth2client.New(hc, newCache(cfg), cfg.AccountTokenURL, clientID, clientSecret, exportAckScope)))
 	return erasure.NewConsumer(queues, aws.ToString(q.QueueUrl), erasureService,

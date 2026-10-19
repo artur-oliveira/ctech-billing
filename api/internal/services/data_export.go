@@ -2,12 +2,12 @@ package services
 
 import (
 	"archive/zip"
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"sort"
+	"io"
+	"strconv"
 	"strings"
 	"time"
 
@@ -31,7 +31,7 @@ type ExportInvoices interface {
 }
 
 type ExportSpaces interface {
-	Read(ctx context.Context, sp space.ResolvedSpace) (map[string]*repositories.SpaceRows, error)
+	Stream(ctx context.Context, sp space.ResolvedSpace, sink repositories.TableSink) error
 }
 
 // DataExporter builds billing's part of the personal-data export (LGPD art. 18,
@@ -62,76 +62,110 @@ func NewDataExporter(c ExportCustomers, s ExportSubscriptions, i ExportInvoices,
 	return &DataExporter{customers: c, subs: s, invoices: i, spaces: sp, portalOrg: portalOrganizationID, spaceFor: spaceFor, now: time.Now}
 }
 
-// Part is the dataexport.PartFunc of billing. Idempotent: a redelivery builds it again.
-func (e *DataExporter) Part(ctx context.Context, sub string) ([]byte, error) {
-	var buf bytes.Buffer
-	zw := zip.NewWriter(&buf)
-	var files []string
-	var truncated []string
-	write := func(name string, v any) error {
-		data, err := json.MarshalIndent(v, "", "  ")
-		if err != nil {
-			return err
-		}
-		w, err := zw.Create(name)
-		if err != nil {
-			return err
-		}
-		if _, err := w.Write(data); err != nil {
-			return err
-		}
-		files = append(files, name)
-		return nil
-	}
+// WritePart is the dataexport.PartStreamFunc of billing: it writes the zip to w as
+// it reads, one page of rows at a time, so a person with a large ledger no longer
+// costs that much memory inside the API process. Idempotent: a redelivery writes
+// it again.
+func (e *DataExporter) WritePart(ctx context.Context, sub string, w io.Writer) error {
+	zw := zip.NewWriter(w)
+	var files, truncated []string
 
 	for _, live := range []bool{true, false} {
 		if e.portalOrg != "" {
 			if v, err := e.customerView(ctx, sub, live); err != nil {
-				return nil, err
+				return err
 			} else if v != nil {
-				if err := write("customer-"+modeName(live)+".json", v); err != nil {
-					return nil, err
+				name := "customer-" + modeName(live) + ".json"
+				if err := writeJSONFile(zw, name, v); err != nil {
+					return err
 				}
+				files = append(files, name)
 			}
 		}
 		sp, err := e.spaceFor("USER#"+sub, live)
 		if err != nil {
 			continue // a sub that cannot name a space never had one
 		}
-		rows, err := e.spaces.Read(ctx, sp)
-		if err != nil {
-			return nil, fmt.Errorf("export: reading space %s: %w", sp.PK(), err)
+		sink := &zipTableSink{zw: zw, dir: "finance-" + modeName(live) + "/"}
+		if err := e.spaces.Stream(ctx, sp, sink); err != nil {
+			return fmt.Errorf("export: reading space %s: %w", sp.PK(), err)
 		}
-		tables := make([]string, 0, len(rows))
-		for t := range rows {
-			tables = append(tables, t)
-		}
-		sort.Strings(tables)
-		for _, t := range tables {
-			if len(rows[t].Items) == 0 {
-				continue
-			}
-			name := "finance-" + modeName(live) + "/" + t + ".json"
-			if err := write(name, map[string]any{"table": t, "truncated": rows[t].Truncated, "items": rows[t].Items}); err != nil {
-				return nil, err
-			}
-			if rows[t].Truncated {
-				truncated = append(truncated, name)
-			}
-		}
+		files = append(files, sink.files...)
+		truncated = append(truncated, sink.truncated...)
 	}
 
-	w, err := zw.Create("README.txt")
+	rw, err := zw.Create("README.txt")
 	if err != nil {
-		return nil, err
+		return err
 	}
-	if _, err := w.Write([]byte(e.readme(files, truncated))); err != nil {
-		return nil, err
+	if _, err := rw.Write([]byte(e.readme(files, truncated))); err != nil {
+		return err
 	}
-	if err := zw.Close(); err != nil {
-		return nil, err
+	return zw.Close()
+}
+
+// writeJSONFile writes one small value as an indented JSON file.
+func writeJSONFile(zw *zip.Writer, name string, v any) error {
+	data, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		return err
 	}
-	return buf.Bytes(), nil
+	w, err := zw.Create(name)
+	if err != nil {
+		return err
+	}
+	_, err = w.Write(data)
+	return err
+}
+
+// zipTableSink writes each table of a space as {"table","items":[...],"truncated"}
+// into one zip entry, a row at a time. The entry cannot be rewritten, so what the
+// table turned out to be (cut or not) is the last field.
+type zipTableSink struct {
+	zw        *zip.Writer
+	dir       string
+	w         io.Writer
+	table     string
+	n         int
+	files     []string
+	truncated []string
+}
+
+func (s *zipTableSink) Begin(table string) error {
+	name := s.dir + table + ".json"
+	w, err := s.zw.Create(name)
+	if err != nil {
+		return err
+	}
+	s.w, s.table, s.n = w, table, 0
+	s.files = append(s.files, name)
+	_, err = io.WriteString(w, `{"table":`+strconv.Quote(table)+`,"items":[`)
+	return err
+}
+
+func (s *zipTableSink) Item(item map[string]any) error {
+	data, err := json.Marshal(item)
+	if err != nil {
+		return err
+	}
+	sep := "\n"
+	if s.n > 0 {
+		sep = ",\n"
+	}
+	s.n++
+	if _, err := io.WriteString(s.w, sep); err != nil {
+		return err
+	}
+	_, err = s.w.Write(data)
+	return err
+}
+
+func (s *zipTableSink) End(truncated bool) error {
+	if truncated {
+		s.truncated = append(s.truncated, s.dir+s.table+".json")
+	}
+	_, err := io.WriteString(s.w, "\n],\"truncated\":"+strconv.FormatBool(truncated)+"}\n")
+	return err
 }
 
 // customerView is the person as a customer of CTech: the record (with their own
