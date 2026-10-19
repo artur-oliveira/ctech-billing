@@ -198,3 +198,58 @@ func TestAnHourlySyncWritesOneSmallRow(t *testing.T) {
 func countingByokClient(n *atomic.Int64) *dynamodb.Client {
 	return countingClient(n)
 }
+
+// A credit the bank lists before its details exist (no txid, description or payer; Inter
+// shows a Pix about a second after it lands) is not posted: the settlement the webhook
+// just made already credited the account, and posting the draft counted the payment
+// twice. The complete version of the line, same id, is posted once.
+func TestAnIncompleteCreditLineWaitsForItsCompleteVersion(t *testing.T) {
+	ctx := ctxT(t)
+	env := newByokEnv(t)
+	env.fake.SetBalance(byok.Balance{Available: 0})
+	for range 3 { // finish the backfill on an empty statement
+		if _, err := env.statement.Sync(ctx, env.space, env.conn, now()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	balance := func() int64 {
+		a, _ := env.ledger.GetAccount(ctx, env.space, env.conn.LedgerAccountID)
+		return int64(a.Balance)
+	}
+
+	draft := byok.StatementLine{ID: "D1", Date: toByokDate(env.today), Direction: byok.Credit, Amount: 100, Title: "Pix recebido"}
+	env.fake.AddLines(draft)
+	r, err := env.statement.Sync(ctx, env.space, env.conn, now())
+	if err != nil || r.Held != 1 || r.Posted != 0 || balance() != 0 {
+		t.Fatalf("the draft must wait: %+v err=%v balance=%d", r, err, balance())
+	}
+	if r.Difference != 0 {
+		t.Logf("the bank already counts it (difference %d), and the sync does not warn while a line is held", r.Difference)
+	}
+
+	complete := draft
+	complete.Description = "Fulano de Tal"
+	env.fake.AddLines(complete)
+	if r, err = env.statement.Sync(ctx, env.space, env.conn, now()); err != nil || r.Posted != 1 || balance() != 100 {
+		t.Fatalf("the complete line posts once: %+v err=%v balance=%d", r, err, balance())
+	}
+	if r, _ = env.statement.Sync(ctx, env.space, env.conn, now()); r.Posted != 0 || balance() != 100 {
+		t.Fatalf("and never again: %+v balance=%d", r, balance())
+	}
+}
+
+// A line that stays bare is not held for ever: past a day it posts as it is.
+func TestABareCreditLineIsPostedOnceItIsADayOld(t *testing.T) {
+	ctx := ctxT(t)
+	env := newByokEnv(t)
+	env.fake.SetBalance(byok.Balance{Available: 0})
+	env.fake.AddLines(byok.StatementLine{ID: "B1", Date: toByokDate(env.today.AddDays(-2)), Direction: byok.Credit, Amount: 250, Title: "Pix recebido"})
+	for range 3 {
+		if _, err := env.statement.Sync(ctx, env.space, env.conn, now()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if a, _ := env.ledger.GetAccount(ctx, env.space, env.conn.LedgerAccountID); int64(a.Balance) != 250 {
+		t.Fatalf("balance %d, want the bare line posted", int64(a.Balance))
+	}
+}
