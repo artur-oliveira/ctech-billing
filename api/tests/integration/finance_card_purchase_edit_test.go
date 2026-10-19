@@ -82,8 +82,8 @@ func TestEditingAPurchaseDescriptionRenamesEveryStatementLine(t *testing.T) {
 			t.Fatalf("item = %+v", it)
 		}
 	}
-	list, _ := f.cards.ListPurchases(ctx, f.sp, card.ID)
-	if len(list) != 1 || list[0].Description != "Geladeira nova" {
+	list, _ := f.cards.ListPurchasesPage(ctx, f.sp, card.ID, 50, nil)
+	if len(list.Items) != 1 || list.Items[0].Description != "Geladeira nova" {
 		t.Fatalf("list = %+v", list)
 	}
 	if f.ledgerBal(t, "food") != 90000 || f.ledgerBal(t, card.ID) != -90000 {

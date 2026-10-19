@@ -336,19 +336,26 @@ func (r *CardRepository) getPurchase(ctx context.Context, sp space.ResolvedSpace
 	return it.purchase(cardID)
 }
 
-// ListPurchases returns a card's purchases, newest first.
-func (r *CardRepository) ListPurchases(ctx context.Context, sp space.ResolvedSpace, cardID string) ([]Purchase, error) {
+// ListPurchasesPage returns one page of a card's purchases, newest created first
+// (a purchase id grows with time, and the sort key is the id), with the key to
+// continue from. A card keeps every purchase it ever had: reading them all to show
+// a list is what this replaces. The rows of a page are put in date order, newest
+// first, which is what a screen wants to read.
+func (r *CardRepository) ListPurchasesPage(ctx context.Context, sp space.ResolvedSpace, cardID string, limit int, start map[string]types.AttributeValue) (*Page[Purchase], error) {
 	if err := sp.Require(space.Read); err != nil {
 		return nil, err
 	}
 	if _, err := r.loadCard(ctx, sp, cardID); err != nil {
 		return nil, err
 	}
-	raw, err := queryPrefix(ctx, r.cards, CardPK(sp, cardID), "PURCHASE#")
+	res, err := r.cards.Query(ctx, QueryOpts{
+		PK: CardPK(sp, cardID), SKPrefix: "PURCHASE#", ScanIndexForward: false, Limit: limit,
+		ExclusiveStartKey: start, ConsistentRead: true,
+	})
 	if err != nil {
 		return nil, err
 	}
-	rows, err := DecodeItems[purchaseItem](raw)
+	rows, err := DecodeItems[purchaseItem](res.Items)
 	if err != nil {
 		return nil, err
 	}
@@ -361,7 +368,16 @@ func (r *CardRepository) ListPurchases(ctx context.Context, sp space.ResolvedSpa
 		out = append(out, p)
 	}
 	slices.SortStableFunc(out, func(a, b Purchase) int { return b.Date.Compare(a.Date) })
-	return out, nil
+	return &Page[Purchase]{Items: out, LastEvaluatedKey: res.LastEvaluatedKey}, nil
+}
+
+// GetPurchase returns one purchase of a card. A statement line names its purchase
+// by id, so a screen can ask for exactly the one it needs instead of the list.
+func (r *CardRepository) GetPurchase(ctx context.Context, sp space.ResolvedSpace, cardID, purchaseID string) (Purchase, error) {
+	if err := sp.Require(space.Read); err != nil {
+		return Purchase{}, err
+	}
+	return r.getPurchase(ctx, sp, cardID, purchaseID)
 }
 
 // GetStatement returns one month of a card: the frozen statement when closed,

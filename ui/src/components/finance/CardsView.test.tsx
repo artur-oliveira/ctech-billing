@@ -40,6 +40,7 @@ function serve(verbs: Verb[], cards: Card[] = [CARD]) {
   vi.spyOn(finance, "listAccounts").mockResolvedValue({data: ACCOUNTS, has_more: false});
   vi.spyOn(finance, "listCards").mockResolvedValue({data: cards, has_more: false});
   vi.spyOn(finance, "listPurchases").mockResolvedValue({data: [PURCHASE], has_more: false});
+  vi.spyOn(finance, "getPurchase").mockResolvedValue(PURCHASE);
   const range = vi.spyOn(finance, "listCardStatements").mockImplementation(async (_c, _id, from, count, direction) => {
     const out: StatementSummary[] = [];
     let m = direction === "forward" && from < FIRST ? FIRST : from;
@@ -297,7 +298,7 @@ describe("F5 — cartões", () => {
     renderWithQuery(<CardsView/>);
     const row = (await screen.findByText("Geladeira")).closest("li") as HTMLElement;
     await userEvent.click(within(row).getByRole("button", {name: "Editar compra"}));
-    const form = within(row).getByRole("form", {name: "Editar compra"});
+    const form = await within(row).findByRole("form", {name: "Editar compra"});
     const desc = within(form).getByLabelText(/Descrição/);
     expect(desc).toHaveValue("Geladeira");
     // Only the active expense categories; amounts and installments are not offered.
@@ -310,6 +311,21 @@ describe("F5 — cartões", () => {
     await userEvent.click(within(form).getByRole("button", {name: "Salvar"}));
     await waitFor(() => expect(patch).toHaveBeenCalledWith(expect.anything(), "visa", "p1", {description: "Geladeira Brastemp"}, expect.any(String)));
     await waitFor(() => expect(within(row).queryByRole("form")).not.toBeInTheDocument());
+  });
+
+  // The list holds the card's recent purchases only. A line of an older one is not in it:
+  // the action asks for that purchase by id instead of reading the card's whole history.
+  it("fetches a purchase by id when its line is not in the recent list", async () => {
+    serve(ALL);
+    vi.spyOn(finance, "listPurchases").mockResolvedValue({data: [], has_more: true, cursor: "next"});
+    const one = vi.spyOn(finance, "getPurchase").mockResolvedValue(PURCHASE);
+    renderWithQuery(<CardsView/>);
+    const row = (await screen.findByText("Geladeira")).closest("li") as HTMLElement;
+    expect(one).not.toHaveBeenCalled(); // nothing is read until an action asks
+    await userEvent.click(within(row).getByRole("button", {name: "Editar compra"}));
+    await waitFor(() => expect(one).toHaveBeenCalledWith(expect.anything(), "visa", "p1"));
+    const form = await within(row).findByRole("form", {name: "Editar compra"});
+    expect(within(form).getByLabelText(/Descrição/)).toHaveValue("Geladeira");
   });
 
   it("moves a purchase to another category", async () => {
@@ -343,7 +359,7 @@ describe("F5 — cartões", () => {
     renderWithQuery(<CardsView/>);
     const row = (await screen.findByText("Geladeira")).closest("li") as HTMLElement;
     await userEvent.click(within(row).getByRole("button", {name: "Estornar compra"}));
-    expect(within(row).getByText(/As parcelas já cobradas voltam como crédito/)).toBeInTheDocument();
+    expect(await within(row).findByText(/As parcelas já cobradas voltam como crédito/)).toBeInTheDocument();
     await userEvent.click(within(row).getByRole("button", {name: "Confirmar"}));
     await waitFor(() => expect(refund).toHaveBeenCalledWith(expect.anything(), "visa", "p1", expect.any(String)));
   });
@@ -365,7 +381,7 @@ describe("F5 — cartões", () => {
       const before = inWindow();
       const calls = range.mock.calls.length;
       await userEvent.click(within(row).getByRole("button", {name: label}));
-      await userEvent.click(within(row).getByRole("button", {name: "Confirmar"}));
+      await userEvent.click(await within(row).findByRole("button", {name: "Confirmar"}));
       const loaded = range.mock.calls.slice(0, calls).map(([, , from, count, direction]) => `${direction} ${from} ${count}`).sort();
       await waitFor(() => expect(range.mock.calls.length).toBe(2 * calls)); // refreshed
       await waitFor(() => expect(screen.getAllByRole("button", {name: /^Fatura de /}).length).toBeGreaterThanOrEqual(10));

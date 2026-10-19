@@ -367,16 +367,39 @@ func (h *financeHandlers) cardStatementForecast(c fiber.Ctx) error {
 	return c.JSON(listResponse[cardForecastDTO]{Data: data})
 }
 
+// listPurchases is one page of a card's purchases (limit 1..100, default 50),
+// newest created first, with a cursor for the next. A screen that needs one
+// purchase asks for it by id (getPurchase); it does not read the whole history.
 func (h *financeHandlers) listPurchases(c fiber.Ctx) error {
-	ps, err := h.cards.ListPurchases(c.Context(), middleware.GetSpace(c), c.Params("id"))
+	limit := fiber.Query(c, "limit", 50)
+	if limit < 1 || limit > pageLimit {
+		return problem.Validation([]problem.FieldError{fieldErr("limit", "out_of_range", "between 1 and 100", "min", 1, "max", 100)}).Send(c)
+	}
+	start, err := repositories.DecodeCursor(c.Query("cursor"))
+	if err != nil {
+		return problem.BadRequest("invalid cursor").WithCode("invalid_cursor").Send(c)
+	}
+	page, err := h.cards.ListPurchasesPage(c.Context(), middleware.GetSpace(c), c.Params("id"), limit, start)
 	if err != nil {
 		return fail(c, err)
 	}
-	out := listResponse[purchaseDTO]{Data: make([]purchaseDTO, 0, len(ps))}
-	for _, p := range ps {
+	out := listResponse[purchaseDTO]{Data: make([]purchaseDTO, 0, len(page.Items))}
+	for _, p := range page.Items {
 		out.Data = append(out.Data, newPurchaseDTO(p))
 	}
+	if len(page.LastEvaluatedKey) > 0 {
+		out.HasMore, out.Cursor = true, repositories.EncodeCursor(page.LastEvaluatedKey)
+	}
 	return c.JSON(out)
+}
+
+// getPurchase is one purchase of a card, by id.
+func (h *financeHandlers) getPurchase(c fiber.Ctx) error {
+	p, err := h.cards.GetPurchase(c.Context(), middleware.GetSpace(c), c.Params("id"), c.Params("pid"))
+	if err != nil {
+		return fail(c, err)
+	}
+	return c.JSON(newPurchaseDTO(p))
 }
 
 type purchaseRequest struct {

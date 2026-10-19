@@ -837,6 +837,10 @@ function route(method: string, path: string, r: Req, s: SpaceState, can: (v: Ver
     if (sub === "purchases" && !arg && method === "get") {
       return ok({data: s.purchases.filter(p => p.card === c.id).map(purchaseOut), has_more: false});
     }
+    if (sub === "purchases" && arg && !action && method === "get") {
+      const p = s.purchases.find(x => x.id === arg && x.card === c.id);
+      return p ? ok(purchaseOut(p)) : problem(404, "about:blank", "Not Found", "recurso não encontrado", "resource_not_found");
+    }
     if (sub === "purchases" && !arg && method === "post") {
       if (!can("finance.write")) return forbidden();
       const p = body<{date: string; description: string; category_id: string; total: number; installments: number}>(r);
