@@ -10,6 +10,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 
+	"gopkg.aoctech.app/api-commons/ttlcache"
 	"gopkg.aoctech.app/billing/api/internal/config"
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
 )
@@ -18,10 +19,21 @@ import (
 type CredentialRepository struct {
 	base  Base
 	audit Base
+	// resolved remembers the credential of a client id, for cfg.GateMemoryTTL: Resolve
+	// is a query on a global index run by every M2M request. Only a valid credential is
+	// remembered, and every write through this repository forgets its client.
+	resolved *ttlcache.Cache[billing.APICredential]
 }
 
+// credentialCacheMax bounds the remembered credentials of one process: one entry per
+// recently seen integration client.
+const credentialCacheMax = 5000
+
 func NewCredentialRepository(db *dynamodb.Client, cfg *config.Config) *CredentialRepository {
-	return &CredentialRepository{base: NewBase(db, cfg, TableCredentials), audit: NewBase(db, cfg, TableAudit)}
+	return &CredentialRepository{
+		base: NewBase(db, cfg, TableCredentials), audit: NewBase(db, cfg, TableAudit),
+		resolved: ttlcache.New[billing.APICredential](cfg.GateMemoryTTL, credentialCacheMax),
+	}
 }
 
 type credentialRow struct {
@@ -131,6 +143,9 @@ func (r *CredentialRepository) Connect(ctx context.Context, cred *billing.APICre
 // tenant comes from here rather than from anything the caller sent — a request
 // cannot name an organization it does not hold a credential for.
 func (r *CredentialRepository) Resolve(ctx context.Context, clientID string) (*billing.APICredential, error) {
+	if cred, ok := r.resolved.Get(clientID); ok {
+		return &cred, nil
+	}
 	res, err := r.base.Query(ctx, QueryOpts{
 		IndexName: IndexLookup,
 		PKField:   "lookup_pk",
@@ -150,11 +165,13 @@ func (r *CredentialRepository) Resolve(ctx context.Context, clientID string) (*b
 	if err := row.APICredential.Validate(); err != nil {
 		return nil, err
 	}
+	r.resolved.Set(clientID, row.APICredential)
 	return &row.APICredential, nil
 }
 
 // Deactivate flips billing's own kill switch for a credential.
 func (r *CredentialRepository) Deactivate(ctx context.Context, cred *billing.APICredential, now time.Time) error {
+	defer r.resolved.Delete(cred.ClientID)
 	updates := map[string]any{
 		"active":     false,
 		"updated_at": now.UTC().Format(time.RFC3339Nano),
@@ -176,6 +193,7 @@ var ErrCredentialOwnerSet = errors.New("credential already has an owner")
 // SetOwnerKey scopes an unscoped credential to one owner, once. Changing an
 // owner is not a seed operation: it changes what an integration can read.
 func (r *CredentialRepository) SetOwnerKey(ctx context.Context, cred *billing.APICredential, ownerKey string, now time.Time) error {
+	defer r.resolved.Delete(cred.ClientID)
 	update := r.base.BuildRawUpdateTxItem(
 		TenantPK(cred.OrganizationID, cred.Livemode), new(CredentialSK(cred.ClientID)),
 		"SET owner_key = :o, updated_at = :u",
@@ -254,6 +272,7 @@ func (r *CredentialRepository) ListForTenant(ctx context.Context, organizationID
 // audit row. A provisioned credential is refused here as well as in the
 // handler: the condition on connected_by is what holds if a handler forgets.
 func (r *CredentialRepository) Disconnect(ctx context.Context, cred *billing.APICredential, actor, requestID string, now time.Time) error {
+	defer r.resolved.Delete(cred.ClientID)
 	if cred.Provisioned() {
 		return fmt.Errorf("%w: %s", ErrCredentialProvisioned, cred.ClientID)
 	}

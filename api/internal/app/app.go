@@ -308,6 +308,7 @@ func Build(ctx context.Context, cfg *config.Config, clock func() time.Time, opts
 		SettlementBus:        bus,
 		Eraser:               newEraser(db, cfg),
 		ClosureFlags:         closureFlags(db, cfg),
+		GateMemoryTTL:        cfg.GateMemoryTTL,
 		Closures:             closures,
 		ErasedRef:            services.ErasedRef(erasureState),
 

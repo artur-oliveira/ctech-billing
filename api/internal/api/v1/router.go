@@ -117,6 +117,9 @@ type Deps struct {
 	// Closures serves the merchant tenant closure routes. Nil leaves them
 	// unmounted (the feature off).
 	Closures *services.TenantClosures
+	// GateMemoryTTL is how long the M2M suspension and closing gates remember their
+	// answer (config.GateMemoryTTL). Zero reads every time.
+	GateMemoryTTL time.Duration
 	// ClosureFlags is the read-only gate of a tenant being closed (merchant
 	// tenant closure). Nil leaves the gate off.
 	ClosureFlags middleware.ClosingFlags
@@ -215,8 +218,11 @@ func Register(app *fiber.App, d Deps) {
 	// prefixes makes the two surfaces independent of registration order.
 	// A suspended live tenant's writes are refused on every M2M route,
 	// including those added later (spec § 4.3).
-	suspended := middleware.RefuseSuspendedWrites(d.Organizations)
-	closing := middleware.RefuseClosingWrites(d.ClosureFlags)
+	// The two gates read a row on every M2M write; each remembers its answer for
+	// GateMemoryTTL (the console's own closing gate, below, reads fresh: a person who
+	// just confirmed a closing expects the next write refused).
+	suspended := middleware.RefuseSuspendedWrites(middleware.CachedTenantRows(d.Organizations, d.GateMemoryTTL))
+	closing := middleware.RefuseClosingWrites(middleware.CachedClosingFlags(d.ClosureFlags, d.GateMemoryTTL))
 	m2m := func(prefix string) fiber.Router { return v1.Group(prefix, auth, tenant, suspended, closing) }
 
 	customers := m2m("/customers")
