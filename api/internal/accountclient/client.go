@@ -81,10 +81,11 @@ func newWithScope(cfg Config, scope string) *Client {
 	if cfg.BaseURL == "" || cfg.TokenURL == "" || cfg.ClientID == "" || cfg.ClientSecret == "" {
 		return nil
 	}
-	// A pooled transport and a circuit per host: while ctech-account is down a call
+	// A pooled transport, a circuit per host and a bounded retry of the reads (GET
+	// only: the token POST is never retried). While ctech-account is down a call
 	// answers at once with resilient.ErrCircuitOpen instead of holding a goroutine
 	// for the whole timeout.
-	hc := resilient.Client(requestTimeout, resilient.Config{})
+	hc := resilient.NewHTTPClient(resilient.WithTimeout(requestTimeout))
 	return &Client{
 		http:    hc,
 		tokens:  oauth2client.New(hc, cfg.Cache, cfg.TokenURL, cfg.ClientID, cfg.ClientSecret, scope),
