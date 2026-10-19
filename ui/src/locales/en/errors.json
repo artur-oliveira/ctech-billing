@@ -2,6 +2,7 @@
   "code": {
     "invalid_body": "The data sent is not valid. Check it and try again.",
     "invalid_cursor": "The list changed. Refresh the page.",
+    "request_timeout": "The response took too long. Try again in a moment.",
     "invalid_link": "This link is invalid or has expired.",
     "invalid_signature": "We could not confirm where the request came from.",
     "resource_not_found": "We could not find what you are looking for.",
