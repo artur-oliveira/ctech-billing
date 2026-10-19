@@ -51,11 +51,23 @@ func (h *financeHandlers) statement(c fiber.Ctx) error {
 	if acct.Class != finance.ClassAsset || acct.System {
 		return fail(c, repositories.ErrNotFound)
 	}
-	es, err := h.ledger.EntriesFrom(c.Context(), sp, id, from)
+	// Entries are read only through the end of the month the statement ends in, and
+	// the balance is taken as of that day, so an account with years of entries costs
+	// what its window holds, not its whole history. The opening comes out the same.
+	cut := finance.MonthOf(to.AddDays(-1))
+	reversed, err := h.ledger.ReversedIDs(c.Context(), sp)
 	if err != nil {
 		return fail(c, err)
 	}
-	s := finance.BuildStatement(acct.Balance, es, from, to)
+	through, err := h.ledger.BalancesThrough(c.Context(), sp, map[string]billing.Cents{id: acct.Balance}, cut)
+	if err != nil {
+		return fail(c, err)
+	}
+	es, err := h.ledger.EntriesThrough(c.Context(), sp, id, from, cut.Last(), reversed)
+	if err != nil {
+		return fail(c, err)
+	}
+	s := finance.BuildStatement(through[id], es, from, to)
 	out := statementDTO{AccountID: id, From: from.String(), To: to.String(), Opening: s.Opening, Closing: s.Closing, Entries: make([]entryDTO, len(s.Lines))}
 	for i, l := range s.Lines {
 		d := entryDTO{

@@ -161,14 +161,29 @@ func (h *financeHandlers) cashFlow(c fiber.Ctx) error {
 	if err != nil {
 		return fail(c, err)
 	}
-	balances := map[string]billing.Cents{}
-	var entries []finance.Entry
+	current := map[string]billing.Cents{}
+	var cash []string
 	for _, a := range accounts {
 		if a.Class != finance.ClassAsset || a.System {
 			continue
 		}
-		balances[a.ID] = a.Balance
-		es, err := h.ledger.EntriesFrom(c.Context(), sp, a.ID, from.First())
+		current[a.ID] = a.Balance
+		cash = append(cash, a.ID)
+	}
+	// Entries are read only through the end of the last month reported, with the
+	// balances taken as of that day (what the monthly summaries say the later months
+	// posted); the reversal markers are read once, not once per account.
+	balances, err := h.ledger.BalancesThrough(c.Context(), sp, current, to)
+	if err != nil {
+		return fail(c, err)
+	}
+	reversed, err := h.ledger.ReversedIDs(c.Context(), sp)
+	if err != nil {
+		return fail(c, err)
+	}
+	var entries []finance.Entry
+	for _, id := range cash {
+		es, err := h.ledger.EntriesThrough(c.Context(), sp, id, from.First(), to.Last(), reversed)
 		if err != nil {
 			return fail(c, err)
 		}
