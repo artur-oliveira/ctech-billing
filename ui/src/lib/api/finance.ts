@@ -114,6 +114,9 @@ export const financeKeys = {
   cardStatements: (mode: Mode, space: Space, cardId: string, openMonth: string) =>
     ["finance", mode, spaceHeader(space), "card-statements", cardId, openMonth] as const,
   purchases: (mode: Mode, space: Space, cardId: string) => ["finance", mode, spaceHeader(space), "purchases", cardId] as const,
+  // Under `purchases`, so invalidating a card's purchases refreshes the single ones too.
+  purchase: (mode: Mode, space: Space, cardId: string, purchaseId: string) =>
+    ["finance", mode, spaceHeader(space), "purchases", cardId, purchaseId] as const,
   imports: (mode: Mode, space: Space, accountId: string) => ["finance", mode, spaceHeader(space), "imports", accountId] as const,
   // No mode: the plan is always read live (tenant zero), so a change made from
   // test mode must show in live mode too.
@@ -235,7 +238,11 @@ export const getCardStatementForecast = (c: FinanceCtx, cardId: string, month: s
 /** Statement summaries from `from` (`YYYY-MM`, inclusive), `count` 1..12, in `direction`. */
 export const listCardStatements = (c: FinanceCtx, cardId: string, from: string, count: number, direction: StatementDirection) =>
   read<StatementPage>(c, `${card(cardId)}/statements`, {from, count, direction});
+/** The card's most recent purchases (one page): what a form suggests from. A statement line asks for its own purchase with `getPurchase`. */
 export const listPurchases = (c: FinanceCtx, cardId: string) => read<ListResponse<Purchase>>(c, `${card(cardId)}/purchases`);
+/** One purchase of a card, by id: a statement line names its purchase, whatever page of the list it would be on. */
+export const getPurchase = (c: FinanceCtx, cardId: string, purchaseId: string) =>
+  read<Purchase>(c, `${card(cardId)}/purchases/${encodeURIComponent(purchaseId)}`);
 export const createPurchase = (c: FinanceCtx, cardId: string, body: NewPurchase, idempotencyKey: string) =>
   write<Purchase>(c, "POST", `${card(cardId)}/purchases`, body, idempotencyKey);
 /** Renames or recategorises a purchase; amounts, dates and installments never change. */

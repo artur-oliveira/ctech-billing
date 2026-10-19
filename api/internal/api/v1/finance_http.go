@@ -123,6 +123,7 @@ func financeRoutes() []financeRoute {
 		{"GET", "/cards/:id/statements/:month/forecast", space.Read, false, func(h *financeHandlers) fiber.Handler { return h.cardStatementForecast }},
 		{"GET", "/cards/:id/statements/:month", space.Read, false, func(h *financeHandlers) fiber.Handler { return h.cardStatement }},
 		{"GET", "/cards/:id/purchases", space.Read, false, func(h *financeHandlers) fiber.Handler { return h.listPurchases }},
+		{"GET", "/cards/:id/purchases/:pid", space.Read, false, func(h *financeHandlers) fiber.Handler { return h.getPurchase }},
 		{"POST", "/cards/:id/purchases", space.Write, true, func(h *financeHandlers) fiber.Handler { return h.createPurchase }},
 		{"PATCH", "/cards/:id/purchases/:pid", space.Write, true, func(h *financeHandlers) fiber.Handler { return h.patchPurchase }},
 		{"POST", "/cards/:id/purchases/:pid/refund", space.Write, true, func(h *financeHandlers) fiber.Handler { return h.refundPurchase }},

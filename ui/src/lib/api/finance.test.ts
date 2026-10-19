@@ -39,6 +39,7 @@ describe("every finance call", () => {
     ["listCards", () => finance.listCards(ctx)],
     ["getCardStatement", () => finance.getCardStatement(ctx, "c1", "2026-03")],
     ["listPurchases", () => finance.listPurchases(ctx, "c1")],
+    ["getPurchase", () => finance.getPurchase(ctx, "c1", "p1")],
     ["listImports", () => finance.listImports(ctx, "a1")],
     ["getImport", () => finance.getImport(ctx, "i1")],
     ["getCsvMapping", () => finance.getCsvMapping(ctx, "a1")],
