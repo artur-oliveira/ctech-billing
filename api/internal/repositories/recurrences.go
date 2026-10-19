@@ -767,12 +767,16 @@ func (r *RecurrenceRepository) DueToMaterialisePage(ctx context.Context, livemod
 }
 
 func (r *RecurrenceRepository) hydrateDue(ctx context.Context, entries []scheduleEntry) (due []DueRecurrence, skipped int, err error) {
-	for _, e := range entries {
-		row, err := r.load(ctx, e.Space, e.ID)
-		if errors.Is(err, ErrNotFound) {
+	raws, err := batchGetEntries(ctx, r.recs, entries, RecurrenceSK)
+	if err != nil {
+		return nil, 0, err
+	}
+	for i, e := range entries {
+		if raws[i] == nil {
 			skipped++
 			continue
 		}
+		row, err := Decode[recurrenceItem](raws[i])
 		if err != nil {
 			return due, skipped, err
 		}
