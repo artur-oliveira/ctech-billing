@@ -4,6 +4,7 @@
 package problem
 
 import (
+	"context"
 	"errors"
 	"strings"
 
@@ -56,6 +57,10 @@ const (
 	// TypeProviderUnavailable is a merchant's bank (BYOK) or billing's outbound
 	// Lambda not answering. Retryable; nothing was decided.
 	TypeProviderUnavailable = "/problems/provider-unavailable"
+	// TypeTimeout is a request that used its whole time budget (REQUEST_TIMEOUT)
+	// before a database or provider call answered. Retryable; for a write, the
+	// outcome is unknown until it is read back (an idempotency key makes the retry safe).
+	TypeTimeout = "/problems/timeout"
 	// TypeAccountUnavailable: ctech-account did not answer a question billing
 	// must ask before acting (the owner of an OAuth client). Retryable.
 	TypeAccountUnavailable = "/problems/account-unavailable"
@@ -462,6 +467,9 @@ func FromError(err error) *Problem {
 		return Unprocessable(err.Error()).WithCode("invalid_dunning_policy")
 	case errors.Is(err, billing.ErrInvoiceItems):
 		return Unprocessable(err.Error()).WithCode("invalid_invoice_items")
+
+	case errors.Is(err, context.DeadlineExceeded):
+		return New(504, TypeTimeout, "Gateway Timeout", "the request took too long; try again").WithCode("request_timeout")
 
 	default:
 		return Internal("internal error")

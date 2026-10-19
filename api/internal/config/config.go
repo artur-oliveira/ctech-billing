@@ -35,6 +35,12 @@ type Config struct {
 	// disables the memory (tests, where a lock must apply on the next request).
 	ErasureStateMemoryTTL time.Duration `env:"ERASURE_STATE_MEMORY_TTL" envDefault:"10s"`
 
+	// RequestTimeout is the time budget of one request: the context every
+	// DynamoDB, Valkey and outbound call is made with. Under WriteTimeout so the
+	// client gets a 504 instead of a connection that was cut. Zero disables it
+	// (tests that build a Config literal).
+	RequestTimeout time.Duration `env:"REQUEST_TIMEOUT" envDefault:"8s"`
+
 	// HTTP
 	Port         int   `env:"PORT"          envDefault:"8004"`
 	ReadTimeout  int64 `env:"READ_TIMEOUT"  envDefault:"10"`

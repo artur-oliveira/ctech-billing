@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -20,6 +21,7 @@ import (
 	"github.com/gofiber/fiber/v3/middleware/recover"
 	"gopkg.aoctech.app/api-commons/accountorgs"
 	"gopkg.aoctech.app/api-commons/cache"
+	"gopkg.aoctech.app/api-commons/deadline"
 	"gopkg.aoctech.app/api-commons/oauthclients"
 	"gopkg.aoctech.app/api-commons/ratelimit"
 
@@ -604,6 +606,9 @@ func newFiber(cfg *config.Config) *fiber.App {
 	// on is paid only when something already went wrong.
 	app.Use(recover.New(recover.Config{EnableStackTrace: true}))
 	app.Use(cors.New(corsCfg))
+	if cfg.RequestTimeout > 0 {
+		app.Use(deadline.New(cfg.RequestTimeout, unboundedRoute))
+	}
 
 	// The access log, in ctech-wallet's, ctech-poker's and ctech-dfe's shape —
 	// one JSON object per request, parsed straight by the CloudWatch metric
@@ -624,6 +629,16 @@ func newFiber(cfg *config.Config) *fiber.App {
 	// outnumbers the traffic is one nobody reads.
 	app.Use(logger.New(accessLog()))
 	return app
+}
+
+// unboundedRoute names the two routes that legitimately outlast a request budget:
+// a statement upload (up to 2000 lines, each written in a transaction) and the
+// first view of an invoice PDF (rendered in the request, then cached in S3). Both
+// stay under the server's own WriteTimeout; everything else gets the deadline.
+func unboundedRoute(c fiber.Ctx) bool {
+	path := c.Path()
+	return (c.Method() == fiber.MethodPost && strings.HasSuffix(path, "/imports")) ||
+		(c.Method() == fiber.MethodGet && strings.HasSuffix(path, "/pdf"))
 }
 
 // accessLog is the request line. A function rather than a literal inline so a
