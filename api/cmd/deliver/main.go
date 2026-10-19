@@ -26,10 +26,15 @@ import (
 	"gopkg.aoctech.app/billing/api/internal/services"
 )
 
-// batch caps one pass. Small enough that a run finishes inside its timer
-// interval even when every delivery times out — 200 × 10s of timeout would not,
-// which is how a job starts overlapping itself.
-const batch = 50
+// batch caps one pass. The pass is concurrent and an endpoint that fails once in a
+// pass has the rest of its deliveries moved down the queue, so a dead endpoint
+// costs one timeout, not one per queued delivery.
+const batch = 500
+
+// budget is how long one run keeps taking passes while the queue still has work.
+// The timer starts a run a minute apart; staying under that is what keeps a run
+// from overlapping the next, and a backlog bigger than one run drains over several.
+const budget = 45 * time.Second
 
 func main() {
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
@@ -50,11 +55,24 @@ func main() {
 		jobs.Startup(ctx, alerter, "deliver", err)
 	}
 
-	now := time.Now()
-	live := run(ctx, deliverer, true, *limit, now)
-	// Test mode is delivered too. A sandbox integration that never receives a
-	// webhook cannot be built against, which is the whole point of having one.
-	run(ctx, deliverer, false, *limit, now)
+	deliverer.WithConcurrency(cfg.DeliverWorkers)
+
+	// Passes repeat while they find work, up to the budget: a wave of events (a
+	// renewal run finalizing thousands of invoices) is more than one pass of
+	// `limit`, and one pass a minute would take hours to drain it.
+	var live []string
+	deadline := time.Now().Add(budget)
+	for {
+		now := time.Now()
+		liveErrs, liveWork := run(ctx, deliverer, true, *limit, now)
+		// Test mode is delivered too. A sandbox integration that never receives a
+		// webhook cannot be built against, which is the whole point of having one.
+		_, testWork := run(ctx, deliverer, false, *limit, now)
+		live = append(live, liveErrs...)
+		if !(liveWork || testWork) || time.Now().After(deadline) {
+			break
+		}
+	}
 
 	// Only live failures fail the job, matching cmd/sweep. A failing sandbox
 	// endpoint is somebody's half-built integration, and paging on it teaches
@@ -66,11 +84,11 @@ func main() {
 	}
 }
 
-// run executes both passes for one mode and returns how many job-level errors
-// occurred. A failed *delivery* is not one of those: an endpoint answering 500
+// run executes both passes for one mode and returns the job-level errors and
+// whether another pass is worth taking. A failed *delivery* is not one of those: an endpoint answering 500
 // is the endpoint's problem, it is recorded on the row, and it will be retried.
 // What counts here is this job being unable to do its work at all.
-func run(ctx context.Context, d *services.Deliverer, livemode bool, limit int, now time.Time) []string {
+func run(ctx context.Context, d *services.Deliverer, livemode bool, limit int, now time.Time) (errs []string, worked bool) {
 	mode := "test"
 	if livemode {
 		mode = "live"
@@ -83,7 +101,11 @@ func run(ctx context.Context, d *services.Deliverer, livemode bool, limit int, n
 	report(ctx, "webhook fan-out", mode, fan)
 	report(ctx, "webhook delivery", mode, del)
 
-	return append(append([]string{}, fan.Errors...), del.Errors...)
+	errs = append(append([]string{}, fan.Errors...), del.Errors...)
+	// Only a pass that found work and made no job-level error is worth repeating: a
+	// row this job cannot process stays in its queue, and another pass at once would
+	// meet it again and spin until the budget ran out.
+	return errs, fan.Examined+del.Examined > 0 && len(errs) == 0
 }
 
 func report(ctx context.Context, what, mode string, res services.PassResult) {

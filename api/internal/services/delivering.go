@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"net/netip"
 	"strconv"
+	"sync"
 	"syscall"
 	"time"
 
@@ -44,6 +45,8 @@ type Deliverer struct {
 	// check reaches CTech's network; it follows no redirect (a 3xx is a failed
 	// attempt) and uses no proxy.
 	merchant *http.Client
+	// workers is how many endpoints are delivered to at once (WithConcurrency).
+	workers int
 }
 
 var errPrivateAddress = errors.New("webhook host resolves to a non-public address")
@@ -83,12 +86,30 @@ const deliveryTimeout = 10 * time.Second
 // delivery moves: re-enabling it sends what it missed within the hour.
 const disabledRecheck = time.Hour
 
+// trippedRecheck is how far down the queue the rest of an endpoint's due
+// deliveries move once an attempt to it fails in a pass: they would only fail the
+// same way, and left at the head of a queue every tenant shares they would be the
+// whole of every later batch. Each still gets its own attempt, with the usual
+// backoff, when it comes round again.
+const trippedRecheck = 2 * time.Minute
+
 func NewDeliverer(hooks *repositories.WebhookRepository) *Deliverer {
 	return &Deliverer{
 		hooks:    hooks,
 		client:   &http.Client{Timeout: deliveryTimeout},
 		merchant: newMerchantClient(),
+		workers:  1,
 	}
+}
+
+// WithConcurrency sets how many endpoints a pass delivers to at once. The default
+// is 1: serial, as it always was. The deliveries of one endpoint are always made
+// one at a time, in order, so a consumer is never hit by its own backlog in
+// parallel; what the pool adds is that a slow or dead endpoint no longer holds up
+// every other tenant's deliveries behind it.
+func (d *Deliverer) WithConcurrency(workers int) *Deliverer {
+	d.workers = max(workers, 1)
+	return d
 }
 
 // SetHTTPClient replaces both clients. Tests only: they deliver to httptest
@@ -190,12 +211,12 @@ func (d *Deliverer) FanOut(ctx context.Context, livemode bool, limit int, now ti
 func (d *Deliverer) FanOutAndDeliver(ctx context.Context, livemode bool, limit int, now time.Time) (fan, del PassResult) {
 	fan = d.FanOut(ctx, livemode, limit, now)
 	tried := make(map[string]bool, len(fan.fresh))
+	fresh := make([]*repositories.DueDelivery, len(fan.fresh))
 	for i := range fan.fresh {
-		item := &fan.fresh[i]
-		tried[item.Delivery.EventID+"#"+item.Delivery.EndpointID] = true
-		del.Examined++
-		d.attempt(ctx, item, now, &del)
+		fresh[i] = &fan.fresh[i]
+		tried[fan.fresh[i].Delivery.EventID+"#"+fan.fresh[i].Delivery.EndpointID] = true
 	}
+	d.attemptAll(ctx, fresh, now, &del)
 	backlog := d.deliver(ctx, livemode, limit, now, tried)
 	del.Examined += backlog.Examined
 	del.Handled += backlog.Handled
@@ -224,6 +245,7 @@ func (d *Deliverer) deliver(ctx context.Context, livemode bool, limit int, now t
 		return res
 	}
 
+	var todo []*repositories.DueDelivery
 	for i := range due {
 		item := &due[i]
 		if !isDue(item.Delivery.NextAttemptAt, now) {
@@ -233,15 +255,76 @@ func (d *Deliverer) deliver(ctx context.Context, livemode bool, limit int, now t
 		if skip[item.Delivery.EventID+"#"+item.Delivery.EndpointID] {
 			continue
 		}
-		res.Examined++
-		d.attempt(ctx, item, now, &res)
+		todo = append(todo, item)
 	}
+	d.attemptAll(ctx, todo, now, &res)
 	return res
+}
+
+// attemptAll attempts the deliveries in items, endpoint by endpoint: one endpoint's
+// deliveries are made in order by one worker, and up to d.workers endpoints run at
+// once. When an attempt to an endpoint fails, the rest of its due deliveries in
+// this pass are moved down the queue (trippedRecheck) instead of being tried: a
+// dead endpoint then costs one timeout per pass, not one per queued delivery, and
+// stops being the head of the queue for everybody else.
+func (d *Deliverer) attemptAll(ctx context.Context, items []*repositories.DueDelivery, now time.Time, res *PassResult) {
+	type group struct{ items []*repositories.DueDelivery }
+	var order []string
+	groups := map[string]*group{}
+	for _, it := range items {
+		k := it.Delivery.OrganizationID + "|" + strconv.FormatBool(it.Delivery.Livemode) + "|" + it.Delivery.EndpointID
+		g, ok := groups[k]
+		if !ok {
+			g = &group{}
+			groups[k] = g
+			order = append(order, k)
+		}
+		g.items = append(g.items, it)
+	}
+
+	var mu sync.Mutex
+	work := make(chan *group)
+	var wg sync.WaitGroup
+	for w := 0; w < max(d.workers, 1); w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for g := range work {
+				var local PassResult
+				for i, it := range g.items {
+					local.Examined++
+					if !d.attempt(ctx, it, now, &local) {
+						continue
+					}
+					for _, rest := range g.items[i+1:] {
+						if err := d.hooks.DeferDelivery(ctx, &rest.Delivery, now.Add(trippedRecheck), now); err != nil {
+							local.fail("moving delivery %s of a failing endpoint: %v", rest.Delivery.EventID, err)
+							continue
+						}
+						local.Deferred++
+					}
+					break
+				}
+				mu.Lock()
+				res.Examined += local.Examined
+				res.Handled += local.Handled
+				res.Deferred += local.Deferred
+				res.Failed += local.Failed
+				res.Errors = append(res.Errors, local.Errors...)
+				mu.Unlock()
+			}
+		}()
+	}
+	for _, k := range order {
+		work <- groups[k]
+	}
+	close(work)
+	wg.Wait()
 }
 
 // attempt makes one try at one delivery and records it: the attempt, the delivery's
 // new state and the endpoint's health.
-func (d *Deliverer) attempt(ctx context.Context, item *repositories.DueDelivery, now time.Time, res *PassResult) {
+func (d *Deliverer) attempt(ctx context.Context, item *repositories.DueDelivery, now time.Time, res *PassResult) (endpointFailed bool) {
 	endpoint, err := d.hooks.GetEndpoint(ctx, item.Delivery.OrganizationID, item.Delivery.Livemode, item.Delivery.EndpointID)
 	if err != nil {
 		// The endpoint was deleted under a queued delivery. Not retryable, and
@@ -292,6 +375,7 @@ func (d *Deliverer) attempt(ctx context.Context, item *repositories.DueDelivery,
 		}
 		res.Handled++
 	default:
+		endpointFailed = true
 		if err := d.hooks.MarkAttemptFailed(ctx, &item.Delivery, status, err.Error(), now); err != nil {
 			res.fail("recording failed attempt for %s: %v", item.Event.ID, err)
 			return
@@ -309,7 +393,7 @@ func (d *Deliverer) attempt(ctx context.Context, item *repositories.DueDelivery,
 	if err := d.hooks.RecordEndpointHealth(ctx, endpoint, err == nil, failureDetail(status, err), now); err != nil {
 		res.fail("recording endpoint health for %s: %v", endpoint.ID, err)
 	}
-
+	return endpointFailed
 }
 
 // post makes one signed attempt. It returns the status code alongside the error

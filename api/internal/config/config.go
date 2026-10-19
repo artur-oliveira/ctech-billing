@@ -41,6 +41,10 @@ type Config struct {
 	// (tests that build a Config literal).
 	RequestTimeout time.Duration `env:"REQUEST_TIMEOUT" envDefault:"8s"`
 
+	// DeliverWorkers is how many webhook endpoints one delivery pass posts to at
+	// once. One endpoint's deliveries stay serial and in order.
+	DeliverWorkers int `env:"DELIVER_WORKERS" envDefault:"16"`
+
 	// HTTP
 	Port         int   `env:"PORT"          envDefault:"8004"`
 	ReadTimeout  int64 `env:"READ_TIMEOUT"  envDefault:"10"`

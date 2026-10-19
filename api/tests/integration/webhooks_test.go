@@ -35,9 +35,10 @@ type consumer struct {
 	server *httptest.Server
 	secret string
 
-	mu   sync.Mutex
-	got  []received
-	code int
+	mu    sync.Mutex
+	got   []received
+	code  int
+	delay time.Duration // how long the consumer takes to answer
 }
 
 func newConsumer(t *testing.T, code int) *consumer {
@@ -55,9 +56,10 @@ func newConsumer(t *testing.T, code int) *consumer {
 			timestamp: r.Header.Get("X-Billing-Timestamp"),
 			body:      body,
 		})
-		status := c.code
+		status, delay := c.code, c.delay
 		c.mu.Unlock()
 
+		time.Sleep(delay)
 		w.WriteHeader(status)
 	}))
 	t.Cleanup(c.server.Close)
@@ -68,6 +70,12 @@ func (c *consumer) deliveries() []received {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return append([]received(nil), c.got...)
+}
+
+func (c *consumer) setDelay(d time.Duration) {
+	c.mu.Lock()
+	c.delay = d
+	c.mu.Unlock()
 }
 
 func (c *consumer) setCode(code int) {
