@@ -246,7 +246,18 @@ func TestASilentConnectionIsClosedWithinTheAuthWait(t *testing.T) {
 
 func TestAFirstFrameOverTheCapIsClosed(t *testing.T) {
 	e := newGateway(t, fastConfig(), nil, DefaultLimits())
-	conn := e.open(t, &wire.Auth{Token: strings.Repeat("x", 40<<10)})
+	conn, _, err := e.dial(t, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { conn.Close() })
+	big, err := proto.Marshal(&wire.ClientFrame{Body: &wire.ClientFrame_Auth{Auth: &wire.Auth{Token: strings.Repeat("x", 40<<10)}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The server closes as soon as it sees the frame is over the cap, which can be
+	// while the client is still writing it (broken pipe): the close is what is asserted.
+	_ = conn.WriteMessage(fws.BinaryMessage, big)
 	for {
 		if _, err := next(t, conn, 2*time.Second); err != nil {
 			if code := closeCode(err); code != fws.CloseMessageTooBig && code != -1 {
