@@ -49,6 +49,14 @@ type Config struct {
 	// disables it (tests).
 	GateMemoryTTL time.Duration `env:"GATE_MEMORY_TTL" envDefault:"10s"`
 
+	// M2MRatePerSecond and M2MBurst are each tenant's budget on the machine-to-
+	// machine API: a runaway integration of one merchant gets 429 (with
+	// Retry-After) instead of starving the others on the instance. Counted per
+	// process in memory, per tenant and mode; a console person is never limited.
+	// Zero for either turns it off. The defaults sit far above any real integration.
+	M2MRatePerSecond float64 `env:"M2M_RATE_PER_SECOND" envDefault:"50"`
+	M2MBurst         int     `env:"M2M_BURST" envDefault:"200"`
+
 	// ErasureQueueVisibility is the erasure queue's own visibility timeout
 	// (terraform/billing/erasure.tf, 900 s). While a purge or an export runs, the
 	// consumer keeps the message invisible by setting that timeout again every third

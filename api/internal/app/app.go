@@ -309,6 +309,7 @@ func Build(ctx context.Context, cfg *config.Config, clock func() time.Time, opts
 		Eraser:               newEraser(db, cfg),
 		ClosureFlags:         closureFlags(db, cfg),
 		GateMemoryTTL:        cfg.GateMemoryTTL,
+		M2MLimit:             ratelimit.NewBucket(cfg.M2MRatePerSecond, cfg.M2MBurst, 0),
 		Closures:             closures,
 		ErasedRef:            services.ErasedRef(erasureState),
 
