@@ -41,6 +41,10 @@ type Config struct {
 	// (tests that build a Config literal).
 	RequestTimeout time.Duration `env:"REQUEST_TIMEOUT" envDefault:"8s"`
 
+	// DeliverWorkers is how many webhook endpoints one delivery pass posts to at
+	// once. One endpoint's deliveries stay serial and in order.
+	DeliverWorkers int `env:"DELIVER_WORKERS" envDefault:"16"`
+
 	// SweepWorkers and SweepPerOrg bound the daily renewal sweep: how many
 	// subscriptions it bills at once overall, and at most how many of one tenant
 	// (they share a gapless invoice counter). Serial was 3.3 hours per 100k renewals.
