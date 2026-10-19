@@ -386,6 +386,7 @@
     "period": "Period",
     "newTransfer": "New transfer",
     "entries": "Entries",
+    "loadMore": "Load more entries",
     "openingOn": "Opening balance on {{date}}",
     "closingOn": "Closing balance on {{date}}",
     "closingToday": "Balance today",

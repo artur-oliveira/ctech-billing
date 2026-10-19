@@ -12,6 +12,9 @@ export const STATEMENT_WITH_MEMOS: Statement = {
   to: "2026-11-01",
   opening: 0,
   closing: 890031,
+  money_in: 893900,
+  money_out: 3869,
+  has_more: false,
   entries: [
     {transaction_id: "01M4F5ER7HSTJF0P9GVVF68B0R", date: "2026-10-08", amount: 872900, balance: 872900, kind: "opening_balance", memo: "Saldo inicial", reversal: false, reversed: false},
     {transaction_id: "01M4G85DJGZJ916DQEGFM61C40", date: "2026-10-09", amount: 21000, balance: 893900, kind: "settlement", memo: "Pix mãe", category_id: "cat-outras-receitas", bill_id: "9BF3F40E4FB62F1717FFD95E7D", reversal: false, reversed: false},

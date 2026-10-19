@@ -4,7 +4,7 @@ import {Button, EmptyState, Select, Skeleton} from "@aoctech/ui";
 
 import {LEDGER_STATUS, StatusBadge} from "@/components/finance/StatusBadge";
 import {PanelDrawer} from "@/components/finance/PanelDrawer";
-import {useQuery} from "@tanstack/react-query";
+import {useInfiniteQuery, useQuery} from "@tanstack/react-query";
 import {Landmark} from "lucide-react";
 import Link from "next/link";
 import {useState} from "react";
@@ -69,9 +69,11 @@ export function StatementView({account: initial = ""}: {account?: string}) {
   const accountId = cash.some(a => a.id === picked) ? picked : (cash[0]?.id ?? "");
   const {from, to} = dateRange(preset, todayIso());
 
-  const statement = useQuery({
+  const statement = useInfiniteQuery({
     queryKey: financeKeys.statement(ctx.mode, ctx.space, accountId, from, to),
-    queryFn: ({signal}) => getStatement(ctx, accountId, from, to, signal),
+    queryFn: ({signal, pageParam}) => getStatement(ctx, accountId, from, to, signal, pageParam),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: last => (last.has_more ? last.cursor : undefined),
     enabled: accountId !== "",
   });
   const names = new Map(all.map(a => [a.id, accountName(a)]));
@@ -90,7 +92,9 @@ export function StatementView({account: initial = ""}: {account?: string}) {
     );
   }
 
-  const s = statement.data;
+  // Opening, closing and the totals are the period's on every page; only the lines are the page's.
+  const pages = statement.data?.pages ?? [];
+  const s = pages[0] && {...pages[0], entries: pages.flatMap(p => p.entries)};
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -136,6 +140,11 @@ export function StatementView({account: initial = ""}: {account?: string}) {
                 ))}
               </ul>
             )}
+            {statement.hasNextPage && (
+              <Button variant="outline" block className="mt-3" onClick={() => void statement.fetchNextPage()} disabled={statement.isFetchingNextPage}>
+                {statement.isFetchingNextPage ? t("common.loading") : t("finance.statement.loadMore")}
+              </Button>
+            )}
           </section>
         </>
       )}
@@ -150,9 +159,7 @@ export function StatementView({account: initial = ""}: {account?: string}) {
  */
 function Summary({s, from, to}: {s: Statement; from: string; to: string}) {
   const {t} = useTranslation();
-  const live = s.entries.filter(e => !e.reversal && !e.reversed);
-  const moneyIn = live.filter(e => e.amount > 0).reduce((n, e) => n + e.amount, 0);
-  const moneyOut = live.filter(e => e.amount < 0).reduce((n, e) => n - e.amount, 0);
+  const {money_in: moneyIn, money_out: moneyOut} = s;
   const last = addDaysIso(to, -1);
   return (
     <Section title={t("finance.statement.summary")} hideTitle>

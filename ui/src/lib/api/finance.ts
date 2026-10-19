@@ -203,8 +203,8 @@ export const setPostCTechInvoices = (c: FinanceCtx, on: boolean, idempotencyKey:
 // --- statement, transfers, reports ------------------------------------------------
 
 /** `to` is exclusive. */
-export const getStatement = (c: FinanceCtx, accountId: string, from: string, to: string, signal?: AbortSignal) =>
-  read<Statement>(c, `/accounts/${encodeURIComponent(accountId)}/statement`, {from, to}, signal);
+export const getStatement = (c: FinanceCtx, accountId: string, from: string, to: string, signal?: AbortSignal, cursor?: string) =>
+  read<Statement>(c, `/accounts/${encodeURIComponent(accountId)}/statement`, cursor ? {from, to, cursor} : {from, to}, signal);
 export const postOpeningBalance = (c: FinanceCtx, accountId: string, body: OpeningBalance, idempotencyKey: string) =>
   write<{transaction_id: string}>(c, "POST", `/accounts/${encodeURIComponent(accountId)}/opening-balance`, body, idempotencyKey);
 export const createTransfer = (c: FinanceCtx, body: NewTransfer, idempotencyKey: string) =>

@@ -386,6 +386,7 @@
     "period": "Período",
     "newTransfer": "Nova transferência",
     "entries": "Lançamentos",
+    "loadMore": "Carregar mais lançamentos",
     "openingOn": "Saldo inicial em {{date}}",
     "closingOn": "Saldo final em {{date}}",
     "closingToday": "Saldo hoje",

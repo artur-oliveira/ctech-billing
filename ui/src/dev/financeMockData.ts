@@ -991,7 +991,9 @@ function route(method: string, path: string, r: Req, s: SpaceState, can: (v: Ver
       category_id: e.flow && e.flow !== "-" ? e.flow : undefined, bill_id: e.ref?.replace(/^bill:/, ""),
       reversal: !!e.reversal, reversed: s.reversed.has(e.tx),
     }));
-    return ok({account_id: a.id, from, to, opening, closing: bal, entries});
+    const live = entries.filter(e => !e.reversal && !e.reversed);
+    return ok({account_id: a.id, from, to, opening, closing: bal, money_in: live.filter(e => e.amount > 0).reduce((n, e) => n + e.amount, 0),
+      money_out: live.filter(e => e.amount < 0).reduce((n, e) => n - e.amount, 0), entries, has_more: false});
   }
   if (path === "/reports/card-spending") {
     // By statement month: the statement lines of the range, carried credits left out.
