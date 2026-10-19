@@ -75,6 +75,9 @@ func TestMain(m *testing.M) {
 		// runs. In production it comes from the release.env inside the artifact,
 		// which is how the health report can name the build that answered it.
 		AppVersion: "test",
+		// No memory of the lock state: a test that locks a person expects the very
+		// next request refused, not after the production window.
+		ErasureStateMemoryTTL: 0,
 		// A fixed key, because these tests assert on stored bytes. It is a test
 		// key and it is in the repository on purpose — the production key comes
 		// from SSM and this package never sees it.

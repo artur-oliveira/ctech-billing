@@ -100,7 +100,7 @@ func ErasedSpaceGuard(ctx context.Context, cfg *config.Config) (func(context.Con
 	if err != nil {
 		return nil, err
 	}
-	return services.ErasedSpace(erasure.NewStore(db, cfg.TablePrefix, 0)), nil
+	return services.ErasedSpace(newErasureStore(db, cfg)), nil
 }
 
 // erasureService is billing's participant id in the saga: the SNS filter
@@ -206,5 +206,11 @@ func BuildErasureConsumer(ctx context.Context, cfg *config.Config, spaceFor func
 		strings.TrimSuffix(cfg.AccountBaseURL, "/")+"/v1.0/internal/export/ack",
 		oauth2client.New(hc, newCache(cfg), cfg.AccountTokenURL, clientID, clientSecret, exportAckScope)))
 	return erasure.NewConsumer(queues, aws.ToString(q.QueueUrl), erasureService,
-		erasure.NewStore(db, cfg.TablePrefix, 0), eraser.Purge, acks).WithExporter(handler.Handle), nil
+		newErasureStore(db, cfg), eraser.Purge, acks).WithExporter(handler.Handle), nil
+}
+
+// newErasureStore is the one place the state table is opened, so the memory of
+// its answers follows the same setting everywhere.
+func newErasureStore(db *dynamodb.Client, cfg *config.Config) *erasure.Store {
+	return erasure.NewStore(db, cfg.TablePrefix, 0).WithBlockedMemoryTTL(cfg.ErasureStateMemoryTTL)
 }

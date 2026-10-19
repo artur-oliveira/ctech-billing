@@ -7,6 +7,8 @@
 package config
 
 import (
+	"time"
+
 	"fmt"
 
 	"github.com/caarlos0/env/v11"
@@ -26,6 +28,12 @@ type Config struct {
 	TablePrefix string `env:"TABLE_PREFIX,required"`
 	// DynamoDBEndpoint overrides the AWS endpoint for DynamoDB Local in tests.
 	DynamoDBEndpoint string `env:"DYNAMODB_ENDPOINT"`
+
+	// ErasureStateMemoryTTL is how long a process remembers whether a person is
+	// locked or erased before reading the state table again. It is the delay
+	// between the lock and this API refusing the person's still-valid token. Zero
+	// disables the memory (tests, where a lock must apply on the next request).
+	ErasureStateMemoryTTL time.Duration `env:"ERASURE_STATE_MEMORY_TTL" envDefault:"10s"`
 
 	// HTTP
 	Port         int   `env:"PORT"          envDefault:"8004"`

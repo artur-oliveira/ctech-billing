@@ -20,7 +20,6 @@ import (
 	"github.com/gofiber/fiber/v3/middleware/recover"
 	"gopkg.aoctech.app/api-commons/accountorgs"
 	"gopkg.aoctech.app/api-commons/cache"
-	"gopkg.aoctech.app/api-commons/erasure"
 	"gopkg.aoctech.app/api-commons/oauthclients"
 	"gopkg.aoctech.app/api-commons/ratelimit"
 
@@ -245,7 +244,7 @@ func Build(ctx context.Context, cfg *config.Config, clock func() time.Time, opts
 	}
 	// The account-deletion lock (saga protocol § 4.2) and the token revocation
 	// list (§ 5): two independent layers between a locked person and this API.
-	erasureState := erasure.NewStore(db, cfg.TablePrefix, 0)
+	erasureState := newErasureStore(db, cfg)
 	apiVerifier := middleware.NewVerifier(cfg.CtechJWKSURL, cfg.ServiceAudience, cfg.CtechIssuerURL, cacheBackend).
 		WithErasureLock(erasureState.Blocked)
 	if rev := revocationBackend(cfg); rev != nil {
@@ -816,7 +815,7 @@ func BuildFinanceJobs(ctx context.Context, cfg *config.Config) (*services.Financ
 		repositories.NewBillRepository(db, cfg),
 		repositories.NewRecurrenceRepository(db, cfg),
 	).WithCards(repositories.NewCardRepository(db, cfg)).
-		WithSpaceGuard(services.ErasedSpace(erasure.NewStore(db, cfg.TablePrefix, 0))), nil
+		WithSpaceGuard(services.ErasedSpace(newErasureStore(db, cfg))), nil
 }
 
 // newSubscriptions is the only constructor of the subscription repository in
