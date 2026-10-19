@@ -128,15 +128,20 @@ func (r *RecurrenceRepository) CreatePendingOccurrence(ctx context.Context, sp s
 		return false, err
 	}
 	values := map[string]types.AttributeValue{":f": &types.AttributeValueMemberBOOL{Value: false}, ":amt": numberValue(int64(rec.Amount)), ":cat": str(rec.CategoryID), ":mode": str(string(finance.AmountExpected)), ":nominal": str(nominal.String())}
-	condition := "attribute_exists(pk) AND (attribute_not_exists(archived) OR archived = :f) AND (attribute_not_exists(end) OR end >= :nominal) AND amount = :amt AND category_id = :cat AND amount_mode = :mode"
+	// Every attribute goes through a #name: `end` is a DynamoDB reserved word, and a
+	// bare one made every expected-amount recurrence fail to materialise.
+	condition := "attribute_exists(pk) AND (attribute_not_exists(#arch) OR #arch = :f) AND (attribute_not_exists(#end) OR #end >= :nominal) AND #amt = :amt AND #cat = :cat AND #mode = :mode"
+	names := map[string]string{"#arch": "archived", "#end": "end", "#amt": "amount", "#cat": "category_id", "#mode": "amount_mode"}
 	if rec.CardID != "" {
-		condition += " AND card_id = :target"
+		condition += " AND #target = :target"
+		names["#target"] = "card_id"
 		values[":target"] = str(rec.CardID)
 	} else {
-		condition += " AND account_id = :target"
+		condition += " AND #target = :target"
+		names["#target"] = "account_id"
 		values[":target"] = str(rec.AccountID)
 	}
-	check := types.TransactWriteItem{ConditionCheck: &types.ConditionCheck{TableName: aws.String(r.recs.TableName), Key: map[string]types.AttributeValue{"pk": str(sp.PK()), "sk": str(RecurrenceSK(rec.ID))}, ConditionExpression: aws.String(condition), ExpressionAttributeValues: values}}
+	check := types.TransactWriteItem{ConditionCheck: &types.ConditionCheck{TableName: aws.String(r.recs.TableName), Key: map[string]types.AttributeValue{"pk": str(sp.PK()), "sk": str(RecurrenceSK(rec.ID))}, ConditionExpression: aws.String(condition), ExpressionAttributeNames: names, ExpressionAttributeValues: values}}
 	if err = r.recs.TransactWrite(ctx, txItems(r.recs.BuildPutTxItemIfAbsent(item), check)); err == nil {
 		return true, nil
 	}
