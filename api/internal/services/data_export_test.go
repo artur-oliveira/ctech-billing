@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"strings"
 	"testing"
@@ -36,15 +37,19 @@ func (expInvoices) ListByCustomer(context.Context, string, bool, string, int) ([
 
 type expSpaces struct{ read []string }
 
-func (s *expSpaces) Read(_ context.Context, sp space.ResolvedSpace) (map[string]*repositories.SpaceRows, error) {
+func (s *expSpaces) Stream(_ context.Context, sp space.ResolvedSpace, sink repositories.TableSink) error {
 	s.read = append(s.read, sp.PK())
 	if !strings.Contains(sp.PK(), "alice") {
-		return nil, nil
+		return nil
 	}
-	return map[string]*repositories.SpaceRows{
-		"bills":           {Items: []map[string]any{{"title": "rent"}}},
-		"ledger_accounts": {},
-	}, nil
+	// A table with no rows is never begun, which is why it makes no file.
+	if err := sink.Begin("bills"); err != nil {
+		return err
+	}
+	if err := sink.Item(map[string]any{"title": "rent"}); err != nil {
+		return err
+	}
+	return sink.End(false)
 }
 
 func unzip(t *testing.T, data []byte) map[string]string {
@@ -62,14 +67,10 @@ func unzip(t *testing.T, data []byte) map[string]string {
 	return out
 }
 
-func TestDataExporterPart(t *testing.T) {
+func TestDataExporterWritePart(t *testing.T) {
 	spaces := &expSpaces{}
 	e := NewDataExporter(expCustomers{}, expSubs{}, expInvoices{}, spaces, "tenant0", space.ForJob)
-	data, err := e.Part(context.Background(), "alice")
-	if err != nil {
-		t.Fatal(err)
-	}
-	files := unzip(t, data)
+	files := unzip(t, mustPart(t, e, "alice"))
 	cust := files["customer-live.json"]
 	if !strings.Contains(cust, "alice@example.com") || !strings.Contains(cust, "12345678901") || !strings.Contains(cust, "sub_1") || !strings.Contains(cust, "in_1") {
 		t.Errorf("customer file: %s", cust)
@@ -106,11 +107,11 @@ func TestDataExporterForAPersonWithNothing(t *testing.T) {
 
 func mustPart(t *testing.T, e *DataExporter, sub string) []byte {
 	t.Helper()
-	b, err := e.Part(context.Background(), sub)
-	if err != nil {
+	var buf bytes.Buffer
+	if err := e.WritePart(context.Background(), sub, &buf); err != nil {
 		t.Fatal(err)
 	}
-	return b
+	return buf.Bytes()
 }
 
 func keys(m map[string]string) []string {
@@ -119,4 +120,60 @@ func keys(m map[string]string) []string {
 		k = append(k, n)
 	}
 	return k
+}
+
+// manySpaces streams n rows of one table and ends it as cut or not.
+type manySpaces struct {
+	n         int
+	truncated bool
+}
+
+func (m manySpaces) Stream(_ context.Context, sp space.ResolvedSpace, sink repositories.TableSink) error {
+	if !strings.Contains(sp.PK(), "big") || !sp.Livemode() {
+		return nil
+	}
+	if err := sink.Begin("ledger_transactions"); err != nil {
+		return err
+	}
+	for i := 0; i < m.n; i++ {
+		if err := sink.Item(map[string]any{"id": i, "memo": "line, with \"quotes\" and\nnewline"}); err != nil {
+			return err
+		}
+	}
+	return sink.End(m.truncated)
+}
+
+// A table streamed row by row is one valid JSON document: {table, items, truncated}.
+// Commas, quotes and newlines inside rows must not break it.
+func TestStreamedTableIsValidJSONWithItsTruncatedFlag(t *testing.T) {
+	for _, cut := range []bool{false, true} {
+		e := NewDataExporter(expCustomers{}, expSubs{}, expInvoices{}, manySpaces{n: 5000, truncated: cut}, "", space.ForJob)
+		files := unzip(t, mustPart(t, e, "big"))
+		var doc struct {
+			Table     string           `json:"table"`
+			Items     []map[string]any `json:"items"`
+			Truncated bool             `json:"truncated"`
+		}
+		var name string
+		for n := range files {
+			if strings.HasSuffix(n, "/ledger_transactions.json") {
+				name = n
+			}
+		}
+		if name == "" {
+			t.Fatalf("no ledger file in %v", keys(files))
+		}
+		if err := json.Unmarshal([]byte(files[name]), &doc); err != nil {
+			t.Fatalf("the streamed table is not valid JSON: %v", err)
+		}
+		if doc.Table != "ledger_transactions" || len(doc.Items) != 5000 || doc.Truncated != cut {
+			t.Fatalf("table=%q items=%d truncated=%v, want 5000 rows and truncated=%v", doc.Table, len(doc.Items), doc.Truncated, cut)
+		}
+		if got := doc.Items[4999]["memo"]; got != "line, with \"quotes\" and\nnewline" {
+			t.Fatalf("a row was altered by the stream: %q", got)
+		}
+		if cut && !strings.Contains(files["README.txt"], "cut at the size limit") {
+			t.Fatal("the README does not say the table was cut")
+		}
+	}
 }
