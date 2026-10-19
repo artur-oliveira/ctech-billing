@@ -80,8 +80,8 @@ func (f *fakeBills) Settle(_ context.Context, _ space.ResolvedSpace, id string, 
 	return finance.Bill{ID: id}, nil
 }
 
-func (f *fakeBills) DueForAutoSettle(context.Context, bool, brcal.Date, int) ([]repositories.DueBill, int, error) {
-	return f.autoDue, 0, nil
+func (f *fakeBills) DueForAutoSettlePage(context.Context, bool, brcal.Date, int, map[string]types.AttributeValue) ([]repositories.DueBill, int, map[string]types.AttributeValue, error) {
+	return f.autoDue, 0, nil, nil
 }
 
 func (f *fakeBills) ListOpen(_ context.Context, _ space.ResolvedSpace, dir finance.Direction, _ int, _ map[string]types.AttributeValue) (*repositories.Page[finance.Bill], error) {
@@ -107,7 +107,7 @@ func newFakeRecs(rs ...finance.Recurrence) *fakeRecs {
 
 // DueToMaterialise models the schedule index: a recurrence is on the list when
 // the day its next occurrence enters the horizon has arrived.
-func (f *fakeRecs) DueToMaterialise(_ context.Context, live bool, today brcal.Date, _ int) ([]repositories.DueRecurrence, int, error) {
+func (f *fakeRecs) DueToMaterialisePage(_ context.Context, live bool, today brcal.Date, _ int, _ map[string]types.AttributeValue) ([]repositories.DueRecurrence, int, map[string]types.AttributeValue, error) {
 	sp, _ := space.ForJob("USER#u1", live)
 	var out []repositories.DueRecurrence
 	for id, r := range f.recs {
@@ -115,7 +115,7 @@ func (f *fakeRecs) DueToMaterialise(_ context.Context, live bool, today brcal.Da
 			out = append(out, repositories.DueRecurrence{Space: sp, Recurrence: r, Cursor: f.cursors[id]})
 		}
 	}
-	return out, 0, nil
+	return out, 0, nil, nil
 }
 
 func (f *fakeRecs) MarkMaterialised(_ context.Context, _ space.ResolvedSpace, id string, cursor brcal.Date, _ time.Time) error {
@@ -468,8 +468,8 @@ type fakeCards struct {
 	fail   string
 }
 
-func (f *fakeCards) DueToClose(context.Context, bool, brcal.Date, int) ([]repositories.DueCard, int, error) {
-	return f.due, 0, nil
+func (f *fakeCards) DueToClosePage(context.Context, bool, brcal.Date, int, map[string]types.AttributeValue) ([]repositories.DueCard, int, map[string]types.AttributeValue, error) {
+	return f.due, 0, nil, nil
 }
 
 func (f *fakeCards) CloseDue(_ context.Context, _ space.ResolvedSpace, cardID string, _ brcal.Date, _ time.Time) (int, error) {

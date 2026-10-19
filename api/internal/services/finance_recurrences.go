@@ -20,13 +20,6 @@ import (
 // the sweep's "scheduler".
 const financeActor = "scheduler"
 
-// jobBatch is how many rows one pass over a work list asks for. The lists are
-// date-ordered and a row that keeps failing stays at the head, so the batch is
-// large instead of paged: a poison row must not starve the rows behind it.
-// ponytail: page the lists with a continuation key if a single day ever holds
-// more than this many due rows.
-const jobBatch = 5000
-
 // maxDraftsPerRun bounds how many bills one recurrence materialises in one run.
 // A recurrence entered with years of catch-up is worked off in batches over
 // successive runs (the cursor carries the resume), so one tenant cannot stretch
@@ -36,12 +29,12 @@ const maxDraftsPerRun = 60
 type billStore interface {
 	CreateFromOccurrence(ctx context.Context, sp space.ResolvedSpace, d finance.Draft, recurrenceID string, meta repositories.PostMeta, now time.Time) (bool, finance.Bill, error)
 	Settle(ctx context.Context, sp space.ResolvedSpace, id string, paid billing.Cents, differenceCategoryID string, date brcal.Date, meta repositories.PostMeta, now time.Time) (finance.Bill, error)
-	DueForAutoSettle(ctx context.Context, livemode bool, today brcal.Date, limit int) ([]repositories.DueBill, int, error)
+	DueForAutoSettlePage(ctx context.Context, livemode bool, today brcal.Date, limit int, start map[string]types.AttributeValue) ([]repositories.DueBill, int, map[string]types.AttributeValue, error)
 	ListOpen(ctx context.Context, sp space.ResolvedSpace, dir finance.Direction, limit int, startKey map[string]types.AttributeValue) (*repositories.Page[finance.Bill], error)
 }
 
 type recurrenceStore interface {
-	DueToMaterialise(ctx context.Context, livemode bool, today brcal.Date, limit int) ([]repositories.DueRecurrence, int, error)
+	DueToMaterialisePage(ctx context.Context, livemode bool, today brcal.Date, limit int, start map[string]types.AttributeValue) ([]repositories.DueRecurrence, int, map[string]types.AttributeValue, error)
 	MarkMaterialised(ctx context.Context, sp space.ResolvedSpace, id string, cursor brcal.Date, now time.Time) error
 	ListWithCursors(ctx context.Context, sp space.ResolvedSpace) ([]repositories.DueRecurrence, error)
 	FlagAttention(ctx context.Context, sp space.ResolvedSpace, id, reason string, now time.Time) error
@@ -58,6 +51,8 @@ type FinanceJobs struct {
 	// gone reports a space whose owner the account-deletion saga has locked or
 	// erased. Nil means no guard (the console's projection read).
 	gone func(ctx context.Context, sp space.ResolvedSpace) (bool, error)
+	// workers is how many rows of a work list are worked at once (WithConcurrency).
+	workers int
 }
 
 func NewFinanceJobs(bills billStore, recs recurrenceStore) *FinanceJobs {
@@ -109,81 +104,80 @@ func (r *JobResult) fail(format string, a ...any) {
 // the next run resumes there; the other recurrences carry on.
 func (j *FinanceJobs) Materialise(ctx context.Context, livemode bool, today brcal.Date, now time.Time) JobResult {
 	var res JobResult
-	due, skipped, err := j.recs.DueToMaterialise(ctx, livemode, today, jobBatch)
-	res.Skipped += skipped
-	if err != nil {
-		res.fail("reading the materialisation list: %v", err)
-		return res
-	}
 	meta := repositories.PostMeta{Origin: "recurrence", Actor: financeActor}
 	_, horizonEnd := finance.Horizon(today)
-	for _, d := range due {
-		res.Examined++
-		rec := d.Recurrence
-		if j.skip(ctx, d.Space, &res, "recurrence "+rec.ID) {
-			continue
-		}
-		if rec.IsCard() {
-			j.materialiseCard(ctx, d, today, now, meta, &res)
-			continue
-		}
-		drafts, err := rec.Materialise(d.Cursor, today)
-		if err != nil {
-			res.fail("recurrence %s: %v", rec.ID, err)
-			continue
-		}
-		if rec.AmountMode == finance.AmountExpected {
-			ready := drafts[:0]
-			for _, draft := range drafts {
-				if !draft.Nominal.After(today) {
-					ready = append(ready, draft)
-				}
+	runDue(ctx, j.workers, &res, "materialisation",
+		func(d repositories.DueRecurrence) string { return d.Space.PK() },
+		func(d repositories.DueRecurrence) string { return d.Recurrence.ID },
+		func(start map[string]types.AttributeValue) ([]repositories.DueRecurrence, int, map[string]types.AttributeValue, error) {
+			return j.recs.DueToMaterialisePage(ctx, livemode, today, jobPage, start)
+		},
+		func(d repositories.DueRecurrence, res *JobResult) {
+			rec := d.Recurrence
+			if j.skip(ctx, d.Space, res, "recurrence "+rec.ID) {
+				return
 			}
-			drafts = ready
-		}
-		if len(drafts) > maxDraftsPerRun {
-			drafts = drafts[:maxDraftsPerRun]
-		}
-		cursor, failed := d.Cursor, false
-		for _, draft := range drafts {
-			created := false
-			if rec.AmountMode == finance.AmountExpected {
-				created, err = j.recs.CreatePendingOccurrence(ctx, d.Space, rec, draft.Nominal, draft.Bill.Due, now)
-			} else {
-				created, _, err = j.bills.CreateFromOccurrence(ctx, d.Space, draft, rec.ID, meta, now)
+			if rec.IsCard() {
+				j.materialiseCard(ctx, d, today, now, meta, res)
+				return
 			}
-			if errors.Is(err, repositories.ErrRecurrenceChanged) {
-				// Archived or retargeted after this run read it: not a failure. The
-				// cursor stays, so the next run works from the current rule.
-				res.Skipped++
-				failed = true
-				break
-			}
+			drafts, err := rec.Materialise(d.Cursor, today)
 			if err != nil {
-				res.fail("recurrence %s occurrence %s: %v", rec.ID, draft.Nominal, err)
-				failed = true
-				break
+				res.fail("recurrence %s: %v", rec.ID, err)
+				return
 			}
-			if created {
-				res.Done++
-			} else {
-				res.Skipped++
+			if rec.AmountMode == finance.AmountExpected {
+				ready := drafts[:0]
+				for _, draft := range drafts {
+					if !draft.Nominal.After(today) {
+						ready = append(ready, draft)
+					}
+				}
+				drafts = ready
 			}
-			cursor = draft.Nominal
-		}
-		if failed {
-			continue
-		}
-		if len(drafts) == 0 && rec.AmountMode != finance.AmountExpected {
-			// Due, but nothing falls in (cursor, horizon end]: move the cursor to
-			// the horizon end so the row leaves the list instead of being found
-			// again every day.
-			cursor = horizonEnd
-		}
-		if err := j.recs.MarkMaterialised(ctx, d.Space, rec.ID, cursor, now); err != nil {
-			res.fail("recurrence %s: moving the cursor to %s: %v", rec.ID, cursor, err)
-		}
-	}
+			if len(drafts) > maxDraftsPerRun {
+				drafts = drafts[:maxDraftsPerRun]
+			}
+			cursor, failed := d.Cursor, false
+			for _, draft := range drafts {
+				created := false
+				if rec.AmountMode == finance.AmountExpected {
+					created, err = j.recs.CreatePendingOccurrence(ctx, d.Space, rec, draft.Nominal, draft.Bill.Due, now)
+				} else {
+					created, _, err = j.bills.CreateFromOccurrence(ctx, d.Space, draft, rec.ID, meta, now)
+				}
+				if errors.Is(err, repositories.ErrRecurrenceChanged) {
+					// Archived or retargeted after this run read it: not a failure. The
+					// cursor stays, so the next run works from the current rule.
+					res.Skipped++
+					failed = true
+					break
+				}
+				if err != nil {
+					res.fail("recurrence %s occurrence %s: %v", rec.ID, draft.Nominal, err)
+					failed = true
+					break
+				}
+				if created {
+					res.Done++
+				} else {
+					res.Skipped++
+				}
+				cursor = draft.Nominal
+			}
+			if failed {
+				return
+			}
+			if len(drafts) == 0 && rec.AmountMode != finance.AmountExpected {
+				// Due, but nothing falls in (cursor, horizon end]: move the cursor to
+				// the horizon end so the row leaves the list instead of being found
+				// again every day.
+				cursor = horizonEnd
+			}
+			if err := j.recs.MarkMaterialised(ctx, d.Space, rec.ID, cursor, now); err != nil {
+				res.fail("recurrence %s: moving the cursor to %s: %v", rec.ID, cursor, err)
+			}
+		})
 	return res
 }
 
@@ -277,32 +271,31 @@ func (j *FinanceJobs) materialiseCard(ctx context.Context, d repositories.DueRec
 // skip, not a failure.
 func (j *FinanceJobs) AutoSettle(ctx context.Context, livemode bool, today brcal.Date, now time.Time) JobResult {
 	var res JobResult
-	due, skipped, err := j.bills.DueForAutoSettle(ctx, livemode, today, jobBatch)
-	res.Skipped += skipped
-	if err != nil {
-		res.fail("reading the auto-settle list: %v", err)
-		return res
-	}
 	meta := repositories.PostMeta{Origin: repositories.OriginAutoSettle, Actor: financeActor}
-	for _, d := range due {
-		res.Examined++
-		if j.skip(ctx, d.Space, &res, "bill "+d.Bill.ID) {
-			continue
-		}
-		_, err := j.bills.Settle(ctx, d.Space, d.Bill.ID, d.Bill.Amount, "", d.Bill.Due, meta, now)
-		switch {
-		case err == nil:
-			res.Done++
-		case errors.Is(err, finance.ErrBillState):
-			res.Skipped++
-		case errors.Is(err, repositories.ErrAccountIsSynced):
-			// A bank-synced account settles its bills from the bank's lines (BYOK
-			// spec § 8.1, § 8.3): not a failure of the job.
-			res.Skipped++
-		default:
-			res.fail("bill %s: %v", d.Bill.ID, err)
-		}
-	}
+	runDue(ctx, j.workers, &res, "auto-settle",
+		func(d repositories.DueBill) string { return d.Space.PK() },
+		func(d repositories.DueBill) string { return d.Bill.ID },
+		func(start map[string]types.AttributeValue) ([]repositories.DueBill, int, map[string]types.AttributeValue, error) {
+			return j.bills.DueForAutoSettlePage(ctx, livemode, today, jobPage, start)
+		},
+		func(d repositories.DueBill, res *JobResult) {
+			if j.skip(ctx, d.Space, res, "bill "+d.Bill.ID) {
+				return
+			}
+			_, err := j.bills.Settle(ctx, d.Space, d.Bill.ID, d.Bill.Amount, "", d.Bill.Due, meta, now)
+			switch {
+			case err == nil:
+				res.Done++
+			case errors.Is(err, finance.ErrBillState):
+				res.Skipped++
+			case errors.Is(err, repositories.ErrAccountIsSynced):
+				// A bank-synced account settles its bills from the bank's lines (BYOK
+				// spec § 8.1, § 8.3): not a failure of the job.
+				res.Skipped++
+			default:
+				res.fail("bill %s: %v", d.Bill.ID, err)
+			}
+		})
 	return res
 }
 

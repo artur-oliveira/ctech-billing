@@ -4,6 +4,8 @@ import (
 	"context"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
 	"gopkg.aoctech.app/billing/api/internal/domain/brcal"
 	"gopkg.aoctech.app/billing/api/internal/domain/finance"
@@ -12,7 +14,7 @@ import (
 )
 
 type cardStore interface {
-	DueToClose(ctx context.Context, livemode bool, today brcal.Date, limit int) ([]repositories.DueCard, int, error)
+	DueToClosePage(ctx context.Context, livemode bool, today brcal.Date, limit int, start map[string]types.AttributeValue) ([]repositories.DueCard, int, map[string]types.AttributeValue, error)
 	CloseDue(ctx context.Context, sp space.ResolvedSpace, cardID string, today brcal.Date, now time.Time) (int, error)
 	ListCards(ctx context.Context, sp space.ResolvedSpace) ([]repositories.CardRow, error)
 	GetStatement(ctx context.Context, sp space.ResolvedSpace, cardID string, m finance.Month) (repositories.Statement, error)
@@ -77,22 +79,21 @@ func (j *FinanceJobs) CloseStatements(ctx context.Context, livemode bool, today 
 	if j.cards == nil {
 		return res
 	}
-	due, skipped, err := j.cards.DueToClose(ctx, livemode, today, jobBatch)
-	res.Skipped += skipped
-	if err != nil {
-		res.fail("reading the close list: %v", err)
-		return res
-	}
-	for _, d := range due {
-		res.Examined++
-		if j.skip(ctx, d.Space, &res, "card "+d.CardID) {
-			continue
-		}
-		n, err := j.cards.CloseDue(ctx, d.Space, d.CardID, today, now)
-		res.Done += n
-		if err != nil {
-			res.fail("card %s: %v", d.CardID, err)
-		}
-	}
+	runDue(ctx, j.workers, &res, "close",
+		func(d repositories.DueCard) string { return d.Space.PK() },
+		func(d repositories.DueCard) string { return d.CardID },
+		func(start map[string]types.AttributeValue) ([]repositories.DueCard, int, map[string]types.AttributeValue, error) {
+			return j.cards.DueToClosePage(ctx, livemode, today, jobPage, start)
+		},
+		func(d repositories.DueCard, res *JobResult) {
+			if j.skip(ctx, d.Space, res, "card "+d.CardID) {
+				return
+			}
+			n, err := j.cards.CloseDue(ctx, d.Space, d.CardID, today, now)
+			res.Done += n
+			if err != nil {
+				res.fail("card %s: %v", d.CardID, err)
+			}
+		})
 	return res
 }

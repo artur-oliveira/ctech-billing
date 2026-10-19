@@ -230,11 +230,25 @@ func (r *CardRepository) DueToClose(ctx context.Context, livemode bool, today br
 	if err != nil {
 		return nil, skipped, err
 	}
+	return dueCards(entries), skipped, nil
+}
+
+// DueToClosePage is one page of the close schedule (up to limit index rows from
+// start) and the key to continue from, nil at its end.
+func (r *CardRepository) DueToClosePage(ctx context.Context, livemode bool, today brcal.Date, limit int, start map[string]types.AttributeValue) ([]DueCard, int, map[string]types.AttributeValue, error) {
+	entries, skipped, next, err := scanSchedulePage(ctx, r.cards, ClosePK(livemode), livemode, today, limit, start)
+	if err != nil {
+		return nil, skipped, nil, err
+	}
+	return dueCards(entries), skipped, next, nil
+}
+
+func dueCards(entries []scheduleEntry) []DueCard {
 	out := make([]DueCard, len(entries))
 	for i, e := range entries {
 		out[i] = DueCard{Space: e.Space, CardID: e.ID}
 	}
-	return out, skipped, nil
+	return out
 }
 
 // statementDescription names a statement bill within the bill's own limit,
