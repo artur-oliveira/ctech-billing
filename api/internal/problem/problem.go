@@ -177,6 +177,11 @@ func Unprocessable(detail string) *Problem {
 }
 func Internal(detail string) *Problem { return wrap(commonproblem.InternalServer(detail)) }
 
+// TooManyRequestsAfter is a 429 that tells the caller how long to wait.
+func TooManyRequestsAfter(detail string, retryAfterSeconds int) *Problem {
+	return wrap(commonproblem.TooManyRequestsAfter(detail, retryAfterSeconds))
+}
+
 // Validation returns a 422 carrying field-level failures.
 func Validation(errs []FieldError) *Problem {
 	p := wrap(commonproblem.Validation(nil))

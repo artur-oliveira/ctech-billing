@@ -7,8 +7,11 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/gofiber/fiber/v3"
 	"gopkg.aoctech.app/api-commons/cache"
+	"gopkg.aoctech.app/api-commons/ratelimit"
+	"gopkg.aoctech.app/api-commons/ratelimit/fiberlimit"
 
 	"gopkg.aoctech.app/billing/api/internal/middleware"
+	"gopkg.aoctech.app/billing/api/internal/problem"
 	"gopkg.aoctech.app/billing/api/internal/realtime"
 	"gopkg.aoctech.app/billing/api/internal/repositories"
 	"gopkg.aoctech.app/billing/api/internal/services"
@@ -120,6 +123,9 @@ type Deps struct {
 	// GateMemoryTTL is how long the M2M suspension and closing gates remember their
 	// answer (config.GateMemoryTTL). Zero reads every time.
 	GateMemoryTTL time.Duration
+	// M2MLimit is the per-tenant budget of the M2M routes (config.M2MRatePerSecond);
+	// nil does not limit.
+	M2MLimit *ratelimit.Bucket
 	// ClosureFlags is the read-only gate of a tenant being closed (merchant
 	// tenant closure). Nil leaves the gate off.
 	ClosureFlags middleware.ClosingFlags
@@ -223,7 +229,14 @@ func Register(app *fiber.App, d Deps) {
 	// just confirmed a closing expects the next write refused).
 	suspended := middleware.RefuseSuspendedWrites(middleware.CachedTenantRows(d.Organizations, d.GateMemoryTTL))
 	closing := middleware.RefuseClosingWrites(middleware.CachedClosingFlags(d.ClosureFlags, d.GateMemoryTTL))
-	m2m := func(prefix string) fiber.Router { return v1.Group(prefix, auth, tenant, suspended, closing) }
+	// The budget is per merchant tenant and mode, taken after the tenant is resolved and before
+	// the gates, so a flood costs one in-memory counter and no row read.
+	tenantLimit := fiberlimit.New(d.M2MLimit, m2mLimitKey(d.PortalOrganizationID), func(c fiber.Ctx, seconds int) error {
+		return problem.TooManyRequestsAfter("this tenant is calling the API too fast; retry after the interval", seconds).Send(c)
+	})
+	m2m := func(prefix string) fiber.Router {
+		return v1.Group(prefix, auth, tenant, tenantLimit, suspended, closing)
+	}
 
 	customers := m2m("/customers")
 	customers.Post("",
