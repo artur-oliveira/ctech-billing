@@ -3,9 +3,10 @@ package repositories
 import (
 	"context"
 	"fmt"
-	"github.com/aws/aws-sdk-go-v2/aws"
 	"strings"
+	"sync"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 
@@ -119,37 +120,116 @@ func (p *TenantPurger) pointers(ctx context.Context, t *billing.Organization, pk
 			return err
 		}
 	}
-	// payment attempts: CHARGEREF pointers in byok; payouts: PAYREF markers
-	items, err := queryPrefix(ctx, p.bases[TableInvoices], pk, "")
-	if err != nil {
-		return err
-	}
-	for _, it := range items {
-		sk := strAttrOf(it, "sk")
-		switch {
-		case strings.Contains(sk, "#ATTEMPT#"):
-			provider, ref := strAttrOf(it, "provider"), strAttrOf(it, "charge_ref")
-			if provider == "" || ref == "" {
-				continue
-			}
-			n, err := p.deleteOne(ctx, TableByok, ChargeRefPK(provider, t.Livemode, ref), "CHARGEREF", dryRun)
-			rep["charge_refs"] += n
-			if err != nil {
-				return err
-			}
-		case strings.HasPrefix(sk, "PAYOUT#"):
-			ref := strAttrOf(it, "reference")
-			if ref == "" {
-				continue
-			}
-			n, err := p.deleteOne(ctx, TableInvoices, LookupPayoutReferencePK(t.ID, t.Livemode, ref), "REF", dryRun)
-			rep["payout_refs"] += n
-			if err != nil {
-				return err
+	// payment attempts: CHARGEREF pointers in byok; payouts: PAYREF markers. The
+	// invoice partition is the tenant's biggest, so it is walked a page of
+	// projected attributes at a time and each page's pointers are deleted in
+	// parallel, never held whole.
+	return walkPartition(ctx, p.bases[TableInvoices], pk, []string{"provider", "charge_ref", "reference"}, func(items []map[string]types.AttributeValue) error {
+		var work []pointer
+		for _, it := range items {
+			sk := strAttrOf(it, "sk")
+			switch {
+			case strings.Contains(sk, "#ATTEMPT#"):
+				if provider, ref := strAttrOf(it, "provider"), strAttrOf(it, "charge_ref"); provider != "" && ref != "" {
+					work = append(work, pointer{"charge_refs", TableByok, ChargeRefPK(provider, t.Livemode, ref), "CHARGEREF"})
+				}
+			case strings.HasPrefix(sk, "PAYOUT#"):
+				if ref := strAttrOf(it, "reference"); ref != "" {
+					work = append(work, pointer{"payout_refs", TableInvoices, LookupPayoutReferencePK(t.ID, t.Livemode, ref), "REF"})
+				}
 			}
 		}
+		return p.deletePointers(ctx, work, dryRun, rep)
+	})
+}
+
+// pointer is a row outside the tenant partition that a row inside it names.
+type pointer struct{ kind, table, pk, sk string }
+
+// deletePointers deletes (or counts) the pointers with purgeWorkers in flight,
+// adding to rep as it goes; it stops at the first error.
+func (p *TenantPurger) deletePointers(ctx context.Context, work []pointer, dryRun bool, rep TenantPurgeReport) error {
+	var mu sync.Mutex
+	return forEachParallel(ctx, len(work), func(i int) error {
+		w := work[i]
+		n, err := p.deleteOne(ctx, w.table, w.pk, w.sk, dryRun)
+		mu.Lock()
+		rep[w.kind] += n
+		mu.Unlock()
+		return err
+	})
+}
+
+// forEachParallel runs fn(0..n-1) with purgeWorkers at a time and returns the
+// first error, starting nothing new after it.
+func forEachParallel(ctx context.Context, n int, fn func(i int) error) error {
+	var (
+		wg    sync.WaitGroup
+		mu    sync.Mutex
+		first error
+	)
+	sem := make(chan struct{}, purgeWorkers)
+	for i := 0; i < n; i++ {
+		mu.Lock()
+		failed := first != nil
+		mu.Unlock()
+		if failed || ctx.Err() != nil {
+			break
+		}
+		sem <- struct{}{}
+		wg.Add(1)
+		go func() {
+			defer func() { <-sem; wg.Done() }()
+			if err := fn(i); err != nil {
+				mu.Lock()
+				if first == nil {
+					first = err
+				}
+				mu.Unlock()
+			}
+		}()
 	}
-	return nil
+	wg.Wait()
+	if first == nil {
+		first = ctx.Err()
+	}
+	return first
+}
+
+// walkPartition calls fn with each page (queryPrefixPage rows) of one partition,
+// reading only the keys and the extra projected attributes.
+func walkPartition(ctx context.Context, b Base, pk string, projection []string, fn func([]map[string]types.AttributeValue) error) error {
+	var start map[string]types.AttributeValue
+	for {
+		// Every projected name goes through a #placeholder: `reference` and
+		// others are DynamoDB reserved words.
+		names := map[string]string{"#pk": "pk", "#sk": "sk"}
+		fields := []string{"#pk", "#sk"}
+		for _, f := range projection {
+			names["#"+f] = f
+			fields = append(fields, "#"+f)
+		}
+		in := &dynamodb.QueryInput{
+			KeyConditionExpression:    aws.String("#pk = :pk"),
+			ExpressionAttributeNames:  names,
+			ExpressionAttributeValues: map[string]types.AttributeValue{":pk": &types.AttributeValueMemberS{Value: pk}},
+			ProjectionExpression:      aws.String(strings.Join(fields, ", ")),
+			Limit:                     aws.Int32(queryPrefixPage),
+			ConsistentRead:            aws.Bool(true),
+			ExclusiveStartKey:         start,
+		}
+		out, err := b.QueryRaw(ctx, in)
+		if err != nil {
+			return err
+		}
+		if err := fn(out.Items); err != nil {
+			return err
+		}
+		if len(out.LastEvaluatedKey) == 0 {
+			return nil
+		}
+		start = out.LastEvaluatedKey
+	}
 }
 
 // eraseLevels removes the level history of every (customer reference, meter)
@@ -171,59 +251,48 @@ func (p *TenantPurger) eraseLevels(ctx context.Context, t *billing.Organization,
 	if len(meters) == 0 {
 		return nil
 	}
-	items, err := queryPrefix(ctx, p.bases[TableCustomers], TenantPK(t.ID, t.Livemode), skCustomer)
-	if err != nil {
-		return err
-	}
-	for _, it := range items {
-		ref := strAttrOf(it, "external_ref")
-		if ref == "" {
-			continue
-		}
-		if dryRun {
-			rep["level_refs"]++
-			continue
-		}
-		n, err := p.levels.EraseRef(ctx, t.ID, t.Livemode, ref, meters)
-		rep["level_rows"] += n
-		if err != nil {
+	// Customers are walked a page at a time and their level rows erased in
+	// parallel: a merchant with thousands of customers paid one serial round trip
+	// per reference.
+	var mu sync.Mutex
+	return walkPartition(ctx, p.bases[TableCustomers], TenantPK(t.ID, t.Livemode), []string{"external_ref"}, func(items []map[string]types.AttributeValue) error {
+		return forEachParallel(ctx, len(items), func(i int) error {
+			if !strings.HasPrefix(strAttrOf(items[i], "sk"), skCustomer) {
+				return nil
+			}
+			ref := strAttrOf(items[i], "external_ref")
+			if ref == "" {
+				return nil
+			}
+			if dryRun {
+				mu.Lock()
+				rep["level_refs"]++
+				mu.Unlock()
+				return nil
+			}
+			n, err := p.levels.EraseRef(ctx, t.ID, t.Livemode, ref, meters)
+			mu.Lock()
+			rep["level_rows"] += n
+			mu.Unlock()
 			return err
-		}
-	}
-	return nil
+		})
+	})
 }
 
-// clear deletes (or counts) every row under one partition, a page at a time so a
-// large tenant never sits in memory.
+// clear deletes (or counts) every row under one partition: keys only, a page at
+// a time, deleted in parallel batches (deletePartitionRows), so a large tenant
+// never sits in memory and the purge is not one serial batch after another.
 func (p *TenantPurger) clear(ctx context.Context, table, pk string, dryRun bool) (int, error) {
 	b := p.bases[table]
-	total := 0
-	for {
-		res, err := b.Query(ctx, QueryOpts{PK: pk, ScanIndexForward: true, Limit: 100, ConsistentRead: true})
-		if err != nil {
-			return total, err
-		}
-		if len(res.Items) == 0 {
-			return total, nil
-		}
-		if dryRun {
-			// A dry run cannot delete, so it pages instead of re-reading page one.
-			total += len(res.Items)
-			for len(res.LastEvaluatedKey) > 0 {
-				res, err = b.Query(ctx, QueryOpts{PK: pk, ScanIndexForward: true, Limit: 100, ConsistentRead: true, ExclusiveStartKey: res.LastEvaluatedKey})
-				if err != nil {
-					return total, err
-				}
-				total += len(res.Items)
-			}
-			return total, nil
-		}
-		n, err := deleteKeys(ctx, b, res.Items)
-		total += n
-		if err != nil {
-			return total, err
-		}
+	if !dryRun {
+		return deletePartitionRows(ctx, b, pk)
 	}
+	total := 0
+	err := walkPartition(ctx, b, pk, nil, func(items []map[string]types.AttributeValue) error {
+		total += len(items)
+		return nil
+	})
+	return total, err
 }
 
 // deleteOne deletes (or counts) one row if it exists.
