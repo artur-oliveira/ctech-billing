@@ -140,7 +140,7 @@ func (h *closureHandlers) request(c fiber.Ctx) error {
 	switch {
 	case errors.As(err, &blocked):
 		return problem.New(fiber.StatusConflict, "/problems/closure-blocked", "Closure blocked", "resolve the blockers first").
-			WithCode("closure_blocked").WithBlockers(blocked.Blockers).Send(c)
+			WithCode("closure_blocked").WithExtra(problem.ExtraBlockers, blocked.Blockers).Send(c)
 	case errors.Is(err, closure.ErrOpenClosure):
 		return problem.Conflict("a closure is already in progress").WithCode("closure_open").Send(c)
 	case errors.Is(err, closure.ErrTenantZero):

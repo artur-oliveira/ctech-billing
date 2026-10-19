@@ -59,11 +59,13 @@ func TestPlanLimitsSuggestAnUpgrade(t *testing.T) {
 		{billing.ErrByokQuotaExceeded, "byok_quota_exceeded", -1},
 	} {
 		p := FromError(fmt.Errorf("wrapped: %w", c.err))
-		if p.Status != 409 || p.Code != c.code || !p.UpgradePlan {
-			t.Errorf("%v: %d %s %v", c.err, p.Status, p.Code, p.UpgradePlan)
+		m := decode(t, p)
+		if p.Status != 409 || p.Code != c.code || m[extraUpgradePlan] != true {
+			t.Errorf("%v: %d %s %v", c.err, p.Status, p.Code, m[extraUpgradePlan])
 		}
-		if (c.quota < 0) != (p.Quota == nil) || (p.Quota != nil && *p.Quota != c.quota) {
-			t.Errorf("%v: quota %v", c.err, p.Quota)
+		quota, hasQuota := m[extraQuota]
+		if (c.quota < 0) == hasQuota || (hasQuota && quota != float64(c.quota)) {
+			t.Errorf("%v: quota %v", c.err, quota)
 		}
 	}
 }
