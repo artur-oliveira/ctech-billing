@@ -225,12 +225,10 @@ func (i *Invoice) NothingDue() bool { return i.Total == 0 }
 //     more.
 //   - Something is still owed. A zero-total invoice is closed on issue
 //     (NothingDue), and a page offering to collect R$ 0,00 is a dead end.
-//   - **Livemode.** Collection runs through ctech-wallet, and wallet has no test
-//     rail for this charge kind — `POST /v1.0/internal/wallet/charge` opens a
-//     real PIX charge against a real provider whatever billing's mode is. So a
-//     test-mode invoice offered for payment collects real money against a
-//     document that, by design, is not real. Until a sandbox rail exists this
-//     is the honest answer, and it is one line to relax when it does.
+//   - **Livemode.** A test-mode invoice is not payable through this answer. The
+//     wallet rail was removed and collection runs on the merchant's own bank
+//     connection (BYOK); an organization on that rail has its own check in the
+//     checkout handler, which does not go through this method.
 //
 // Collector.Pay checks the same three separately rather than calling this,
 // because it must say *which* one failed: "not open" and "test mode" are

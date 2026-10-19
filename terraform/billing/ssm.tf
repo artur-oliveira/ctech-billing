@@ -34,10 +34,7 @@ resource "aws_ssm_parameter" "role_arn" {
 # anybody who has read this file already knows (see internal/app.Build).
 resource "aws_ssm_parameter" "collection_secrets" {
   for_each = {
-    wallet_client_id      = local.ssm_paths.wallet_client_id
-    wallet_client_secret  = local.ssm_paths.wallet_client_secret
-    wallet_webhook_secret = local.ssm_paths.wallet_webhook_secret
-    checkout_link_secret  = local.ssm_paths.checkout_link_secret
+    checkout_link_secret = local.ssm_paths.checkout_link_secret
   }
 
   name  = each.value

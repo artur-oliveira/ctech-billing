@@ -34,13 +34,6 @@ locals {
     table_prefix = "${local.ssm_prefix}/table-prefix"
     role_arn     = "${local.ssm_prefix}/role-arn"
 
-    # Collection secrets (ADR 0004). Declared here so the path is one string the
-    # IAM policy and the compute userdata both read, rather than a convention two
-    # files agree on until one of them is edited.
-    wallet_client_id      = "${local.ssm_prefix}/wallet-client-id"
-    wallet_client_secret  = "${local.ssm_prefix}/wallet-client-secret"
-    wallet_webhook_secret = "${local.ssm_prefix}/wallet-webhook-secret"
-
     # Billing's client at ctech-account (internal:account:org-member), which
     # resolves a finance space's membership (ADR 0025). Unlike the collection
     # secrets, these two parameters are NOT declared in ssm.tf: ctech-account's
@@ -48,7 +41,9 @@ locals {
     # Overwrite=false, so a managed resource here would collide with them.
     account_client_id     = "${local.ssm_prefix}/account-client-id"
     account_client_secret = "${local.ssm_prefix}/account-client-secret"
-    checkout_link_secret  = "${local.ssm_prefix}/checkout-link-secret"
+    # Signs checkout links (ADR 0004). Declared here so the path is one string the
+    # compute userdata and ssm.tf both read.
+    checkout_link_secret = "${local.ssm_prefix}/checkout-link-secret"
 
     # Encrypts the stored values that are personal data on their own — today the
     # customer's CPF/CNPJ. Not a collection secret: rotating one of those costs a
