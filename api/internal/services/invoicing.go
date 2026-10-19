@@ -195,6 +195,13 @@ func (s *Invoicer) GenerateForPeriod(
 		return nil, err
 	}
 
+	return s.issue(ctx, inv, sub, period, actor, now)
+}
+
+// issue takes a DRAFT invoice of a period to its issued state: finalized and,
+// when nothing is owed, closed. It is the second half of generating an invoice,
+// split out so a re-run can finish one a previous run created and never issued.
+func (s *Invoicer) issue(ctx context.Context, inv *billing.Invoice, sub *billing.Subscription, period billing.Period, actor string, now time.Time) (*billing.Invoice, error) {
 	dueDate := billing.DueDate(period, sub.Timing, sub.NetDays)
 
 	// A free plan, or a period whose metered usage was zero. The invoice is
@@ -474,6 +481,13 @@ func (s *Invoicer) invoiceOne(ctx context.Context, sub *billing.Subscription, ac
 		// Already invoiced: this is a re-run. The renewal below may still be
 		// outstanding, so it is not skipped.
 		genErr = err
+		// A previous run may have created the DRAFT and died, or failed to
+		// finalize it (throttling, numbering contention). Renewing past it would
+		// leave the period unbilled for good, so the invoice is issued first; a
+		// failure here holds the renewal back and the next run tries again.
+		if err := s.issueLeftoverDraft(ctx, sub, period, actor, now); err != nil {
+			return err
+		}
 	}
 
 	if _, err := s.subs.Transition(ctx, sub, billing.SubscriptionActive, billing.CauseRenewal, actor, "", now); err != nil {
@@ -484,6 +498,21 @@ func (s *Invoicer) invoiceOne(ctx context.Context, sub *billing.Subscription, ac
 		}
 	}
 	return genErr
+}
+
+// issueLeftoverDraft finishes the invoice a previous run created for this
+// period but never issued. Anything not a DRAFT is already past the point this
+// guards.
+func (s *Invoicer) issueLeftoverDraft(ctx context.Context, sub *billing.Subscription, period billing.Period, actor string, now time.Time) error {
+	inv, err := s.invoices.GetByGenerationKey(ctx, sub.OrganizationID, sub.Livemode, billing.GenerationKey(sub.ID, period.Start))
+	if err != nil {
+		return fmt.Errorf("reading the invoice generated for %s: %w", period.Start, err)
+	}
+	if inv.Status != billing.InvoiceDraft {
+		return nil
+	}
+	_, err = s.issue(ctx, inv, sub, period, actor, now)
+	return err
 }
 
 // endAtBoundary executes a cancellation scheduled for the period end. In
