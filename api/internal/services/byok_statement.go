@@ -36,8 +36,10 @@ type LineLinker interface {
 
 type SyncResult struct {
 	Posted, Skipped, Dropped int
-	BackfillDone             bool
-	Difference               billing.Cents
+	// Held counts the incomplete credit lines left for the next sync (see line).
+	Held         int
+	BackfillDone bool
+	Difference   billing.Cents
 }
 
 type ByokStatement struct {
@@ -114,7 +116,7 @@ func (s *ByokStatement) Sync(ctx context.Context, sp space.ResolvedSpace, conn *
 		}
 		refused := false
 		if !to.Before(from) {
-			if err := s.window(ctx, sp, sess, conn, from, to, &res); err != nil {
+			if err := s.window(ctx, sp, sess, conn, from, to, today, &res); err != nil {
 				if !errors.Is(err, byok.ErrInvalidRequest) && !errors.Is(err, byok.ErrNotFound) {
 					return fail(err)
 				}
@@ -145,7 +147,7 @@ func (s *ByokStatement) Sync(ctx context.Context, sp space.ResolvedSpace, conn *
 	if from.Before(conn.FirstDay) {
 		from = conn.FirstDay
 	}
-	if err := s.window(ctx, sp, sess, conn, from, today, &res); err != nil {
+	if err := s.window(ctx, sp, sess, conn, from, today, today, &res); err != nil {
 		return fail(err)
 	}
 	acct, err := s.ledger.GetAccount(ctx, sp, conn.LedgerAccountID)
@@ -160,7 +162,8 @@ func (s *ByokStatement) Sync(ctx context.Context, sp space.ResolvedSpace, conn *
 		}
 		pb.Available, pb.Blocked = billing.Cents(bal.Available), billing.Cents(bal.Blocked)
 		res.Difference = acct.Balance - pb.Available
-		if res.Difference != 0 && conn.BackfillDone {
+		// Not while a line is waiting for its complete version: the bank already counts it.
+		if res.Difference != 0 && conn.BackfillDone && res.Held == 0 {
 			slog.WarnContext(ctx, "byok ledger differs from the bank", "connection_id", conn.ID, "difference_cents", int64(res.Difference))
 		}
 	}
@@ -175,14 +178,14 @@ func (s *ByokStatement) Sync(ctx context.Context, sp space.ResolvedSpace, conn *
 	return res, s.repo.SaveConnection(ctx, conn, "", "", "", now)
 }
 
-func (s *ByokStatement) window(ctx context.Context, sp space.ResolvedSpace, sess byokrpc.Session, conn *byokconn.Connection, from, to brcal.Date, res *SyncResult) error {
+func (s *ByokStatement) window(ctx context.Context, sp space.ResolvedSpace, sess byokrpc.Session, conn *byokconn.Connection, from, to, today brcal.Date, res *SyncResult) error {
 	for page := 0; ; page++ {
 		p, err := sess.StatementPage(ctx, toByok(from), toByok(to), page)
 		if err != nil {
 			return err
 		}
 		for _, l := range p.Lines {
-			if err := s.line(ctx, sp, conn, l, res); err != nil {
+			if err := s.line(ctx, sp, conn, l, today, res); err != nil {
 				return err
 			}
 		}
@@ -192,7 +195,7 @@ func (s *ByokStatement) window(ctx context.Context, sp space.ResolvedSpace, sess
 	}
 }
 
-func (s *ByokStatement) line(ctx context.Context, sp space.ResolvedSpace, conn *byokconn.Connection, l byok.StatementLine, res *SyncResult) error {
+func (s *ByokStatement) line(ctx context.Context, sp space.ResolvedSpace, conn *byokconn.Connection, l byok.StatementLine, today brcal.Date, res *SyncResult) error {
 	if !conn.Livemode {
 		owner, found, err := s.repo.ChargeRefOwner(ctx, conn.Provider, false, l.ChargeRef)
 		if err != nil {
@@ -202,6 +205,18 @@ func (s *ByokStatement) line(ctx context.Context, sp space.ResolvedSpace, conn *
 			res.Dropped++ // D22: the shared sandbox statement is filtered to the tenant's own charges
 			return nil
 		}
+	}
+	// A credit the bank lists with no charge reference, no description and no payer is
+	// the first draft of a line it is still composing: Inter shows a Pix about a second
+	// after it lands, before its txid and payer arrive, and the settlement the webhook
+	// has just made is already in the ledger. Posting the draft books the payment twice
+	// (R$ 2,00 of drift in production, 2026-10-15). The line is read again by every sync
+	// of the last three days, complete by then (and linked by ByokLinker when it names a
+	// charge); one that is still bare after a day posts as it is.
+	if l.Direction == byok.Credit && l.ChargeRef == "" && l.Description == "" && l.Payer == nil &&
+		!fromByok(l.Date).Before(today.AddDays(-1)) {
+		res.Held++
+		return nil
 	}
 	bl := repositories.BankLine{Provider: conn.Provider, LineID: l.ID, Date: fromByok(l.Date), Credit: l.Direction == byok.Credit,
 		Amount: billing.Cents(l.Amount), Memo: memo(l), ChargeRef: l.ChargeRef, PaymentID: l.PaymentID}

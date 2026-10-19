@@ -131,7 +131,7 @@ func lineOn(d brcal.Date, lineID string, credit bool, amount int64) byok.Stateme
 	if credit {
 		dir = byok.Credit
 	}
-	return byok.StatementLine{ID: lineID, Date: toByokDate(d), Direction: dir, Amount: amount, Title: "linha " + lineID}
+	return byok.StatementLine{ID: lineID, Date: toByokDate(d), Direction: dir, Amount: amount, Title: "linha " + lineID, Description: "detalhe"}
 }
 
 func lineWithRef(d brcal.Date, lineID, ref string, amount int64) byok.StatementLine {
