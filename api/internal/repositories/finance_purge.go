@@ -197,7 +197,11 @@ const purgeWorkers = 4
 // Rows deleted behind the continuation key do not move it, so nothing is skipped,
 // and a partition of any size costs one page of keys in memory, not all of them.
 func (p *SpacePurger) deletePartition(ctx context.Context, logical, pk string) (int, error) {
-	b := p.bases[logical]
+	return deletePartitionRows(ctx, p.bases[logical], pk)
+}
+
+// deletePartitionRows is deletePartition over any table: the tenant purge shares it.
+func deletePartitionRows(ctx context.Context, b Base, pk string) (int, error) {
 	deleted := 0
 	var start map[string]types.AttributeValue
 	for {

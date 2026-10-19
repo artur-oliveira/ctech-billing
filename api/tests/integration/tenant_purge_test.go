@@ -4,6 +4,7 @@ package integration
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -182,6 +183,32 @@ func TestTheResidueSweepFindsSubPartitionsUnderTheClosedTenantOnly(t *testing.T)
 		tb := []string{"usage", "invoices", "usage", "usage"}[i]
 		if !rowExists(t, tb, pk, "x") {
 			t.Errorf("another tenant's %s was deleted", pk)
+		}
+	}
+}
+
+// The purge walks the invoice partition a page (1000 rows) at a time: a tenant
+// with more than one page of attempts and payouts loses every row and every
+// pointer they name, none skipped at a page edge.
+func TestPurgeTenantWorksAPartitionLargerThanOnePage(t *testing.T) {
+	a := newAPI(t)
+	pk := repositories.TenantPK(a.org.ID, a.org.Livemode)
+	const n = 1100
+	for i := 0; i < n; i++ {
+		ref := fmt.Sprintf("ref-%s-%04d", a.org.ID, i)
+		putRaw(t, "invoices", map[string]string{"pk": pk, "sk": fmt.Sprintf("INVOICE#inv_%04d#ATTEMPT#0001", i), "provider": "inter", "charge_ref": ref})
+		putRaw(t, "byok", map[string]string{"pk": repositories.ChargeRefPK("inter", a.org.Livemode, ref), "sk": "CHARGEREF"})
+	}
+	rep, err := repositories.NewTenantPurger(testDB, testCfg).PurgeTenant(ctxT(t), a.org, false)
+	if err != nil || rep["charge_refs"] != n {
+		t.Fatalf("charge_refs = %d, want %d (%v)", rep["charge_refs"], n, err)
+	}
+	if left := tenantRows(t, a.org); left != 0 {
+		t.Fatalf("%d rows left", left)
+	}
+	for _, i := range []int{0, 999, 1000, n - 1} {
+		if rowExists(t, "byok", repositories.ChargeRefPK("inter", a.org.Livemode, fmt.Sprintf("ref-%s-%04d", a.org.ID, i)), "CHARGEREF") {
+			t.Fatalf("pointer %d survived", i)
 		}
 	}
 }
