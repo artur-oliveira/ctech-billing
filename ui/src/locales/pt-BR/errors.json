@@ -2,6 +2,7 @@
   "code": {
     "invalid_body": "Os dados enviados não são válidos. Confira e tente de novo.",
     "invalid_cursor": "A lista mudou. Atualize a página.",
+    "request_timeout": "A resposta demorou demais. Tente de novo em instantes.",
     "invalid_link": "Este link é inválido ou expirou.",
     "invalid_signature": "Não foi possível confirmar a origem da solicitação.",
     "resource_not_found": "Não encontramos o que você procura.",
