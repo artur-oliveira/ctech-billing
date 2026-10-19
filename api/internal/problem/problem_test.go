@@ -1,6 +1,7 @@
 package problem
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -131,5 +132,17 @@ func TestATransactionConflictIsA409(t *testing.T) {
 		if p := FromError(err); p.Status != 409 || p.Code != "concurrent_update" {
 			t.Errorf("%v: %d %q, want 409 concurrent_update", err, p.Status, p.Code)
 		}
+	}
+}
+
+// A call cut by the request deadline is a retryable timeout, not an internal error.
+func TestADeadlineIsAGatewayTimeout(t *testing.T) {
+	wrapped := fmt.Errorf("operation error DynamoDB: Query: %w", context.DeadlineExceeded)
+	p := FromError(wrapped)
+	if p == nil || p.Status != 504 {
+		t.Fatalf("status = %+v, want 504", p)
+	}
+	if m := decode(t, p); m["type"] != TypeTimeout || m["code"] != "request_timeout" {
+		t.Fatalf("problem = %v", m)
 	}
 }
