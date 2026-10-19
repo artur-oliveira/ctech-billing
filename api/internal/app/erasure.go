@@ -19,6 +19,7 @@ import (
 	"gopkg.aoctech.app/api-commons/dataexport"
 	"gopkg.aoctech.app/api-commons/erasure"
 	"gopkg.aoctech.app/api-commons/oauth2client"
+	"gopkg.aoctech.app/api-commons/resilient"
 
 	"gopkg.aoctech.app/billing/api/internal/config"
 	"gopkg.aoctech.app/billing/api/internal/repositories"
@@ -189,7 +190,9 @@ func BuildErasureConsumer(ctx context.Context, cfg *config.Config, spaceFor func
 	if err != nil {
 		return nil, err
 	}
-	hc := &http.Client{Timeout: 10 * time.Second}
+	// ctech-account: the ack and its token. A circuit per host, so a down account makes
+	// the saga step fail at once and the message wait in the queue, not hold a goroutine.
+	hc := resilient.Client(10*time.Second, resilient.Config{})
 	acks := erasure.NewAckClient(hc,
 		strings.TrimSuffix(cfg.AccountBaseURL, "/")+"/v1.0/internal/erasure/ack",
 		oauth2client.New(hc, newCache(cfg), cfg.AccountTokenURL, clientID, clientSecret, erasureAckScope))
