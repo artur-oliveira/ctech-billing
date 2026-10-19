@@ -41,6 +41,12 @@ type Config struct {
 	// (tests that build a Config literal).
 	RequestTimeout time.Duration `env:"REQUEST_TIMEOUT" envDefault:"8s"`
 
+	// SweepWorkers and SweepPerOrg bound the daily renewal sweep: how many
+	// subscriptions it bills at once overall, and at most how many of one tenant
+	// (they share a gapless invoice counter). Serial was 3.3 hours per 100k renewals.
+	SweepWorkers int `env:"SWEEP_WORKERS" envDefault:"8"`
+	SweepPerOrg  int `env:"SWEEP_PER_ORG" envDefault:"4"`
+
 	// HTTP
 	Port         int   `env:"PORT"          envDefault:"8004"`
 	ReadTimeout  int64 `env:"READ_TIMEOUT"  envDefault:"10"`
