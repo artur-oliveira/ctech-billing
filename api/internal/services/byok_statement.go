@@ -161,7 +161,7 @@ func (s *ByokStatement) Sync(ctx context.Context, sp space.ResolvedSpace, conn *
 		pb.Available, pb.Blocked = billing.Cents(bal.Available), billing.Cents(bal.Blocked)
 		res.Difference = acct.Balance - pb.Available
 		if res.Difference != 0 && conn.BackfillDone {
-			slog.WarnContext(ctx, "byok ledger differs from the bank", "connection_id", conn.ID)
+			slog.WarnContext(ctx, "byok ledger differs from the bank", "connection_id", conn.ID, "difference_cents", int64(res.Difference))
 		}
 	}
 	if err := s.ledger.SetProviderBalance(ctx, sp, conn.LedgerAccountID, pb); err != nil {
