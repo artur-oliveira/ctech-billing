@@ -10,7 +10,7 @@ module gopkg.aoctech.app/billing/api
 // Same pin as ctech-account and ctech-poker, which are the sibling repositories
 // that also run govulncheck. When the next standard-library advisory lands, the
 // scanner goes red and the fix is this line.
-go 1.27.2
+go 1.27.3
 
 require (
 	github.com/aws/aws-lambda-go v1.55.1
