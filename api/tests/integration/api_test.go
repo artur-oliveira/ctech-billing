@@ -237,10 +237,9 @@ func TestHealthNeedsNoToken(t *testing.T) {
 	}
 	var body map[string]any
 	res.decode(t, &body)
-	// The service's own timezone, exposed because a billing service running in
-	// UTC bills on the wrong day and nothing else would show it.
-	if body["timezone"] != "America/Sao_Paulo" {
-		t.Fatalf("timezone = %v", body["timezone"])
+	// The timezone moved to the report's clock check (TestHealthCheckReportsTheBillingTimezone).
+	if body["serviceId"] != "CTech Billing" {
+		t.Fatalf("serviceId = %v", body["serviceId"])
 	}
 }
 

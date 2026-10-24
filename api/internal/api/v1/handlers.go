@@ -6,9 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/gofiber/fiber/v3"
-	"gopkg.aoctech.app/api-commons/cache"
 
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
 	"gopkg.aoctech.app/billing/api/internal/domain/brcal"
@@ -58,16 +56,6 @@ type handlers struct {
 	// clock is injected so tests are not at the mercy of the wall clock, and so
 	// "today" is always decided in one place.
 	clock func() time.Time
-
-	// The health report's dependencies, and nothing else uses them. They are the
-	// raw client and the raw backend rather than a repository because the report
-	// asks a question no repository has a method for — "is the table there" —
-	// and giving one a HealthCheck method would put an operations concern on
-	// every type that stores something.
-	db            *dynamodb.Client
-	cache         cache.Backend
-	invoicesTable string
-	appVersion    string
 }
 
 func (h *handlers) now() time.Time    { return h.clock() }

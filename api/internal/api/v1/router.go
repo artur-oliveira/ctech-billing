@@ -178,11 +178,6 @@ func Register(app *fiber.App, d Deps) {
 		subscriber: d.Subscriber,
 		cat:        d.Catalog,
 		clock:      clock,
-
-		db:            d.DB,
-		cache:         d.Cache,
-		invoicesTable: d.InvoicesTable,
-		appVersion:    d.AppVersion,
 	}
 	if d.Invoicer != nil && d.Invoices != nil && d.Customers != nil {
 		h.oneOff = services.NewOneOffInvoices(d.Invoices, d.Customers, d.Invoicer)
@@ -209,8 +204,9 @@ func Register(app *fiber.App, d Deps) {
 	// costs is bounded by the payloads — the report publishes latencies,
 	// utilisation and a release id, and never an error string from a dependency
 	// (see healthEntry.Output).
-	v1.Get("/health", h.health)
-	v1.Get("/health-check", h.healthCheck)
+	hc := newHealth(d, clock)
+	v1.Get("/health", hc.Liveness())
+	v1.Get("/health-check", hc.Report())
 
 	auth := d.Verifier.Middleware()
 	registerByokNotify(v1, d, auth, clock)
