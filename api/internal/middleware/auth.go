@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
+	"gopkg.aoctech.app/api-commons/authguard"
 	"gopkg.aoctech.app/api-commons/cache"
 	"gopkg.aoctech.app/api-commons/jwtverify"
 
@@ -23,7 +24,7 @@ import (
 
 // Fiber locals keys.
 const (
-	ClaimsKey       = "claims"
+	ClaimsKey       = authguard.LocalsClaims
 	CredentialKey   = "credential"
 	TenantKey       = "tenant"
 	OrganizationKey = "organization"
@@ -93,7 +94,7 @@ func (v *Verifier) Middleware() fiber.Handler {
 			// their guesses was closer.
 			return problem.Unauthorized("invalid credentials").WithCode("invalid_credentials").Send(c)
 		}
-		c.Locals(ClaimsKey, claims)
+		authguard.SetClaims(c, claims)
 		if v.lock != nil {
 			return v.lock(c)
 		}
@@ -102,10 +103,7 @@ func (v *Verifier) Middleware() fiber.Handler {
 }
 
 // GetClaims returns the authenticated caller's claims.
-func GetClaims(c fiber.Ctx) *Claims {
-	cl, _ := c.Locals(ClaimsKey).(*Claims)
-	return cl
-}
+func GetClaims(c fiber.Ctx) *Claims { return authguard.GetClaims(c) }
 
 // GetCredential returns the resolved tenant credential.
 func GetCredential(c fiber.Ctx) *billing.APICredential {

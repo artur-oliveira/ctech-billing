@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"gopkg.aoctech.app/api-commons/authguard"
 
 	"gopkg.aoctech.app/billing/api/internal/middleware"
 	"gopkg.aoctech.app/billing/api/internal/problem"
@@ -22,7 +23,7 @@ func registerByokNotify(v1 fiber.Router, d Deps, auth fiber.Handler, clock func(
 		return
 	}
 	hooks := d.ByokWebhooks
-	v1.Post("/internal/byok/notify", auth, middleware.RequireM2MScope(middleware.ScopeByokNotify), func(c fiber.Ctx) error {
+	v1.Post("/internal/byok/notify", auth, authguard.RequireInternalScope(middleware.ScopeByokNotify), func(c fiber.Ctx) error {
 		body := c.Body()
 		if len(body) > maxNotifyBody {
 			return problem.New(fiber.StatusRequestEntityTooLarge, "/problems/payload-too-large", "Payload Too Large", "the notice is too large").

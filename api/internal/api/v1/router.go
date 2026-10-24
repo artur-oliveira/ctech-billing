@@ -6,6 +6,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/gofiber/fiber/v3"
+	"gopkg.aoctech.app/api-commons/authguard"
 	"gopkg.aoctech.app/api-commons/cache"
 	"gopkg.aoctech.app/api-commons/ratelimit"
 	"gopkg.aoctech.app/api-commons/ratelimit/fiberlimit"
@@ -240,28 +241,28 @@ func Register(app *fiber.App, d Deps) {
 
 	customers := m2m("/customers")
 	customers.Post("",
-		middleware.RequireM2MScope(middleware.ScopeCustomersWrite), idem, h.createCustomer)
+		authguard.RequireInternalScope(middleware.ScopeCustomersWrite), idem, h.createCustomer)
 	// By user before /:id, so "by-user" is never read as a customer id.
 	customers.Get("/by-user/:user_id",
-		middleware.RequireM2MScope(middleware.ScopeCustomersRead), h.getCustomerByUser)
+		authguard.RequireInternalScope(middleware.ScopeCustomersRead), h.getCustomerByUser)
 	customers.Get("/:id",
-		middleware.RequireM2MScope(middleware.ScopeCustomersRead), h.getCustomer)
+		authguard.RequireInternalScope(middleware.ScopeCustomersRead), h.getCustomer)
 	customers.Put("/:id/tax-id",
-		middleware.RequireM2MScope(middleware.ScopeCustomersWrite), idem, h.setCustomerTaxID)
+		authguard.RequireInternalScope(middleware.ScopeCustomersWrite), idem, h.setCustomerTaxID)
 
 	subscriptions := m2m("/subscriptions")
 	subscriptions.Post("",
-		middleware.RequireM2MScope(middleware.ScopeSubscriptionsWrite), idem, h.createSubscription)
+		authguard.RequireInternalScope(middleware.ScopeSubscriptionsWrite), idem, h.createSubscription)
 	subscriptions.Get("/:id",
-		middleware.RequireM2MScope(middleware.ScopeSubscriptionsRead), h.getSubscription)
+		authguard.RequireInternalScope(middleware.ScopeSubscriptionsRead), h.getSubscription)
 	subscriptions.Post("/:id/cancel",
-		middleware.RequireM2MScope(middleware.ScopeSubscriptionsWrite), idem, h.cancelSubscription)
+		authguard.RequireInternalScope(middleware.ScopeSubscriptionsWrite), idem, h.cancelSubscription)
 	// Behind the idempotency middleware and not merely idempotent by design: this
 	// route issues an invoice, and the change invoice deliberately carries no
 	// generation key (see Subscriber.invoiceChange), so a retried request with no
 	// key would bill the proration twice.
 	subscriptions.Post("/:id/change",
-		middleware.RequireM2MScope(middleware.ScopeSubscriptionsWrite), idem, h.changeSubscription)
+		authguard.RequireInternalScope(middleware.ScopeSubscriptionsWrite), idem, h.changeSubscription)
 
 	// The catalogue, readable by an integration. It is the same handler the
 	// console reads through: an integration rendering a plan picker and an
@@ -269,20 +270,20 @@ func Register(app *fiber.App, d Deps) {
 	// quota metadata, and one handler is what makes that structural.
 	products := m2m("/products")
 	products.Get("",
-		middleware.RequireM2MScope(middleware.ScopeProductsRead), h.listProducts)
+		authguard.RequireInternalScope(middleware.ScopeProductsRead), h.listProducts)
 	products.Get("/:id",
-		middleware.RequireM2MScope(middleware.ScopeProductsRead), h.getProduct)
+		authguard.RequireInternalScope(middleware.ScopeProductsRead), h.getProduct)
 
 	usage := m2m("/usage")
-	usage.Post("", middleware.RequireM2MScope(middleware.ScopeUsageWrite), idem, h.reportUsage)
+	usage.Post("", authguard.RequireInternalScope(middleware.ScopeUsageWrite), idem, h.reportUsage)
 	// Levels are idempotent by the body's key (spec § 6.1), enforced in the
 	// repository; the header middleware is deliberately not in front of it.
-	usage.Post("/levels", middleware.RequireM2MScope(middleware.ScopeUsageWrite), h.reportLevel)
+	usage.Post("/levels", authguard.RequireInternalScope(middleware.ScopeUsageWrite), h.reportLevel)
 
 	invoices := m2m("/invoices")
 	// By reference first, so "by-reference" is never read as an invoice id.
 	invoices.Get("/by-reference/:reference",
-		middleware.RequireM2MScope(middleware.ScopeInvoicesRead), h.getInvoiceByReference)
+		authguard.RequireInternalScope(middleware.ScopeInvoicesRead), h.getInvoiceByReference)
 	if d.CreditNotes != nil {
 		// The console's credit note (and "Devolver via Pix") for a service client.
 		cn := &consoleHandlers{handlers: h, credit: d.CreditNotes, byok: d.ByokCollector}
@@ -290,33 +291,33 @@ func Register(app *fiber.App, d Deps) {
 			cn.finance = d.FinanceInvoices
 		}
 		invoices.Post("/:id/credit-notes",
-			middleware.RequireM2MScope(middleware.ScopeInvoicesWrite), idem, cn.creditInvoiceM2M)
+			authguard.RequireInternalScope(middleware.ScopeInvoicesWrite), idem, cn.creditInvoiceM2M)
 	}
 	if h.oneOff != nil {
 		invoices.Post("",
-			middleware.RequireM2MScope(middleware.ScopeInvoicesWrite), idem, h.createInvoice)
+			authguard.RequireInternalScope(middleware.ScopeInvoicesWrite), idem, h.createInvoice)
 	}
 	// The history of an invoice: what happened and where it was sent.
 	if h.webhooks != nil {
-		invoices.Get("/:id/events", middleware.RequireM2MScope(middleware.ScopeInvoicesRead), h.invoiceEvents)
-		subscriptions.Get("/:id/events", middleware.RequireM2MScope(middleware.ScopeSubscriptionsRead), h.subscriptionEvents)
+		invoices.Get("/:id/events", authguard.RequireInternalScope(middleware.ScopeInvoicesRead), h.invoiceEvents)
+		subscriptions.Get("/:id/events", authguard.RequireInternalScope(middleware.ScopeSubscriptionsRead), h.subscriptionEvents)
 	}
 	invoices.Get("/:id",
-		middleware.RequireM2MScope(middleware.ScopeInvoicesRead), h.getInvoice)
+		authguard.RequireInternalScope(middleware.ScopeInvoicesRead), h.getInvoice)
 	invoices.Get("",
-		middleware.RequireM2MScope(middleware.ScopeInvoicesRead), h.listInvoices)
+		authguard.RequireInternalScope(middleware.ScopeInvoicesRead), h.listInvoices)
 
 	if d.Payouts != nil {
 		ph := &payoutHandlers{svc: d.Payouts, clock: clock}
 		payouts := m2m("/payouts")
-		payouts.Post("", middleware.RequireM2MScope(middleware.ScopePayoutsWrite), idem, ph.create)
+		payouts.Post("", authguard.RequireInternalScope(middleware.ScopePayoutsWrite), idem, ph.create)
 		// by-reference before /:id, so "by-reference" is never read as a payout id.
-		payouts.Get("/by-reference/:reference", middleware.RequireM2MScope(middleware.ScopePayoutsRead), ph.getByReference)
-		payouts.Get("/:id", middleware.RequireM2MScope(middleware.ScopePayoutsRead), ph.get)
+		payouts.Get("/by-reference/:reference", authguard.RequireInternalScope(middleware.ScopePayoutsRead), ph.getByReference)
+		payouts.Get("/:id", authguard.RequireInternalScope(middleware.ScopePayoutsRead), ph.get)
 	}
 
 	m2m("/entitlements").Get("",
-		middleware.RequireM2MScope(middleware.ScopeEntitlementsRead), h.getEntitlements)
+		authguard.RequireInternalScope(middleware.ScopeEntitlementsRead), h.getEntitlements)
 
 	// Finance is registered BEFORE the console group, and the order matters:
 	// Fiber mounts a group's handlers as prefix middleware, so the "/console"

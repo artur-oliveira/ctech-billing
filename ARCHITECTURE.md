@@ -256,7 +256,7 @@ convention is that a service sends what it is responsible for saying.
 - **Two surfaces, two resolvers, and neither can reach the other.** `/v1.0/*` takes its tenant *and*
   its mode from the credential; `/v1.0/console/*` takes the tenant from the signed-in owner and the
   mode from a required `X-Billing-Mode` header, because a person legitimately works in both test and
-  live and an integration never does. `RequireM2MScope` rejects session tokens, `RequireUserScope`
+  live and an integration never does. `authguard.RequireInternalScope` (api-commons) rejects session tokens, `RequireUserScope`
   rejects service tokens, so a credential cannot reach the route that reads the header
   ([ADR 0011](docs/adr/0011-console-session.md)). Console routes are read-only for now.
 - **Personal data is encrypted per field, not only per disk**

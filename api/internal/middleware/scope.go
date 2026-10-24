@@ -1,11 +1,5 @@
 package middleware
 
-import (
-	"github.com/gofiber/fiber/v3"
-
-	"gopkg.aoctech.app/billing/api/internal/problem"
-)
-
 // Billing scopes, issued by ctech-account per M2M client.
 //
 // Split by resource **and** by direction, not one blanket `billing:*`: a
@@ -102,26 +96,3 @@ var AllScopes = []string{
 // in AllScopes or scope-manifest.json: those list what a client can be
 // granted, and no client may be granted this one.
 const ScopeErasureEligibility = "internal:billing:erasure-eligibility"
-
-// RequireM2MScope gates a route on a client_credentials token carrying the
-// scope.
-//
-// A non-empty SID means a user/session token, and those are rejected here even
-// if they somehow carry the scope. Blurring the two would mean a user's browser
-// token could act as an integration — the trust boundary is the point, not the
-// scope string.
-func RequireM2MScope(scope string) fiber.Handler {
-	return func(c fiber.Ctx) error {
-		cl := GetClaims(c)
-		if cl == nil {
-			return problem.Unauthorized("credenciais ausentes").Send(c)
-		}
-		if cl.SID != "" {
-			return problem.Forbidden("this route requires a service token (client_credentials)").WithCode("service_token_required").Send(c)
-		}
-		if !cl.HasScope(scope) {
-			return problem.Forbidden("escopo insuficiente: " + scope).Send(c)
-		}
-		return c.Next()
-	}
-}
