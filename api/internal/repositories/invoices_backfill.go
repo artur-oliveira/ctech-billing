@@ -30,7 +30,7 @@ func (r *InvoiceRepository) BackfillCustomerIndex(ctx context.Context, apply boo
 	var rep LookupBackfillReport
 	var start map[string]types.AttributeValue
 	for {
-		out, err := r.base.ScanRaw(ctx, &dynamodb.ScanInput{
+		out, err := r.base.ScanRaw(ctx, &dynamodb.ScanInput{ // standards:allow backfill scan
 			// The INVOICE# range with a status: invoices, attempts, checkouts and
 			// credit notes. The nested ones are dropped below by their sort key,
 			// which a filter expression cannot express.

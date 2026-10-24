@@ -119,7 +119,7 @@ func (r *OrganizationRepository) scanLookups(ctx context.Context) ([]Organizatio
 	var out []OrganizationLookupRow
 	var start map[string]types.AttributeValue
 	for {
-		res, err := r.base.ScanRaw(ctx, &dynamodb.ScanInput{
+		res, err := r.base.ScanRaw(ctx, &dynamodb.ScanInput{ // standards:allow backfill scan
 			FilterExpression:         aws.String("sk = :org"),
 			ProjectionExpression:     aws.String("pk, sk, #id, livemode, account_organization_id, lookup_pk"),
 			ExpressionAttributeNames: map[string]string{"#id": "id"},

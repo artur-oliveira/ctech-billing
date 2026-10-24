@@ -53,7 +53,7 @@ func (r *SubscriptionRepository) BackfillCustomerLookup(ctx context.Context, app
 	var rep LookupBackfillReport
 	var start map[string]types.AttributeValue
 	for {
-		out, err := r.base.ScanRaw(ctx, &dynamodb.ScanInput{
+		out, err := r.base.ScanRaw(ctx, &dynamodb.ScanInput{ // standards:allow backfill scan
 			// Subscription rows only: the SUB# range minus its #ITEM# rows, which
 			// carry no status.
 			FilterExpression:     aws.String("begins_with(sk, :sub) AND attribute_exists(#status)"),
