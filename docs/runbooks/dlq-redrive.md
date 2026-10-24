@@ -8,7 +8,7 @@ Queues (Terraform `terraform/billing/erasure.tf`; `local.name` = `{env}-ctech-bi
 
 ## Alert
 
-None fires on DLQ depth: the family declined CloudWatch alarms (see the comment in erasure.tf). The symptom is a deletion stuck in `purging` in ctech-account. BYOK sweep problems do raise go-common `alerts` to `ctech-{env}-alerts`, a queue message that keeps failing does not.
+None fires on DLQ depth: the family declined CloudWatch alarms (see the comment in erasure.tf). The symptom is a deletion stuck in `purging` in ctech-account. BYOK sweep problems do raise go-common `alerts` to `ctech-{env}-alerts`, and a failed account-deletion purge also alerts (`erasure-purge-failed`, each redelivery), so a message heading for the DLQ is announced before it lands there. Nothing alerts on DLQ depth itself.
 
 ## Inspect
 
