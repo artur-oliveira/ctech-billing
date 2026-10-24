@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
+	"gopkg.aoctech.app/api-commons/authguard"
 	"gopkg.aoctech.app/api-commons/erasure"
 
 	"gopkg.aoctech.app/billing/api/internal/middleware"
@@ -46,7 +47,7 @@ func registerErasure(v1 fiber.Router, d Deps, auth fiber.Handler) {
 		return
 	}
 	v1.Get("/internal/erasure/eligibility/:sub", auth,
-		middleware.RequireM2MScope(middleware.ScopeErasureEligibility),
+		authguard.RequireInternalScope(middleware.ScopeErasureEligibility),
 		func(c fiber.Ctx) error {
 			workspaces, err := workspacesParam(c.Query("workspaces"))
 			if err != nil {

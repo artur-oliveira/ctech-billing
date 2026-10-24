@@ -14,7 +14,7 @@ const ModeHeader = "X-Billing-Mode"
 
 // RequireUserScope gates a route on a browser session token carrying the scope.
 //
-// It is the exact mirror of RequireM2MScope: that one rejects session tokens,
+// It is the exact mirror of authguard.RequireInternalScope: that one rejects session tokens,
 // this one rejects service tokens. An integration's credential must not be able
 // to drive the console's routes, because the console's routes are where a human
 // switches between test and live — and a token that chooses its own mode is the
