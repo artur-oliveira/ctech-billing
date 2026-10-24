@@ -340,7 +340,7 @@ func (p *TenantPurger) SweepResidue(ctx context.Context, tenantID string, apply 
 		b := p.bases[table]
 		var start map[string]types.AttributeValue
 		for {
-			out, err := b.ScanRaw(ctx, &dynamodb.ScanInput{
+			out, err := b.ScanRaw(ctx, &dynamodb.ScanInput{ // standards:allow tenant purge scan
 				FilterExpression:          aws.String("begins_with(pk, :p)"),
 				ProjectionExpression:      aws.String("pk, sk"),
 				ExpressionAttributeValues: map[string]types.AttributeValue{":p": &types.AttributeValueMemberS{Value: prefix}},

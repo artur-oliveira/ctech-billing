@@ -229,7 +229,7 @@ func (r *WebhookRepository) BackfillHistoryLookups(ctx context.Context, apply bo
 	var start map[string]types.AttributeValue
 	now := time.Now()
 	for {
-		out, err := r.base.ScanRaw(ctx, &dynamodb.ScanInput{
+		out, err := r.base.ScanRaw(ctx, &dynamodb.ScanInput{ // standards:allow one-shot/admin scan
 			FilterExpression:  aws.String("begins_with(sk, :ev)"),
 			ExclusiveStartKey: start,
 			ExpressionAttributeValues: map[string]types.AttributeValue{

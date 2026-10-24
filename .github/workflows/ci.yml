@@ -40,6 +40,16 @@ permissions:
 # so it runs beside it instead of after it: the wall-clock of a green run is the
 # slower of the two, not their sum.
 jobs:
+  standards:
+    name: Family standards
+    runs-on: ubuntu-26.04-arm
+    steps:
+      - uses: actions/checkout@v7
+      - run: bash scripts/standards-check.sh
+        env:
+          # no baselined debt; see scripts/standards-check.sh for STANDARDS_SKIP
+          STANDARDS_SKIP: ""
+
   changes:
     name: What changed
     runs-on: ubuntu-26.04-arm

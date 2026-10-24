@@ -5,6 +5,7 @@ Before writing, changing or reviewing any code or infra here, load the `ctech-de
 frontend and infra (patterns, resilience, scale, cost). If anything in this file contradicts it, the skill
 wins and this file must be fixed. Install on a new machine:
 `/plugin marketplace add artur-oliveira/ctech-skills` then `/plugin install ctech-skills@ctech-skills`.
+- **Standards gate:** `scripts/standards-check.sh` (canonical copy in ctech-skills, identical bytes; CI job "Family standards"; reads `FAMILY_GOCOMMON_MINOR`, default v1.38, bump it on a go-common minor). Debt hidden: none via STANDARDS_SKIP; backfill/purge/webhook-history Scans are allow-listed. One-off lines carry a trailing `standards:allow <reason>`.
 
 ## CTech Family — Cross-Repo Awareness (IMPORTANT)
 
