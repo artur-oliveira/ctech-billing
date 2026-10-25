@@ -251,6 +251,7 @@ func Build(ctx context.Context, cfg *config.Config, clock func() time.Time, opts
 		WithErasureLock(erasureState.Blocked)
 	if rev := revocationBackend(cfg); rev != nil {
 		apiVerifier.WithRevocation(rev)
+		apiVerifier.WithUnrevokedGuard(rev)
 	}
 	realtimeGateway, realtimeChanges := realtimeServer(ctx, cfg, app, db, apiVerifier, spaces, orgs, links)
 	v1.Register(app, v1.Deps{

@@ -44,6 +44,23 @@ type Verifier struct {
 	// build a bare verifier).
 	lock    fiber.Handler
 	blocked func(ctx context.Context, sub string) (bool, error)
+	// unrevoked is authguard.RequireUnrevokedByMethod: the live revocation
+	// re-check, reads fail open and writes fail closed (503). Nil = off.
+	unrevoked fiber.Handler
+}
+
+// WithUnrevokedGuard makes Middleware re-read the revocation list on every
+// request (reads open, writes closed when the store is down). A nil backend
+// leaves it off. Call after WithErasureLock.
+func (v *Verifier) WithUnrevokedGuard(rev cache.Backend) *Verifier {
+	if rev == nil {
+		return v
+	}
+	v.unrevoked = authguard.RequireUnrevokedByMethod(rev)
+	if v.blocked != nil {
+		v.lock = refuseLocked(v.blocked, v.unrevoked)
+	}
+	return v
 }
 
 func NewVerifier(jwksURL, audience, issuer string, backend cache.Backend) *Verifier {
@@ -97,6 +114,9 @@ func (v *Verifier) Middleware() fiber.Handler {
 		authguard.SetClaims(c, claims)
 		if v.lock != nil {
 			return v.lock(c)
+		}
+		if v.unrevoked != nil {
+			return v.unrevoked(c)
 		}
 		return c.Next()
 	}

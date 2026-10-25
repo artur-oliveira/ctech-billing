@@ -23,10 +23,23 @@ import (
 // second layer behind the revocation list, and failing open would make it no
 // layer at all.
 func RefuseLocked(blocked func(ctx context.Context, sub string) (bool, error)) fiber.Handler {
+	return refuseLocked(blocked, nil)
+}
+
+// refuseLocked is RefuseLocked that hands a passing request to tail instead of
+// c.Next (nil tail = c.Next), so Verifier.Middleware can chain the revocation
+// guard behind it without a second handler at every route.
+func refuseLocked(blocked func(ctx context.Context, sub string) (bool, error), tail fiber.Handler) fiber.Handler {
+	next := func(c fiber.Ctx) error {
+		if tail != nil {
+			return tail(c)
+		}
+		return c.Next()
+	}
 	return func(c fiber.Ctx) error {
 		cl := GetClaims(c)
 		if cl == nil || cl.SID == "" {
-			return c.Next()
+			return next(c)
 		}
 		locked, err := blocked(c.Context(), cl.Sub)
 		if err != nil {
@@ -36,6 +49,6 @@ func RefuseLocked(blocked func(ctx context.Context, sub string) (bool, error)) f
 			return problem.New(fiber.StatusForbidden, problem.TypeAccountLocked, "Account locked",
 				"conta em processo de exclusão").Send(c)
 		}
-		return c.Next()
+		return next(c)
 	}
 }
