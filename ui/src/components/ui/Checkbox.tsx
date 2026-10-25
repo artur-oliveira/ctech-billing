@@ -1,3 +1,4 @@
+// standards:allow wrapper over @aoctech/ui Checkbox: shared one (0.10.0) draws the check glyph for indeterminate instead of a dash; gap to implement in ctech-ui
 "use client";
 
 import {Checkbox as UiCheckbox} from "@aoctech/ui";
