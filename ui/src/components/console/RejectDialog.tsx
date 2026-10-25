@@ -1,12 +1,11 @@
 "use client";
 
-import {Field, Modal} from "@aoctech/ui";
+import {Field, Modal, Textarea} from "@aoctech/ui";
 import {useMutation, useQueryClient} from "@tanstack/react-query";
 import {useState} from "react";
 import {useTranslation} from "react-i18next";
 import {toast} from "sonner";
 
-import {Textarea} from "@/components/ui/Textarea";
 import {messageFor} from "@/lib/api/client";
 import {rejectApplication} from "@/lib/api/console";
 import type {MerchantApplication} from "@/lib/api/consoleTypes";

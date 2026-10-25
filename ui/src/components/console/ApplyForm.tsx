@@ -1,12 +1,11 @@
 "use client";
 
-import {Button, Field, Input, Select} from "@aoctech/ui";
+import {Button, Field, Input, Select, Textarea} from "@aoctech/ui";
 import {useMutation, useQuery} from "@tanstack/react-query";
 import {useRouter} from "next/navigation";
 import {useState} from "react";
 import {useTranslation} from "react-i18next";
 
-import {Textarea} from "@/components/ui/Textarea";
 import {messageFor} from "@/lib/api/client";
 import {applyForMerchant, consoleKeys, listMerchantCompanies} from "@/lib/api/console";
 import type {MerchantApplication, MonthlyVolume} from "@/lib/api/consoleTypes";

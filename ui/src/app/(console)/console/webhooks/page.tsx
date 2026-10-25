@@ -1,6 +1,6 @@
 "use client";
 
-import {Badge, Button, EmptyState, Field, Input, Modal, PageHeader, RowMenu, Skeleton, SwipeRow, Switch} from "@aoctech/ui";
+import {Badge, Button, EmptyState, Field, Input, Modal, PageHeader, RowMenu, Skeleton, SwipeRow, Switch, Checkbox} from "@aoctech/ui";
 import {useMutation, useQuery, useQueryClient} from "@tanstack/react-query";
 import {useState} from "react";
 import {useTranslation} from "react-i18next";
@@ -8,7 +8,6 @@ import {toast} from "sonner";
 
 import {SecretReveal} from "@/components/console/SecretReveal";
 import {ErrorBlock} from "@/components/portal/ErrorBlock";
-import {Checkbox} from "@/components/ui/Checkbox";
 import {messageFor} from "@/lib/api/client";
 import {consoleKeys, createWebhook, deleteWebhook, listConsoleWebhooks, rotateWebhookSecret, testWebhook} from "@/lib/api/console";
 import type {ConsoleWebhookEndpoint} from "@/lib/api/consoleTypes";

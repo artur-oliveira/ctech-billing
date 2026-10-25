@@ -1,12 +1,11 @@
 "use client";
 
-import {Button, Field, Modal, Select} from "@aoctech/ui";
+import {Button, Field, Modal, Select, Checkbox} from "@aoctech/ui";
 import {useQueryClient} from "@tanstack/react-query";
 import {useEffect, useRef, useState} from "react";
 import {useTranslation} from "react-i18next";
 import {toast} from "sonner";
 
-import {Checkbox} from "@/components/ui/Checkbox";
 import {classify, connectionKeys} from "@/lib/api/connections";
 import type {UnclassifiedLine} from "@/lib/api/connectionsTypes";
 import {messageFor} from "@/lib/api/client";

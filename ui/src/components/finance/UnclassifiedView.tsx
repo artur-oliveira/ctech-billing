@@ -1,6 +1,6 @@
 "use client";
 
-import {Button, EmptyState, Field, PageHeader, Select, Skeleton} from "@aoctech/ui";
+import {Button, EmptyState, Field, PageHeader, Select, Skeleton, Checkbox} from "@aoctech/ui";
 import {useQuery, useQueryClient} from "@tanstack/react-query";
 import {ChevronLeft, CircleCheck} from "lucide-react";
 import Link from "next/link";
@@ -12,7 +12,6 @@ import {UnclassifiedBulk} from "@/components/finance/UnclassifiedBulk";
 import {FormError} from "@/components/finance/FormError";
 import {ErrorBlock} from "@/components/portal/ErrorBlock";
 import {Amount} from "@/components/ui/Amount";
-import {Checkbox} from "@/components/ui/Checkbox";
 import {ContainerSwitch} from "@/components/ui/ContainerSwitch";
 import {classify, connectionKeys, listUnclassified} from "@/lib/api/connections";
 import type {ClassifyBody, UnclassifiedLine} from "@/lib/api/connectionsTypes";
