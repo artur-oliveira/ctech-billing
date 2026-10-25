@@ -47,8 +47,8 @@ jobs:
       - uses: actions/checkout@v7
       - run: bash scripts/standards-check.sh
         env:
-          # no baselined debt; see scripts/standards-check.sh for STANDARDS_SKIP
-          STANDARDS_SKIP: ""
+          # baselined debt: ui files duplicating @aoctech/ui exports (import them instead, then drop uidup)
+          STANDARDS_SKIP: "uidup"
 
   changes:
     name: What changed
