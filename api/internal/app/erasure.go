@@ -209,8 +209,10 @@ func BuildErasureConsumer(ctx context.Context, cfg *config.Config, spaceFor func
 	handler := dataexport.NewStreamHandler(erasureService, exporter.WritePart, uc, dataexport.NewAckClient(uc,
 		strings.TrimSuffix(cfg.AccountBaseURL, "/")+"/v1.0/internal/export/ack",
 		oauth2client.New(hc, newCache(cfg), cfg.AccountTokenURL, clientID, clientSecret, exportAckScope)))
+	pub := jobs.Alerts(ctx, cfg)
 	return erasure.NewConsumer(queues, aws.ToString(q.QueueUrl), erasureService,
-		newErasureStore(db, cfg), services.AlertingPurge(eraser.Purge, jobs.Alerts(ctx, cfg)), acks).WithExporter(handler.Handle).
+		newErasureStore(db, cfg), erasure.AlertingPurge(eraser.Purge, pub), acks).
+		OnFailure(erasure.AlertFailures(pub)).WithExporter(handler.Handle).
 		WithVisibilityHeartbeat(cfg.ErasureQueueVisibility), nil
 }
 
