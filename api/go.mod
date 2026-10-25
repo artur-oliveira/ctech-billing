@@ -31,7 +31,7 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
 	github.com/oklog/ulid/v2 v2.1.2
-	github.com/valkey-io/valkey-go v1.0.78
+	github.com/valkey-io/valkey-go v1.0.79
 	github.com/valyala/fasthttp v1.75.0
 	google.golang.org/protobuf v1.36.12
 	gopkg.aoctech.app/api-commons v1.39.0
