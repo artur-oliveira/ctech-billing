@@ -22,6 +22,7 @@ import (
 	"gopkg.aoctech.app/api-commons/resilient"
 
 	"gopkg.aoctech.app/billing/api/internal/config"
+	"gopkg.aoctech.app/billing/api/internal/jobs"
 	"gopkg.aoctech.app/billing/api/internal/repositories"
 	"gopkg.aoctech.app/billing/api/internal/services"
 	"gopkg.aoctech.app/billing/api/internal/space"
@@ -209,7 +210,7 @@ func BuildErasureConsumer(ctx context.Context, cfg *config.Config, spaceFor func
 		strings.TrimSuffix(cfg.AccountBaseURL, "/")+"/v1.0/internal/export/ack",
 		oauth2client.New(hc, newCache(cfg), cfg.AccountTokenURL, clientID, clientSecret, exportAckScope)))
 	return erasure.NewConsumer(queues, aws.ToString(q.QueueUrl), erasureService,
-		newErasureStore(db, cfg), eraser.Purge, acks).WithExporter(handler.Handle).
+		newErasureStore(db, cfg), services.AlertingPurge(eraser.Purge, jobs.Alerts(ctx, cfg)), acks).WithExporter(handler.Handle).
 		WithVisibilityHeartbeat(cfg.ErasureQueueVisibility), nil
 }
 
