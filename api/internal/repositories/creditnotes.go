@@ -94,6 +94,7 @@ func (r *CreditNoteRepository) Issue(
 		keys:        newKeys(pk, CreditNoteSK(inv.ID, cn.ID), RetentionCreditNote, now),
 		PeriodAttrs: NewPeriodAttrs(inv.OrganizationID, inv.Livemode, EntityCreditNote, brcal.FromTime(now), cn.ID),
 		CreditNote:  *cn,
+		CreatedAt:   cn.CreatedAt,
 	}
 	if inv.Status == billing.InvoicePaid {
 		// A credit on a paid invoice is money going back in Finanças (spec
@@ -216,7 +217,7 @@ func (r *CreditNoteRepository) ListByInvoice(
 	}
 	out := make([]billing.CreditNote, len(rows))
 	for i, row := range rows {
-		out[i] = row.CreditNote
+		out[i] = row.note()
 	}
 	return out, nil
 }
