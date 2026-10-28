@@ -150,3 +150,38 @@ describe("/console/webhooks", () => {
     expect(screen.getByText("Não está respondendo: HTTP 404")).toBeInTheDocument();
   });
 });
+
+describe("/console/webhooks, many endpoints", () => {
+  const dead = (id: string, extra: Partial<ConsoleWebhookEndpoint> = {}) =>
+    ep(id, {status: "disabled", last_delivery_at: "2026-10-12T10:00:00Z", last_delivery_ok: false, last_delivery_detail: "HTTP 410", ...extra});
+
+  it("leads with the active endpoint and keeps the disabled ones behind a collapsed group, URL first", async () => {
+    list([dead("d1"), dead("d2"), ep("live")]);
+    wrap(<ConsoleWebhooksPage/>);
+    const items = (await screen.findAllByRole("listitem")).map(li => li.textContent ?? "");
+    expect(items[0]).toContain("https://example.com/live");
+    expect(items[1]).toContain("https://example.com/d1");
+    const group = screen.getByText("2 endpoints desativados").closest("details")!;
+    expect(group).not.toHaveAttribute("open");
+    expect(within(group).getAllByText(/Última falha em .*: HTTP 410/)).toHaveLength(2);
+  });
+
+  it("deletes the selected endpoints one by one after confirming, never a provisioned one", async () => {
+    list([dead("d1"), dead("d2"), dead("sys", {provisioned: true, added_at: undefined})]);
+    const del = vi.spyOn(consoleApi, "deleteWebhook").mockResolvedValue(undefined);
+    wrap(<ConsoleWebhooksPage/>);
+    await userEvent.click(await screen.findByRole("checkbox", {name: "Selecionar todos os desativados"}));
+    expect(screen.queryByRole("checkbox", {name: /example.com\/sys/})).toBeNull();
+    await userEvent.click(screen.getByRole("button", {name: "Excluir selecionados (2)"}));
+    expect(del).not.toHaveBeenCalled();
+    await userEvent.click(within(await screen.findByRole("dialog")).getByRole("button", {name: "Excluir"}));
+    await vi.waitFor(() => expect(del).toHaveBeenCalledTimes(2));
+    expect(del.mock.calls.map(c => c[1])).toEqual(["d1", "d2"]);
+  });
+
+  it("explains a full list instead of leaving only a greyed button", async () => {
+    list([ep("a"), dead("b"), dead("c"), dead("d"), dead("e"), dead("f")]);
+    wrap(<ConsoleWebhooksPage/>);
+    expect(await screen.findByText(/O limite conta todos os endpoints/)).toBeInTheDocument();
+  });
+});

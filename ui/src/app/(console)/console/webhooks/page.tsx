@@ -49,6 +49,15 @@ export default function ConsoleWebhooksPage() {
   const refresh = () => queryClient.invalidateQueries({queryKey: consoleKeys.webhooks(scope)});
 
   const endpoints = query.data?.data ?? [];
+  // The working endpoints lead; the ones disabled by repeated failures are
+  // the same row over and over, so they wait behind a collapsed group.
+  const live = endpoints.filter(e => e.status === "active");
+  const disabled = endpoints.filter(e => e.status !== "active");
+  // Selection is only ever of rows that still exist and that the merchant may delete.
+  const [picked, setPicked] = useState<string[]>([]);
+  const selected = endpoints.filter(e => !e.provisioned && picked.includes(e.id));
+  const toggle = (id: string, on: boolean) => setPicked(p => on ? [...p, id] : p.filter(x => x !== id));
+  const [bulkAsked, setBulkAsked] = useState(false);
   const max = query.data?.max_endpoints ?? limits.maxWebhookEndpoints;
   const atLimit = endpoints.length >= max;
   const canAdd = query.isSuccess && !addsRefused && !atLimit;
@@ -79,6 +88,33 @@ export default function ConsoleWebhooksPage() {
     onError: e => toast.error(messageFor(e)),
   });
 
+  // Sequential: every delete moves the same revision row, so parallel ones
+  // would collide with each other.
+  const bulk = useMutation({
+    mutationFn: async (ids: string[]) => {
+      let failed = 0;
+      for (const id of ids) {
+        try { await deleteWebhook(scope, id); } catch { failed++; }
+      }
+      return {failed, total: ids.length};
+    },
+    onSuccess: ({failed, total}) => {
+      setBulkAsked(false);
+      setPicked([]);
+      void refresh();
+      if (failed === 0) toast.success(t("console.webhooks.bulkDeleted", {count: total}));
+      else toast.error(t("console.webhooks.bulkPartial", {failed, total}));
+    },
+  });
+
+  const rowProps = (e: ConsoleWebhookEndpoint) => ({
+    endpoint: e, canTest: !addsRefused, testing: test.isPending && test.variables === e.id,
+    picked: picked.includes(e.id), onPick: (on: boolean) => toggle(e.id, on),
+    onTest: () => test.mutate(e.id),
+    onRotate: () => setPending({kind: "rotate", endpoint: e}),
+    onDelete: () => setPending({kind: "delete", endpoint: e}),
+  });
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -107,17 +143,46 @@ export default function ConsoleWebhooksPage() {
         {query.isSuccess && endpoints.length === 0 && (
           <EmptyState title={t("console.webhooks.empty")} description={t("console.webhooks.emptyHint")} className="max-sm:items-start max-sm:text-left"/>
         )}
-        {endpoints.length > 0 && (
+        {atLimit && !addsRefused && (
+          <p className="text-xs text-muted-foreground">{t("console.webhooks.limitHint")}</p>
+        )}
+        {selected.length > 0 && (
+          <div className="flex flex-wrap items-center gap-3 rounded-md bg-muted px-3 py-2" role="region" aria-label={t("console.webhooks.bulkBar")}>
+            <span className="text-sm text-foreground tabular-nums">{t("console.webhooks.selected", {count: selected.length})}</span>
+            <Button size="sm" variant="ghost" onClick={() => setPicked([])}>{t("console.webhooks.clearSelection")}</Button>
+            <Button size="sm" variant="outline" className="text-danger" onClick={() => setBulkAsked(true)}>
+              {t("console.webhooks.deleteSelected", {count: selected.length})}
+            </Button>
+          </div>
+        )}
+        {live.length > 0 && (
           <ul className="divide-y divide-border border-y border-border">
-            {endpoints.map(e => (
-              <EndpointRow
-                key={e.id} endpoint={e} canTest={!addsRefused} testing={test.isPending && test.variables === e.id}
-                onTest={() => test.mutate(e.id)}
-                onRotate={() => setPending({kind: "rotate", endpoint: e})}
-                onDelete={() => setPending({kind: "delete", endpoint: e})}
-              />
-            ))}
+            {live.map(e => <EndpointRow key={e.id} {...rowProps(e)}/>)}
           </ul>
+        )}
+        {disabled.length > 0 && (
+          <details className="group">
+            <summary className="flex min-h-11 cursor-pointer items-center gap-2 text-sm font-medium text-foreground sm:min-h-8">
+              {t("console.webhooks.disabledGroup", {count: disabled.length})}
+            </summary>
+            <div className="space-y-2">
+              {disabled.some(e => !e.provisioned) && (
+                <label className="flex min-h-11 items-center gap-2.5 text-xs text-muted-foreground sm:min-h-8">
+                  <Checkbox
+                    checked={disabled.filter(e => !e.provisioned).every(e => picked.includes(e.id))}
+                    onCheckedChange={on => setPicked(p => {
+                      const ids = disabled.filter(e => !e.provisioned).map(e => e.id);
+                      return on ? [...new Set([...p, ...ids])] : p.filter(x => !ids.includes(x));
+                    })}
+                  />
+                  {t("console.webhooks.selectDisabled")}
+                </label>
+              )}
+              <ul className="divide-y divide-border border-y border-border">
+                {disabled.map(e => <EndpointRow key={e.id} {...rowProps(e)}/>)}
+              </ul>
+            </div>
+          </details>
         )}
       </section>
 
@@ -134,6 +199,14 @@ export default function ConsoleWebhooksPage() {
       >
         <p className="text-sm">{t(pending?.kind === "rotate" ? "console.webhooks.rotateBody" : "console.webhooks.deleteBody")}</p>
       </Modal>
+      <Modal
+        open={bulkAsked} onClose={() => setBulkAsked(false)} danger locale={i18n.language}
+        title={t("console.webhooks.bulkTitle", {count: selected.length})}
+        submitLabel={t("console.webhooks.delete")} cancelLabel={t("console.webhooks.back")} loading={bulk.isPending}
+        onSubmit={() => bulk.mutate(selected.map(e => e.id))}
+      >
+        <p className="text-sm">{t("console.webhooks.bulkBody")}</p>
+      </Modal>
       <SecretReveal secret={secret} onDone={() => setSecret(null)}/>
     </div>
   );
@@ -144,8 +217,9 @@ export default function ConsoleWebhooksPage() {
  * the URL, its meta and status stack; Testar stays on the row, and Trocar
  * segredo / Excluir are the left swipe and the "⋯" (DESIGN.md "On a phone").
  */
-function EndpointRow({endpoint: e, canTest, testing, onTest, onRotate, onDelete}: {
-  endpoint: ConsoleWebhookEndpoint; canTest: boolean; testing: boolean; onTest: () => void; onRotate: () => void; onDelete: () => void
+function EndpointRow({endpoint: e, canTest, testing, picked, onPick, onTest, onRotate, onDelete}: {
+  endpoint: ConsoleWebhookEndpoint; canTest: boolean; testing: boolean; picked: boolean; onPick: (on: boolean) => void
+  onTest: () => void; onRotate: () => void; onDelete: () => void
 }) {
   const {t, i18n} = useTranslation();
   const testable = canTest && !e.provisioned && e.status === "active";
@@ -160,7 +234,10 @@ function EndpointRow({endpoint: e, canTest, testing, onTest, onRotate, onDelete}
   const active = e.status === "active";
   // What the endpoint last answered; a provisioned one is CTech's own and is
   // not described here.
-  const health = e.provisioned || !active ? null
+  const health = e.provisioned ? null
+    : !active ? (e.last_delivery_at && !e.last_delivery_ok
+      ? {tone: "text-danger", text: t("console.webhooks.lastFailure", {detail: e.last_delivery_detail ?? "", date: instantShortDate(e.last_delivery_at)})}
+      : null)
     : !e.last_delivery_at ? {tone: "text-muted-foreground", text: t("console.webhooks.untested")}
     : e.last_delivery_ok ? {tone: "text-success", text: t("console.webhooks.responding")}
     : {tone: "text-danger", text: t("console.webhooks.failing", {detail: e.last_delivery_detail ?? ""})};
@@ -168,14 +245,19 @@ function EndpointRow({endpoint: e, canTest, testing, onTest, onRotate, onDelete}
   return (
     <li>
       <SwipeRow actions={more} enabled={more.length > 0} frontClassName="py-3">
-        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-2 sm:flex sm:items-center sm:gap-4">
+        <div className="flex items-start gap-3">
+        {/* Provisioned rows cannot be deleted, so they have no box; the slot keeps the URLs aligned. */}
+        <div className="flex min-h-5 w-4 shrink-0 items-center pt-0.5">
+          {!e.provisioned && <Checkbox checked={picked} onCheckedChange={onPick} aria-label={t("console.webhooks.select", {url: e.url})}/>}
+        </div>
+        <div className="min-w-0 flex-1 grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-2 sm:flex sm:items-center sm:gap-4">
           <div className="min-w-0 space-y-1 sm:flex-1">
             <p className="font-mono text-sm [overflow-wrap:anywhere] text-foreground">{e.url}</p>
             <p className="text-xs text-muted-foreground">
               {meta.map((m, i) => <span key={m}>{i > 0 && <span aria-hidden> • </span>}<span>{m}</span></span>)}
             </p>
             {health && <p className={`text-xs ${health.tone}`}>{health.text}</p>}
-            {!active && <p className="text-xs text-danger">{t("console.webhooks.disabledHint")}</p>}
+            {!active && <p className="text-xs text-danger">{t(e.provisioned ? "console.webhooks.disabledManagedHint" : "console.webhooks.disabledHint")}</p>}
           </div>
           <div className="flex items-center gap-1 sm:contents">
             <Badge tone={active ? "neutral" : "urgent"} className="sm:order-none">
@@ -199,6 +281,7 @@ function EndpointRow({endpoint: e, canTest, testing, onTest, onRotate, onDelete}
               ))}
             </div>
           )}
+        </div>
         </div>
       </SwipeRow>
     </li>

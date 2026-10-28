@@ -40,6 +40,12 @@ export const instantShortDate = (instant: string) =>
   intl("instant-short", l => new Intl.DateTimeFormat(l, {day: "2-digit", month: "2-digit", year: "numeric", timeZone: "America/Sao_Paulo"}))
     .format(new Date(instant));
 
+/** The dash shown for a date the API does not have: absent, empty, or Go's zero
+ *  time ("0001-01-01T00:00:00Z"), which an older row serialises as. */
+export const NO_DATE = "—";
+export const hasInstant = (instant?: string | null): instant is string =>
+  !!instant && !instant.startsWith("0001-");
+
 /** "03/03/2026" — for dates in a column. */
 export const shortDate = (iso: IsoDate) =>
   intl("short", l => new Intl.DateTimeFormat(l, {day: "2-digit", month: "2-digit", year: "numeric"})).format(civil(iso));

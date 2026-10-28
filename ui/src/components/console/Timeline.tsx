@@ -1,6 +1,7 @@
 import {useTranslation} from "react-i18next";
 
 import type {AuditEntry} from "@/lib/api/consoleTypes";
+import {hasInstant, NO_DATE} from "@/lib/format";
 import {currentLocale} from "@/lib/i18n";
 import {Section} from "@/components/ui/Section";
 
@@ -53,10 +54,10 @@ export function Timeline({entries}: { entries: AuditEntry[] }) {
             </div>
             <time
               data-numeric
-              dateTime={entry.created_at}
+              dateTime={hasInstant(entry.created_at) ? entry.created_at : undefined}
               className="shrink-0 text-xs text-muted-foreground"
             >
-              {stamp().format(new Date(entry.created_at))}
+              {hasInstant(entry.created_at) ? stamp().format(new Date(entry.created_at)) : NO_DATE}
             </time>
           </li>
         ))}

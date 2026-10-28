@@ -24,6 +24,7 @@ describe("CreditNoteDialog", () => {
     ]}}});
     const client = new QueryClient({defaultOptions: {mutations: {retry: false}}});
     render(<QueryClientProvider client={client}><ConsoleScopeProvider value={SCOPE}><CreditNoteDialog open invoice={INVOICE} credited={0} onClose={() => {}} onIssued={() => {}}/></ConsoleScopeProvider></QueryClientProvider>);
+    await userEvent.clear(screen.getByLabelText(/^Valor/));
     await userEvent.type(screen.getByLabelText(/^Valor/), "50,00");
     await userEvent.type(screen.getByLabelText(/^Motivo/), "erro");
     await userEvent.click(screen.getByRole("button", {name: /Emitir/}));
@@ -41,10 +42,17 @@ describe("CreditNoteDialog", () => {
     expect(screen.queryByText("Devolver via Pix")).not.toBeInTheDocument();
     unmount();
     render(<QueryClientProvider client={client}><ConsoleScopeProvider value={SCOPE}><CreditNoteDialog open invoice={INVOICE} credited={0} refundViaPix onClose={() => {}} onIssued={() => {}}/></ConsoleScopeProvider></QueryClientProvider>);
+    await userEvent.clear(screen.getByLabelText(/^Valor/));
     await userEvent.type(screen.getByLabelText(/^Valor/), "20,00");
     await userEvent.type(screen.getByLabelText(/^Motivo/), "devolução parcial");
     await userEvent.click(screen.getByText("Devolver via Pix"));
     await userEvent.click(screen.getByRole("button", {name: /Emitir/}));
     expect(spy).toHaveBeenCalledWith(SCOPE, "inv_1", expect.objectContaining({amount: 2000, refund_via_pix: true, refunded_externally: false}));
+  });
+
+  it("opens with the most that can still be credited", () => {
+    const client = new QueryClient();
+    render(<QueryClientProvider client={client}><ConsoleScopeProvider value={SCOPE}><CreditNoteDialog open invoice={INVOICE} credited={2550} onClose={() => {}} onIssued={() => {}}/></ConsoleScopeProvider></QueryClientProvider>);
+    expect(screen.getByLabelText(/^Valor/)).toHaveValue("74,50");
   });
 });
