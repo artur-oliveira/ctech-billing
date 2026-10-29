@@ -15,10 +15,22 @@ import {lastWrite, pick, renderWithQuery, selectByLabel, serveFinanceMock} from 
 // whole stack against the dev mock: fill it, empty it, read what was sent,
 // then what the screen shows once the data is read again.
 
-beforeEach(() => window.localStorage.clear());
-afterEach(() => vi.restoreAllMocks());
+// The date picker rejects past days and the test picks day 28, so a real clock
+// fails from the 29th of every month. Pin Date only; timers stay real so
+// userEvent and waitFor keep working.
+const NOW = new Date(2026, 5, 10, 12);
 
-const monthName = new Intl.DateTimeFormat("pt-BR", {month: "long"}).format(new Date());
+beforeEach(() => {
+  window.localStorage.clear();
+  vi.useFakeTimers({toFake: ["Date"]});
+  vi.setSystemTime(NOW);
+});
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
+
+const monthName = new Intl.DateTimeFormat("pt-BR", {month: "long"}).format(NOW);
 
 describe("clearing an optional field after saving it", () => {
   it("removes a recurrence's end date: Limpar, then Salvar sends end null, and the rule has no end again", async () => {
