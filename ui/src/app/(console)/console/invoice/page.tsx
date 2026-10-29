@@ -31,7 +31,7 @@ import {
 import type {ConsoleInvoiceDetail} from "@/lib/api/consoleTypes";
 import {toastError} from "@/lib/console/planLimit";
 import {useConsoleScope} from "@/lib/console/scope";
-import {longDate, money, period, shortDate} from "@/lib/format";
+import {hasInstant, instantShortDate, longDate, money, NO_DATE, period, shortDate} from "@/lib/format";
 import {useDocumentTitle} from "@/lib/hooks/useDocumentTitle";
 
 /**
@@ -126,6 +126,8 @@ function Detail() {
   } = query.data;
   const canFinalize = invoice.status === "DRAFT";
   const canVoid = invoice.status === "DRAFT" || invoice.status === "OPEN";
+  // Same ceiling the dialog enforces: nothing left to credit, no dialog.
+  const creditable = Math.max(0, invoice.total - credited);
   const canCredit = ["OPEN", "PAID", "UNCOLLECTIBLE"].includes(invoice.status);
 
   return (
@@ -152,9 +154,15 @@ function Detail() {
               </Button>
             )}
             {canCredit && (
-              <Button variant="outline" size="sm" onClick={() => setCrediting(true)}>
-                {t("console.invoice.creditNote")}
-              </Button>
+              <span className="flex flex-col items-end gap-1">
+                <Button variant="outline" size="sm" onClick={() => setCrediting(true)} disabled={creditable <= 0}
+                  aria-describedby={creditable <= 0 ? "no-credit-reason" : undefined}>
+                  {t("console.invoice.creditNote")}
+                </Button>
+                {creditable <= 0 && (
+                  <span id="no-credit-reason" className="text-xs text-muted-foreground">{t("console.invoice.nothingToCredit")}</span>
+                )}
+              </span>
             )}
             {invoice.checkout_url && <CopyLink url={invoice.checkout_url}/>}
             {/* Not on a draft: it has no number, so there is no document — and
@@ -271,7 +279,7 @@ function Detail() {
                 <div className="min-w-0">
                   <p className="text-sm text-foreground">{note.reason}</p>
                   <p className="text-xs text-muted-foreground">
-                    {note.created_by} · {shortDate(note.created_at.slice(0, 10))}
+                    {note.created_by} · {hasInstant(note.created_at) ? instantShortDate(note.created_at) : NO_DATE}
                     {note.refunded_externally && ` · ${t("console.invoice.refunded")}`}
                   </p>
                 </div>
@@ -303,6 +311,7 @@ function Detail() {
       />
 
       <CreditNoteDialog
+        key={credited}
         open={crediting}
         invoice={invoice}
         credited={credited}

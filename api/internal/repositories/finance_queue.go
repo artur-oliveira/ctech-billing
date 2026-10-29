@@ -64,7 +64,7 @@ func (r *CreditNoteRepository) PendingFinanceCredits(ctx context.Context, livemo
 	}
 	out := make([]billing.CreditNote, len(rows))
 	for i, row := range rows {
-		out[i] = row.CreditNote
+		out[i] = row.note()
 		// The note's created_at shares its attribute name with the row's own
 		// (keys), so it does not survive a decode; the queue key carries the
 		// note's time, which is what the replay window is measured from.

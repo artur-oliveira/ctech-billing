@@ -36,7 +36,7 @@ func (r *AuditRepository) ListForMonth(
 ) (*Page[billing.AuditLog], error) {
 	return pagePeriod(ctx, r.base, organizationID, livemode, EntityAudit,
 		PeriodPrefix(year, month, 0), limit, startKey,
-		func(row auditRow) billing.AuditLog { return row.AuditLog })
+		func(row auditRow) billing.AuditLog { return row.log() })
 }
 
 // Entity trail read budget: each Base.Query call evaluates up to
@@ -103,7 +103,7 @@ func (r *AuditRepository) ListForEntity(
 	}
 	out := make([]billing.AuditLog, len(rows))
 	for i, row := range rows {
-		out[i] = row.AuditLog
+		out[i] = row.log()
 	}
 	return out, nil
 }

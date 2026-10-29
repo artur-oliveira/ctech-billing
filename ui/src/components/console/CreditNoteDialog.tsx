@@ -13,7 +13,7 @@ import {creditInvoice} from "@/lib/api/console";
 import type {ConsoleInvoice} from "@/lib/api/consoleTypes";
 import {useConsoleScope} from "@/lib/console/scope";
 import {money} from "@/lib/format";
-import {maskMoney, moneyPlaceholder, parseMoney} from "@/lib/money";
+import {formatMoneyInput, maskMoney, moneyPlaceholder, parseMoney} from "@/lib/money";
 
 /**
  * "Emitir nota de crédito", and the screen where immutability is taught rather
@@ -46,7 +46,8 @@ export function CreditNoteDialog({
   const {t} = useTranslation();
   const scope = useConsoleScope();
   const remaining = Math.max(0, invoice.total - credited);
-  const [amount, setAmount] = useState("");
+  // Opens on the most the invoice can still be credited: the common case is the whole remainder.
+  const [amount, setAmount] = useState(() => formatMoneyInput(remaining));
   const [reason, setReason] = useState("");
   const [refunded, setRefunded] = useState(false);
   const [viaPix, setViaPix] = useState(false);

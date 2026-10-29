@@ -1,10 +1,12 @@
 package repositories
 
 import (
+	"strings"
 	"time"
 
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
 	"gopkg.aoctech.app/billing/api/internal/domain/brcal"
+	"gopkg.aoctech.app/billing/api/internal/domain/id"
 )
 
 // A row is a domain entity plus the attributes DynamoDB needs and the domain
@@ -66,6 +68,11 @@ type creditNoteRow struct {
 	keys
 	PeriodAttrs
 	billing.CreditNote
+	// CreatedAt shadows keys.CreatedAt and CreditNote.CreatedAt. Both embed a
+	// "created_at" at the same depth, and the encoder drops a name that is
+	// ambiguous, so neither was ever written and every read returned the zero
+	// time. One field at depth 0 wins over both.
+	CreatedAt time.Time `dynamodbav:"created_at"`
 	// The finance replay queue (JobFinanceCredit), present only while a note on
 	// a PAID invoice has not reached both ledgers.
 	SchedulePK string `dynamodbav:"schedule_pk,omitempty"`
@@ -175,6 +182,34 @@ type auditRow struct {
 	keys
 	PeriodAttrs
 	billing.AuditLog
+	// CreatedAt: see creditNoteRow.
+	CreatedAt time.Time `dynamodbav:"created_at"`
+}
+
+// note is the domain credit note with its time. A row written before the
+// created_at fix has no stored time; its id is a ULID, which carries it.
+func (r *creditNoteRow) note() billing.CreditNote {
+	n := r.CreditNote
+	n.CreatedAt = createdAtOrID(r.CreatedAt, n.ID)
+	return n
+}
+
+// log is the domain audit entry with its time (see note).
+func (r *auditRow) log() billing.AuditLog {
+	l := r.AuditLog
+	l.CreatedAt = createdAtOrID(r.CreatedAt, l.ID)
+	return l
+}
+
+func createdAtOrID(at time.Time, rowID string) time.Time {
+	if !at.IsZero() {
+		return at
+	}
+	_, bare, _ := strings.Cut(rowID, "_") // "log_<ULID>" -> "<ULID>"
+	if t, ok := id.Time(bare); ok {
+		return t
+	}
+	return at
 }
 
 // generationRow is a marker written in the same transaction as the invoice it

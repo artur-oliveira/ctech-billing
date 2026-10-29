@@ -327,6 +327,7 @@ func buildAuditItem(organizationID string, livemode bool, a AuditEntry, from, to
 			IP:             a.IP,
 			CreatedAt:      now.UTC(),
 		},
+		CreatedAt: now.UTC(),
 	}
 	return Encode(row)
 }
