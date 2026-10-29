@@ -56,3 +56,12 @@ func TestRowWithoutCreatedAtFallsBackToID(t *testing.T) {
 		t.Fatalf("no id, no time: got %v", got)
 	}
 }
+
+func TestRowIDFromSK(t *testing.T) {
+	if got := rowIDFromSK("#" + skCreditNote)(CreditNoteSK("inv_1", "cn_X")); got != "cn_X" {
+		t.Fatalf("credit note id = %q", got)
+	}
+	if got := rowIDFromSK(skAudit)(AuditSK("log_Y")); got != "log_Y" {
+		t.Fatalf("audit id = %q", got)
+	}
+}
