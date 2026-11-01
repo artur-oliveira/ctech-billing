@@ -11,6 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 
 	"gopkg.aoctech.app/api-commons/alerts"
+	"gopkg.aoctech.app/api-commons/byok"
 	"gopkg.aoctech.app/api-commons/cache"
 
 	"gopkg.aoctech.app/billing/api/internal/domain/brcal"
@@ -155,6 +156,14 @@ func (j *ByokJob) Run(ctx context.Context, livemode bool, now time.Time) ByokRun
 			defer wg.Done()
 			for conn := range work {
 				if err := j.runOne(ctx, &conn, now); err != nil {
+					// The bank being down is not ours to page on: the next run retries,
+					// and the sync step counts it toward the degraded alert
+					// (RecordOutcome, DegradedAfter), which is the page for an outage
+					// that lasts.
+					if errors.Is(err, byok.ErrUnavailable) || errors.Is(err, byok.ErrRateLimited) {
+						slog.WarnContext(ctx, "byok connection: provider unavailable", "connection_id", conn.ID, "error", err)
+						continue
+					}
 					record(err)
 				}
 			}

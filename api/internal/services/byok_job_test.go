@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -164,12 +165,12 @@ func TestAFailingConnectionDoesNotStopTheOthers(t *testing.T) {
 		seen[conn.ID] = true
 		mu.Unlock()
 		if conn.ID == "b" {
-			return byok.ErrUnavailable
+			return errBoom
 		}
 		return nil
 	})
 	res := j.Run(context.Background(), true, time.Now())
-	if res.Connections != 3 || len(res.Errors) != 1 || !errors.Is(res.Errors[0], byok.ErrUnavailable) || len(seen) != 3 {
+	if res.Connections != 3 || len(res.Errors) != 1 || !errors.Is(res.Errors[0], errBoom) || len(seen) != 3 {
 		t.Fatalf("%+v %v", res, seen)
 	}
 }
@@ -233,5 +234,18 @@ func TestTheByokJobLeavesAnErasedWorkspaceAlone(t *testing.T) {
 	failing.Register(StepSync, count)
 	if res := failing.Run(context.Background(), true, time.Now()); steps != 0 || len(res.Errors) == 0 {
 		t.Fatalf("an unreadable erasure state ran %d steps with errors %v; want none and an error", steps, res.Errors)
+	}
+}
+
+var errBoom = errors.New("boom")
+
+func TestABankOutageDoesNotFailTheRun(t *testing.T) {
+	repo := &memJobRepo{conns: []byokconn.Connection{liveConn("a")}}
+	j := NewByokJob(repo, nil, nil, &recordingMailer{}, alerts.Nop{}, jobSpaces)
+	j.Register(StepSync, func(context.Context, space.ResolvedSpace, *byokconn.Connection, time.Time) error {
+		return fmt.Errorf("%w: unavailable", byok.ErrUnavailable)
+	})
+	if res := j.Run(context.Background(), true, time.Now()); len(res.Errors) != 0 {
+		t.Fatalf("an outage pages the operator on its first run: %v", res.Errors)
 	}
 }
