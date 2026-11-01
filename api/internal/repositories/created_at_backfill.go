@@ -78,7 +78,7 @@ func backfillCreatedAt(
 	var rep CreatedAtBackfillReport
 	var start map[string]types.AttributeValue
 	for {
-		out, err := base.ScanRaw(ctx, &dynamodb.ScanInput{ // standards:allow backfill scan
+		out, err := base.ScanRaw(ctx, &dynamodb.ScanInput{ // standards:allow operator backfill scan
 			FilterExpression:          aws.String(skFilter + " AND attribute_not_exists(created_at)"),
 			ProjectionExpression:      aws.String("pk, sk"),
 			ExpressionAttributeValues: values,
