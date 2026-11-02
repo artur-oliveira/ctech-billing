@@ -155,7 +155,7 @@ function BillRow({bill, current, accountName, accounts}: {bill: Bill; current?: 
       title={bill.description || t("bills.common.noDescription")}
       meta={<>
         {dueText(bill.due_date)}{accountName ? ` • ${accountName}` : ""}{bill.auto_settle ? ` • ${t(`bills.row.autoNote.${bill.direction}`)}` : ""}
-        {statement && <> • {t("bills.row.statement")} • <Link href={`/finance/cards?card=${encodeURIComponent(bill.category_id)}`} className="underline-offset-4 hover:underline">{t("bills.row.viewStatement")}</Link></>}
+        {statement && <> • {t("bills.row.statement")} • <Link href={`/finance/cards?card=${encodeURIComponent(bill.category_id)}&month=${bill.origin_ref?.split("#")[1] ?? ""}`} className="underline-offset-4 hover:underline">{t("bills.row.viewStatement")}</Link></>}
       </>}
       // On a phone the group heading (Vencidas, A vencer) already says it.
       aside={<StatusBadge status={BUCKET_STATUS[bucket]}>{bucketLabel(bucket)}</StatusBadge>}
@@ -168,8 +168,8 @@ function BillRow({bill, current, accountName, accounts}: {bill: Bill; current?: 
       )}
       more={can("finance.write") ? [
         {key: "edit", label: t("bills.common.edit"), expanded: panel === "edit", onSelect: () => setPanel(panel === "edit" ? null : "edit")},
-        // A statement is closed: corrected by a refund on the card, never canceled.
-        ...(statement ? [] : [{key: "cancel", label: t("bills.row.delete"), destructive: true, expanded: panel === "cancel", onSelect: () => setPanel(panel === "cancel" ? null : "cancel")}]),
+        // A statement is closed: corrected by a refund on the card, canceled only once its card is archived.
+        ...(statement && !accounts.some(a => a.id === bill.category_id && a.archived) ? [] : [{key: "cancel", label: t("bills.row.delete"), destructive: true, expanded: panel === "cancel", onSelect: () => setPanel(panel === "cancel" ? null : "cancel")}]),
       ] : []}
     >
       {panel === "settle" && <SettleForm bill={bill} accounts={accounts} onDone={() => setPanel(null)}/>}

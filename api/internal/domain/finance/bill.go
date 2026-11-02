@@ -122,9 +122,11 @@ func (b Bill) CanSettle() error {
 }
 
 // CanCancel refuses a paid bill: it is corrected by reversing its settlement
-// first, so both stay visible.
-func (b Bill) CanCancel() error {
-	if b.Origin == OriginCardStatement {
+// first, so both stay visible. A statement bill is canceled only when its card
+// is archived: on a live card its purchases would be left billed nowhere, so a
+// correction goes on the next statement.
+func (b Bill) CanCancel(cardArchived bool) error {
+	if b.Origin == OriginCardStatement && !cardArchived {
 		return fmt.Errorf("%w: a closed statement is not canceled; a correction goes on the next statement", ErrBillState)
 	}
 	switch b.Status {

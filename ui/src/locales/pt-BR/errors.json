@@ -42,6 +42,7 @@
     "payout_not_enabled": "Esta organização ainda não pode cobrar.",
     "purchase_refunded": "Esta compra já foi estornada.",
     "statement_not_closable": "Esta fatura não está aberta para fechamento.",
+    "statement_not_reopenable": "Só a última fatura fechada de um cartão ativo pode ser reaberta, enquanto não estiver paga.",
     "nothing_to_advance": "Não há parcelas futuras para antecipar.",
     "opening_balance_exists": "Esta conta já tem saldo inicial. Estorne o atual para lançar outro.",
     "not_reversible_entry": "Só transferências e saldos iniciais são estornados pelo extrato. Para um pagamento, use Desfazer pagamento.",

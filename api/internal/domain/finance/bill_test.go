@@ -46,7 +46,7 @@ func TestBillValidate(t *testing.T) {
 
 func TestBillLifecycle(t *testing.T) {
 	b := validBill()
-	if !b.CanEdit() || b.CanCancel() != nil || b.CanSettle() != nil {
+	if !b.CanEdit() || b.CanCancel(false) != nil || b.CanSettle() != nil {
 		t.Fatal("a forecast bill must be editable, cancellable and settleable")
 	}
 	paid := b
@@ -54,7 +54,7 @@ func TestBillLifecycle(t *testing.T) {
 	if paid.CanEdit() {
 		t.Error("a paid bill is not editable")
 	}
-	if err := paid.CanCancel(); !errors.Is(err, ErrBillState) {
+	if err := paid.CanCancel(false); !errors.Is(err, ErrBillState) {
 		t.Errorf("cancelling a paid bill: %v, want ErrBillState (reverse the settlement first)", err)
 	}
 	if err := paid.CanSettle(); !errors.Is(err, ErrBillState) {
@@ -62,7 +62,7 @@ func TestBillLifecycle(t *testing.T) {
 	}
 	canceled := b
 	canceled.Status = BillCanceled
-	if canceled.CanEdit() || canceled.CanSettle() == nil || canceled.CanCancel() == nil {
+	if canceled.CanEdit() || canceled.CanSettle() == nil || canceled.CanCancel(false) == nil {
 		t.Error("a cancelled bill allows nothing")
 	}
 }
@@ -88,11 +88,14 @@ func TestFactsCarryWhatThePostingRulesNeed(t *testing.T) {
 func TestAStatementBillIsNotCanceledAndClearsItsCard(t *testing.T) {
 	b := Bill{Direction: Payable, Amount: 1, AccountID: "bank", CategoryID: "visa", Status: BillForecast,
 		Origin: OriginCardStatement, OriginRef: "visa#2026-03"}
-	if err := b.CanCancel(); !errors.Is(err, ErrBillState) {
+	if err := b.CanCancel(false); !errors.Is(err, ErrBillState) {
 		t.Fatalf("CanCancel = %v", err)
 	}
 	if f := b.Facts(); f.Clears != "visa" {
 		t.Fatalf("Facts().Clears = %q", f.Clears)
+	}
+	if err := b.CanCancel(true); err != nil {
+		t.Fatalf("a statement of an archived card must be cancelable: %v", err)
 	}
 	b.Origin = OriginManual
 	if f := b.Facts(); f.Clears != "" {

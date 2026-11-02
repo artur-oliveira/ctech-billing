@@ -668,37 +668,60 @@ func (r *BillRepository) Cancel(ctx context.Context, sp space.ResolvedSpace, bil
 	if err != nil {
 		return finance.Bill{}, err
 	}
-	if err := b.CanCancel(); err != nil {
+	archived := false
+	if b.Origin == finance.OriginCardStatement { // the card is the bill's category
+		card, err := r.ledger.getAccount(ctx, sp, b.CategoryID)
+		if err != nil && !errors.Is(err, ErrNotFound) {
+			return finance.Bill{}, err
+		}
+		archived = card != nil && card.Archived
+	}
+	if err := b.CanCancel(archived); err != nil {
 		return finance.Bill{}, err
 	}
-	if date.IsZero() {
-		date = b.Competence
-	}
-	sys, _ := finance.DefaultSystemAccounts()
-	tx, err := finance.CancelBill(sys, b.Facts(), date)
+	items, txID, err := r.cancelItems(sp, b, date, meta, now)
 	if err != nil {
 		return finance.Bill{}, err
 	}
-	plan, err := r.ledger.planPost(sp, tx, billMeta(meta, *b), now)
-	if err != nil {
-		return finance.Bill{}, err
-	}
-	sk := BillSK(billID)
-	values := map[string]types.AttributeValue{
-		":canceled": str(string(finance.BillCanceled)), ":now": r.stamp(now),
-		":tx": &types.AttributeValueMemberL{Value: []types.AttributeValue{str(plan.TxID)}},
-	}
-	cond, names := mergeGuard(b, values)
-	update := r.bills.BuildRawUpdateTxItem(sp.PK(), &sk,
-		"SET #status = :canceled, #n = list_append(#n, :tx), updated_at = :now"+removeSparse,
-		cond, names, values)
-	items := append(append([]types.TransactWriteItem(nil), plan.Items...), update)
 	if err := r.commit(ctx, sp, billID, string(finance.BillCanceled), items, now); err != nil {
 		return finance.Bill{}, billCancelError(err)
 	}
 	b.Status = finance.BillCanceled
-	b.TransactionIDs = append(append([]string(nil), b.TransactionIDs...), plan.TxID)
+	if txID != "" {
+		b.TransactionIDs = append(append([]string(nil), b.TransactionIDs...), txID)
+	}
 	return *b, nil
+}
+
+// cancelItems is the guarded write that cancels a forecast bill, with the
+// reversal of its recognition ahead of it, and that reversal's id ("" for a
+// statement bill, which was never recognised: the purchases already put the
+// expense in the DRE, so there is nothing to negate).
+func (r *BillRepository) cancelItems(sp space.ResolvedSpace, b *finance.Bill, date brcal.Date, meta PostMeta, now time.Time) ([]types.TransactWriteItem, string, error) {
+	var items []types.TransactWriteItem
+	values := map[string]types.AttributeValue{":canceled": str(string(finance.BillCanceled)), ":now": r.stamp(now)}
+	set, txID := "SET #status = :canceled, updated_at = :now", ""
+	if b.Origin != finance.OriginCardStatement {
+		if date.IsZero() {
+			date = b.Competence
+		}
+		sys, _ := finance.DefaultSystemAccounts()
+		tx, err := finance.CancelBill(sys, b.Facts(), date)
+		if err != nil {
+			return nil, "", err
+		}
+		plan, err := r.ledger.planPost(sp, tx, billMeta(meta, *b), now)
+		if err != nil {
+			return nil, "", err
+		}
+		items, txID = plan.Items, plan.TxID
+		values[":tx"] = &types.AttributeValueMemberL{Value: []types.AttributeValue{str(txID)}}
+		set = "SET #status = :canceled, #n = list_append(#n, :tx), updated_at = :now"
+	}
+	sk := BillSK(b.ID)
+	cond, names := mergeGuard(b, values)
+	update := r.bills.BuildRawUpdateTxItem(sp.PK(), &sk, set+removeSparse, cond, names, values)
+	return append(append([]types.TransactWriteItem(nil), items...), update), txID, nil
 }
 
 // RestoreCancelled reverses a bill cancellation and returns the same bill to

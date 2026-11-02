@@ -75,6 +75,11 @@ describe("F5 — cartões", () => {
     const row = (await screen.findByText("Geladeira")).closest("li") as HTMLElement;
     expect(within(row).getByText(/1\/3/)).toBeInTheDocument();
   });
+  it("opens on the requested month, not the open one, when a statement bill links to it", async () => {
+    serve(ALL);
+    renderWithQuery(<CardsView month="2026-02"/>);
+    expect(await screen.findByRole("region", {name: "Fatura Fev/26"})).toBeInTheDocument();
+  });
   it("loads recurring installment estimates with the statement and adds them to its headline total", async () => {
     serve(ALL);
     const forecast = vi.spyOn(finance, "getCardStatementForecast").mockResolvedValue({data: [
@@ -569,6 +574,23 @@ describe("F5 — statement status colours (UX batch 3)", () => {
     expect(b.querySelector("svg")).not.toBeNull(); // a glyph, never colour alone
   });
 
+  it("offers to reopen only the latest closed, unpaid statement of an active card", async () => {
+    // open month 2026-03: Feb is the latest closed one, Jan is not.
+    serve(ALL).items.mockImplementation(async (_c, _id, month) => ({...statement(month, month < "2026-03" ? "closed" : "open", 1), bill_id: month < "2026-03" ? "b1" : undefined}));
+    const reopen = vi.spyOn(finance, "reopenStatement").mockResolvedValue(statement("2026-02", "open", 1));
+    renderWithQuery(<CardsView month="2026-02"/>);
+    const block = await screen.findByRole("region", {name: "Fatura Fev/26"});
+    await userEvent.click(await within(block).findByRole("button", {name: "Reabrir fatura"}));
+    await userEvent.click(within(block).getByRole("button", {name: "Confirmar"}));
+    await waitFor(() => expect(reopen).toHaveBeenCalledWith(expect.anything(), "visa", "2026-02", expect.any(String)));
+  });
+  it("does not offer reopening on an older closed statement", async () => {
+    serve(ALL).items.mockImplementation(async (_c, _id, month) => ({...statement(month, month < "2026-03" ? "closed" : "open", 1), bill_id: month < "2026-03" ? "b1" : undefined}));
+    renderWithQuery(<CardsView month="2026-01"/>);
+    const block = await screen.findByRole("region", {name: "Fatura Jan/26"});
+    await within(block).findByRole("button", {name: "Pagar fatura"});
+    expect(within(block).queryByRole("button", {name: "Reabrir fatura"})).not.toBeInTheDocument();
+  });
   it("a closed statement not yet due is neutral; red only once it is past due unpaid", async () => {
     const get = serve(ALL).items;
     get.mockImplementation(async (_c, _id, month) => ({

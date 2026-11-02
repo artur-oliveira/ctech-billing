@@ -1,7 +1,9 @@
 package v1
 
 import (
+	"context"
 	"strings"
+	"time"
 
 	"github.com/gofiber/fiber/v3"
 
@@ -13,6 +15,7 @@ import (
 	"gopkg.aoctech.app/billing/api/internal/middleware"
 	"gopkg.aoctech.app/billing/api/internal/problem"
 	"gopkg.aoctech.app/billing/api/internal/repositories"
+	"gopkg.aoctech.app/billing/api/internal/space"
 )
 
 type cardDTO struct {
@@ -504,6 +507,16 @@ type closeRequest struct {
 }
 
 func (h *financeHandlers) closeStatement(c fiber.Ctx) error {
+	return h.moveStatement(c, h.cards.CloseNow)
+}
+
+// reopenStatement undoes the close of the card's latest closed statement.
+func (h *financeHandlers) reopenStatement(c fiber.Ctx) error {
+	return h.moveStatement(c, h.cards.Reopen)
+}
+
+// moveStatement is close and reopen: both name a month and answer the statement.
+func (h *financeHandlers) moveStatement(c fiber.Ctx, move func(context.Context, space.ResolvedSpace, string, finance.Month, time.Time) (repositories.Statement, error)) error {
 	var req closeRequest
 	if p := decodeStrict(c, &req); p != nil {
 		return p.Send(c)
@@ -512,7 +525,7 @@ func (h *financeHandlers) closeStatement(c fiber.Ctx) error {
 	if err != nil {
 		return problem.Validation([]problem.FieldError{fieldErr("month", "invalid_format", "use YYYY-MM", "format", "YYYY-MM")}).Send(c)
 	}
-	s, err := h.cards.CloseNow(c.Context(), middleware.GetSpace(c), c.Params("id"), m, h.now())
+	s, err := move(c.Context(), middleware.GetSpace(c), c.Params("id"), m, h.now())
 	if err != nil {
 		return fail(c, err)
 	}
