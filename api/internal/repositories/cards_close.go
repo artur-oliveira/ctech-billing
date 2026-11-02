@@ -3,6 +3,7 @@ package repositories
 import (
 	"context"
 	"errors"
+	"strconv"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
@@ -113,7 +114,9 @@ func (r *CardRepository) CloseAt(ctx context.Context, sp space.ResolvedSpace, re
 	switch {
 	case s.Total > 0:
 		ref := finance.StatementRef(read.ID, m)
-		billID = idempotentID(sp, "statement", ref)
+		// The version makes a statement reopened and closed again a new bill: the
+		// canceled one keeps its id.
+		billID = idempotentID(sp, "statement", ref+"@"+strconv.FormatInt(read.Version, 10))
 		bill, err := r.bills.statementBillItem(sp, finance.Bill{
 			ID: billID, Direction: finance.Payable, Amount: s.Total, AccountID: read.PayingAccountID, CategoryID: read.ID,
 			Description: statementDescription(read.Name, m), Competence: closing, Due: due,
@@ -162,6 +165,87 @@ func (r *CardRepository) CloseAt(ctx context.Context, sp space.ResolvedSpace, re
 	return nil
 }
 
+// ErrNotReopenable is a reopen of a statement that is not the card's latest
+// closed one, whose bill was paid, or of an archived card.
+var ErrNotReopenable = errors.New("cards: only the latest closed statement of an active card can be reopened, while its bill is unpaid")
+
+// reopenGraceDays is how long a reopened statement stays open before the daily
+// job closes it again: time to enter what was forgotten, then "Fechar fatura
+// agora" or wait. (Editing the card's closing day inside it ends the grace.)
+const reopenGraceDays = 7
+
+// Reopen undoes the close of month m, the card's latest closed statement: its
+// bill is canceled (never posted to the ledger, so nothing to reverse), the
+// frozen statement row goes, and m is the open month again, so purchases and
+// corrections land on it and it closes again with the right total. A paid
+// statement is refused: reverse its settlement first. Only a card's latest
+// statement can be reopened, one at a time.
+func (r *CardRepository) Reopen(ctx context.Context, sp space.ResolvedSpace, cardID string, m finance.Month, now time.Time) (Statement, error) {
+	if err := sp.Require(space.Write); err != nil {
+		return Statement{}, err
+	}
+	card, err := r.loadCard(ctx, sp, cardID)
+	if err != nil {
+		return Statement{}, err
+	}
+	if card.Archived || card.OpenMonth != m.Add(1) {
+		return Statement{}, ErrNotReopenable
+	}
+	pk := CardPK(sp, cardID)
+	raw, err := r.cards.GetItem(ctx, pk, StatementSK(m))
+	if err != nil {
+		return Statement{}, err
+	}
+	if raw == nil {
+		return Statement{}, ErrNotReopenable
+	}
+	row, err := Decode[statementRow](raw)
+	if err != nil {
+		return Statement{}, err
+	}
+	var items []types.TransactWriteItem
+	billID := ""
+	switch {
+	case row.BillID != "":
+		b, err := r.bills.get(ctx, sp, row.BillID)
+		if err != nil {
+			return Statement{}, err
+		}
+		if b.Status != finance.BillForecast {
+			return Statement{}, ErrNotReopenable
+		}
+		billID = b.ID
+		if items, _, err = r.bills.cancelItems(sp, b, brcal.Date{}, PostMeta{}, now); err != nil {
+			return Statement{}, err
+		}
+	case row.Total < 0:
+		// The credit it carried to the next month goes with it.
+		items = append(items, r.cards.BuildDeleteTxItem(pk, ItemSK(m.Add(1), "carry", m.String())))
+	}
+	items = append(items, r.cards.BuildDeleteTxItem(pk, StatementSK(m)))
+	open := card.Card
+	open.OpenMonth = m
+	sk := CardSK(cardID)
+	items = append(items, r.cards.BuildRawUpdateTxItem(sp.PK(), &sk,
+		"SET open_month = :m, schedule_sk = :ssk, updated_at = :now ADD version :one", "open_month = :next AND version = :v", nil,
+		map[string]types.AttributeValue{
+			":m": str(m.String()), ":next": str(m.Add(1).String()), ":v": numberValue(card.Version), ":one": numberValue(1),
+			":ssk": str(ScheduleSK(brcal.FromTime(now).AddDays(reopenGraceDays), sp.Owner(), cardID)), ":now": str(now.UTC().Format(time.RFC3339Nano)),
+		}))
+	if billID != "" {
+		err = r.bills.commit(ctx, sp, billID, string(finance.BillCanceled), items, now)
+	} else {
+		err = r.cards.TransactWrite(ctx, items)
+	}
+	if err != nil {
+		if onlyConditionFailed(err) {
+			return Statement{}, ErrCardMoved
+		}
+		return Statement{}, err
+	}
+	return r.GetStatement(ctx, sp, cardID, m)
+}
+
 // closeRetries bounds the retries of one close that keeps losing to purchases
 // on the same card; the next run catches up whatever is left.
 const closeRetries = 3
@@ -178,7 +262,9 @@ func (r *CardRepository) CloseDue(ctx context.Context, sp space.ResolvedSpace, c
 		if err != nil {
 			return closed, err
 		}
-		if finance.ClosingDate(card.OpenMonth, card.ClosingDay).After(today) {
+		// An archived card takes no new activity, and no bill: ponytail: its
+		// schedule row stays and is re-read daily, drop it on archive if they pile up.
+		if card.Archived || finance.ClosingDate(card.OpenMonth, card.ClosingDay).After(today) {
 			return closed, nil
 		}
 		switch err := r.CloseAt(ctx, sp, card, today, now); {

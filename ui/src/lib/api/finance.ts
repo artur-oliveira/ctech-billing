@@ -257,6 +257,11 @@ export const advancePurchase = (c: FinanceCtx, cardId: string, purchaseId: strin
 export const closeStatement = (c: FinanceCtx, cardId: string, month: string, idempotencyKey: string) =>
   write<CardStatement>(c, "POST", `${card(cardId)}/close`, {month}, idempotencyKey);
 
+/** Undoes the close of the card's latest closed statement while its bill is unpaid:
+ *  the bill is canceled and the month is open again. Anything else is refused. */
+export const reopenStatement = (c: FinanceCtx, cardId: string, month: string, idempotencyKey: string) =>
+  write<CardStatement>(c, "POST", `${card(cardId)}/reopen`, {month}, idempotencyKey);
+
 // --- import and reconciliation (F6) ------------------------------------------------
 
 const line = (importId: string, n: number) => `/imports/${encodeURIComponent(importId)}/lines/${n}`;

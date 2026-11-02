@@ -150,6 +150,8 @@
     "editNamed": "Edit {{name}}",
     "statement": "Statement",
     "closeNow": "Close statement",
+    "reopen": "Reopen statement",
+    "reopenConfirm": "Reopen the {{month}} statement? Its bill is canceled and the month accepts purchases again; it closes on its own in 7 days or when you click Close statement.",
     "pay": "Pay statement",
     "closeConfirm": "Close the {{month}} statement? New purchases go to the next one.",
     "noPurchases": "No purchases on this statement.",

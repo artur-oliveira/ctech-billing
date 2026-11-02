@@ -129,6 +129,7 @@ func financeRoutes() []financeRoute {
 		{"POST", "/cards/:id/purchases/:pid/refund", space.Write, true, func(h *financeHandlers) fiber.Handler { return h.refundPurchase }},
 		{"POST", "/cards/:id/purchases/:pid/advance", space.Write, true, func(h *financeHandlers) fiber.Handler { return h.advancePurchase }},
 		{"POST", "/cards/:id/close", space.Write, true, func(h *financeHandlers) fiber.Handler { return h.closeStatement }},
+		{"POST", "/cards/:id/reopen", space.Write, true, func(h *financeHandlers) fiber.Handler { return h.reopenStatement }},
 		// imports (F6)
 		{"GET", "/imports", space.Read, false, func(h *financeHandlers) fiber.Handler { return h.listImports }},
 		{"POST", "/imports", space.Import, true, func(h *financeHandlers) fiber.Handler { return h.uploadImport }},

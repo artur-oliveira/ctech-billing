@@ -42,6 +42,7 @@
     "payout_not_enabled": "This organization cannot collect yet.",
     "purchase_refunded": "This purchase was already refunded.",
     "statement_not_closable": "This statement is not open for closing.",
+    "statement_not_reopenable": "Only the latest closed statement of an active card can be reopened, while its bill is unpaid.",
     "nothing_to_advance": "There are no future installments to advance.",
     "opening_balance_exists": "This account already has an opening balance. Reverse the current one to post another.",
     "not_reversible_entry": "Only transfers and opening balances are reversed from the statement. For a payment, use Undo payment.",

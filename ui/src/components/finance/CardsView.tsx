@@ -25,14 +25,14 @@ import {ErrorBlock} from "@/components/portal/ErrorBlock";
 import {Amount} from "@/components/ui/Amount";
 import {Section} from "@/components/ui/Section";
 import {
-  advancePurchase, closeStatement, type FinanceCtx, financeKeys, getBill, getCardStatement, getCardStatementForecast, getPurchase, listAccounts, listCards, listPurchases,
+  advancePurchase, closeStatement, reopenStatement, type FinanceCtx, financeKeys, getBill, getCardStatement, getCardStatementForecast, getPurchase, listAccounts, listCards, listPurchases,
   patchPurchase, refundPurchase,
 } from "@/lib/api/finance";
 import type {Account, Card, CardStatement, Purchase, PurchasePatch, StatementItem, StatementSummary} from "@/lib/api/financeTypes";
 import limits from "@/lib/limits.json";
 import {useFieldErrors} from "@/lib/useFieldErrors";
 import {currentLocale} from "@/lib/i18n";
-import {flatten, outlook} from "@/lib/finance/statementTimeline";
+import {flatten, outlook, shiftMonth} from "@/lib/finance/statementTimeline";
 import {dueLabel, monthShort, todayIso} from "@/lib/finance/today";
 import {selectCopy} from "@/lib/selectCopy";
 import {useFinanceMutation} from "@/lib/finance/useFinanceMutation";
@@ -51,12 +51,12 @@ type Panel = "new-card" | "edit-card" | "purchase" | null
  * is the whole expense on its date; the statements only show where each
  * installment is billed.
  */
-export function CardsView({card: initial = ""}: {card?: string}) {
+export function CardsView({card: initial = "", month: initialMonth}: {card?: string; month?: string}) {
   const {t} = useTranslation();
   const ctx = useFinanceCtx();
   const {can, loading: verbsLoading} = useFinanceSpaces();
   const [picked, setPicked] = useState(initial);
-  const [month, setMonth] = useState<string | null>(null);
+  const [month, setMonth] = useState<string | null>(initialMonth ?? null);
   const [chosen, setChosen] = useState<Panel>(null);
   const [asked, setAsked] = useState(false);
   useCreateRequest("purchase", () => setAsked(true));
@@ -205,7 +205,7 @@ function StatementBlock({card, month, accounts, purchases}: {
   const ctx = useFinanceCtx();
   const {can} = useFinanceSpaces();
   const q = useQuery({queryKey: financeKeys.cardStatement(ctx.mode, ctx.space, card.id, month), queryFn: () => getCardStatement(ctx, card.id, month)});
-  const [action, setAction] = useState<"close" | "pay" | null>(null);
+  const [action, setAction] = useState<"close" | "pay" | "reopen" | null>(null);
   const forecast = useQuery({
     queryKey: financeKeys.cardForecast(ctx.mode, ctx.space, card.id, month),
     queryFn: () => getCardStatementForecast(ctx, card.id, month),
@@ -228,6 +228,16 @@ function StatementBlock({card, month, accounts, purchases}: {
           )}
           {s.status === "closed" && s.bill_id && can("finance.settle") && action !== "pay" && (
             <Button variant="brand" size="sm" onClick={() => setAction("pay")}>{t("finance.cards.pay")}</Button>
+          )}
+          {s.status === "closed" && s.bill_id && month === shiftMonth(card.open_month, -1) && !card.archived && can("finance.write") && action !== "reopen" && (
+            <Button variant="outline" size="sm" onClick={() => setAction("reopen")}>{t("finance.cards.reopen")}</Button>
+          )}
+          {action === "reopen" && (
+            <Confirm
+              text={t("finance.cards.reopenConfirm", {month: monthShort(month)})}
+              run={(c, key) => reopenStatement(c, card.id, month, key)}
+              onDone={() => setAction(null)}
+            />
           )}
           {action === "close" && (
             <Confirm

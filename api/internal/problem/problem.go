@@ -254,6 +254,9 @@ func FromError(err error) *Problem {
 	case errors.Is(err, repositories.ErrNotClosable):
 		return New(409, TypeInvalidTransition, "Invalid Transition", "This statement is not open for closing.").WithCode("statement_not_closable")
 
+	case errors.Is(err, repositories.ErrNotReopenable):
+		return New(409, TypeInvalidTransition, "Invalid Transition", "Only the latest closed statement of an active card can be reopened, while its bill is unpaid.").WithCode("statement_not_reopenable")
+
 	case errors.Is(err, repositories.ErrNothingToAdvance):
 		return New(409, TypeInvalidTransition, "Invalid Transition", "There are no future installments to advance.").WithCode("nothing_to_advance")
 

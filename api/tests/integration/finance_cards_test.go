@@ -198,6 +198,18 @@ func TestAMissedMonthIsClosedInOrder(t *testing.T) {
 	}
 }
 
+func TestAnArchivedCardIsNotClosed(t *testing.T) {
+	f, card := newCardsFixture(t)
+	ctx := context.Background()
+	f.purchase(t, card.ID, brcal.New(2026, time.March, 1), 20000, 1)
+	if err := f.ledger.ArchiveAccount(ctx, f.sp, card.ID, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := f.cards.CloseDue(ctx, f.sp, card.ID, brcal.New(2026, time.April, 20), time.Now()); err != nil || n != 0 {
+		t.Fatalf("closed %d, %v; an archived card must make no statement", n, err)
+	}
+}
+
 func TestALatePurchaseLandsOnTheOpenStatement(t *testing.T) {
 	f, card := newCardsFixture(t)
 	f.closeThrough(t, card.ID, brcal.New(2026, time.March, 3)) // March closed (empty)
@@ -313,5 +325,92 @@ func TestRefundAfterAdvanceLeavesNothingBilled(t *testing.T) {
 	mar, _ := f.cards.GetStatement(ctx, f.sp, card.ID, finance.Month{Year: 2026, Month: time.March})
 	if mar.Total != 0 || len(mar.Items) != 0 {
 		t.Fatalf("March after advance then refund = %+v, want nothing billed", mar)
+	}
+}
+
+// A closed statement is reopened to add what was forgotten: its bill is
+// canceled with no ledger movement (it was never recognised), the month is open
+// again and closes into a new bill with the right total.
+func TestAReopenedStatementClosesAgainIntoANewBill(t *testing.T) {
+	f, card := newCardsFixture(t)
+	ctx, now := context.Background(), time.Now()
+	march := finance.Month{Year: 2026, Month: time.March}
+	f.purchase(t, card.ID, brcal.New(2026, time.March, 1), 10000, 1)
+	f.closeThrough(t, card.ID, brcal.New(2026, time.March, 3))
+	closed, _ := f.cards.GetStatement(ctx, f.sp, card.ID, march)
+	owed := f.ledgerBal(t, card.ID)
+
+	if _, err := f.cards.Reopen(ctx, f.sp, card.ID, march.Add(1), now); !errors.Is(err, repositories.ErrNotReopenable) {
+		t.Fatalf("reopening the open month: %v", err)
+	}
+	st, err := f.cards.Reopen(ctx, f.sp, card.ID, march, now)
+	if err != nil || st.Status != "open" || st.Total != 10000 || st.BillID != "" {
+		t.Fatalf("reopened = %+v, %v", st, err)
+	}
+	old, err := f.bills.Get(ctx, f.sp, closed.BillID)
+	if err != nil || old.Status != finance.BillCanceled {
+		t.Fatalf("the old bill = %+v, %v", old, err)
+	}
+	if f.ledgerBal(t, card.ID) != owed {
+		t.Fatal("canceling a statement bill must not move the ledger")
+	}
+	if _, err := f.cards.Reopen(ctx, f.sp, card.ID, march, now); !errors.Is(err, repositories.ErrNotReopenable) {
+		t.Fatalf("reopening twice: %v", err)
+	}
+	// The forgotten purchase lands on the reopened statement, and it closes again.
+	f.purchase(t, card.ID, brcal.New(2026, time.March, 2), 5000, 1)
+	if err := f.cards.CloseAt(ctx, f.sp, mustCard(t, f, card.ID), brcal.New(2026, time.March, 3), now); err != nil {
+		t.Fatal(err)
+	}
+	again, _ := f.cards.GetStatement(ctx, f.sp, card.ID, march)
+	if again.Total != 15000 || again.BillID == "" || again.BillID == closed.BillID {
+		t.Fatalf("closed again = %+v (first bill %s)", again, closed.BillID)
+	}
+}
+
+func TestAPaidStatementIsNotReopened(t *testing.T) {
+	f, card := newCardsFixture(t)
+	ctx, now := context.Background(), time.Now()
+	march := finance.Month{Year: 2026, Month: time.March}
+	f.purchase(t, card.ID, brcal.New(2026, time.March, 1), 10000, 1)
+	f.closeThrough(t, card.ID, brcal.New(2026, time.March, 3))
+	st, _ := f.cards.GetStatement(ctx, f.sp, card.ID, march)
+	if _, err := f.bills.Settle(ctx, f.sp, st.BillID, 10000, "", brcal.New(2026, time.March, 10), repositories.PostMeta{Actor: "u"}, now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.cards.Reopen(ctx, f.sp, card.ID, march, now); !errors.Is(err, repositories.ErrNotReopenable) {
+		t.Fatalf("reopening a paid statement: %v", err)
+	}
+}
+
+func mustCard(t *testing.T, f cardsFixture, id string) repositories.CardRow {
+	t.Helper()
+	c, err := f.cards.GetCard(context.Background(), f.sp, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return *c
+}
+
+// A statement bill of an archived card can be canceled, and since it was never
+// recognised the cancel must not post anything to the ledger.
+func TestCancelingAnArchivedCardsStatementBillMovesNoLedger(t *testing.T) {
+	f, card := newCardsFixture(t)
+	ctx, now := context.Background(), time.Now()
+	f.purchase(t, card.ID, brcal.New(2026, time.March, 1), 10000, 1)
+	f.closeThrough(t, card.ID, brcal.New(2026, time.March, 3))
+	st, _ := f.cards.GetStatement(ctx, f.sp, card.ID, finance.Month{Year: 2026, Month: time.March})
+	if _, err := f.bills.Cancel(ctx, f.sp, st.BillID, brcal.Date{}, repositories.PostMeta{Actor: "u"}, now); !errors.Is(err, finance.ErrBillState) {
+		t.Fatalf("canceling on a live card: %v", err)
+	}
+	if err := f.ledger.ArchiveAccount(ctx, f.sp, card.ID, now); err != nil {
+		t.Fatal(err)
+	}
+	owed, expense := f.ledgerBal(t, card.ID), f.ledgerBal(t, "food")
+	if _, err := f.bills.Cancel(ctx, f.sp, st.BillID, brcal.Date{}, repositories.PostMeta{Actor: "u"}, now); err != nil {
+		t.Fatal(err)
+	}
+	if f.ledgerBal(t, card.ID) != owed || f.ledgerBal(t, "food") != expense {
+		t.Fatal("canceling a statement bill moved the ledger")
 	}
 }
