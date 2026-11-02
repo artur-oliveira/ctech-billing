@@ -77,8 +77,12 @@ resource "aws_dynamodb_table" "billing" {
     enabled = var.point_in_time_recovery
   }
 
+  # KMS policy: the AWS-owned key costs nothing and makes no KMS requests; the
+  # AWS-managed key (`enabled = true`) bills every read and write as a KMS call.
+  # The block must be explicit: omitting it leaves an existing table on KMS
+  # (the argument is computed), only `enabled = false` switches it, in place.
   server_side_encryption {
-    enabled = true
+    enabled = false
   }
 
   deletion_protection_enabled = var.deletion_protection
