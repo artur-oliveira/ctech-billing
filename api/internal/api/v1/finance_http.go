@@ -129,10 +129,18 @@ func financeRoutes() []financeRoute {
 		{"POST", "/cards/:id/purchases/:pid/refund", space.Write, true, func(h *financeHandlers) fiber.Handler { return h.refundPurchase }},
 		{"POST", "/cards/:id/purchases/:pid/advance", space.Write, true, func(h *financeHandlers) fiber.Handler { return h.advancePurchase }},
 		{"POST", "/cards/:id/close", space.Write, true, func(h *financeHandlers) fiber.Handler { return h.closeStatement }},
+		{"POST", "/cards/:id/credits", space.Write, true, func(h *financeHandlers) fiber.Handler { return h.createCredit }},
 		{"POST", "/cards/:id/reopen", space.Write, true, func(h *financeHandlers) fiber.Handler { return h.reopenStatement }},
 		// imports (F6)
 		{"GET", "/imports", space.Read, false, func(h *financeHandlers) fiber.Handler { return h.listImports }},
 		{"POST", "/imports", space.Import, true, func(h *financeHandlers) fiber.Handler { return h.uploadImport }},
+		{"POST", "/cards/:id/imports", space.Import, true, func(h *financeHandlers) fiber.Handler { return h.uploadCardImport }},
+		{"GET", "/cards/:id/bank-categories", space.Read, false, func(h *financeHandlers) fiber.Handler { return h.getBankCategories }},
+		{"PUT", "/cards/:id/bank-categories", space.Import, true, func(h *financeHandlers) fiber.Handler { return h.putBankCategories }},
+		{"GET", "/card-imports/:id", space.Read, false, func(h *financeHandlers) fiber.Handler { return h.getCardImport }},
+		{"POST", "/card-imports/:id/confirm", space.Import | space.Write, true, func(h *financeHandlers) fiber.Handler { return h.confirmCardLines }},
+		{"POST", "/card-imports/:id/confirm-all", space.Import | space.Write, true, func(h *financeHandlers) fiber.Handler { return h.confirmAllCardLines }},
+		{"POST", "/card-imports/:id/lines/:n/create", space.Import | space.Write, true, func(h *financeHandlers) fiber.Handler { return h.createCardLine }},
 		{"GET", "/imports/:id", space.Read, false, func(h *financeHandlers) fiber.Handler { return h.getImport }},
 		// The statement's balance as the account's opening: the same verb as any opening balance.
 		{"POST", "/imports/:id/opening-balance", space.Configure, true, func(h *financeHandlers) fiber.Handler { return h.postImportOpening }},

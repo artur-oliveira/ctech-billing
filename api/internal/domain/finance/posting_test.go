@@ -275,3 +275,21 @@ func TestCreditBillRefusesNothingAndMoreThanTheBill(t *testing.T) {
 		t.Errorf("crediting the whole bill: %v", err)
 	}
 }
+
+func TestCardCreditReversesAPurchase(t *testing.T) {
+	purchase := ok(t)(CardPurchase("card", "food", 500, d(2026, time.March, 5)))
+	credit := ok(t)(CardCredit("card", "food", 500, d(2026, time.March, 5)))
+	if len(credit.Legs) != len(purchase.Legs) {
+		t.Fatalf("legs = %d, want %d", len(credit.Legs), len(purchase.Legs))
+	}
+	for i, l := range purchase.Legs {
+		if credit.Legs[i].AccountID != l.AccountID || credit.Legs[i].Amount != -l.Amount {
+			t.Errorf("leg %d = %+v, want the negation of %+v", i, credit.Legs[i], l)
+		}
+	}
+	for _, amount := range []billing.Cents{0, -1} {
+		if _, err := CardCredit("card", "food", amount, d(2026, time.March, 5)); !errors.Is(err, ErrInvalidTransaction) {
+			t.Errorf("CardCredit(%d) = %v, want ErrInvalidTransaction", amount, err)
+		}
+	}
+}

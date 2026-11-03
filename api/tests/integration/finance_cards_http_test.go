@@ -131,3 +131,32 @@ func TestACardRefusesAnUnknownBrandAndAnythingButFourDigits(t *testing.T) {
 		t.Errorf("patch last4 98765 = %d %s, want 422", res.status, res.body)
 	}
 }
+
+// A standalone credit lowers the open statement and answers 201; a credit
+// with no amount or an income category is refused.
+func TestAStandaloneCreditLowersTheOpenStatement(t *testing.T) {
+	f := newFinanceEnv(t)
+	var bank, food, card struct{ ID string }
+	f.must(t, 201, "POST", "/accounts", `{"name":"Banco","class":"asset"}`, &bank)
+	f.must(t, 201, "POST", "/accounts", `{"name":"Mercado","class":"expense","dre_group":"operating_expenses"}`, &food)
+	f.must(t, 201, "POST", "/cards", fmt.Sprintf(`{"name":"Visa","closing_day":15,"due_day":25,"paying_account_id":%q}`, bank.ID), &card)
+	f.must(t, 201, "POST", "/cards/"+card.ID+"/purchases",
+		fmt.Sprintf(`{"date":"2026-03-09","description":"Geladeira","category_id":%q,"total":30000,"installments":1}`, food.ID), nil)
+	var cr struct {
+		ID     string
+		Amount int64
+	}
+	f.must(t, 201, "POST", "/cards/"+card.ID+"/credits",
+		fmt.Sprintf(`{"date":"2026-03-09","description":"Estorno parcial","category_id":%q,"amount":500}`, food.ID), &cr)
+	if cr.ID == "" || cr.Amount != 500 {
+		t.Fatalf("credit = %+v", cr)
+	}
+	var st struct{ Total int64 }
+	f.must(t, 200, "GET", "/cards/"+card.ID+"/statements/2026-03", "", &st)
+	if st.Total != 29500 {
+		t.Fatalf("statement total = %d, want 29500", st.Total)
+	}
+	if res := f.call(t, "POST", "/cards/"+card.ID+"/credits", fmt.Sprintf(`{"date":"2026-03-09","category_id":%q,"amount":0}`, food.ID)); res.status != 422 {
+		t.Fatalf("a credit of 0 = %d %s", res.status, res.body)
+	}
+}

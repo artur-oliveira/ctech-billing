@@ -254,6 +254,23 @@ func FromError(err error) *Problem {
 	case errors.Is(err, repositories.ErrNotClosable):
 		return New(409, TypeInvalidTransition, "Invalid Transition", "This statement is not open for closing.").WithCode("statement_not_closable")
 
+	case errors.Is(err, repositories.ErrStatementNotOpen):
+		return New(409, TypeInvalidTransition, "Invalid Transition", "This statement is not the card's open one. Reopen it first.").WithCode("statement_not_open")
+	case errors.Is(err, repositories.ErrStatementNotBegun):
+		return New(409, TypeInvalidTransition, "Invalid Transition", "This statement's period has not begun yet.").WithCode("statement_not_begun")
+	case errors.Is(err, repositories.ErrPairTaken):
+		return New(409, TypeInvalidTransition, "Invalid Transition", "That purchase is already paired with another line.").WithCode("pair_taken")
+	case errors.Is(err, repositories.ErrNotCardImport):
+		return New(409, TypeInvalidTransition, "Invalid Transition", "This import is not a card statement import.").WithCode("not_card_import")
+	case errors.Is(err, repositories.ErrPairMismatch):
+		return Unprocessable("these lines do not fit that purchase").WithCode("pair_mismatch")
+	case errors.Is(err, repositories.ErrPaymentLine):
+		return Unprocessable("the payment of the previous statement is not a purchase").WithCode("payment_line")
+	case errors.Is(err, repositories.ErrCategoryUnmapped):
+		return Unprocessable("choose a category: this line's bank category is not mapped").WithCode("category_unmapped")
+	case errors.Is(err, repositories.ErrInvalidBankCategories):
+		return Unprocessable(err.Error()).WithCode("invalid_bank_categories")
+
 	case errors.Is(err, repositories.ErrNotReopenable):
 		return New(409, TypeInvalidTransition, "Invalid Transition", "Only the latest closed statement of an active card can be reopened, while its bill is unpaid.").WithCode("statement_not_reopenable")
 

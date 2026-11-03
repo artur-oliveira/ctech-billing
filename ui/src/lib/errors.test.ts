@@ -25,7 +25,7 @@ const BACKEND_CODES = [
   "idempotency_tenant_unresolved", "idempotency_lookup_failed", "space_not_found", "space_unavailable",
   "organization_resolve_failed", "account_resolve_failed", "credential_resolve_failed", "internal_server_error",
   "invalid_transition", "concurrent_update", "payment_attempt_in_progress", "card_moved", "already_generated",
-  "payout_not_enabled", "purchase_refunded", "statement_not_closable", "statement_not_reopenable", "nothing_to_advance", "opening_balance_exists",
+  "payout_not_enabled", "purchase_refunded", "statement_not_closable", "statement_not_reopenable", "pair_taken", "pair_mismatch", "statement_not_open", "statement_not_begun", "category_unmapped", "payment_line", "invalid_bank_categories", "not_card_import", "nothing_to_advance", "opening_balance_exists",
   "not_reversible_entry", "unknown_account", "invalid_card", "invalid_installments", "invalid_bill", "invalid_recurrence",
   "invalid_transaction", "invalid_account", "invalid_metadata", "invalid_price", "invalid_usage",
   "invalid_subscription_item", "invalid_credit_note", "invalid_dunning_policy", "invalid_invoice_items", "bad_request",

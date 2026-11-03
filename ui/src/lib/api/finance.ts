@@ -10,6 +10,7 @@ import type {
   CardSpending, CategoryMonth, NewCard, NewPurchase, NewRecurrence, PurchasePatch, NewTransfer, Purchase, Occurrence, OpeningBalance, PreviewInput, ProjectionMonth, Recurrence, RecurrenceOccurrences, RecurrencePatch,
   StatementDirection, StatementPage, PendingOccurrence,
   ChoosePlan, PlanState, Settings, Settlement, Statement, CsvMapping, ImportDetail, ImportSummary, LineResult, NewImport,
+  CardImportDetail, CardImportSummary, CardImportLine, Credit, NewCardImport, NewCredit,
 } from "@/lib/api/financeTypes";
 import {getSpace, PERSONAL, type Space, setSpace, spaceHeader} from "@/lib/console/space";
 import type {Mode} from "@/lib/console/mode";
@@ -122,6 +123,8 @@ export const financeKeys = {
   // test mode must show in live mode too.
   plan: (_mode: Mode, space: Space) => ["finance", "plan", spaceHeader(space)] as const,
   importDetail: (mode: Mode, space: Space, id: string) => ["finance", mode, spaceHeader(space), "import", id] as const,
+  cardImport: (mode: Mode, space: Space, id: string) => ["finance", mode, spaceHeader(space), "card-import", id] as const,
+  bankCategories: (mode: Mode, space: Space, cardId: string) => ["finance", mode, spaceHeader(space), "bank-categories", cardId] as const,
   csvMapping: (mode: Mode, space: Space, accountId: string) => ["finance", mode, spaceHeader(space), "csv-mapping", accountId] as const,
   spaces: () => ["finance", "spaces"] as const,
 };
@@ -261,6 +264,32 @@ export const closeStatement = (c: FinanceCtx, cardId: string, month: string, ide
  *  the bill is canceled and the month is open again. Anything else is refused. */
 export const reopenStatement = (c: FinanceCtx, cardId: string, month: string, idempotencyKey: string) =>
   write<CardStatement>(c, "POST", `${card(cardId)}/reopen`, {month}, idempotencyKey);
+
+/** A credit that is not the refund of a known purchase, on the card's open statement. */
+export const addCardCredit = (c: FinanceCtx, cardId: string, body: NewCredit, idempotencyKey: string) =>
+  write<Credit>(c, "POST", `${card(cardId)}/credits`, body, idempotencyKey);
+
+// --- card statement import ----------------------------------------------------
+
+const cardImport = (id: string) => `/card-imports/${encodeURIComponent(id)}`;
+
+/** 201 with an id when lines were added; 200 with no id when the file held nothing new.
+ *  409 `statement_not_open` when the month is not the card's open statement. */
+export const uploadCardImport = (c: FinanceCtx, cardId: string, body: NewCardImport, idempotencyKey: string) =>
+  write<CardImportSummary>(c, "POST", `${card(cardId)}/imports`, body, idempotencyKey);
+export const getCardImport = (c: FinanceCtx, id: string) => read<CardImportDetail>(c, cardImport(id));
+/** Links one line (a pair) or several (a group) to a purchase's installment; posts nothing. */
+export const confirmCardLines = (c: FinanceCtx, importId: string, body: {lines: number[]; purchase_id: string; tag: string}, idempotencyKey: string) =>
+  write<{lines: CardImportLine[]}>(c, "POST", `${cardImport(importId)}/confirm`, body, idempotencyKey);
+/** Confirms every suggested pair and group, except those touching a line in `exclude`. */
+export const confirmAllCardLines = (c: FinanceCtx, importId: string, exclude: number[], idempotencyKey: string) =>
+  write<{confirmed: number}>(c, "POST", `${cardImport(importId)}/confirm-all`, {exclude}, idempotencyKey);
+/** Makes a purchase (or, for a negative line, a credit) from the line. No category: the card's mapping. */
+export const createCardLine = (c: FinanceCtx, importId: string, n: number, body: {category_id?: string; description?: string}, idempotencyKey: string) =>
+  write<{line: CardImportLine}>(c, "POST", `${cardImport(importId)}/lines/${n}/create`, body, idempotencyKey);
+export const getBankCategories = (c: FinanceCtx, cardId: string) => read<{categories: Record<string, string>}>(c, `${card(cardId)}/bank-categories`);
+export const putBankCategories = (c: FinanceCtx, cardId: string, categories: Record<string, string>, idempotencyKey: string) =>
+  write<{categories: Record<string, string>}>(c, "PUT", `${card(cardId)}/bank-categories`, {categories}, idempotencyKey);
 
 // --- import and reconciliation (F6) ------------------------------------------------
 

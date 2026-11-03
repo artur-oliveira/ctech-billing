@@ -17,10 +17,11 @@ import (
 )
 
 type cardsFixture struct {
-	sp     space.ResolvedSpace
-	ledger *repositories.LedgerRepository
-	bills  *repositories.BillRepository
-	cards  *repositories.CardRepository
+	sp      space.ResolvedSpace
+	ledger  *repositories.LedgerRepository
+	bills   *repositories.BillRepository
+	cards   *repositories.CardRepository
+	imports *repositories.ImportRepository
 }
 
 // newCardsFixture: a space with bank (asset), food (expense) and a card "Visa"
@@ -28,7 +29,7 @@ type cardsFixture struct {
 func newCardsFixture(t *testing.T) (cardsFixture, repositories.CardRow) {
 	t.Helper()
 	f := cardsFixture{sp: jobSpace(t, newSpaceOrgID(), true), ledger: repositories.NewLedgerRepository(testDB, testCfg),
-		bills: repositories.NewBillRepository(testDB, testCfg), cards: repositories.NewCardRepository(testDB, testCfg)}
+		bills: repositories.NewBillRepository(testDB, testCfg), cards: repositories.NewCardRepository(testDB, testCfg), imports: repositories.NewImportRepository(testDB, testCfg)}
 	ctx := context.Background()
 	march := time.Date(2026, time.March, 1, 12, 0, 0, 0, time.UTC)
 	if err := f.ledger.EnsureSpace(ctx, f.sp, march); err != nil {

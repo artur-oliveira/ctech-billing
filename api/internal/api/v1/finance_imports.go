@@ -35,6 +35,10 @@ type importDTO struct {
 	RejectedCount int           `json:"rejected_count"`
 	Rejected      []rejectedDTO `json:"rejected"`
 	Pending       int           `json:"pending"`
+	// Kind is "card" (with the StatementMonth it was made for) on a card statement
+	// import; absent on a bank account's.
+	Kind           string `json:"kind,omitempty"`
+	StatementMonth string `json:"statement_month,omitempty"`
 	// OpeningProposal is offered on the upload and the detail only, while the
 	// account has no opening balance and no entry (UX batch 5).
 	OpeningProposal *openingProposalDTO `json:"opening_proposal,omitempty"`
@@ -78,7 +82,8 @@ func (h *financeHandlers) postImportOpening(c fiber.Ctx) error {
 
 func newImportDTO(i repositories.Import) importDTO {
 	out := importDTO{ID: i.ID, AccountID: i.AccountID, Format: string(i.Format), CreatedAt: i.CreatedAt.UTC().Format(time.RFC3339),
-		Lines: i.Lines, Duplicates: i.Duplicates, RejectedCount: i.RejectedCount, Pending: i.Pending(), Rejected: make([]rejectedDTO, len(i.Rejected))}
+		Lines: i.Lines, Duplicates: i.Duplicates, RejectedCount: i.RejectedCount, Pending: i.Pending(), Rejected: make([]rejectedDTO, len(i.Rejected)),
+		Kind: i.Kind, StatementMonth: i.StatementMonth}
 	if !i.From.IsZero() {
 		from, to := i.From, i.To
 		out.From, out.To = &from, &to

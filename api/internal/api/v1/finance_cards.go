@@ -447,6 +447,58 @@ func (h *financeHandlers) createPurchase(c fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(newPurchaseDTO(p))
 }
 
+type creditRequest struct {
+	Date        string        `json:"date"`
+	Description string        `json:"description"`
+	CategoryID  string        `json:"category_id"`
+	Amount      billing.Cents `json:"amount"`
+}
+
+func (r creditRequest) validate(today brcal.Date) []problem.FieldError {
+	c := &checks{}
+	if d, e := parseDay("date", r.Date); e != nil {
+		c.errs = append(c.errs, *e)
+	} else {
+		c.date("date", d, limits.MinDate, today)
+	}
+	c.text("description", r.Description, false, limits.Description)
+	c.id("category_id", r.CategoryID, true)
+	c.amount("amount", r.Amount)
+	return c.errs
+}
+
+type creditDTO struct {
+	ID          string        `json:"id"`
+	Description string        `json:"description"`
+	CategoryID  string        `json:"category_id"`
+	Date        string        `json:"date"`
+	Amount      billing.Cents `json:"amount"`
+}
+
+func newCreditDTO(c repositories.Credit) creditDTO {
+	return creditDTO{ID: c.ID, Description: c.Description, CategoryID: c.CategoryID, Date: c.Date.String(), Amount: c.Amount}
+}
+
+// createCredit records a credit that is not the refund of a known purchase, on
+// the card's open statement.
+func (h *financeHandlers) createCredit(c fiber.Ctx) error {
+	var req creditRequest
+	if p := decodeStrict(c, &req); p != nil {
+		return p.Send(c)
+	}
+	if errs := req.validate(h.today()); len(errs) > 0 {
+		return problem.Validation(errs).Send(c)
+	}
+	date, _ := brcal.Parse(req.Date)
+	cr, err := h.cards.AddCredit(c.Context(), middleware.GetSpace(c), c.Params("id"), repositories.Credit{
+		Date: date, Description: req.Description, CategoryID: req.CategoryID, Amount: req.Amount,
+	}, h.postMeta(c, ""), h.now())
+	if err != nil {
+		return fail(c, err)
+	}
+	return c.Status(fiber.StatusCreated).JSON(newCreditDTO(cr))
+}
+
 // purchasePatchRequest edits a purchase's safe fields; anything else (total,
 // date, installments) is an unknown field, refused by decodeStrict.
 type purchasePatchRequest struct {

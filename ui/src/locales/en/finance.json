@@ -230,7 +230,12 @@
     "next": {
       "owed": "To pay · {{month}}",
       "open": "Open · {{month}}"
-    }
+    },
+    "import": "Import statement",
+    "credit": "Add credit",
+    "creditTitle": "Add credit",
+    "creditSave": "Add",
+    "creditHint": "A credit that is not the refund of a purchase on file: it lowers the open statement."
   },
   "inbox": {
     "description": "Items needing your attention across bills and recurring entries.",
@@ -678,5 +683,37 @@
     "empty": "Nothing this month.",
     "month": "Month"
   },
-  "conflict": "This changed while you were editing. We refreshed it; try again."
+  "conflict": "This changed while you were editing. We refreshed it; try again.",
+  "cardImport": {
+    "title": "Import card statement",
+    "month": "Statement",
+    "file": "Statement file (Inter CSV)",
+    "fileHint": "Export the statement in the Inter app and send the CSV here. Importing the same file again is safe: nothing is duplicated.",
+    "submit": "Import",
+    "close": "Close",
+    "onlyOpen": "Only the open statement takes an import. Pick {{open}}, the card's open month, or the latest closed statement to reopen it.",
+    "closedNote": "The {{month}} statement is closed.",
+    "reopen": "Reopen statement",
+    "reopenConfirm": "Reopen the {{month}} statement to import into it? Its current bill is canceled and it closes again on its own in 7 days.",
+    "result": "{{added}} new lines, {{duplicates}} already imported, {{rejected}} unreadable.",
+    "nothingNew": "Nothing new: every line was imported before.",
+    "counts": "Pending: {{pending}} · paired: {{linked}} · created: {{created}} · ignored: {{ignored}}",
+    "totalsLabel": "Totals",
+    "totals": "File total: {{file}}. Statement total: {{statement}}.",
+    "totalsDiffer": "The totals differ: check the pending lines and what you entered by hand.",
+    "pairs": "These look like purchases you already entered",
+    "confirm": "Confirm",
+    "confirmAll": "Confirm all ({{count}})",
+    "group": "{{count}} lines add up to this purchase",
+    "unpaired": "No match",
+    "empty": "No pending lines.",
+    "installment": "installment {{k}}/{{of}}",
+    "createPurchase": "Create purchase",
+    "createCredit": "Create credit",
+    "ignore": "Ignore",
+    "categoryFor": "Category for {{bank}}",
+    "chooseCategory": "Choose category",
+    "resume": "Resume review ({{count}} pending)",
+    "notThis": "Not this one"
+  }
 }
