@@ -5,6 +5,7 @@ package integration
 import (
 	"context"
 	"errors"
+	"os"
 	"strconv"
 	"strings"
 	"testing"
@@ -463,5 +464,68 @@ func TestCardImportCreateWithoutCategoryUsesTheMapping(t *testing.T) {
 	}
 	if _, err := f.imports.CreateFromCardLine(ctx, f.sp, imp.ID, 2, "", "", meta, importAt); !errors.Is(err, repositories.ErrCategoryUnmapped) {
 		t.Fatalf("an unmapped bank category: %v", err)
+	}
+}
+
+// The whole journey on a realistic (anonymised) Inter file: import twice, confirm
+// what the person had keyed by hand, create the rest, ignore the payment — and the
+// statement total is the file's, line for line.
+func TestCardImportRealisticFile(t *testing.T) {
+	f, card := newCardsFixture(t)
+	ctx := context.Background()
+	raw, err := os.ReadFile("../../internal/domain/finance/statement/testdata/inter_card_sample.csv")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines, rejected, err := statement.ParseInterCard(raw)
+	if err != nil || len(lines) != 12 || len(rejected) != 1 {
+		t.Fatalf("parse = %d lines, %d rejected, %v", len(lines), len(rejected), err)
+	}
+	// What the person keyed by hand: the à vista one, the old installment purchase
+	// as its 5 remaining, and the four Shein installments as one grouped purchase.
+	f.purchase(t, card.ID, brcal.New(2026, time.March, 2), 1000, 1)
+	f.purchase(t, card.ID, brcal.New(2026, time.March, 2), 154730, 5)
+	f.purchase(t, card.ID, brcal.New(2026, time.March, 2), 108340, 10)
+
+	imp, err := f.imports.ImportCard(ctx, f.sp, card.ID, march, lines, rejected, "", importAt)
+	if err != nil || imp.Lines != 12 || imp.RejectedCount != 1 {
+		t.Fatalf("import = %+v, %v", imp, err)
+	}
+	if again, err := f.imports.ImportCard(ctx, f.sp, card.ID, march, lines, rejected, "", importAt); err != nil || again.ID != "" || again.Duplicates != 12 {
+		t.Fatalf("the same file again = %+v, %v", again, err)
+	}
+	if n, err := f.imports.ConfirmAll(ctx, f.sp, imp.ID, importAt); err != nil || n != 6 {
+		t.Fatalf("confirm-all = %d, %v; want the à vista, the installment and the 4 grouped lines", n, err)
+	}
+	if err := f.imports.PutBankCategories(ctx, f.sp, card.ID, map[string]string{
+		"SUPERMERCADO": "food", "TRANSPORTE": "food", "RESTAURANTES": "food", "SERVICOS": "food", "COMPRAS": "food", "VESTUARIO": "food",
+	}, importAt); err != nil {
+		t.Fatal(err)
+	}
+	var want billing.Cents
+	for i, l := range lines {
+		n := i + 1
+		if l.Payment {
+			if _, err := f.imports.Ignore(ctx, f.sp, imp.ID, n, importAt); err != nil {
+				t.Fatal(err)
+			}
+			continue
+		}
+		want += l.Amount
+		if f.line(t, imp.ID, n).Status == repositories.LinePending {
+			if _, err := f.imports.CreateFromCardLine(ctx, f.sp, imp.ID, n, "", "", meta, importAt); err != nil {
+				t.Fatalf("line %d (%s): %v", n, l.Description, err)
+			}
+		}
+	}
+	if got := f.marchTotal(t, card.ID); got != want {
+		t.Fatalf("statement total = %d, want the file's %d", got, want)
+	}
+	got, _, _ := f.imports.Get(ctx, f.sp, imp.ID, importAt)
+	if got.Pending() != 0 {
+		t.Fatalf("pending = %d, want 0", got.Pending())
+	}
+	if again, err := f.imports.ImportCard(ctx, f.sp, card.ID, march, lines, rejected, "", importAt); err != nil || again.ID != "" || again.Duplicates != 12 {
+		t.Fatalf("a re-import after resolving everything = %+v, %v", again, err)
 	}
 }

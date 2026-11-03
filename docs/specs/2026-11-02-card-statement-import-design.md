@@ -1,5 +1,7 @@
 # Card statement import (Inter CSV first)
 
+**Status: implemented** (plan `docs/plans/2026-11-02-card-statement-import.md`). See "As built" at the end for where the code differs from the proposal.
+
 ## Intent
 
 People prefer to export their card statement from the bank and import it than to key every purchase by hand.
@@ -142,3 +144,18 @@ negative as `-R$<nbsp>5,00`; no transaction id, no statement month (only the fil
 Table/key layout of the card import lines, the lock key format, the group-suggestion search bound, endpoint
 names, the screen layout, the bank-category mapping storage, test fixtures (a trimmed copy of the real file with
 descriptions anonymised — never commit the real one).
+
+## As built
+
+- Upload `POST /cards/:id/imports` (`{statement_month, bank:"inter", content}`); review `GET /card-imports/:id`
+  (lines + suggestions); `POST /card-imports/:id/confirm` (1 line = pair, 2..6 = group), `/confirm-all`,
+  `/lines/:n/create`; ignore/reopen reuse `/imports/:id/lines/:n/ignore|reopen`; `GET|PUT /cards/:id/bank-categories`;
+  standalone credit `POST /cards/:id/credits`. Errors: `statement_not_open`, `statement_not_begun`, `pair_taken`,
+  `category_unmapped`, `payment_line`, `invalid_bank_categories`, `not_card_import`.
+- Storage reuses the account-import tables: lock scope `<cardID>#<month>`, a `CARDPAIR#` lock per paired item
+  (no TTL, like the FITID locks), the line's `bill_id` holds the purchase it paired with or became. New line
+  attributes: `k`, `of`, `bank_category`; import attributes `kind`, `statement_month`.
+- The standalone credit posts as an adjustment (reverse of a card purchase) and has no edit/delete in this build.
+- Installment lines the bank prints as `Parcela k/n` are stored as `K`/`Of` (not `N`, already the line number).
+- Cost: no new resource. One small lock row per confirmed pair and per bank-category mapping; reads are one
+  statement-partition query plus one `CARDPAIR#` prefix query per review.
