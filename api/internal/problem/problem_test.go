@@ -146,3 +146,24 @@ func TestADeadlineIsAGatewayTimeout(t *testing.T) {
 		t.Fatalf("problem = %v", m)
 	}
 }
+
+// Card statement import and reopen: the codes the console acts on.
+func TestCardStatementImportCodes(t *testing.T) {
+	for err, want := range map[error]struct {
+		status int
+		code   string
+	}{
+		repositories.ErrStatementNotOpen:      {409, "statement_not_open"},
+		repositories.ErrStatementNotBegun:     {409, "statement_not_begun"},
+		repositories.ErrPairTaken:             {409, "pair_taken"},
+		repositories.ErrNotCardImport:         {409, "not_card_import"},
+		repositories.ErrNotReopenable:         {409, "statement_not_reopenable"},
+		repositories.ErrPaymentLine:           {422, "payment_line"},
+		repositories.ErrCategoryUnmapped:      {422, "category_unmapped"},
+		repositories.ErrInvalidBankCategories: {422, "invalid_bank_categories"},
+	} {
+		if p := FromError(err); p.Status != want.status || p.Code != want.code {
+			t.Errorf("%v: %d %q, want %d %q", err, p.Status, p.Code, want.status, want.code)
+		}
+	}
+}
