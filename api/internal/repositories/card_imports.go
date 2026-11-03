@@ -269,7 +269,13 @@ func (r *ImportRepository) CreateFromCardLine(ctx context.Context, sp space.Reso
 		return ImportLine{}, ErrPaymentLine
 	}
 	if categoryID == "" {
-		return ImportLine{}, ErrCategoryUnmapped
+		mapped, err := r.GetBankCategories(ctx, sp, imp.AccountID)
+		if err != nil {
+			return ImportLine{}, err
+		}
+		if categoryID = mapped[line.BankCategory]; categoryID == "" {
+			return ImportLine{}, ErrCategoryUnmapped
+		}
 	}
 	month, err := finance.ParseMonth(imp.StatementMonth)
 	if err != nil {

@@ -5,6 +5,7 @@ package integration
 import (
 	"context"
 	"errors"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -395,5 +396,72 @@ func TestCardImportTotalAfterCreatingEverythingMatchesTheFileExcludingIgnored(t 
 	}
 	if got := f.marchTotal(t, card.ID); got != 1000+3000-500 {
 		t.Fatalf("statement total = %d, want the file sum without the ignored payment (3.500)", got)
+	}
+}
+
+func TestCardBankCategoriesPutThenGetRoundTrips(t *testing.T) {
+	f, card := newCardsFixture(t)
+	ctx := context.Background()
+	if got, err := f.imports.GetBankCategories(ctx, f.sp, card.ID); err != nil || len(got) != 0 {
+		t.Fatalf("empty = %v, %v", got, err)
+	}
+	if err := f.imports.PutBankCategories(ctx, f.sp, card.ID, map[string]string{"SUPERMERCADO": "food", "COMPRAS": "food"}, importAt); err != nil {
+		t.Fatal(err)
+	}
+	got, err := f.imports.GetBankCategories(ctx, f.sp, card.ID)
+	if err != nil || len(got) != 2 || got["SUPERMERCADO"] != "food" {
+		t.Fatalf("got = %v, %v", got, err)
+	}
+}
+
+func TestCardBankCategoriesRefuseAnArchivedOrIncomeCategoryAndTooMany(t *testing.T) {
+	f, card := newCardsFixture(t)
+	ctx := context.Background()
+	for _, a := range []finance.LedgerAccount{
+		{ID: "salary", Name: "Salário", Class: finance.ClassIncome, Group: finance.GroupGrossRevenue},
+		{ID: "old", Name: "Antiga", Class: finance.ClassExpense, Group: finance.GroupOperatingExpenses},
+	} {
+		if err := f.ledger.CreateAccount(ctx, f.sp, a, importAt); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := f.ledger.ArchiveAccount(ctx, f.sp, "old", importAt); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"salary", "old", "nope"} {
+		if err := f.imports.PutBankCategories(ctx, f.sp, card.ID, map[string]string{"X": id}, importAt); err == nil {
+			t.Errorf("category %q was accepted", id)
+		}
+	}
+	many := map[string]string{}
+	for i := 0; i <= 50; i++ {
+		many[strconv.Itoa(i)] = "food"
+	}
+	if err := f.imports.PutBankCategories(ctx, f.sp, card.ID, many, importAt); !errors.Is(err, repositories.ErrInvalidBankCategories) {
+		t.Fatalf("51 entries: %v", err)
+	}
+	if err := f.imports.PutBankCategories(ctx, f.sp, card.ID, map[string]string{"": "food"}, importAt); !errors.Is(err, repositories.ErrInvalidBankCategories) {
+		t.Fatalf("an empty bank category: %v", err)
+	}
+}
+
+func TestCardImportCreateWithoutCategoryUsesTheMapping(t *testing.T) {
+	f, card := newCardsFixture(t)
+	ctx := context.Background()
+	if err := f.imports.PutBankCategories(ctx, f.sp, card.ID, map[string]string{"COMPRAS": "food"}, importAt); err != nil {
+		t.Fatal(err)
+	}
+	other := cl(3, 500, "Y")
+	other.BankCategory = "OUTROS" // mapped nowhere
+	imp := f.importCard(t, card.ID, "", cl(2, 1000, "X"), other)
+	line, err := f.imports.CreateFromCardLine(ctx, f.sp, imp.ID, 1, "", "", meta, importAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p, _ := f.cards.GetPurchase(ctx, f.sp, card.ID, line.BillID); p.CategoryID != "food" {
+		t.Fatalf("category = %q, want the mapped one", p.CategoryID)
+	}
+	if _, err := f.imports.CreateFromCardLine(ctx, f.sp, imp.ID, 2, "", "", meta, importAt); !errors.Is(err, repositories.ErrCategoryUnmapped) {
+		t.Fatalf("an unmapped bank category: %v", err)
 	}
 }
