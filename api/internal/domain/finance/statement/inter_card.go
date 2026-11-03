@@ -29,6 +29,12 @@ type CardLine struct {
 	Payment      bool   // the payment of the previous statement, not a purchase
 }
 
+// IsPaymentLine reports whether a card statement line is the payment of the
+// previous statement ("PAGAMENTO ON LINE"), which is not a purchase.
+func IsPaymentLine(description string) bool {
+	return strings.HasPrefix(strings.ToUpper(strings.TrimSpace(description)), "PAGAMENTO")
+}
+
 // Remaining is how many installments are left counting this one: n−k+1 for an
 // installment, 1 otherwise. It is what a person keys by hand for an old
 // installment purchase, so it is what pairing compares.
@@ -107,7 +113,7 @@ func interCardLine(rec []string) (CardLine, string) {
 		Line:         Line{Date: date, Amount: amount, Description: cleanText(field(rec, 2), maxDescription)},
 		BankCategory: cleanText(field(rec, 3), 60),
 	}
-	l.Payment = strings.HasPrefix(strings.ToUpper(l.Description), "PAGAMENTO")
+	l.Payment = IsPaymentLine(l.Description)
 	if tipo := field(rec, 4); strings.HasPrefix(tipo, "Parcela ") {
 		ks, ns, found := strings.Cut(strings.TrimPrefix(tipo, "Parcela "), "/")
 		k, kerr := strconv.Atoi(ks)
