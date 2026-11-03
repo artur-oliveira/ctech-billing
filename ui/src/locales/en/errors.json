@@ -145,7 +145,8 @@
     "category_unmapped": "Choose a category: this line's bank category is not mapped yet.",
     "payment_line": "The previous statement's payment is not a purchase.",
     "invalid_bank_categories": "The category mapping is invalid.",
-    "not_card_import": "This import is not a card statement import."
+    "not_card_import": "This import is not a card statement import.",
+    "pair_mismatch": "These lines do not match that purchase."
   },
   "field": {
     "required": "Required.",

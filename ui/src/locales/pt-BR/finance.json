@@ -712,6 +712,8 @@
     "createCredit": "Criar crédito",
     "ignore": "Ignorar",
     "categoryFor": "Categoria para {{bank}}",
-    "chooseCategory": "Escolher categoria"
+    "chooseCategory": "Escolher categoria",
+    "resume": "Continuar revisão ({{count}} pendentes)",
+    "notThis": "Não é essa"
   }
 }

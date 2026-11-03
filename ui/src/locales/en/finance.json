@@ -712,6 +712,8 @@
     "createCredit": "Create credit",
     "ignore": "Ignore",
     "categoryFor": "Category for {{bank}}",
-    "chooseCategory": "Choose category"
+    "chooseCategory": "Choose category",
+    "resume": "Resume review ({{count}} pending)",
+    "notThis": "Not this one"
   }
 }

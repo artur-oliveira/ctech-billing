@@ -145,7 +145,8 @@
     "category_unmapped": "Escolha uma categoria: a categoria do banco dessa linha ainda não foi mapeada.",
     "payment_line": "O pagamento da fatura anterior não é uma compra.",
     "invalid_bank_categories": "O mapeamento de categorias é inválido.",
-    "not_card_import": "Essa importação não é de fatura de cartão."
+    "not_card_import": "Essa importação não é de fatura de cartão.",
+    "pair_mismatch": "Essas linhas não correspondem a essa compra."
   },
   "field": {
     "required": "Obrigatório.",

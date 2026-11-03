@@ -604,6 +604,9 @@ export type RejectReason = "invalid_date" | "invalid_amount" | "zero_amount" | "
 export interface ImportSummary {
   /** Absent when the upload added nothing (the file was imported before). */
   id?: string
+  /** "card" on a card statement import, for the `statement_month` it was made for. */
+  kind?: "card"
+  statement_month?: string
   account_id: string
   format: ImportFormat
   created_at: string

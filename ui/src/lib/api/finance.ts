@@ -281,8 +281,9 @@ export const getCardImport = (c: FinanceCtx, id: string) => read<CardImportDetai
 /** Links one line (a pair) or several (a group) to a purchase's installment; posts nothing. */
 export const confirmCardLines = (c: FinanceCtx, importId: string, body: {lines: number[]; purchase_id: string; tag: string}, idempotencyKey: string) =>
   write<{lines: CardImportLine[]}>(c, "POST", `${cardImport(importId)}/confirm`, body, idempotencyKey);
-export const confirmAllCardLines = (c: FinanceCtx, importId: string, idempotencyKey: string) =>
-  write<{confirmed: number}>(c, "POST", `${cardImport(importId)}/confirm-all`, {}, idempotencyKey);
+/** Confirms every suggested pair and group, except those touching a line in `exclude`. */
+export const confirmAllCardLines = (c: FinanceCtx, importId: string, exclude: number[], idempotencyKey: string) =>
+  write<{confirmed: number}>(c, "POST", `${cardImport(importId)}/confirm-all`, {exclude}, idempotencyKey);
 /** Makes a purchase (or, for a negative line, a credit) from the line. No category: the card's mapping. */
 export const createCardLine = (c: FinanceCtx, importId: string, n: number, body: {category_id?: string; description?: string}, idempotencyKey: string) =>
   write<{line: CardImportLine}>(c, "POST", `${cardImport(importId)}/lines/${n}/create`, body, idempotencyKey);

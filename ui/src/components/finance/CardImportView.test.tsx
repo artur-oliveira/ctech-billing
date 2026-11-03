@@ -7,7 +7,7 @@ import {afterEach, describe, expect, it, vi} from "vitest";
 import {CardImportView} from "@/components/finance/CardImportView";
 import {pick, renderWithQuery} from "@/components/finance/finance.test-utils";
 import * as finance from "@/lib/api/finance";
-import type {Account, Card, CardImportDetail, CardImportLine, CardSuggestion, Verb} from "@/lib/api/financeTypes";
+import type {Account, Card, CardImportDetail, CardImportLine, CardSuggestion, ImportSummary, Verb} from "@/lib/api/financeTypes";
 
 const ALL: Verb[] = ["finance.read", "finance.write", "finance.settle", "finance.import", "finance.configure"];
 const ACCOUNTS: Account[] = [
@@ -29,7 +29,8 @@ function detail(lines: CardImportLine[], suggestions: CardSuggestion[] = []): Ca
   };
 }
 
-function serve(d: CardImportDetail, categories: Record<string, string> = {}) {
+function serve(d: CardImportDetail, categories: Record<string, string> = {}, imports: ImportSummary[] = []) {
+  vi.spyOn(finance, "listImports").mockResolvedValue({data: imports, has_more: false});
   vi.spyOn(finance, "getFinanceSpaces").mockResolvedValue({spaces: [{selector: "personal", kind: "personal_default", display_name: "Pessoal", verbs: ALL, manage_people: false}], organizations_unavailable: false});
   vi.spyOn(finance, "getCardImport").mockResolvedValue(d);
   vi.spyOn(finance, "getBankCategories").mockResolvedValue({categories});
@@ -130,6 +131,30 @@ describe("importar fatura do cartão", () => {
     expect(note).toHaveTextContent("R$ 110,51"); // the file without the ignored payment
     expect(note).toHaveTextContent("R$ 90,51"); // the statement
     expect(note).toHaveTextContent(/diferem/);
+  });
+
+  it("lets a review be resumed after the drawer was closed", async () => {
+    serve(detail([line(1)]), {}, [
+      {id: "i1", account_id: "inter", format: "inter_csv" as never, kind: "card", statement_month: "2026-12", created_at: "2026-11-02T10:00:00Z", lines: 5, duplicates: 0, rejected_count: 0, rejected: [], pending: 3},
+      {id: "i0", account_id: "inter", format: "inter_csv" as never, kind: "card", statement_month: "2026-11", created_at: "2026-10-02T10:00:00Z", lines: 5, duplicates: 0, rejected_count: 0, rejected: [], pending: 2},
+    ]);
+    renderWithQuery(<CardImportView card={CARD} accounts={ACCOUNTS} onClose={() => {}}/>);
+    await userEvent.click(await screen.findByRole("button", {name: "Continuar revisão (3 pendentes)"}));
+    expect(await screen.findByText(/LINHA 1/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", {name: /Continuar revisão/})).not.toBeInTheDocument();
+  });
+
+  it("lets the person say a suggestion is not that purchase, and confirm-all then leaves it out", async () => {
+    const s = serve(detail([line(1), line(2, {amount: 2000, description: "POSTO"})], [
+      {kind: "pair", lines: [1], item}, {kind: "pair", lines: [2], item: {...item, purchase_id: "p2", amount: 2000, description: "Gasolina"}},
+    ]), {SUPERMERCADO: "food"});
+    renderWithQuery(<CardImportView card={CARD} accounts={ACCOUNTS} importId="i1" onClose={() => {}}/>);
+    const first = (await screen.findByText("Mercado do bairro")).closest("li") as HTMLElement;
+    await userEvent.click(within(first).getByRole("button", {name: "Não é essa"}));
+    const row = (await screen.findByText(/LINHA 1/)).closest("li") as HTMLElement;
+    expect(within(row).getByRole("button", {name: "Criar compra"})).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", {name: "Confirmar todos (1)"}));
+    await waitFor(() => expect(s.confirmAll).toHaveBeenCalledWith(expect.anything(), "i1", [1], expect.any(String)));
   });
 
   it("renders a pair taken by another line in words", async () => {

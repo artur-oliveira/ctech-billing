@@ -14,7 +14,7 @@ import {Amount} from "@/components/ui/Amount";
 import {Section} from "@/components/ui/Section";
 import {
   confirmAllCardLines, confirmCardLines, createCardLine, type FinanceCtx, fileToBase64, financeKeys, getBankCategories, getCardImport, getCardStatement,
-  ignoreLine, putBankCategories, reopenStatement, uploadCardImport,
+  ignoreLine, listImports, putBankCategories, reopenStatement, uploadCardImport,
 } from "@/lib/api/finance";
 import type {Account, Card, CardImportLine, CardSuggestion} from "@/lib/api/financeTypes";
 import {accountName} from "@/lib/finance/accountName";
@@ -42,6 +42,7 @@ const monthOfName = (name: string) => {
  */
 export function CardImportView({card, accounts, importId: initial, onClose}: {card: Card; accounts: Account[]; importId?: string; onClose: () => void}) {
   const {t} = useTranslation();
+  const ctx = useFinanceCtx();
   const [month, setMonth] = useState(card.open_month);
   const [file, setFile] = useState<File | null>(null);
   const [importId, setImportId] = useState(initial ?? "");
@@ -60,6 +61,10 @@ export function CardImportView({card, accounts, importId: initial, onClose}: {ca
       } else setNote(t("finance.cardImport.nothingNew"));
     },
   );
+  // What a closed drawer or a reload left pending: the way back to those lines (the
+  // file's lines are all "already imported" now, so uploading again finds nothing).
+  const imports = useQuery({queryKey: financeKeys.imports(ctx.mode, ctx.space, card.id), queryFn: () => listImports(ctx, card.id)});
+  const resumable = (imports.data?.data ?? []).filter(i => i.id && i.kind === "card" && i.statement_month === card.open_month && i.pending > 0);
   const reopen = useFinanceMutation((c: FinanceCtx, _: void, key) => reopenStatement(c, card.id, month, key), wholeSpace, () => setReopening(false));
 
   return (
@@ -105,6 +110,15 @@ export function CardImportView({card, accounts, importId: initial, onClose}: {ca
         {note && <p role="status" className="text-sm text-foreground">{note}</p>}
         <FormError error={upload.error} className=""/>
       </form>
+      {!importId && resumable.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {resumable.map(i => (
+            <Button key={i.id} type="button" variant="outline" size="sm" onClick={() => setImportId(i.id!)}>
+              {t("finance.cardImport.resume", {count: i.pending})}
+            </Button>
+          ))}
+        </div>
+      )}
       {importId && <Review key={importId} card={card} accounts={accounts} importId={importId}/>}
     </div>
   );
@@ -123,7 +137,10 @@ function Review({card, accounts, importId}: {card: Card; accounts: Account[]; im
   const invalidate = (c: FinanceCtx) => [financeKeys.cardImport(c.mode, c.space, importId), financeKeys.all(c.mode, c.space)];
   const confirm = useFinanceMutation((c: FinanceCtx, s: CardSuggestion, key) =>
     confirmCardLines(c, importId, {lines: s.lines, purchase_id: s.item!.purchase_id, tag: s.item!.tag}, key), invalidate);
-  const confirmAll = useFinanceMutation((c: FinanceCtx, _: void, key) => confirmAllCardLines(c, importId, key), invalidate);
+  // Suggestions the person said are not that purchase: their lines go to "no match"
+  // and confirm-all leaves them out.
+  const [dismissed, setDismissed] = useState<number[][]>([]);
+  const confirmAll = useFinanceMutation((c: FinanceCtx, exclude: number[], key) => confirmAllCardLines(c, importId, exclude, key), invalidate);
   const create = useFinanceMutation((c: FinanceCtx, l: CardImportLine, key) =>
     createCardLine(c, importId, l.n, {category_id: cats.data?.categories[l.bank_category ?? ""]}, key), invalidate);
   const ignore = useFinanceMutation((c: FinanceCtx, l: CardImportLine, key) => ignoreLine(c, importId, l.n, key), invalidate);
@@ -134,7 +151,8 @@ function Review({card, accounts, importId}: {card: Card; accounts: Account[]; im
   if (q.error || !q.data) return <ErrorBlock error={q.error} onRetry={() => void q.refetch()}/>;
   const {lines, suggestions} = q.data;
   const byN = new Map(lines.map(l => [l.n, l]));
-  const matches = suggestions.filter(s => s.kind !== "ignore" && s.item);
+  const isDismissed = (s: CardSuggestion) => dismissed.some(d => d.join("-") === s.lines.join("-"));
+  const matches = suggestions.filter(s => s.kind !== "ignore" && s.item && !isDismissed(s));
   const paired = new Set(matches.flatMap(s => s.lines));
   const rest = lines.filter(l => l.status === "pending" && !paired.has(l.n));
   const count = (status: string) => lines.filter(l => l.status === status).length;
@@ -156,7 +174,7 @@ function Review({card, accounts, importId}: {card: Card; accounts: Account[]; im
       )}
       {matches.length > 0 && (
         <Section title={t("finance.cardImport.pairs")} className="space-y-2">
-          <Button type="button" variant="brand" size="sm" disabled={confirmAll.isPending} onClick={() => confirmAll.mutate()}>
+          <Button type="button" variant="brand" size="sm" disabled={confirmAll.isPending} onClick={() => confirmAll.mutate(dismissed.flat())}>
             {t("finance.cardImport.confirmAll", {count: matches.length})}
           </Button>
           <FormError error={confirmAll.error} className=""/>
@@ -167,7 +185,10 @@ function Review({card, accounts, importId}: {card: Card; accounts: Account[]; im
                 <LedgerRow key={`${s.lines.join("-")}`} title={s.item!.description}
                   meta={<>{s.lines.map(n => byN.get(n)?.description).join(" + ")} · {shortDate(first.date)}{s.kind === "group" ? ` · ${t("finance.cardImport.group", {count: s.lines.length})}` : ""}</>}
                   amount={<Amount>{money(s.item!.amount)}</Amount>}
-                  actions={<Button type="button" size="sm" variant="outline" disabled={confirm.isPending} onClick={() => confirm.mutate(s)}>{t("finance.cardImport.confirm")}</Button>}/>
+                  actions={<>
+                    <Button type="button" size="sm" variant="outline" disabled={confirm.isPending} onClick={() => confirm.mutate(s)}>{t("finance.cardImport.confirm")}</Button>
+                    <Button type="button" size="sm" variant="ghost" onClick={() => setDismissed(d => [...d, s.lines])}>{t("finance.cardImport.notThis")}</Button>
+                  </>}/>
               );
             })}
           </ul>

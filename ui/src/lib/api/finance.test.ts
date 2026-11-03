@@ -75,7 +75,7 @@ describe("every finance call", () => {
     ["reopenLine", () => finance.reopenLine(ctx, "i1", 1, "K")],
     ["uploadCardImport", () => finance.uploadCardImport(ctx, "c1", {statement_month: "2026-03", bank: "inter", content: "YQ=="}, "K")],
     ["confirmCardLines", () => finance.confirmCardLines(ctx, "i1", {lines: [1], purchase_id: "p1", tag: "01"}, "K")],
-    ["confirmAllCardLines", () => finance.confirmAllCardLines(ctx, "i1", "K")],
+    ["confirmAllCardLines", () => finance.confirmAllCardLines(ctx, "i1", [], "K")],
     ["createCardLine", () => finance.createCardLine(ctx, "i1", 1, {category_id: "c"}, "K")],
     ["putBankCategories", () => finance.putBankCategories(ctx, "c1", {SUPERMERCADO: "food"}, "K")],
     ["addCardCredit", () => finance.addCardCredit(ctx, "c1", {date: "2026-03-01", category_id: "c", amount: 500}, "K")],
