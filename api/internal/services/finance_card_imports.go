@@ -31,8 +31,8 @@ func (s *FinanceImports) ConfirmPair(ctx context.Context, sp space.ResolvedSpace
 	return s.repo.ConfirmPair(ctx, sp, importID, lines, purchaseID, tag, now)
 }
 
-func (s *FinanceImports) ConfirmAll(ctx context.Context, sp space.ResolvedSpace, importID string, now time.Time) (int, error) {
-	return s.repo.ConfirmAll(ctx, sp, importID, now)
+func (s *FinanceImports) ConfirmAll(ctx context.Context, sp space.ResolvedSpace, importID string, exclude map[int]bool, now time.Time) (int, error) {
+	return s.repo.ConfirmAll(ctx, sp, importID, exclude, now)
 }
 
 func (s *FinanceImports) CreateFromCardLine(ctx context.Context, sp space.ResolvedSpace, importID string, n int, categoryID, description string, meta repositories.PostMeta, now time.Time) (repositories.ImportLine, error) {

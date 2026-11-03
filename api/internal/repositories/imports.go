@@ -158,6 +158,9 @@ type ImportLine struct {
 	// bank's own category. Both zero on an account import's line.
 	K, Of        int
 	BankCategory string
+	// LockSK is the line's lock row, internal: it lets a caller decide many lines
+	// without reading each one again.
+	LockSK string
 	// Expires is when the line leaves with its import (90 days after the
 	// upload); zero for a row written without a TTL.
 	Expires time.Time
@@ -262,7 +265,7 @@ func (i lineItem) entity() (ImportLine, error) {
 		return ImportLine{}, fmt.Errorf("import line %d has a malformed date: %w", i.N, err)
 	}
 	l := ImportLine{N: i.N, Date: d, Amount: billing.Cents(i.Amount), Description: i.Description,
-		Status: LineStatus(i.Status), BillID: i.BillID, K: i.K, Of: i.Of, BankCategory: i.BankCategory}
+		Status: LineStatus(i.Status), BillID: i.BillID, K: i.K, Of: i.Of, BankCategory: i.BankCategory, LockSK: i.LockSK}
 	if i.TTL != nil {
 		l.Expires = time.Unix(*i.TTL, 0).UTC()
 	}

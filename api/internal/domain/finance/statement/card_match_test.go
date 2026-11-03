@@ -125,3 +125,17 @@ func TestRefundLineHasNoPair(t *testing.T) {
 		t.Fatalf("a refund paired: %+v", got)
 	}
 }
+
+// Review fix I1: a "Parcela 12/12" line has one installment left, like every à
+// vista purchase, but only the à vista line carries date evidence — it wins.
+func TestADatedAVistaLineBeatsALastInstallmentForTheSamePurchase(t *testing.T) {
+	last := parcela(12, 12, 5000) // 1 left, dated long ago
+	lines := map[int]CardLine{1: last, 2: avista(2, 5000)}
+	it := CardItem{PurchaseID: "mercado", Tag: "01", Date: brcal.New(2026, 10, 2), Amount: 5000, Number: 1, Of: 1}
+	it.Date = brcal.New(2026, 3, 2)
+	lines[2] = CardLine{Line: Line{Date: brcal.New(2026, 3, 2), Amount: 5000, Description: "MERCADO"}}
+	p := pairs(SuggestCard(lines, []CardItem{it}))
+	if p[2] != "mercado" || len(p) != 1 {
+		t.Fatalf("pairs = %v, want the dated à vista line 2 to take the purchase", p)
+	}
+}

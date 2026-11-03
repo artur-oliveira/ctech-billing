@@ -18,15 +18,7 @@ import (
 // bankInter is the only bank whose card statement can be imported so far.
 const bankInter = "inter"
 
-type cardImportDTO struct {
-	importDTO
-	Kind           string `json:"kind"`
-	StatementMonth string `json:"statement_month"`
-}
-
-func newCardImportDTO(i repositories.Import) cardImportDTO {
-	return cardImportDTO{importDTO: newImportDTO(i), Kind: i.Kind, StatementMonth: i.StatementMonth}
-}
+func newCardImportDTO(i repositories.Import) importDTO { return newImportDTO(i) }
 
 type cardLineDTO struct {
 	N            int           `json:"n"`
@@ -68,7 +60,7 @@ type suggestionDTO struct {
 }
 
 type cardImportDetailDTO struct {
-	Import      cardImportDTO   `json:"import"`
+	Import      importDTO       `json:"import"`
 	Lines       []cardLineDTO   `json:"lines"`
 	Suggestions []suggestionDTO `json:"suggestions"`
 }
@@ -175,8 +167,24 @@ func (h *financeHandlers) confirmCardLines(c fiber.Ctx) error {
 	return c.JSON(out)
 }
 
+type confirmAllRequest struct {
+	// Exclude names lines the person said are not the purchase offered for them.
+	Exclude []int `json:"exclude"`
+}
+
 func (h *financeHandlers) confirmAllCardLines(c fiber.Ctx) error {
-	n, err := h.imports.ConfirmAll(c.Context(), middleware.GetSpace(c), c.Params("id"), h.now())
+	var req confirmAllRequest
+	if p := decodeStrict(c, &req); p != nil {
+		return p.Send(c)
+	}
+	if len(req.Exclude) > statement.MaxLines {
+		return problem.Validation([]problem.FieldError{fieldErr("exclude", "out_of_range", "too many lines", "max", statement.MaxLines)}).Send(c)
+	}
+	exclude := make(map[int]bool, len(req.Exclude))
+	for _, n := range req.Exclude {
+		exclude[n] = true
+	}
+	n, err := h.imports.ConfirmAll(c.Context(), middleware.GetSpace(c), c.Params("id"), exclude, h.now())
 	if err != nil {
 		return fail(c, err)
 	}

@@ -258,11 +258,11 @@ func TestCardImportConfirmAllConfirmsEverySuggestedPairAndGroup(t *testing.T) {
 	f.purchase(t, card.ID, brcal.New(2026, time.March, 2), 1000, 1)
 	f.purchase(t, card.ID, brcal.New(2026, time.March, 2), 154740, 5) // 5 × 309,48
 	imp := f.importCard(t, card.ID, "", cl(2, 1000, "A"), inst(1, 30946, "ALI", 8, 12), cl(3, 777, "NOPAIR"))
-	n, err := f.imports.ConfirmAll(ctx, f.sp, imp.ID, importAt)
+	n, err := f.imports.ConfirmAll(ctx, f.sp, imp.ID, nil, importAt)
 	if err != nil || n != 2 {
 		t.Fatalf("confirmed = %d, %v; want 2", n, err)
 	}
-	if again, err := f.imports.ConfirmAll(ctx, f.sp, imp.ID, importAt); err != nil || again != 0 {
+	if again, err := f.imports.ConfirmAll(ctx, f.sp, imp.ID, nil, importAt); err != nil || again != 0 {
 		t.Fatalf("second confirm-all = %d, %v; want 0", again, err)
 	}
 	if f.line(t, imp.ID, 3).Status != repositories.LinePending {
@@ -494,7 +494,7 @@ func TestCardImportRealisticFile(t *testing.T) {
 	if again, err := f.imports.ImportCard(ctx, f.sp, card.ID, march, lines, rejected, "", importAt); err != nil || again.ID != "" || again.Duplicates != 12 {
 		t.Fatalf("the same file again = %+v, %v", again, err)
 	}
-	if n, err := f.imports.ConfirmAll(ctx, f.sp, imp.ID, importAt); err != nil || n != 6 {
+	if n, err := f.imports.ConfirmAll(ctx, f.sp, imp.ID, nil, importAt); err != nil || n != 6 {
 		t.Fatalf("confirm-all = %d, %v; want the à vista, the installment and the 4 grouped lines", n, err)
 	}
 	if err := f.imports.PutBankCategories(ctx, f.sp, card.ID, map[string]string{
@@ -527,5 +527,61 @@ func TestCardImportRealisticFile(t *testing.T) {
 	}
 	if again, err := f.imports.ImportCard(ctx, f.sp, card.ID, march, lines, rejected, "", importAt); err != nil || again.ID != "" || again.Duplicates != 12 {
 		t.Fatalf("a re-import after resolving everything = %+v, %v", again, err)
+	}
+}
+
+// Review fix C1: a purchase made from a line is claimed by that line, so another
+// line of the same amount is not offered it.
+func TestCardImportAPurchaseMadeFromALineIsNotAPairTarget(t *testing.T) {
+	f, card := newCardsFixture(t)
+	ctx := context.Background()
+	imp := f.importCard(t, card.ID, "", cl(2, 650, "99APP"), cl(2, 650, "99APP"))
+	if _, err := f.imports.CreateFromCardLine(ctx, f.sp, imp.ID, 1, "food", "", meta, importAt); err != nil {
+		t.Fatal(err)
+	}
+	if s := f.suggestions(t, imp.ID); len(s) != 0 {
+		t.Fatalf("suggestions = %+v; line 2 must not pair with the purchase line 1 made", s)
+	}
+	if n, err := f.imports.ConfirmAll(ctx, f.sp, imp.ID, nil, importAt); err != nil || n != 0 {
+		t.Fatalf("confirm-all = %d, %v; want 0", n, err)
+	}
+	if _, err := f.imports.CreateFromCardLine(ctx, f.sp, imp.ID, 2, "food", "", meta, importAt); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.marchTotal(t, card.ID); got != 1300 {
+		t.Fatalf("statement total = %d, want both rides (1.300)", got)
+	}
+}
+
+// Review fix I3: the server refuses a pairing that does not fit.
+func TestCardImportConfirmPairRefusesWhatDoesNotFit(t *testing.T) {
+	f, card := newCardsFixture(t)
+	ctx := context.Background()
+	p := f.purchase(t, card.ID, brcal.New(2026, time.March, 2), 1000, 1)
+	pay := cl(2, -505257, "PAGAMENTO ON LINE")
+	imp := f.importCard(t, card.ID, "", cl(2, 100000, "BIG"), pay, inst(1, 1000, "PARC", 3, 12), cl(2, 400, "A"), cl(2, 600, "B"))
+	for name, lines := range map[string][]int{"another amount": {1}, "the payment": {2}, "another remaining count": {3}, "a group of à vista lines": {4, 5}} {
+		if _, err := f.imports.ConfirmPair(ctx, f.sp, imp.ID, lines, p.ID, "01", importAt); !errors.Is(err, repositories.ErrPairMismatch) {
+			t.Errorf("%s: %v, want ErrPairMismatch", name, err)
+		}
+	}
+	if f.line(t, imp.ID, 1).Status != repositories.LinePending {
+		t.Fatal("a refused pairing must leave the line pending")
+	}
+}
+
+// Review fix I2: confirm-all skips lines the person said are not that purchase.
+func TestCardImportConfirmAllSkipsExcludedLines(t *testing.T) {
+	f, card := newCardsFixture(t)
+	ctx := context.Background()
+	f.purchase(t, card.ID, brcal.New(2026, time.March, 2), 1000, 1)
+	f.purchase(t, card.ID, brcal.New(2026, time.March, 2), 2000, 1)
+	imp := f.importCard(t, card.ID, "", cl(2, 1000, "A"), cl(2, 2000, "B"))
+	n, err := f.imports.ConfirmAll(ctx, f.sp, imp.ID, map[int]bool{1: true}, importAt)
+	if err != nil || n != 1 {
+		t.Fatalf("confirm-all = %d, %v; want only line 2", n, err)
+	}
+	if f.line(t, imp.ID, 1).Status != repositories.LinePending || f.line(t, imp.ID, 2).Status != repositories.LineLinked {
+		t.Fatal("line 1 stays pending, line 2 is linked")
 	}
 }

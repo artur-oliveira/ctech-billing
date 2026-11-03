@@ -67,6 +67,7 @@ func SuggestCard(lines map[int]CardLine, items []CardItem) []CardSuggestion {
 	type edge struct {
 		n    int
 		item int
+		rank int // 0: à vista, with date evidence; 1: installment, by amount alone
 		dist int
 	}
 	var edges []edge
@@ -86,7 +87,7 @@ func SuggestCard(lines map[int]CardLine, items []CardItem) []CardSuggestion {
 			}
 			if l.N > 0 {
 				if d := abs(l.Amount - it.Amount); d <= CardCentsTolerance {
-					edges = append(edges, edge{n, i, int(d)})
+					edges = append(edges, edge{n, i, 1, int(d)})
 				}
 				continue
 			}
@@ -94,11 +95,14 @@ func SuggestCard(lines map[int]CardLine, items []CardItem) []CardSuggestion {
 				continue
 			}
 			if d := abs64(l.Date.DaysBetween(it.Date)); d <= CardDateWindow {
-				edges = append(edges, edge{n, i, d})
+				edges = append(edges, edge{n, i, 0, d})
 			}
 		}
 	}
 	slices.SortFunc(edges, func(a, b edge) int {
+		if a.rank != b.rank {
+			return a.rank - b.rank
+		}
 		if a.dist != b.dist {
 			return a.dist - b.dist
 		}

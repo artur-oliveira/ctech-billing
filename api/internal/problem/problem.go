@@ -262,6 +262,8 @@ func FromError(err error) *Problem {
 		return New(409, TypeInvalidTransition, "Invalid Transition", "That purchase is already paired with another line.").WithCode("pair_taken")
 	case errors.Is(err, repositories.ErrNotCardImport):
 		return New(409, TypeInvalidTransition, "Invalid Transition", "This import is not a card statement import.").WithCode("not_card_import")
+	case errors.Is(err, repositories.ErrPairMismatch):
+		return Unprocessable("these lines do not fit that purchase").WithCode("pair_mismatch")
 	case errors.Is(err, repositories.ErrPaymentLine):
 		return Unprocessable("the payment of the previous statement is not a purchase").WithCode("payment_line")
 	case errors.Is(err, repositories.ErrCategoryUnmapped):

@@ -159,6 +159,7 @@ func TestCardStatementImportCodes(t *testing.T) {
 		repositories.ErrNotCardImport:         {409, "not_card_import"},
 		repositories.ErrNotReopenable:         {409, "statement_not_reopenable"},
 		repositories.ErrPaymentLine:           {422, "payment_line"},
+		repositories.ErrPairMismatch:          {422, "pair_mismatch"},
 		repositories.ErrCategoryUnmapped:      {422, "category_unmapped"},
 		repositories.ErrInvalidBankCategories: {422, "invalid_bank_categories"},
 	} {
