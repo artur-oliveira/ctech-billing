@@ -9,6 +9,9 @@ import (
 	"strings"
 )
 
+// FormatInterCard is the format of an import made from the Inter credit card CSV.
+const FormatInterCard Format = "inter_csv"
+
 // ReasonInstallment is a "Parcela k/n" the card statement could not read.
 const ReasonInstallment = "invalid_installment"
 

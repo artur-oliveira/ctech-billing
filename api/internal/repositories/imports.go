@@ -111,10 +111,11 @@ type ImportRepository struct {
 	imports Base
 	bills   *BillRepository
 	ledger  *LedgerRepository
+	cards   *CardRepository
 }
 
 func NewImportRepository(db *dynamodb.Client, cfg *config.Config) *ImportRepository {
-	return &ImportRepository{imports: NewBase(db, cfg, TableImports), bills: NewBillRepository(db, cfg), ledger: NewLedgerRepository(db, cfg)}
+	return &ImportRepository{imports: NewBase(db, cfg, TableImports), bills: NewBillRepository(db, cfg), ledger: NewLedgerRepository(db, cfg), cards: NewCardRepository(db, cfg)}
 }
 
 // Import is one uploaded file, after parsing.
@@ -135,6 +136,11 @@ type Import struct {
 	// whole parsed file at upload and kept on the row; nil without LEDGERBAL.
 	// Whether it is still offered depends on the account (Untouched).
 	Opening *statement.Opening
+	// Kind is "card" for a credit card statement import, whose AccountID is the
+	// card and whose StatementMonth (YYYY-MM) is the statement it was made for;
+	// "" for a bank account import.
+	Kind           string
+	StatementMonth string
 }
 
 // Pending is how many lines still wait for a decision.
@@ -147,7 +153,11 @@ type ImportLine struct {
 	Amount      billing.Cents // signed from the account's side
 	Description string
 	Status      LineStatus
-	BillID      string // the bill it settled, became or was linked to
+	BillID      string // the bill it settled, became or was linked to; a card line's purchase
+	// K and Of are a card line's "Parcela k/n" (0, 0 for à vista); BankCategory the
+	// bank's own category. Both zero on an account import's line.
+	K, Of        int
+	BankCategory string
 	// Expires is when the line leaves with its import (90 days after the
 	// upload); zero for a row written without a TTL.
 	Expires time.Time
@@ -160,17 +170,19 @@ type rejectedItem struct {
 
 type importItem struct {
 	keys
-	ID            string         `dynamodbav:"id"`
-	AccountID     string         `dynamodbav:"account_id"`
-	Format        string         `dynamodbav:"format"`
-	From          string         `dynamodbav:"from,omitempty"`
-	To            string         `dynamodbav:"to,omitempty"`
-	Lines         int            `dynamodbav:"lines"`
-	Duplicates    int            `dynamodbav:"duplicates"`
-	RejectedCount int            `dynamodbav:"rejected_count"`
-	Rejected      []rejectedItem `dynamodbav:"rejected,omitempty"`
-	Resolved      int            `dynamodbav:"resolved"`
-	Opening       *openingItem   `dynamodbav:"opening,omitempty"`
+	ID             string         `dynamodbav:"id"`
+	AccountID      string         `dynamodbav:"account_id"`
+	Format         string         `dynamodbav:"format"`
+	From           string         `dynamodbav:"from,omitempty"`
+	To             string         `dynamodbav:"to,omitempty"`
+	Lines          int            `dynamodbav:"lines"`
+	Duplicates     int            `dynamodbav:"duplicates"`
+	RejectedCount  int            `dynamodbav:"rejected_count"`
+	Rejected       []rejectedItem `dynamodbav:"rejected,omitempty"`
+	Resolved       int            `dynamodbav:"resolved"`
+	Opening        *openingItem   `dynamodbav:"opening,omitempty"`
+	Kind           string         `dynamodbav:"kind,omitempty"`
+	StatementMonth string         `dynamodbav:"statement_month,omitempty"`
 }
 
 type openingItem struct {
@@ -209,7 +221,8 @@ func (i importItem) entity() (Import, error) {
 		return Import{}, fmt.Errorf("import %s has a malformed created_at: %w", i.ID, err)
 	}
 	out := Import{ID: i.ID, AccountID: i.AccountID, Format: statement.Format(i.Format), CreatedAt: created,
-		Lines: i.Lines, Duplicates: i.Duplicates, RejectedCount: i.RejectedCount, Resolved: i.Resolved}
+		Lines: i.Lines, Duplicates: i.Duplicates, RejectedCount: i.RejectedCount, Resolved: i.Resolved,
+		Kind: i.Kind, StatementMonth: i.StatementMonth}
 	if i.From != "" {
 		if out.From, err = brcal.Parse(i.From); err != nil {
 			return Import{}, err
@@ -231,13 +244,16 @@ func (i importItem) entity() (Import, error) {
 
 type lineItem struct {
 	keys
-	N           int    `dynamodbav:"n"`
-	Date        string `dynamodbav:"date"`
-	Amount      int64  `dynamodbav:"amount"`
-	Description string `dynamodbav:"description,omitempty"`
-	LockSK      string `dynamodbav:"lock_sk"`
-	Status      string `dynamodbav:"status"`
-	BillID      string `dynamodbav:"bill_id,omitempty"`
+	N            int    `dynamodbav:"n"`
+	Date         string `dynamodbav:"date"`
+	Amount       int64  `dynamodbav:"amount"`
+	Description  string `dynamodbav:"description,omitempty"`
+	LockSK       string `dynamodbav:"lock_sk"`
+	Status       string `dynamodbav:"status"`
+	BillID       string `dynamodbav:"bill_id,omitempty"`
+	K            int    `dynamodbav:"k,omitempty"`
+	Of           int    `dynamodbav:"of,omitempty"`
+	BankCategory string `dynamodbav:"bank_category,omitempty"`
 }
 
 func (i lineItem) entity() (ImportLine, error) {
@@ -246,7 +262,7 @@ func (i lineItem) entity() (ImportLine, error) {
 		return ImportLine{}, fmt.Errorf("import line %d has a malformed date: %w", i.N, err)
 	}
 	l := ImportLine{N: i.N, Date: d, Amount: billing.Cents(i.Amount), Description: i.Description,
-		Status: LineStatus(i.Status), BillID: i.BillID}
+		Status: LineStatus(i.Status), BillID: i.BillID, K: i.K, Of: i.Of, BankCategory: i.BankCategory}
 	if i.TTL != nil {
 		l.Expires = time.Unix(*i.TTL, 0).UTC()
 	}
@@ -304,16 +320,30 @@ func (r *ImportRepository) Import(ctx context.Context, sp space.ResolvedSpace, a
 	if err := r.ledger.activeManualCash(ctx, sp, accountID); err != nil {
 		return Import{}, err
 	}
-	imp := Import{ID: id.New(), AccountID: accountID, Format: format, CreatedAt: now.UTC(), RejectedCount: len(parsed.Rejected)}
-	keyed := statement.Keys(accountID, parsed.Lines)
-	if idempotencyKey != "" {
-		imp.ID = idempotentID(sp, "import", idempotencyKey+"\x00"+fileFingerprint(accountID, format, keyed, parsed.Rejected))
-	}
-	imp.Rejected = parsed.Rejected[:min(len(parsed.Rejected), maxStoredRejections)]
+	imp := Import{AccountID: accountID, Format: format}
 	if o, ok := statement.OpeningFrom(parsed); ok {
 		imp.Opening = &o
 	}
-	for _, l := range parsed.Lines {
+	return r.store(ctx, sp, imp, accountID, statement.Keys(accountID, parsed.Lines), parsed.Rejected, idempotencyKey, nil, now)
+}
+
+// cardLineExtra is what a card statement line carries beyond a bank line.
+type cardLineExtra struct {
+	K, Of        int
+	BankCategory string
+}
+
+// store is the part of an upload both kinds share, after the caller has checked
+// the target (an account, or a card's open statement) and keyed the lines: it
+// writes the header, then the lines each claiming its lock under scope. imp
+// arrives with its AccountID, Format and Kind set; store fills the rest.
+func (r *ImportRepository) store(ctx context.Context, sp space.ResolvedSpace, imp Import, scope string, keyed []statement.Keyed, rejected []statement.Rejected, idempotencyKey string, extra map[int]cardLineExtra, now time.Time) (Import, error) {
+	imp.ID, imp.CreatedAt, imp.RejectedCount = id.New(), now.UTC(), len(rejected)
+	if idempotencyKey != "" {
+		imp.ID = idempotentID(sp, "import", idempotencyKey+"\x00"+fileFingerprint(scope, imp.Format, keyed, rejected))
+	}
+	imp.Rejected = rejected[:min(len(rejected), maxStoredRejections)]
+	for _, l := range keyed {
 		if imp.From.IsZero() || l.Date.Before(imp.From) {
 			imp.From = l.Date
 		}
@@ -335,7 +365,7 @@ func (r *ImportRepository) Import(ctx context.Context, sp space.ResolvedSpace, a
 	lineTTL := *RetentionImportLine.ExpiresAt(now)
 	for start := 0; start < len(keyed); start += importChunk {
 		end := min(start+importChunk, len(keyed))
-		added, dup, err := r.claim(ctx, sp, imp.ID, accountID, keyed[start:end], start, lineTTL, now)
+		added, dup, err := r.claim(ctx, sp, imp.ID, scope, keyed[start:end], start, lineTTL, extra, now)
 		if err != nil {
 			return Import{}, err
 		}
@@ -352,7 +382,7 @@ func (r *ImportRepository) Import(ctx context.Context, sp space.ResolvedSpace, a
 		return imp, nil
 	}
 	sk := ImportSK(imp.ID)
-	rejected, err := Encode(struct {
+	rej, err := Encode(struct {
 		R []rejectedItem `dynamodbav:"r"`
 	}{rejectedItems(imp.Rejected)})
 	if err != nil {
@@ -360,7 +390,7 @@ func (r *ImportRepository) Import(ctx context.Context, sp space.ResolvedSpace, a
 	}
 	values := map[string]types.AttributeValue{
 		":d":  numberValue(int64(imp.Duplicates)),
-		":rc": numberValue(int64(imp.RejectedCount)), ":r": rejected["r"],
+		":rc": numberValue(int64(imp.RejectedCount)), ":r": rej["r"],
 		":f": str(imp.From.String()), ":t": str(imp.To.String()), ":now": str(now.UTC().Format(time.RFC3339Nano)),
 	}
 	update := r.imports.BuildRawUpdateTxItem(sp.PK(), &sk,
@@ -404,6 +434,7 @@ func (r *ImportRepository) newImportItem(sp space.ResolvedSpace, imp Import, now
 		keys: newKeys(sp.PK(), ImportSK(imp.ID), RetentionImportLine, now),
 		ID:   imp.ID, AccountID: imp.AccountID, Format: string(imp.Format),
 		Lines: 0, Duplicates: 0, RejectedCount: imp.RejectedCount, Rejected: rejectedItems(imp.Rejected),
+		Kind: imp.Kind, StatementMonth: imp.StatementMonth,
 	}
 	if !imp.From.IsZero() {
 		it.From, it.To = imp.From.String(), imp.To.String()
@@ -417,7 +448,7 @@ func (r *ImportRepository) newImportItem(sp space.ResolvedSpace, imp Import, now
 // transaction; the reasons say which, those lines are dropped — as duplicates,
 // or as already added when the lock is this import's own — and the rest is
 // sent again. Each round drops at least one line, so it ends.
-func (r *ImportRepository) claim(ctx context.Context, sp space.ResolvedSpace, importID, accountID string, chunk []statement.Keyed, offset int, lineTTL int64, now time.Time) (added, duplicates int, err error) {
+func (r *ImportRepository) claim(ctx context.Context, sp space.ResolvedSpace, importID, accountID string, chunk []statement.Keyed, offset int, lineTTL int64, extra map[int]cardLineExtra, now time.Time) (added, duplicates int, err error) {
 	type pending struct {
 		statement.Keyed
 		n int
@@ -440,6 +471,7 @@ func (r *ImportRepository) claim(ctx context.Context, sp space.ResolvedSpace, im
 				keys: newKeys(ImportPK(sp, importID), ImportLineSK(p.n), RetentionImportLine, now),
 				N:    p.n, Date: p.Date.String(), Amount: int64(p.Amount), Description: p.Description,
 				LockSK: lockSK, Status: string(LinePending),
+				K: extra[p.n].K, Of: extra[p.n].Of, BankCategory: extra[p.n].BankCategory,
 			})
 			if err != nil {
 				return 0, 0, err
