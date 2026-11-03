@@ -154,6 +154,16 @@ func CardPurchase(cardAccountID, categoryID string, total billing.Cents, date br
 	return NewTransaction(KindCardPurchase, date, Leg{AccountID: categoryID, Amount: total}, Leg{AccountID: cardAccountID, Amount: -total})
 }
 
+// CardCredit records a credit on a card that is not the refund of a known
+// purchase (a bank's courtesy, a chargeback): the exact reverse of CardPurchase,
+// so the expense category falls and the card owes less.
+func CardCredit(cardAccountID, categoryID string, amount billing.Cents, date brcal.Date) (Transaction, error) {
+	if amount <= 0 {
+		return Transaction{}, fmt.Errorf("%w: a credit must be positive", ErrInvalidTransaction)
+	}
+	return NewTransaction(KindAdjustment, date, Leg{AccountID: categoryID, Amount: -amount}, Leg{AccountID: cardAccountID, Amount: amount})
+}
+
 // PayStatement records paying a card statement from an asset account.
 func PayStatement(cardAccountID, payingAccountID string, amount billing.Cents, date brcal.Date) (Transaction, error) {
 	if amount <= 0 {
