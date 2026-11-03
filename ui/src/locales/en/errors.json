@@ -138,7 +138,14 @@
     "phrase_mismatch": "Type the phrase exactly as shown.",
     "closure_state": "This request can no longer be changed.",
     "closure_not_allowed": "This billing account cannot be closed.",
-    "tenant_closing": "This billing account is being closed and only accepts reads."
+    "tenant_closing": "This billing account is being closed and only accepts reads.",
+    "pair_taken": "That purchase is already paired with another line.",
+    "statement_not_open": "Only the open statement takes an import. Reopen it first.",
+    "statement_not_begun": "This statement's period has not begun yet.",
+    "category_unmapped": "Choose a category: this line's bank category is not mapped yet.",
+    "payment_line": "The previous statement's payment is not a purchase.",
+    "invalid_bank_categories": "The category mapping is invalid.",
+    "not_card_import": "This import is not a card statement import."
   },
   "field": {
     "required": "Required.",

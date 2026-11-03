@@ -138,7 +138,14 @@
     "phrase_mismatch": "Digite a frase exatamente como mostrada.",
     "closure_state": "Este pedido não pode mais ser alterado.",
     "closure_not_allowed": "Esta conta de cobrança não pode ser encerrada.",
-    "tenant_closing": "Esta conta de cobrança está sendo encerrada e só aceita leituras."
+    "tenant_closing": "Esta conta de cobrança está sendo encerrada e só aceita leituras.",
+    "pair_taken": "Essa compra já está pareada com outra linha.",
+    "statement_not_open": "Só a fatura aberta recebe importação. Reabra a fatura antes.",
+    "statement_not_begun": "O período dessa fatura ainda não começou.",
+    "category_unmapped": "Escolha uma categoria: a categoria do banco dessa linha ainda não foi mapeada.",
+    "payment_line": "O pagamento da fatura anterior não é uma compra.",
+    "invalid_bank_categories": "O mapeamento de categorias é inválido.",
+    "not_card_import": "Essa importação não é de fatura de cartão."
   },
   "field": {
     "required": "Obrigatório.",

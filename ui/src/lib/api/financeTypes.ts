@@ -518,6 +518,81 @@ export interface NewPurchase {
   installments: number
 }
 
+export interface NewCredit {
+  date: IsoDate
+  description?: string
+  category_id: string
+  amount: Cents
+}
+
+export interface Credit {
+  id: string
+  description: string
+  category_id: string
+  date: IsoDate
+  amount: Cents
+}
+
+// --- card statement import ----------------------------------------------------
+
+export type CardImportBank = "inter"
+
+export interface NewCardImport {
+  /** `YYYY-MM`: the card's open statement the file is imported into. */
+  statement_month: string
+  bank: CardImportBank
+  /** The file's bytes, base64. */
+  content: string
+}
+
+export interface CardImportSummary extends Omit<ImportSummary, "format"> {
+  format: "inter_csv"
+  kind: "card"
+  statement_month: string
+}
+
+export type CardLineStatus = "pending" | "linked" | "created" | "ignored"
+
+/** One line of the bank's card statement: a purchase is positive, a credit negative. */
+export interface CardImportLine {
+  n: number
+  date: IsoDate
+  amount: Cents
+  description: string
+  status: CardLineStatus
+  /** The purchase it paired with or became. */
+  purchase_id?: string
+  /** "Parcela k/of"; absent on a purchase paid in full. */
+  k?: number
+  of?: number
+  bank_category?: string
+  /** The previous statement's payment: never a purchase. */
+  payment?: boolean
+  expires_at?: string
+}
+
+export interface CardSuggestionItem {
+  purchase_id: string
+  tag: string
+  description: string
+  amount: Cents
+  date: IsoDate
+  number: number
+  of: number
+}
+
+export interface CardSuggestion {
+  kind: "pair" | "group" | "ignore"
+  lines: number[]
+  item?: CardSuggestionItem
+}
+
+export interface CardImportDetail {
+  import: CardImportSummary
+  lines: CardImportLine[]
+  suggestions: CardSuggestion[]
+}
+
 // --- import and reconciliation (F6) -------------------------------------------
 
 export type ImportFormat = "ofx" | "csv"

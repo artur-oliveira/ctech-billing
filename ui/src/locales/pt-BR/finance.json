@@ -230,7 +230,12 @@
     "next": {
       "owed": "A pagar · {{month}}",
       "open": "Aberta · {{month}}"
-    }
+    },
+    "import": "Importar fatura",
+    "credit": "Lançar crédito",
+    "creditTitle": "Lançar crédito",
+    "creditSave": "Lançar",
+    "creditHint": "Um crédito que não é estorno de uma compra cadastrada: abate a fatura aberta."
   },
   "inbox": {
     "description": "O que precisa da sua atenção em contas e recorrências.",
@@ -678,5 +683,35 @@
     "empty": "Nada neste mês.",
     "month": "Mês"
   },
-  "conflict": "Isto mudou enquanto você editava. Atualizamos; tente de novo."
+  "conflict": "Isto mudou enquanto você editava. Atualizamos; tente de novo.",
+  "cardImport": {
+    "title": "Importar fatura do cartão",
+    "month": "Fatura",
+    "file": "Arquivo da fatura (CSV do Inter)",
+    "fileHint": "Exporte a fatura no app do Inter e envie o CSV aqui. Pode importar o mesmo arquivo de novo: nada é duplicado.",
+    "submit": "Importar",
+    "close": "Fechar",
+    "onlyOpen": "Só a fatura aberta recebe importação. Escolha {{open}}, o mês aberto do cartão, ou a última fatura fechada para reabri-la.",
+    "closedNote": "A fatura de {{month}} está fechada.",
+    "reopen": "Reabrir fatura",
+    "reopenConfirm": "Reabrir a fatura de {{month}} para importar nela? A fatura atual é cancelada e fecha de novo sozinha em 7 dias.",
+    "result": "{{added}} linhas novas, {{duplicates}} já importadas, {{rejected}} ilegíveis.",
+    "nothingNew": "Nada novo: todas as linhas já tinham sido importadas.",
+    "counts": "Pendentes: {{pending}} · pareadas: {{linked}} · criadas: {{created}} · ignoradas: {{ignored}}",
+    "totalsLabel": "Totais",
+    "totals": "Total do arquivo: {{file}}. Total da fatura: {{statement}}.",
+    "totalsDiffer": "Os totais diferem: confira as linhas pendentes e o que você lançou à mão.",
+    "pairs": "Parecem compras que você já cadastrou",
+    "confirm": "Confirmar",
+    "confirmAll": "Confirmar todos ({{count}})",
+    "group": "{{count}} linhas somam esta compra",
+    "unpaired": "Sem par",
+    "empty": "Nenhuma linha pendente.",
+    "installment": "parcela {{k}}/{{of}}",
+    "createPurchase": "Criar compra",
+    "createCredit": "Criar crédito",
+    "ignore": "Ignorar",
+    "categoryFor": "Categoria para {{bank}}",
+    "chooseCategory": "Escolher categoria"
+  }
 }

@@ -10,6 +10,8 @@ import {useTranslation} from "react-i18next";
 import {SettleForm} from "@/components/finance/BillsView";
 import {CardBrandMark, cardLabel, maskedLast4} from "@/components/finance/CardBrandMark";
 import {CardForm} from "@/components/finance/CardForm";
+import {CardImportView} from "@/components/finance/CardImportView";
+import {CreditPanel} from "@/components/finance/CreditPanel";
 import {InlineConfirm} from "@/components/finance/InlineConfirm";
 import {LedgerRow} from "@/components/finance/LedgerRow";
 import {PanelActions, PanelForm} from "@/components/finance/PanelForm";
@@ -43,7 +45,7 @@ import {accountName} from "@/lib/finance/accountName";
 
 export {statementState} from "@/components/finance/statementStatus";
 
-type Panel = "new-card" | "edit-card" | "purchase" | null
+type Panel = "new-card" | "edit-card" | "purchase" | "credit" | "import" | null
 
 /**
  * F5 — cartões. One card at a time, one statement at a time: the open one
@@ -120,6 +122,8 @@ export function CardsView({card: initial = "", month: initialMonth}: {card?: str
         </Field>
         <div className="flex flex-wrap gap-2">
           {can("finance.write") && <Button variant="brand" size="sm" className="max-md:hidden" onClick={() => setPanel("purchase")}>{t("finance.cards.newPurchase")}</Button>}
+          {can("finance.write") && <Button variant="outline" size="sm" onClick={() => setPanel("credit")}>{t("finance.cards.credit")}</Button>}
+          {can("finance.write") && can("finance.import") && <Button variant="outline" size="sm" onClick={() => setPanel("import")}>{t("finance.cards.import")}</Button>}
           {can("finance.configure") && (
             <>
               <Button variant="ghost" size="sm" onClick={() => setPanel("edit-card")}>{t("finance.cards.edit")}</Button>
@@ -131,6 +135,12 @@ export function CardsView({card: initial = "", month: initialMonth}: {card?: str
 
       <PanelDrawer open={panel === "purchase"} allowed={can("finance.write")} onClose={() => setPanel(null)} title={t("finance.cards.newPurchase")} description={card.name}>
         <PurchasePanel cardId={card.id} accounts={all} history={purchases.data?.data ?? []} onDone={() => setPanel(null)}/>
+      </PanelDrawer>
+      <PanelDrawer open={panel === "credit"} allowed={can("finance.write")} onClose={() => setPanel(null)} title={t("finance.cards.creditTitle")} description={card.name}>
+        <CreditPanel cardId={card.id} accounts={all} onDone={() => setPanel(null)}/>
+      </PanelDrawer>
+      <PanelDrawer open={panel === "import"} allowed={can("finance.write") && can("finance.import")} onClose={() => setPanel(null)} title={t("finance.cardImport.title")} description={card.name}>
+        <CardImportView key={card.id} card={card} accounts={all} onClose={() => setPanel(null)}/>
       </PanelDrawer>
       <PanelDrawer open={panel === "edit-card"} allowed={can("finance.configure")} onClose={() => setPanel(null)} title={t("finance.cards.editNamed", {name: card.name})}>
         <CardForm key={card.id} card={card} accounts={all} onDone={() => setPanel(null)}/>

@@ -424,9 +424,20 @@ describe("F5 — cartões", () => {
     serve(["finance.read"]);
     renderWithQuery(<CardsView/>);
     await screen.findByText("Geladeira");
-    for (const name of ["Nova compra", "Editar compra", "Estornar compra", "Antecipar parcelas", "Fechar fatura agora", "Novo cartão"]) {
+    for (const name of ["Nova compra", "Editar compra", "Estornar compra", "Antecipar parcelas", "Fechar fatura agora", "Novo cartão", "Importar fatura", "Lançar crédito"]) {
       expect(screen.queryByRole("button", {name})).not.toBeInTheDocument();
     }
+  });
+
+  it("offers to import a statement and to add a credit, each in its own drawer", async () => {
+    serve(ALL);
+    renderWithQuery(<CardsView/>);
+    await screen.findByText("Geladeira");
+    await userEvent.click(screen.getByRole("button", {name: "Lançar crédito"}));
+    expect(await screen.findByRole("form", {name: "Lançar crédito"})).toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
+    await userEvent.click(screen.getByRole("button", {name: "Importar fatura"}));
+    expect(await screen.findByRole("form", {name: "Importar fatura do cartão"})).toBeInTheDocument();
   });
 
   it("teaches the first step when there is no card", async () => {
