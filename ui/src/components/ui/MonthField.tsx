@@ -74,7 +74,7 @@ export function MonthField({id, value, onValueChange, min, max, placeholder, dis
                 return (
                   <button key={m} type="button" aria-pressed={on} disabled={blocked(m)} aria-label={`${name} ${year}`}
                     onClick={() => { onValueChange(key(m)); setOpen(false); }}
-                    className={cn("min-h-11 rounded-md px-2 text-sm capitalize transition-colors disabled:cursor-not-allowed disabled:opacity-40", on ? "bg-brand-600 font-medium text-white" : "text-foreground hover:bg-surface")}>
+                    className={cn("min-h-11 rounded-md px-2 text-sm capitalize outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-40", on ? "bg-brand-600 font-medium text-white" : "text-foreground hover:bg-surface")}>
                     {name}
                   </button>
                 );
@@ -87,7 +87,7 @@ export function MonthField({id, value, onValueChange, min, max, placeholder, dis
   );
 }
 
-const navBtn = "inline-flex size-11 items-center justify-center rounded-md text-foreground hover:bg-surface disabled:cursor-not-allowed disabled:opacity-40";
+const navBtn = "inline-flex size-11 items-center justify-center rounded-md text-foreground outline-none hover:bg-surface focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-40";
 
 function todayYm(): string {
   const d = new Date();
