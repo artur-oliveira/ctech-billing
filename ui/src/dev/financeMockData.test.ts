@@ -91,7 +91,26 @@ describe("the finance mock's ledger facts", () => {
     expect([balance("conta-corrente"), balance("poupanca")]).toEqual([before[0] - 1000, before[1] + 1000]);
     const cf = call({url: "/reports/cash-flow", headers: personal, params: {from: month(), to: month()}});
     const m = (cf.data as {months: {in: number; out: number}[]}).months[0];
-    expect([m.in, m.out]).toEqual([0, 0]);
+    // Only the seeded salary and expenses: the transfer adds nothing to either side.
+    expect([m.in, m.out]).toEqual([520_000, 203_080]);
+  });
+
+  it("imports a card statement: pairs, confirm-all, mapping before create, nothing twice", () => {
+    const send = (method: string, url: string, data: unknown, key: string) => call({method, url, headers: {...personal, "Idempotency-Key": key}, data});
+    const open = (call({url: "/cards", headers: personal}).data as {data: {open_month: string}[]}).data[0].open_month;
+    const file = {statement_month: open, bank: "inter", content: "eA=="};
+    const up = send("post", "/cards/card-nubank/imports", file, "ci1");
+    expect(up.status).toBe(201);
+    const id = (up.data as {id: string}).id;
+    expect(send("post", "/cards/card-nubank/imports", file, "ci2").data).not.toHaveProperty("id");
+    expect(send("post", "/cards/card-nubank/imports", {...file, statement_month: "2000-01"}, "ci3").data).toMatchObject({code: "statement_not_open"});
+    const detail = call({url: `/card-imports/${id}`, headers: personal}).data as {lines: unknown[]; suggestions: {kind: string}[]};
+    expect(detail.lines.length).toBeGreaterThan(20);
+    expect(detail.suggestions.filter(s => s.kind === "pair")).toHaveLength(2);
+    expect(send("post", `/card-imports/${id}/lines/3/create`, {}, "ci4").data).toMatchObject({code: "validation_failed"});
+    expect(send("put", "/cards/card-nubank/bank-categories", {categories: {Transporte: "mercado"}}, "ci5").status).toBe(200);
+    expect(send("post", `/card-imports/${id}/lines/3/create`, {}, "ci6").status).toBe(200);
+    expect(send("post", `/card-imports/${id}/confirm-all`, {exclude: []}, "ci7").data).toEqual({confirmed: 2});
   });
 
   it("puts an unsettled bill back in the open list", () => {
