@@ -100,6 +100,7 @@ function MappingFields({accountId, initial, onDone}: {accountId: string; initial
           amount_column: num("amount_column"), debit_column: num("debit_column")});
       }}
     >
+      <h3 className="text-sm font-medium text-foreground sm:col-span-full">{t("finance.import.mapping.formatGroup")}</h3>
       <Field label={t("finance.import.mapping.delimiter")} htmlFor="csv-delimiter" error={fe.of("delimiter")}>
         <Select {...selectCopy()} id="csv-delimiter" aria-label={t("finance.import.mapping.delimiter")} value={m.delimiter} onValueChange={v => setM(x => ({...x, delimiter: v as CsvDelimiter}))}
           options={[{value: ";", label: t("finance.import.mapping.semicolon")}, {value: ",", label: t("finance.import.mapping.comma")}, {value: "\t", label: t("finance.import.mapping.tab")}]}/>
@@ -112,6 +113,7 @@ function MappingFields({accountId, initial, onDone}: {accountId: string; initial
         <Select {...selectCopy()} id="csv-date-format" aria-label={t("finance.import.mapping.dateFormat")} value={m.date_format} onValueChange={v => setM(x => ({...x, date_format: v as CsvDateFormat}))}
           options={(["dd/mm/yyyy", "yyyy-mm-dd", "mm/dd/yyyy"] as const).map(f => ({value: f, label: t(`finance.import.mapping.formats.${f.replaceAll("/", "").replaceAll("-", "")}`)}))}/>
       </Field>
+      <h3 className="pt-2 text-sm font-medium text-foreground sm:col-span-full">{t("finance.import.mapping.columnsGroup")}</h3>
       {number("skip_rows", t("finance.import.mapping.skipRows"))}
       {number("date_column", t("finance.import.mapping.dateColumn"))}
       {number("description_column", t("finance.import.mapping.descriptionColumn"))}

@@ -64,7 +64,7 @@ export function TransferPanel({accounts, from: initialFrom = "", onDone}: {accou
       <Field label={t("bills.common.date")} htmlFor="tr-date" error={fe.of("date")}>
         <DateField id="tr-date" min={limits.minDate} max={todayIso()} value={date} invalid={!!fe.of("date")} onValueChange={v => { setDate(v); fe.clear("date"); }}/>
       </Field>
-      <Field label={t("bills.common.description")} htmlFor="tr-memo" error={fe.of("memo")}>
+      <Field label={t("bills.common.description")} htmlFor="tr-memo" error={fe.of("memo")} className="sm:col-span-full">
         <Input id="tr-memo" maxLength={limits.text.memo} placeholder={t("bills.transfer.placeholder")} value={memo} {...fe.props("memo", "tr-memo")} onChange={e => { setMemo(e.target.value); fe.clear("memo"); }}/>
       </Field>
       <PanelActions>

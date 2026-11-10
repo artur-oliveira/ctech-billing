@@ -450,6 +450,9 @@
     "ctech_subscriptions": "CTech subscriptions"
   },
   "import": {
+    "stepFile": "Send the file",
+    "stepReview": "Review the lines",
+    "stepReviewHint": "Nothing is posted until you decide each line.",
     "account": "Account",
     "noAccounts": "No account to import into.",
     "noAccountsHint": "Create a checking or cash account in Accounts and come back.",
@@ -536,6 +539,8 @@
       "balance_row": "balance line"
     },
     "mapping": {
+      "formatGroup": "File format",
+      "columnsGroup": "Columns (counted from 1, as in a spreadsheet)",
       "delimiter": "Separator",
       "semicolon": "Semicolon (;)",
       "comma": "Comma (,)",
@@ -692,6 +697,9 @@
   },
   "conflict": "This changed while you were editing. We refreshed it; try again.",
   "cardImport": {
+    "stepFile": "Choose the statement and the file",
+    "stepReview": "Review the lines",
+    "stepReviewHint": "Pair what you already entered, create the rest, or ignore it.",
     "title": "Import card statement",
     "month": "Statement",
     "file": "Statement file (Inter CSV)",

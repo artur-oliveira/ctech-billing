@@ -21,7 +21,7 @@ export function PanelForm({columns = "sm:grid-cols-2", className = "", ...props}
  * `items-start`/`min-w-0` rules as PanelForm.
  */
 export function DrawerForm({columns = "sm:grid-cols-2", className = "", ...props}: ComponentProps<"form"> & {columns?: string}) {
-  return <form className={`grid items-start gap-x-4 gap-y-3 ${columns} ${className} [&>*]:min-w-0`.replace(/\s+/g, " ")} {...props}/>;
+  return <form className={`grid items-start gap-x-4 gap-y-5 ${columns} ${className} [&>*]:min-w-0`.replace(/\s+/g, " ")} {...props}/>;
 }
 
 /** The buttons (and the error) row of a PanelForm or DrawerForm: the full width, wrapping. */
