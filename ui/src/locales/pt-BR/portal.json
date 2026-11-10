@@ -150,7 +150,8 @@
     "canceled": "Encerrada",
     "incomplete": "Aguardando confirmação",
     "active_until_period_end": "Ativa até o fim do período",
-    "active": "Ativa"
+    "active": "Ativa",
+    "unknown": "Em atualização"
   },
   "space": {
     "label": "Conta",

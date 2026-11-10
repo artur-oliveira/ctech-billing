@@ -40,7 +40,7 @@ export function StatusBadge({state, tone, days, dueDate}: {
       {t(`portal.status.${state}`, {
         count: Math.abs(days ?? 0),
         date: dueDate ? shortDate(dueDate) : "",
-        defaultValue: state,
+        defaultValue: t("portal.status.unknown"),
       })}
     </Badge>
   );
