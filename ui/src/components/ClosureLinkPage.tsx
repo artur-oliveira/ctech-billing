@@ -37,10 +37,10 @@ export function ClosureLinkPage({kind, requestID, token, action}: Props) {
       {t(`closure.link.${kind}.done`, {date: run.data.grace_until ? instantDate(run.data.grace_until) : ""})}
     </Alert>
   ) : missing ? (
-    <Alert tone="danger" title={t(`closure.link.${kind}.title`)}>{t("closure.link.invalid")}</Alert>
+    <Alert tone="danger">{t("closure.link.invalid")}</Alert>
   ) : (
     <>
-      {error && <Alert tone="danger" title={t(`closure.link.${kind}.title`)}>{error}</Alert>}
+      {error && <Alert tone="danger">{error}</Alert>}
       <Button variant={kind === "confirm" ? "danger" : "brand"} disabled={run.isPending} onClick={() => run.mutate()}>
         {t(`closure.link.${kind}.button`)}
       </Button>

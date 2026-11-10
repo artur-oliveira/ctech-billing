@@ -150,7 +150,8 @@
     "canceled": "Ended",
     "incomplete": "Awaiting confirmation",
     "active_until_period_end": "Active until period end",
-    "active": "Active"
+    "active": "Active",
+    "unknown": "Updating"
   },
   "space": {
     "label": "Account",

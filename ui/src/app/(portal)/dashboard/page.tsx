@@ -130,7 +130,7 @@ function Pendencia({invoices}: { invoices: Invoice[] }) {
       </div>
 
       <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
-        <Button render={<Link href={`/invoice?id=${first.id}`}/>}>
+        <Button className="w-full sm:w-auto" render={<Link href={`/invoice?id=${first.id}`}/>}>
           {t("portal.dashboard.pay", {amount: money(first.amount_due, first.currency)})}
         </Button>
         {rest.length > 0 && (
