@@ -32,6 +32,7 @@ import {
 } from "./consoleMockData";
 import {connectionsMock} from "./connectionsMockData";
 import {financeMock} from "./financeMockData";
+import {pushBillChange} from "./realtimeMock";
 import {FIXTURES, MOCK_PIX_CODE} from "./mockData";
 
 /** The one organization the portal mock lets a person manage. */
@@ -184,7 +185,8 @@ export const mockAdapter: AxiosAdapter = async config => {
 
   // Enough latency for a skeleton to be visible and be designed. A mock that
   // answers instantly is a mock in which no loading state is ever wrong.
-  await wait(220 + Math.random() * 180);
+  // Writes take longer than reads, as against the real API (a transaction, a change-log row): a refetch can overtake a write.
+  await wait(220 + Math.random() * 180 + (method === "get" ? 0 : 250));
 
   if (scenario === "erro_de_rede") networkDown(config);
   if (scenario === "manutencao") {
@@ -245,6 +247,8 @@ export const mockAdapter: AxiosAdapter = async config => {
       const p = res.data as {type?: string; title?: string; detail?: string; code?: string; errors?: unknown};
       fail(config, res.status, p.title ?? "Error", p.detail ?? "", p.type, p.code, p.errors);
     }
+    // Like the server: a committed finance write is announced on the socket, in step with the answer.
+    if (method !== "get" && res.status < 300) pushBillChange();
     return {...ok(config, res.data), status: res.status};
   }
 
