@@ -56,6 +56,10 @@
     },
     "loading": "Loading bills"
   },
+  "provisional": {
+    "title": "Provisional statements",
+    "meta": "Provisional • due {{date}}"
+  },
   "row": {
     "due": "Due {{date}}",
     "statement": "Card statement",

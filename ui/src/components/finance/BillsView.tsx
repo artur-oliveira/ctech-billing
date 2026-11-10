@@ -15,6 +15,7 @@ import {InlineConfirm} from "@/components/finance/InlineConfirm";
 import {LedgerRow} from "@/components/finance/LedgerRow";
 import {PanelActions, PanelForm} from "@/components/finance/PanelForm";
 import {PanelDrawer} from "@/components/finance/PanelDrawer";
+import {ProvisionalStatements} from "@/components/finance/ProvisionalStatements";
 import {BUCKET_STATUS, StatusBadge} from "@/components/finance/StatusBadge";
 import {type HistoryEntry, SuggestingInput} from "@/components/finance/HistorySuggestions";
 import {ErrorBlock} from "@/components/portal/ErrorBlock";
@@ -130,6 +131,7 @@ export function BillsView({direction: initial = "payable", focus}: {direction?: 
             })}
           </>
         )}
+        {direction === "payable" && <ProvisionalStatements/>}
       </div>
       <PanelDrawer open={creating} allowed={can("finance.write")} onClose={() => setCreating(false)} title={t("bills.list.newTitle")}>
         <NewBillPanel direction={direction} accounts={accounts.data?.data ?? []} history={rows} onDone={() => setCreating(false)}/>
