@@ -143,9 +143,9 @@
     "amountMode": {
       "label": "The amount is",
       "fixed": "Always the same",
-      "expected": "Changes each month",
+      "expected": "Variable amount",
       "fixedHint": "The same amount every time; the bill is created on its own.",
-      "expectedHint": "Used as a forecast. Each month you enter the real amount, and only then is the bill created."
+      "expectedHint": "Used as a forecast. Each time, you enter the real amount, and only then is the bill created."
     },
     "expectedAmount": "Estimated amount",
     "expectedShort": "estimate",
@@ -160,7 +160,7 @@
     "endsOn": "Ends on",
     "noEnd": "Never ends",
     "clearEnd": "Clear end date",
-    "reopenNote": "The recurrence continues from this month; the dates between the old end and today are not created.",
+    "reopenNote": "The recurrence continues from today; the dates between the old end and today are not created.",
     "editNote": "{{rule}}. To change the rule, end this one and create another.",
     "next": "Next dates",
     "fixRule": "Fix the rule to see the next dates.",
