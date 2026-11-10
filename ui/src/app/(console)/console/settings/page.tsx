@@ -1,7 +1,7 @@
 "use client";
 
 import limits from "@/lib/limits.json";
-import {Alert, Button, Field, Input, Modal, Skeleton} from "@aoctech/ui";
+import {Alert, Button, Field, Input, Modal, PageHeader, Skeleton} from "@aoctech/ui";
 import {useMutation, useQuery, useQueryClient} from "@tanstack/react-query";
 import {useState} from "react";
 import {useTranslation} from "react-i18next";
@@ -21,6 +21,7 @@ import {
 } from "@/lib/api/console";
 import type {DunningStep, Issuer} from "@/lib/api/consoleTypes";
 import {useConsoleScope} from "@/lib/console/scope";
+import {useDocumentTitle} from "@/lib/hooks/useDocumentTitle";
 
 /**
  * C17 — configurações.
@@ -33,6 +34,7 @@ import {useConsoleScope} from "@/lib/console/scope";
 export default function ConsoleSettingsPage() {
   const {t} = useTranslation();
   const scope = useConsoleScope();
+  useDocumentTitle(t("console.settings.title"));
   const queryClient = useQueryClient();
 
   const query = useQuery({
@@ -56,7 +58,7 @@ export default function ConsoleSettingsPage() {
 
   return (
     <div className="space-y-8">
-      <h1 className="text-lg font-semibold tracking-[-0.01em] text-foreground">{t("console.settings.title")}</h1>
+      <PageHeader title={t("console.settings.title")}/>
 
       <dl className="grid gap-x-6 gap-y-4 border-y border-border py-4 text-sm sm:grid-cols-3">
         <Fact label={t("console.settings.organization")} value={settings.organization.display_name}/>

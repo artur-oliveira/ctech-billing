@@ -1,6 +1,6 @@
 "use client";
 
-import {Skeleton} from "@aoctech/ui";
+import {PageHeader, Skeleton} from "@aoctech/ui";
 import {useQuery} from "@tanstack/react-query";
 import Link from "next/link";
 import {useTranslation} from "react-i18next";
@@ -9,6 +9,7 @@ import {ErrorBlock} from "@/components/portal/ErrorBlock";
 import {consoleKeys, getConsoleOverview} from "@/lib/api/console";
 import {useConsoleScope} from "@/lib/console/scope";
 import {money} from "@/lib/format";
+import {useDocumentTitle} from "@/lib/hooks/useDocumentTitle";
 import {currentLocale} from "@/lib/i18n";
 
 /**
@@ -28,6 +29,7 @@ import {currentLocale} from "@/lib/i18n";
 export default function ConsoleOverviewPage() {
   const {t} = useTranslation();
   const scope = useConsoleScope();
+  useDocumentTitle(t("console.overview.title"));
   const today = new Date();
   const year = today.getFullYear();
   const month = today.getMonth() + 1;
@@ -49,10 +51,7 @@ export default function ConsoleOverviewPage() {
 
   return (
     <div className="space-y-8">
-      <div className="space-y-1">
-        <h1 className="text-lg font-semibold tracking-[-0.01em] text-foreground">{t("console.overview.title")}</h1>
-        <p className="text-sm text-muted-foreground first-letter:uppercase">{label}</p>
-      </div>
+      <PageHeader title={t("console.overview.title")} description={label.charAt(0).toLocaleUpperCase() + label.slice(1)}/>
 
       <dl className="grid gap-x-6 gap-y-6 border-y border-border py-5 sm:grid-cols-3">
         <Amount label={t("console.overview.received")} cents={data.received}/>
@@ -71,7 +70,7 @@ export default function ConsoleOverviewPage() {
           <ul className="divide-y divide-border border-y border-border">
             {data.overdue_count > 0 && (
               <Item
-                href="/console/invoices"
+                href="/console/invoices?filter=overdue"
                 title={t("console.overview.overdueInvoices", {count: data.overdue_count})}
                 detail={t("console.overview.overdueDetail", {amount: money(data.overdue)})}
               />

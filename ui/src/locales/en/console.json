@@ -114,6 +114,7 @@
   "partial": "Only the first {{counted}} invoices of the month are in these totals."
  },
  "customers": {
+  "hasMore": "There are more customers than listed.",
   "title": "Customers",
   "empty": "No customers",
   "name": "Name",
@@ -149,7 +150,18 @@
   "open": "Open",
   "numbered": "#{{number}}",
   "unnumbered": "no number",
-  "hasMore": "The month has more invoices than listed.",
+  "more": "Show more",
+  "thisMonth": "This month",
+  "emptyFiltered": "No invoices match this filter",
+  "clearFilter": "Show all",
+  "dueOn": "due {{date}}",
+  "filter": {
+   "label": "Filter by status",
+   "all": "All",
+   "overdue": "Overdue",
+   "upcoming": "Upcoming",
+   "paid": "Paid"
+  },
   "attemptN_one": "attempt {{count}}",
   "attemptN_other": "attempt {{count}}"
  },
@@ -209,6 +221,7 @@
   "viaPixNote": "Inter sends this amount back by Pix to whoever paid the invoice, from its payment. This cannot be undone."
  },
  "subscriptions": {
+  "hasMore": "There are more subscriptions than listed.",
   "title": "Subscriptions",
   "empty": "No subscriptions",
   "plan": "Plan",

@@ -1,6 +1,6 @@
 "use client";
 
-import {EmptyState, Skeleton} from "@aoctech/ui";
+import {EmptyState, PageHeader, Skeleton} from "@aoctech/ui";
 import {useQuery} from "@tanstack/react-query";
 import {Users} from "lucide-react";
 import Link from "next/link";
@@ -10,6 +10,7 @@ import {ErrorBlock} from "@/components/portal/ErrorBlock";
 import {consoleKeys, listConsoleCustomers} from "@/lib/api/console";
 import {useConsoleScope} from "@/lib/console/scope";
 import {formatTaxID} from "@/lib/format";
+import {useDocumentTitle} from "@/lib/hooks/useDocumentTitle";
 
 /**
  * C6 — the customers.
@@ -22,6 +23,7 @@ import {formatTaxID} from "@/lib/format";
 export default function ConsoleCustomersPage() {
   const {t} = useTranslation();
   const scope = useConsoleScope();
+  useDocumentTitle(t("console.customers.title"));
   const query = useQuery({
     queryKey: consoleKeys.customers(scope),
     queryFn: () => listConsoleCustomers(scope),
@@ -31,7 +33,7 @@ export default function ConsoleCustomersPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-lg font-semibold tracking-[-0.01em] text-foreground">{t("console.customers.title")}</h1>
+      <PageHeader title={t("console.customers.title")}/>
 
       {query.isPending && <RowsSkeleton/>}
       {query.isError && <ErrorBlock error={query.error} onRetry={query.refetch}/>}
@@ -44,7 +46,26 @@ export default function ConsoleCustomersPage() {
       )}
 
       {customers.length > 0 && (
-        <div className="overflow-x-auto">
+        <ul aria-label={t("console.customers.title")} className="divide-y divide-border border-y border-border sm:hidden">
+          {customers.map(customer => (
+            <li key={customer.id} className="space-y-0.5 py-3">
+              <Link href={`/console/customer?id=${customer.id}`} className="font-medium text-brand-600 underline-offset-4 hover:underline">
+                {customer.name}
+              </Link>
+              {customer.anonymized && (
+                <span className="ml-2 text-xs text-muted-foreground">{t("console.customers.anonymized")}</span>
+              )}
+              <p className="truncate text-sm text-muted-foreground">{customer.email || "—"}</p>
+              {customer.tax_id_masked && (
+                <p data-numeric className="text-xs text-muted-foreground">{formatTaxID(customer.tax_id_masked)}</p>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {customers.length > 0 && (
+        <div className="hidden overflow-x-auto sm:block">
           <table className="w-full min-w-[40rem] border-collapse text-sm">
             <thead>
               <tr className="border-b border-border text-left text-xs text-muted-foreground">
@@ -71,7 +92,7 @@ export default function ConsoleCustomersPage() {
                       <span className="ml-2 text-xs text-muted-foreground">{t("console.customers.anonymized")}</span>
                     )}
                   </td>
-                  <td className="py-2 pr-4 text-muted-foreground">{customer.email || "—"}</td>
+                  <td className="max-w-64 truncate py-2 pr-4 text-muted-foreground" title={customer.email}>{customer.email || "—"}</td>
                   <td data-numeric className="py-2 pr-4 text-muted-foreground">
                     {customer.tax_id_masked ? formatTaxID(customer.tax_id_masked) : "—"}
                   </td>
@@ -81,6 +102,10 @@ export default function ConsoleCustomersPage() {
             </tbody>
           </table>
         </div>
+      )}
+
+      {query.data?.has_more && (
+        <p className="text-xs text-muted-foreground">{t("console.customers.hasMore")}</p>
       )}
     </div>
   );
