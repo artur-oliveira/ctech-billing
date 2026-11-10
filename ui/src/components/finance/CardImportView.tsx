@@ -147,10 +147,13 @@ function Review({card, accounts, importId}: {card: Card; accounts: Account[]; im
   // Suggestions the person said are not that purchase: their lines go to "no match"
   // and confirm-all leaves them out.
   const [dismissed, setDismissed] = useState<number[][]>([]);
-  const confirmAll = useFinanceMutation((c: FinanceCtx, exclude: number[], key) => confirmAllCardLines(c, importId, exclude, key), invalidate);
+  const confirmAll = useFinanceMutation((c: FinanceCtx, exclude: number[], key) => confirmAllCardLines(c, importId, exclude, key), invalidate, () => setAskAll(false));
   const create = useFinanceMutation((c: FinanceCtx, l: CardImportLine, key) =>
     createCardLine(c, importId, l.n, {category_id: cats.data?.categories[l.bank_category ?? ""]}, key), invalidate);
-  const ignore = useFinanceMutation((c: FinanceCtx, l: CardImportLine, key) => ignoreLine(c, importId, l.n, key), invalidate);
+  // Ignoring a line and confirming every pair at once cannot be taken back here: each asks first.
+  const [askIgnore, setAskIgnore] = useState<number | null>(null);
+  const [askAll, setAskAll] = useState(false);
+  const ignore = useFinanceMutation((c: FinanceCtx, l: CardImportLine, key) => ignoreLine(c, importId, l.n, key), invalidate, () => setAskIgnore(null));
   const map = useFinanceMutation((c: FinanceCtx, v: {bank: string; id: string}, key) =>
     putBankCategories(c, card.id, {...cats.data?.categories, [v.bank]: v.id}, key), c => [financeKeys.bankCategories(c.mode, c.space, card.id)]);
 
@@ -199,11 +202,17 @@ function Review({card, accounts, importId}: {card: Card; accounts: Account[]; im
           </ul>
           <FormError error={confirm.error} className=""/>
           {/* The step's primary action stays in reach while the pairs scroll. */}
-          <div className="sticky bottom-0 z-10 -mx-1 flex flex-wrap items-center gap-2 border-t border-border bg-background px-1 py-3">
-            <Button type="button" variant="brand" size="sm" disabled={confirmAll.isPending} onClick={() => confirmAll.mutate(dismissed.flat())}>
-              {t("finance.cardImport.confirmAll", {count: matches.length})}
-            </Button>
-            <FormError error={confirmAll.error} className=""/>
+          {/* Full width of the drawer (its content pads 1.25rem) and clear of a phone's home indicator. */}
+          <div className="sticky bottom-0 z-10 -mx-5 flex flex-wrap items-center gap-2 border-t border-border bg-background px-5 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+            {askAll ? (
+              <InlineConfirm className="w-full" tone="brand" text={t("finance.cardImport.confirmAllAsk", {count: matches.length})}
+                cancelLabel={t("finance.cards.back")} confirmLabel={t("finance.cards.confirm")} pending={confirmAll.isPending}
+                error={confirmAll.error ? <FormErrorText error={confirmAll.error}/> : null} onCancel={() => { setAskAll(false); confirmAll.reset(); }} onConfirm={() => confirmAll.mutate(dismissed.flat())}/>
+            ) : (
+              <Button type="button" variant="brand" size="sm" onClick={() => setAskAll(true)}>
+                {t("finance.cardImport.confirmAll", {count: matches.length})}
+              </Button>
+            )}
           </div>
         </Section>
       )}
@@ -217,6 +226,7 @@ function Review({card, accounts, importId}: {card: Card; accounts: Account[]; im
                 <LedgerRow key={l.n} title={l.description}
                   meta={<>{shortDate(l.date)}{l.of ? ` · ${t("finance.cardImport.installment", {k: l.k, of: l.of})}` : ""}{bank ? ` · ${bank}` : ""}</>}
                   amount={<Amount>{money(l.amount)}</Amount>}
+                  more={[{key: "ignore", label: t("finance.cardImport.ignore"), destructive: true, expanded: askIgnore === l.n, onSelect: () => { ignore.reset(); setAskIgnore(v => (v === l.n ? null : l.n)); }}]}
                   actions={<>
                     {!l.payment && !ready && (
                       <Select {...selectCopy()} aria-label={t("finance.cardImport.categoryFor", {bank})} value="" placeholder={t("finance.cardImport.chooseCategory")}
@@ -227,13 +237,17 @@ function Review({card, accounts, importId}: {card: Card; accounts: Account[]; im
                         {l.amount < 0 ? t("finance.cardImport.createCredit") : t("finance.cardImport.createPurchase")}
                       </Button>
                     )}
-                    <Button type="button" size="sm" variant="ghost" disabled={ignore.isPending} onClick={() => ignore.mutate(l)}>{t("finance.cardImport.ignore")}</Button>
-                  </>}/>
+                  </>}>
+                  {askIgnore === l.n && (
+                    <InlineConfirm text={t("finance.cardImport.ignoreAsk")} cancelLabel={t("finance.cards.back")} confirmLabel={t("finance.cardImport.ignore")}
+                      pending={ignore.isPending} error={ignore.error ? <FormErrorText error={ignore.error}/> : null} onCancel={() => setAskIgnore(null)} onConfirm={() => ignore.mutate(l)}/>
+                  )}
+                </LedgerRow>
               );
             })}
           </ul>
         )}
-        <FormError error={create.error ?? ignore.error ?? map.error} className=""/>
+        <FormError error={create.error ?? map.error} className=""/>
       </Section>
     </div>
   );
