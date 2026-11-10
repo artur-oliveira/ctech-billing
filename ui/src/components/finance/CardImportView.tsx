@@ -147,12 +147,12 @@ function Review({card, accounts, importId}: {card: Card; accounts: Account[]; im
   // Suggestions the person said are not that purchase: their lines go to "no match"
   // and confirm-all leaves them out.
   const [dismissed, setDismissed] = useState<number[][]>([]);
+  const [askAll, setAskAll] = useState(false);
   const confirmAll = useFinanceMutation((c: FinanceCtx, exclude: number[], key) => confirmAllCardLines(c, importId, exclude, key), invalidate, () => setAskAll(false));
   const create = useFinanceMutation((c: FinanceCtx, l: CardImportLine, key) =>
     createCardLine(c, importId, l.n, {category_id: cats.data?.categories[l.bank_category ?? ""]}, key), invalidate);
   // Ignoring a line and confirming every pair at once cannot be taken back here: each asks first.
   const [askIgnore, setAskIgnore] = useState<number | null>(null);
-  const [askAll, setAskAll] = useState(false);
   const ignore = useFinanceMutation((c: FinanceCtx, l: CardImportLine, key) => ignoreLine(c, importId, l.n, key), invalidate, () => setAskIgnore(null));
   const map = useFinanceMutation((c: FinanceCtx, v: {bank: string; id: string}, key) =>
     putBankCategories(c, card.id, {...cats.data?.categories, [v.bank]: v.id}, key), c => [financeKeys.bankCategories(c.mode, c.space, card.id)]);
