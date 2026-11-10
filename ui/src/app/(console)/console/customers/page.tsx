@@ -1,7 +1,7 @@
 "use client";
 
-import {EmptyState, PageHeader, Skeleton} from "@aoctech/ui";
-import {useQuery} from "@tanstack/react-query";
+import {Button, EmptyState, PageHeader, Skeleton} from "@aoctech/ui";
+import {useInfiniteQuery} from "@tanstack/react-query";
 import {Users} from "lucide-react";
 import Link from "next/link";
 import {useTranslation} from "react-i18next";
@@ -24,12 +24,14 @@ export default function ConsoleCustomersPage() {
   const {t} = useTranslation();
   const scope = useConsoleScope();
   useDocumentTitle(t("console.customers.title"));
-  const query = useQuery({
+  const query = useInfiniteQuery({
     queryKey: consoleKeys.customers(scope),
-    queryFn: () => listConsoleCustomers(scope),
+    queryFn: ({pageParam}) => listConsoleCustomers(scope, pageParam),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: last => (last.has_more ? last.cursor : undefined),
   });
 
-  const customers = query.data?.data ?? [];
+  const customers = query.data?.pages.flatMap(page => page.data) ?? [];
 
   return (
     <div className="space-y-6">
@@ -104,8 +106,15 @@ export default function ConsoleCustomersPage() {
         </div>
       )}
 
-      {query.data?.has_more && (
-        <p className="text-xs text-muted-foreground">{t("console.customers.hasMore")}</p>
+      {query.hasNextPage && (
+        <Button
+          variant="outline"
+          className="max-sm:w-full"
+          disabled={query.isFetchingNextPage}
+          onClick={() => void query.fetchNextPage()}
+        >
+          {t("console.customers.more")}
+        </Button>
       )}
     </div>
   );

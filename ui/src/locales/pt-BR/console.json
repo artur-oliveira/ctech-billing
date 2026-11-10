@@ -114,7 +114,7 @@
   "partial": "Só as primeiras {{counted}} faturas do mês entraram na soma."
  },
  "customers": {
-  "hasMore": "Há mais clientes do que os listados.",
+  "more": "Mostrar mais",
   "title": "Clientes",
   "empty": "Nenhum cliente",
   "name": "Nome",
@@ -173,7 +173,8 @@
   "untitled": "Fatura sem número",
   "fullyCredited": "Totalmente estornada",
   "finalize": "Emitir",
-  "finalizing": "Emitindo…",
+  "finalizeTitle": "Emitir esta fatura?",
+  "finalizeBody": "Ela recebe o número e o cliente passa a poder pagá-la. Depois de emitida, só pode ser anulada, nunca editada.",
   "nothingToCredit": "Nada mais a creditar",
   "creditNote": "Nota de crédito",
   "void": "Anular",
@@ -224,7 +225,7 @@
   "viaPixNote": "O Inter devolve este valor por Pix para quem pagou a fatura, a partir do pagamento dela. Não dá para desfazer."
  },
  "subscriptions": {
-  "hasMore": "Há mais assinaturas do que as listadas.",
+  "more": "Mostrar mais",
   "title": "Assinaturas",
   "empty": "Nenhuma assinatura",
   "plan": "Plano",
@@ -268,6 +269,9 @@
   "owner": "Produto",
   "prices": "Preços",
   "from": "A partir de",
+  "fromPrice": "a partir de {{amount}}",
+  "priceCount_one": "{{count}} preço ativo",
+  "priceCount_other": "{{count}} preços ativos",
   "inactive": "inativo",
   "name": "Nome",
   "ownerLabel": "Produto",
@@ -296,6 +300,7 @@
   "amount": "Valor",
   "archived": "arquivado",
   "archive": "Arquivar",
+  "archiveNamed": "Arquivar {{name}}",
   "dunningTitle": "Política de cobrança do produto",
   "dunningDescription": "Substitui a da organização nas faturas deste produto. Se uma assinatura mistura políticas, vale a da organização.",
   "inherit": "a política da organização",

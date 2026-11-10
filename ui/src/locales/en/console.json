@@ -114,7 +114,7 @@
   "partial": "Only the first {{counted}} invoices of the month are in these totals."
  },
  "customers": {
-  "hasMore": "There are more customers than listed.",
+  "more": "Show more",
   "title": "Customers",
   "empty": "No customers",
   "name": "Name",
@@ -173,7 +173,8 @@
   "untitled": "Invoice with no number",
   "fullyCredited": "Fully credited",
   "finalize": "Issue",
-  "finalizing": "Issuing…",
+  "finalizeTitle": "Issue this invoice?",
+  "finalizeBody": "It gets its number and the customer can pay it. Once issued it can only be voided, never edited.",
   "nothingToCredit": "Nothing left to credit",
   "creditNote": "Credit note",
   "void": "Void",
@@ -224,7 +225,7 @@
   "viaPixNote": "Inter sends this amount back by Pix to whoever paid the invoice, from its payment. This cannot be undone."
  },
  "subscriptions": {
-  "hasMore": "There are more subscriptions than listed.",
+  "more": "Show more",
   "title": "Subscriptions",
   "empty": "No subscriptions",
   "plan": "Plan",
@@ -268,6 +269,9 @@
   "owner": "Product",
   "prices": "Prices",
   "from": "From",
+  "fromPrice": "from {{amount}}",
+  "priceCount_one": "{{count}} active price",
+  "priceCount_other": "{{count}} active prices",
   "inactive": "inactive",
   "name": "Name",
   "ownerLabel": "Product",
@@ -296,6 +300,7 @@
   "amount": "Amount",
   "archived": "archived",
   "archive": "Archive",
+  "archiveNamed": "Archive {{name}}",
   "dunningTitle": "Product collection policy",
   "dunningDescription": "Replaces the organization's on this product's invoices. If a subscription mixes policies, the organization's applies.",
   "inherit": "the organization's policy",
