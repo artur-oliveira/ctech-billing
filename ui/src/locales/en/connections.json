@@ -176,6 +176,8 @@
     "choose": "Classify…",
     "empty": "All classified",
     "emptyBody": "New bank entries appear here until you say what they are.",
+    "noAccount": "No account chosen",
+    "noAccountBody": "Open an account to see the entries waiting to be classified.",
     "updatedAt": "Inter balance, updated at {{time}}",
     "difference": "Difference of {{amount}} between Inter and Finanças",
     "done": "Entry classified",
