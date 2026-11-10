@@ -6,6 +6,7 @@ import {useState} from "react";
 import {useTranslation} from "react-i18next";
 
 import {FormError, FormErrorText} from "@/components/finance/FormError";
+import {ImportStep} from "@/components/finance/ImportStep";
 import {InlineConfirm} from "@/components/finance/InlineConfirm";
 import {LedgerRow} from "@/components/finance/LedgerRow";
 import {wholeSpace} from "@/components/finance/TransferPanel";
@@ -68,10 +69,11 @@ export function CardImportView({card, accounts, importId: initial, onClose}: {ca
   const reopen = useFinanceMutation((c: FinanceCtx, _: void, key) => reopenStatement(c, card.id, month, key), wholeSpace, () => setReopening(false));
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-8">
+      <ImportStep n={1} title={t("finance.cardImport.stepFile")}>
       <form
         aria-label={t("finance.cardImport.title")}
-        className="space-y-3"
+        className="space-y-4"
         onSubmit={e => {
           e.preventDefault();
           if (!file || target !== "open" || upload.isPending) return;
@@ -79,10 +81,10 @@ export function CardImportView({card, accounts, importId: initial, onClose}: {ca
           upload.mutate(file);
         }}
       >
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Field label={t("finance.cardImport.month")} htmlFor="ci-month">
+        <div className="space-y-4">
+          <div className="max-w-xs"><Field label={t("finance.cardImport.month")} htmlFor="ci-month">
             <Input id="ci-month" type="month" value={month} onChange={e => { setMonth(e.target.value); setNote(null); setReopening(false); }}/>
-          </Field>
+          </Field></div>
           <FileDrop id="ci-file" label={t("finance.cardImport.file")} hint={t("finance.cardImport.fileHint")} accept=".csv,.txt" maxBytes={MAX_BYTES} file={file}
             onFile={f => {
               setFile(f); setNote(null); upload.reset(); upload.newIntent();
@@ -111,7 +113,7 @@ export function CardImportView({card, accounts, importId: initial, onClose}: {ca
         <FormError error={upload.error} className=""/>
       </form>
       {!importId && resumable.length > 0 && (
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2 border-t border-border pt-3">
           {resumable.map(i => (
             <Button key={i.id} type="button" variant="outline" size="sm" onClick={() => setImportId(i.id!)}>
               {t("finance.cardImport.resume", {count: i.pending})}
@@ -119,7 +121,12 @@ export function CardImportView({card, accounts, importId: initial, onClose}: {ca
           ))}
         </div>
       )}
-      {importId && <Review key={importId} card={card} accounts={accounts} importId={importId}/>}
+      </ImportStep>
+      {importId && (
+        <ImportStep n={2} title={t("finance.cardImport.stepReview")} hint={t("finance.cardImport.stepReviewHint")}>
+          <Review key={importId} card={card} accounts={accounts} importId={importId}/>
+        </ImportStep>
+      )}
     </div>
   );
 }
@@ -163,21 +170,19 @@ function Review({card, accounts, importId}: {card: Card; accounts: Account[]; im
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted-foreground">
-        {t("finance.cardImport.counts", {pending: count("pending"), linked: count("linked"), created: count("created"), ignored: count("ignored")})}
-      </p>
-      {stTotal !== undefined && (
-        <p role="status" aria-label={t("finance.cardImport.totalsLabel")} className="text-sm text-foreground">
-          {t("finance.cardImport.totals", {file: money(fileTotal), statement: money(stTotal)})}
-          {fileTotal !== stTotal && <> {t("finance.cardImport.totalsDiffer")}</>}
+      <div className="space-y-1 rounded-lg bg-surface p-3 text-sm">
+        <p className="text-muted-foreground">
+          {t("finance.cardImport.counts", {pending: count("pending"), linked: count("linked"), created: count("created"), ignored: count("ignored")})}
         </p>
-      )}
+        {stTotal !== undefined && (
+          <p role="status" aria-label={t("finance.cardImport.totalsLabel")} className="text-foreground">
+            {t("finance.cardImport.totals", {file: money(fileTotal), statement: money(stTotal)})}
+            {fileTotal !== stTotal && <> {t("finance.cardImport.totalsDiffer")}</>}
+          </p>
+        )}
+      </div>
       {matches.length > 0 && (
         <Section title={t("finance.cardImport.pairs")} className="space-y-2">
-          <Button type="button" variant="brand" size="sm" disabled={confirmAll.isPending} onClick={() => confirmAll.mutate(dismissed.flat())}>
-            {t("finance.cardImport.confirmAll", {count: matches.length})}
-          </Button>
-          <FormError error={confirmAll.error} className=""/>
           <ul className="divide-y divide-border border-y border-border">
             {matches.map(s => {
               const first = byN.get(s.lines[0])!;
@@ -193,6 +198,13 @@ function Review({card, accounts, importId}: {card: Card; accounts: Account[]; im
             })}
           </ul>
           <FormError error={confirm.error} className=""/>
+          {/* The step's primary action stays in reach while the pairs scroll. */}
+          <div className="sticky bottom-0 z-10 -mx-1 flex flex-wrap items-center gap-2 border-t border-border bg-background px-1 py-3">
+            <Button type="button" variant="brand" size="sm" disabled={confirmAll.isPending} onClick={() => confirmAll.mutate(dismissed.flat())}>
+              {t("finance.cardImport.confirmAll", {count: matches.length})}
+            </Button>
+            <FormError error={confirmAll.error} className=""/>
+          </div>
         </Section>
       )}
       <Section title={t("finance.cardImport.unpaired")} className="space-y-2">

@@ -17,6 +17,7 @@ import {selectCopy} from "@/lib/selectCopy";
 import {type FinanceCtx, fileToBase64, financeKeys, listAccounts, listImports, postImportOpening, uploadImport} from "@/lib/api/finance";
 import type {ImportFormat, ImportSummary, OpeningProposal} from "@/lib/api/financeTypes";
 import {accountName, byAccountName} from "@/lib/finance/accountName";
+import {ImportStep} from "@/components/finance/ImportStep";
 import {useFinanceMutation} from "@/lib/finance/useFinanceMutation";
 import {useFinanceCtx, useFinanceSpaces} from "@/lib/finance/useFinanceSpaces";
 import {money, shortDate} from "@/lib/format";
@@ -79,11 +80,14 @@ function AccountImports({accountId, canImport, canConfigure}: {accountId: string
   const current = list.find(i => i.id === selected) ?? list.find(i => i.pending > 0) ?? list[0];
 
   return (
-    <>
+    <div className="space-y-8">
       {canImport && (
-        <Upload accountId={accountId} canConfigure={canConfigure} onImported={id => setSelected(id)} onNeedsColumns={() => setMapping(true)} onColumns={() => setMapping(m => !m)}/>
+        <ImportStep n={1} title={t("finance.import.stepFile")}>
+          <Upload accountId={accountId} canConfigure={canConfigure} onImported={id => setSelected(id)} onNeedsColumns={() => setMapping(true)} onColumns={() => setMapping(m => !m)}/>
+          {mapping && <CsvMappingForm accountId={accountId} onDone={() => setMapping(false)}/>}
+        </ImportStep>
       )}
-      {canImport && mapping && <CsvMappingForm accountId={accountId} onDone={() => setMapping(false)}/>}
+      <ImportStep n={canImport ? 2 : 1} title={t("finance.import.stepReview")} hint={t("finance.import.stepReviewHint")}>
       <Section title={t("finance.import.history")}>
         {imports.isLoading ? <Skeleton className="h-10 w-full"/> : imports.error ? (
           <ErrorBlock error={imports.error} onRetry={() => void imports.refetch()}/>
@@ -105,7 +109,8 @@ function AccountImports({accountId, canImport, canConfigure}: {accountId: string
         )}
       </Section>
       {current?.id && <ImportLines key={current.id} importId={current.id}/>}
-    </>
+      </ImportStep>
+    </div>
   );
 }
 
