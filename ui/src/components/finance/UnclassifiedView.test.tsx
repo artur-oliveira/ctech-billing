@@ -210,3 +210,10 @@ describe("Classificar em massa", () => {
     expect(screen.queryByRole("region", {name: "Classificar em massa"})).toBeNull();
   });
 });
+
+describe("sem conta no link", () => {
+  it("explains instead of loading forever", () => {
+    renderWithQuery(<UnclassifiedView account=""/>);
+    expect(screen.getByText("Nenhuma conta escolhida")).toBeInTheDocument();
+  });
+});

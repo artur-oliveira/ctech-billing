@@ -487,7 +487,7 @@ function ProjectionChart({data}: {data: ProjectedPeriod[]}) {
       <figcaption className="flex flex-wrap gap-4 text-xs text-muted-foreground">
         {data[0]?.count > 1 && <span>{t("finance.overview.barSpan", {count: data[0].count})}</span>}
         <span className="flex items-center gap-1.5"><span className="inline-block size-3 rounded-sm bg-brand-600"/>{t("finance.overview.legendEnd")}</span>
-        <span className="flex items-center gap-1.5"><span className="inline-block size-3 rounded-sm bg-danger"/>{t("finance.overview.legendRed")}</span>
+        {data.some(m => m.balance < 0) && <span className="flex items-center gap-1.5"><span className="inline-block size-3 rounded-sm bg-danger"/>{t("finance.overview.legendRed")}</span>}
       </figcaption>
     </figure>
   );

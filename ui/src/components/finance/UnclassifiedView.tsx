@@ -58,7 +58,11 @@ export function UnclassifiedView({account}: {account: string}) {
         title={t("connections.unclassified.title")}
         description={acct ? accountName(acct) : undefined}
       />
-      {lines.isPending || accounts.isPending ? (
+      {account === "" ? (
+        // No account in the link: the query is disabled, so "pending" would be a skeleton forever.
+        <EmptyState icon={<CircleCheck aria-hidden/>} title={t("connections.unclassified.noAccount")} description={t("connections.unclassified.noAccountBody")}
+          action={<Button variant="outline" size="sm" render={<Link href="/finance/accounts"/>}>{t("finance.nav.accounts")}</Button>}/>
+      ) : lines.isPending || accounts.isPending ? (
         <div className="space-y-2" aria-busy><Skeleton className="h-5 w-40"/><Skeleton className="h-16 w-full"/><Skeleton className="h-16 w-full"/></div>
       ) : lines.isError ? (
         <ErrorBlock error={lines.error} onRetry={() => void lines.refetch()}/>
