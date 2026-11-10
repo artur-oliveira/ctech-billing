@@ -313,6 +313,7 @@
     "projected": "Projected balance",
     "chartLabel_one": "Projected balance at the end of the next month",
     "chartLabel_other": "Projected balance at the end of each of the next {{count}} months",
+    "chartEnding": "Ending balance in {{month}}: {{balance}}.",
     "barTitle": "{{month}}: balance {{balance}} (to receive {{receivable}}, to pay {{payable}}, recurrences {{recurrences}})",
     "legendEnd": "Balance at month end",
     "legendRed": "Negative",

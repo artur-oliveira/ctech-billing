@@ -69,7 +69,6 @@ export function TransferPanel({accounts, from: initialFrom = "", onDone}: {accou
       </Field>
       <PanelActions>
         <Button type="submit" variant="brand" size="sm" disabled={!ready}>{t("bills.transfer.submit")}</Button>
-        <Button type="button" variant="outline" size="sm" onClick={onDone}>{t("bills.common.close")}</Button>
         <FormError error={create.error} fe={fe} className=""/>
       </PanelActions>
     </DrawerForm>

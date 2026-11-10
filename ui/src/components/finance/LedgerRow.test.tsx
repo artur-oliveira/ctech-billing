@@ -155,6 +155,23 @@ describe("LedgerRow's actions on a phone", () => {
   });
 });
 
+describe("LedgerRow's phone layout", () => {
+  const cls = (name: string) => screen.getByText(name).closest("div")!.className;
+
+  it("puts the badge and the primary action on one line", () => {
+    render(<ul><LedgerRow title="Aluguel" amount="R$ 1" aside={<span>Atrasada</span>} actions={<button>Pagar</button>}/></ul>);
+    expect(cls("Atrasada")).toContain("row-start-2");
+    expect(cls("Pagar")).toContain("row-start-2");
+    expect(cls("Atrasada")).not.toContain("col-span-full");
+  });
+
+  it("keeps a lone action or badge on its own full line", () => {
+    render(<ul><LedgerRow title="Aluguel" amount="R$ 1" actions={<button>Pagar</button>}/><LedgerRow title="Luz" amount="R$ 2" aside={<span>Paga</span>}/></ul>);
+    expect(cls("Pagar")).toContain("col-span-full");
+    expect(cls("Paga")).toContain("col-span-full");
+  });
+});
+
 describe("LedgerRow's second figure", () => {
   it("shows a running balance beside the amount, named", () => {
     render(<ul><LedgerRow title="Pix mãe" amount="+R$ 210,00" balance="R$ 8.939,00" balanceLabel="Saldo"/></ul>);

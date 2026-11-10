@@ -313,6 +313,7 @@
     "projected": "Saldo projetado",
     "chartLabel_one": "Saldo projetado ao fim do próximo mês",
     "chartLabel_other": "Saldo projetado ao fim de cada um dos próximos {{count}} meses",
+    "chartEnding": "Saldo final em {{month}}: {{balance}}.",
     "barTitle": "{{month}}: saldo {{balance}} (a receber {{receivable}}, a pagar {{payable}}, recorrências {{recurrences}})",
     "legendEnd": "Saldo ao fim do mês",
     "legendRed": "Negativo",

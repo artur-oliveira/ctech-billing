@@ -91,7 +91,6 @@ export function PurchasePanel({cardId, accounts, history = [], onDone}: {cardId:
       </Field>
       <PanelActions>
         <Button type="submit" variant="brand" size="sm" disabled={!ready}>{t("bills.purchase.save")}</Button>
-        <Button type="button" variant="outline" size="sm" onClick={onDone}>{t("bills.common.close")}</Button>
         <FormError error={create.error} fe={fe} className=""/>
       </PanelActions>
     </DrawerForm>

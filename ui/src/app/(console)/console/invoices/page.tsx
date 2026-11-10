@@ -1,6 +1,6 @@
 "use client";
 
-import {Button, EmptyState, PageHeader, Segmented, Skeleton} from "@aoctech/ui";
+import {Button, EmptyState, PageHeader, Skeleton} from "@aoctech/ui";
 import {useInfiniteQuery} from "@tanstack/react-query";
 import {ChevronLeft, ChevronRight, FileText} from "lucide-react";
 import Link from "next/link";
@@ -9,13 +9,13 @@ import {Suspense, useState} from "react";
 import {useTranslation} from "react-i18next";
 
 import {InvoiceStatusBadge} from "@/components/console/InvoiceStatusBadge";
+import {FilterChips} from "@/components/ui/FilterChips";
 import {ErrorBlock} from "@/components/portal/ErrorBlock";
 import {consoleKeys, listConsoleInvoices} from "@/lib/api/console";
 import type {ConsoleInvoiceRow} from "@/lib/api/consoleTypes";
 import {useConsoleScope} from "@/lib/console/scope";
 import {compactDate, compactPeriod, money, shortDate} from "@/lib/format";
 import {useDocumentTitle} from "@/lib/hooks/useDocumentTitle";
-import {NARROW, useMediaQuery} from "@/lib/hooks/useMediaQuery";
 import {currentLocale} from "@/lib/i18n";
 
 /**
@@ -40,8 +40,8 @@ export default function ConsoleInvoicesPage() {
   );
 }
 
-type Filter = "all" | "overdue" | "upcoming" | "paid";
-const FILTERS: Filter[] = ["all", "overdue", "upcoming", "paid"];
+type Filter = "all" | "overdue" | "upcoming" | "paid" | "draft" | "void" | "uncollectible";
+const FILTERS: Filter[] = ["all", "overdue", "upcoming", "paid", "draft", "void", "uncollectible"];
 
 /** A lens over the pages already loaded: the month is the server's partition,
  *  the status only narrows it. */
@@ -50,6 +50,9 @@ const MATCH: Record<Filter, (invoice: ConsoleInvoiceRow) => boolean> = {
   overdue: i => i.status === "OPEN" && i.overdue,
   upcoming: i => i.status === "OPEN" && !i.overdue,
   paid: i => i.status === "PAID",
+  draft: i => i.status === "DRAFT",
+  void: i => i.status === "VOID",
+  uncollectible: i => i.status === "UNCOLLECTIBLE",
 };
 
 function Invoices() {
@@ -62,7 +65,6 @@ function Invoices() {
   // The overview links here with ?filter=overdue.
   const asked = useSearchParams().get("filter") as Filter | null;
   const [filter, setFilter] = useState<Filter>(asked && FILTERS.includes(asked) ? asked : "all");
-  const phone = useMediaQuery(NARROW);
 
   const query = useInfiniteQuery({
     queryKey: consoleKeys.invoiceMonth(scope, year, month),
@@ -113,12 +115,10 @@ function Invoices() {
             </Button>
           )}
         </div>
-        <Segmented
+        <FilterChips
           label={t("console.invoices.filter.label")}
           value={filter}
           onValueChange={setFilter}
-          fill={phone}
-          className="max-sm:w-full"
           options={FILTERS.map(f => ({value: f, label: t(`console.invoices.filter.${f}`)}))}
         />
       </div>

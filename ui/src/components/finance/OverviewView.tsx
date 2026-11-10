@@ -448,6 +448,24 @@ function niceStep(span: number): number {
   return [1, 2, 5, 10].map(f => f * pow).find(s => s >= raw) ?? 10 * pow;
 }
 
+/**
+ * What a screen reader gets of a chart. The per-bar <title>s sit inside an
+ * svg role="img", whose children are presentational, so they are never read;
+ * this is the same facts as text: the ending balance, then one line per period.
+ * The visible list/table toggle stays for everyone else.
+ */
+function ChartSummary({data, line}: {data: ProjectedPeriod[]; line: (m: ProjectedPeriod) => string}) {
+  const {t} = useTranslation();
+  const last = data[data.length - 1];
+  if (!last) return null;
+  return (
+    <div className="sr-only">
+      <p>{t("finance.overview.chartEnding", {month: periodLabel(last), balance: signedMoney(last.balance)})}</p>
+      <ul>{data.map(m => <li key={m.month}>{line(m)}</li>)}</ul>
+    </div>
+  );
+}
+
 function ProjectionChart({data}: {data: ProjectedPeriod[]}) {
   const {t} = useTranslation();
   const ref = useRef<HTMLElement>(null);
@@ -462,8 +480,10 @@ function ProjectionChart({data}: {data: ProjectedPeriod[]}) {
   const zero = y(0);
   const slot = (W - LEFT) / Math.max(1, data.length);
   const bw = Math.min(36, slot * 0.5);
+  const barTitle = (m: ProjectedPeriod) => t("finance.overview.barTitle", {month: periodLabel(m), balance: signedMoney(m.balance), receivable: money(m.receivable), payable: money(m.payable), recurrences: signedMoney(m.virtual)});
   return (
     <figure ref={ref} className="space-y-2">
+      <ChartSummary data={data} line={barTitle}/>
       <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={t("finance.overview.chartLabel", {count: data.length})} className="h-auto w-full">
         {ticks.map(v => (
           <g key={v}>
@@ -477,7 +497,7 @@ function ProjectionChart({data}: {data: ProjectedPeriod[]}) {
           const top = Math.min(y(m.balance), zero), h = Math.abs(y(m.balance) - zero);
           return (
             <g key={m.month}>
-              <title>{t("finance.overview.barTitle", {month: periodLabel(m), balance: signedMoney(m.balance), receivable: money(m.receivable), payable: money(m.payable), recurrences: signedMoney(m.virtual)})}</title>
+              <title>{barTitle(m)}</title>
               <rect x={x} y={top} width={bw} height={Math.max(h, 1)} rx={2} className={m.balance < 0 ? "fill-danger" : "fill-brand-600"}/>
               {i % every === 0 && <text x={LEFT + i * slot + slot / 2} y={H - 6} textAnchor="middle" className="fill-muted-foreground text-[11px]">{monthShort(m.month)}</text>}
             </g>
@@ -514,8 +534,10 @@ function FlowChart({data}: {data: ProjectedPeriod[]}) {
   const zero = y(0);
   const slot = (W - LEFT) / Math.max(1, data.length);
   const bw = Math.min(36, slot * 0.5);
+  const flowTitle = (m: ProjectedPeriod) => t("finance.overview.flowTitle", {month: periodLabel(m), inflow: money(m.inflow), outflow: money(m.outflow), net: signedMoney(m.result), recIn: money(m.recIn), recOut: money(m.recOut)});
   return (
     <figure ref={ref} className="space-y-2">
+      <ChartSummary data={data} line={flowTitle}/>
       <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={t("finance.overview.flowChartLabel", {count: data.length})} className="h-auto w-full">
         {ticks.map(v => (
           <g key={v}>
@@ -530,7 +552,7 @@ function FlowChart({data}: {data: ProjectedPeriod[]}) {
           const outBills = bills(m.outflow - m.recOut), outRec = bills(m.recOut);
           return (
             <g key={m.month}>
-              <title>{t("finance.overview.flowTitle", {month: periodLabel(m), inflow: money(m.inflow), outflow: money(m.outflow), net: signedMoney(m.result), recIn: money(m.recIn), recOut: money(m.recOut)})}</title>
+              <title>{flowTitle(m)}</title>
               {inBills > 0 && <rect x={x} y={zero - inBills} width={bw} height={inBills} className="fill-success"/>}
               {inRec > 0 && <rect x={x} y={zero - inBills - inRec} width={bw} height={inRec} rx={2} className="fill-success opacity-45"/>}
               {outBills > 0 && <rect x={x} y={zero} width={bw} height={outBills} className="fill-danger"/>}

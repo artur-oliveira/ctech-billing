@@ -53,7 +53,6 @@ export function CreditPanel({cardId, accounts, onDone}: {cardId: string; account
       </Field>
       <PanelActions>
         <Button type="submit" variant="brand" size="sm" disabled={!ready}>{t("finance.cards.creditSave")}</Button>
-        <Button type="button" variant="outline" size="sm" onClick={onDone}>{t("bills.common.close")}</Button>
         <FormError error={create.error} fe={fe} className=""/>
       </PanelActions>
     </DrawerForm>

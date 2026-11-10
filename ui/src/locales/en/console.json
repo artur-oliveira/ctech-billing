@@ -160,7 +160,10 @@
    "all": "All",
    "overdue": "Overdue",
    "upcoming": "Upcoming",
-   "paid": "Paid"
+   "paid": "Paid",
+   "draft": "Drafts",
+   "void": "Void",
+   "uncollectible": "Uncollectible"
   },
   "attemptN_one": "attempt {{count}}",
   "attemptN_other": "attempt {{count}}"

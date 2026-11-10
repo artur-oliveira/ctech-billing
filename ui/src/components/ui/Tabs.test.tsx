@@ -1,6 +1,6 @@
 import "@testing-library/jest-dom/vitest";
 
-import {render, screen} from "@testing-library/react";
+import {fireEvent, render, screen} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {useState} from "react";
 import {describe, expect, it} from "vitest";
@@ -41,5 +41,24 @@ describe("Tabs", () => {
     await userEvent.click(screen.getByRole("tab", {name: "Gama"}));
     expect(screen.getByRole("tabpanel")).toHaveTextContent("c");
     expect(screen.getByRole("tablist")).toHaveClass("overflow-x-auto", "max-w-full");
+  });
+  it("fades the edge that has more tabs past it, and drops it at the end", () => {
+    const {container} = render(<Harness/>);
+    const list = screen.getByRole("tablist");
+    // jsdom has no layout: give the strip a box narrower than its content.
+    Object.defineProperty(list, "clientWidth", {configurable: true, value: 100});
+    Object.defineProperty(list, "scrollWidth", {configurable: true, value: 300});
+    const at = (x: number) => { list.scrollLeft = x; fireEvent.scroll(list); };
+    const fades = () => [...container.querySelectorAll("[data-fade]")].map(f => f.getAttribute("data-fade"));
+    at(0);
+    expect(fades()).toEqual(["end"]);
+    at(100);
+    expect(fades()).toEqual(["start", "end"]);
+    at(200);
+    expect(fades()).toEqual(["start"]);
+  });
+  it("draws no fade when everything fits", () => {
+    const {container} = render(<Harness/>);
+    expect(container.querySelector("[data-fade]")).toBeNull();
   });
 });

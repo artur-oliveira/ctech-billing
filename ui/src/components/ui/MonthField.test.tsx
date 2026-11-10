@@ -57,4 +57,26 @@ describe("month helpers", () => {
     expect(monthNames("en")[0]).toBe("Jan");
     expect(monthTitle("2026-12", "pt-BR")).toBe("dezembro de 2026");
   });
+
+  it("moves through the grid with the arrows from one tab stop, never into a blocked month", async () => {
+    render(<MonthField id="m" value="2026-03" min="2026-02" max="2026-05" onValueChange={() => {}}/>);
+    await userEvent.click(screen.getByRole("button", {name: /março/}));
+    const month = (re: RegExp) => screen.getByRole("button", {name: re});
+    const mar = await screen.findByRole("button", {name: /^mar\.? 2026$/i});
+    expect(mar).toHaveAttribute("tabindex", "0");
+    expect(month(/^abr\.? 2026$/i)).toHaveAttribute("tabindex", "-1");
+    mar.focus();
+    await userEvent.keyboard("{ArrowRight}");
+    expect(month(/^abr\.? 2026$/i)).toHaveFocus();
+    expect(month(/^abr\.? 2026$/i)).toHaveAttribute("tabindex", "0");
+    await userEvent.keyboard("{ArrowDown}");
+    expect(month(/^jul\.? 2026$/i)).not.toHaveFocus(); // jul is past max: stays
+    expect(month(/^abr\.? 2026$/i)).toHaveFocus();
+    await userEvent.keyboard("{End}");
+    expect(month(/^jun\.? 2026$/i)).not.toHaveFocus(); // jun is blocked
+    await userEvent.keyboard("{Home}");
+    expect(month(/^jan\.? 2026$/i)).not.toHaveFocus(); // jan is blocked
+    await userEvent.keyboard("{ArrowLeft}{ArrowLeft}");
+    expect(month(/^fev\.? 2026$/i)).toHaveFocus();
+  });
 });

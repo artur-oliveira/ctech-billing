@@ -160,7 +160,10 @@
    "all": "Todas",
    "overdue": "Vencidas",
    "upcoming": "A vencer",
-   "paid": "Pagas"
+   "paid": "Pagas",
+   "draft": "Rascunhos",
+   "void": "Anuladas",
+   "uncollectible": "Incobráveis"
   },
   "attemptN_one": "{{count}}ª tentativa",
   "attemptN_other": "{{count}}ª tentativa"

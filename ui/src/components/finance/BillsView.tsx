@@ -448,7 +448,6 @@ function NewBillPanel({direction, accounts, history, onDone}: {direction: Direct
         </div>
         <div className="flex flex-wrap gap-2">
           <Button type="submit" variant="brand" size="sm" disabled={create.isPending || create.isSuccess}>{t("bills.new.create")}</Button>
-          <Button type="button" variant="outline" size="sm" onClick={onDone}>{t("bills.common.close")}</Button>
         </div>
         <FormError error={create.error} fe={fe}/>
         {settle.error && settle.variables ? (
