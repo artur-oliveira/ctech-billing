@@ -15,7 +15,7 @@
  */
 import type {
   Account, AccountClass, Bill, Card, CardStatement, CashFlowMonth, Purchase, StatementItem, DREGroupLine, Direction, ExpressionJSON, FinanceSpaceEntry, ProjectionMonth,
-  Recurrence, StatementEntry, TxKind, Verb, CsvMapping, ImportFormat, ImportLine, ImportSummary, OpeningProposal, RejectReason,
+  Recurrence, StatementEntry, TxKind, Verb, CsvMapping, CardImportLine, CardSuggestion, ImportFormat, ImportLine, ImportSummary, OpeningProposal, RejectReason,
 } from "@/lib/api/financeTypes";
 import {STATEMENT_WITH_MEMOS, STATEMENT_WITH_MEMOS_ACCOUNTS} from "@/dev/fixtures/statementWithMemos";
 
@@ -69,6 +69,8 @@ interface SpaceState {
   imports: (ImportSummary & {id: string; lines_: Omit<ImportLine, "candidates">[]; opening_?: OpeningProposal})[]
   locks: Set<string>
   mappings: Map<string, CsvMapping>
+  /** Per card: the bank's category name to the expense category its lines become. */
+  bankCats: Map<string, Record<string, string>>
   /** Bills the daily job paid (auto-settle), and those a statement line holds. */
   autoPaid: Set<string>
   linked: Set<string>
@@ -128,9 +130,10 @@ function seed(kind: "personal" | "org", mode: string): SpaceState {
     entries: [] as MEntry[], reversed: new Set<string>(), openings: new Set<string>(),
     cards: [] as SpaceState["cards"], purchases: [] as SpaceState["purchases"], items: [] as SpaceState["items"],
     closed: new Map<string, {total: number; bill_id?: string}>(),
-    imports: [] as SpaceState["imports"], locks: new Set<string>(), mappings: new Map<string, CsvMapping>(),
+    imports: [] as SpaceState["imports"], locks: new Set<string>(), mappings: new Map<string, CsvMapping>(), bankCats: new Map<string, Record<string, string>>(),
     autoPaid: new Set<string>(), linked: new Set<string>(),
   };
+  let futureInvoice: Bill | undefined;
   if (kind === "personal") {
     if (live) {
       // The seeded import is old enough for its lines to show their last days.
@@ -148,24 +151,37 @@ function seed(kind: "personal" | "org", mode: string): SpaceState {
         lines: 4, duplicates: 0, rejected_count: 0, rejected: [], pending: 3, lines_: lines,
       });
       for (const l of lines) ledger.locks.add(`conta-corrente#seed-${l.n}`);
+    }
+    {
       // A branded card with a purchase in 3× that began last month: last
       // month's statement is closed and past due (Vencida), this one is open.
       const [py, pm] = monthOffset(today, -1);
       const ym = (n: number) => { const [y, m] = monthOffset(today, n); return `${y}-${String(m).padStart(2, "0")}`; };
       ledger.cards.push({id: "card-nubank", name: "Nubank", closing_day: 3, due_day: 10, paying_account_id: "conta-corrente",
-        open_month: ym(0), balance: -93_990, archived: false, brand: "mastercard", last4: "4242", first_month: ym(-2)});
+        open_month: ym(0), balance: live ? -93_990 : -90_000, archived: false, brand: "mastercard", last4: "4242", first_month: ym(-2)});
       ledger.purchases.push({id: "p-seed", card: "card-nubank", description: "Geladeira", category_id: "mercado", date: iso(py, pm, 2),
         total: 90_000, refunded: false, advanced: [], installments: [0, 1, 2].map(i => ({number: i + 1, amount: 30_000, month: ym(i - 1)}))});
       for (const i of [0, 1, 2]) {
         ledger.items.push({card: "card-nubank", month: ym(i - 1), key: `p-seed#${i + 1}`, purchase_id: "p-seed", description: "Geladeira",
           category_id: "mercado", date: iso(py, pm, 2), number: i + 1, of: 3, kind: "installment", amount: 30_000});
       }
-      // A streaming subscription paid by this card: the job posted this month's.
+      // A future invoice (the third installment's statement) is already a bill, so Projeção carries it.
+      const [fy, fm] = monthOffset(today, 2);
+      futureInvoice = bill(`fatura-card-nubank-${ym(1)}`, "payable", 30_000, iso(fy, fm, 10), "card-nubank", "Fatura Nubank",
+        {origin: "card_statement", origin_ref: `card-nubank#${ym(1)}`, competence_date: iso(fy, fm - 1 || 12, 3)});
+      // This month's cash entries on the default account (the statement view is never empty).
       const [ty, tm] = monthOffset(today, 0);
-      ledger.purchases.push({id: "p-stream", card: "card-nubank", description: "Streaming", category_id: "assinaturas", date: iso(ty, tm, 2),
-        total: 3_990, refunded: false, advanced: [], installments: [{number: 1, amount: 3_990, month: ym(0)}], origin: "recurrence", recurrence_id: "r-streaming"});
-      ledger.items.push({card: "card-nubank", month: ym(0), key: "p-stream#1", purchase_id: "p-stream", description: "Streaming",
-        category_id: "assinaturas", date: iso(ty, tm, 2), number: 1, of: 1, kind: "installment", amount: 3_990, recurrence_id: "r-streaming"});
+      const day = (d: number) => iso(ty, tm, Math.min(d, Number(today.slice(8))));
+      for (const [i, [d, amount, flow, memo]] of ([
+        [2, 520_000, "salario", "Salário"], [3, -180_000, "aluguel", "Aluguel do apartamento"], [4, -8_740, "mercado", "Mercado do bairro"],
+        [5, -2_350, "mercado", "Padaria"], [6, -11_990, "aluguel", "Internet"],
+      ] as const).entries()) ledger.entries.push({account: "conta-corrente", tx: `tx-seed-${i + 1}`, date: day(d), amount, kind: "settlement", flow, memo});
+      if (live) {
+        ledger.purchases.push({id: "p-stream", card: "card-nubank", description: "Streaming", category_id: "assinaturas", date: iso(ty, tm, 2),
+          total: 3_990, refunded: false, advanced: [], installments: [{number: 1, amount: 3_990, month: ym(0)}], origin: "recurrence", recurrence_id: "r-streaming"});
+        ledger.items.push({card: "card-nubank", month: ym(0), key: "p-stream#1", purchase_id: "p-stream", description: "Streaming",
+          category_id: "assinaturas", date: iso(ty, tm, 2), number: 1, of: 1, kind: "installment", amount: 3_990, recurrence_id: "r-streaming"});
+      }
     }
     return {
       ...ledger,
@@ -179,7 +195,7 @@ function seed(kind: "personal" | "org", mode: string): SpaceState {
         acct("juros", "Juros e multas", "expense", 0, {dre_group: "financial_result", system_key: "interest_and_fines"}),
         acct("assinaturas", "Assinaturas", "expense", live ? 3_990 : 0, {dre_group: "operating_expenses"}),
         acct("assinaturas-antigas", "Assinaturas antigas", "expense", 0, {dre_group: "operating_expenses", archived: true}),
-        ...(live ? [acct("card-nubank", "Nubank", "liability", -93_990)] : []),
+        acct("card-nubank", "Nubank", "liability", live ? -93_990 : -90_000),
       ],
       bills: [
         bill("b-aluguel", "payable", 180_000, addDays(today, -3), "aluguel", "Aluguel do apartamento"),
@@ -188,6 +204,7 @@ function seed(kind: "personal" | "org", mode: string): SpaceState {
         ...(live ? [bill("b-streaming", "payable", 3_990, addDays(today, -4), "aluguel", "Streaming",
           {auto_settle: true, status: "paid", paid_date: addDays(today, -4)})] : []),
         bill("b-freela", "receivable", 350_000, addDays(today, 9), "salario", "Projeto freelance"),
+        ...(futureInvoice ? [futureInvoice] : []),
       ],
       recurrences: [{
         id: "r-aluguel", direction: "payable", amount: 180_000, category_id: "aluguel", account_id: "conta-corrente",
@@ -295,6 +312,26 @@ function applyPatch(target: object, patch: object) {
     if (v === null) delete t[k];
     else t[k] = v;
   }
+}
+
+/**
+ * The mock bank file (Inter card CSV) every upload "contains": a pair per seeded
+ * statement item, unpaired lines needing a category, a credit, the previous payment
+ * and a long tail so the review list scrolls under its sticky bar.
+ */
+function cardFileLines(month: string): Omit<CardImportLine, "candidates">[] {
+  const d = (n: number) => `${month}-${String(n).padStart(2, "0")}`;
+  const base = [
+    {n: 1, date: d(2), amount: 3_990, description: "Streaming", bank_category: "Entretenimento"},
+    {n: 2, date: d(2), amount: 30_000, description: "GELADEIRA ELETRO LTDA", k: 2, of: 3, bank_category: "Casa"},
+    {n: 3, date: d(4), amount: 2_450, description: "Uber *Trip", bank_category: "Transporte"},
+    {n: 4, date: d(5), amount: 8_790, description: "Farmácia São João", bank_category: "Saúde"},
+    {n: 5, date: d(6), amount: 12_350, description: "Restaurante Sabor da Casa de Praia com nome bem comprido", bank_category: "Alimentação"},
+    {n: 6, date: d(7), amount: -4_590, description: "Estorno Amazon", bank_category: "Compras"},
+    {n: 7, date: d(1), amount: -9_000, description: "Pagamento on line", payment: true},
+  ];
+  const tail = Array.from({length: 18}, (_, i) => ({n: 8 + i, date: d(8 + i), amount: 1_500 + i * 730, description: `Compra loja ${i + 1}`, bank_category: i % 3 ? "Compras" : "Alimentação"}));
+  return [...base, ...tail].map(l => ({...l, status: "pending" as const, expires_at: `${d(28)}T12:00:00Z`}));
 }
 
 // ---- scenarios -------------------------------------------------------------------
@@ -781,7 +818,7 @@ function route(method: string, path: string, r: Req, s: SpaceState, can: (v: Ver
   const forecastOf = (c: Card, month: string) => month <= c.open_month ? [] : s.recurrences
     .filter(r => r.card_id === c.id && !r.archived)
     .map(r => ({recurrence_id: r.id, description: r.description, nominal: `${month}-${String(r.expression.kind === "day_of_month" ? r.expression.day : 1).padStart(2, "0")}`, installment: 1, of: 1, amount: r.amount}));
-  const cardMatch = path.match(/^\/cards\/([^/]+)(?:\/(statements|purchases|close)(?:\/([^/]+)(?:\/(refund|advance|forecast))?)?)?$/);
+  const cardMatch = path.match(/^\/cards\/([^/]+)(?:\/(statements|purchases|close|imports|bank-categories|reopen)(?:\/([^/]+)(?:\/(refund|advance|forecast))?)?)?$/);
   if (path === "/cards" && method === "get") return ok({data: s.cards.map(c => { const out: Card & {first_month?: string} = {...c}; delete out.first_month; return out; }), has_more: false});
   if (path === "/cards" && method === "post") {
     if (!can("finance.configure")) return forbidden();
@@ -940,6 +977,109 @@ function route(method: string, path: string, r: Req, s: SpaceState, can: (v: Ver
       c.open_month = ymAdd(m, 1);
       return ok(statementOf(c, m));
     }
+    if (sub === "reopen" && method === "post") {
+      if (!can("finance.write")) return forbidden();
+      const m = body<{month?: string}>(r).month ?? "";
+      const frozen = s.closed.get(`${c.id}|${m}`);
+      const bill = frozen?.bill_id ? s.bills.find(b => b.id === frozen.bill_id) : undefined;
+      if (!frozen || m !== ymAdd(c.open_month, -1) || bill?.status === "paid") {
+        return problem(409, "/problems/invalid-transition", "Invalid Transition", "Esta fatura não pode ser reaberta.", "statement_not_reopenable");
+      }
+      if (bill) bill.status = "canceled";
+      s.closed.delete(`${c.id}|${m}`);
+      s.items = s.items.filter(i => i.key !== `carry#${m}`);
+      c.open_month = m;
+      return ok(statementOf(c, m));
+    }
+    if (sub === "bank-categories" && method === "get") return ok({categories: s.bankCats.get(c.id) ?? {}});
+    if (sub === "bank-categories" && method === "put") {
+      if (!can("finance.configure")) return forbidden();
+      const categories = body<{categories?: Record<string, string>}>(r).categories ?? {};
+      const bad = Object.entries(categories).find(([, id]) => !s.accounts.some(a => a.id === id && a.class === "expense" && !a.system && !a.archived));
+      if (bad) return problem(422, "about:blank", "Unprocessable Entity", "validation failed", "validation_failed", [{field: `categories.${bad[0]}`, code: "invalid_account", message: "needs an active expense category"}]);
+      s.bankCats.set(c.id, categories);
+      return ok({categories});
+    }
+    if (sub === "imports" && method === "post") {
+      if (!can("finance.import")) return forbidden();
+      const req = body<{statement_month?: string; bank?: string; content?: string}>(r);
+      if (!req.content) return problem(422, "about:blank", "Unprocessable Entity", "validation failed", "validation_failed", [{field: "content", code: "required", message: "required"}]);
+      if (req.statement_month !== c.open_month) return problem(409, "/problems/invalid-transition", "Invalid Transition", "Só a fatura aberta recebe um arquivo.", "statement_not_open");
+      const all = cardFileLines(c.open_month);
+      const fresh = all.filter(l => !s.locks.has(`card:${c.id}|${c.open_month}|${l.n}`));
+      for (const l of fresh) s.locks.add(`card:${c.id}|${c.open_month}|${l.n}`);
+      const dates = fresh.map(l => l.date).sort();
+      const imp = {
+        id: nextId("cimp"), kind: "card" as const, statement_month: c.open_month, account_id: c.id, format: "inter_csv" as unknown as ImportFormat,
+        created_at: new Date().toISOString(), from: dates[0], to: dates.at(-1), lines: fresh.length, duplicates: all.length - fresh.length,
+        rejected_count: 1, rejected: [{line: 99, reason: "invalid_amount" as RejectReason}], pending: fresh.length, lines_: fresh as never,
+      };
+      const {lines_: _lines, ...out} = imp;
+      void _lines;
+      if (fresh.length === 0) { const {id: _drop, ...rest} = out; void _drop; return ok({...rest, pending: 0}); }
+      s.imports.push(imp);
+      return ok(out, 201);
+    }
+  }
+
+  // card statement imports (the lines are a fixed mock file; see cardFileLines)
+  const cardImportMatch = path.match(/^\/card-imports\/([^/]+)(?:\/(confirm|confirm-all)|\/lines\/(\d+)\/create)?$/);
+  if (cardImportMatch) {
+    const imp = s.imports.find(i => i.id === cardImportMatch[1] && i.kind === "card");
+    const c = imp ? s.cards.find(x => x.id === imp.account_id) : undefined;
+    if (!imp || !c) return problem(404, "about:blank", "Not Found", "recurso não encontrado", "resource_not_found");
+    const lines = imp.lines_ as unknown as CardImportLine[];
+    const suggest = (): CardSuggestion[] => {
+      const used = new Set(lines.filter(l => l.status === "linked").map(l => l.purchase_id));
+      const out: CardSuggestion[] = [];
+      for (const l of lines.filter(x => x.status === "pending")) {
+        if (l.payment) { out.push({kind: "ignore", lines: [l.n]}); continue; }
+        const it = s.items.find(i => i.card === c.id && i.month === imp.statement_month && i.kind === "installment" && i.amount === l.amount &&
+          (!l.of || (i.of === l.of && i.number === l.k)) && !used.has(i.purchase_id) && !out.some(o => o.item?.purchase_id === i.purchase_id));
+        if (it) out.push({kind: "pair", lines: [l.n], item: {purchase_id: it.purchase_id, tag: it.key, description: it.description, amount: it.amount, date: it.date ?? l.date, number: it.number ?? 1, of: it.of ?? 1}});
+      }
+      return out;
+    };
+    const link = (ns: number[], purchase_id: string) => { for (const l of lines.filter(x => ns.includes(x.n))) Object.assign(l, {status: "linked", purchase_id}); };
+    if (!cardImportMatch[2] && !cardImportMatch[3] && method === "get") {
+      const {lines_: _l, ...head} = imp;
+      void _l;
+      return ok({import: {...head, pending: lines.filter(l => l.status === "pending").length}, lines, suggestions: suggest()});
+    }
+    if (!can("finance.import") || !can("finance.write")) return forbidden();
+    const resolvedErr = () => problem(409, "/problems/invalid-transition", "Invalid Transition", "esta linha já foi conciliada", "line_already_reconciled");
+    if (cardImportMatch[2] === "confirm") {
+      const b = body<{lines: number[]; purchase_id: string}>(r);
+      const picked = lines.filter(l => b.lines.includes(l.n));
+      if (picked.length === 0 || picked.some(l => l.status !== "pending")) return resolvedErr();
+      link(b.lines, b.purchase_id);
+      return ok({lines: picked});
+    }
+    if (cardImportMatch[2] === "confirm-all") {
+      const exclude = body<{exclude?: number[]}>(r).exclude ?? [];
+      const todo = suggest().filter(x => x.kind !== "ignore" && !x.lines.some(n => exclude.includes(n)));
+      for (const x of todo) link(x.lines, x.item!.purchase_id);
+      return ok({confirmed: todo.length});
+    }
+    const line = lines.find(l => l.n === Number(cardImportMatch[3]));
+    if (!line) return problem(404, "about:blank", "Not Found", "recurso não encontrado", "resource_not_found");
+    if (line.status !== "pending") return resolvedErr();
+    const category = body<{category_id?: string}>(r).category_id || s.bankCats.get(c.id)?.[line.bank_category ?? ""];
+    if (line.payment || !category || !s.accounts.some(a => a.id === category && a.class === "expense")) {
+      return problem(422, "about:blank", "Unprocessable Entity", "validation failed", "validation_failed", [{field: "category_id", code: "required", message: "map the bank category first"}]);
+    }
+    const id = nextId(line.amount < 0 ? "credit" : "p");
+    if (line.amount > 0) {
+      s.purchases.push({id, card: c.id, description: line.description, category_id: category, date: line.date, total: line.amount, refunded: false, advanced: [],
+        installments: [{number: 1, amount: line.amount, month: imp.statement_month!}]});
+    }
+    s.items.push({card: c.id, month: imp.statement_month!, key: `${id}#1`, purchase_id: id, description: line.description, category_id: category, date: line.date,
+      number: 1, of: 1, kind: line.amount < 0 ? "credit" : "installment", amount: line.amount});
+    c.balance -= line.amount;
+    const cat = s.accounts.find(a => a.id === category);
+    if (cat) cat.balance += line.amount;
+    Object.assign(line, {status: "created", purchase_id: id});
+    return ok({line});
   }
 
   // statement, transfers, reversals, reports

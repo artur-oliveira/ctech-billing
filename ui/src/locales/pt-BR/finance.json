@@ -720,6 +720,8 @@
     "pairs": "Parecem compras que você já cadastrou",
     "confirm": "Confirmar",
     "confirmAll": "Confirmar todos ({{count}})",
+    "confirmAllAsk": "Parear {{count}} lançamentos com as compras que você já lançou? Os pares marcados com \"Não é essa\" ficam de fora.",
+    "ignoreAsk": "Ignorar este lançamento? Ele não vira compra nem crédito e sai desta revisão.",
     "group": "{{count}} linhas somam esta compra",
     "unpaired": "Sem par",
     "empty": "Nenhuma linha pendente.",

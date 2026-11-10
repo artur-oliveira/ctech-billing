@@ -720,6 +720,8 @@
     "pairs": "These look like purchases you already entered",
     "confirm": "Confirm",
     "confirmAll": "Confirm all ({{count}})",
+    "confirmAllAsk": "Pair {{count}} lines with the purchases you entered? Pairs you marked \"Not this one\" are left out.",
+    "ignoreAsk": "Ignore this line? It will not become a purchase or a credit, and it leaves this review.",
     "group": "{{count}} lines add up to this purchase",
     "unpaired": "No match",
     "empty": "No pending lines.",

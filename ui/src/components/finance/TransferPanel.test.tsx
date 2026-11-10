@@ -39,9 +39,20 @@ describe("TransferPanel", () => {
     await pick("Para", "Poupança");
     await userEvent.type(screen.getByLabelText("Valor"), "100,00");
     const submit = screen.getByRole("button", {name: "Transferir"});
-    expect(submit).toBeEnabled();
+    const create = vi.spyOn(finance, "createTransfer");
     await pick("De", "Poupança");
-    expect(submit).toBeDisabled();
+    await userEvent.click(submit);
+    expect(create).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("Para")).toHaveAccessibleDescription("Obrigatório.");
+  });
+
+  it("names what is missing on the first try instead of keeping the button dead", async () => {
+    const create = vi.spyOn(finance, "createTransfer");
+    renderWithQuery(<TransferPanel accounts={ACCOUNTS} onDone={() => {}}/>);
+    await userEvent.click(screen.getByRole("button", {name: "Transferir"}));
+    expect(create).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("De")).toBeInvalid();
+    expect(screen.getByLabelText("Valor")).toBeInvalid();
   });
 
   it("sends centavos and the memo", async () => {

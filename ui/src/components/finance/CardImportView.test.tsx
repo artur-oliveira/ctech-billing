@@ -90,6 +90,8 @@ describe("importar fatura do cartão", () => {
     await userEvent.click(within(first).getByRole("button", {name: "Confirmar"}));
     await waitFor(() => expect(s.confirm).toHaveBeenCalledWith(expect.anything(), "i1", {lines: [1], purchase_id: "p1", tag: "01"}, expect.any(String)));
     await userEvent.click(screen.getByRole("button", {name: "Confirmar todos (2)"}));
+    expect(s.confirmAll).not.toHaveBeenCalled(); // asks first
+    await userEvent.click(screen.getAllByRole("button", {name: "Confirmar"}).at(-1)!);
     await waitFor(() => expect(s.confirmAll).toHaveBeenCalledTimes(1));
   });
 
@@ -120,7 +122,11 @@ describe("importar fatura do cartão", () => {
     expect(within(refund).getByRole("button", {name: "Criar crédito"})).toBeInTheDocument();
     const payment = screen.getByText(/PAGAMENTO ON LINE/).closest("li") as HTMLElement;
     expect(within(payment).queryByRole("button", {name: /Criar/})).not.toBeInTheDocument();
-    await userEvent.click(within(payment).getByRole("button", {name: "Ignorar"}));
+    await userEvent.click(within(payment).getAllByRole("button", {name: "Ignorar"})[0]);
+    expect(s.ignore).not.toHaveBeenCalled(); // asks first
+    await userEvent.click(within(payment).getByRole("button", {name: "Voltar"}));
+    await userEvent.click(within(payment).getAllByRole("button", {name: "Ignorar"})[0]);
+    await userEvent.click(within(payment).getAllByRole("button", {name: "Ignorar"}).at(-1)!);
     await waitFor(() => expect(s.ignore).toHaveBeenCalledWith(expect.anything(), "i1", 2, expect.any(String)));
   });
 
@@ -154,6 +160,7 @@ describe("importar fatura do cartão", () => {
     const row = (await screen.findByText(/LINHA 1/)).closest("li") as HTMLElement;
     expect(within(row).getByRole("button", {name: "Criar compra"})).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", {name: "Confirmar todos (1)"}));
+    await userEvent.click(screen.getAllByRole("button", {name: "Confirmar"}).at(-1)!);
     await waitFor(() => expect(s.confirmAll).toHaveBeenCalledWith(expect.anything(), "i1", [1], expect.any(String)));
   });
 
