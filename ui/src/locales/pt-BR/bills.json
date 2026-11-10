@@ -56,6 +56,10 @@
     },
     "loading": "Carregando contas"
   },
+  "provisional": {
+    "title": "Faturas provisórias",
+    "meta": "Provisória • vence {{date}}"
+  },
   "row": {
     "due": "Vence {{date}}",
     "statement": "Fatura do cartão",

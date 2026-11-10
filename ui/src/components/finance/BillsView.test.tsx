@@ -8,7 +8,7 @@ import {BillsView} from "@/components/finance/BillsView";
 import {optionsOf, pick, renderWithQuery, serveFinanceMock} from "@/components/finance/finance.test-utils";
 import * as finance from "@/lib/api/finance";
 import * as createRequest from "@/lib/createRequest";
-import type {Account, Bill, Verb} from "@/lib/api/financeTypes";
+import type {Account, Bill, Card, CardStatement, Verb} from "@/lib/api/financeTypes";
 import {todayIso} from "@/lib/finance/today";
 
 const toast = vi.hoisted(() => ({success: vi.fn(), error: vi.fn(), info: vi.fn()}));
@@ -33,6 +33,7 @@ const bill = (over: Partial<Bill>): Bill => ({
 function serve(verbs: Verb[], bills: Bill[]) {
   vi.spyOn(finance, "getFinanceSpaces").mockResolvedValue({spaces: [{selector: "personal", kind: "personal_default", display_name: "Pessoal", verbs, manage_people: false}], organizations_unavailable: false});
   vi.spyOn(finance, "listAccounts").mockResolvedValue({data: ACCOUNTS, has_more: false});
+  vi.spyOn(finance, "listCards").mockResolvedValue({data: [], has_more: false});
   vi.spyOn(finance, "listBills").mockImplementation(async (_c, dir) => ({data: bills.filter(b => b.direction === dir), has_more: false}));
 }
 
@@ -383,5 +384,37 @@ describe("Agenda — a bill's secondary actions", () => {
     renderWithQuery(<BillsView/>);
     await screen.findByText("Nada a pagar em aberto.");
     expect(screen.queryByRole("button", {name: "Adicionar conta a pagar"})).toBeNull();
+  });
+});
+
+describe("Agenda — provisional card statements", () => {
+  const card = (over: Partial<Card>): Card => ({id: "visa", name: "Nubank", closing_day: 5, due_day: 12, paying_account_id: "cc", open_month: "2026-04", balance: 0, archived: false, brand: "visa", ...over});
+  const stmt = (cardId: string, total: number, status: CardStatement["status"] = "open"): CardStatement =>
+    ({card_id: cardId, month: "2026-04", status, closing_date: "2026-04-05", due_date: "2026-04-12", total, items: []});
+
+  it("lists each active card's open statement, skips archived cards and empty or closed statements, one read per card", async () => {
+    serve(ALL, []);
+    vi.spyOn(finance, "listCards").mockResolvedValue({data: [card({}), card({id: "old", name: "Antigo", archived: true}), card({id: "empty", name: "Vazio"}), card({id: "shut", name: "Fechado"})], has_more: false});
+    const read = vi.spyOn(finance, "getCardStatement").mockImplementation(async (_c, id) => stmt(id, id === "visa" ? 123456 : id === "empty" ? 0 : 999, id === "shut" ? "closed" : "open"));
+    renderWithQuery(<BillsView/>);
+    const section = await screen.findByRole("region", {name: "Faturas provisórias"});
+    const rows = within(section).getAllByRole("listitem");
+    expect(rows).toHaveLength(1);
+    expect(within(rows[0]).getByText("Nubank")).toBeInTheDocument();
+    expect(rows[0]).toHaveTextContent("Provisória • vence 12/04");
+    expect(rows[0]).toHaveTextContent("1.234,56");
+    expect(within(rows[0]).getByRole("link", {name: "Ver fatura"})).toHaveAttribute("href", "/finance/cards?card=visa&month=2026-04");
+    expect(read).not.toHaveBeenCalledWith(expect.anything(), "old", expect.anything());
+    expect(read).toHaveBeenCalledTimes(3);
+  });
+
+  it("shows nothing on the receivable side", async () => {
+    serve(ALL, []);
+    vi.spyOn(finance, "listCards").mockResolvedValue({data: [card({})], has_more: false});
+    const read = vi.spyOn(finance, "getCardStatement").mockResolvedValue(stmt("visa", 5000));
+    renderWithQuery(<BillsView direction="receivable"/>);
+    await screen.findByText("Nada a receber em aberto.");
+    expect(screen.queryByRole("region", {name: "Faturas provisórias"})).toBeNull();
+    expect(read).not.toHaveBeenCalled();
   });
 });
