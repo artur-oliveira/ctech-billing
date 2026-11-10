@@ -13,10 +13,12 @@ import {ErrorBlock} from "@/components/portal/ErrorBlock";
 import {messageFor} from "@/lib/api/client";
 import {useFieldErrors} from "@/lib/useFieldErrors";
 import {consoleKeys, createProduct, listConsoleProducts} from "@/lib/api/console";
+import type {ConsoleProduct} from "@/lib/api/consoleTypes";
 import {useConsoleScope} from "@/lib/console/scope";
 import {useCreateRequest} from "@/lib/createRequest";
 import {money} from "@/lib/format";
 import {useDocumentTitle} from "@/lib/hooks/useDocumentTitle";
+import {NARROW, useMediaQuery} from "@/lib/hooks/useMediaQuery";
 
 /**
  * C8 — the catalogue.
@@ -31,6 +33,7 @@ export default function ConsoleCatalogPage() {
   useDocumentTitle(t("console.catalog.title"));
   const queryClient = useQueryClient();
   const [creating, setCreating] = useState(false);
+  const phone = useMediaQuery(NARROW);
   useCreateRequest("product", () => setCreating(true));
 
   const query = useQuery({
@@ -58,7 +61,34 @@ export default function ConsoleCatalogPage() {
         />
       )}
 
-      {products.length > 0 && (
+      {products.length > 0 && phone && (
+        <ul aria-label={t("console.catalog.title")} className="divide-y divide-border border-y border-border">
+          {products.map(product => {
+            const cheapest = cheapestOf(product);
+            const count = activePrices(product).length;
+            return (
+              <li key={product.id} className="space-y-1 py-3">
+                <div className="flex items-start justify-between gap-3">
+                  <Link href={`/console/product?id=${product.id}`} className="min-w-0 font-medium text-brand-600 underline-offset-4 [overflow-wrap:anywhere] hover:underline">
+                    {product.name}
+                  </Link>
+                  <span data-numeric className="shrink-0 text-sm text-foreground">
+                    {cheapest === null ? "—" : t("console.catalog.fromPrice", {amount: money(cheapest)})}
+                  </span>
+                </div>
+                {product.description && <p className="line-clamp-2 text-xs text-muted-foreground">{product.description}</p>}
+                <p className="text-xs text-muted-foreground">
+                  {t("console.catalog.priceCount", {count})}
+                  {product.owner_key && ` · ${t(`console.catalog.owners.${product.owner_key}`, {defaultValue: product.owner_key})}`}
+                  {!product.active && ` · ${t("console.catalog.inactive")}`}
+                </p>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      {products.length > 0 && !phone && (
         <div className="overflow-x-auto">
           <table className="w-full min-w-[36rem] border-collapse text-sm">
             <thead>
@@ -71,11 +101,8 @@ export default function ConsoleCatalogPage() {
             </thead>
             <tbody>
               {products.map(product => {
-                const active = (product.prices ?? []).filter(price => !price.archived);
-                const cheapest = active.reduce<number | null>(
-                  (min, price) => (min === null || price.unit_amount < min ? price.unit_amount : min),
-                  null,
-                );
+                const active = activePrices(product);
+                const cheapest = cheapestOf(product);
                 return (
                   <tr
                     key={product.id}
@@ -234,6 +261,12 @@ function NewProductDialog({
     </Modal>
   );
 }
+
+const activePrices = (product: ConsoleProduct) => (product.prices ?? []).filter(price => !price.archived);
+
+/** The lowest active price: what "a partir de" means on a product row. */
+const cheapestOf = (product: ConsoleProduct) =>
+  activePrices(product).reduce<number | null>((min, price) => (min === null || price.unit_amount < min ? price.unit_amount : min), null);
 
 function RowsSkeleton() {
   return (

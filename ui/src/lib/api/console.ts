@@ -159,11 +159,11 @@ export async function getConsoleInvoice(scope: ConsoleScope, id: string): Promis
   return data;
 }
 
-export async function listConsoleCustomers(scope: ConsoleScope): Promise<ConsolePage<ConsoleCustomer>> {
-  const {data} = await apiClient.get<ConsolePage<ConsoleCustomer>>(
-    "/v1.0/console/customers",
-    scopeHeaders(scope),
-  );
+export async function listConsoleCustomers(scope: ConsoleScope, cursor?: string): Promise<ConsolePage<ConsoleCustomer>> {
+  const {data} = await apiClient.get<ConsolePage<ConsoleCustomer>>("/v1.0/console/customers", {
+    ...scopeHeaders(scope),
+    params: cursor ? {cursor} : undefined,
+  });
   return data;
 }
 
@@ -177,12 +177,12 @@ export async function getConsoleCustomer(scope: ConsoleScope, id: string): Promi
 
 export async function listConsoleSubscriptions(
   scope: ConsoleScope,
-
+  cursor?: string,
 ): Promise<ConsolePage<ConsoleSubscriptionRow>> {
-  const {data} = await apiClient.get<ConsolePage<ConsoleSubscriptionRow>>(
-    "/v1.0/console/subscriptions",
-    scopeHeaders(scope),
-  );
+  const {data} = await apiClient.get<ConsolePage<ConsoleSubscriptionRow>>("/v1.0/console/subscriptions", {
+    ...scopeHeaders(scope),
+    params: cursor ? {cursor} : undefined,
+  });
   return data;
 }
 

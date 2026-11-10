@@ -8,6 +8,7 @@ import {useTranslation} from "react-i18next";
 import {toast} from "sonner";
 
 import {ErrorBlock} from "@/components/portal/ErrorBlock";
+import {CopyableValue} from "@/components/ui/CopyableValue";
 import {messageFor} from "@/lib/api/client";
 import {connectCredential, consoleKeys, disconnectCredential, listConsoleCredentials} from "@/lib/api/console";
 import type {ConsoleCredential} from "@/lib/api/consoleTypes";
@@ -72,7 +73,9 @@ function CredentialRow({credential: c, onDisconnect}: {credential: ConsoleCreden
     <li className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:gap-4">
       <div className="min-w-0 flex-1 space-y-1">
         <div className="flex flex-wrap items-center gap-2">
-          <p className="font-mono text-sm break-all text-foreground">{c.client_id}</p>
+          {c.provisioned
+            ? <p className="font-mono text-sm break-all text-foreground">{c.client_id}</p>
+            : <div className="min-w-0 max-w-full text-foreground"><CopyableValue value={c.client_id}/></div>}
           {!c.active && <Badge tone="attention">{t("console.credentials.inactive")}</Badge>}
         </div>
         {c.description && <p className="text-xs text-foreground">{c.description}</p>}
