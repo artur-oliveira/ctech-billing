@@ -2,10 +2,10 @@
 
 import limits from "@/lib/limits.json";
 import {Button, EmptyState, Field, Input, Segmented, Select, Skeleton, Switch} from "@aoctech/ui";
-import {useQuery} from "@tanstack/react-query";
+import {useQuery, useQueryClient} from "@tanstack/react-query";
 import {AlertCircle, Receipt} from "lucide-react";
 import Link from "next/link";
-import {useState} from "react";
+import {useEffect, useRef, useState} from "react";
 import {useTranslation} from "react-i18next";
 import {toast} from "sonner";
 
@@ -29,6 +29,7 @@ import {bucketLabel} from "@/lib/finance/labels";
 import {addYearsIso, dueLabel, monthLabel, todayIso} from "@/lib/finance/today";
 import {selectCopy} from "@/lib/selectCopy";
 import {accountName} from "@/lib/finance/accountName";
+import {holdInvalidations} from "@/lib/realtime/binding";
 import {useFinanceMutation} from "@/lib/finance/useFinanceMutation";
 import {type FinanceCtx} from "@/lib/api/finance";
 import {useCreateRequest} from "@/lib/createRequest";
@@ -345,10 +346,18 @@ function NewBillPanel({direction, accounts, history, onDone}: {direction: Direct
   // settle fails the bill really is open, so the list is refreshed then too,
   // and the person is told: the panel (and its inline retry) may already be
   // closed, and they would believe the bill was paid.
+  //
+  // The server also announces the create (bill.updated) over the realtime
+  // socket, and that refetch paints the open bill just the same: realtime
+  // invalidation is held from the submit until the settle ends.
+  const qc = useQueryClient();
+  const release = useRef<(() => void) | null>(null);
+  const endHold = () => { release.current?.(); release.current = null; };
+  useEffect(() => endHold, []);
   const settle = useFinanceMutation(
     (c, v: {id: string; body: Settlement}, key) => settleBill(c, v.id, v.body, key), touched,
-    () => { toast.success(t(`bills.new.settled.${direction}`)); onDone(); },
-    () => { toast.error(t(`bills.new.settleError.${direction}`)); },
+    () => { endHold(); toast.success(t(`bills.new.settled.${direction}`)); onDone(); },
+    () => { endHold(); toast.error(t(`bills.new.settleError.${direction}`)); },
     {invalidateOnError: true},
   );
   const fe = useFieldErrors(["description", "amount", "due_date", "competence_date", "category_id", "account_id"]);
@@ -356,7 +365,7 @@ function NewBillPanel({direction, accounts, history, onDone}: {direction: Direct
     (c, v: {body: NewBill; paidOn?: string}, key) => createBill(c, v.body, key),
     (c, _created, v) => (v.paidOn ? [] : touched(c)),
     (created, v) => (v.paidOn ? settle.mutate({id: created.id, body: {paid_date: v.paidOn}}) : onDone()),
-    fe.set,
+    err => { endHold(); fe.set(err); },
   );
   const amount = parseMoney(amountText);
   const [tried, setTried] = useState(false);
@@ -370,12 +379,13 @@ function NewBillPanel({direction, accounts, history, onDone}: {direction: Direct
   return (
     <div className="space-y-3">
       <form
-        className="space-y-3"
+        className="space-y-5"
         onSubmit={e => {
           e.preventDefault();
           if (create.isPending || create.isSuccess) return;
           if (amount === null || category === "" || account === "" || due === "") { setTried(true); return; }
           fe.reset();
+          if (paidNow) { endHold(); release.current = holdInvalidations(qc); }
           create.mutate({
             body: {
               direction, amount, category_id: category, account_id: account, description: description || undefined,
@@ -416,7 +426,7 @@ function NewBillPanel({direction, accounts, history, onDone}: {direction: Direct
             drawn into its border, and floating the legend out of it pushes the
             grid fields beside it, off a phone's screen. */}
         <div className="border-t border-border pt-4">
-        <fieldset className="space-y-3">
+        <fieldset className="space-y-5">
           <legend className="mb-3 text-sm font-medium text-foreground">
             {paidNow ? t(`bills.new.section.${direction}`) : t("bills.new.section.plan")}
           </legend>

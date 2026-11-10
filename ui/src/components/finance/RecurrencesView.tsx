@@ -508,8 +508,8 @@ function RecurrencePanel({editing, accounts, cards, history, onDone}: {editing?:
           />
         )}
       </div>
-      <form className="space-y-4" onSubmit={submit}>
-        <div className="grid items-start gap-x-4 gap-y-3 sm:grid-cols-2 [&>*]:min-w-0">
+      <form className="space-y-5" onSubmit={submit}>
+        <div className="grid items-start gap-x-4 gap-y-5 sm:grid-cols-2 [&>*]:min-w-0">
           <Field label={t("bills.common.description")} htmlFor="rc-desc" error={fe.of("description")} className="sm:col-span-2">
             {editing
               ? <Input id="rc-desc" maxLength={limits.text.description} value={description} {...fe.props("description", "rc-desc")} onChange={e => { setDescription(e.target.value); fe.clear("description"); }}/>
