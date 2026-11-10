@@ -1,6 +1,6 @@
 "use client";
 
-import {EmptyState, Skeleton} from "@aoctech/ui";
+import {EmptyState, PageHeader, Skeleton} from "@aoctech/ui";
 import {useQuery} from "@tanstack/react-query";
 import type {TFunction} from "i18next";
 import {Repeat} from "lucide-react";
@@ -13,6 +13,7 @@ import {consoleKeys, listConsoleSubscriptions} from "@/lib/api/console";
 import type {ConsoleSubscriptionRow, Recurrence} from "@/lib/api/consoleTypes";
 import {useConsoleScope} from "@/lib/console/scope";
 import {compactPeriod} from "@/lib/format";
+import {useDocumentTitle} from "@/lib/hooks/useDocumentTitle";
 
 /**
  * C4 — the subscriptions.
@@ -36,6 +37,7 @@ import {compactPeriod} from "@/lib/format";
 export default function ConsoleSubscriptionsPage() {
   const {t} = useTranslation();
   const scope = useConsoleScope();
+  useDocumentTitle(t("console.subscriptions.title"));
   const query = useQuery({
     queryKey: consoleKeys.subscriptions(scope),
     queryFn: () => listConsoleSubscriptions(scope),
@@ -45,7 +47,7 @@ export default function ConsoleSubscriptionsPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-lg font-semibold tracking-[-0.01em] text-foreground">{t("console.subscriptions.title")}</h1>
+      <PageHeader title={t("console.subscriptions.title")}/>
 
       {query.isPending && <RowsSkeleton/>}
       {query.isError && <ErrorBlock error={query.error} onRetry={query.refetch}/>}
@@ -144,6 +146,10 @@ export default function ConsoleSubscriptionsPage() {
             </table>
           </div>
         </>
+      )}
+
+      {query.data?.has_more && (
+        <p className="text-xs text-muted-foreground">{t("console.subscriptions.hasMore")}</p>
       )}
     </div>
   );
