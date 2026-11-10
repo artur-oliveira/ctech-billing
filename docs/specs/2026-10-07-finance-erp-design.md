@@ -533,7 +533,7 @@ amendment 2026-10-08).
 
 | | Screen | Answers |
 |---|---|---|
-| F1 | Resumo | balance per account; realised result this month (by cash, from the entries' flows); projection 3–6 months (realised + forecast + virtual occurrences, forecast visibly distinct); overdue first |
+| F1 | Resumo | balance per account; realised result this month (by cash, from the entries' flows); "pendências de hoje" first when anything is overdue or due today (bills, card statements, recurring values to confirm; same data as the inbox, 3 rows + link); projection with a horizon select 3m, 6m, 1a–5a and chevrons (API `months` 1..60; open and future card statements, card recurrences and installments are already in it; the chart caps at 12 bars, 6 on a phone, folding months into 2/3/4/6/12-month bars with the last month's balance) (realised + forecast + virtual occurrences, forecast visibly distinct); overdue first |
 | F2 | A pagar / a receber | `open-index` list: overdue, today, upcoming; settle (full or different amount); cancel |
 | F3 | Contas e extrato | statement per account and period with running balance; transfer; reverse an entry |
 | F4 | Recorrências | list and expression editor with a **preview of the next occurrences before saving**; auto-settle toggle |

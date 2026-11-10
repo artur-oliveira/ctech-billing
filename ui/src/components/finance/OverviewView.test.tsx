@@ -34,6 +34,7 @@ function serve() {
       : [bill({id: "c", direction: "receivable", description: "Freela", bucket: "upcoming"})],
     has_more: false,
   }));
+  vi.spyOn(finance, "listPendingOccurrences").mockResolvedValue({data: [], has_more: false});
   vi.spyOn(finance, "getCashFlow").mockImplementation(async (_c, from, to) => ({
     from, to, opening_cash: 0, closing_cash: 120000,
     months: [{month: from, in: 300000, out: 180000, openings: 0, lines: []}],
@@ -146,13 +147,49 @@ describe("F1 — visão geral", () => {
     renderWithQuery(<OverviewView/>);
     await loadProjection();
     await waitFor(() => expect(projection).toHaveBeenCalledWith(expect.anything(), 6));
-    // A segmented control, not a dropdown: three choices, all in view.
+    // A select with chevrons to step through 3m, 6m, 1a ... 5a.
     const period = await screen.findByRole("group", {name: "Período"});
-    expect(within(period).getAllByRole("button").map(b => b.getAttribute("aria-label"))).toEqual(["3 meses", "6 meses", "12 meses"]);
-    expect(within(period).getByRole("button", {name: "6 meses"})).toHaveAttribute("aria-pressed", "true");
-    await userEvent.click(within(period).getByRole("button", {name: "12 meses"}));
+    expect(within(period).getByRole("combobox", {name: "Período"})).toHaveTextContent("6m");
+    await userEvent.click(within(period).getByRole("button", {name: "Período maior"}));
     await waitFor(() => expect(projection).toHaveBeenCalledWith(expect.anything(), 12));
-    expect(within(period).getByRole("button", {name: "12 meses"})).toHaveAttribute("aria-pressed", "true");
+    await userEvent.click(within(period).getByRole("button", {name: "Período maior"}));
+    await waitFor(() => expect(projection).toHaveBeenCalledWith(expect.anything(), 24));
+    await userEvent.click(within(period).getByRole("button", {name: "Período menor"}));
+    expect(within(period).getByRole("combobox", {name: "Período"})).toHaveTextContent("1a");
+  });
+
+  it("caps a long horizon's bars: five years is ten semester bars on a laptop, not sixty", async () => {
+    const projection = serve();
+    const months = Array.from({length: 60}, (_, i) => ({month: `${2026 + Math.floor((10 + i) / 12)}-${String(((10 + i) % 12) + 1).padStart(2, "0")}`, receivable: 100000, payable: 0, virtual: 0}));
+    projection.mockResolvedValue({data: months, has_more: false});
+    renderWithQuery(<OverviewView/>);
+    const block = await loadProjection();
+    const period = await screen.findByRole("group", {name: "Período"});
+    for (let i = 0; i < 5; i++) await userEvent.click(within(period).getByRole("button", {name: "Período maior"}));
+    await waitFor(() => expect(projection).toHaveBeenCalledWith(expect.anything(), 60));
+    await userEvent.click(within(block).getByRole("button", {name: "Ver gráfico"}));
+    await waitFor(() => expect(within(block).getByRole("img").querySelectorAll("rect").length).toBe(10));
+    expect(within(block).getByText("Cada barra: 6 meses")).toBeInTheDocument();
+  });
+
+  it("shows today's pending items first, and nothing when none is due", async () => {
+    serve();
+    vi.spyOn(finance, "listPendingOccurrences").mockResolvedValue({data: [], has_more: false});
+    renderWithQuery(<OverviewView/>);
+    const block = await screen.findByRole("region", {name: "Pendência de hoje (1)"});
+    expect(within(block).getByText("Aluguel atrasado")).toBeInTheDocument();
+    expect(within(block).queryByText("Internet")).toBeNull();
+    const page = document.body.textContent ?? "";
+    expect(page.indexOf("Pendência de hoje")).toBeLessThan(page.indexOf("Quanto vou ter"));
+  });
+
+  it("draws no pending block when nothing is overdue or due today", async () => {
+    serve();
+    vi.spyOn(finance, "listBills").mockResolvedValue({data: [bill({id: "b", bucket: "upcoming"})], has_more: false});
+    vi.spyOn(finance, "listPendingOccurrences").mockResolvedValue({data: [], has_more: false});
+    renderWithQuery(<OverviewView/>);
+    await loadProjection();
+    expect(screen.queryByRole("region", {name: /Pendência/})).toBeNull();
   });
 
   it("keeps the Saldo / Entradas e saídas switch on the table, and the table follows it", async () => {
