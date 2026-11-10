@@ -420,6 +420,19 @@ func TestProjectReachesFiveYears(t *testing.T) {
 	}
 }
 
+// A recurrence that started years ago and has not been materialised (or lags)
+// gives Occurrences a range from its cursor to the window's end: with the
+// five-year window that exceeds MaxSpanDays and used to surface as a 500.
+func TestProjectFiveYearsWithAnOldRecurrence(t *testing.T) {
+	r := monthly("old", 10)
+	r.Schedule.Start = day(2024, time.January, 1)
+	jobs := NewFinanceJobs(newFakeBills(), newFakeRecs(r))
+	p, err := jobs.Project(context.Background(), testSpace(t), day(2026, time.March, 20), 60)
+	if err != nil || len(p.Months) != 60 {
+		t.Fatalf("60 months with an old recurrence: got %d months, err %v", len(p.Months), err)
+	}
+}
+
 func TestProjectRefusesAnUnreasonableWindow(t *testing.T) {
 	jobs := NewFinanceJobs(newFakeBills(), newFakeRecs())
 	for _, n := range []int{0, 61, -1} {

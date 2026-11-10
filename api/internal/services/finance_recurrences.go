@@ -329,6 +329,27 @@ const maxProjectionMonths = 60
 // maxForecastMonths is how far MonthFlows (the by-category forecast) looks.
 const maxForecastMonths = 12
 
+// occurrencesChunked is Schedule.Occurrences over a range of any length: the
+// domain call refuses more than MaxSpanDays (it walks day by day), and a
+// five-year projection from a recurrence not yet materialised exceeds it. The
+// guard stays where it is; this walks the range in spans it accepts.
+func occurrencesChunked(s finance.Schedule, from, to brcal.Date) ([]finance.Occurrence, error) {
+	var out []finance.Occurrence
+	for from.Before(to) {
+		end := from.AddDays(finance.MaxSpanDays)
+		if end.After(to) {
+			end = to
+		}
+		part, err := s.Occurrences(from, end)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, part...)
+		from = end
+	}
+	return out, nil
+}
+
 // Project reads every open bill and every recurrence of the space for the next
 // `months` months from today's. Bills due before the window (overdue) count in
 // the first month. Reads only; nothing is written.
@@ -407,7 +428,7 @@ func (j *FinanceJobs) Project(ctx context.Context, sp space.ResolvedSpace, today
 		if !due.Cursor.IsZero() {
 			from = due.Cursor.AddDays(1)
 		}
-		occ, err := r.Schedule.Occurrences(from, windowEnd.AddDays(1))
+		occ, err := occurrencesChunked(r.Schedule, from, windowEnd.AddDays(1))
 		if err != nil {
 			return Projection{}, fmt.Errorf("projecting recurrence %s: %w", r.ID, err)
 		}
