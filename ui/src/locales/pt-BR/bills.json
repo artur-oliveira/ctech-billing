@@ -147,9 +147,9 @@
     "amountMode": {
       "label": "O valor é",
       "fixed": "Sempre o mesmo",
-      "expected": "Muda a cada mês",
+      "expected": "Valor variável",
       "fixedHint": "O mesmo valor em toda ocorrência; o lançamento é criado sozinho.",
-      "expectedHint": "Usamos como previsão. A cada mês você informa o valor real, e só então o lançamento é criado."
+      "expectedHint": "Usamos como previsão. A cada ocorrência você informa o valor real, e só então o lançamento é criado."
     },
     "expectedAmount": "Valor estimado",
     "expectedShort": "estimativa",
@@ -164,7 +164,7 @@
     "endsOn": "Termina em",
     "noEnd": "Não termina",
     "clearEnd": "Limpar data de término",
-    "reopenNote": "A recorrência continua a partir deste mês; as datas entre o fim anterior e hoje não são criadas.",
+    "reopenNote": "A recorrência continua a partir de hoje; as datas entre o fim anterior e hoje não são criadas.",
     "editNote": "{{rule}}. Para mudar a regra, encerre e crie outra.",
     "next": "Próximas datas",
     "fixRule": "Corrija a regra para ver as próximas datas.",

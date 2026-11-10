@@ -56,9 +56,9 @@ describe("F4 — recorrências", () => {
     expect(within(mode).getByRole("button", {name: "Sempre o mesmo"})).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByLabelText(/^Valor/)).toBeInTheDocument();
     expect(screen.queryByText(/Valor estimado/)).toBeNull();
-    await userEvent.click(within(mode).getByRole("button", {name: "Muda a cada mês"}));
+    await userEvent.click(within(mode).getByRole("button", {name: "Valor variável"}));
     expect(screen.getByText("Valor estimado")).toBeInTheDocument();
-    expect(screen.getByText(/A cada mês você informa o valor real, e só então o lançamento é criado/)).toBeInTheDocument();
+    expect(screen.getByText(/A cada ocorrência você informa o valor real, e só então o lançamento é criado/)).toBeInTheDocument();
     // The old wording is gone, and the mode is a form row of its own, not a cell beside the amount.
     expect(screen.queryByText(/Confirmar a cada ocorrência|Valor médio esperado|Valor fixo/)).toBeNull();
     expect(mode.closest("[data-slot=mode-field]")).toHaveClass("sm:col-span-2");
@@ -195,9 +195,9 @@ describe("F4 — recorrências", () => {
     const row = (await screen.findByText("Aluguel do apartamento")).closest("li") as HTMLElement;
     await userEvent.click(within(row).getByRole("button", {name: "Editar"}));
     const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).queryByText(/continua a partir deste mês/)).toBeNull();
+    expect(within(dialog).queryByText(/continua a partir de hoje/)).toBeNull();
     await userEvent.click(within(dialog).getByRole("button", {name: "Limpar data de término"}));
-    expect(within(dialog).getByText(/continua a partir deste mês/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/continua a partir de hoje/)).toBeInTheDocument();
   });
 
   it("says nothing about re-opening when the end is still ahead", async () => {
@@ -207,7 +207,7 @@ describe("F4 — recorrências", () => {
     await userEvent.click(within(row).getByRole("button", {name: "Editar"}));
     const dialog = await screen.findByRole("dialog");
     await userEvent.click(within(dialog).getByRole("button", {name: "Limpar data de término"}));
-    expect(within(dialog).queryByText(/continua a partir deste mês/)).toBeNull();
+    expect(within(dialog).queryByText(/continua a partir de hoje/)).toBeNull();
   });
 
   it("asks before archiving and says what is paid stays", async () => {
