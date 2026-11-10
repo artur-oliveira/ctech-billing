@@ -55,10 +55,10 @@ export function LandingContent() {
         <p>© {new Date().getFullYear()} A O CARVALHO TECH</p>
         {/* Plain anchors: these leave the app for ctech-account, and next/link
             would prefetch a cross-origin document it cannot use. */}
-        <div className="flex flex-wrap gap-x-5 gap-y-2">
-          <a href={TERMS_URL} className="hover:text-foreground">{t("landing.footer.terms")}</a>
-          <a href={PRIVACY_URL} className="hover:text-foreground">{t("landing.footer.privacy")}</a>
-          <a href={ACCOUNTS_LEGAL_URL} className="hover:text-foreground">{t("landing.footer.legal")}</a>
+        <div className="flex flex-wrap gap-x-5 gap-y-0">
+          <a href={TERMS_URL} className="inline-flex min-h-11 items-center rounded-md outline-none hover:text-foreground hover:underline focus-visible:ring-3 focus-visible:ring-ring/50 sm:min-h-0">{t("landing.footer.terms")}</a>
+          <a href={PRIVACY_URL} className="inline-flex min-h-11 items-center rounded-md outline-none hover:text-foreground hover:underline focus-visible:ring-3 focus-visible:ring-ring/50 sm:min-h-0">{t("landing.footer.privacy")}</a>
+          <a href={ACCOUNTS_LEGAL_URL} className="inline-flex min-h-11 items-center rounded-md outline-none hover:text-foreground hover:underline focus-visible:ring-3 focus-visible:ring-ring/50 sm:min-h-0">{t("landing.footer.legal")}</a>
         </div>
       </footer>
     </div>

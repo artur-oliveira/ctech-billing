@@ -7,15 +7,14 @@ import type {ReactNode} from "react";
 import {useTranslation} from "react-i18next";
 
 import {AccountMenu} from "@/components/AccountMenu";
-import {LanguageSwitcher} from "@/components/LanguageSwitcher";
 import {GlobalSearch} from "@/components/shell/GlobalSearch";
 import type {ShellView} from "@/components/shell/renderLink";
 
 
 /**
  * The frame of the three areas: @aoctech/ui's AppShell, the family's top bar
- * (the mark at the left; whose work, the search, the language and the person at the
- * right, as in ctech-account and ctech-wallet), the sections on a rail pinned
+ * (the mark at the left; whose work, the search and the person at the right;
+ * the language is in the person's menu, once, never also in the bar), the sections on a rail pinned
  * to the left edge from `md`, and the page across the rest of the width. On a
  * phone the sections are the area's BottomNav.
  *
@@ -57,7 +56,7 @@ export function BillingShell({
         brand={<Wordmark href={home} area={t(`common.account.${view}`)}/>}
         context={context}
         nav={nav}
-        actions={<><GlobalSearch view={view}/><LanguageSwitcher className="max-sm:hidden"/></>}
+        actions={<><GlobalSearch view={view}/></>}
         account={<AccountMenu view={view}/>}
         banner={banner}
         bottomNav={bottomNav}

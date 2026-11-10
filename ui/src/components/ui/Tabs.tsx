@@ -58,7 +58,7 @@ export function Tabs<V extends string>({label, value, onValueChange, options, id
           <button key={o.value} type="button" role="tab" data-slot="segmented-item" id={tabId(idBase, o.value)} aria-selected={on} aria-controls={panelId(idBase)} tabIndex={on ? 0 : -1}
             ref={el => { if (el) refs.current.set(o.value, el); else refs.current.delete(o.value); }}
             onClick={() => onValueChange(o.value)}
-            className={`${segmentHit} shrink-0 rounded-md px-3 py-1 text-sm outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring/50 ${on ? "bg-background font-medium text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>
+            className={`${segmentHit} shrink-0 rounded-md px-3 py-1 text-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/60 ${on ? "bg-background font-medium text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>
             {o.label}
           </button>
         );

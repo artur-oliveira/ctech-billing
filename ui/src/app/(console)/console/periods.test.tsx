@@ -1,7 +1,7 @@
 import "@testing-library/jest-dom/vitest";
 
 import {QueryClient, QueryClientProvider} from "@tanstack/react-query";
-import {render, screen} from "@testing-library/react";
+import {fireEvent, render, screen} from "@testing-library/react";
 import type {ReactNode} from "react";
 import {afterEach, describe, expect, it, vi} from "vitest";
 
@@ -10,9 +10,15 @@ import ConsoleSubscriptionsPage from "@/app/(console)/console/subscriptions/page
 import * as consoleApi from "@/lib/api/console";
 import {ConsoleScopeProvider} from "@/lib/console/scope";
 
+let query = "";
+vi.mock("next/navigation", () => ({useSearchParams: () => new URLSearchParams(query)}));
+
 const SCOPE = {mode: "live", org: "0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b"} as const;
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.restoreAllMocks();
+  query = "";
+});
 
 function wrap(ui: ReactNode) {
   const client = new QueryClient({defaultOptions: {queries: {retry: false}}});
@@ -33,7 +39,7 @@ describe("console periods", () => {
       has_more: false,
     } as unknown as Awaited<ReturnType<typeof consoleApi.listConsoleInvoices>>);
     wrap(<ConsoleInvoicesPage/>);
-    expect(await screen.findByText("A O CARVALHO TECH")).toBeInTheDocument();
+    expect((await screen.findAllByText("A O CARVALHO TECH")).length).toBeGreaterThan(0);
     expect(screen.getByText(/10\/10(\/26)? • 10\/11(\/26)?/)).toBeInTheDocument();
   });
 
@@ -50,5 +56,23 @@ describe("console periods", () => {
     wrap(<ConsoleSubscriptionsPage/>);
     // Twice: the table, and the list a phone gets instead.
     expect(await screen.findAllByText(/10\/10(\/26)? • 10\/11(\/26)?/)).toHaveLength(2);
+  });
+
+  it("filters the month by status (from the overview's link) and follows the cursor", async () => {
+    query = "filter=overdue";
+    const row = (id: string, name: string, over: boolean) => ({
+      id, number: 1, customer_id: "c", customer_name: name, status: "OPEN", overdue: over,
+      period: {period_start: "2026-10-10", period_end: "2026-11-10"}, due_date: "2026-10-13", currency: "BRL",
+      subtotal: 0, discount: 0, total: 0, amount_paid: 0, amount_due: 0, attempt_count: 0, livemode: true,
+    });
+    const list = vi.spyOn(consoleApi, "listConsoleInvoices")
+      .mockResolvedValueOnce({data: [row("a", "Atrasada SA", true), row("b", "Em dia SA", false)], has_more: true, cursor: "next"} as never)
+      .mockResolvedValueOnce({data: [row("c", "Outra Atrasada", true)], has_more: false} as never);
+    wrap(<ConsoleInvoicesPage/>);
+    expect((await screen.findAllByText("Atrasada SA")).length).toBeGreaterThan(0);
+    expect(screen.queryByText("Em dia SA")).toBeNull();
+    fireEvent.click(screen.getByRole("button", {name: /mostrar mais|show more/i}));
+    expect((await screen.findAllByText("Outra Atrasada")).length).toBeGreaterThan(0);
+    expect(list).toHaveBeenLastCalledWith(SCOPE, expect.any(Number), expect.any(Number), "next");
   });
 });

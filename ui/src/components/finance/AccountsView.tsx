@@ -344,7 +344,7 @@ function AccountForm({onDone, offerImport}: {onDone: () => void; offerImport: bo
   const chosenGroup = groups.includes(group as DREGroup) ? (group as DREGroup) : groups[0];
   return (
     <form
-      className="grid items-start gap-x-4 gap-y-3 sm:grid-cols-2 [&>*]:min-w-0"
+      className="grid items-start gap-x-4 gap-y-5 sm:grid-cols-2 [&>*]:min-w-0"
       onSubmit={e => {
         e.preventDefault();
         if (!name.trim() || openingInvalid) return;

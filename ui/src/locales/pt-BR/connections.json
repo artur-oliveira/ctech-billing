@@ -176,6 +176,8 @@
     "choose": "Classificar…",
     "empty": "Tudo classificado",
     "emptyBody": "Os lançamentos novos do banco aparecem aqui até você dizer o que são.",
+    "noAccount": "Nenhuma conta escolhida",
+    "noAccountBody": "Abra uma conta para ver os lançamentos que aguardam classificação.",
     "updatedAt": "Saldo do Inter, atualizado às {{time}}",
     "difference": "Diferença de {{amount}} entre o Inter e o Finanças",
     "done": "Lançamento classificado",

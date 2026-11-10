@@ -2,11 +2,11 @@
 
 import {Button, Separator, Skeleton} from "@aoctech/ui";
 import {useMutation, useQuery} from "@tanstack/react-query";
+import {Check} from "lucide-react";
 import Image from "next/image";
 import {useSearchParams} from "next/navigation";
 import {Suspense, useState} from "react";
 import {Trans, useTranslation} from "react-i18next";
-import {toast} from "sonner";
 
 import {LanguageSwitcher} from "@/components/LanguageSwitcher";
 import {StatusScreen} from "@/components/StatusScreen";
@@ -17,7 +17,7 @@ import {LiveIndicator} from "@/components/realtime/LiveIndicator";
 import {StatusBadge} from "@/components/portal/StatusBadge";
 import {Section} from "@/components/ui/Section";
 import {checkoutKeys, getCheckout, payCheckout} from "@/lib/api/checkout";
-import {messageFor, statusOf} from "@/lib/api/client";
+import {statusOf} from "@/lib/api/client";
 import type {PixPayment} from "@/lib/api/types";
 import {longDate, money} from "@/lib/format";
 import {useDocumentTitle} from "@/lib/hooks/useDocumentTitle";
@@ -100,7 +100,6 @@ function CheckoutScreen() {
   const pay = useMutation({
     mutationFn: () => payCheckout(token),
     onSuccess: result => setPayment(result.payment ?? null),
-    onError: error => toast.error(messageFor(error)),
   });
 
   if (token === "" || (query.isError && statusOf(query.error) === 404)) return <Invalid/>;
@@ -133,6 +132,7 @@ function CheckoutScreen() {
 
       {settled ? (
         <div className="flex items-start gap-3 rounded-xl bg-success px-5 py-4 text-background">
+          <Check aria-hidden className="mt-0.5 size-5 shrink-0"/>
           <div className="space-y-1">
             <p className="font-medium">{t("checkout.settled.title")}</p>
             <p className="text-sm opacity-90">{t("checkout.settled.description")}</p>
@@ -152,11 +152,16 @@ function CheckoutScreen() {
         <div className="text-center"><LiveIndicator/></div>
         </>
       ) : invoice.payable ? (
-        <Button block onClick={() => pay.mutate()} disabled={pay.isPending}>
-          {pay.isPending
-            ? t("checkout.generating")
-            : t("checkout.payPix", {amount: money(invoice.amount_due, invoice.currency)})}
-        </Button>
+        <div className="space-y-3">
+          {/* A toast is gone in five seconds; the reader who looked away from a
+              failed payment attempt must still find out it failed. */}
+          {pay.isError && <ErrorBlock error={pay.error}/>}
+          <Button block onClick={() => pay.mutate()} disabled={pay.isPending}>
+            {pay.isPending
+              ? t("checkout.generating")
+              : t("checkout.payPix", {amount: money(invoice.amount_due, invoice.currency)})}
+          </Button>
+        </div>
       ) : (
         <div className="rounded-xl border border-border bg-surface px-5 py-4">
           <p className="text-pretty text-sm text-foreground">

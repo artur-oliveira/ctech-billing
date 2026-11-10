@@ -295,7 +295,14 @@
     "months_other": "{{count}} meses",
     "asChart": "Ver gráfico",
     "asTable": "Ver tabela",
-    "monthsShort": "{{count}} m",
+    "horizonM": "{{count}}m",
+    "horizonY": "{{count}}a",
+    "horizonPrev": "Período menor",
+    "horizonNext": "Período maior",
+    "barSpan_other": "Cada barra: {{count}} meses",
+    "pendingToday_one": "Pendência de hoje ({{count}})",
+    "pendingToday_other": "Pendências de hoje ({{count}})",
+    "pendingAll": "Ver todas em Pendências",
     "display": "Exibição",
     "asList": "Ver lista",
     "monthList": "Projeção mês a mês",
@@ -443,6 +450,9 @@
     "ctech_subscriptions": "Assinaturas CTech"
   },
   "import": {
+    "stepFile": "Enviar o arquivo",
+    "stepReview": "Revisar os lançamentos",
+    "stepReviewHint": "Nada é lançado até você decidir cada linha.",
     "account": "Conta",
     "noAccounts": "Nenhuma conta para importar.",
     "noAccountsHint": "Crie uma conta corrente ou de dinheiro em Contas e volte aqui.",
@@ -529,6 +539,8 @@
       "balance_row": "linha de saldo"
     },
     "mapping": {
+      "formatGroup": "Formato do arquivo",
+      "columnsGroup": "Colunas (contadas a partir de 1, como numa planilha)",
       "delimiter": "Separador",
       "semicolon": "Ponto e vírgula (;)",
       "comma": "Vírgula (,)",
@@ -685,6 +697,9 @@
   },
   "conflict": "Isto mudou enquanto você editava. Atualizamos; tente de novo.",
   "cardImport": {
+    "stepFile": "Escolher a fatura e o arquivo",
+    "stepReview": "Revisar os lançamentos",
+    "stepReviewHint": "Pareie o que você já lançou, crie o resto ou ignore.",
     "title": "Importar fatura do cartão",
     "month": "Fatura",
     "file": "Arquivo da fatura (CSV do Inter)",

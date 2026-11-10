@@ -114,6 +114,7 @@
   "partial": "Só as primeiras {{counted}} faturas do mês entraram na soma."
  },
  "customers": {
+  "hasMore": "Há mais clientes do que os listados.",
   "title": "Clientes",
   "empty": "Nenhum cliente",
   "name": "Nome",
@@ -149,7 +150,18 @@
   "open": "Em aberto",
   "numbered": "nº {{number}}",
   "unnumbered": "sem número",
-  "hasMore": "O mês tem mais faturas do que as listadas.",
+  "more": "Mostrar mais",
+  "thisMonth": "Este mês",
+  "emptyFiltered": "Nenhuma fatura neste filtro",
+  "clearFilter": "Ver todas",
+  "dueOn": "vence {{date}}",
+  "filter": {
+   "label": "Filtrar por situação",
+   "all": "Todas",
+   "overdue": "Vencidas",
+   "upcoming": "A vencer",
+   "paid": "Pagas"
+  },
   "attemptN_one": "{{count}}ª tentativa",
   "attemptN_other": "{{count}}ª tentativa"
  },
@@ -209,6 +221,7 @@
   "viaPixNote": "O Inter devolve este valor por Pix para quem pagou a fatura, a partir do pagamento dela. Não dá para desfazer."
  },
  "subscriptions": {
+  "hasMore": "Há mais assinaturas do que as listadas.",
   "title": "Assinaturas",
   "empty": "Nenhuma assinatura",
   "plan": "Plano",

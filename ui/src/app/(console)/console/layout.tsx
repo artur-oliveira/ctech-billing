@@ -23,6 +23,7 @@ import {MerchantSelectionProvider} from "@/lib/console/selection";
 import {useMerchantOrg} from "@/lib/console/useMerchantOrg";
 import {useMode} from "@/lib/console/useMode";
 import {FINANCE_HREF} from "@/lib/finance/href";
+import {rememberProduct} from "@/lib/product";
 import {RealtimeProvider} from "@/lib/realtime/RealtimeProvider";
 
 /**
@@ -93,6 +94,11 @@ export default function ConsoleLayout({children}: LayoutProps<"/console">) {
   useEffect(() => {
     if (!loading && !authenticated) router.replace("/login");
   }, [loading, authenticated, router]);
+
+  // Only once an organization is selected: with none, the console is not theirs.
+  useEffect(() => {
+    if (selected) rememberProduct("console");
+  }, [selected]);
 
   useEffect(() => {
     if (noOrganization) router.replace(FINANCE_HREF);

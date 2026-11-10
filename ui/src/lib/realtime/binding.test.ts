@@ -7,7 +7,7 @@ import {consoleKeys} from "@/lib/api/console";
 import {financeKeys} from "@/lib/api/finance";
 import {portalKeys} from "@/lib/api/portal";
 
-import {applyChange, applyGap} from "./binding";
+import {applyChange, applyGap, HOLD_MAX_MS, holdInvalidations} from "./binding";
 import type {Surface} from "./catalogue";
 import type {ChangeView} from "./codec";
 
@@ -163,6 +163,41 @@ describe("coalescing", () => {
     expect(spy.mock.calls.length).toBe(2); // plus one when the window closed
     await vi.advanceTimersByTimeAsync(1000);
     expect(spy.mock.calls.length).toBe(2);
+    vi.useRealTimers();
+  });
+});
+
+describe("holdInvalidations", () => {
+  const surface: Surface = {kind: "finance", mode: "live", space: spaceA};
+  const key = financeKeys.bills("live", spaceA, "payable");
+
+  it("defers a pushed change until released, then refreshes once", () => {
+    const qc = seeded([key]);
+    const release = holdInvalidations(qc);
+    applyChange(qc, surface, change("bill", "bill.updated", "b_1"));
+    expect(stale(qc, key)).toBe(false);
+    release();
+    expect(stale(qc, key)).toBe(true);
+  });
+
+  it("release is idempotent and a nested hold waits for the last one", () => {
+    const qc = seeded([key]);
+    const a = holdInvalidations(qc);
+    const b = holdInvalidations(qc);
+    applyChange(qc, surface, change("bill", "bill.updated", "b_1"));
+    a(); a();
+    expect(stale(qc, key)).toBe(false);
+    b();
+    expect(stale(qc, key)).toBe(true);
+  });
+
+  it("expires on its own, so a forgotten release cannot mute realtime", () => {
+    vi.useFakeTimers();
+    const qc = seeded([key]);
+    holdInvalidations(qc);
+    applyChange(qc, surface, change("bill", "bill.updated", "b_1"));
+    vi.advanceTimersByTime(HOLD_MAX_MS);
+    expect(stale(qc, key)).toBe(true);
     vi.useRealTimers();
   });
 });

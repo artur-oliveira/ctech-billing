@@ -34,10 +34,11 @@ class MockRealtimeSocket {
     }, 50);
   }
 
+  /** Registers on Auth: only an authenticated socket is announced to. */
   send(data: ArrayBuffer | ArrayBufferView): void {
     const bytes = data instanceof ArrayBuffer ? new Uint8Array(data) : new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
     const body = ClientFrame.decode(bytes).body;
-    if (body?.$case === "auth") this.start();
+    if (body?.$case === "auth") { opened(this); this.start(); }
     if (body?.$case === "ping") this.push({$case: "pong", value: {}} as Body);
   }
 
@@ -63,11 +64,30 @@ class MockRealtimeSocket {
     });
   }
 
+  announce(value: Extract<Body, {$case: "change"}>["value"]): void {
+    this.push({$case: "change", value});
+  }
+
   private push(body: Body): void {
     const bytes = ServerFrame.encode({body}).finish();
     const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
     this.onmessage?.({data: buffer} as MessageEvent);
   }
+}
+
+let live: MockRealtimeSocket | undefined;
+/** The socket the screens opened (the last one). */
+const opened = (socket: MockRealtimeSocket) => { live = socket; };
+let billSequence = 0;
+
+/** A finance write was committed: the server announces it (bill.updated) to the open socket. */
+export function pushBillChange(): void {
+  if (live?.readyState !== MockRealtimeSocket.OPEN) return;
+  billSequence += 1;
+  live.announce({
+    id: `mock-bill-${String(Date.now()).padStart(14, "0")}-${billSequence}`,
+    type: "bill.updated", entity: "bill", entity_id: `b_mock_${billSequence}`, status: "forecast", revision: 1, occurred_at_ms: Date.now(),
+  });
 }
 
 let installed = false;

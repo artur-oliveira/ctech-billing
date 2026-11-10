@@ -49,7 +49,7 @@ export default function InvoicesPage() {
       )}
 
       {invoices.length > 0 && (
-        <ul className="divide-y divide-border border-y border-border">
+        <ul className="-mx-3 divide-y divide-border">
           {invoices.map(invoice => (
             <InvoiceRow key={invoice.id} invoice={invoice}/>
           ))}

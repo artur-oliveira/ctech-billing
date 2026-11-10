@@ -14,6 +14,7 @@ import {useSubject} from "@/lib/auth/subject";
 import {useMode} from "@/lib/console/useMode";
 import {useSpace} from "@/lib/console/useSpace";
 import {FINANCE_HREF} from "@/lib/finance/href";
+import {rememberProduct} from "@/lib/product";
 import {RealtimeProvider} from "@/lib/realtime/RealtimeProvider";
 
 /**
@@ -39,6 +40,10 @@ export function FinanceShell({children}: {children: ReactNode}) {
   useEffect(() => {
     if (!loading && !authenticated) router.replace("/login");
   }, [loading, authenticated, router]);
+
+  useEffect(() => {
+    if (authenticated) rememberProduct("finance");
+  }, [authenticated]);
 
   return (
     // Keyed by person, mode and space: switching any of them closes the socket

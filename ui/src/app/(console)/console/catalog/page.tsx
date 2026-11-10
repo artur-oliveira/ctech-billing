@@ -1,7 +1,7 @@
 "use client";
 
 import limits from "@/lib/limits.json";
-import {Button, EmptyState, Field, Input, Modal, Skeleton} from "@aoctech/ui";
+import {Button, EmptyState, Field, Input, Modal, PageHeader, Skeleton} from "@aoctech/ui";
 import {useMutation, useQuery, useQueryClient} from "@tanstack/react-query";
 import {Package} from "lucide-react";
 import Link from "next/link";
@@ -16,6 +16,7 @@ import {consoleKeys, createProduct, listConsoleProducts} from "@/lib/api/console
 import {useConsoleScope} from "@/lib/console/scope";
 import {useCreateRequest} from "@/lib/createRequest";
 import {money} from "@/lib/format";
+import {useDocumentTitle} from "@/lib/hooks/useDocumentTitle";
 
 /**
  * C8 — the catalogue.
@@ -27,6 +28,7 @@ import {money} from "@/lib/format";
 export default function ConsoleCatalogPage() {
   const {t} = useTranslation();
   const scope = useConsoleScope();
+  useDocumentTitle(t("console.catalog.title"));
   const queryClient = useQueryClient();
   const [creating, setCreating] = useState(false);
   useCreateRequest("product", () => setCreating(true));
@@ -40,10 +42,10 @@ export default function ConsoleCatalogPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <h1 className="text-lg font-semibold tracking-[-0.01em] text-foreground">{t("console.catalog.title")}</h1>
-        <Button size="sm" onClick={() => setCreating(true)}>{t("console.catalog.new")}</Button>
-      </div>
+      <PageHeader
+        title={t("console.catalog.title")}
+        action={products.length > 0 ? <Button variant="brand" onClick={() => setCreating(true)} className="w-full sm:w-auto">{t("console.catalog.new")}</Button> : undefined}
+      />
 
       {query.isPending && <RowsSkeleton/>}
       {query.isError && <ErrorBlock error={query.error} onRetry={query.refetch}/>}
