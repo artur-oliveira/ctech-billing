@@ -4,6 +4,7 @@ import {Button} from "@aoctech/ui";
 import {useRouter} from "next/navigation";
 import {useTranslation} from "react-i18next";
 
+import {entryHref} from "@/lib/product";
 import {useAuth} from "@/lib/auth/AuthContext";
 
 /**
@@ -27,7 +28,10 @@ export function LandingCta() {
       block
       className="sm:w-auto"
       disabled={loading}
-      onClick={() => (authenticated ? router.push("/dashboard") : login("/dashboard"))}
+      onClick={() => {
+        const entry = entryHref();
+        if (authenticated) router.push(entry); else login(entry);
+      }}
     >
       {loading ? t("common.loading") : authenticated ? t("landing.openApp") : t("landing.signIn")}
     </Button>

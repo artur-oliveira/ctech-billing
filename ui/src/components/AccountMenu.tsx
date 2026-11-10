@@ -104,7 +104,8 @@ export function AccountMenu({view}: {view: "portal" | "console" | "finance"}) {
             {label: t("console.mode.test"), icon: <FlaskConical/>, current: mode === "test", onClick: () => chooseMode("test")},
           ],
         }]),
-        // The bar's switch is hidden under `sm`; on a phone the language lives here.
+        // The only language control in the signed-in shell (a rare setting; the
+        // signed-out screens carry their own LanguageSwitcher).
         {
           label: t("common.language"),
           options: (["pt-BR", "en"] as const).map(l => ({

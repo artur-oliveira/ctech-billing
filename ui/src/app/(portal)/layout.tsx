@@ -19,6 +19,7 @@ import {useAuth} from "@/lib/auth/AuthContext";
 import {useSubject} from "@/lib/auth/subject";
 import {PORTAL_NAV} from "@/lib/portal/nav";
 import {usePortalSpace} from "@/lib/portal/space";
+import {rememberProduct} from "@/lib/product";
 import {RealtimeProvider} from "@/lib/realtime/RealtimeProvider";
 
 /**
@@ -67,6 +68,11 @@ export default function PortalLayout({children}: LayoutProps<"/">) {
   useEffect(() => {
     if (!loading && !authenticated) router.replace("/login");
   }, [loading, authenticated, router]);
+
+  // A person with no billing account is not in the portal in any useful sense.
+  useEffect(() => {
+    if (authenticated && session) rememberProduct("portal");
+  }, [authenticated, session]);
 
   const pathname = usePathname();
   const active = (href: string) => href === "/dashboard" ? pathname === href : pathname.startsWith(href);

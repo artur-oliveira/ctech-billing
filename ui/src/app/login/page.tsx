@@ -6,6 +6,7 @@ import {useTranslation} from "react-i18next";
 
 import {StatusScreen} from "@/components/StatusScreen";
 import {useAuth} from "@/lib/auth/AuthContext";
+import {entryHref} from "@/lib/product";
 
 /**
  * Where an expired session lands.
@@ -24,7 +25,7 @@ export default function LoginPage() {
   const {t} = useTranslation();
 
   useEffect(() => {
-    if (!loading && authenticated) window.location.replace("/dashboard");
+    if (!loading && authenticated) window.location.replace(entryHref());
   }, [loading, authenticated]);
 
   return (
@@ -32,7 +33,7 @@ export default function LoginPage() {
       title={t("auth.login.title")}
       description={t("auth.login.description")}
       action={
-        <Button onClick={() => login("/dashboard")} disabled={loading || authenticated}>
+        <Button onClick={() => login(entryHref())} disabled={loading || authenticated}>
           {loading ? t("auth.login.checking") : t("auth.login.signIn")}
         </Button>
       }
