@@ -13,7 +13,7 @@ import {ErrorBlock} from "@/components/portal/ErrorBlock";
 import {Amount} from "@/components/ui/Amount";
 import {Section} from "@/components/ui/Section";
 import {financeKeys, listBills, listImports, listPendingOccurrences, listRecurrences} from "@/lib/api/finance";
-import type {Bill, ImportSummary} from "@/lib/api/financeTypes";
+import type {Bill, ImportSummary, PendingOccurrence} from "@/lib/api/financeTypes";
 import {bucketLabel} from "@/lib/finance/labels";
 import {useFinanceCtx} from "@/lib/finance/useFinanceSpaces";
 import {money, shortDate} from "@/lib/format";
@@ -56,13 +56,7 @@ export function ActionInboxView() {
           {/* Only what waits is drawn: a section that is empty is one line less to read. */}
           {pendingOccurrences.length > 0 && <Section title={t("finance.inbox.confirmations", {count: pendingOccurrences.length})}>
             <ul className={list}>
-              {pendingOccurrences.map(item => (
-                <LedgerRow key={`${item.recurrence_id}-${item.nominal}`} title={item.description || t("finance.inbox.unnamedRecurrence")}
-                  aside={<StatusBadge status={RECURRENCE_STATUS.pending}>{t("finance.inbox.waitingValue")}</StatusBadge>}
-                  amount={<Amount tone={item.direction === "receivable" ? "success" : "default"}>{money(item.expected_amount)}</Amount>}>
-                  <PendingOccurrenceAction item={item}/>
-                </LedgerRow>
-              ))}
+              {pendingOccurrences.map(item => <OccurrenceAction key={`${item.recurrence_id}-${item.nominal}`} item={item}/>)}
             </ul>
           </Section>}
           {bills.length > 0 && <Section title={t("finance.inbox.bills", {count: bills.length})}
@@ -96,7 +90,19 @@ function ImportAction({item}: {item: ImportSummary}) {
   );
 }
 
-function BillAction({bill}: {bill: Bill}) {
+/** A recurring value waiting to be confirmed, with its confirm/skip form; shared with the overview's today block. */
+export function OccurrenceAction({item}: {item: PendingOccurrence}) {
+  const {t} = useTranslation();
+  return (
+    <LedgerRow title={item.description || t("finance.inbox.unnamedRecurrence")}
+      aside={<StatusBadge status={RECURRENCE_STATUS.pending}>{t("finance.inbox.waitingValue")}</StatusBadge>}
+      amount={<Amount tone={item.direction === "receivable" ? "success" : "default"}>{money(item.expected_amount)}</Amount>}>
+      <PendingOccurrenceAction item={item}/>
+    </LedgerRow>
+  );
+}
+
+export function BillAction({bill}: {bill: Bill}) {
   const {t} = useTranslation();
   const overdue = bill.bucket === "overdue";
   return (

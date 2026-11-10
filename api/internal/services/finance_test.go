@@ -412,9 +412,17 @@ func TestProjectCountsWhatTheJobHasNotMaterialisedYet(t *testing.T) {
 	}
 }
 
+func TestProjectReachesFiveYears(t *testing.T) {
+	jobs := NewFinanceJobs(newFakeBills(), newFakeRecs())
+	p, err := jobs.Project(context.Background(), testSpace(t), day(2026, time.March, 20), 60)
+	if err != nil || len(p.Months) != 60 {
+		t.Fatalf("60 months: got %d, err %v", len(p.Months), err)
+	}
+}
+
 func TestProjectRefusesAnUnreasonableWindow(t *testing.T) {
 	jobs := NewFinanceJobs(newFakeBills(), newFakeRecs())
-	for _, n := range []int{0, 13, -1} {
+	for _, n := range []int{0, 61, -1} {
 		if _, err := jobs.Project(context.Background(), testSpace(t), day(2026, time.March, 20), n); err == nil {
 			t.Errorf("%d months was accepted", n)
 		}

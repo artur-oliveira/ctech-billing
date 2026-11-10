@@ -653,8 +653,8 @@ type projectionMonthDTO struct {
 
 func (h *financeHandlers) projection(c fiber.Ctx) error {
 	months := fiber.Query(c, "months", 6)
-	if months < 1 || months > 12 {
-		return problem.Validation([]problem.FieldError{fieldErr("months", "out_of_range", "between 1 and 12", "min", 1, "max", 12)}).Send(c)
+	if months < 1 || months > 60 {
+		return problem.Validation([]problem.FieldError{fieldErr("months", "out_of_range", "between 1 and 60", "min", 1, "max", 60)}).Send(c)
 	}
 	p, err := h.jobs.Project(c.Context(), middleware.GetSpace(c), h.today(), months)
 	if err != nil {

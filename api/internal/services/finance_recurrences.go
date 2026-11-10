@@ -321,7 +321,13 @@ type ProjectionMonth struct {
 	VirtualPayable    billing.Cents
 }
 
-const maxProjectionMonths = 12
+// maxProjectionMonths is the long-term view's reach (5 years). Cost grows with
+// cards × months (one statement Query each); the recurrences and open bills are
+// read once whatever the window.
+const maxProjectionMonths = 60
+
+// maxForecastMonths is how far MonthFlows (the by-category forecast) looks.
+const maxForecastMonths = 12
 
 // Project reads every open bill and every recurrence of the space for the next
 // `months` months from today's. Bills due before the window (overdue) count in
@@ -491,8 +497,8 @@ func (j *FinanceJobs) Project(ctx context.Context, sp space.ResolvedSpace, today
 // index if one space ever holds thousands of open bills.
 func (j *FinanceJobs) MonthFlows(ctx context.Context, sp space.ResolvedSpace, today brcal.Date, month finance.Month) (open, forecast []finance.CategoryFlow, err error) {
 	first := finance.MonthOf(today)
-	if month.Compare(first.Add(maxProjectionMonths-1)) > 0 {
-		return nil, nil, fmt.Errorf("%w: the forecast covers up to %d months ahead", finance.ErrInvalidRecurrence, maxProjectionMonths-1)
+	if month.Compare(first.Add(maxForecastMonths-1)) > 0 {
+		return nil, nil, fmt.Errorf("%w: the forecast covers up to %d months ahead", finance.ErrInvalidRecurrence, maxForecastMonths-1)
 	}
 	for _, dir := range []finance.Direction{finance.Receivable, finance.Payable} {
 		var start map[string]types.AttributeValue
