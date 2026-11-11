@@ -1,7 +1,7 @@
 import {useQuery} from "@tanstack/react-query";
 
 import {financeKeys, getProjection} from "@/lib/api/finance";
-import type {ProjectionMonth} from "@/lib/api/financeTypes";
+import type {ProjectionCard, ProjectionMonth} from "@/lib/api/financeTypes";
 import {useFinanceCtx} from "@/lib/finance/useFinanceSpaces";
 
 /** Months the overview reads; every screen that shows the end of this month shares this cache entry. */
@@ -20,6 +20,8 @@ export interface ProjectedMonth extends ProjectionMonth {
   card: number
   /** Estimated unplanned card spending, counted in `outflow` and `result`; the rest of the card's usual month. */
   estimate: number
+  /** Each card's share (empty on an older API). */
+  cards: ProjectionCard[]
 }
 
 /** The projection's data, shared (one cache entry) by every block that reads the same window. */
@@ -33,16 +35,21 @@ export function useProjection(months: number) {
  * not yet generated), accumulated: what the person will have at the end of each
  * month if everything happens as forecast.
  */
-export function project(start: number, data: ProjectionMonth[]): ProjectedMonth[] {
+export function project(start: number, data: ProjectionMonth[], budget: number | null = null): ProjectedMonth[] {
   let balance = start;
   return data.map(m => {
-    const estimate = m.card_estimate ?? 0;
+    // A budget of the person's own replaces the automatic estimate: what they say the
+    // cards take beyond plan each month, less what the statements already hold of it.
+    const cards = m.by_card ?? [];
+    const estimate = budget !== null && m.by_card
+      ? Math.max(budget - cards.reduce((a, c) => a + c.unplanned, 0), 0)
+      : (m.card_estimate ?? 0);
     const result = m.receivable - m.payable + m.virtual - estimate;
     balance += result;
     const recIn = m.virtual_receivable ?? Math.max(m.virtual, 0);
     const recOut = m.virtual_payable ?? Math.max(-m.virtual, 0);
     const card = (m.card_payable ?? 0) + (m.virtual_card_payable ?? 0);
-    return {...m, result, balance, recIn, recOut, card, estimate, inflow: m.receivable + recIn, outflow: m.payable + recOut + estimate};
+    return {...m, result, balance, recIn, recOut, card, estimate, cards, inflow: m.receivable + recIn, outflow: m.payable + recOut + estimate};
   });
 }
 
@@ -80,7 +87,29 @@ export function aggregate(data: ProjectedMonth[], max: number): ProjectedPeriod[
       receivable: sum(m => m.receivable), payable: sum(m => m.payable), virtual: sum(m => m.virtual),
       result: sum(m => m.result), inflow: sum(m => m.inflow), outflow: sum(m => m.outflow),
       recIn: sum(m => m.recIn), recOut: sum(m => m.recOut), card: sum(m => m.card), estimate: sum(m => m.estimate),
+      cards: mergeCards(g),
     });
   }
   return out;
+}
+
+/** The cards of several months as one: money sums, the usual amount is the last month's. */
+function mergeCards(months: ProjectedMonth[]): ProjectionCard[] {
+  const by = new Map<string, ProjectionCard>();
+  for (const m of months) {
+    for (const c of m.cards) {
+      const a = by.get(c.card_id);
+      by.set(c.card_id, a ? {...c, posted: a.posted + c.posted, expected: a.expected + c.expected, unplanned: a.unplanned + c.unplanned, estimate: a.estimate + c.estimate} : c);
+    }
+  }
+  return [...by.values()];
+}
+
+/**
+ * What the automatic estimate amounts to per month across all cards: each card's
+ * usual unplanned spending, summed. Null on an older API or with no card history.
+ */
+export function automaticBudget(data: ProjectionMonth[]): number | null {
+  const total = Math.max(0, ...data.map(m => (m.by_card ?? []).reduce((a, c) => a + c.baseline, 0)));
+  return total > 0 ? total : null;
 }

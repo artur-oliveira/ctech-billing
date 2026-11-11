@@ -127,6 +127,22 @@ export interface ProjectionMonth {
   virtual_card_payable?: Cents
   /** What the cards will probably take beyond everything else (their usual unplanned spending), in no other column. Absent on an older API. */
   card_estimate?: Cents
+  /** The three card figures above, card by card. Absent on an older API. */
+  by_card?: ProjectionCard[]
+}
+
+/** One card's part of a projection month. */
+export interface ProjectionCard {
+  card_id: string
+  /** The statement due this month: posted purchases and installments. */
+  posted: Cents
+  /** Card recurrences still to post on it. */
+  expected: Cents
+  /** The part of `posted` nothing scheduled. */
+  unplanned: Cents
+  /** What the card usually takes beyond that, and the usual amount itself. */
+  estimate: Cents
+  baseline: Cents
 }
 
 export interface Account {

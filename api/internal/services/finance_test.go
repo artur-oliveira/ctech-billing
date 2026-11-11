@@ -911,6 +911,21 @@ func TestProjectEstimatesUnplannedCardSpending(t *testing.T) {
 	}
 }
 
+// Card by card: what each statement holds, how much of it was nobody's plan, and
+// the usual amount, so a client can name the share and re-estimate from its own
+// budget.
+func TestProjectBreaksTheCardMonthDownByCard(t *testing.T) {
+	jobs := NewFinanceJobs(newFakeBills(), newFakeRecs()).WithCards(&usualSpend{})
+	p, err := jobs.Project(context.Background(), testSpace(t), day(2026, time.March, 2), 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := CardMonth{CardID: "visa", Posted: 109900, Unplanned: 10000, Estimate: 20000, Baseline: 30000}
+	if got := p.Months[0].Cards; len(got) != 1 || got[0] != want {
+		t.Errorf("March cards = %+v, want [%+v]", got, want)
+	}
+}
+
 // A card with no closed statement has no usual spending to project.
 func TestProjectEstimatesNothingForACardWithoutHistory(t *testing.T) {
 	jobs := NewFinanceJobs(newFakeBills(), newFakeRecs()).WithCards(&fakeCards{})
@@ -934,6 +949,9 @@ func TestProjectSplitsCardRecurrencesFromTheRest(t *testing.T) {
 		t.Fatal(err)
 	}
 	m := p.Months[2] // the 28th of March falls in the April statement, due May 5
+	if len(m.Cards) != 1 || m.Cards[0].Expected != 30000 {
+		t.Errorf("%s: cards = %+v, want visa expecting 30000", m.Month, m.Cards)
+	}
 	if m.VirtualCardPayable != 30000 || m.VirtualPayable <= m.VirtualCardPayable {
 		t.Errorf("%s: virtual card payable %d of virtual payable %d, want 30000 and more in total", m.Month, m.VirtualCardPayable, m.VirtualPayable)
 	}
