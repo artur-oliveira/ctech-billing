@@ -35,6 +35,10 @@ function serve() {
     has_more: false,
   }));
   vi.spyOn(finance, "listPendingOccurrences").mockResolvedValue({data: [], has_more: false});
+  vi.spyOn(finance, "listCards").mockResolvedValue({data: [
+    {id: "inter", name: "Inter", closing_day: 1, due_day: 7, paying_account_id: "cc", open_month: "2026-11", balance: 0, archived: false, last4: "6878"},
+    {id: "nu", name: "Nu", closing_day: 3, due_day: 10, paying_account_id: "cc", open_month: "2026-11", balance: 0, archived: false},
+  ], has_more: false});
   vi.spyOn(finance, "getCashFlow").mockImplementation(async (_c, from, to) => ({
     from, to, opening_cash: 0, closing_cash: 120000,
     months: [{month: from, in: 300000, out: 180000, openings: 0, lines: []}],
@@ -288,5 +292,54 @@ describe("F1 — visão geral", () => {
     await within(block).findByRole("region", {name: "Receitas"});
     expect(month).toHaveBeenCalledWith(expect.anything(), todayIso().slice(0, 7));
     expect(screen.queryByRole("region", {name: "Projeção"})).toBeNull();
+  });
+
+  describe("cards in the projection", () => {
+    const withCards: ProjectionMonth[] = [{
+      month: "2026-11", receivable: 0, payable: 100000, virtual: -20000, virtual_payable: 20000,
+      card_payable: 70000, virtual_card_payable: 20000, card_estimate: 30000,
+      by_card: [
+        {card_id: "inter", posted: 60000, expected: 20000, unplanned: 15000, estimate: 25000, baseline: 40000},
+        {card_id: "nu", posted: 10000, expected: 0, unplanned: 0, estimate: 5000, baseline: 5000},
+      ],
+    }];
+
+    async function openTable() {
+      serve();
+      vi.spyOn(finance, "getProjection").mockResolvedValue({data: withCards, has_more: false});
+      renderWithQuery(<OverviewView/>);
+      const projection = await loadProjection();
+      await userEvent.click(await within(projection).findByRole("button", {name: "Ver tabela"}));
+      return projection;
+    }
+
+    it("opens a month to name each card's share and the estimate", async () => {
+      const projection = await openTable();
+      expect(within(projection).queryByText("Inter •••• 6878")).not.toBeInTheDocument();
+      await userEvent.click(within(projection).getByRole("button", {name: /Ver cartões de Nov\/26/}));
+      const detail = within(projection).getByText("Inter •••• 6878").closest("dl")!;
+      expect(detail).toHaveTextContent(/fatura R\$\s*600,00 · recorrências R\$\s*200,00/);
+      expect(within(detail).getByText("Nu")).toBeInTheDocument();
+      expect(detail).toHaveTextContent(/Compras avulsas estimadas.*R\$\s*300,00/);
+      await userEvent.click(within(projection).getByRole("button", {name: /Ocultar cartões de Nov\/26/}));
+      expect(within(projection).queryByText("Nu")).not.toBeInTheDocument();
+    });
+
+    it("lets the person set their own amount, applies it to what is not posted yet, and goes back to automatic", async () => {
+      const projection = await openTable();
+      expect(within(projection).getByText(/R\$\s*450,00 por mês \(média automática\)/)).toBeInTheDocument();
+      await userEvent.click(within(projection).getByRole("button", {name: "Definir valor"}));
+      const field = within(projection).getByLabelText(/Compras avulsas por mês/);
+      await userEvent.clear(field);
+      await userEvent.type(field, "1000,00");
+      await userEvent.click(within(projection).getByRole("button", {name: "Aplicar"}));
+      // 1000,00 budget less 150,00 already unplanned on the statements.
+      expect(await within(projection).findByText(/R\$\s*1\.000,00 por mês \(seu valor\)/)).toBeInTheDocument();
+      await userEvent.click(within(projection).getByRole("button", {name: /Ver cartões de Nov\/26/}));
+      expect(within(projection).getByText("Inter •••• 6878").closest("dl")).toHaveTextContent(/Compras avulsas estimadas.*R\$\s*850,00/);
+      expect(window.localStorage.getItem(Object.keys(window.localStorage).find(k => k.startsWith("ctech-billing-card-budget"))!)).toBe("100000");
+      await userEvent.click(within(projection).getByRole("button", {name: "Voltar ao automático"}));
+      expect(await within(projection).findByText(/média automática/)).toBeInTheDocument();
+    });
   });
 });

@@ -82,7 +82,7 @@ func (j *FinanceJobs) cardBaseline(ctx context.Context, sp space.ResolvedSpace, 
 // takes beyond what is posted: its baseline less the unplanned spending already
 // on that statement, never negative. One Query per statement month plus
 // cardBaselineMonths per card.
-func (j *FinanceJobs) projectCards(ctx context.Context, sp space.ResolvedSpace, cards map[string]repositories.CardRow, windowEnd brcal.Date, add func(due brcal.Date, total, estimate billing.Cents)) error {
+func (j *FinanceJobs) projectCards(ctx context.Context, sp space.ResolvedSpace, cards map[string]repositories.CardRow, windowEnd brcal.Date, add func(c repositories.CardRow, due brcal.Date, total, unplanned, estimate, baseline billing.Cents)) error {
 	for _, c := range cards {
 		baseline, err := j.cardBaseline(ctx, sp, c)
 		if err != nil {
@@ -97,7 +97,8 @@ func (j *FinanceJobs) projectCards(ctx context.Context, sp space.ResolvedSpace, 
 			if err != nil {
 				return err
 			}
-			add(due, s.Total, max(baseline-unplanned(s.Items), 0))
+			u := unplanned(s.Items)
+			add(c, due, s.Total, u, max(baseline-u, 0), baseline)
 		}
 	}
 	return nil

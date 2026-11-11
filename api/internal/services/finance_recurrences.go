@@ -328,6 +328,32 @@ type ProjectionMonth struct {
 	// their usual unplanned spending (see cardBaseline). It is an estimate, in no
 	// other column, and the screen says so.
 	CardEstimate billing.Cents
+	// Cards is the same, card by card: what a client needs to name each card's
+	// share, and to recompute the estimate from a budget of its own.
+	Cards []CardMonth
+}
+
+// CardMonth is one card's part of a projection month.
+type CardMonth struct {
+	CardID string
+	// Posted is the statement due this month (posted purchases and installments);
+	// Expected the card recurrences still to post on it.
+	Posted, Expected billing.Cents
+	// Unplanned is the part of Posted nothing scheduled (see unplanned);
+	// Estimate what the card usually takes beyond it; Baseline that usual amount.
+	Unplanned, Estimate, Baseline billing.Cents
+}
+
+// card is the month's entry for a card, created on first use. A space has a
+// handful of cards, so a scan is cheaper than a map per month.
+func (m *ProjectionMonth) card(id string) *CardMonth {
+	for i := range m.Cards {
+		if m.Cards[i].CardID == id {
+			return &m.Cards[i]
+		}
+	}
+	m.Cards = append(m.Cards, CardMonth{CardID: id})
+	return &m.Cards[len(m.Cards)-1]
 }
 
 // maxProjectionMonths is the long-term view's reach (5 years). Cost grows with
@@ -411,11 +437,16 @@ func (j *FinanceJobs) Project(ctx context.Context, sp space.ResolvedSpace, today
 		return Projection{}, err
 	}
 	cardsEnd := first.Add(months - 1).Last()
-	if err := j.projectCards(ctx, sp, cards, cardsEnd, func(due brcal.Date, total, estimate billing.Cents) {
+	if err := j.projectCards(ctx, sp, cards, cardsEnd, func(c repositories.CardRow, due brcal.Date, total, unplanned, estimate, baseline billing.Cents) {
 		if i, ok := slot(due); ok {
 			window[i].Payable += total
 			window[i].CardPayable += total
 			window[i].CardEstimate += estimate
+			cm := window[i].card(c.ID)
+			cm.Posted += total
+			cm.Unplanned += unplanned
+			cm.Estimate += estimate
+			cm.Baseline = baseline
 		}
 	}); err != nil {
 		return Projection{}, err
@@ -462,6 +493,7 @@ func (j *FinanceJobs) Project(ctx context.Context, sp space.ResolvedSpace, today
 						window[i].Virtual -= inst.Amount
 						window[i].VirtualPayable += inst.Amount
 						window[i].VirtualCardPayable += inst.Amount
+						window[i].card(card.ID).Expected += inst.Amount
 					}
 				}
 			}
@@ -500,6 +532,7 @@ func (j *FinanceJobs) Project(ctx context.Context, sp space.ResolvedSpace, today
 					window[i].Virtual -= installment.Amount
 					window[i].VirtualPayable += installment.Amount
 					window[i].VirtualCardPayable += installment.Amount
+					window[i].card(card.ID).Expected += installment.Amount
 				}
 			}
 			continue

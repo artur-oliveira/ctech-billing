@@ -2,30 +2,34 @@
 
 import {Button, EmptyState, Segmented, Skeleton} from "@aoctech/ui";
 import {useQuery} from "@tanstack/react-query";
-import {BarChart3, Landmark, List, Table2} from "lucide-react";
+import {BarChart3, ChevronRight, Landmark, List, Table2} from "lucide-react";
 import Link from "next/link";
 import type {TFunction} from "i18next";
-import {useRef, useState} from "react";
+import {Fragment, useRef, useState} from "react";
 import {useTranslation} from "react-i18next";
 
+import {cardLabel} from "@/components/finance/CardBrandMark";
 import {CategoryMonthPanel} from "@/components/finance/CategoryMonthPanel";
 import {PendingToday} from "@/components/finance/PendingToday";
 import {ErrorBlock} from "@/components/portal/ErrorBlock";
 import {Amount, AmountRow} from "@/components/ui/Amount";
+import {MoneyInput} from "@/components/ui/MoneyInput";
 import {ContainerSwitch} from "@/components/ui/ContainerSwitch";
 import {quietLink} from "@/components/ui/quietLink";
 import {Section} from "@/components/ui/Section";
 import {SelectStepper} from "@/components/ui/SelectStepper";
-import {financeKeys, getCashFlow, listAccounts, listBills} from "@/lib/api/finance";
+import {financeKeys, getCashFlow, listAccounts, listBills, listCards} from "@/lib/api/finance";
 import type {Bill} from "@/lib/api/financeTypes";
+import {useCardBudget} from "@/lib/finance/cardBudget";
 import {bucketLabel, directionLabel} from "@/lib/finance/labels";
 import {currentLocale} from "@/lib/i18n";
-import {aggregate, HORIZONS, maxBars, PROJECTION_HORIZON, type ProjectedPeriod, project, useProjection} from "@/lib/finance/projection";
+import {aggregate, automaticBudget, HORIZONS, maxBars, PROJECTION_HORIZON, type ProjectedPeriod, project, useProjection} from "@/lib/finance/projection";
 import {monthLabel, monthShort, todayIso} from "@/lib/finance/today";
 import {useFinanceCtx} from "@/lib/finance/useFinanceSpaces";
 import {useElementWidth} from "@/lib/hooks/useElementWidth";
 import {NARROW, useMediaQuery} from "@/lib/hooks/useMediaQuery";
 import {money, shortDate, signedMoney} from "@/lib/format";
+import {formatMoneyInput, parseMoney} from "@/lib/money";
 import {accountName} from "@/lib/finance/accountName";
 
 /** "1a 2a" scale: under a year in months, from a year in years (60 months is the API's reach). */
@@ -249,7 +253,10 @@ function Projection() {
   const [view, setView] = useState<View>("balance");
   const q = useProjection(Number(months));
   const {q: accounts, start} = useStart();
-  const all = project(start, q.data?.data ?? []);
+  const [budget, setBudget] = useCardBudget();
+  const name = useCardNames();
+  const all = project(start, q.data?.data ?? [], budget);
+  const auto = automaticBudget(q.data?.data ?? []);
   // Rows keep up to a year's months; the chart is capped by the screen (12 bars, 6 on a phone).
   const rows = aggregate(all, 12), data = aggregate(all, maxBars(narrow));
   return (
@@ -288,13 +295,100 @@ function Projection() {
       {q.isLoading || accounts.isLoading ? <Skeleton className="h-40 w-full"/> : q.error || accounts.error ? (
         <ErrorBlock error={q.error ?? accounts.error} onRetry={() => { void q.refetch(); void accounts.refetch(); }}/>
       ) : display === "rows" ? (
-        <ContainerSwitch min={640}>{small => small ? <MonthList data={rows} view={view}/> : <ProjectionTable data={rows} view={view}/>}</ContainerSwitch>
+        <ContainerSwitch min={640}>{small => small ? <MonthList data={rows} view={view} name={name}/> : <ProjectionTable data={rows} view={view} name={name}/>}</ContainerSwitch>
       ) : view === "flow" ? <FlowChart data={data}/> : <ProjectionChart data={data}/>}
       <p className="text-xs text-muted-foreground">
         {t("finance.overview.projectionNote", {balance: signedMoney(start)})}
       </p>
       {all.some(m => m.estimate > 0) && <p className="text-xs text-muted-foreground">{t("finance.overview.estimateNote")}</p>}
+      {(auto !== null || budget !== null) && <CardBudgetControl auto={auto} budget={budget} onChange={setBudget}/>}
     </Section>
+  );
+}
+
+/** Card id to its label, from the cards the Cartões screen already reads (same cache entry). */
+function useCardNames() {
+  const ctx = useFinanceCtx();
+  const q = useQuery({queryKey: financeKeys.cards(ctx.mode, ctx.space), queryFn: () => listCards(ctx)});
+  return (id: string) => {
+    const c = q.data?.data.find(x => x.id === id);
+    return c ? cardLabel(c) : id;
+  };
+}
+
+const hasCardDetail = (m: ProjectedPeriod) => m.cards.length > 0 && (m.card > 0 || m.estimate > 0);
+
+/** The month's month label, a button that opens the card detail when there is any. */
+function MonthToggle({m, open, onToggle, className = ""}: {m: ProjectedPeriod; open: boolean; onToggle: () => void; className?: string}) {
+  const {t} = useTranslation();
+  if (!hasCardDetail(m)) return <span className={className}>{periodLabel(m)}</span>;
+  return (
+    <button type="button" aria-expanded={open} onClick={onToggle} title={t(open ? "finance.overview.hideCards" : "finance.overview.showCards", {month: periodLabel(m)})}
+      className={`inline-flex min-h-8 items-center gap-1 rounded-sm text-left focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 ${className}`}>
+      <ChevronRight aria-hidden className={`size-3.5 shrink-0 text-muted-foreground transition-transform ${open ? "rotate-90" : ""}`}/>
+      {periodLabel(m)}
+      <span className="sr-only">{t(open ? "finance.overview.hideCards" : "finance.overview.showCards", {month: periodLabel(m)})}</span>
+    </button>
+  );
+}
+
+/** Where a month's card money goes, card by card, then the estimate that no statement holds yet. */
+function CardDetail({m, name}: {m: ProjectedPeriod; name: (id: string) => string}) {
+  const {t} = useTranslation();
+  const cards = m.cards.filter(c => c.posted + c.expected > 0);
+  return (
+    <dl data-card-detail className="space-y-1.5 text-sm tabular-nums">
+      {cards.map(c => (
+        <div key={c.card_id} className="flex items-baseline justify-between gap-3">
+          <dt>{name(c.card_id)}<span className="block text-xs text-muted-foreground">{t("finance.overview.detailSplit", {posted: money(c.posted), expected: money(c.expected)})}</span></dt>
+          <dd>{money(c.posted + c.expected)}</dd>
+        </div>
+      ))}
+      {m.estimate > 0 && (
+        <div className="flex items-baseline justify-between gap-3 border-t border-dashed border-border pt-1.5">
+          <dt>{t("finance.overview.detailEstimate")}<span className="block text-xs text-muted-foreground">{t("finance.overview.detailEstimateHint")}</span></dt>
+          <dd>{money(m.estimate)}</dd>
+        </div>
+      )}
+    </dl>
+  );
+}
+
+/**
+ * The person's own number for what the cards take beyond plan each month, in place
+ * of the automatic average. Shown when there is an automatic figure to compare with
+ * or a number already set, so a person can always find the way back.
+ */
+function CardBudgetControl({auto, budget, onChange}: {auto: number | null; budget: number | null; onChange: (cents: number | null) => void}) {
+  const {t} = useTranslation();
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState("");
+  const current = budget ?? auto ?? 0;
+  const cents = parseMoney(text);
+  const apply = () => {
+    if (cents === null || cents < 0) return;
+    onChange(cents);
+    setEditing(false);
+  };
+  if (!editing) {
+    return (
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+        <span>{t(budget === null ? "finance.overview.budgetAuto" : "finance.overview.budgetMine", {amount: money(current)})}</span>
+        <Button type="button" variant="outline" size="sm" onClick={() => { setText(formatMoneyInput(current)); setEditing(true); }}>{t("finance.overview.budgetSet")}</Button>
+        {budget !== null && <Button type="button" variant="ghost" size="sm" onClick={() => onChange(null)}>{t("finance.overview.budgetReset")}</Button>}
+      </div>
+    );
+  }
+  return (
+    <form className="space-y-2" onSubmit={e => { e.preventDefault(); apply(); }}>
+      <label htmlFor="card-budget" className="block text-sm">{t("finance.overview.budgetField")}</label>
+      <div className="flex flex-wrap items-center gap-2">
+        <MoneyInput id="card-budget" value={text} onValueChange={setText} aria-invalid={cents === null || undefined} className="w-40" autoFocus onFocus={e => e.currentTarget.select()}/>
+        <Button type="submit" variant="brand" size="sm" disabled={cents === null}>{t("finance.overview.budgetApply")}</Button>
+        <Button type="button" variant="ghost" size="sm" onClick={() => setEditing(false)}>{t("finance.overview.budgetCancel")}</Button>
+      </div>
+      <p className="text-xs text-muted-foreground">{t("finance.overview.budgetHint")}</p>
+    </form>
   );
 }
 
@@ -316,8 +410,9 @@ function OfCard({card, estimate}: {card: number; estimate: number}) {
   );
 }
 
-function ProjectionTable({data, view}: {data: ProjectedPeriod[]; view: View}) {
+function ProjectionTable({data, view, name}: {data: ProjectedPeriod[]; view: View; name: (id: string) => string}) {
   const {t} = useTranslation();
+  const [open, setOpen] = useState<string | null>(null);
   const th = "py-2 pl-4 text-right font-normal";
   const td = "py-2 pl-4 text-right align-top";
   const estimates = data.some(m => m.estimate > 0);
@@ -348,8 +443,9 @@ function ProjectionTable({data, view}: {data: ProjectedPeriod[]; view: View}) {
         </thead>
         <tbody>
           {data.map(m => (
-            <tr key={m.month} className="border-b border-border">
-              <th scope="row" className="py-2 pr-4 text-left align-top font-normal">{periodLabel(m)}</th>
+            <Fragment key={m.month}>
+            <tr className={open === m.month ? "" : "border-b border-border"}>
+              <th scope="row" className="py-2 pr-4 text-left align-top font-normal"><MonthToggle m={m} open={open === m.month} onToggle={() => setOpen(open === m.month ? null : m.month)}/></th>
               {view === "balance" ? (
                 <>
                   <td className={td}>{money(m.receivable)}</td>
@@ -371,6 +467,10 @@ function ProjectionTable({data, view}: {data: ProjectedPeriod[]; view: View}) {
                 </>
               )}
             </tr>
+            {open === m.month && hasCardDetail(m) && (
+              <tr className="border-b border-border"><td colSpan={8} className="pb-3 pl-5 pr-1"><CardDetail m={m} name={name}/></td></tr>
+            )}
+            </Fragment>
           ))}
         </tbody>
       </table>
@@ -388,8 +488,9 @@ function ProjectionTable({data, view}: {data: ProjectedPeriod[]; view: View}) {
  * carry the numbers, in ink, and each says in words how much of it is
  * recurrences, as the table does.
  */
-function MonthList({data, view}: {data: ProjectedPeriod[]; view: View}) {
+function MonthList({data, view, name}: {data: ProjectedPeriod[]; view: View; name: (id: string) => string}) {
   const {t} = useTranslation();
+  const [open, setOpen] = useState<string | null>(null);
   const max = Math.max(1, ...data.map(m => Math.max(m.inflow, m.outflow)));
   const pct = (cents: number) => `${(cents / max) * 100}%`;
   return (
@@ -399,7 +500,7 @@ function MonthList({data, view}: {data: ProjectedPeriod[]; view: View}) {
         return (
           <li key={m.month} className="space-y-1.5 py-2.5">
             <div className="flex items-baseline justify-between gap-3">
-              <span data-month className="text-sm text-foreground">{periodLabel(m)}</span>
+              <span data-month className="text-sm text-foreground"><MonthToggle m={m} open={open === m.month} onToggle={() => setOpen(open === m.month ? null : m.month)}/></span>
               <span data-value data-numeric className={`text-sm font-medium tabular-nums ${value < 0 ? "text-danger" : "text-foreground"}`}>{signedMoney(value)}</span>
             </div>
             {view === "flow" && (
@@ -416,6 +517,7 @@ function MonthList({data, view}: {data: ProjectedPeriod[]; view: View}) {
               <Bar total={m.outflow} width={pct(m.outflow)} tone="bg-danger"/>
               <span className="whitespace-nowrap text-right">{t("finance.overview.legendOut")} {money(m.outflow)}<OfRecurrences cents={m.recOut}/><OfCard card={m.card} estimate={m.estimate}/></span>
             </div>
+            {open === m.month && hasCardDetail(m) && <CardDetail m={m} name={name}/>}
           </li>
         );
       })}

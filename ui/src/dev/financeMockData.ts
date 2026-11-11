@@ -725,7 +725,8 @@ function route(method: string, path: string, r: Req, s: SpaceState, can: (v: Ver
       const virtual_receivable = virtualOf("receivable"), virtual_payable = virtualOf("payable");
       // The card's statements are payables (a forecast "card_statement" bill in the mock); its usual unplanned spending is the estimate.
       const card_payable = open.filter(b => b.direction === "payable" && b.origin === "card_statement").reduce((a, b) => a + b.amount, 0);
-      data.push({month, receivable: sum("receivable"), payable: sum("payable"), virtual: virtual_receivable - virtual_payable, virtual_receivable, virtual_payable, card_payable, virtual_card_payable: 0, card_estimate: 45000});
+      data.push({month, receivable: sum("receivable"), payable: sum("payable"), virtual: virtual_receivable - virtual_payable, virtual_receivable, virtual_payable, card_payable, virtual_card_payable: 0, card_estimate: 45000,
+        by_card: s.cards.filter(c => !c.archived).map(c => ({card_id: c.id, posted: c.id === "card-nubank" ? card_payable : 0, expected: 0, unplanned: 0, estimate: 45000, baseline: 45000}))});
     }
     return ok({data, has_more: false});
   }
