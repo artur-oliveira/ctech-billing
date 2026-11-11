@@ -272,7 +272,7 @@ func TestNextDueIsTheFirstOccurrenceNotPast(t *testing.T) {
 func TestNextDueFindsTheNextDateOfADenseSchedule(t *testing.T) {
 	start := brcal.New(2026, time.January, 1)
 	for _, tc := range []struct {
-		name, expr string
+		name, expr  string
 		today, want brcal.Date
 	}{
 		{"daily", `{"kind":"daily"}`, brcal.New(2026, time.November, 10), brcal.New(2026, time.November, 10)},
