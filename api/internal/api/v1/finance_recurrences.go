@@ -44,14 +44,21 @@ type recurrenceDTO struct {
 	NextDue *brcal.Date `json:"next_due,omitempty"`
 }
 
-// nextDue is the first due date on or after today, nil for an archived or
-// finished recurrence. The window opens a few days early because a weekend
+// nextDueLookback is how many days before today the search opens: a weekend
 // roll-forward can land today from an earlier nominal day.
+const nextDueLookback = 7
+
+// nextDue is the first due date on or after today, nil for an archived or
+// finished recurrence. A schedule has at most one occurrence a day, so the
+// lookback holds at most nextDueLookback occurrences before today and the next
+// one after them is today or later. (Asking for three, as this once did, left
+// a daily or business-day recurrence with nothing but days already past, and
+// the screen said it had no dates left.)
 func nextDue(r finance.Recurrence, today brcal.Date) *brcal.Date {
 	if r.Archived {
 		return nil
 	}
-	occ, err := finance.Preview(r.Schedule, today.AddDays(-7), 3)
+	occ, err := finance.Preview(r.Schedule, today.AddDays(-nextDueLookback), nextDueLookback+1)
 	if err != nil {
 		return nil
 	}
