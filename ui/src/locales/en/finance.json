@@ -326,13 +326,20 @@
     "legendNet": "Net",
     "flowChartLabel_one": "Forecast money in and out for the next month",
     "flowChartLabel_other": "Forecast money in and out for each of the next {{count}} months",
-    "flowTitle": "{{month}}: in {{inflow}}, out {{outflow}}, net {{net}} (recurring: in {{recIn}}, out {{recOut}})",
+    "flowTitle": "{{month}}: in {{inflow}}, out {{outflow}}, net {{net}} (recurring: in {{recIn}}, out {{recOut}}; cards {{card}}, card estimate {{estimate}})",
     "future": "What I will have",
     "futureEnd": "Forecast balance at the end of {{month}}",
     "today": "Today",
     "futureLater": "By {{month}}",
     "lowerLabel": "View",
-    "categoryNote": "In {{month}}: what already happened and what recurrences will still post."
+    "categoryNote": "In {{month}}: what already happened and what recurrences will still post.",
+    "ofCard": "{{amount}} on cards",
+    "ofEstimate": "{{amount}} card estimate",
+    "legendCard": "Cards",
+    "legendOther": "Other outflows",
+    "legendEstimate": "Card estimate",
+    "cardEstimate": "Card estimate",
+    "estimateNote": "The card estimate is the average of the last 3 closed statements, single purchases only (no installments or recurrences), less what is already on the statement. It counts in the result and the balance."
   },
   "reports": {
     "line": "Line",
