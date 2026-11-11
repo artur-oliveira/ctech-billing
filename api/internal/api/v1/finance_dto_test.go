@@ -265,3 +265,27 @@ func TestNextDueIsTheFirstOccurrenceNotPast(t *testing.T) {
 		t.Fatalf("archived: next = %v", got)
 	}
 }
+
+// A schedule denser than a few a week (every day, every business day) has
+// several occurrences in the lookback before today; the first one not past is
+// still there. The screen showed "no dates left" for such a recurrence.
+func TestNextDueFindsTheNextDateOfADenseSchedule(t *testing.T) {
+	start := brcal.New(2026, time.January, 1)
+	for _, tc := range []struct {
+		name, expr string
+		today, want brcal.Date
+	}{
+		{"daily", `{"kind":"daily"}`, brcal.New(2026, time.November, 10), brcal.New(2026, time.November, 10)},
+		{"business days on a Tuesday", `{"kind":"business_days"}`, brcal.New(2026, time.November, 10), brcal.New(2026, time.November, 10)},
+		{"business days on a Saturday", `{"kind":"business_days"}`, brcal.New(2026, time.November, 14), brcal.New(2026, time.November, 16)},
+	} {
+		expr, err := finance.ParseSchedule([]byte(tc.expr))
+		if err != nil {
+			t.Fatal(err)
+		}
+		r := finance.Recurrence{Schedule: finance.Schedule{Expression: expr, Start: start, Adjust: finance.AdjustNone}}
+		if got := nextDue(r, tc.today); got == nil || *got != tc.want {
+			t.Errorf("%s: next = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}
