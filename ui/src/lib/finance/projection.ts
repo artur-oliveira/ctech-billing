@@ -18,7 +18,7 @@ export interface ProjectedMonth extends ProjectionMonth {
   recOut: number
   /** Card statements plus card recurrences: the part of `outflow` that is on a card, already posted or promised. */
   card: number
-  /** Estimated unplanned card spending, counted in `outflow` and `result`; the rest of the card's usual month. */
+  /** One-off card spending the person chose to forecast (0 unless they set a figure), counted in `outflow` and `result`. */
   estimate: number
   /** Each card's share (empty on an older API). */
   cards: ProjectionCard[]
@@ -38,12 +38,13 @@ export function useProjection(months: number) {
 export function project(start: number, data: ProjectionMonth[], budget: number | null = null): ProjectedMonth[] {
   let balance = start;
   return data.map(m => {
-    // A budget of the person's own replaces the automatic estimate: what they say the
-    // cards take beyond plan each month, less what the statements already hold of it.
+    // Nothing is guessed: with no figure from the person the projection holds only what is
+    // registered. A figure of their own (what the cards take beyond plan each month, all cards
+    // together) counts for what the statements do not hold of it yet.
     const cards = m.by_card ?? [];
     const estimate = budget !== null && m.by_card
       ? Math.max(budget - cards.reduce((a, c) => a + c.unplanned, 0), 0)
-      : (m.card_estimate ?? 0);
+      : 0;
     const result = m.receivable - m.payable + m.virtual - estimate;
     balance += result;
     const recIn = m.virtual_receivable ?? Math.max(m.virtual, 0);
@@ -93,23 +94,14 @@ export function aggregate(data: ProjectedMonth[], max: number): ProjectedPeriod[
   return out;
 }
 
-/** The cards of several months as one: money sums, the usual amount is the last month's. */
+/** The cards of several months as one: the money sums. */
 function mergeCards(months: ProjectedMonth[]): ProjectionCard[] {
   const by = new Map<string, ProjectionCard>();
   for (const m of months) {
     for (const c of m.cards) {
       const a = by.get(c.card_id);
-      by.set(c.card_id, a ? {...c, posted: a.posted + c.posted, expected: a.expected + c.expected, unplanned: a.unplanned + c.unplanned, estimate: a.estimate + c.estimate} : c);
+      by.set(c.card_id, a ? {...c, posted: a.posted + c.posted, expected: a.expected + c.expected, unplanned: a.unplanned + c.unplanned} : c);
     }
   }
   return [...by.values()];
-}
-
-/**
- * What the automatic estimate amounts to per month across all cards: each card's
- * usual unplanned spending, summed. Null on an older API or with no card history.
- */
-export function automaticBudget(data: ProjectionMonth[]): number | null {
-  const total = Math.max(0, ...data.map(m => (m.by_card ?? []).reduce((a, c) => a + c.baseline, 0)));
-  return total > 0 ? total : null;
 }

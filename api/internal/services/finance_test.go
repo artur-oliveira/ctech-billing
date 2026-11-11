@@ -856,9 +856,8 @@ func TestMonthFlowsRefusesAMonthBeyondTheProjectionHorizon(t *testing.T) {
 	}
 }
 
-// usualSpend is a card whose past statements say what it usually takes: only
-// single purchases that nothing scheduled count, not installments of an older
-// purchase, recurrence charges or credits.
+// usualSpend is a card whose statements hold every kind of line: single
+// purchases, installments of an older purchase, recurrence charges and credits.
 type usualSpend struct{ fakeCards }
 
 func (usualSpend) ListCards(context.Context, space.ResolvedSpace) ([]repositories.CardRow, error) {
@@ -893,50 +892,38 @@ func (usualSpend) GetStatement(_ context.Context, _ space.ResolvedSpace, _ strin
 	return st, nil
 }
 
-// The estimate is the mean of the last three closed statements' unplanned
-// spending (0, 30000, 60000 = 30000), less what the statement already holds, and
-// it is a column of its own: Payable keeps only what is posted.
-func TestProjectEstimatesUnplannedCardSpending(t *testing.T) {
+// Nothing is guessed: the projection reports how much of each statement was
+// nobody's plan (single purchases, not installments, recurrence charges or
+// credits) and leaves the amounts it does not know out.
+func TestProjectReportsUnplannedCardSpendingWithoutGuessing(t *testing.T) {
 	jobs := NewFinanceJobs(newFakeBills(), newFakeRecs()).WithCards(&usualSpend{})
 	p, err := jobs.Project(context.Background(), testSpace(t), day(2026, time.March, 2), 3) // Mar..May
 	if err != nil {
 		t.Fatal(err)
 	}
-	for i, want := range []struct{ posted, estimate int64 }{{109900, 20000}, {99900, 30000}, {0, 30000}} {
+	for i, want := range []struct{ posted, unplanned int64 }{{109900, 10000}, {99900, 0}, {0, 0}} {
 		m := p.Months[i]
-		if int64(m.CardPayable) != want.posted || int64(m.Payable) != want.posted || int64(m.CardEstimate) != want.estimate {
-			t.Errorf("%s: card payable %d, payable %d, estimate %d; want %d, %d, %d",
-				m.Month, m.CardPayable, m.Payable, m.CardEstimate, want.posted, want.posted, want.estimate)
+		var unplanned int64
+		for _, c := range m.Cards {
+			unplanned += int64(c.Unplanned)
+		}
+		if int64(m.CardPayable) != want.posted || int64(m.Payable) != want.posted || unplanned != want.unplanned {
+			t.Errorf("%s: card payable %d, payable %d, unplanned %d; want %d, %d, %d", m.Month, m.CardPayable, m.Payable, unplanned, want.posted, want.posted, want.unplanned)
 		}
 	}
 }
 
-// Card by card: what each statement holds, how much of it was nobody's plan, and
-// the usual amount, so a client can name the share and re-estimate from its own
-// budget.
+// Card by card: what each statement holds and how much of it was nobody's plan,
+// so a client can name the share and forecast from a figure of its own.
 func TestProjectBreaksTheCardMonthDownByCard(t *testing.T) {
 	jobs := NewFinanceJobs(newFakeBills(), newFakeRecs()).WithCards(&usualSpend{})
 	p, err := jobs.Project(context.Background(), testSpace(t), day(2026, time.March, 2), 2)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := CardMonth{CardID: "visa", Posted: 109900, Unplanned: 10000, Estimate: 20000, Baseline: 30000}
+	want := CardMonth{CardID: "visa", Posted: 109900, Unplanned: 10000}
 	if got := p.Months[0].Cards; len(got) != 1 || got[0] != want {
 		t.Errorf("March cards = %+v, want [%+v]", got, want)
-	}
-}
-
-// A card with no closed statement has no usual spending to project.
-func TestProjectEstimatesNothingForACardWithoutHistory(t *testing.T) {
-	jobs := NewFinanceJobs(newFakeBills(), newFakeRecs()).WithCards(&fakeCards{})
-	p, err := jobs.Project(context.Background(), testSpace(t), day(2026, time.March, 2), 2)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, m := range p.Months {
-		if m.CardEstimate != 0 {
-			t.Errorf("%s: estimate %d, want 0", m.Month, m.CardEstimate)
-		}
 	}
 }
 
