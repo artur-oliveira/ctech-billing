@@ -19,7 +19,7 @@ describe("useFieldErrors", () => {
     expect(validation).toBe(true);
     expect(result.current.of("amount")).toBe("Obrigatório.");
     expect(result.current.of("due_date")).toMatch(/Formato inválido/);
-    expect(result.current.props("amount", "x")).toEqual({"aria-invalid": true, "aria-describedby": "x-error"});
+    expect(result.current.props("amount", "x")).toEqual({"aria-invalid": true});
     expect(result.current.general).toBeUndefined();
     act(() => result.current.clear("amount"));
     expect(result.current.of("amount")).toBeUndefined();
@@ -66,7 +66,7 @@ describe("useFieldErrors", () => {
 
   it("puts a control in error for the form's own message too, not only the API's", () => {
     const {result} = renderHook(() => useFieldErrors(["amount"]));
-    expect(result.current.props("amount", "x", "Informe o valor.")).toEqual({"aria-invalid": true, "aria-describedby": "x-error"});
+    expect(result.current.props("amount", "x", "Informe o valor.")).toEqual({"aria-invalid": true});
     expect(result.current.props("amount", "x", undefined)).toEqual({});
   });
 });

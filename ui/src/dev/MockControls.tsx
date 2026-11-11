@@ -74,9 +74,9 @@ export function MockControls() {
         onClick={() => setOpen(o => !o)}
         aria-expanded={open}
         title={`mock · ${scenario}`}
-        className="rounded-r-full border border-l-0 border-border bg-background/80 py-0.5 pr-2 pl-1.5 font-mono text-[10px] text-muted-foreground opacity-60 shadow-card transition hover:text-foreground hover:opacity-100 focus-visible:opacity-100 max-md:max-w-12 max-md:truncate"
+        className="rounded-r-full border border-l-0 border-border bg-background/80 py-0.5 pr-2 pl-1.5 font-mono text-[10px] text-muted-foreground opacity-60 shadow-card transition hover:text-foreground hover:opacity-100 focus-visible:opacity-100 max-md:pr-1.5 max-md:text-[9px] max-md:opacity-40"
       >
-        mock · {scenario}
+        mock<span className="max-md:hidden"> · {scenario}</span>
       </button>
     </div>
   );

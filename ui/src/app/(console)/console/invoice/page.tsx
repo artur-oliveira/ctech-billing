@@ -16,6 +16,7 @@ import {DownloadPDF} from "@/components/DownloadPDF";
 import {InvoiceStatusBadge} from "@/components/console/InvoiceStatusBadge";
 import {Timeline} from "@/components/console/Timeline";
 import {ErrorBlock} from "@/components/portal/ErrorBlock";
+import {CopyableValue} from "@/components/ui/CopyableValue";
 import {Section} from "@/components/ui/Section";
 import {messageFor, statusOf} from "@/lib/api/client";
 import {
@@ -33,6 +34,7 @@ import {toastError} from "@/lib/console/planLimit";
 import {useConsoleScope} from "@/lib/console/scope";
 import {hasInstant, instantShortDate, longDate, money, NO_DATE, period, shortDate} from "@/lib/format";
 import {useDocumentTitle} from "@/lib/hooks/useDocumentTitle";
+import {NARROW, useMediaQuery} from "@/lib/hooks/useMediaQuery";
 
 /**
  * C3 — the invoice, and the most important screen in the product.
@@ -63,6 +65,8 @@ function Detail() {
   const queryClient = useQueryClient();
   const router = useRouter();
   const [voiding, setVoiding] = useState(false);
+  const [finalizing, setFinalizing] = useState(false);
+  const phone = useMediaQuery(NARROW);
   const [crediting, setCrediting] = useState(false);
 
   const query = useQuery({
@@ -86,7 +90,10 @@ function Detail() {
       onError: (error: unknown) => toastError(error, href => router.push(href)),
     });
 
-  const finalize = useMutation(write(invoiceId => finalizeInvoice(scope, invoiceId), t("console.invoice.finalized")));
+  const finalize = useMutation({
+    ...write(invoiceId => finalizeInvoice(scope, invoiceId), t("console.invoice.finalized")),
+    onSettled: () => setFinalizing(false),
+  });
   const cancel = useMutation({
     ...write(invoiceId => voidInvoice(scope, invoiceId), t("console.invoice.voided")),
     onSettled: () => setVoiding(false),
@@ -139,6 +146,7 @@ function Detail() {
             <h1 data-numeric className="text-lg font-semibold tracking-[-0.01em] text-foreground">
               {invoice.number ? t("console.invoice.title", {number: invoice.number}) : t("console.invoice.untitled")}
             </h1>
+            <div className="max-w-64"><CopyableValue value={invoice.id}/></div>
             <div className="flex flex-wrap items-center gap-2">
               <InvoiceStatusBadge invoice={invoice}/>
               {fullyCredited && (
@@ -149,8 +157,8 @@ function Detail() {
 
           <div className="flex flex-wrap items-center gap-2">
             {canFinalize && (
-              <Button size="sm" onClick={() => finalize.mutate()} disabled={finalize.isPending}>
-                {finalize.isPending ? t("console.invoice.finalizing") : t("console.invoice.finalize")}
+              <Button size="sm" onClick={() => setFinalizing(true)} disabled={finalize.isPending}>
+                {t("console.invoice.finalize")}
               </Button>
             )}
             {canCredit && (
@@ -227,48 +235,66 @@ function Detail() {
       )}
 
       <Section title={t("console.invoice.lines")} tone="muted">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[36rem] border-collapse text-sm">
-            <thead>
-              <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                <th scope="col" className="py-2 pr-4 font-medium">{t("console.invoice.description")}</th>
-                <th scope="col" className="py-2 pr-4 font-medium">{t("console.invoice.period")}</th>
-                <th scope="col" className="py-2 pr-4 text-right font-medium">{t("console.invoice.qty")}</th>
-                <th scope="col" className="py-2 pr-4 text-right font-medium">{t("console.invoice.unit")}</th>
-                <th scope="col" className="py-2 text-right font-medium">{t("console.invoice.amount")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(invoice.lines ?? []).map((line, i) => (
-                <tr key={i} className="border-b border-border last:border-0">
-                  <td className="py-2 pr-4 text-foreground">
-                    {line.description}
-                    {/* Pro-rata is named, not inferred from an odd amount. It is
-                        the single most common "what is this charge?" question,
-                        and the answer is always the same sentence. */}
-                    {line.proration && (
-                      <span className="ml-2 text-xs text-muted-foreground">{t("console.invoice.proration")}</span>
-                    )}
-                  </td>
-                  <td data-numeric className="py-2 pr-4 text-muted-foreground">
-                    {line.period
-                      ? `${shortDate(line.period.period_start)} – ${shortDate(line.period.period_end)}`
-                      : "—"}
-                  </td>
-                  <td data-numeric className="py-2 pr-4 text-right text-muted-foreground">
-                    {line.quantity}
-                  </td>
-                  <td data-numeric className="py-2 pr-4 text-right text-muted-foreground">
-                    {money(line.unit_amount, invoice.currency)}
-                  </td>
-                  <td data-numeric className="py-2 text-right text-foreground">
-                    {money(line.amount, invoice.currency)}
-                  </td>
+        {phone ? (
+          <ul aria-label={t("console.invoice.lines")} className="divide-y divide-border border-y border-border">
+            {(invoice.lines ?? []).map((line, i) => (
+              <li key={i} className="space-y-0.5 py-3">
+                <div className="flex items-start justify-between gap-3">
+                  <p className="min-w-0 text-sm text-foreground [overflow-wrap:anywhere]">{line.description}</p>
+                  <span data-numeric className="shrink-0 text-sm text-foreground">{money(line.amount, invoice.currency)}</span>
+                </div>
+                <p data-numeric className="text-xs text-muted-foreground">
+                  {line.quantity} × {money(line.unit_amount, invoice.currency)}
+                  {line.period && ` · ${shortDate(line.period.period_start)} – ${shortDate(line.period.period_end)}`}
+                  {line.proration && ` · ${t("console.invoice.proration")}`}
+                </p>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[36rem] border-collapse text-sm">
+              <thead>
+                <tr className="border-b border-border text-left text-xs text-muted-foreground">
+                  <th scope="col" className="py-2 pr-4 font-medium">{t("console.invoice.description")}</th>
+                  <th scope="col" className="py-2 pr-4 font-medium">{t("console.invoice.period")}</th>
+                  <th scope="col" className="py-2 pr-4 text-right font-medium">{t("console.invoice.qty")}</th>
+                  <th scope="col" className="py-2 pr-4 text-right font-medium">{t("console.invoice.unit")}</th>
+                  <th scope="col" className="py-2 text-right font-medium">{t("console.invoice.amount")}</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {(invoice.lines ?? []).map((line, i) => (
+                  <tr key={i} className="border-b border-border last:border-0">
+                    <td className="py-2 pr-4 text-foreground">
+                      {line.description}
+                      {/* Pro-rata is named, not inferred from an odd amount. It is
+                          the single most common "what is this charge?" question,
+                          and the answer is always the same sentence. */}
+                      {line.proration && (
+                        <span className="ml-2 text-xs text-muted-foreground">{t("console.invoice.proration")}</span>
+                      )}
+                    </td>
+                    <td data-numeric className="py-2 pr-4 text-muted-foreground">
+                      {line.period
+                        ? `${shortDate(line.period.period_start)} – ${shortDate(line.period.period_end)}`
+                        : "—"}
+                    </td>
+                    <td data-numeric className="py-2 pr-4 text-right text-muted-foreground">
+                      {line.quantity}
+                    </td>
+                    <td data-numeric className="py-2 pr-4 text-right text-muted-foreground">
+                      {money(line.unit_amount, invoice.currency)}
+                    </td>
+                    <td data-numeric className="py-2 text-right text-foreground">
+                      {money(line.amount, invoice.currency)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </Section>
 
       {notes.length > 0 && (
@@ -293,6 +319,17 @@ function Detail() {
       )}
 
       <Timeline entries={query.data.timeline}/>
+
+      <Modal
+        open={finalizing}
+        onClose={() => setFinalizing(false)}
+        title={t("console.invoice.finalizeTitle")}
+        description={t("console.invoice.finalizeBody")}
+        cancelLabel={t("console.invoice.keep")}
+        submitLabel={t("console.invoice.finalize")}
+        loading={finalize.isPending}
+        onSubmit={() => finalize.mutate()}
+      />
 
       <Modal
         open={voiding}

@@ -12,6 +12,7 @@ import {toast} from "sonner";
 import {SubscriptionStatusBadge} from "@/components/console/SubscriptionStatusBadge";
 import {Timeline} from "@/components/console/Timeline";
 import {ErrorBlock} from "@/components/portal/ErrorBlock";
+import {CopyableValue} from "@/components/ui/CopyableValue";
 import {Section} from "@/components/ui/Section";
 import {messageFor, statusOf} from "@/lib/api/client";
 import {cancelConsoleSubscription, consoleKeys, getConsoleSubscription} from "@/lib/api/console";
@@ -84,7 +85,7 @@ function Detail() {
               {query.data.plan_name || sub.id}
             </h1>
             {query.data.plan_name && (
-              <p className="font-mono text-xs text-muted-foreground">{sub.id}</p>
+              <div className="max-w-64 text-muted-foreground"><CopyableValue value={sub.id}/></div>
             )}
             <SubscriptionStatusBadge
               status={sub.status}

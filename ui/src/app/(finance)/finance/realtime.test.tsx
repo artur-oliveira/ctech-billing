@@ -6,6 +6,7 @@ import {afterEach, beforeEach, describe, expect, it, vi} from "vitest";
 
 import {setAccessToken} from "@/lib/api/client";
 import {financeKeys} from "@/lib/api/finance";
+import {changeAppLanguage} from "@/lib/i18n";
 import {PERSONAL, type Space} from "@/lib/console/space";
 import {FakeServer} from "@/lib/realtime/fakeServer";
 import {FakeWebSocket} from "@/lib/realtime/fakeSocket";
@@ -13,7 +14,7 @@ import {FakeWebSocket} from "@/lib/realtime/fakeSocket";
 const ORG = "0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b";
 const state = vi.hoisted(() => ({space: {kind: "personal"} as Space}));
 
-vi.mock("next/navigation", () => ({useRouter: () => ({replace: vi.fn()})}));
+vi.mock("next/navigation", () => ({useRouter: () => ({replace: vi.fn()}), usePathname: () => "/finance/cards"}));
 vi.mock("@/lib/auth/AuthContext", () => ({useAuth: () => ({authenticated: true, loading: false})}));
 vi.mock("@/lib/console/useMode", () => ({useMode: () => "live"}));
 vi.mock("@/lib/console/useSpace", () => ({useSpace: () => state.space}));
@@ -97,5 +98,14 @@ describe("finance realtime", () => {
     await flush();
     const keys = spy.mock.calls.map(([f]) => JSON.stringify(f?.queryKey));
     expect(keys.some(k => k.includes("personal"))).toBe(false);
+  });
+
+  it("titles the tab with the section's name in the UI language, not the route's pt-BR metadata", async () => {
+    render(tree(new QueryClient()));
+    await flush();
+    expect(document.title).toBe("Cartões · CTech Billing");
+    await act(() => changeAppLanguage("en"));
+    expect(document.title).toBe("Cards · CTech Billing");
+    await act(() => changeAppLanguage("pt-BR"));
   });
 });

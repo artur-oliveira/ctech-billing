@@ -122,19 +122,20 @@ describe("F7 — relatórios", () => {
     serve();
     renderWithQuery(<ReportsView view="dre"/>);
     const tablist = screen.getByRole("tablist", {name: "Relatório"});
-    const controls = tablist.parentElement!;
+    // The tablist sits in its scroll-fade wrapper, which is the controls row's first child.
+    const wrap = tablist.parentElement!, controls = wrap.parentElement!;
     expect(tablist).not.toHaveClass("w-full");
     expect(tablist).toHaveClass("w-max");
-    expect(controls.children[0]).toBe(tablist);
+    expect(controls.children[0]).toBe(wrap);
     expect(controls.children).toHaveLength(2);
 
     await userEvent.click(screen.getByRole("tab", {name: "Cartões"}));
-    expect(controls.children[0]).toBe(tablist);
+    expect(controls.children[0]).toBe(wrap);
     expect(controls.children).toHaveLength(2);
     expect(within(controls.children[1] as HTMLElement).getByRole("combobox", {name: "Período"})).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("tab", {name: "Revisão mensal"}));
-    expect(controls.children[0]).toBe(tablist);
+    expect(controls.children[0]).toBe(wrap);
     expect(controls.children).toHaveLength(2);
     expect(within(controls.children[1] as HTMLElement).getByLabelText("Mês revisado")).toHaveTextContent(/de \d{4}/);
   });

@@ -1,6 +1,6 @@
 "use client";
 
-import {Button, Field, Input, Modal, Select, Skeleton} from "@aoctech/ui";
+import {Button, Modal, Skeleton} from "@aoctech/ui";
 import {useMutation, useQuery, useQueryClient} from "@tanstack/react-query";
 import {ArrowLeft} from "lucide-react";
 import Link from "next/link";
@@ -10,26 +10,23 @@ import {useTranslation} from "react-i18next";
 import {toast} from "sonner";
 
 import {DunningPolicyCard} from "@/components/console/DunningPolicyCard";
+import {NewPriceDialog} from "@/components/console/NewPriceDialog";
+import {ProductDetailsDialog} from "@/components/console/ProductDetailsDialog";
 import {ErrorBlock} from "@/components/portal/ErrorBlock";
+import {CopyableValue} from "@/components/ui/CopyableValue";
 import {Section} from "@/components/ui/Section";
 import {messageFor, statusOf} from "@/lib/api/client";
-import {useFieldErrors} from "@/lib/useFieldErrors";
 import {
   archivePrice,
   consoleKeys,
-  createPrice,
   getConsoleProduct,
-  setProductDetails,
   setProductDunningPolicy,
 } from "@/lib/api/console";
 import type {ConsolePrice, DunningStep} from "@/lib/api/consoleTypes";
 import {useConsoleScope} from "@/lib/console/scope";
 import {money} from "@/lib/format";
-import limits from "@/lib/limits.json";
-import {parseMetadataText} from "@/lib/metadataText";
-import {selectCopy} from "@/lib/selectCopy";
-import {maskMoney, moneyPlaceholder, parseMoney} from "@/lib/money";
 import {useDocumentTitle} from "@/lib/hooks/useDocumentTitle";
+import {NARROW, useMediaQuery} from "@/lib/hooks/useMediaQuery";
 
 /**
  * C9 — a product and its prices.
@@ -141,57 +138,7 @@ function Detail() {
             {t("console.product.empty")}
           </p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[40rem] border-collapse text-sm">
-              <thead>
-                <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                  <th scope="col" className="py-2 pr-4 font-medium">{t("console.product.price")}</th>
-                  <th scope="col" className="py-2 pr-4 font-medium">{t("console.product.type")}</th>
-                  <th scope="col" className="py-2 pr-4 font-medium">{t("console.product.recurrence")}</th>
-                  <th scope="col" className="py-2 pr-4 text-right font-medium">{t("console.product.amount")}</th>
-                  <th scope="col" className="py-2 text-right font-medium"/>
-                </tr>
-              </thead>
-              <tbody>
-                {prices.map(price => (
-                  <tr
-                    key={price.id}
-                    className="border-b border-border last:border-0"
-                  >
-                    <td className="py-2 pr-4 text-muted-foreground">
-                      {price.name ? <span className="text-foreground">{price.name}</span> : price.id}
-                      {price.name && <span className="block font-mono text-xs">{price.id}</span>}
-                      {price.archived && (
-                        <span className="ml-2 text-xs text-muted-foreground">{t("console.product.archived")}</span>
-                      )}
-                    </td>
-                    <td className="py-2 pr-4 text-muted-foreground">
-                      {price.type === "metered" ? t("console.priceType.metered") : t("console.priceType.fixed")}
-                    </td>
-                    <td className="py-2 pr-4 text-muted-foreground">
-                      {price.recurrence.count > 1
-                        ? t(`console.every.${price.recurrence.interval}`, {count: price.recurrence.count, defaultValue: price.recurrence.interval})
-                        : t(`console.interval.${price.recurrence.interval}`, {defaultValue: price.recurrence.interval})}
-                      {` · ${price.billing_timing === "arrears" ? t("console.timing.shortArrears") : t("console.timing.shortAdvance")}`}
-                    </td>
-                    <td data-numeric className="py-2 pr-4 text-right text-foreground">
-                      {money(price.unit_amount, price.currency)}
-                      {price.type === "metered" && (
-                        <span className="text-muted-foreground"> {t("console.priceType.perUnit")}</span>
-                      )}
-                    </td>
-                    <td className="py-2 text-right">
-                      {!price.archived && (
-                        <Button variant="outline" size="sm" onClick={() => setArchiving(price)}>
-                          {t("console.product.archive")}
-                        </Button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <PriceList prices={prices} onArchive={setArchiving}/>
         )}
       </Section>
 
@@ -205,7 +152,7 @@ function Detail() {
         />
       )}
 
-      <DetailsDialog
+      <ProductDetailsDialog
         key={`${product.description ?? ""}|${product.url ?? ""}`}
         open={editing}
         onClose={() => setEditing(false)}
@@ -239,179 +186,77 @@ function Detail() {
   );
 }
 
-function NewPriceDialog({
-  open,
-  productId,
-  onClose,
-  onCreated,
-}: { open: boolean; productId: string; onClose: () => void; onCreated: () => void }) {
+/** Price versions: a table from `sm`, a list on a phone (DESIGN.md "On a phone"). */
+function PriceList({prices, onArchive}: {prices: ConsolePrice[]; onArchive: (price: ConsolePrice) => void}) {
   const {t} = useTranslation();
-  const scope = useConsoleScope();
-  const [amount, setAmount] = useState("");
-  const [type, setType] = useState<"fixed" | "metered">("fixed");
-  const [name, setName] = useState("");
-  const [interval, setInterval] = useState("month");
-  const [count, setCount] = useState("1");
-  const [timing, setTiming] = useState<"advance" | "arrears">("advance");
-  const [metadataText, setMetadataText] = useState("");
-
-  // A price may be zero (free); anything else goes through the same locale-aware parse
-  // as every money field, never through a float.
-  const cents = /^0+([.,]0{0,2})?$/.test(amount.trim()) ? 0 : (parseMoney(amount) ?? -1);
-  const everyN = Number(count);
-  const metadata = parseMetadataText(metadataText);
-  const valid = cents >= 0 && amount.trim() !== "" && Number.isInteger(everyN) && everyN >= 1 && metadata.ok;
-  // A metered price billed in advance would have to guess the usage it charges
-  // for, and the domain refuses it: the choice only exists for a fixed price.
-  const effectiveTiming = type === "metered" ? "arrears" : timing;
-
-  const fe = useFieldErrors(["unit_amount", "name"], {keepOthers: false});
-  const create = useMutation({
-    mutationFn: () =>
-      createPrice(scope, {
-        product_id: productId,
-        type,
-        unit_amount: cents,
-        recurrence: {interval, count: everyN},
-        billing_timing: effectiveTiming,
-        name: name.trim() || undefined,
-        metadata: metadata.ok && Object.keys(metadata.value).length > 0 ? metadata.value : undefined,
-      }),
-    onSuccess: () => {
-      toast.success(t("console.product.createdDone"));
-      setAmount("");
-      setName("");
-      setMetadataText("");
-      onCreated();
-    },
-    onError: error => { if (!fe.set(error)) toast.error(messageFor(error)); },
-  });
-
-  return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      title={t("console.product.newTitle")}
-      description={t("console.product.newBody")}
-      cancelLabel={t("common.cancel")}
-      submitLabel={t("console.product.create")}
-      submitDisabled={!valid}
-      loading={create.isPending}
-      onSubmit={() => { fe.reset(); create.mutate(); }}
-    >
-      <div className="space-y-4">
-        <Field
-          label={t("console.product.priceName")}
-          htmlFor="price-name"
-          hint={t("console.product.priceNameHint")}
-          error={fe.of("name")}
-        >
-          <Input
-            id="price-name"
-            maxLength={limits.text.priceName}
-            value={name}
-            {...fe.props("name", "price-name")}
-            onChange={event => { setName(event.target.value); fe.clear("name"); }}
-            placeholder="DF-e Pro"
-          />
-        </Field>
-
-        <fieldset className="space-y-2">
-          <legend className="text-sm font-medium text-foreground">{t("console.product.type")}</legend>
-          <div className="flex gap-4">
-            {(["fixed", "metered"] as const).map(option => (
-              <label key={option} className="flex items-center gap-2 text-sm text-foreground">
-                <input
-                  type="radio"
-                  name="price-type"
-                  checked={type === option}
-                  onChange={() => setType(option)}
-                  className="size-4 accent-[var(--color-brand-600)]"
-                />
-                {option === "fixed" ? t("console.product.typeFixed") : t("console.product.typeMetered")}
-              </label>
-            ))}
+  const phone = useMediaQuery(NARROW);
+  const recurrence = (price: ConsolePrice) =>
+    (price.recurrence.count > 1
+      ? t(`console.every.${price.recurrence.interval}`, {count: price.recurrence.count, defaultValue: price.recurrence.interval})
+      : t(`console.interval.${price.recurrence.interval}`, {defaultValue: price.recurrence.interval}))
+    + ` · ${price.billing_timing === "arrears" ? t("console.timing.shortArrears") : t("console.timing.shortAdvance")}`;
+  const kind = (price: ConsolePrice) => price.type === "metered" ? t("console.priceType.metered") : t("console.priceType.fixed");
+  const amount = (price: ConsolePrice) => (
+    <>
+      {money(price.unit_amount, price.currency)}
+      {price.type === "metered" && <span className="text-muted-foreground"> {t("console.priceType.perUnit")}</span>}
+    </>
+  );
+  const archive = (price: ConsolePrice, className?: string) => !price.archived && (
+    <Button variant="outline" size="sm" className={className} onClick={() => onArchive(price)}
+      aria-label={t("console.product.archiveNamed", {name: price.name || price.id})}>
+      {t("console.product.archive")}
+    </Button>
+  );
+  if (phone) return (
+    <ul aria-label={t("console.product.prices")} className="divide-y divide-border border-y border-border">
+      {prices.map(price => (
+        <li key={price.id} className="space-y-1 py-3">
+          <div className="flex items-start justify-between gap-3">
+            <p className="min-w-0 text-sm text-foreground [overflow-wrap:anywhere]">{price.name || price.id}</p>
+            <span data-numeric className="shrink-0 text-sm text-foreground">{amount(price)}</span>
           </div>
-        </fieldset>
-
-        <Field
-          label={type === "metered" ? t("console.product.amountMetered") : t("console.product.amountFixed")}
-          htmlFor="price-amount"
-          error={fe.of("unit_amount")}
-          hint={
-            type === "metered"
-              ? t("console.product.hintMetered")
-              : t("console.product.hintFixed")
-          }
-        >
-          <Input
-            id="price-amount"
-            inputMode="decimal"
-            value={amount}
-            {...fe.props("unit_amount", "price-amount")}
-            onChange={event => { setAmount(maskMoney(event.target.value)); fe.clear("unit_amount"); }}
-            placeholder={moneyPlaceholder()}
-          />
-        </Field>
-
-        <div className="grid grid-cols-2 gap-3">
-          <Field label={t("console.product.every")} htmlFor="price-count">
-            <Input
-              id="price-count"
-              inputMode="numeric"
-              value={count}
-              onChange={event => setCount(event.target.value.replace(/\D/g, ""))}
-            />
-          </Field>
-          <Field label={t("console.product.intervalLabel")} htmlFor="price-interval">
-            <Select {...selectCopy()}
-              id="price-interval"
-              aria-label={t("console.product.intervalLabel")}
-              className="w-full"
-              value={interval}
-              onValueChange={setInterval}
-              options={(["day", "week", "month", "year"] as const).map(v => ({value: v, label: t(`console.intervalUnit.${v}`)}))}
-            />
-          </Field>
-        </div>
-
-        {type === "fixed" ? (
-          <Field label={t("console.product.timingLabel")} htmlFor="price-timing" hint={t("console.product.timingHint")}>
-            <Select {...selectCopy()}
-              id="price-timing"
-              aria-label={t("console.product.timingLabel")}
-              className="w-full"
-              value={timing}
-              onValueChange={v => setTiming(v as "advance" | "arrears")}
-              options={[
-                {value: "advance", label: t("console.timing.advance")},
-                {value: "arrears", label: t("console.timing.arrears")},
-              ]}
-            />
-          </Field>
-        ) : (
-          <p className="text-xs text-muted-foreground">{t("console.product.timingMetered")}</p>
-        )}
-
-        <Field
-          label={t("console.product.metadataLabel")}
-          htmlFor="price-metadata"
-          hint={t("console.product.metadataHint")}
-          error={metadata.ok ? undefined : t(`console.product.metadataError.${metadata.reason}`, {line: metadata.line})}
-        >
-          <textarea
-            id="price-metadata"
-            rows={5}
-            spellCheck={false}
-            value={metadataText}
-            onChange={event => setMetadataText(event.target.value)}
-            placeholder={"plan=pro\nquota_nfe=1200"}
-            className="w-full rounded-md border border-border bg-background px-3 py-2 font-mono text-sm text-foreground"
-          />
-        </Field>
-        {fe.general && <p role="alert" className="text-sm text-danger">{fe.general}</p>}
-      </div>
-    </Modal>
+          {price.name && <CopyableValue value={price.id}/>}
+          <p className="text-xs text-muted-foreground">
+            {kind(price)} · {recurrence(price)}
+            {price.archived && ` · ${t("console.product.archived")}`}
+          </p>
+          {archive(price, "mt-1 max-sm:min-h-11")}
+        </li>
+      ))}
+    </ul>
+  );
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[40rem] border-collapse text-sm">
+        <thead>
+          <tr className="border-b border-border text-left text-xs text-muted-foreground">
+            <th scope="col" className="py-2 pr-4 font-medium">{t("console.product.price")}</th>
+            <th scope="col" className="py-2 pr-4 font-medium">{t("console.product.type")}</th>
+            <th scope="col" className="py-2 pr-4 font-medium">{t("console.product.recurrence")}</th>
+            <th scope="col" className="py-2 pr-4 text-right font-medium">{t("console.product.amount")}</th>
+            <th scope="col" className="py-2 text-right font-medium"><span className="sr-only">{t("console.product.archive")}</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          {prices.map(price => (
+            <tr key={price.id} className="border-b border-border last:border-0">
+              <td className="py-2 pr-4 text-muted-foreground">
+                {price.name ? <span className="text-foreground">{price.name}</span> : price.id}
+                {price.name && <CopyableValue value={price.id}/>}
+                {price.archived && (
+                  <span className="ml-2 text-xs text-muted-foreground">{t("console.product.archived")}</span>
+                )}
+              </td>
+              <td className="py-2 pr-4 text-muted-foreground">{kind(price)}</td>
+              <td className="py-2 pr-4 text-muted-foreground">{recurrence(price)}</td>
+              <td data-numeric className="py-2 pr-4 text-right text-foreground">{amount(price)}</td>
+              <td className="py-2 text-right">{archive(price)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -429,77 +274,6 @@ function NotFound() {
         </p>
       </div>
     </div>
-  );
-}
-
-function DetailsDialog({
-  open,
-  onClose,
-  productId,
-  description,
-  url,
-  onSaved,
-}: {
-  open: boolean
-  onClose: () => void
-  productId: string
-  description: string
-  url: string
-  onSaved: () => void
-}) {
-  const {t} = useTranslation();
-  const scope = useConsoleScope();
-  const [desc, setDesc] = useState(description);
-  const [address, setAddress] = useState(url);
-  const fe = useFieldErrors(["description", "url"], {keepOthers: false});
-  const save = useMutation({
-    mutationFn: () => setProductDetails(scope, productId, {description: desc.trim(), url: address.trim()}),
-    onSuccess: () => {
-      toast.success(t("console.product.detailsSaved"));
-      onSaved();
-      onClose();
-    },
-    onError: error => { if (!fe.set(error)) toast.error(messageFor(error)); },
-  });
-
-  return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      title={t("console.product.editDetails")}
-      cancelLabel={t("common.cancel")}
-      submitLabel={t("console.product.save")}
-      loading={save.isPending}
-      onSubmit={() => { fe.reset(); save.mutate(); }}
-    >
-      <div className="space-y-4">
-        <Field label={t("console.catalog.descriptionLabel")} htmlFor="details-description" error={fe.of("description")}>
-          <Input
-            id="details-description"
-            maxLength={limits.text.productDescription}
-            value={desc}
-            {...fe.props("description", "details-description")}
-            onChange={event => { setDesc(event.target.value); fe.clear("description"); }}
-          />
-        </Field>
-        <Field
-          label={t("console.catalog.urlLabel")}
-          htmlFor="details-url"
-          hint={t("console.catalog.urlHint")}
-          error={fe.of("url")}
-        >
-          <Input
-            id="details-url"
-            type="url"
-            maxLength={limits.text.productURL}
-            value={address}
-            {...fe.props("url", "details-url")}
-            onChange={event => { setAddress(event.target.value); fe.clear("url"); }}
-          />
-        </Field>
-        {fe.general && <p role="alert" className="text-sm text-danger">{fe.general}</p>}
-      </div>
-    </Modal>
   );
 }
 

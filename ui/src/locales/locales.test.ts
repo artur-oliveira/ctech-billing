@@ -27,6 +27,12 @@ describe("locale catalogs", () => {
     for (const k of Object.keys(a)) expect([k, vars(b[k])]).toEqual([k, vars(a[k])]);
   });
 
+  it("name the missing side when the keys differ, and have no empty translation", () => {
+    const a = new Set(keys(ptBR)), b = new Set(keys(en));
+    expect({onlyPtBR: [...a].filter(k => !b.has(k)), onlyEn: [...b].filter(k => !a.has(k))}).toEqual({onlyPtBR: [], onlyEn: []});
+    expect([...strings(ptBR), ...strings(en)].filter(s => s.trim() === "")).toEqual([]);
+  });
+
   it("contain no em dash", () => {
     expect([...strings(ptBR), ...strings(en)].filter(s => s.includes("—"))).toEqual([]);
   });

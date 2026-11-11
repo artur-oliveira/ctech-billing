@@ -53,7 +53,7 @@ interface LedgerRowProps {
  * that line squeezed (a 320px phone left a description 25px wide). It becomes a
  * small card in rules: the description and the amount share the first line,
  * the description wrapping onto a second rather than being cut, and the aside
- * and the primary actions get lines of their own. Secondary and destructive
+ * and the primary actions share the next (a line each when only one is there). Secondary and destructive
  * actions leave the phone's line (UX batch 4): a left swipe reveals them, and
  * the "⋯" button beside the amount lists them for a keyboard or a screen
  * reader. Either way, choosing one opens the row's own confirmation. The
@@ -69,6 +69,9 @@ export function LedgerRow({
     if (current) ref.current?.scrollIntoView?.({block: "center"});
   }, [current]);
   const hasMore = more.length > 0;
+  // A phone's badge and primary action share one line (badge left, action right
+  // under the amount) instead of taking one each: the row is about half as tall.
+  const sharesLine = !!aside && asideOnPhone && !!actions;
   return (
     // The pointed-at row takes the selected-row tint (brand-50), the brand's one
     // home in a list.
@@ -87,7 +90,7 @@ export function LedgerRow({
               {meta && <div className="text-xs text-muted-foreground [overflow-wrap:anywhere]">{meta}</div>}
             </div>
           </div>
-          {aside && <div className={cn("col-span-full flex-wrap items-center gap-1.5 sm:flex", asideOnPhone ? "flex" : "hidden")}>{aside}</div>}
+          {aside && <div className={cn("flex-wrap items-center gap-1.5 sm:flex", asideOnPhone ? "flex" : "hidden", sharesLine ? "col-start-1 row-start-2 self-center" : "col-span-full")}>{aside}</div>}
           <div className="col-start-2 row-start-1 shrink-0 text-right text-sm tabular-nums text-foreground sm:min-w-28">
             {amount}
             {balance !== undefined && (
@@ -105,7 +108,7 @@ export function LedgerRow({
             </div>
           )}
           {(actions || hasMore) && (
-            <div className={cn("col-span-full flex-wrap gap-2 sm:flex sm:basis-auto", actions ? "flex" : "hidden")}>
+            <div className={cn("flex-wrap gap-2 sm:flex sm:basis-auto", actions ? "flex" : "hidden", sharesLine ? "col-[2/-1] row-start-2 justify-end self-center" : "col-span-full")}>
               {actions}
               {more.map(a => (
                 <Button key={a.key} size="sm" variant="ghost" aria-expanded={a.expanded} onClick={a.onSelect} className="max-sm:hidden">

@@ -44,5 +44,5 @@ export function SpaceCreatedReturn() {
     })();
   }, [params, qc, router]);
 
-  return <p className="text-sm text-muted-foreground">{t("finance.space.returning")}</p>;
+  return <p role="status" className="text-sm text-muted-foreground">{t("finance.space.returning")}</p>;
 }

@@ -117,8 +117,10 @@ describe("F1 — visão geral", () => {
     renderWithQuery(<OverviewView/>);
     const projection = await loadProjection();
     await userEvent.click(await within(projection).findByRole("button", {name: "Entradas e saídas"}));
-    const title = await within(projection).findByText(/entradas R\$\s*4\.500,00, saídas R\$\s*700,00, resultado R\$\s*3\.800,00/);
-    expect(title).toBeInTheDocument();
+    // The same facts twice: the bar's <title> (pointer hover) and a screen-reader-only list.
+    const titles = await within(projection).findAllByText(/entradas R\$\s*4\.500,00, saídas R\$\s*700,00, resultado R\$\s*3\.800,00/);
+    expect(titles.map(t => t.tagName.toLowerCase()).sort()).toEqual(["li", "title"]);
+    expect(titles.find(t => t.tagName === "LI")!.closest(".sr-only")).toHaveTextContent(/Saldo final em Nov\/26: R\$\s*24\.723,15/);
     expect(within(projection).getByRole("button", {name: "Entradas e saídas"})).toHaveAttribute("aria-pressed", "true");
   });
 

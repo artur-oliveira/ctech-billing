@@ -592,7 +592,6 @@ function RecurrencePanel({editing, accounts, cards, history, onDone}: {editing?:
           )}
           <div className="flex gap-2">
             <Button type="submit" variant="brand" size="sm" disabled={!ready}>{editing ? t("bills.common.save") : t("bills.rec.create")}</Button>
-            <Button type="button" variant="outline" size="sm" onClick={onDone}>{t("bills.common.close")}</Button>
           </div>
         </div>
         {confirming && asked && editing && (

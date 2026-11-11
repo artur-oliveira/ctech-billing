@@ -82,11 +82,11 @@ export function useFieldErrors(known: readonly string[] = [], opts: {keepOthers?
     /** The message for one control, or undefined. */
     of: (field: string): string | undefined => state.byField[field],
     /**
-     * aria-invalid and aria-describedby for the control `id` of `field` (Field renders `${id}-error`).
+     * aria-invalid for the control of `field`. aria-describedby is not set here: @aoctech/ui Field wires `${id}-error` itself (and joins without deduping, so setting it twice read the message twice).
      * `local` is the form's own message for it (a client-side check): either one puts the control in error.
      */
     props: (field: string, id: string, local?: string) => state.byField[field] || local
-      ? {"aria-invalid": true as const, "aria-describedby": `${id}-error`}
+      ? {"aria-invalid": true as const}
       : {},
     /** Everything no control claimed, or a non-validation failure's message. */
     general: state.general,

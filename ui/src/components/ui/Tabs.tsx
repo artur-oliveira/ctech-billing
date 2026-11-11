@@ -1,6 +1,6 @@
 "use client";
 
-import {useEffect, useRef} from "react";
+import {useCallback, useEffect, useRef, useState} from "react";
 
 import {segmentHit} from "@/components/ui/segmentHit";
 
@@ -29,14 +29,33 @@ export const panelId = (idBase: string) => `${idBase}-panel`;
  * Left/Right/Home/End move and select, the panel is `role="tabpanel"` with the
  * ids from `tabId`/`panelId`. One line at every width: on a narrow screen the
  * list scrolls inside its own box and keeps the selected tab in view, never the
- * page, because a wrapped row 2px apart would share its 44px targets.
+ * page, because a wrapped row 2px apart would share its 44px targets. A fade
+ * at an edge says there is more past it (a scrollbar-less strip gives no hint),
+ * and goes when that edge is reached.
  */
 export function Tabs<V extends string>({label, value, onValueChange, options, idBase, className = ""}: TabsProps<V>) {
   const refs = useRef(new Map<string, HTMLButtonElement>());
+  const list = useRef<HTMLDivElement>(null);
+  const [more, setMore] = useState({start: false, end: false});
+  const measure = useCallback(() => {
+    const el = list.current;
+    if (!el) return;
+    const start = el.scrollLeft > 1, end = el.scrollLeft + el.clientWidth < el.scrollWidth - 1;
+    setMore(m => (m.start === start && m.end === end ? m : {start, end}));
+  }, []);
+  useEffect(() => {
+    measure();
+    const el = list.current;
+    if (!el || typeof ResizeObserver === "undefined") return undefined;
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [measure, options.length]);
   useEffect(() => {
     // Not in jsdom; and "nearest" never moves a tab that is already visible.
     refs.current.get(value)?.scrollIntoView?.({inline: "nearest", block: "nearest"});
-  }, [value]);
+    measure();
+  }, [value, measure]);
 
   const onKeyDown = (e: React.KeyboardEvent) => {
     const i = options.findIndex(o => o.value === value);
@@ -49,8 +68,10 @@ export function Tabs<V extends string>({label, value, onValueChange, options, id
     refs.current.get(options[to].value)?.focus();
   };
 
+  const fade = "pointer-events-none absolute inset-y-px z-10 w-8 from-surface to-transparent";
   return (
-    <div role="tablist" aria-label={label} onKeyDown={onKeyDown}
+    <div className="relative w-max max-w-full min-w-0">
+    <div ref={list} onScroll={measure} role="tablist" aria-label={label} onKeyDown={onKeyDown}
       className={`flex w-max max-w-full min-w-0 items-center gap-0.5 overflow-x-auto whitespace-nowrap rounded-lg border border-border bg-surface p-0.5 [scrollbar-width:none] ${className}`}>
       {options.map(o => {
         const on = o.value === value;
@@ -63,6 +84,9 @@ export function Tabs<V extends string>({label, value, onValueChange, options, id
           </button>
         );
       })}
+    </div>
+      {more.start && <span aria-hidden data-fade="start" className={`${fade} left-px rounded-l-md bg-gradient-to-r`}/>}
+      {more.end && <span aria-hidden data-fade="end" className={`${fade} right-px rounded-r-md bg-gradient-to-l`}/>}
     </div>
   );
 }

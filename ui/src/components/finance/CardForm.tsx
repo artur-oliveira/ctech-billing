@@ -87,7 +87,6 @@ export function CardForm({card, accounts, onDone}: {card?: Card; accounts: Accou
       </Field>
       <PanelActions>
         <Button type="submit" variant="brand" size="sm" disabled={!ready}>{card ? t("finance.cards.save") : t("finance.cards.create")}</Button>
-        <Button type="button" variant="outline" size="sm" onClick={() => onDone()}>{t("finance.cards.close")}</Button>
         <FormError error={save.error} fe={fe} className=""/>
       </PanelActions>
     </DrawerForm>

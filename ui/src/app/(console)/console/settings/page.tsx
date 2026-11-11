@@ -10,6 +10,7 @@ import {toast} from "sonner";
 import {ClosureCard} from "@/components/console/ClosureCard";
 import {DunningPolicyCard} from "@/components/console/DunningPolicyCard";
 import {ErrorBlock} from "@/components/portal/ErrorBlock";
+import {CopyableValue} from "@/components/ui/CopyableValue";
 import {messageFor} from "@/lib/api/client";
 import {useFieldErrors} from "@/lib/useFieldErrors";
 import {
@@ -62,7 +63,10 @@ export default function ConsoleSettingsPage() {
 
       <dl className="grid gap-x-6 gap-y-4 border-y border-border py-4 text-sm sm:grid-cols-3">
         <Fact label={t("console.settings.organization")} value={settings.organization.display_name}/>
-        <Fact label={t("console.settings.identifier")} value={settings.organization.organization_id}/>
+        <div className="min-w-0 space-y-1">
+          <dt className="text-xs text-muted-foreground">{t("console.settings.identifier")}</dt>
+          <dd className="text-foreground"><CopyableValue value={settings.organization.organization_id}/></dd>
+        </div>
         <Fact
           label={t("console.settings.billing")}
           value={settings.organization.can_charge ? t("console.settings.billingOn") : t("console.settings.billingOff")}

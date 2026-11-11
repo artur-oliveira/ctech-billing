@@ -1,7 +1,7 @@
 "use client";
 
 import {BottomNavSpacer, Skeleton} from "@aoctech/ui";
-import {useRouter} from "next/navigation";
+import {usePathname, useRouter} from "next/navigation";
 import {type ReactNode, useEffect} from "react";
 import {useTranslation} from "react-i18next";
 
@@ -14,6 +14,8 @@ import {useSubject} from "@/lib/auth/subject";
 import {useMode} from "@/lib/console/useMode";
 import {useSpace} from "@/lib/console/useSpace";
 import {FINANCE_HREF} from "@/lib/finance/href";
+import {currentFinanceSection, FINANCE_SECTIONS} from "@/lib/finance/nav";
+import {useDocumentTitle} from "@/lib/hooks/useDocumentTitle";
 import {rememberProduct} from "@/lib/product";
 import {RealtimeProvider} from "@/lib/realtime/RealtimeProvider";
 
@@ -36,6 +38,10 @@ export function FinanceShell({children}: {children: ReactNode}) {
   const mode = useMode();
   const space = useSpace();
   const subject = useSubject();
+  // The routes' static metadata is pt-BR; the section's name in the UI language replaces it.
+  const pathname = usePathname();
+  const section = FINANCE_SECTIONS.find(s => s.href === currentFinanceSection(pathname));
+  useDocumentTitle(section ? t(`finance.nav.${section.key}`) : null);
 
   useEffect(() => {
     if (!loading && !authenticated) router.replace("/login");

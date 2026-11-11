@@ -3,7 +3,7 @@
 import {cn} from "@aoctech/ui";
 import {Popover} from "@base-ui/react/popover";
 import {CalendarDays, ChevronLeft, ChevronRight} from "lucide-react";
-import {useState} from "react";
+import {useRef, useState} from "react";
 import {useTranslation} from "react-i18next";
 
 import {normalizeLocale} from "@/lib/locale";
@@ -40,7 +40,24 @@ export function MonthField({id, value, onValueChange, min, max, placeholder, dis
   const minYear = YM.test(min ?? "") ? Number(min!.slice(0, 4)) : -Infinity;
   const maxYear = YM.test(max ?? "") ? Number(max!.slice(0, 4)) : Infinity;
   const key = (m: number) => `${year}-${String(m).padStart(2, "0")}`;
+  // Roving tabindex over the grid (WAI-ARIA): one month in the tab order, the arrows move it.
+  const [cursor, setCursor] = useState<{year: number; m: number} | null>(null);
+  const cells = useRef(new Map<number, HTMLButtonElement>());
   const blocked = (m: number) => (!!min && YM.test(min) && key(m) < min) || (!!max && YM.test(max) && key(m) > max);
+
+  // The tab stop: the selected month of this year, else the first month that can be picked.
+  const stop = selected.startsWith(`${year}-`) ? Number(selected.slice(5)) : ([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].find(m => !blocked(m)) ?? 1);
+  const at = cursor?.year === year ? cursor.m : stop;
+  const onGridKey = (e: React.KeyboardEvent) => {
+    const row = Math.floor((at - 1) / 3);
+    const to = e.key === "ArrowRight" ? at + 1 : e.key === "ArrowLeft" ? at - 1 : e.key === "ArrowDown" ? at + 3 : e.key === "ArrowUp" ? at - 3
+      : e.key === "Home" ? row * 3 + 1 : e.key === "End" ? row * 3 + 3 : 0;
+    if (!to) return;
+    e.preventDefault();
+    if (to < 1 || to > 12 || blocked(to)) return;
+    setCursor({year, m: to});
+    cells.current.get(to)?.focus();
+  };
 
   return (
     <Popover.Root open={open} onOpenChange={o => { setOpen(o); if (o) setYear(Number((selected || max || min || todayYm()).slice(0, 4))); }}>
@@ -67,12 +84,13 @@ export function MonthField({id, value, onValueChange, min, max, placeholder, dis
               <span aria-live="polite" className="text-sm font-medium tabular-nums">{year}</span>
               <button type="button" aria-label={t("auth.month.nextYear")} disabled={year >= maxYear} onClick={() => setYear(year + 1)} className={navBtn}><ChevronRight aria-hidden className="size-4"/></button>
             </div>
-            <div role="group" aria-label={String(year)} className="grid grid-cols-3 gap-1">
+            <div role="group" aria-label={String(year)} onKeyDown={onGridKey} className="grid grid-cols-3 gap-1">
               {names.map((name, i) => {
                 const m = i + 1;
                 const on = key(m) === selected;
                 return (
-                  <button key={m} type="button" aria-pressed={on} disabled={blocked(m)} aria-label={`${name} ${year}`}
+                  <button key={m} type="button" aria-pressed={on} disabled={blocked(m)} tabIndex={m === at ? 0 : -1}
+                    ref={el => { if (el) cells.current.set(m, el); else cells.current.delete(m); }} aria-label={`${name} ${year}`}
                     onClick={() => { onValueChange(key(m)); setOpen(false); }}
                     className={cn("min-h-11 rounded-md px-2 text-sm capitalize outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-40", on ? "bg-brand-600 font-medium text-white" : "text-foreground hover:bg-surface")}>
                     {name}
