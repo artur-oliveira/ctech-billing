@@ -426,7 +426,7 @@ function ProjectionTable({data, view, name}: {data: ProjectedPeriod[]; view: Vie
               <>
                 <th className={th}>{directionLabel("receivable")}</th>
                 <th className={th}>{directionLabel("payable")}</th>
-                <th className={th}>{t("finance.overview.recurrences")}</th>
+                <th className={th}>{t("finance.overview.recurrencesNet")}</th>
                 {estimates && <th className={th}>{t("finance.overview.cardEstimate")}</th>}
                 <th className={th}>{t("finance.overview.monthResult")}</th>
                 <th className={th}>{t("finance.overview.projected")}</th>

@@ -352,7 +352,8 @@
     "budgetField": "Compras avulsas por mês, somando todos os cartões",
     "budgetApply": "Aplicar",
     "budgetCancel": "Cancelar",
-    "budgetHint": "Vale sobre o que ainda não está lançado em cada fatura. Fica salvo só neste navegador."
+    "budgetHint": "Vale sobre o que ainda não está lançado em cada fatura. Fica salvo só neste navegador.",
+    "recurrencesNet": "Recorrências (entradas − saídas)"
   },
   "reports": {
     "line": "Linha",

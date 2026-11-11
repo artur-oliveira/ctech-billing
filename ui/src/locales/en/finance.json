@@ -352,7 +352,8 @@
     "budgetField": "One-off purchases per month, all cards together",
     "budgetApply": "Apply",
     "budgetCancel": "Cancel",
-    "budgetHint": "Applies to what is not on each statement yet. Saved in this browser only."
+    "budgetHint": "Applies to what is not on each statement yet. Saved in this browser only.",
+    "recurrencesNet": "Recurrences (in − out)"
   },
   "reports": {
     "line": "Line",

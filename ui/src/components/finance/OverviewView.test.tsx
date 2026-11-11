@@ -92,7 +92,7 @@ describe("F1 — visão geral", () => {
     await userEvent.click(await within(block).findByRole("button", {name: "Ver tabela"}));
     const table = within(block).getByRole("table");
     const headers = within(table).getAllByRole("columnheader").map(h => h.textContent);
-    expect(headers).toEqual(["Mês", "A receber", "A pagar", "Recorrências", "Resultado do mês", "Saldo projetado"]);
+    expect(headers).toEqual(["Mês", "A receber", "A pagar", "Recorrências (entradas − saídas)", "Resultado do mês", "Saldo projetado"]);
     const dec = within(table).getByRole("row", {name: /dez/i});
     expect(within(dec).getAllByText("−R$ 1.500,00").length).toBe(2); // the recurrences and the month's result
   });
