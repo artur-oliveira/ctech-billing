@@ -40,13 +40,11 @@ func (j *FinanceJobs) activeCards(ctx context.Context, sp space.ResolvedSpace) (
 	return out, nil
 }
 
-// cardBaselineMonths is how many closed statements the unplanned-spending
-// estimate averages.
-const cardBaselineMonths = 3
-
 // unplanned is what a statement holds that nothing scheduled: single-installment
 // purchases not posted by a recurrence. Installments of an older purchase and
-// recurrence charges are already projected on their own.
+// recurrence charges are projected on their own. The projection never guesses
+// this part: it only reports how much of each statement it is, so a person who
+// chooses to forecast one-off spending can subtract what is already there.
 func unplanned(items []repositories.StatementItem) (sum billing.Cents) {
 	for _, it := range items {
 		if it.Kind == "installment" && it.Of <= 1 && it.RecurrenceID == "" {
@@ -56,38 +54,11 @@ func unplanned(items []repositories.StatementItem) (sum billing.Cents) {
 	return sum
 }
 
-// cardBaseline is the card's usual unplanned spending per statement: the mean of
-// its last closed statements' unplanned total. Zero when the card has no closed
-// statement yet, so a new card projects nothing it cannot back.
-func (j *FinanceJobs) cardBaseline(ctx context.Context, sp space.ResolvedSpace, c repositories.CardRow) (billing.Cents, error) {
-	var total billing.Cents
-	var n int
-	for m := c.OpenMonth.Add(-1); n < cardBaselineMonths && m.Compare(c.FirstMonth) >= 0; m = m.Add(-1) {
-		s, err := j.cards.GetStatement(ctx, sp, c.ID, m)
-		if err != nil {
-			return 0, err
-		}
-		total += unplanned(s.Items)
-		n++
-	}
-	if n == 0 {
-		return 0, nil
-	}
-	return total / billing.Cents(n), nil
-}
-
 // projectCards adds each card's open and future statements to the payables of
 // the month they fall due: the card has to be paid. Closed statements are
-// already bills and counted with them. `estimate` is what the card usually
-// takes beyond what is posted: its baseline less the unplanned spending already
-// on that statement, never negative. One Query per statement month plus
-// cardBaselineMonths per card.
-func (j *FinanceJobs) projectCards(ctx context.Context, sp space.ResolvedSpace, cards map[string]repositories.CardRow, windowEnd brcal.Date, add func(c repositories.CardRow, due brcal.Date, total, unplanned, estimate, baseline billing.Cents)) error {
+// already bills and counted with them. One Query per statement month.
+func (j *FinanceJobs) projectCards(ctx context.Context, sp space.ResolvedSpace, cards map[string]repositories.CardRow, windowEnd brcal.Date, add func(c repositories.CardRow, due brcal.Date, total, unplanned billing.Cents)) error {
 	for _, c := range cards {
-		baseline, err := j.cardBaseline(ctx, sp, c)
-		if err != nil {
-			return err
-		}
 		for m := c.OpenMonth; ; m = m.Add(1) {
 			due := finance.DueDate(m, c.ClosingDay, c.DueDay)
 			if due.After(windowEnd) {
@@ -97,8 +68,7 @@ func (j *FinanceJobs) projectCards(ctx context.Context, sp space.ResolvedSpace, 
 			if err != nil {
 				return err
 			}
-			u := unplanned(s.Items)
-			add(c, due, s.Total, u, max(baseline-u, 0), baseline)
+			add(c, due, s.Total, unplanned(s.Items))
 		}
 	}
 	return nil

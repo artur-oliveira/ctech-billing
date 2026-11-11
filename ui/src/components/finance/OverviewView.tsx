@@ -23,7 +23,7 @@ import type {Bill} from "@/lib/api/financeTypes";
 import {useCardBudget} from "@/lib/finance/cardBudget";
 import {bucketLabel, directionLabel} from "@/lib/finance/labels";
 import {currentLocale} from "@/lib/i18n";
-import {aggregate, automaticBudget, HORIZONS, maxBars, PROJECTION_HORIZON, type ProjectedPeriod, project, useProjection} from "@/lib/finance/projection";
+import {aggregate, HORIZONS, maxBars, PROJECTION_HORIZON, type ProjectedPeriod, project, useProjection} from "@/lib/finance/projection";
 import {monthLabel, monthShort, todayIso} from "@/lib/finance/today";
 import {useFinanceCtx} from "@/lib/finance/useFinanceSpaces";
 import {useElementWidth} from "@/lib/hooks/useElementWidth";
@@ -256,7 +256,7 @@ function Projection() {
   const [budget, setBudget] = useCardBudget();
   const name = useCardNames();
   const all = project(start, q.data?.data ?? [], budget);
-  const auto = automaticBudget(q.data?.data ?? []);
+  const hasCards = (q.data?.data ?? []).some(m => (m.by_card?.length ?? 0) > 0);
   // Rows keep up to a year's months; the chart is capped by the screen (12 bars, 6 on a phone).
   const rows = aggregate(all, 12), data = aggregate(all, maxBars(narrow));
   return (
@@ -301,7 +301,7 @@ function Projection() {
         {t("finance.overview.projectionNote", {balance: signedMoney(start)})}
       </p>
       {all.some(m => m.estimate > 0) && <p className="text-xs text-muted-foreground">{t("finance.overview.estimateNote")}</p>}
-      {(auto !== null || budget !== null) && <CardBudgetControl auto={auto} budget={budget} onChange={setBudget}/>}
+      {(hasCards || budget !== null) && <CardBudgetControl budget={budget} onChange={setBudget}/>}
     </Section>
   );
 }
@@ -355,15 +355,16 @@ function CardDetail({m, name}: {m: ProjectedPeriod; name: (id: string) => string
 }
 
 /**
- * The person's own number for what the cards take beyond plan each month, in place
- * of the automatic average. Shown when there is an automatic figure to compare with
- * or a number already set, so a person can always find the way back.
+ * An opt-in forecast of one-off card spending. The projection holds only what is
+ * registered (statements, installments, recurrences) and never guesses; a person
+ * who wants to see the effect of buying beyond that can type a monthly figure for
+ * all their cards. It counts for what the statements do not hold of it yet, lives
+ * in this browser, and is one click to remove.
  */
-function CardBudgetControl({auto, budget, onChange}: {auto: number | null; budget: number | null; onChange: (cents: number | null) => void}) {
+function CardBudgetControl({budget, onChange}: {budget: number | null; onChange: (cents: number | null) => void}) {
   const {t} = useTranslation();
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState("");
-  const current = budget ?? auto ?? 0;
   const cents = parseMoney(text);
   const apply = () => {
     if (cents === null || cents < 0) return;
@@ -373,8 +374,10 @@ function CardBudgetControl({auto, budget, onChange}: {auto: number | null; budge
   if (!editing) {
     return (
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
-        <span>{t(budget === null ? "finance.overview.budgetAuto" : "finance.overview.budgetMine", {amount: money(current)})}</span>
-        <Button type="button" variant="outline" size="sm" onClick={() => { setText(formatMoneyInput(current)); setEditing(true); }}>{t("finance.overview.budgetSet")}</Button>
+        <span>{budget === null ? t("finance.overview.budgetNone") : t("finance.overview.budgetMine", {amount: money(budget)})}</span>
+        <Button type="button" variant="outline" size="sm" onClick={() => { setText(budget === null ? "" : formatMoneyInput(budget)); setEditing(true); }}>
+          {t(budget === null ? "finance.overview.budgetSet" : "finance.overview.budgetChange")}
+        </Button>
         {budget !== null && <Button type="button" variant="ghost" size="sm" onClick={() => onChange(null)}>{t("finance.overview.budgetReset")}</Button>}
       </div>
     );

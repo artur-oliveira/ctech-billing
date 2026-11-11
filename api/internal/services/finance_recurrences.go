@@ -324,10 +324,6 @@ type ProjectionMonth struct {
 	// recurrences. Both are subsets: Payable and VirtualPayable keep their totals.
 	CardPayable        billing.Cents
 	VirtualCardPayable billing.Cents
-	// CardEstimate is what the cards will probably take beyond everything above:
-	// their usual unplanned spending (see cardBaseline). It is an estimate, in no
-	// other column, and the screen says so.
-	CardEstimate billing.Cents
 	// Cards is the same, card by card: what a client needs to name each card's
 	// share, and to recompute the estimate from a budget of its own.
 	Cards []CardMonth
@@ -339,9 +335,8 @@ type CardMonth struct {
 	// Posted is the statement due this month (posted purchases and installments);
 	// Expected the card recurrences still to post on it.
 	Posted, Expected billing.Cents
-	// Unplanned is the part of Posted nothing scheduled (see unplanned);
-	// Estimate what the card usually takes beyond it; Baseline that usual amount.
-	Unplanned, Estimate, Baseline billing.Cents
+	// Unplanned is the part of Posted nothing scheduled (see unplanned).
+	Unplanned billing.Cents
 }
 
 // card is the month's entry for a card, created on first use. A space has a
@@ -437,16 +432,13 @@ func (j *FinanceJobs) Project(ctx context.Context, sp space.ResolvedSpace, today
 		return Projection{}, err
 	}
 	cardsEnd := first.Add(months - 1).Last()
-	if err := j.projectCards(ctx, sp, cards, cardsEnd, func(c repositories.CardRow, due brcal.Date, total, unplanned, estimate, baseline billing.Cents) {
+	if err := j.projectCards(ctx, sp, cards, cardsEnd, func(c repositories.CardRow, due brcal.Date, total, unplanned billing.Cents) {
 		if i, ok := slot(due); ok {
 			window[i].Payable += total
 			window[i].CardPayable += total
-			window[i].CardEstimate += estimate
 			cm := window[i].card(c.ID)
 			cm.Posted += total
 			cm.Unplanned += unplanned
-			cm.Estimate += estimate
-			cm.Baseline = baseline
 		}
 	}); err != nil {
 		return Projection{}, err

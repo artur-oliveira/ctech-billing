@@ -653,13 +653,11 @@ type projectionMonthDTO struct {
 	VirtualReceivable billing.Cents `json:"virtual_receivable"`
 	VirtualPayable    billing.Cents `json:"virtual_payable"`
 	// CardPayable and VirtualCardPayable are the card parts of Payable and
-	// VirtualPayable (subsets); CardEstimate is the estimated unplanned card
-	// spending, in no other column.
+	// VirtualPayable (subsets).
 	CardPayable        billing.Cents `json:"card_payable"`
 	VirtualCardPayable billing.Cents `json:"virtual_card_payable"`
-	CardEstimate       billing.Cents `json:"card_estimate"`
-	// ByCard is each card's share of the three above; unplanned and baseline let
-	// a client recompute the estimate from a budget of the person's own.
+	// ByCard is each card's share of the two above; unplanned lets a client
+	// forecast one-off spending from a figure of the person's own.
 	ByCard []projectionCardDTO `json:"by_card"`
 }
 
@@ -668,8 +666,6 @@ type projectionCardDTO struct {
 	Posted    billing.Cents `json:"posted"`
 	Expected  billing.Cents `json:"expected"`
 	Unplanned billing.Cents `json:"unplanned"`
-	Estimate  billing.Cents `json:"estimate"`
-	Baseline  billing.Cents `json:"baseline"`
 }
 
 func (h *financeHandlers) projection(c fiber.Ctx) error {
@@ -683,7 +679,7 @@ func (h *financeHandlers) projection(c fiber.Ctx) error {
 	}
 	out := listResponse[projectionMonthDTO]{Data: make([]projectionMonthDTO, 0, len(p.Months))}
 	for _, m := range p.Months {
-		out.Data = append(out.Data, projectionMonthDTO{Month: m.Month.String(), Receivable: m.Receivable, Payable: m.Payable, Virtual: m.Virtual, VirtualReceivable: m.VirtualReceivable, VirtualPayable: m.VirtualPayable, CardPayable: m.CardPayable, VirtualCardPayable: m.VirtualCardPayable, CardEstimate: m.CardEstimate, ByCard: byCardDTO(m.Cards)})
+		out.Data = append(out.Data, projectionMonthDTO{Month: m.Month.String(), Receivable: m.Receivable, Payable: m.Payable, Virtual: m.Virtual, VirtualReceivable: m.VirtualReceivable, VirtualPayable: m.VirtualPayable, CardPayable: m.CardPayable, VirtualCardPayable: m.VirtualCardPayable, ByCard: byCardDTO(m.Cards)})
 	}
 	return c.JSON(out)
 }
@@ -692,7 +688,7 @@ func (h *financeHandlers) projection(c fiber.Ctx) error {
 func byCardDTO(cards []services.CardMonth) []projectionCardDTO {
 	out := make([]projectionCardDTO, 0, len(cards))
 	for _, c := range slices.SortedFunc(slices.Values(cards), func(a, b services.CardMonth) int { return strings.Compare(a.CardID, b.CardID) }) {
-		out = append(out, projectionCardDTO{CardID: c.CardID, Posted: c.Posted, Expected: c.Expected, Unplanned: c.Unplanned, Estimate: c.Estimate, Baseline: c.Baseline})
+		out = append(out, projectionCardDTO{CardID: c.CardID, Posted: c.Posted, Expected: c.Expected, Unplanned: c.Unplanned})
 	}
 	return out
 }
