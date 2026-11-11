@@ -855,3 +855,86 @@ func TestMonthFlowsRefusesAMonthBeyondTheProjectionHorizon(t *testing.T) {
 		t.Fatal("a month 12 ahead was accepted")
 	}
 }
+
+// usualSpend is a card whose past statements say what it usually takes: only
+// single purchases that nothing scheduled count, not installments of an older
+// purchase, recurrence charges or credits.
+type usualSpend struct{ fakeCards }
+
+func (usualSpend) ListCards(context.Context, space.ResolvedSpace) ([]repositories.CardRow, error) {
+	return []repositories.CardRow{{Card: finance.Card{ID: "visa", ClosingDay: 3, DueDay: 10, PayingAccountID: "bank",
+		OpenMonth: finance.Month{Year: 2026, Month: time.March}}, Name: "Visa", FirstMonth: finance.Month{Year: 2025, Month: time.December}}}, nil
+}
+
+func (usualSpend) GetStatement(_ context.Context, _ space.ResolvedSpace, _ string, m finance.Month) (repositories.Statement, error) {
+	single := func(a billing.Cents) repositories.StatementItem {
+		return repositories.StatementItem{Kind: "installment", Of: 1, Amount: a}
+	}
+	installment := repositories.StatementItem{Kind: "installment", Number: 2, Of: 5, Amount: 99900}
+	recurring := repositories.StatementItem{Kind: "installment", Of: 1, Amount: 5000, RecurrenceID: "r"}
+	credit := repositories.StatementItem{Kind: "credit", Amount: -7000}
+	var items []repositories.StatementItem
+	switch {
+	case m.Year == 2025: // December: nothing unplanned
+		items = []repositories.StatementItem{installment}
+	case m.Month == time.January:
+		items = []repositories.StatementItem{single(20000), single(10000), installment, recurring, credit}
+	case m.Month == time.February:
+		items = []repositories.StatementItem{single(60000), recurring}
+	case m.Month == time.March: // the open one: 10000 of the usual is already on it
+		items = []repositories.StatementItem{single(10000), installment}
+	case m.Month == time.April:
+		items = []repositories.StatementItem{installment}
+	}
+	st := repositories.Statement{Month: m, Items: items}
+	for _, it := range items {
+		st.Total += it.Amount
+	}
+	return st, nil
+}
+
+// The estimate is the mean of the last three closed statements' unplanned
+// spending (0, 30000, 60000 = 30000), less what the statement already holds, and
+// it is a column of its own: Payable keeps only what is posted.
+func TestProjectEstimatesUnplannedCardSpending(t *testing.T) {
+	jobs := NewFinanceJobs(newFakeBills(), newFakeRecs()).WithCards(&usualSpend{})
+	p, err := jobs.Project(context.Background(), testSpace(t), day(2026, time.March, 2), 3) // Mar..May
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, want := range []struct{ posted, estimate int64 }{{109900, 20000}, {99900, 30000}, {0, 30000}} {
+		m := p.Months[i]
+		if int64(m.CardPayable) != want.posted || int64(m.Payable) != want.posted || int64(m.CardEstimate) != want.estimate {
+			t.Errorf("%s: card payable %d, payable %d, estimate %d; want %d, %d, %d",
+				m.Month, m.CardPayable, m.Payable, m.CardEstimate, want.posted, want.posted, want.estimate)
+		}
+	}
+}
+
+// A card with no closed statement has no usual spending to project.
+func TestProjectEstimatesNothingForACardWithoutHistory(t *testing.T) {
+	jobs := NewFinanceJobs(newFakeBills(), newFakeRecs()).WithCards(&fakeCards{})
+	p, err := jobs.Project(context.Background(), testSpace(t), day(2026, time.March, 2), 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range p.Months {
+		if m.CardEstimate != 0 {
+			t.Errorf("%s: estimate %d, want 0", m.Month, m.CardEstimate)
+		}
+	}
+}
+
+// Card recurrences are the card part of the virtual payables.
+func TestProjectSplitsCardRecurrencesFromTheRest(t *testing.T) {
+	cards := newRecCards(visa25())
+	recs := newFakeRecs(onCard("s", 28, 1), monthly("rent", 10))
+	p, err := NewFinanceJobs(newFakeBills(), recs).WithCards(cards).Project(context.Background(), testSpace(t), day(2026, time.March, 2), 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := p.Months[2] // the 28th of March falls in the April statement, due May 5
+	if m.VirtualCardPayable != 30000 || m.VirtualPayable <= m.VirtualCardPayable {
+		t.Errorf("%s: virtual card payable %d of virtual payable %d, want 30000 and more in total", m.Month, m.VirtualCardPayable, m.VirtualPayable)
+	}
+}

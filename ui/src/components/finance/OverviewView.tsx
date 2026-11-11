@@ -293,6 +293,7 @@ function Projection() {
       <p className="text-xs text-muted-foreground">
         {t("finance.overview.projectionNote", {balance: signedMoney(start)})}
       </p>
+      {all.some(m => m.estimate > 0) && <p className="text-xs text-muted-foreground">{t("finance.overview.estimateNote")}</p>}
     </Section>
   );
 }
@@ -304,10 +305,22 @@ function OfRecurrences({cents}: {cents: number}) {
   return <span className="block text-xs text-muted-foreground">{t("finance.overview.ofRecurrences", {amount: money(cents)})}</span>;
 }
 
+/** What part of an outflow is on a card, and what part of it is only an estimate; nothing when neither. */
+function OfCard({card, estimate}: {card: number; estimate: number}) {
+  const {t} = useTranslation();
+  return (
+    <>
+      {card > 0 && <span className="block text-xs text-muted-foreground">{t("finance.overview.ofCard", {amount: money(card)})}</span>}
+      {estimate > 0 && <span className="block text-xs text-muted-foreground">{t("finance.overview.ofEstimate", {amount: money(estimate)})}</span>}
+    </>
+  );
+}
+
 function ProjectionTable({data, view}: {data: ProjectedPeriod[]; view: View}) {
   const {t} = useTranslation();
   const th = "py-2 pl-4 text-right font-normal";
   const td = "py-2 pl-4 text-right align-top";
+  const estimates = data.some(m => m.estimate > 0);
   return (
     <div className="overflow-x-auto">
       <table className="w-full min-w-max text-sm tabular-nums">
@@ -319,6 +332,7 @@ function ProjectionTable({data, view}: {data: ProjectedPeriod[]; view: View}) {
                 <th className={th}>{directionLabel("receivable")}</th>
                 <th className={th}>{directionLabel("payable")}</th>
                 <th className={th}>{t("finance.overview.recurrences")}</th>
+                {estimates && <th className={th}>{t("finance.overview.cardEstimate")}</th>}
                 <th className={th}>{t("finance.overview.monthResult")}</th>
                 <th className={th}>{t("finance.overview.projected")}</th>
               </>
@@ -341,13 +355,14 @@ function ProjectionTable({data, view}: {data: ProjectedPeriod[]; view: View}) {
                   <td className={td}>{money(m.receivable)}</td>
                   <td className={td}>{money(m.payable)}</td>
                   <td className={td}>{signedMoney(m.virtual)}</td>
+                  {estimates && <td className={td}>{m.estimate > 0 ? signedMoney(-m.estimate) : money(0)}</td>}
                   <td className={td}>{signedMoney(m.result)}</td>
                   <td className={`${td} font-medium ${m.balance < 0 ? "text-danger" : ""}`}>{signedMoney(m.balance)}</td>
                 </>
               ) : (
                 <>
                   <td className={td}>{money(m.inflow)}<OfRecurrences cents={m.recIn}/></td>
-                  <td className={td}>{money(m.outflow)}<OfRecurrences cents={m.recOut}/></td>
+                  <td className={td}>{money(m.outflow)}<OfRecurrences cents={m.recOut}/><OfCard card={m.card} estimate={m.estimate}/></td>
                   <td className={`${td} ${m.result < 0 ? "text-danger" : ""}`}>{signedMoney(m.result)}</td>
                   {/* The accumulated balance stays in both views: the view
                       changes how a month is broken down, not whether the
@@ -399,7 +414,7 @@ function MonthList({data, view}: {data: ProjectedPeriod[]; view: View}) {
               <Bar total={m.inflow} width={pct(m.inflow)} tone="bg-success"/>
               <span className="whitespace-nowrap text-right">{t("finance.overview.legendIn")} {money(m.inflow)}<OfRecurrences cents={m.recIn}/></span>
               <Bar total={m.outflow} width={pct(m.outflow)} tone="bg-danger"/>
-              <span className="whitespace-nowrap text-right">{t("finance.overview.legendOut")} {money(m.outflow)}<OfRecurrences cents={m.recOut}/></span>
+              <span className="whitespace-nowrap text-right">{t("finance.overview.legendOut")} {money(m.outflow)}<OfRecurrences cents={m.recOut}/><OfCard card={m.card} estimate={m.estimate}/></span>
             </div>
           </li>
         );
@@ -534,7 +549,7 @@ function FlowChart({data}: {data: ProjectedPeriod[]}) {
   const zero = y(0);
   const slot = (W - LEFT) / Math.max(1, data.length);
   const bw = Math.min(36, slot * 0.5);
-  const flowTitle = (m: ProjectedPeriod) => t("finance.overview.flowTitle", {month: periodLabel(m), inflow: money(m.inflow), outflow: money(m.outflow), net: signedMoney(m.result), recIn: money(m.recIn), recOut: money(m.recOut)});
+  const flowTitle = (m: ProjectedPeriod) => t("finance.overview.flowTitle", {month: periodLabel(m), inflow: money(m.inflow), outflow: money(m.outflow), net: signedMoney(m.result), recIn: money(m.recIn), recOut: money(m.recOut), card: money(m.card), estimate: money(m.estimate)});
   return (
     <figure ref={ref} className="space-y-2">
       <ChartSummary data={data} line={flowTitle}/>
@@ -549,14 +564,16 @@ function FlowChart({data}: {data: ProjectedPeriod[]}) {
           const cx = LEFT + i * slot + slot / 2, x = cx - bw / 2;
           const bills = (v: number) => (v / (hi - lo)) * (H - TOP - BOTTOM);
           const inBills = bills(m.inflow - m.recIn), inRec = bills(m.recIn);
-          const outBills = bills(m.outflow - m.recOut), outRec = bills(m.recOut);
+          // Out is split by where it is paid, not by how it is known: other, on a card, and the card's estimate.
+          const outOther = bills(Math.max(m.outflow - m.card - m.estimate, 0)), outCard = bills(m.card), outEst = bills(m.estimate);
           return (
             <g key={m.month}>
               <title>{flowTitle(m)}</title>
               {inBills > 0 && <rect x={x} y={zero - inBills} width={bw} height={inBills} className="fill-success"/>}
               {inRec > 0 && <rect x={x} y={zero - inBills - inRec} width={bw} height={inRec} rx={2} className="fill-success opacity-45"/>}
-              {outBills > 0 && <rect x={x} y={zero} width={bw} height={outBills} className="fill-danger"/>}
-              {outRec > 0 && <rect x={x} y={zero + outBills} width={bw} height={outRec} rx={2} className="fill-danger opacity-45"/>}
+              {outOther > 0 && <rect x={x} y={zero} width={bw} height={outOther} className="fill-danger"/>}
+              {outCard > 0 && <rect x={x} y={zero + outOther} width={bw} height={outCard} className="fill-warning"/>}
+              {outEst > 0 && <rect x={x} y={zero + outOther + outCard} width={bw} height={outEst} rx={2} className="fill-warning/40 stroke-warning" strokeWidth={1} strokeDasharray="3 2"/>}
               <circle cx={cx} cy={y(m.result)} r={3.5} className="fill-foreground stroke-background" strokeWidth={1.5}/>
               {i % every === 0 && <text x={cx} y={H - 6} textAnchor="middle" className="fill-muted-foreground text-[11px]">{monthShort(m.month)}</text>}
             </g>
@@ -566,7 +583,9 @@ function FlowChart({data}: {data: ProjectedPeriod[]}) {
       <figcaption className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
         {data[0]?.count > 1 && <span>{t("finance.overview.barSpan", {count: data[0].count})}</span>}
         <span className="flex items-center gap-1.5"><span className="inline-block size-3 rounded-sm bg-success"/>{t("finance.overview.legendIn")}</span>
-        <span className="flex items-center gap-1.5"><span className="inline-block size-3 rounded-sm bg-danger"/>{t("finance.overview.legendOut")}</span>
+        <span className="flex items-center gap-1.5"><span className="inline-block size-3 rounded-sm bg-danger"/>{t(data.some(m => m.card > 0 || m.estimate > 0) ? "finance.overview.legendOther" : "finance.overview.legendOut")}</span>
+        {data.some(m => m.card > 0) && <span className="flex items-center gap-1.5"><span className="inline-block size-3 rounded-sm bg-warning"/>{t("finance.overview.legendCard")}</span>}
+        {data.some(m => m.estimate > 0) && <span className="flex items-center gap-1.5"><span aria-hidden className="inline-block size-3 rounded-sm border border-dashed border-warning bg-warning/40"/>{t("finance.overview.legendEstimate")}</span>}
         <span className="flex items-center gap-1.5"><span aria-hidden className="inline-flex size-3 overflow-hidden rounded-sm opacity-45"><span className="w-1/2 bg-success"/><span className="w-1/2 bg-danger"/></span>{t("finance.overview.legendRecurring")}</span>
         <span className="flex items-center gap-1.5"><span className="inline-block size-2.5 rounded-full bg-foreground"/>{t("finance.overview.legendNet")}</span>
       </figcaption>

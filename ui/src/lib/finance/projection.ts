@@ -16,6 +16,10 @@ export interface ProjectedMonth extends ProjectionMonth {
   outflow: number
   recIn: number
   recOut: number
+  /** Card statements plus card recurrences: the part of `outflow` that is on a card, already posted or promised. */
+  card: number
+  /** Estimated unplanned card spending, counted in `outflow` and `result`; the rest of the card's usual month. */
+  estimate: number
 }
 
 /** The projection's data, shared (one cache entry) by every block that reads the same window. */
@@ -32,11 +36,13 @@ export function useProjection(months: number) {
 export function project(start: number, data: ProjectionMonth[]): ProjectedMonth[] {
   let balance = start;
   return data.map(m => {
-    const result = m.receivable - m.payable + m.virtual;
+    const estimate = m.card_estimate ?? 0;
+    const result = m.receivable - m.payable + m.virtual - estimate;
     balance += result;
     const recIn = m.virtual_receivable ?? Math.max(m.virtual, 0);
     const recOut = m.virtual_payable ?? Math.max(-m.virtual, 0);
-    return {...m, result, balance, recIn, recOut, inflow: m.receivable + recIn, outflow: m.payable + recOut};
+    const card = (m.card_payable ?? 0) + (m.virtual_card_payable ?? 0);
+    return {...m, result, balance, recIn, recOut, card, estimate, inflow: m.receivable + recIn, outflow: m.payable + recOut + estimate};
   });
 }
 
@@ -73,7 +79,7 @@ export function aggregate(data: ProjectedMonth[], max: number): ProjectedPeriod[
       ...g[0], last: end.month, count: g.length, balance: end.balance,
       receivable: sum(m => m.receivable), payable: sum(m => m.payable), virtual: sum(m => m.virtual),
       result: sum(m => m.result), inflow: sum(m => m.inflow), outflow: sum(m => m.outflow),
-      recIn: sum(m => m.recIn), recOut: sum(m => m.recOut),
+      recIn: sum(m => m.recIn), recOut: sum(m => m.recOut), card: sum(m => m.card), estimate: sum(m => m.estimate),
     });
   }
   return out;

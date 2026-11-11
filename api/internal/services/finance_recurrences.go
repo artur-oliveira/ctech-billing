@@ -319,6 +319,15 @@ type ProjectionMonth struct {
 	// of the projection needs them apart, and the net alone cannot give them back.
 	VirtualReceivable billing.Cents
 	VirtualPayable    billing.Cents
+	// CardPayable is the part of Payable that is card statements (open and
+	// future); VirtualCardPayable is the part of VirtualPayable that is card
+	// recurrences. Both are subsets: Payable and VirtualPayable keep their totals.
+	CardPayable        billing.Cents
+	VirtualCardPayable billing.Cents
+	// CardEstimate is what the cards will probably take beyond everything above:
+	// their usual unplanned spending (see cardBaseline). It is an estimate, in no
+	// other column, and the screen says so.
+	CardEstimate billing.Cents
 }
 
 // maxProjectionMonths is the long-term view's reach (5 years). Cost grows with
@@ -402,9 +411,11 @@ func (j *FinanceJobs) Project(ctx context.Context, sp space.ResolvedSpace, today
 		return Projection{}, err
 	}
 	cardsEnd := first.Add(months - 1).Last()
-	if err := j.projectCards(ctx, sp, cards, cardsEnd, func(due brcal.Date, amount billing.Cents) {
+	if err := j.projectCards(ctx, sp, cards, cardsEnd, func(due brcal.Date, total, estimate billing.Cents) {
 		if i, ok := slot(due); ok {
-			window[i].Payable += amount
+			window[i].Payable += total
+			window[i].CardPayable += total
+			window[i].CardEstimate += estimate
 		}
 	}); err != nil {
 		return Projection{}, err
@@ -450,6 +461,7 @@ func (j *FinanceJobs) Project(ctx context.Context, sp space.ResolvedSpace, today
 					if i, ok := slot(finance.DueDate(inst.Statement, card.ClosingDay, card.DueDay)); ok {
 						window[i].Virtual -= inst.Amount
 						window[i].VirtualPayable += inst.Amount
+						window[i].VirtualCardPayable += inst.Amount
 					}
 				}
 			}
@@ -487,6 +499,7 @@ func (j *FinanceJobs) Project(ctx context.Context, sp space.ResolvedSpace, today
 				if i, ok := slot(finance.DueDate(installment.Statement, card.ClosingDay, card.DueDay)); ok {
 					window[i].Virtual -= installment.Amount
 					window[i].VirtualPayable += installment.Amount
+					window[i].VirtualCardPayable += installment.Amount
 				}
 			}
 			continue

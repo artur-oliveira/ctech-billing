@@ -649,6 +649,12 @@ type projectionMonthDTO struct {
 	// >= 0), so a client can show money in and money out separately.
 	VirtualReceivable billing.Cents `json:"virtual_receivable"`
 	VirtualPayable    billing.Cents `json:"virtual_payable"`
+	// CardPayable and VirtualCardPayable are the card parts of Payable and
+	// VirtualPayable (subsets); CardEstimate is the estimated unplanned card
+	// spending, in no other column.
+	CardPayable        billing.Cents `json:"card_payable"`
+	VirtualCardPayable billing.Cents `json:"virtual_card_payable"`
+	CardEstimate       billing.Cents `json:"card_estimate"`
 }
 
 func (h *financeHandlers) projection(c fiber.Ctx) error {
@@ -662,7 +668,7 @@ func (h *financeHandlers) projection(c fiber.Ctx) error {
 	}
 	out := listResponse[projectionMonthDTO]{Data: make([]projectionMonthDTO, 0, len(p.Months))}
 	for _, m := range p.Months {
-		out.Data = append(out.Data, projectionMonthDTO{Month: m.Month.String(), Receivable: m.Receivable, Payable: m.Payable, Virtual: m.Virtual, VirtualReceivable: m.VirtualReceivable, VirtualPayable: m.VirtualPayable})
+		out.Data = append(out.Data, projectionMonthDTO{Month: m.Month.String(), Receivable: m.Receivable, Payable: m.Payable, Virtual: m.Virtual, VirtualReceivable: m.VirtualReceivable, VirtualPayable: m.VirtualPayable, CardPayable: m.CardPayable, VirtualCardPayable: m.VirtualCardPayable, CardEstimate: m.CardEstimate})
 	}
 	return c.JSON(out)
 }

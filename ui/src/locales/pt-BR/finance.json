@@ -326,13 +326,20 @@
     "legendNet": "Resultado",
     "flowChartLabel_one": "Entradas e saídas previstas do próximo mês",
     "flowChartLabel_other": "Entradas e saídas previstas dos próximos {{count}} meses",
-    "flowTitle": "{{month}}: entradas {{inflow}}, saídas {{outflow}}, resultado {{net}} (recorrências: entradas {{recIn}}, saídas {{recOut}})",
+    "flowTitle": "{{month}}: entradas {{inflow}}, saídas {{outflow}}, resultado {{net}} (recorrências: entradas {{recIn}}, saídas {{recOut}}; cartão {{card}}, estimativa de cartão {{estimate}})",
     "future": "Quanto vou ter",
     "futureEnd": "Saldo previsto ao fim de {{month}}",
     "today": "Hoje",
     "futureLater": "Em {{month}}",
     "lowerLabel": "Ver",
-    "categoryNote": "Em {{month}}: o que já aconteceu e o que as recorrências ainda vão lançar."
+    "categoryNote": "Em {{month}}: o que já aconteceu e o que as recorrências ainda vão lançar.",
+    "ofCard": "{{amount}} no cartão",
+    "ofEstimate": "{{amount}} de estimativa de cartão",
+    "legendCard": "Cartão",
+    "legendOther": "Outras saídas",
+    "legendEstimate": "Estimativa de cartão",
+    "cardEstimate": "Estimativa de cartão",
+    "estimateNote": "A estimativa de cartão é a média das últimas 3 faturas fechadas, só compras avulsas (sem parcelas nem recorrências), menos o que já está na fatura. Entra no resultado e no saldo."
   },
   "reports": {
     "line": "Linha",

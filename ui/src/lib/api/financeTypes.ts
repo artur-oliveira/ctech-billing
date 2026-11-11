@@ -122,6 +122,11 @@ export interface ProjectionMonth {
   /** The two sides of `virtual`, both >= 0. Absent on an older API: derive them from the sign of `virtual`. */
   virtual_receivable?: Cents
   virtual_payable?: Cents
+  /** The card part of `payable` (open and future statements) and of `virtual_payable` (card recurrences): subsets, absent on an older API. */
+  card_payable?: Cents
+  virtual_card_payable?: Cents
+  /** What the cards will probably take beyond everything else (their usual unplanned spending), in no other column. Absent on an older API. */
+  card_estimate?: Cents
 }
 
 export interface Account {
