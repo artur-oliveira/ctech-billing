@@ -19,6 +19,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 
+	"gopkg.aoctech.app/api-commons/webhooks"
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
 	"gopkg.aoctech.app/billing/api/internal/repositories"
 	"gopkg.aoctech.app/billing/api/internal/services"
@@ -224,7 +225,7 @@ func TestTheTestCallSendsAPingThroughNormalDelivery(t *testing.T) {
 		d.payload.Data.Object != "webhook_endpoint" || d.payload.Data.ID != target.ID {
 		t.Fatalf("payload = %+v", d.payload)
 	}
-	if d.signature != "v1="+services.Sign(target.Secret, d.timestamp, d.body) {
+	if d.signature != "v1="+webhooks.Sign(target.Secret, d.timestamp, d.body) {
 		t.Fatal("the ping is not signed with the endpoint's secret")
 	}
 }
@@ -262,7 +263,7 @@ func TestADisabledEndpointRefusesTheTest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	full.FailureRun = billing.MaxFailureRun - 1
+	full.FailureRun = webhooks.MaxFailureRun - 1
 	if err := repo.RecordEndpointHealth(ctxT(t), full, false, "HTTP 500", now()); err != nil {
 		t.Fatal(err)
 	}

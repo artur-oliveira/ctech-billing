@@ -177,6 +177,15 @@ Three properties, each of which is the reason for a piece of the design:
   the API with its own credential — billing's own posture toward wallet's
   notify-back, one layer on. A misconfigured URL leaks an id, not a bill.
 
+**The delivery engine is shared.** Signing (`X-Billing-Signature`, HMAC over
+`timestamp.body`), the registration challenge, the SSRF-guarded client, the
+retry policy (backoff, 8 attempts, an endpoint disabled after 12 failures in a
+row) and the attempt loop live in `ctech-go-common/webhooks`; ctech-dfe uses the
+same package. What stays here is the routing (fan-out by owner key and event
+filter) and the storage: `services/webhook_store.go` maps the engine's `Store`
+onto `WebhookRepository`, whose layout did not change. Do not copy a local
+signer, verifier or guard.
+
 ## 7. Dunning
 
 **Not charge retry.** On a card rail dunning means trying the charge again; PIX

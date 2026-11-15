@@ -6,7 +6,6 @@ import (
 	"net/url"
 	"slices"
 	"strings"
-	"time"
 )
 
 // Outbound webhooks: how a consuming product learns that something happened
@@ -39,14 +38,6 @@ const (
 // delivery path to one endpoint, whatever that endpoint's event filter says.
 // It is not in WebhookEventTypes: nobody subscribes to it.
 const EventPing EventType = "ping"
-
-// MaxFailureRun is how many consecutive failures disable an endpoint.
-//
-// It exists because an endpoint that has been answering 404 for a week is not a
-// transient failure, and retrying it forever turns the delivery job's backlog
-// into a permanent queue of things that will never succeed — which is how the
-// one delivery that *would* have worked waits behind them.
-const MaxFailureRun = 12
 
 // WebhookEndpoint is one destination.
 //
@@ -237,14 +228,6 @@ const (
 	DeliveryFailed DeliveryStatus = "failed"
 )
 
-// MaxDeliveryAttempts is where one event stops being retried.
-//
-// Eight attempts on the backoff below spans roughly two days, which is the
-// window in which a consumer's outage is plausibly fixed. Beyond that the
-// consumer has a gap they must reconcile from the API, and pretending otherwise
-// by retrying for a week only delays their discovering it.
-const MaxDeliveryAttempts = 8
-
 // Delivery is one event's journey to one endpoint.
 //
 // One row per pair, not per event: two endpoints subscribed to the same event
@@ -283,22 +266,4 @@ type DeliveryAttempt struct {
 	// Response is the first bytes of what the endpoint answered, to tell a 401
 	// from a gateway's HTML page without a debugger. Never the request.
 	Response string `dynamodbav:"response,omitempty"   json:"response,omitempty"`
-}
-
-// Backoff is how long to wait before attempt n (1-based).
-//
-// Exponential from 30 seconds, capped at 12 hours. The cap is what keeps the
-// tail of the schedule readable: without it attempt 8 lands eleven days out,
-// long after anybody would have investigated, and the row sits in the index
-// looking like work that is about to happen.
-func Backoff(attempt int) time.Duration {
-	const (
-		base = 30 * time.Second
-		cap_ = 12 * time.Hour
-	)
-	if attempt < 1 {
-		attempt = 1
-	}
-	d := base << min(attempt-1, 12)
-	return min(d, cap_)
 }

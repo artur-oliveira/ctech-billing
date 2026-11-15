@@ -8,6 +8,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 
+	"gopkg.aoctech.app/api-commons/webhooks"
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
 	"gopkg.aoctech.app/billing/api/internal/domain/id"
 	"gopkg.aoctech.app/billing/api/internal/limits"
@@ -111,7 +112,7 @@ func (h *consoleHandlers) createWebhook(c fiber.Ctx) error {
 	now := h.now()
 	e := &billing.WebhookEndpoint{
 		ID: id.NewWithPrefix(id.PrefixWebhookEndpoint), OrganizationID: t.OrganizationID, Livemode: t.Livemode,
-		URL: req.URL, Secret: billing.NewWebhookSecret(), Events: events, Status: billing.EndpointActive,
+		URL: req.URL, Secret: webhooks.NewSecret(), Events: events, Status: billing.EndpointActive,
 		AddedBy: me(c), AddedAt: now.UTC().Format(time.RFC3339),
 	}
 	err := h.hooks.AddEndpoint(c.Context(), e, limits.MaxWebhookEndpoints, actorOfUser(c), middleware.GetRequestID(c), now)
@@ -160,7 +161,7 @@ func (h *consoleHandlers) rotateWebhookSecret(c fiber.Ctx) error {
 	if e == nil {
 		return sent
 	}
-	secret := billing.NewWebhookSecret()
+	secret := webhooks.NewSecret()
 	if err := h.hooks.RotateEndpointSecret(c.Context(), e, secret, actorOfUser(c), middleware.GetRequestID(c), h.now()); err != nil {
 		return fail(c, err)
 	}

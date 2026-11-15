@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"gopkg.aoctech.app/api-commons/webhooks"
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
 	"gopkg.aoctech.app/billing/api/internal/repositories"
 )
@@ -45,7 +46,7 @@ func TestADisabledEndpointNeverBlocksTheQueue(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	full.FailureRun = billing.MaxFailureRun - 1
+	full.FailureRun = webhooks.MaxFailureRun - 1
 	if err := repo.RecordEndpointHealth(ctx, full, false, "HTTP 500", later); err != nil {
 		t.Fatal(err)
 	}

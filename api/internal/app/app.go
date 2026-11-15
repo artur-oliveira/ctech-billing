@@ -24,6 +24,7 @@ import (
 	"gopkg.aoctech.app/api-commons/deadline"
 	"gopkg.aoctech.app/api-commons/oauthclients"
 	"gopkg.aoctech.app/api-commons/ratelimit"
+	"gopkg.aoctech.app/api-commons/webhooks"
 
 	"gopkg.aoctech.app/billing/api/internal/accountclient"
 	v1 "gopkg.aoctech.app/billing/api/internal/api/v1"
@@ -90,7 +91,7 @@ func Build(ctx context.Context, cfg *config.Config, clock func() time.Time, opts
 	for _, apply := range opts {
 		apply(&o)
 	}
-	var verifier v1.WebhookVerifier = services.NewWebhookVerifier()
+	var verifier v1.WebhookVerifier = webhooks.NewVerifier("ctech-billing-webhooks/1")
 	if o.webhookVerifier != nil {
 		verifier = o.webhookVerifier
 	}

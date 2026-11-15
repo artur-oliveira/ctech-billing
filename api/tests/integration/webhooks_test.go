@@ -237,7 +237,7 @@ func TestEventsReachOnlyTheirOwnService(t *testing.T) {
 }
 
 // TestDeliveryIsSignedOverTimestampAndBody pins the wire contract. A consumer in
-// this family verifies with services.Sign, and a change here that does not fail
+// this family verifies with webhooks.Sign, and a change here that does not fail
 // this test is a change that silently stops every consumer from verifying.
 func TestDeliveryIsSignedOverTimestampAndBody(t *testing.T) {
 	org := newOrg(t, true)
