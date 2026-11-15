@@ -121,5 +121,5 @@ golang.org/x/tools v0.52.0 h1:ryxg4U63oaUYk7uOLTF37n43f4qgtGvqV4Ioit1BaEs=
 golang.org/x/tools v0.52.0/go.mod h1:ItcP5UNaVGG+Yc4eIYmaFLNJ4soEopkx5Y2d4lcEurs=
 google.golang.org/protobuf v1.36.12 h1:pJOKDDOyeXErUroCihFAd5LQuwXBSpVnKGrj5o/fwxc=
 google.golang.org/protobuf v1.36.12/go.mod h1:HTf+CrKn2C3g5S8VImy6tdcUvCska2kB7j23XfzDpco=
-gopkg.aoctech.app/api-commons v1.41.2 h1:MIEnzFpP18d268sIQ5OuGLgS6uh5WqxG1hqTnmfogQQ=
-gopkg.aoctech.app/api-commons v1.41.2/go.mod h1:iPhFf3/Diz/NgK7zdZGQ8Q6/waI/aGj9bOUxRoeA6VI=
+gopkg.aoctech.app/api-commons v1.42.1 h1:VToGG7n97oS2nc5tryb0b6hmmw6ow5nmCbkGd/FEFm8=
+gopkg.aoctech.app/api-commons v1.42.1/go.mod h1:iPhFf3/Diz/NgK7zdZGQ8Q6/waI/aGj9bOUxRoeA6VI=

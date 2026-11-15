@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Ctech family standards gate. Canonical copy: ctech-skills/scripts/standards-check.sh.
 # Run from a repo root. Exempt one line with a trailing `standards:allow <reason>`.
-# Env: FAMILY_GOCOMMON_MINOR (default v1.41).
+# Env: FAMILY_GOCOMMON_MINOR (default v1.42).
 set -uo pipefail
-FAMILY="${FAMILY_GOCOMMON_MINOR:-v1.41}"
+FAMILY="${FAMILY_GOCOMMON_MINOR:-v1.42}"
 fail=0
 # STANDARDS_SKIP="apierror,Scan": known debt, comma list of words matched in a rule message; reported as warnings.
 bad() {
