@@ -41,3 +41,7 @@ An event looks like:
 No new index. Pointer rows beside the event and the delivery, in the same transactions: `ENTITY#<object>#<id>#<event>` (an event is reachable from its object, and from its subscription), `ENDPOINT#<endpoint>#<event>` (written when the event is fanned out) and `ATTEMPT#<event>#<endpoint>#NN` (one per try, idempotent on the number). They expire with the event (90 days).
 
 Events and deliveries from before this existed get their pointers from `api/cmd/backfill-event-lookups/run.sh <env>` (dry run) and `... -apply` (it Scans the webhook table, which the service role may not do, so it runs with the operator's AWS profile). Idempotent.
+
+## Where the delivery code lives
+
+Attempts, backoff, the 12-failure disable and the signature are `ctech-go-common/webhooks` (see ARCHITECTURE.md § 6); billing keeps the fan-out and `services/webhook_store.go`. A replay of a delivery is `WebhookRepository.RequeueDelivery` plus an attempt through that engine; no console route uses it yet.

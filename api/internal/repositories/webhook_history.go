@@ -11,6 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 
+	"gopkg.aoctech.app/api-commons/webhooks"
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
 )
 
@@ -198,7 +199,7 @@ func (r *WebhookRepository) RecordAttempt(ctx context.Context, d *billing.Delive
 func (r *WebhookRepository) Attempts(ctx context.Context, organizationID string, livemode bool, eventID, endpointID string) ([]billing.DeliveryAttempt, error) {
 	res, err := r.base.Query(ctx, QueryOpts{
 		PK: TenantPK(organizationID, livemode), SKPrefix: AttemptPrefix(eventID, endpointID),
-		ScanIndexForward: true, Limit: billing.MaxDeliveryAttempts + 2,
+		ScanIndexForward: true, Limit: webhooks.MaxDeliveryAttempts + 2,
 	})
 	if err != nil {
 		return nil, err

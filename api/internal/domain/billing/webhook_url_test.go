@@ -2,9 +2,9 @@ package billing
 
 import (
 	"errors"
-	"net/netip"
-	"strings"
 	"testing"
+
+	"gopkg.aoctech.app/api-commons/webhooks"
 )
 
 func TestCheckWebhookURL(t *testing.T) {
@@ -41,27 +41,8 @@ func TestCheckWebhookURL(t *testing.T) {
 	}
 }
 
-func TestPublicAddr(t *testing.T) {
-	for addr, want := range map[string]bool{
-		"8.8.8.8": true, "2001:4860:4860::8888": true,
-		"127.0.0.1": false, "10.1.2.3": false, "172.16.0.1": false, "192.168.1.1": false,
-		"169.254.169.254": false, "100.64.0.1": false, "0.0.0.0": false, "::1": false,
-		"fe80::1": false, "fc00::1": false, "224.0.0.1": false, "::ffff:10.0.0.1": false,
-		// Final review: special-purpose ranges that are global unicast to Go.
-		"0.1.2.3": false, "192.0.0.8": false, "198.18.0.1": false, "240.0.0.1": false,
-		"64:ff9b::a00:1": false, "64:ff9b:1::1": false, "2002:a00:1::1": false, "2001::1": false,
-	} {
-		if got := PublicAddr(netip.MustParseAddr(addr)); got != want {
-			t.Errorf("PublicAddr(%s) = %v, want %v", addr, got, want)
-		}
-	}
-}
-
-func TestNewWebhookSecretIsLongUniqueAndValid(t *testing.T) {
-	a, b := NewWebhookSecret(), NewWebhookSecret()
-	if a == b || !strings.HasPrefix(a, "whsec_") || len(a) != len("whsec_")+64 {
-		t.Fatalf("secrets %q %q", a, b)
-	}
+func TestANewSecretValidatesAsAnEndpointSecret(t *testing.T) {
+	a := webhooks.NewSecret()
 	e := WebhookEndpoint{ID: "whe_1", OrganizationID: "org_1", URL: "https://example.com", Secret: a}
 	if err := e.Validate(); err != nil {
 		t.Fatal(err)

@@ -7,6 +7,7 @@ import (
 	"sync"
 	"testing"
 
+	"gopkg.aoctech.app/api-commons/webhooks"
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
 	"gopkg.aoctech.app/billing/api/internal/domain/id"
 	"gopkg.aoctech.app/billing/api/internal/repositories"
@@ -19,7 +20,7 @@ import (
 func merchantEndpoint(org *billing.Organization) *billing.WebhookEndpoint {
 	return &billing.WebhookEndpoint{
 		ID: id.NewWithPrefix(id.PrefixWebhookEndpoint), OrganizationID: org.ID, Livemode: org.Livemode,
-		URL: "https://hooks.invalid/billing", Secret: billing.NewWebhookSecret(),
+		URL: "https://hooks.invalid/billing", Secret: webhooks.NewSecret(),
 		Status: billing.EndpointActive, AddedBy: "usr_1", AddedAt: "2026-10-10T12:00:00Z",
 	}
 }
@@ -31,7 +32,7 @@ func TestAddCountsEveryEndpointOfTheTenantAndMode(t *testing.T) {
 	// A provisioned one counts too (scope decision 8).
 	if err := repo.CreateEndpoint(ctx, &billing.WebhookEndpoint{
 		ID: "whe_" + id.New(), OrganizationID: org.ID, Livemode: true,
-		URL: "https://dfe.invalid/hook", Secret: billing.NewWebhookSecret(),
+		URL: "https://dfe.invalid/hook", Secret: webhooks.NewSecret(),
 	}, now()); err != nil {
 		t.Fatal(err)
 	}
@@ -109,7 +110,7 @@ func TestRotateReplacesTheSealedSecret(t *testing.T) {
 	if err := repo.AddEndpoint(ctx, e, 5, "user:usr_1", "req", now()); err != nil {
 		t.Fatal(err)
 	}
-	next := billing.NewWebhookSecret()
+	next := webhooks.NewSecret()
 	if err := repo.RotateEndpointSecret(ctx, e, next, "user:usr_1", "req", now()); err != nil {
 		t.Fatal(err)
 	}
@@ -135,4 +136,50 @@ func TestAPingIsQueuedForItsEndpoint(t *testing.T) {
 	if err != nil || got.Type != billing.EventPing || got.EndpointID != e.ID || got.EntityID != e.ID {
 		t.Fatalf("event = %+v, %v", got, err)
 	}
+}
+
+func TestRequeueDeliveryMakesAFailedDeliveryDueNow(t *testing.T) {
+	ctx := ctxT(t)
+	repo := repositories.NewWebhookRepository(testDB, testCfg)
+	org := newOrg(t, true)
+	e := merchantEndpoint(org)
+	if err := repo.AddEndpoint(ctx, e, 5, "user:usr_1", "req", now()); err != nil {
+		t.Fatal(err)
+	}
+	ev, err := repo.EmitPing(ctx, e, now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	made, err := repo.FanOutRows(ctx, ev, []billing.WebhookEndpoint{*e}, now())
+	if err != nil || len(made) != 1 {
+		t.Fatalf("fan-out: %v %v", made, err)
+	}
+	d := made[0]
+	if err := repo.MarkAttemptFailed(ctx, &d, 500, "boom", now()); err != nil {
+		t.Fatal(err)
+	}
+	d.Attempts++
+	if err := repo.CloseDelivery(ctx, &d, "gave up", now()); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.RequeueDelivery(ctx, &d, now()); err != nil {
+		t.Fatal(err)
+	}
+	got, err := repo.GetDelivery(ctx, d.OrganizationID, d.Livemode, d.EventID, d.EndpointID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != billing.DeliveryPending || got.Attempts != 1 {
+		t.Fatalf("delivery = %+v, want pending with attempts kept", got)
+	}
+	due, err := repo.DueDeliveries(ctx, d.Livemode, 10_000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, x := range due {
+		if x.Delivery.EventID == d.EventID && x.Delivery.EndpointID == d.EndpointID {
+			return
+		}
+	}
+	t.Fatal("the requeued delivery is not in the due queue")
 }

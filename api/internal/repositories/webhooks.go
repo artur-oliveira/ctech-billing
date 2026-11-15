@@ -11,6 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 
+	"gopkg.aoctech.app/api-commons/webhooks"
 	"gopkg.aoctech.app/billing/api/internal/config"
 	"gopkg.aoctech.app/billing/api/internal/crypto"
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
@@ -168,7 +169,7 @@ func (r *WebhookRepository) RecordEndpointHealth(ctx context.Context, e *billing
 		updates["last_delivery_ok"] = false
 		updates["last_delivery_at"] = stamp
 		updates["last_delivery_detail"] = truncate(detail, 200)
-		if run >= billing.MaxFailureRun {
+		if run >= webhooks.MaxFailureRun {
 			updates["status"] = string(billing.EndpointDisabled)
 			updates["disabled_at"] = now.UTC().Format(time.RFC3339Nano)
 		}
@@ -420,13 +421,13 @@ func (r *WebhookRepository) MarkAttemptFailed(ctx context.Context, d *billing.De
 		updates["last_status_code"] = statusCode
 	}
 
-	if attempts >= billing.MaxDeliveryAttempts {
+	if attempts >= webhooks.MaxDeliveryAttempts {
 		updates["status"] = string(billing.DeliveryFailed)
 		updates["schedule_pk"] = nil
 		updates["schedule_sk"] = nil
 		updates["next_attempt_at"] = nil
 	} else {
-		next := now.Add(billing.Backoff(attempts))
+		next := now.Add(webhooks.Backoff(attempts))
 		updates["next_attempt_at"] = next.UTC().Format(time.RFC3339Nano)
 		updates["schedule_pk"] = WebhookQueuePK(d.Livemode, JobWebhookDelivery)
 		// Rewriting the sort key is what moves the row down the queue. Without it
@@ -456,6 +457,25 @@ func (r *WebhookRepository) DeferDelivery(ctx context.Context, d *billing.Delive
 			"next_attempt_at": until.UTC().Format(time.RFC3339Nano),
 			"schedule_pk":     WebhookQueuePK(d.Livemode, JobWebhookDelivery),
 			"schedule_sk":     WebhookQueueSK(until, d.EventID+"#"+d.EndpointID),
+			"updated_at":      now.UTC().Format(time.RFC3339Nano),
+		},
+	)
+	return err
+}
+
+// RequeueDelivery makes a delivery pending and due now, keeping its attempt
+// count and log: the replay of a delivery that failed, was closed or was
+// delivered. It re-enters the shared queue at the head, like a fresh delivery.
+func (r *WebhookRepository) RequeueDelivery(ctx context.Context, d *billing.Delivery, now time.Time) error {
+	_, err := r.base.UpdateItem(ctx,
+		TenantPK(d.OrganizationID, d.Livemode),
+		new(DeliverySK(d.EventID, d.EndpointID)),
+		map[string]any{
+			"status":          string(billing.DeliveryPending),
+			"next_attempt_at": now.UTC().Format(time.RFC3339Nano),
+			"schedule_pk":     WebhookQueuePK(d.Livemode, JobWebhookDelivery),
+			"schedule_sk":     WebhookQueueSK(now, d.EventID+"#"+d.EndpointID),
+			"delivered_at":    nil,
 			"updated_at":      now.UTC().Format(time.RFC3339Nano),
 		},
 	)
