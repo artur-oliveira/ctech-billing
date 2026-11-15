@@ -34,7 +34,7 @@ require (
 	github.com/valkey-io/valkey-go v1.0.79
 	github.com/valyala/fasthttp v1.78.0
 	google.golang.org/protobuf v1.36.12
-	gopkg.aoctech.app/api-commons v1.41.2
+	gopkg.aoctech.app/api-commons v1.42.1
 )
 
 require (
