@@ -208,6 +208,10 @@ func Build(ctx context.Context, cfg *config.Config, clock func() time.Time, opts
 	if err != nil {
 		return nil, err
 	}
+	pushDeps, err := buildPush(ctx, cfg, db)
+	if err != nil {
+		return nil, err
+	}
 	if o.byokOut != nil {
 		*o.byokOut = byokConns
 	}
@@ -259,6 +263,7 @@ func Build(ctx context.Context, cfg *config.Config, clock func() time.Time, opts
 		Realtime:          realtimeGateway,
 		RealtimeChanges:   realtimeChanges,
 		Payouts:           payouts,
+		Push:              pushDeps,
 		ByokConnections:   byokConns,
 		ByokStatement:     byokStatement,
 		ChargeGates:       gates,
