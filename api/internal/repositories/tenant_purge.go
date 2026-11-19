@@ -37,6 +37,7 @@ var tenantPurgeNotTenantScoped = map[string]string{
 	TableRecurrences:        "finance space",
 	TableCards:              "finance space",
 	TableImports:            "finance space",
+	TablePush:               "a person's browser subscriptions and reminder choices (USER#{sub}); belong to the person, erased with the account (pendingpush.Purger), not to a billing tenant",
 }
 
 // TenantPurger erases a merchant tenant's data (spec T4). It deletes what lies

@@ -158,6 +158,30 @@ resource "aws_iam_role_policy" "alerts_publish" {
   policy = data.aws_iam_policy_document.alerts_publish.json
 }
 
+# Web Push: the API reads the VAPID public key at start (a plain String an operator writes; absent leaves push off) and
+# invokes the push-sender Lambda for the test route. It never reads the private key.
+resource "aws_iam_role_policy" "push" {
+  name = "${local.name}-push"
+  role = aws_iam_role.billing.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid      = "VapidPublicKey"
+        Effect   = "Allow"
+        Action   = ["ssm:GetParameter"]
+        Resource = [local.push_param_arn["vapid-public-key"]]
+      },
+      {
+        Sid      = "InvokeTheSender"
+        Effect   = "Allow"
+        Action   = ["lambda:InvokeFunction"]
+        Resource = [aws_lambda_function.push_sender.arn]
+      },
+    ]
+  })
+}
+
 resource "aws_iam_role_policy" "ssm_read" {
   name   = "${local.name}-ssm"
   role   = aws_iam_role.billing.id

@@ -29,6 +29,7 @@ var notSpaceScoped = map[string]string{
 	TableTenantClosures: "closure requests and flags of a merchant tenant; not a finance space",
 	TableAudit:          "purged under S by PurgeSpace, outside financeTables; a surviving space's audit keeps ADR 0009's five-year TTL",
 	TableIdempotency:    "purged under S by PurgeSpace, outside financeTables",
+	TablePush:           "per person (USER#{sub}), not per space: a person's browser subscriptions and reminder choices, erased with the account by pendingpush.Purger from the Eraser",
 }
 
 func TestEveryTableIsClassifiedForThePurge(t *testing.T) {

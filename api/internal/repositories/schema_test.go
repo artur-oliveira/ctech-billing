@@ -36,6 +36,7 @@ var allTables = []string{
 	TableByok,
 	TableErasureState,
 	TableTenantClosures,
+	TablePush,
 }
 
 func TestEveryTableConstantHasASchema(t *testing.T) {
@@ -102,7 +103,7 @@ func TestNoAttributeIsDeclaredWithoutAKeyUsingIt(t *testing.T) {
 // for "period-index" creates an index nothing reads, and the queries fall back
 // to nothing at all — a runtime error, after a deploy.
 func TestIndexNamesAreTheOnesTheQueriesUse(t *testing.T) {
-	known := []string{IndexPeriod, IndexSchedule, IndexLookup, IndexOpen, IndexCustomer}
+	known := []string{IndexPeriod, IndexSchedule, IndexLookup, IndexOpen, IndexCustomer, IndexPushEndpoint, IndexPushSlot}
 	seen := map[string]bool{}
 	for name, s := range Schemas() {
 		for _, idx := range s.Indexes {

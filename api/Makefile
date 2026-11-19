@@ -67,6 +67,13 @@ build-lambdas:
 	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -tags lambda.norpc -trimpath -ldflags="-s -w" \
 		-o $(BUILD_DIR)/lambda/byok-webhook/bootstrap ./cmd/byok-webhook
 	cd $(BUILD_DIR)/lambda/byok-webhook && zip -q -j ../byok-webhook.zip bootstrap
+	# Web Push (docs/specs/2026-11-18-pending-reminder-web-push.md): the zip name is the function suffix, {env}-ctech-billing-<name>.
+	for fn in push-tick push-sender; do \
+		mkdir -p $(BUILD_DIR)/lambda/$$fn && \
+		CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -tags lambda.norpc -trimpath -ldflags="-s -w" \
+			-o $(BUILD_DIR)/lambda/$$fn/bootstrap ./cmd/$$fn && \
+		(cd $(BUILD_DIR)/lambda/$$fn && zip -q -j ../$$fn.zip bootstrap) || exit 1; \
+	done
 
 # The release as CI ships it (stripped, trimmed), zipped and held to the size
 # budget a 1 GB Alpine root can deploy (scripts/release-size.sh).

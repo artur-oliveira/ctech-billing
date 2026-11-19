@@ -253,5 +253,14 @@
     "indexes": [
       { "name": "schedule-index", "hash_key": "schedule_pk", "range_key": "schedule_sk" }
     ]
+  },
+  "push": {
+    "hash_key": "pk",
+    "range_key": "sk",
+    "attributes": { "pk": "S", "sk": "S", "endpoint_id": "S", "slot_key": "S", "kind_sub": "S" },
+    "indexes": [
+      { "name": "endpoint-index", "hash_key": "endpoint_id", "range_key": "pk" },
+      { "name": "slot-index", "hash_key": "slot_key", "range_key": "kind_sub" }
+    ]
   }
 }

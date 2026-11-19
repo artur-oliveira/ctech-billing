@@ -162,12 +162,14 @@ locals {
     ssm_field_encryption_key      = local.ssm_paths.field_encryption_key
     ssm_email_from                = local.ssm_paths.email_from
     ssm_applications_notify_email = local.ssm_paths.applications_notify_email
+    ssm_push_vapid_public_key     = "${local.push_ssm_prefix}/vapid-public-key"
 
     alerts_topic_arn = local.alerts_topic_arn
 
     invoice_documents_bucket = aws_s3_bucket.documents.bucket
 
     byok_outbound_function = aws_lambda_function.byok_outbound.function_name
+    push_sender_function   = aws_lambda_function.push_sender.function_name
     byok_hooks_host        = local.byok_hooks_domain
   }
 
