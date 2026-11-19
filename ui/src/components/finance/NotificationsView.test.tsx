@@ -1,6 +1,6 @@
 import "@testing-library/jest-dom/vitest";
 
-import {fireEvent, render, screen} from "@testing-library/react";
+import {render, screen} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {QueryClient, QueryClientProvider} from "@tanstack/react-query";
 import type {ReactNode} from "react";
@@ -110,19 +110,33 @@ describe("NotificationsView", () => {
       expect(api.putPushPreferences).not.toHaveBeenCalled();
     });
 
-    it("the time input moves in 15-minute steps, matching the server slots", async () => {
+    // The time is a Select of the server's own 15-minute slots (00:00 to 23:45), not a free-typing native time input.
+    it("offers the 96 slots of the day, every 15 minutes, as the only choices", async () => {
       render(<NotificationsView/>, {wrapper});
       await userEvent.click(await screen.findByRole("switch", {name: "Lembrete de pendências"}));
-      expect(screen.getByLabelText("Horário do lembrete")).toHaveAttribute("step", "900");
+      expect(screen.queryByLabelText("Horário do lembrete", {selector: "input[type=time]"})).not.toBeInTheDocument();
+      await userEvent.click(screen.getByRole("combobox", {name: "Horário do lembrete"}));
+      const options = await screen.findAllByRole("option");
+      expect(options).toHaveLength(96);
+      expect(options[0]).toHaveTextContent("00:00");
+      expect(options[1]).toHaveTextContent("00:15");
+      expect(options[95]).toHaveTextContent("23:45");
     });
 
     it("saves the chosen time", async () => {
       api.putPushPreferences.mockResolvedValue({pending_reminder: {enabled: true, time: "08:00"}});
       render(<NotificationsView/>, {wrapper});
       await userEvent.click(await screen.findByRole("switch", {name: "Lembrete de pendências"}));
-      fireEvent.change(screen.getByLabelText("Horário do lembrete"), {target: {value: "08:00"}});
+      await userEvent.click(screen.getByRole("combobox", {name: "Horário do lembrete"}));
+      await userEvent.click(await screen.findByRole("option", {name: "08:00"}));
       await userEvent.click(screen.getByRole("button", {name: "Salvar lembrete"}));
       expect(api.putPushPreferences).toHaveBeenCalledWith({pending_reminder: {enabled: true, time: "08:00"}});
+    });
+
+    it("shows the time the server holds", async () => {
+      api.getPushPreferences.mockResolvedValue({pending_reminder: {enabled: true, time: "20:30"}});
+      render(<NotificationsView/>, {wrapper});
+      expect(await screen.findByRole("combobox", {name: "Horário do lembrete"})).toHaveTextContent("20:30");
     });
 
     it("sends a test push and can turn this device off", async () => {
