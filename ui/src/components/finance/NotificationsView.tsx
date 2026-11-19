@@ -1,6 +1,6 @@
 "use client";
 
-import {Button, Field, Input, PageHeader, Skeleton, Switch} from "@aoctech/ui";
+import {Button, Field, PageHeader, Select, Skeleton, Switch} from "@aoctech/ui";
 import {useMutation, useQuery, useQueryClient} from "@tanstack/react-query";
 import {useState} from "react";
 import {useTranslation} from "react-i18next";
@@ -8,9 +8,16 @@ import {toast} from "sonner";
 
 import {getPushConfig, getPushPreferences, putPushPreferences, pushKeys, sendPushTest, type PushPreferences} from "@/lib/api/push";
 import {usePush} from "@/lib/push/PushProvider";
+import {selectCopy} from "@/lib/selectCopy";
 
-/** The server places reminders in 15-minute slots (go-common pushsvc), so the time input moves in 900 s steps. */
-const TIME_STEP_SECONDS = 900;
+/**
+ * The server places reminders in 15-minute slots of the day (go-common pushsvc: 96, "00:00" to "23:45"), so the time is a
+ * choice among exactly those, never a free-typed value the server would round down.
+ */
+const SLOT_OPTIONS = Array.from({length: 96}, (_, i) => {
+  const label = `${String(Math.floor(i / 4)).padStart(2, "0")}:${String((i % 4) * 15).padStart(2, "0")}`;
+  return {value: label, label};
+});
 
 /**
  * Web Push in Finanças: turn notifications on for this device, then choose the daily reminder of items waiting for the
@@ -144,7 +151,7 @@ function ReminderForm({prefs}: {prefs: PushPreferences}) {
       </div>
       {on && (
         <Field label={t("finance.notifications.timeLabel")} hint={t("finance.notifications.timeHint")}>
-          {control => <Input {...control} type="time" step={TIME_STEP_SECONDS} value={time} onChange={event => setTime(event.target.value)}/>}
+          {control => <Select {...selectCopy()} {...control} value={time} onValueChange={setTime} options={SLOT_OPTIONS}/>}
         </Field>
       )}
       {error && <p role="alert" className="text-sm">{error}</p>}
