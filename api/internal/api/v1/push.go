@@ -9,7 +9,6 @@ import (
 
 	"gopkg.aoctech.app/api-commons/problem"
 	"gopkg.aoctech.app/api-commons/pushsvc"
-	"gopkg.aoctech.app/api-commons/validation"
 	"gopkg.aoctech.app/billing/api/internal/middleware"
 	"gopkg.aoctech.app/billing/api/internal/pendingpush"
 )
@@ -54,7 +53,7 @@ func mountPush(router fiber.Router, d *PushDeps) {
 	})
 	g.Put("/preferences", func(c fiber.Ctx) error {
 		var body pendingpush.Preferences
-		if p := validation.BindJSON(c.Body(), &body); p != nil {
+		if p := decodeStrict(c, &body); p != nil {
 			return p.Send(c)
 		}
 		p, err := d.Prefs.Set(c.Context(), userID(c), body)

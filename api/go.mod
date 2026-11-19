@@ -19,10 +19,10 @@ require (
 	github.com/aws/aws-sdk-go-v2/credentials v1.21.0
 	github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue v1.21.21
 	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.74.0
-	github.com/aws/aws-sdk-go-v2/service/lambda v1.117.0
+	github.com/aws/aws-sdk-go-v2/service/lambda v1.112.2
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.114.3
 	github.com/aws/aws-sdk-go-v2/service/sqs v1.53.0
-	github.com/aws/aws-sdk-go-v2/service/ssm v1.83.0
+	github.com/aws/aws-sdk-go-v2/service/ssm v1.79.3
 	github.com/aws/smithy-go v1.28.9
 	github.com/caarlos0/env/v11 v11.4.1
 	github.com/carlos7ags/folio v0.10.1
@@ -34,7 +34,7 @@ require (
 	github.com/valkey-io/valkey-go v1.0.79
 	github.com/valyala/fasthttp v1.78.0
 	google.golang.org/protobuf v1.36.12
-	gopkg.aoctech.app/api-commons v1.44.0
+	gopkg.aoctech.app/api-commons v1.44.2
 )
 
 require (
@@ -55,14 +55,9 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sso v1.39.5 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.44.5 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.52.0 // indirect
-	github.com/gabriel-vasile/mimetype v1.4.16 // indirect
-	github.com/go-playground/locales v0.14.2 // indirect
-	github.com/go-playground/universal-translator v0.18.2 // indirect
-	github.com/go-playground/validator/v10 v10.30.6 // indirect
 	github.com/gofiber/schema v1.9.4 // indirect
 	github.com/gofiber/utils/v2 v2.6.5 // indirect
 	github.com/klauspost/compress v1.20.4 // indirect
-	github.com/leodido/go-urn v1.5.0 // indirect
 	github.com/mattn/go-colorable v0.1.16 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
 	github.com/molecule-man/go-brrr v1.3.1 // indirect
