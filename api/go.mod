@@ -76,5 +76,3 @@ require (
 	golang.org/x/sys v0.50.0 // indirect
 	golang.org/x/text v0.44.0 // indirect
 )
-
-replace gopkg.aoctech.app/api-commons => ../../ctech-go-common
