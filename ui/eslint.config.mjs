@@ -11,6 +11,8 @@ export default defineConfig([
         "out/**",
         "build/**",
         "next-env.d.ts",
+        // The copy of @aoctech/push-client's worker (predev/prebuild), not ours to lint.
+        "public/sw.js",
     ]),
     {
         rules: {

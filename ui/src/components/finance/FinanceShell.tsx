@@ -17,6 +17,7 @@ import {FINANCE_HREF} from "@/lib/finance/href";
 import {currentFinanceSection, FINANCE_SECTIONS} from "@/lib/finance/nav";
 import {useDocumentTitle} from "@/lib/hooks/useDocumentTitle";
 import {rememberProduct} from "@/lib/product";
+import {PushProvider} from "@/lib/push/PushProvider";
 import {RealtimeProvider} from "@/lib/realtime/RealtimeProvider";
 
 /**
@@ -54,6 +55,7 @@ export function FinanceShell({children}: {children: ReactNode}) {
   return (
     // Keyed by person, mode and space: switching any of them closes the socket
     // and opens another with no cursor.
+    <PushProvider>
     <RealtimeProvider surface={{kind: "finance", mode, space}} principal={authenticated ? subject : null}>
     <BillingShell
       view="finance"
@@ -78,5 +80,6 @@ export function FinanceShell({children}: {children: ReactNode}) {
       )}
     </BillingShell>
     </RealtimeProvider>
+    </PushProvider>
   );
 }

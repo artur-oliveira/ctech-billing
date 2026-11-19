@@ -127,14 +127,23 @@ export function AuthProvider({children}: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(() => {
-    window.localStorage.removeItem(NAME_KEY);
-    setAccessToken(null);
-    setAuthenticated(false);
-    setName(null);
-    if (USE_MOCK) return;
-    // Awaited before the redirect: revoke has to land, or the refresh chain
-    // outlives the logout.
-    void endSession();
+    void (async () => {
+      // This device leaves Web Push while the access token still exists (its server row is deleted with it), so a shared
+      // computer stops notifying the person who is leaving. Bounded (2 s) and it never throws. Dynamic import: push/logout
+      // reaches the API client, which this provider feeds.
+      if (!USE_MOCK) {
+        const {removeThisDevicePush} = await import("@/lib/push/logout");
+        await removeThisDevicePush();
+      }
+      window.localStorage.removeItem(NAME_KEY);
+      setAccessToken(null);
+      setAuthenticated(false);
+      setName(null);
+      if (USE_MOCK) return;
+      // Awaited before the redirect: revoke has to land, or the refresh chain
+      // outlives the logout.
+      void endSession();
+    })();
   }, []);
 
   const onCallback = useCallback(

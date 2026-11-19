@@ -82,7 +82,8 @@
       "transfer": "Transferir",
       "account": "Nova conta"
     },
-    "plan": "Plano"
+    "plan": "Plano",
+    "notifications": "Notificações"
   },
   "space": {
     "label": "Espaço",
@@ -755,5 +756,39 @@
     "chooseCategory": "Escolher categoria",
     "resume": "Continuar revisão ({{count}} pendentes)",
     "notThis": "Não é essa"
+  },
+  "notifications": {
+    "title": "Notificações",
+    "description": "Um aviso no celular ou no computador, mesmo com o Finanças fechado.",
+    "loading": "Carregando suas notificações…",
+    "loadError": "Não foi possível carregar as notificações agora.",
+    "retry": "Tentar novamente",
+    "unavailable": "As notificações não estão disponíveis agora.",
+    "checking": "Verificando este dispositivo…",
+    "unsupported": "Este navegador não permite notificações.",
+    "needsInstall": "No iPhone, toque em Compartilhar e em Adicionar à Tela de Início; depois abra o Finanças por lá para ativar as notificações.",
+    "denied": "Você bloqueou as notificações para este site. Libere nas configurações do navegador e volte aqui.",
+    "subscribed": "Ativadas neste dispositivo.",
+    "error": "Não foi possível preparar as notificações. Tente de novo.",
+    "activate": "Ativar neste dispositivo",
+    "activateHint": "O navegador vai pedir a sua permissão.",
+    "activateError": "Não foi possível ativar as notificações agora. Tente novamente.",
+    "install": "Instalar o app",
+    "test": "Enviar teste",
+    "testSent": "Teste enviado. Ele chega em instantes.",
+    "testError": "Não foi possível enviar o teste agora. Tente novamente em um minuto.",
+    "deactivate": "Desativar neste dispositivo",
+    "deactivateError": "Não foi possível desativar agora. Tente novamente.",
+    "loadingPrefs": "Carregando seu lembrete…",
+    "prefsError": "Não foi possível carregar o seu lembrete agora.",
+    "pendingLabel": "Lembrete de pendências",
+    "pendingHint": "Um aviso por dia, no horário que você escolher, só quando houver contas aguardando a sua confirmação.",
+    "timeLabel": "Horário do lembrete",
+    "timeHint": "Horário de Brasília.",
+    "timeRequired": "Escolha o horário do lembrete.",
+    "save": "Salvar lembrete",
+    "saving": "Salvando…",
+    "saved": "Lembrete salvo.",
+    "saveError": "Não foi possível salvar o lembrete agora. Tente novamente."
   }
 }

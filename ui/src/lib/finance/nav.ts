@@ -15,6 +15,8 @@ export const FINANCE_SECTIONS = [
   // Bank connections (BYOK spec 2026-10-11 § 11): an organization's, for
   // whoever may configure its space (owner, admin).
   {href: "/finance/settings/connections", key: "connections", organizationConfigure: true},
+  // Web Push (docs/specs/2026-11-18-pending-reminder-web-push.md): the person's own, in every space.
+  {href: "/finance/settings/notifications", key: "notifications"},
 ] as const;
 
 /** The sections this person sees in this space. */

@@ -29,7 +29,7 @@ export function FinanceNav({canConfigure = false}: {canConfigure?: boolean}) {
   const groups = [
     group(["overview", "inbox", "bills", "statement"]),
     group(["recurrences", "cards", "import"], t("finance.nav.groupLaunch")),
-    group(["reports", "accounts", "plan", "connections"], t("finance.nav.groupManage")),
+    group(["reports", "accounts", "plan", "connections", "notifications"], t("finance.nav.groupManage")),
   ].filter(g => g.items.length > 0);
   return <SidebarNav label={t("finance.nav.label")} groups={groups} renderLink={renderNavLink}/>;
 }
