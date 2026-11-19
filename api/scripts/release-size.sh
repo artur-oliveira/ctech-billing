@@ -9,7 +9,9 @@
 # free; with 128 MB swap and no stale zip (ctech-cdk's deploy script deletes
 # it) that is derived as 137 + 128 + 39 = about 304 MB free.
 # Two releases side by side plus the zip must fit with margin, so the budgets
-# are 140 MB unpacked and 48 MB zipped (the release was 118 MB / 39 MB). A
+# are 140 MB unpacked and 48 MB zipped (the release was 118 MB / 39 MB). Since
+# 2026-11-19 the swap file is 64 MB (terraform/assets/bootstrap-alpine.sh.tftpl),
+# another 64 MB free on the root; the budgets were not raised with it. A
 # release that grows past them fails CI instead of failing the deploy.
 set -euo pipefail
 ZIP="${1:?usage: release-size.sh <release.zip> <unpacked dir>}"

@@ -82,7 +82,8 @@
       "transfer": "Transfer",
       "account": "Account"
     },
-    "plan": "Plan"
+    "plan": "Plan",
+    "notifications": "Notifications"
   },
   "space": {
     "label": "Space",
@@ -755,5 +756,39 @@
     "chooseCategory": "Choose category",
     "resume": "Resume review ({{count}} pending)",
     "notThis": "Not this one"
+  },
+  "notifications": {
+    "title": "Notifications",
+    "description": "A notice on your phone or computer, even with Finanças closed.",
+    "loading": "Loading your notifications…",
+    "loadError": "Could not load the notifications right now.",
+    "retry": "Try again",
+    "unavailable": "Notifications are not available right now.",
+    "checking": "Checking this device…",
+    "unsupported": "This browser does not allow notifications.",
+    "needsInstall": "On iPhone, tap Share and Add to Home Screen; then open Finanças from there to turn notifications on.",
+    "denied": "You blocked notifications for this site. Allow them in the browser settings and come back here.",
+    "subscribed": "Turned on for this device.",
+    "error": "Could not get notifications ready. Try again.",
+    "activate": "Turn on for this device",
+    "activateHint": "The browser will ask for your permission.",
+    "activateError": "Could not turn notifications on right now. Try again.",
+    "install": "Install the app",
+    "test": "Send a test",
+    "testSent": "Test sent. It arrives in a moment.",
+    "testError": "Could not send the test right now. Try again in a minute.",
+    "deactivate": "Turn off for this device",
+    "deactivateError": "Could not turn off right now. Try again.",
+    "loadingPrefs": "Loading your reminder…",
+    "prefsError": "Could not load your reminder right now.",
+    "pendingLabel": "Pending items reminder",
+    "pendingHint": "One notice a day, at the time you choose, only when items in your personal space are waiting for your confirmation.",
+    "timeLabel": "Reminder time",
+    "timeHint": "Brasília time.",
+    "timeRequired": "Choose the reminder time.",
+    "save": "Save reminder",
+    "saving": "Saving…",
+    "saved": "Reminder saved.",
+    "saveError": "Could not save the reminder right now. Try again."
   }
 }

@@ -34,11 +34,11 @@ require (
 	github.com/valkey-io/valkey-go v1.0.79
 	github.com/valyala/fasthttp v1.78.0
 	google.golang.org/protobuf v1.36.12
-	gopkg.aoctech.app/api-commons v1.42.1
+	gopkg.aoctech.app/api-commons v1.44.2
 )
 
 require (
-	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.22 // indirect
+	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.27 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.20.9 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.5.12 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.8.12 // indirect

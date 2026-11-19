@@ -23,6 +23,8 @@ import (
 // Deps is everything the routes need, passed explicitly rather than assembled
 // from a container here — wiring belongs in one place, and that place is app.
 type Deps struct {
+	// Web Push (docs/specs/2026-11-18-pending-reminder-web-push.md). Nil unmounts the /push routes.
+	Push *PushDeps
 	// BYOK (spec 2026-10-11): bank connections and their statement sync. Nil
 	// unmounts the connection routes.
 	ByokConnections *services.ByokConnections

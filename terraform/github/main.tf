@@ -106,12 +106,16 @@ resource "aws_iam_role_policy_attachment" "infra_admin" {
 # ── api ──────────────────────────────────────────────────────────────────────
 # Upload the artifact, find the instances, tell them to run /opt/app/deploy.sh.
 data "aws_iam_policy_document" "api" {
-  # BYOK Lambdas (spec 2026-10-11): code only. Their configuration, role and
-  # environment are Terraform's and never CI's.
+  # BYOK and Web Push Lambdas (specs 2026-10-11 and 2026-11-18): code only. Their configuration, role and environment
+  # are Terraform's and never CI's. api.yml ships every dist/lambda/*.zip to {env}-ctech-billing-<name>, so each family
+  # of names it ships must be listed here, or the deploy step fails with AccessDenied.
   statement {
-    sid       = "ShipByokLambdaCode"
-    actions   = ["lambda:UpdateFunctionCode", "lambda:GetFunction"]
-    resources = [for env in var.environments : "arn:aws:lambda:${var.aws_region}:${var.aws_account}:function:${env}-ctech-billing-byok-*"]
+    sid     = "ShipLambdaCode"
+    actions = ["lambda:UpdateFunctionCode", "lambda:GetFunction"]
+    resources = flatten([for env in var.environments : [
+      "arn:aws:lambda:${var.aws_region}:${var.aws_account}:function:${env}-ctech-billing-byok-*",
+      "arn:aws:lambda:${var.aws_region}:${var.aws_account}:function:${env}-ctech-billing-push-*",
+    ]])
   }
 
   statement {

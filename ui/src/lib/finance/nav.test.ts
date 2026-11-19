@@ -1,6 +1,6 @@
 import {describe, expect, it} from "vitest";
 
-import {currentFinanceSection} from "./nav";
+import {currentFinanceSection, visibleFinanceSections} from "./nav";
 
 describe("currentFinanceSection", () => {
   it("is Resumo only on the root", () => {
@@ -11,6 +11,12 @@ describe("currentFinanceSection", () => {
     expect(currentFinanceSection("/finance/bills")).toBe("/finance/bills");
     expect(currentFinanceSection("/finance/bills/bill_1")).toBe("/finance/bills");
     expect(currentFinanceSection("/finance/settings/connections/inter")).toBe("/finance/settings/connections");
+  });
+
+  it("has Notificações, under settings, for everyone", () => {
+    expect(currentFinanceSection("/finance/settings/notifications")).toBe("/finance/settings/notifications");
+    expect(visibleFinanceSections(true, false).some(s => s.key === "notifications")).toBe(true);
+    expect(visibleFinanceSections(false, false).some(s => s.key === "notifications")).toBe(true);
   });
 
   it("puts the lines to classify under Contas, whose accounts they belong to", () => {

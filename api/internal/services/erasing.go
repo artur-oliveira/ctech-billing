@@ -64,6 +64,7 @@ type Eraser struct {
 	purger   *repositories.SpacePurger
 	spaceFor func(owner string, livemode bool) (space.ResolvedSpace, error)
 	banks    BankConnections
+	push     PushPurger
 }
 
 // NewEraser builds the eligibility side. portalOrganizationID is tenant zero
@@ -87,6 +88,30 @@ func NewEraser(
 func (e *Eraser) WithPurge(p *repositories.SpacePurger, spaceFor func(owner string, livemode bool) (space.ResolvedSpace, error), banks BankConnections) *Eraser {
 	e.purger, e.spaceFor, e.banks = p, spaceFor, banks
 	return e
+}
+
+// PushPurger erases a person's Web Push data (pendingpush.Purger).
+type PushPurger interface {
+	Purge(ctx context.Context, sub string) (int, error)
+}
+
+// WithPush adds the Web Push data to what Purge erases. Optional: without it nothing about push is touched.
+func (e *Eraser) WithPush(p PushPurger) *Eraser {
+	e.push = p
+	return e
+}
+
+// erasePush deletes the person's push subscriptions and reminders and counts the rows.
+func (e *Eraser) erasePush(ctx context.Context, sub string, counts map[string]int) error {
+	if e.push == nil {
+		return nil
+	}
+	n, err := e.push.Purge(ctx, sub)
+	counts["push_rows"] += n
+	if err != nil {
+		return fmt.Errorf("purging push rows: %w", err)
+	}
+	return nil
 }
 
 // debt is what a customer still owes CTech, live mode.
@@ -280,6 +305,9 @@ func (e *Eraser) Purge(ctx context.Context, m erasure.Message) (erasure.Ack, err
 				return erasure.Ack{}, fmt.Errorf("purging space %s: %w", sp.PK(), err)
 			}
 		}
+	}
+	if err := e.erasePush(ctx, m.Sub, counts); err != nil {
+		return erasure.Ack{}, err
 	}
 	return erasure.Ack{Result: erasure.ResultDone, Counts: counts}, nil
 }

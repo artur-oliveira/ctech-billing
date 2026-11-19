@@ -19,10 +19,12 @@ import (
 	"gopkg.aoctech.app/api-commons/dataexport"
 	"gopkg.aoctech.app/api-commons/erasure"
 	"gopkg.aoctech.app/api-commons/oauth2client"
+	"gopkg.aoctech.app/api-commons/pushsvc"
 	"gopkg.aoctech.app/api-commons/resilient"
 
 	"gopkg.aoctech.app/billing/api/internal/config"
 	"gopkg.aoctech.app/billing/api/internal/jobs"
+	"gopkg.aoctech.app/billing/api/internal/pendingpush"
 	"gopkg.aoctech.app/billing/api/internal/repositories"
 	"gopkg.aoctech.app/billing/api/internal/services"
 	"gopkg.aoctech.app/billing/api/internal/space"
@@ -197,7 +199,8 @@ func BuildErasureConsumer(ctx context.Context, cfg *config.Config, spaceFor func
 	acks := erasure.NewAckClient(hc,
 		strings.TrimSuffix(cfg.AccountBaseURL, "/")+"/v1.0/internal/erasure/ack",
 		oauth2client.New(hc, newCache(cfg), cfg.AccountTokenURL, clientID, clientSecret, erasureAckScope))
-	eraser := newEraser(db, cfg).WithPurge(repositories.NewSpacePurger(db, cfg), spaceFor, banks)
+	eraser := newEraser(db, cfg).WithPurge(repositories.NewSpacePurger(db, cfg), spaceFor, banks).
+		WithPush(pendingpush.NewPurger(pushsvc.NewStore(db, cfg.TablePrefix)))
 	// The personal-data export rides the same queue (ctech-account
 	// docs/specs/2026-10-17-data-export.md): the part is PUT to a presigned S3 URL
 	// and acked. A longer timeout than the saga's, because the upload is data.

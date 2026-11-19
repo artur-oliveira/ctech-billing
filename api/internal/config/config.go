@@ -226,6 +226,11 @@ type Config struct {
 	// billing-byok-hooks[-env].aoctech.app). Empty: no webhook is registered,
 	// and payments are confirmed by the hourly sweep.
 	ByokHooksHost string `env:"BYOK_HOOKS_HOST"`
+
+	// Web Push (docs/specs/2026-11-18-pending-reminder-web-push.md). Empty PushVAPIDPublicKey leaves it off: /push/config
+	// says enabled=false and subscribing answers 503. PushSenderFunction is the push-sender Lambda the test route invokes.
+	PushVAPIDPublicKey string `env:"PUSH_VAPID_PUBLIC_KEY"`
+	PushSenderFunction string `env:"PUSH_SENDER_FUNCTION"`
 }
 
 // Load reads the configuration from the environment.

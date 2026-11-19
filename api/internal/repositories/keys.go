@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"gopkg.aoctech.app/api-commons/erasure"
+	"gopkg.aoctech.app/api-commons/pushsvc"
 	"gopkg.aoctech.app/billing/api/internal/domain/billing"
 	"gopkg.aoctech.app/billing/api/internal/domain/brcal"
 	"gopkg.aoctech.app/billing/api/internal/space"
@@ -91,6 +92,10 @@ const (
 	// (docs/specs/2026-10-17-merchant-tenant-deletion.md). Its sparse
 	// schedule-index is the closure worker's queue.
 	TableTenantClosures = "tenant_closures"
+	// TablePush holds Web Push: a person's browser subscriptions and reminder choices (partition USER#{sub}), with the
+	// endpoint-index and slot-index go-common's pushsvc queries (docs/specs/2026-11-18-pending-reminder-web-push.md). The
+	// go-common package owns its item shapes; this constant is here so schema.json, and therefore Terraform, declares it.
+	TablePush = pushsvc.TableName
 )
 
 // Index names.
@@ -117,6 +122,9 @@ const (
 	// partition because an invoice row's lookup_pk is already its
 	// subscription's (LookupSubscriptionInvoicesPK). Sparse: invoice rows only.
 	IndexCustomer = "customer-index"
+	// IndexPushEndpoint and IndexPushSlot are the two go-common pushsvc queries on TablePush.
+	IndexPushEndpoint = pushsvc.IndexEndpoint
+	IndexPushSlot     = pushsvc.IndexSlot
 )
 
 // Entity discriminates rows in a period index. It is part of the partition

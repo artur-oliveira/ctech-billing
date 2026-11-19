@@ -10,8 +10,8 @@ export default defineConfig({
     testTimeout: 20_000,
     hookTimeout: 20_000,
     include: ["src/**/*.test.{ts,tsx}"],
-    // @aoctech/ui ships ESM with extensionless relative imports, which Node's
+    // @aoctech/ui and @aoctech/push-client ship ESM with extensionless relative imports, which Node's
     // resolver refuses; inlining lets Vite resolve them like the app build does.
-    server: {deps: {inline: ["@aoctech/ui"]}},
+    server: {deps: {inline: ["@aoctech/ui", "@aoctech/push-client"]}},
   },
 });

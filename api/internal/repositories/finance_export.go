@@ -36,6 +36,7 @@ var notExported = map[string]string{
 	TableWebhooks:       "merchant tenant endpoints",
 	TableErasureState:   "the deletion saga's own state",
 	TableTenantClosures: "merchant tenant closure, not a person",
+	TablePush:           "browser subscriptions are a capability, not the person's choice, and stay out; the reminder time is an app preference, deferred (this export is per finance space, the reminder is per person)",
 }
 
 // exportMaxItems bounds one table of one space, across all its partitions. A ledger past it is cut and the

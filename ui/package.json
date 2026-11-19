@@ -3,8 +3,11 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
+    "predev": "cp node_modules/@aoctech/push-client/dist/sw.js public/sw.js",
     "dev": "next dev --port 3004",
+    "predev:mock": "cp node_modules/@aoctech/push-client/dist/sw.js public/sw.js",
     "dev:mock": "NEXT_PUBLIC_MOCK_API=true next dev --port 3004",
+    "prebuild": "cp node_modules/@aoctech/push-client/dist/sw.js public/sw.js",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
@@ -13,6 +16,7 @@
   },
   "dependencies": {
     "@aoctech/auth-client": "^1.4.1",
+    "@aoctech/push-client": "^1.0.1",
     "@aoctech/ui": "^0.11.0",
     "@aoctech/ws-client": "^1.4.0",
     "@base-ui/react": "^1",
