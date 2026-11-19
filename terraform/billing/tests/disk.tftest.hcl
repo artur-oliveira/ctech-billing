@@ -1,7 +1,8 @@
 # The Alpine root is 1 GB (owner decision 2026-10-12, no bigger volume): the
-# swap file and two releases side by side must fit in it. 128 MB of swap leaves
+# swap file and two releases side by side must fit in it. 64 MB of swap leaves
 # room to unpack the next release beside the current one; 256 MB did not
-# (the 2026-10-12 deploy failed with "disk full").
+# (the 2026-10-12 deploy failed with "disk full"), and 128 MB left too little
+# once the release grew toward its 140 MB budget.
 mock_provider "aws" {
   mock_data "aws_ssm_parameter" {
     defaults = { value = "mock" }
@@ -32,7 +33,7 @@ run "alpine_swap_leaves_room_for_two_releases" {
   command = plan
 
   assert {
-    condition     = strcontains(local.bootstrap_sh, "setup-swap.sh 128") && !strcontains(local.bootstrap_sh, "setup-swap.sh 256")
-    error_message = "the Alpine swap file must be 128 MB on its 1 GB root"
+    condition     = strcontains(local.bootstrap_sh, "setup-swap.sh 64") && !strcontains(local.bootstrap_sh, "setup-swap.sh 128") && !strcontains(local.bootstrap_sh, "setup-swap.sh 256")
+    error_message = "the Alpine swap file must be 64 MB on its 1 GB root"
   }
 }
