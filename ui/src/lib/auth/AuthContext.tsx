@@ -1,6 +1,6 @@
 "use client";
 
-import {createContext, useCallback, useContext, useEffect, useState} from "react";
+import {createContext, useCallback, useContext, useEffect, useRef, useState} from "react";
 import type {ReactNode} from "react";
 
 import {registerRefresh, setAccessToken} from "@/lib/api/client";
@@ -126,14 +126,23 @@ export function AuthProvider({children}: { children: ReactNode }) {
     void startOAuthFlow(returnTo);
   }, []);
 
+  // A second click during the cleanup window must not run the session end twice (two revokes, two redirects).
+  const leaving = useRef(false);
   const logout = useCallback(() => {
+    if (leaving.current) return;
+    leaving.current = true;
     void (async () => {
       // This device leaves Web Push while the access token still exists (its server row is deleted with it), so a shared
       // computer stops notifying the person who is leaving. Bounded (2 s) and it never throws. Dynamic import: push/logout
-      // reaches the API client, which this provider feeds.
+      // reaches the API client, which this provider feeds. Guarded as a whole, the import included: a tab opened before a
+      // deploy can fail to load the chunk, and a logout that stopped here would leave the person signed in.
       if (!USE_MOCK) {
-        const {removeThisDevicePush} = await import("@/lib/push/logout");
-        await removeThisDevicePush();
+        try {
+          const {removeThisDevicePush} = await import("@/lib/push/logout");
+          await removeThisDevicePush();
+        } catch {
+          // Best effort: the push service answers 410 for a subscription nobody renews, and the sender drops the row.
+        }
       }
       window.localStorage.removeItem(NAME_KEY);
       setAccessToken(null);

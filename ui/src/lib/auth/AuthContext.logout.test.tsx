@@ -50,4 +50,25 @@ describe("AuthProvider.logout", () => {
     await userEvent.click(button);
     await waitFor(() => expect(order).toEqual(["push", "token-dropped", "end-session"]));
   });
+
+  // A tab opened before a deploy can fail to load the cleanup chunk: logout must still drop the token and end the session.
+  it("still ends the session when the push cleanup cannot even be loaded", async () => {
+    mocks.removePush.mockReset().mockImplementation(async () => {
+      throw new Error("ChunkLoadError");
+    });
+    render(<AuthProvider><LogoutButton/></AuthProvider>);
+    const button = await screen.findByRole("button", {name: "sair"});
+    await waitFor(() => expect(button).toBeEnabled());
+    await userEvent.click(button);
+    await waitFor(() => expect(order).toEqual(["token-dropped", "end-session"]));
+  });
+
+  it("a second click while leaving does not end the session twice", async () => {
+    render(<AuthProvider><LogoutButton/></AuthProvider>);
+    const button = await screen.findByRole("button", {name: "sair"});
+    await waitFor(() => expect(button).toBeEnabled());
+    await userEvent.dblClick(button);
+    await waitFor(() => expect(order).toContain("end-session"));
+    expect(order.filter(o => o === "end-session")).toHaveLength(1);
+  });
 });

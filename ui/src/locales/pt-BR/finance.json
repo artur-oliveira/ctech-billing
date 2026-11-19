@@ -782,7 +782,7 @@
     "loadingPrefs": "Carregando seu lembrete…",
     "prefsError": "Não foi possível carregar o seu lembrete agora.",
     "pendingLabel": "Lembrete de pendências",
-    "pendingHint": "Um aviso por dia, no horário que você escolher, só quando houver contas aguardando a sua confirmação.",
+    "pendingHint": "Um aviso por dia, no horário que você escolher, só quando houver contas do seu espaço pessoal aguardando a sua confirmação.",
     "timeLabel": "Horário do lembrete",
     "timeHint": "Horário de Brasília.",
     "timeRequired": "Escolha o horário do lembrete.",

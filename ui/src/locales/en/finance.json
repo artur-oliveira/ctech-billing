@@ -782,7 +782,7 @@
     "loadingPrefs": "Loading your reminder…",
     "prefsError": "Could not load your reminder right now.",
     "pendingLabel": "Pending items reminder",
-    "pendingHint": "One notice a day, at the time you choose, only when items are waiting for your confirmation.",
+    "pendingHint": "One notice a day, at the time you choose, only when items in your personal space are waiting for your confirmation.",
     "timeLabel": "Reminder time",
     "timeHint": "Brasília time.",
     "timeRequired": "Choose the reminder time.",

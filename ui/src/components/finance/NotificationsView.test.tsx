@@ -95,6 +95,13 @@ describe("NotificationsView", () => {
       expect(screen.queryByLabelText("Horário do lembrete")).not.toBeInTheDocument();
     });
 
+    // Only the personal space is counted (organization spaces are a documented ceiling): the copy must not promise more.
+    it("says the reminder is about the personal space", async () => {
+      render(<NotificationsView/>, {wrapper});
+      await screen.findByRole("switch", {name: "Lembrete de pendências"});
+      expect(screen.getByText(/espaço pessoal/)).toBeInTheDocument();
+    });
+
     it("turning it on without a time shows the error and does not call the API", async () => {
       render(<NotificationsView/>, {wrapper});
       await userEvent.click(await screen.findByRole("switch", {name: "Lembrete de pendências"}));
