@@ -103,7 +103,7 @@ run "the_tick_can_invoke_only_the_sender_and_never_scan" {
   command = plan
 
   assert {
-    condition = length([for s in jsondecode(aws_iam_role_policy.push_tick.policy).Statement : s if contains(flatten([s.Action]), "lambda:InvokeFunction")]) == 1
+    condition     = length([for s in jsondecode(aws_iam_role_policy.push_tick.policy).Statement : s if contains(flatten([s.Action]), "lambda:InvokeFunction")]) == 1
     error_message = "exactly one invoke statement"
   }
   assert {
@@ -122,7 +122,7 @@ run "the_sender_cannot_write_a_reminder" {
     error_message = "the sender reads devices and deletes a gone one; it never writes a reminder"
   }
   assert {
-    condition = anytrue([for s in jsondecode(aws_iam_role_policy.push_sender.policy).Statement : contains(flatten([s.Action]), "ssm:GetParameter")])
+    condition     = anytrue([for s in jsondecode(aws_iam_role_policy.push_sender.policy).Statement : contains(flatten([s.Action]), "ssm:GetParameter")])
     error_message = "the sender reads the VAPID keys"
   }
 }
@@ -135,7 +135,7 @@ run "the_push_table_comes_from_the_schema_with_both_indexes_and_a_ttl" {
     error_message = "the push table is declared in api/internal/repositories/schema.json, like every table"
   }
   assert {
-    condition = toset([for i in aws_dynamodb_table.billing["push"].global_secondary_index : i.name]) == toset(["endpoint-index", "slot-index"])
+    condition     = toset([for i in aws_dynamodb_table.billing["push"].global_secondary_index : i.name]) == toset(["endpoint-index", "slot-index"])
     error_message = "the two indexes go-common's pushsvc queries"
   }
   assert {
